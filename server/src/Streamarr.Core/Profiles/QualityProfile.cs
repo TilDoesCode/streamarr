@@ -1,6 +1,17 @@
 namespace Streamarr.Core.Profiles;
 
 /// <summary>
+/// A sane bytes-per-minute band for the fake / size-sanity rejection rule
+/// (BRIEF.md §7.2). Bands are keyed by resolution so a 2160p Remux is not
+/// judged against a 720p WEB-DL bitrate expectation.
+/// </summary>
+public sealed record SizeBand
+{
+    public required long MinBytesPerMinute { get; init; }
+    public required long MaxBytesPerMinute { get; init; }
+}
+
+/// <summary>
 /// A quality preference profile driving the release ranker (BRIEF.md §7.3):
 /// a transparent weighted sum, structured so a Radarr-style custom-format model
 /// can replace it later without changing the API.
@@ -31,13 +42,46 @@ public sealed record QualityProfile
     public int CodecWeight { get; init; } = 40;
     public int LanguageWeight { get; init; } = 60;
     public int AudioWeight { get; init; } = 30;
+    public int SizeWeight { get; init; } = 20;
     public int ProperRepackBonus { get; init; } = 20;
     public int RecencyBonus { get; init; } = 10;
     public int GrabsBonus { get; init; } = 10;
 
-    /// <summary>Sane bytes-per-minute band used for fake/sample rejection.</summary>
+    /// <summary>Added when a release group is on <see cref="GroupAllowList"/>.</summary>
+    public int GroupAllowBonus { get; init; } = 50;
+
+    /// <summary>
+    /// Subtracted when a release group is on <see cref="GroupDenyList"/>. Large by
+    /// default so a denied group sinks below every accepted release without being a
+    /// hard rejection (BRIEF §7.3 keeps deny-list a ranking concern, not §7.2).
+    /// </summary>
+    public int GroupDenyPenalty { get; init; } = 100_000;
+
+    /// <summary>Global fallback bytes-per-minute band for size sanity (BRIEF §7.2).</summary>
     public long MinBytesPerMinute { get; init; } = 3_000_000;
-    public long MaxBytesPerMinute { get; init; } = 400_000_000;
+    public long MaxBytesPerMinute { get; init; } = 1_500_000_000;
+
+    /// <summary>
+    /// Per-resolution bytes-per-minute bands overriding the global fallback. Keyed by
+    /// the resolution token the parser emits ("2160p", "1080p", …).
+    /// </summary>
+    public IReadOnlyDictionary<string, SizeBand> SizeBands { get; init; }
+        = new Dictionary<string, SizeBand>(StringComparer.OrdinalIgnoreCase);
 
     public bool IsDefault { get; init; }
+
+    /// <summary>Resolve the sane bytes-per-minute band for a claimed resolution.</summary>
+    public SizeBand BandFor(string? resolution)
+    {
+        if (resolution is not null && SizeBands.TryGetValue(resolution, out var band))
+        {
+            return band;
+        }
+
+        return new SizeBand
+        {
+            MinBytesPerMinute = MinBytesPerMinute,
+            MaxBytesPerMinute = MaxBytesPerMinute,
+        };
+    }
 }

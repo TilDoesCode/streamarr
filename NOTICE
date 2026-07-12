@@ -69,6 +69,13 @@ Radarr
   source path and commit. The HDR-flavor and audio codec/channel parsers are
   Streamarr-original.
 
+  Ported components (server/src/Streamarr.Core/Ranking): QualityDefinitions
+  adapts Radarr's default quality-definition weights (Qualities/Quality.cs) and
+  per-quality size limits (Qualities/QualityDefinition.cs) into decomposed
+  resolution / source / audio tiers and bytes-per-minute size bands used by the
+  ranker and the size-sanity rejection rule. The rejection engine and
+  weighted-sum ranker themselves are Streamarr-original.
+
 Sonarr
   https://github.com/Sonarr/Sonarr
   Commit: f9e18a7c4475345f325237670d7e71ceac97038b
