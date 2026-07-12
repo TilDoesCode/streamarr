@@ -1,0 +1,27 @@
+{
+  "// note": "Copy to appsettings.Local.json (git-ignored) and fill in REAL provider credentials",
+  "// note2": "to run the harness against a real Usenet provider (see docs/DECISIONS.md Open items).",
+  "// note3": "Then run: dotnet run --project server/tools/latency -- --mode real",
+  "Streamarr": {
+    "Providers": [
+      {
+        "Name": "primary",
+        "Host": "news.example.com",
+        "Port": 563,
+        "UseSsl": true,
+        "Username": "REPLACE_ME",
+        "Password": "REPLACE_ME",
+        "MaxConnections": 20,
+        "Priority": 0
+      }
+    ]
+  },
+  "Latency": {
+    "// NzbUrl": "A known-good NZB for a real, currently-available release.",
+    "// NzbUrl2": "May be an https indexer URL, a file:// URI, or a local path.",
+    "NzbUrl": "/path/to/known-good.nzb",
+    "ReleaseId": "latency-real",
+    "WorkId": "latency-real-work",
+    "Title": "Real.Provider.Probe.2021.1080p.WEB-DL.x264-STREAMARR"
+  }
+}

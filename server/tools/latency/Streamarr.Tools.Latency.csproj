@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Streamarr.Tools.Latency</RootNamespace>
+    <AssemblyName>Streamarr.Tools.Latency</AssemblyName>
+    <!-- console harness; see docs/m1-latency.md for how to run it -->
+    <UserSecretsId>streamarr-latency</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Streamarr.Server\Streamarr.Server.csproj" />
+    <ProjectReference Include="..\..\src\Streamarr.Core\Streamarr.Core.csproj" />
+    <ProjectReference Include="..\..\src\Streamarr.Usenet\Streamarr.Usenet.csproj" />
+    <!-- Streamarr.Tests.Shared is a plain library (no xunit dependency): it owns the
+         in-repo mock NNTP server + yEnc/NZB fixtures used for the mock baseline run. -->
+    <ProjectReference Include="..\..\tests\Streamarr.Tests.Shared\Streamarr.Tests.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- appsettings.json / appsettings.Local.json are picked up as default Web SDK
+       content and copied to the output dir; the harness reads them from there. -->
+
+</Project>
