@@ -208,22 +208,21 @@ per rule, and the rejection reason. Tune the ranker there, not in the dark.
 
 ## Licensing
 
-**Decision — record it here before writing ranking code:**
+**Decision (2026-07-12, see `docs/DECISIONS.md`):**
 
 - [ ] **Clean-room** — parsing/ranking is original code, informed by studying
-      Radarr/Sonarr's *design* but copying none of it. Core stays under
-      `<your license>`. **(default)**
-- [ ] **GPL-3.0 accepted** — Radarr/Sonarr code may be reused; the entire Core
-      becomes GPL-3.0.
+      Radarr/Sonarr's *design* but copying none of it.
+- [x] **GPL-3.0 accepted** — Radarr/Sonarr code may be reused (with per-file
+      attribution); the entire project is licensed **GPL-3.0** (see `LICENSE`).
 
 This matters: **Radarr and Sonarr are GPL-3.0.** Copying their parser regexes,
 quality definitions, or custom-format logic makes Streamarr a GPL-3.0 derivative.
 
 | Component | License | Note |
 |---|---|---|
-| `core/` | *TBD by the decision above* | |
+| `server/` | **GPL-3.0** | Ports Radarr/Sonarr parsing & ranking code with attribution. |
 | `plugin/` | GPL-2.0-compatible | Links Jellyfin assemblies; normal for Jellyfin plugins. Keeping it a thin adapter also keeps this licensing boundary clean. |
-| `web/` | same as `core/` | |
+| `web/` | **GPL-3.0** | |
 | Embedded [nzbdav](https://github.com/nzbdav-dev/nzbdav) core | **MIT** | Vendored with attribution. Source of the NNTP/yEnc/RAR streaming primitives. |
 
 ---

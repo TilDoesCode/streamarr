@@ -1,0 +1,32 @@
+# Reference repos (nzbdav, Radarr, Sonarr) — cloned locally for study/vendoring, not part of this repo
+refs/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+artifacts/
+
+# Node
+node_modules/
+dist/
+web/dist/
+*.tsbuildinfo
+
+# Local state
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+appsettings.Local.json
+
+# OS
+.DS_Store
+
+# Test output
+TestResults/
+playwright-report/
+test-results/
+coverage/
