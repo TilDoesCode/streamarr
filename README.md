@@ -1,1 +1,292 @@
-# streamarr
+# Streamarr
+
+**Search and stream Usenet content on demand — no download, no watch, no delete.**
+
+Streamarr is a self-hosted service that searches Usenet indexers, picks the best
+release, verifies it is actually still available, and streams it directly from your
+Usenet provider as a seekable HTTP byte stream. Nothing is written to disk.
+
+The name is a nod, not a dependency: Streamarr **replaces** the parts of the `*arr`
+stack that matter for streaming — Prowlarr's indexer search and Radarr's release
+selection — and throws away everything that exists only to manage files. No Sonarr,
+no Radarr, no Prowlarr, no rclone, no WebDAV mount.
+
+Jellyfin is supported as the first front-end — it gives us clients on every platform
+and solves transcoding — but **Jellyfin is a consumer of this system, not the centre
+of it.** See [Architecture](#architecture).
+
+---
+
+## Status
+
+Pre-alpha. Nothing here is stable yet.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| M1 | Streaming core (NNTP → yEnc → RAR random access → HTTP+Range) | ☐ |
+| M2 | Indexer search, release parsing, ranking, rejection, TMDB matching | ☐ |
+| M3 | Frozen `/api/v1`, OpenAPI spec, config API, auth | ☐ |
+| M4 | Management Web UI (React 19) | ☐ |
+| M5 | Jellyfin plugin — playback thin-slice | ☐ |
+| M6 | Jellyfin plugin — search interception + TTL cleanup | ☐ |
+| M7 | Hardening — dead-release fallback, connection budget, metrics | ☐ |
+
+---
+
+## Architecture
+
+Three components. The important part is the relationship between them.
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │        STREAMARR CORE  (the product)         │
+                    │                                              │
+  ┌─ Jellyfin ────┐ │  /api/v1                                     │
+  │ (UI + trans-  │ │   search   indexer fan-out, parse, reject,   │
+  │  coding, v1)  │◀┼──▶         rank, TMDB match, aggregate       │
+  │               │ │   resolve  fetch NZB, health-check, open     │
+  │ Plugin =      │ │            session, probe media info         │
+  │ THIN ADAPTER  │ │   stream   HTTP + Range byte stream          │
+  │               │ │   config   indexers, providers, profiles     │
+  │               │ │   sessions live sessions, metrics            │
+  │               │ │   events   playback start/progress/stop      │
+  └───────────────┘ │                                              │
+                    │  OpenAPI spec ──── generated clients ───────┐│
+  ┌─ Management ──┐ │                                             ││
+  │ Web UI        │◀┼─────────────────────────────────────────────┘│
+  │ React 19      │ │  SQLite: config, profiles, cache, watch state│
+  └───────────────┘ └──────────────────────────────────────────────┘
+                                        ▲
+  ┌─ FUTURE: custom web / React Native / TV client ─┘
+    (same OpenAPI contract)
+```
+
+### The rule that governs everything
+
+> **All domain logic lives in Streamarr Core. The Jellyfin plugin contains zero
+> business logic. Jellyfin types never appear in the Core.**
+
+Searching, parsing, ranking, rejecting, TMDB matching, health checking, session
+management and watch state are **Core** concerns. The plugin only translates between
+our interface-agnostic API and Jellyfin's data model (`BaseItem`, `MediaSourceInfo`,
+action filters).
+
+This is not architectural purity for its own sake — **Jellyfin is step 1, not the
+destination.** A custom web app, a React Native client, or a TV app must be able to
+sit on top of the same API later without rewriting the Core.
+
+**The Management UI is the continuous test of this.** It talks only to the public API
+and can search, resolve, and *play a stream preview in the browser* **with Jellyfin
+not running at all.** If that ever breaks, the abstraction has leaked — treat it as a
+build failure, not a UI bug.
+
+### What Jellyfin gives us for free today
+
+Named explicitly, so we don't accidentally build hard dependencies on them:
+
+| Capability | Owner in v1 | Plan |
+|---|---|---|
+| Transcoding, device profiles | Jellyfin | `/stream` stays a generic HTTP+Range source so an ffmpeg transcode layer can be inserted in front of it later. |
+| Clients (TV, mobile, cast) | Jellyfin | Generated API clients are the on-ramp for our own. |
+| Watch state, resume positions | Jellyfin | **Mitigated:** the plugin reports playback events to `/api/v1/events` from day one, so watch state is not trapped in Jellyfin's DB. |
+| Metadata & artwork | **Streamarr Core (TMDB)** | Already ours. We do *not* rely on Jellyfin's metadata fetcher for our items. |
+| User management | Jellyfin (playback) / Core (admin) | The Core's user model is designed to grow into full multi-user. |
+
+---
+
+## Repository layout
+
+```
+core/       ASP.NET Core service (.NET 8) — the product
+            ├── indexers/    Newznab fan-out
+            ├── parsing/     release-name parser + test corpus
+            ├── ranking/     quality profiles, scoring, rejection rules
+            ├── usenet/      embedded nzbdav core: NNTP pool, yEnc, RAR random access
+            ├── sessions/    resolve → session → stream lifecycle
+            └── api/         /api/v1 + OpenAPI
+
+plugin/     Jellyfin plugin (.NET 8) — thin adapter, no business logic
+
+web/        Management UI — React 19, TanStack Query, Vite, Tailwind + shadcn/ui
+            API client generated from the OpenAPI spec (CI fails on drift)
+
+docs/       Architecture, API contract, setup, ranker tuning
+```
+
+---
+
+## Quick start
+
+```bash
+git clone <repo> && cd streamarr
+cp .env.example .env      # set admin password + a machine API key
+docker compose up -d
+```
+
+Open the Management UI at `http://localhost:8080` and configure, in this order:
+
+1. **Usenet provider** — host, port, SSL, credentials, max connections. Hit *Test*.
+2. **Indexers** — Newznab base URL + API key per indexer. Hit *Test*.
+3. **TMDB API key** — under Settings.
+4. **Quality profile** — or start from the default and tune it later in the
+   Search/Debug playground.
+
+Verify end to end **before touching Jellyfin**: run a search in the Debug playground,
+resolve a release, and hit *Preview* to play it in the browser. If that works, the
+Core is sound.
+
+### Adding Jellyfin
+
+1. Build the plugin (`dotnet build plugin/ -c Release`) and drop the `.dll` into
+   Jellyfin's plugin directory (`docker-compose.dev.yml` mounts it for you).
+2. In Jellyfin's dashboard, open the Streamarr plugin config, set the Core URL and
+   machine API key, and hit *Test connection*.
+3. Enable search interception.
+
+Usenet results now appear alongside your local library and play through Jellyfin's
+normal transcoding pipeline.
+
+---
+
+## Development
+
+### Core
+```bash
+cd core
+dotnet run                     # http://localhost:5000, OpenAPI at /swagger
+dotnet test                    # parser corpus + ranker ordering tests
+```
+
+### Management UI
+```bash
+cd web
+pnpm install
+pnpm gen:api                   # regenerate the API client from the OpenAPI spec
+pnpm dev                       # Vite dev server, proxied to the Core
+pnpm test                      # Vitest
+pnpm test:e2e                  # Playwright smoke
+```
+
+`pnpm gen:api` is checked in CI — a stale generated client fails the build. Never
+hand-write API types.
+
+### Jellyfin plugin
+```bash
+cd plugin
+dotnet build -c Release
+```
+
+The plugin is **pinned to a specific Jellyfin version** (see
+`docs/jellyfin-compatibility.md`). Search interception hooks an ASP.NET
+`ActionFilter` onto Jellyfin's item-query endpoint and is inherently
+version-sensitive — expect to re-test on every Jellyfin release.
+
+---
+
+## Why no `*arr` stack?
+
+Sonarr/Radarr/Prowlarr exist largely to *manage files*: grab, rename, organise,
+populate a library folder. Streamarr deletes that entire step, so most of the stack
+becomes dead weight. But three things those tools do quietly still have to happen —
+and Streamarr does them itself:
+
+1. **Indexer search** (Prowlarr's job) — straightforward; Newznab is a simple API.
+2. **Release selection** (Radarr's real job, and the one people underestimate) — a
+   single search returns dozens of releases: wrong resolutions, fakes, samples,
+   password-protected archives, incomplete or DMCA'd uploads. Parsing, ranking and
+   rejecting them is the difference between *"feels like streaming"* and *"every
+   third click fails."*
+3. **Availability** — Usenet articles disappear. Every release is health-checked via
+   NNTP `STAT` before playback, and a dead release automatically falls back to the
+   next-best one.
+
+The Search/Debug playground in the Management UI exists precisely for this: it shows
+every release *including the rejected ones*, with parsed fields, the score breakdown
+per rule, and the rejection reason. Tune the ranker there, not in the dark.
+
+---
+
+## Licensing
+
+**Decision — record it here before writing ranking code:**
+
+- [ ] **Clean-room** — parsing/ranking is original code, informed by studying
+      Radarr/Sonarr's *design* but copying none of it. Core stays under
+      `<your license>`. **(default)**
+- [ ] **GPL-3.0 accepted** — Radarr/Sonarr code may be reused; the entire Core
+      becomes GPL-3.0.
+
+This matters: **Radarr and Sonarr are GPL-3.0.** Copying their parser regexes,
+quality definitions, or custom-format logic makes Streamarr a GPL-3.0 derivative.
+
+| Component | License | Note |
+|---|---|---|
+| `core/` | *TBD by the decision above* | |
+| `plugin/` | GPL-2.0-compatible | Links Jellyfin assemblies; normal for Jellyfin plugins. Keeping it a thin adapter also keeps this licensing boundary clean. |
+| `web/` | same as `core/` | |
+| Embedded [nzbdav](https://github.com/nzbdav-dev/nzbdav) core | **MIT** | Vendored with attribution. Source of the NNTP/yEnc/RAR streaming primitives. |
+
+---
+
+## Attribution
+
+- **[nzbdav](https://github.com/nzbdav-dev/nzbdav)** (MIT) — the Usenet streaming
+  core. Streamarr embeds it directly and drops the parts that exist only to serve an
+  `*arr` stack (SABnzbd-compatible API, queue/history emulation, WebDAV server).
+- **[Jellyfin](https://jellyfin.org)** — the media server we ride on for v1.
+- **[jellyfin-plugin-meilisearch](https://github.com/arnesacnussem/jellyfin-plugin-meilisearch)**
+  — reference for intercepting Jellyfin's search via an `ActionFilter`.
+- **Radarr / Sonarr** — studied for the *design* of release parsing and quality
+  ranking. See [Licensing](#licensing) regarding code reuse.
+
+---
+
+## Known limitations
+
+- **Search interception is version-fragile.** It couples to Jellyfin's item-query
+  endpoint. Pinned and integration-tested against one version; re-test on upgrades.
+  It sits behind a config toggle and falls back to native search on any error — a
+  broken filter must never break your normal library search.
+- **Cold-start and seek latency** depend on your Usenet provider, the release's RAR
+  layering, and the segment cache. Measure it (M1 records baselines); it is the
+  single biggest UX variable.
+- **Ephemeral items** live in an isolated, TTL-cleaned virtual folder, excluded from
+  *Latest* and recommendations, so they never pollute your real library. They are not
+  permanent — they are search results.
+- **No torrents.** Usenet/NZB only.
+- **No subtitle search** yet; Jellyfin's own subtitle plugins still work for its
+  items.
+
+---
+
+## Security
+
+- Every endpoint requires authentication. `/stream` is **never** public — the token
+  is unguessable *and* the request must be authenticated.
+- Two auth modes: machine API keys (plugin, future headless clients) and an admin
+  session for the Management UI.
+- Secrets (provider passwords, indexer keys) are encrypted at rest and never returned
+  in plaintext by the config API.
+- nzbdav had a patched auth-bypass in versions 0.2.46–0.6.1. Keep the embedded core
+  current, and put Streamarr behind a VPN or SSO if it is internet-facing.
+
+Report vulnerabilities privately — see `SECURITY.md`.
+
+---
+
+## Legal
+
+**Streamarr is intended for use with legally obtained content only.** The maintainers
+do not condone copyright infringement and will not provide support for it. Whether a
+given use is lawful depends on the content and your jurisdiction; that assessment is
+yours to make, and worth taking seriously before deploying this.
+
+---
+
+## Contributing
+
+See `CONTRIBUTING.md`. Two rules matter more than the rest:
+
+1. **No domain logic in the plugin. No Jellyfin types in the Core.**
+2. **The Management UI must be able to search, resolve and preview-play with Jellyfin
+   absent.** If your change breaks that, it is not done.
