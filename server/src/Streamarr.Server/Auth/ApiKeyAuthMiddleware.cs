@@ -1,18 +1,20 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
+using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Options;
 
 namespace Streamarr.Server.Auth;
 
 /// <summary>
-/// Stub bearer authentication for M1: every /api endpoint except the liveness
-/// probe requires <c>Authorization: Bearer &lt;api-key&gt;</c>. /stream is never
-/// public (BRIEF §6.4) — it goes through this check like everything else.
-/// Real machine/admin auth (scopes, JWT admin sessions) lands in M3.
+/// Machine bearer authentication (BRIEF §6.4): every /api endpoint except the liveness
+/// probe requires <c>Authorization: Bearer &lt;api-key&gt;</c>. Accepts the static
+/// bootstrap key from config <em>or</em> any active key minted through the config API.
+/// /stream is never public — it goes through this check like everything else.
+/// Admin session (JWT) auth for the Management UI is layered on later.
 /// </summary>
-public sealed class ApiKeyAuthMiddleware(RequestDelegate next, IOptionsMonitor<StreamarrOptions> options)
+public sealed class ApiKeyAuthMiddleware(RequestDelegate next, IOptionsMonitor<StreamarrOptions> options, ApiKeyService apiKeys)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -23,9 +25,7 @@ public sealed class ApiKeyAuthMiddleware(RequestDelegate next, IOptionsMonitor<S
             return;
         }
 
-        var apiKey = options.CurrentValue.ApiKey;
-        if (!string.IsNullOrEmpty(apiKey) &&
-            IsAuthorized(context.Request.Headers.Authorization.ToString(), apiKey))
+        if (IsAuthorized(context.Request.Headers.Authorization.ToString()))
         {
             await next(context);
             return;
@@ -37,15 +37,24 @@ public sealed class ApiKeyAuthMiddleware(RequestDelegate next, IOptionsMonitor<S
             ErrorResponse.Of("unauthorized", "A valid bearer API key is required."));
     }
 
-    private static bool IsAuthorized(string authorizationHeader, string apiKey)
+    private bool IsAuthorized(string authorizationHeader)
     {
         const string scheme = "Bearer ";
         if (!authorizationHeader.StartsWith(scheme, StringComparison.Ordinal))
             return false;
 
         var presented = authorizationHeader[scheme.Length..].Trim();
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(presented),
-            Encoding.UTF8.GetBytes(apiKey));
+        if (presented.Length == 0)
+            return false;
+
+        var staticKey = options.CurrentValue.ApiKey;
+        if (!string.IsNullOrEmpty(staticKey) &&
+            CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(presented), Encoding.UTF8.GetBytes(staticKey)))
+        {
+            return true;
+        }
+
+        return apiKeys.IsValid(presented);
     }
 }

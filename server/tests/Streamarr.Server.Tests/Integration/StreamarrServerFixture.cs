@@ -91,6 +91,8 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Streamarr:ApiKey"] = ApiKey,
+            ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_tempDir, "streamarr.db")}",
+            ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_tempDir, "keys"),
             ["Streamarr:ConnectionBudget"] = "12",
             ["Streamarr:SessionTtlSeconds"] = "300",
             ["Streamarr:HealthCheck:SampleCount"] = "24",

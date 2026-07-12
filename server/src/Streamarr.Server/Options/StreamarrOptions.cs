@@ -15,10 +15,19 @@ public sealed class StreamarrOptions
     public const string SectionName = "Streamarr";
 
     /// <summary>
-    /// Stub machine API key for bearer auth (real machine/admin auth lands in M3,
-    /// BRIEF §6.4). Empty means every authenticated endpoint rejects requests.
+    /// Bootstrap machine API key for bearer auth (BRIEF §6.4). Accepted alongside any
+    /// key minted via the config API; empty disables this static key.
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>SQLite connection string; empty defaults to a file next to the app.</summary>
+    public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Directory the Data Protection key ring (secret encryption) persists to; empty
+    /// defaults to a "keys" folder next to the app so ciphertext survives restarts.
+    /// </summary>
+    public string DataProtectionKeysPath { get; set; } = string.Empty;
 
     /// <summary>Global NNTP connection budget shared across all sessions.</summary>
     public int ConnectionBudget { get; set; } = 20;

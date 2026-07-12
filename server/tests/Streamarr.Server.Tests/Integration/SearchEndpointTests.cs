@@ -143,14 +143,18 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
 
     // ---- test host ------------------------------------------------------------------
 
-    public sealed class Factory : WebApplicationFactory<Program>
+    public sealed class Factory : WebApplicationFactory<Program>, IDisposable
     {
+        private readonly string _dir = Directory.CreateTempSubdirectory("streamarr-search-").FullName;
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Production");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Streamarr:ApiKey"] = ApiKey,
+                ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
+                ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
                 ["Streamarr:Search:PerIndexerRateLimitMilliseconds"] = "0",
                 ["Streamarr:Indexers:0:Name"] = "mock",
                 ["Streamarr:Indexers:0:BaseUrl"] = "https://mock.example",
@@ -166,6 +170,13 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
                 services.RemoveAll<ITmdbClient>();
                 services.AddSingleton<ITmdbClient>(new FakeSearchTmdbClient());
             });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing && Directory.Exists(_dir))
+                Directory.Delete(_dir, recursive: true);
         }
     }
 

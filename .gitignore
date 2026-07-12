@@ -22,6 +22,10 @@ web/dist/
 .env.local
 appsettings.Local.json
 
+# Data Protection key ring (secret encryption at rest)
+server/src/Streamarr.Server/keys/
+keys/
+
 # OS
 .DS_Store
 

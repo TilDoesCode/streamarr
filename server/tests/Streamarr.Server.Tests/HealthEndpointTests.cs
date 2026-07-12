@@ -1,15 +1,17 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Streamarr.Server.Controllers;
 
 namespace Streamarr.Server.Tests;
 
-public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public class HealthEndpointTests : IClassFixture<HealthEndpointTests.Factory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly Factory _factory;
 
-    public HealthEndpointTests(WebApplicationFactory<Program> factory)
+    public HealthEndpointTests(Factory factory)
     {
         _factory = factory;
     }
@@ -26,5 +28,28 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.NotNull(body);
         Assert.Equal("ok", body!.Status);
         Assert.False(string.IsNullOrEmpty(body.Version));
+    }
+
+    /// <summary>Boots the real app against an isolated temp SQLite db + key ring.</summary>
+    public sealed class Factory : WebApplicationFactory<Program>, IDisposable
+    {
+        private readonly string _dir = Directory.CreateTempSubdirectory("streamarr-health-").FullName;
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Production");
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
+                ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
+            }));
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing && Directory.Exists(_dir))
+                Directory.Delete(_dir, recursive: true);
+        }
     }
 }

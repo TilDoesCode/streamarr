@@ -18,8 +18,10 @@ public sealed record SizeBand
 /// </summary>
 public sealed record QualityProfile
 {
-    public required string Id { get; init; }
-    public required string Name { get; init; }
+    // Not `required`: the config API generates an id on create, and profiles bind from
+    // JSON where a client legitimately omits it. Controller validation enforces a name.
+    public string Id { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
 
     /// <summary>Preferred resolutions, best first (e.g. ["1080p", "2160p", "720p"]).</summary>
     public IReadOnlyList<string> PreferredResolutions { get; init; } = [];
