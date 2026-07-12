@@ -1,0 +1,245 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using Microsoft.Extensions.Options;
+using Streamarr.Core.Sessions;
+using Streamarr.Server.Options;
+using Streamarr.Usenet.Nntp;
+using Streamarr.Usenet.Nntp.Pooling;
+
+namespace Streamarr.Server.Services;
+
+/// <summary>
+/// One live streaming session (BRIEF §6.1 module 6): the resolved media file,
+/// a per-session NNTP client metering usage against the shared global budget,
+/// and the sliding-TTL bookkeeping.
+/// </summary>
+public sealed class ActiveSession
+{
+    private long _bytesServed;
+
+    internal ActiveSession(StreamSession session, ResolvedMediaFile file, INntpClient nntpClient, CountingNntpGate nntpUsage)
+    {
+        Session = session;
+        File = file;
+        NntpClient = nntpClient;
+        NntpUsage = nntpUsage;
+        ContentType = ContainerContentTypes.For(file.Container);
+    }
+
+    public StreamSession Session { get; }
+    public ResolvedMediaFile File { get; }
+    public INntpClient NntpClient { get; }
+    public CountingNntpGate NntpUsage { get; }
+    public string ContentType { get; }
+
+    public string Token => Session.Token;
+    public long BytesServed => Interlocked.Read(ref _bytesServed);
+    public bool IsClosed => Session.State == SessionState.Closed;
+    public DateTimeOffset ExpiresAt => Session.ExpiresAt;
+
+    public void Touch() => Session.LastAccessedAt = DateTimeOffset.UtcNow;
+
+    internal void AddBytesServed(long count)
+        => Session.BytesServed = Interlocked.Add(ref _bytesServed, count);
+
+    internal void MarkClosed() => Session.State = SessionState.Closed;
+}
+
+/// <summary>
+/// Owns the resolve → stream → close lifecycle: issues opaque unguessable stream
+/// tokens, opens per-request streams over a session's media file, tears sessions
+/// down on close, and expires them past their sliding TTL via a background sweep.
+/// All sessions share one budgeted NNTP client, so the global connection budget
+/// holds across concurrent sessions.
+/// </summary>
+public sealed class SessionManager(
+    INntpClient nntpClient,
+    IOptions<StreamarrOptions> options,
+    ILogger<SessionManager> logger) : BackgroundService
+{
+    private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
+
+    public ActiveSession CreateSession(string releaseId, string workId, ResolvedMediaFile file, string? client)
+    {
+        // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+
+        var usage = new CountingNntpGate();
+        var sessionClient = new GatedNntpClient(nntpClient, usage);
+
+        var session = new StreamSession
+        {
+            Token = token,
+            ReleaseId = releaseId,
+            WorkId = workId,
+            CreatedAt = now,
+            LastAccessedAt = now,
+            TimeToLive = TimeSpan.FromSeconds(options.Value.SessionTtlSeconds),
+            Container = file.Container,
+            SizeBytes = file.SizeBytes,
+            Client = client,
+            State = SessionState.Ready,
+        };
+
+        var active = new ActiveSession(session, file, sessionClient, usage);
+        _sessions[token] = active;
+        logger.LogInformation(
+            "Opened session {Token} for release {ReleaseId} ({FileName}, {SizeBytes} bytes, ttl {Ttl})",
+            token, releaseId, file.FileName, file.SizeBytes, session.TimeToLive);
+        return active;
+    }
+
+    public bool TryGetSession(string token, out ActiveSession session)
+    {
+        if (_sessions.TryGetValue(token, out var found) &&
+            !found.IsClosed &&
+            found.ExpiresAt > DateTimeOffset.UtcNow)
+        {
+            session = found;
+            return true;
+        }
+
+        session = null!;
+        return false;
+    }
+
+    /// <summary>Opens a fresh stream over the session's media file for one HTTP request.</summary>
+    public Stream OpenStream(ActiveSession session)
+    {
+        session.Touch();
+        return new SessionStream(session.File.OpenStream(session.NntpClient), session);
+    }
+
+    public bool CloseSession(string token)
+    {
+        if (!_sessions.TryRemove(token, out var session))
+            return false;
+
+        session.MarkClosed();
+        logger.LogInformation(
+            "Closed session {Token} for release {ReleaseId} ({BytesServed} bytes served)",
+            token, session.Session.ReleaseId, session.BytesServed);
+        return true;
+    }
+
+    public IReadOnlyList<ActiveSession> ListSessions()
+        => _sessions.Values.OrderBy(s => s.Session.CreatedAt).ToList();
+
+    /// <summary>Removes sessions whose sliding TTL has lapsed. Returns the count removed.</summary>
+    public int SweepExpired()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var removed = 0;
+        foreach (var (token, session) in _sessions)
+        {
+            if (session.ExpiresAt > now)
+                continue;
+            if (!_sessions.TryRemove(token, out var expired))
+                continue;
+
+            expired.MarkClosed();
+            removed++;
+            logger.LogInformation(
+                "Expired session {Token} for release {ReleaseId} (idle past ttl)",
+                token, expired.Session.ReleaseId);
+        }
+
+        return removed;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var interval = TimeSpan.FromSeconds(Math.Max(1, options.Value.SessionSweepIntervalSeconds));
+        try
+        {
+            using var timer = new PeriodicTimer(interval);
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+                SweepExpired();
+        }
+        catch (OperationCanceledException)
+        {
+            // shutting down
+        }
+    }
+}
+
+/// <summary>
+/// Read-only forwarding stream handed to the HTTP layer: meters bytes served,
+/// refreshes the session's sliding TTL on activity, and refuses further reads
+/// once the session is closed (teardown cuts off in-flight requests).
+/// </summary>
+internal sealed class SessionStream(Stream inner, ActiveSession session) : Stream
+{
+    public override bool CanRead => true;
+    public override bool CanSeek => inner.CanSeek;
+    public override bool CanWrite => false;
+    public override long Length => inner.Length;
+
+    public override long Position
+    {
+        get => inner.Position;
+        set => inner.Position = value;
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(session.IsClosed, this);
+        var read = await inner.ReadAsync(buffer, cancellationToken);
+        if (read > 0)
+        {
+            session.AddBytesServed(read);
+            session.Touch();
+        }
+
+        return read;
+    }
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+    public override int Read(byte[] buffer, int offset, int count)
+        => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+    public override void Flush()
+    {
+    }
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            inner.Dispose();
+        base.Dispose(disposing);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await inner.DisposeAsync();
+        await base.DisposeAsync();
+    }
+}
+
+/// <summary>Content-Type by container so players negotiate correctly (BRIEF §6.2).</summary>
+public static class ContainerContentTypes
+{
+    public static string For(string container) => container.ToLowerInvariant() switch
+    {
+        "mkv" => "video/x-matroska",
+        "webm" => "video/webm",
+        "mp4" or "m4v" => "video/mp4",
+        "avi" => "video/x-msvideo",
+        "mov" => "video/quicktime",
+        "wmv" => "video/x-ms-wmv",
+        "ts" or "m2ts" => "video/mp2t",
+        "mpg" or "mpeg" or "vob" => "video/mpeg",
+        "flv" => "video/x-flv",
+        "ogm" => "video/ogg",
+        _ => "application/octet-stream",
+    };
+}

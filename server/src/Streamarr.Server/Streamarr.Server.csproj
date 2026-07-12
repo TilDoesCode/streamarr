@@ -11,6 +11,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Streamarr.Server.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Streamarr.Core\Streamarr.Core.csproj" />
     <ProjectReference Include="..\Streamarr.Usenet\Streamarr.Usenet.csproj" />
   </ItemGroup>

@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Streamarr.Server\Streamarr.Server.csproj" />
+    <ProjectReference Include="..\Streamarr.Tests.Shared\Streamarr.Tests.Shared.csproj" />
   </ItemGroup>
 
 </Project>
