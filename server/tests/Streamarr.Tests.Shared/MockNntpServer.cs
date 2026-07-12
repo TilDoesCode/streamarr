@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace Streamarr.Usenet.Tests.Nntp;
+namespace Streamarr.Tests.Shared;
 
 /// <summary>
 /// In-repo mock NNTP server (DECISIONS.md: all integration tests run against

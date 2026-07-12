@@ -1,6 +1,6 @@
 using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Nntp;
-using Streamarr.Usenet.Tests.Yenc;
+using Streamarr.Tests.Shared;
 
 namespace Streamarr.Usenet.Tests.Nntp;
 

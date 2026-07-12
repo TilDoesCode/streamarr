@@ -1,7 +1,7 @@
 using System.Text;
 using Streamarr.Usenet.Yenc;
 
-namespace Streamarr.Usenet.Tests.Yenc;
+namespace Streamarr.Tests.Shared;
 
 /// <summary>
 /// Test-side yEnc encoder used to produce round-trip vectors and mock articles.

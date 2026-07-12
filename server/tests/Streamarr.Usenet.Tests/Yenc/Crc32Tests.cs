@@ -1,4 +1,5 @@
 using System.Text;
+using Streamarr.Tests.Shared;
 using Streamarr.Usenet.Yenc;
 
 namespace Streamarr.Usenet.Tests.Yenc;

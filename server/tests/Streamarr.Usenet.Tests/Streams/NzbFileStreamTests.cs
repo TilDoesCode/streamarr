@@ -1,7 +1,6 @@
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nzb;
-using Streamarr.Usenet.Tests.Nntp;
-using Streamarr.Usenet.Tests.Yenc;
+using Streamarr.Tests.Shared;
 
 namespace Streamarr.Usenet.Tests.Streams;
 

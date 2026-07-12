@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Streamarr.Usenet\Streamarr.Usenet.csproj" />
+    <ProjectReference Include="..\Streamarr.Tests.Shared\Streamarr.Tests.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

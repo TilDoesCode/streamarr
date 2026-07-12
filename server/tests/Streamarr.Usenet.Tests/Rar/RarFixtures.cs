@@ -1,4 +1,4 @@
-using Streamarr.Usenet.Tests.Yenc;
+using Streamarr.Tests.Shared;
 
 namespace Streamarr.Usenet.Tests.Rar;
 

@@ -1,4 +1,5 @@
 using System.Text;
+using Streamarr.Tests.Shared;
 using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Yenc;
 

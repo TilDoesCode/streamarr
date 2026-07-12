@@ -2,7 +2,7 @@ using Streamarr.Usenet.Concurrency;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nntp.Pooling;
-using Streamarr.Usenet.Tests.Yenc;
+using Streamarr.Tests.Shared;
 
 namespace Streamarr.Usenet.Tests.Nntp;
 
