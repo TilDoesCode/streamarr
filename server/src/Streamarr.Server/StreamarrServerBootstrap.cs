@@ -1,6 +1,10 @@
 using Microsoft.Extensions.Options;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
+using Streamarr.Core.Profiles;
+using Streamarr.Core.Ranking;
+using Streamarr.Core.Search;
+using Streamarr.Core.Tmdb;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
@@ -70,6 +74,26 @@ public static class StreamarrServerBootstrap
         });
         services.AddHttpClient<INewznabClient, NewznabClient>();
         services.AddSingleton<IndexerSearchService>();
+
+        // TMDB matcher (BRIEF §6.1 module 3): a typed HttpClient wrapped in an
+        // aggressive caching decorator. With no API key the client no-ops to null so
+        // search still works before the owner supplies a key.
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Tmdb);
+        services.AddHttpClient<TmdbClient>();
+        services.AddSingleton<ITmdbClient>(sp =>
+        {
+            var tmdbOptions = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Tmdb;
+            return new CachingTmdbClient(
+                sp.GetRequiredService<TmdbClient>(),
+                tmdbOptions.CacheTtl,
+                sp.GetRequiredService<TimeProvider>());
+        });
+
+        // Parse → reject → rank → aggregate to works (BRIEF §7).
+        services.AddSingleton(new ReleaseEvaluator());
+        services.AddSingleton<IProfileProvider, DefaultProfileProvider>();
+        services.AddSingleton<WorkAggregator>();
+        services.AddSingleton<SearchService>();
 
         services.AddSingleton<IReleaseStore, InMemoryReleaseStore>();
         services.AddSingleton<SessionManager>();

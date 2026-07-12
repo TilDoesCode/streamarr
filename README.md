@@ -24,7 +24,7 @@ Pre-alpha. Nothing here is stable yet.
 | Milestone | Scope | Status |
 |---|---|---|
 | M1 | Streaming core (NNTP → yEnc → RAR random access → HTTP+Range) | ☑ |
-| M2 | Indexer search, release parsing, ranking, rejection, TMDB matching | ☐ |
+| M2 | Indexer search, release parsing, ranking, rejection, TMDB matching | ☑ |
 | M3 | Frozen `/api/v1`, OpenAPI spec, config API, auth | ☐ |
 | M4 | Management Web UI (React 19) | ☐ |
 | M5 | Jellyfin plugin — playback thin-slice | ☐ |

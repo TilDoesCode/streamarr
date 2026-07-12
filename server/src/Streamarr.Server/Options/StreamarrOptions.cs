@@ -1,5 +1,6 @@
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Providers;
+using Streamarr.Core.Tmdb;
 using Streamarr.Usenet.Models;
 
 namespace Streamarr.Server.Options;
@@ -41,6 +42,9 @@ public sealed class StreamarrOptions
 
     /// <summary>Fan-out tunables: cache TTL, per-indexer timeout, rate limit (BRIEF §6.1).</summary>
     public IndexerSearchOptions Search { get; set; } = new();
+
+    /// <summary>TMDB matcher config: API key, image sizes, cache TTL (BRIEF §6.1 / §6.3).</summary>
+    public TmdbOptions Tmdb { get; set; } = new();
 
     public HealthCheckOptions HealthCheck { get; set; } = new();
 }
