@@ -55,10 +55,30 @@ UsenetSharp
 
 --------------------------------------------------------------------------
 
-Radarr (https://github.com/Radarr/Radarr, GPL-3.0) and
-Sonarr (https://github.com/Sonarr/Sonarr, GPL-3.0)
-  Parser regexes, quality definitions, and scoring logic may be ported in
-  later milestones; each ported file carries a per-file attribution header.
+Radarr
+  https://github.com/Radarr/Radarr
+  Commit: c7cf91c14ac42096a013e1bbb1875bd73b6c509f
+  License: GPL-3.0
+
+  Ported components (server/src/Streamarr.Core/Parser): the release-name parser
+  regexes and logic — QualityParser (resolution / source / video-codec / remux /
+  edition / PROPER-REPACK), LanguageParser (language regexes, adapted to emit
+  ISO 639-1 codes plus multi / dual-audio flags), ReleaseGroupParser, the
+  RegexReplace helper, and the ParserCommon site-prefix / torrent-suffix cleanup
+  passes. Each ported file carries a per-file attribution header naming the
+  source path and commit. The HDR-flavor and audio codec/channel parsers are
+  Streamarr-original.
+
+Sonarr
+  https://github.com/Sonarr/Sonarr
+  Commit: f9e18a7c4475345f325237670d7e71ceac97038b
+  License: GPL-3.0
+
+  Ported components (server/src/Streamarr.Core/Parser): the episode-parsing
+  regexes in EpisodeParser (SxxEyy single + multi, 4-digit seasons, season packs,
+  multi-season packs, daily-date, and absolute / anime numbering), plus the
+  LanguageParser regexes (shared with Radarr). Each ported file carries a
+  per-file attribution header.
 
 --------------------------------------------------------------------------
 
