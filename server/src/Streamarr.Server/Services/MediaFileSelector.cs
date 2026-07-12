@@ -48,7 +48,8 @@ public static class MediaFileSelector
         // 1) a direct (un-archived) video file — pick the largest
         var direct = named
             .Where(x => IsMediaFileName(x.Name))
-            .MaxBy(x => x.File.GetTotalYencodedSize());
+            .OrderByDescending(x => x.File.GetTotalYencodedSize())
+            .FirstOrDefault();
         if (direct.File is not null)
         {
             return new MediaFileCandidate

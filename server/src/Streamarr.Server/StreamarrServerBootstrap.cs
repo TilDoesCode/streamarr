@@ -17,7 +17,10 @@ public static class StreamarrServerBootstrap
     {
         var services = builder.Services;
 
-        services.AddControllers();
+        // explicit application part so controllers are found when the server is
+        // composed from a test host (entry-assembly discovery misses them there)
+        services.AddControllers()
+            .AddApplicationPart(typeof(StreamarrServerBootstrap).Assembly);
 
         // OpenAPI is the cross-interface contract (BRIEF.md §3.1); Swashbuckle serves it.
         services.AddEndpointsApiExplorer();
