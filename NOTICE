@@ -1,0 +1,66 @@
+Streamarr
+Copyright (C) 2026 Streamarr contributors
+
+This project is licensed under GPL-3.0 (see LICENSE).
+
+Streamarr includes code vendored/ported from the following third-party
+projects. Every vendored or ported file carries a header comment naming its
+source repository, path, and commit.
+
+--------------------------------------------------------------------------
+
+nzbdav
+  https://github.com/nzbdav-dev/nzbdav
+  Commit: 794948be293eaade7e495cb9ea88045ae33d699b
+  License: MIT
+
+  Ported components (server/src/Streamarr.Usenet): NNTP client wrappers and
+  connection pooling, NZB document parser, segment/file streaming primitives,
+  interpolation search, and the RAR stored-entry header-walking approach.
+
+  MIT License
+
+  Copyright (c) 2025 nzbdav-dev
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+  THE SOFTWARE.
+
+--------------------------------------------------------------------------
+
+UsenetSharp
+  https://github.com/nzbdav-dev/UsenetSharp
+  Commit: ccc5de1b114c0b0dc7dae0c933a10a2b99562cac
+  License: MIT (same license text as nzbdav above, Copyright (c) 2025 nzbdav-dev)
+
+  Ported components (server/src/Streamarr.Usenet): NNTP protocol connection
+  (connect/TLS/AUTHINFO/STAT/HEAD/BODY/ARTICLE/DATE, dot-unstuffing body
+  pipe), yEnc header parsing and stream scaffolding (the native RapidYenc
+  decoder was replaced with a managed yEnc decoder written for Streamarr),
+  read-only stream base classes, and the async semaphore.
+
+--------------------------------------------------------------------------
+
+Radarr (https://github.com/Radarr/Radarr, GPL-3.0) and
+Sonarr (https://github.com/Sonarr/Sonarr, GPL-3.0)
+  Parser regexes, quality definitions, and scoring logic may be ported in
+  later milestones; each ported file carries a per-file attribution header.
+
+--------------------------------------------------------------------------
+
+SharpCompress (https://github.com/adamhathcock/sharpcompress, MIT) is used
+as a NuGet package dependency for RAR header parsing.
