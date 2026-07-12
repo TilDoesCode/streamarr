@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+  <head>
+    <meta type="title">Example.Movie.2021.1080p.WEB-DL.x265-GROUP</meta>
+    <meta type="category">Movies &gt; HD</meta>
+    <meta type="password"></meta>
+  </head>
+  <file poster="poster@example.com (Uploader)" date="1751328000" subject="[1/3] - &quot;example.movie.2021.1080p.web-dl.x265-group.r00&quot; yEnc (1/4) 3000000">
+    <groups>
+      <group>alt.binaries.movies</group>
+      <group>alt.binaries.hdtv</group>
+    </groups>
+    <segments>
+      <segment bytes="768000" number="1">part1of4.AbCdEf123456@news.example.com</segment>
+      <segment bytes="768000" number="2">part2of4.AbCdEf123457@news.example.com</segment>
+      <segment bytes="768000" number="3">part3of4.AbCdEf123458@news.example.com</segment>
+      <segment bytes="696000" number="4">part4of4.AbCdEf123459@news.example.com</segment>
+    </segments>
+  </file>
+  <file poster="poster@example.com (Uploader)" date="1751328060" subject="[2/3] - &quot;example.movie.2021.1080p.web-dl.x265-group.rar&quot; yEnc (1/2) 1500000">
+    <groups>
+      <group>alt.binaries.movies</group>
+    </groups>
+    <segments>
+      <segment bytes="768000" number="1">rarpart1.ZyXwVu987654@news.example.com</segment>
+      <segment bytes="732000" number="2">rarpart2.ZyXwVu987655@news.example.com</segment>
+    </segments>
+  </file>
+  <file poster="poster@example.com (Uploader)" date="1751328120" subject="[3/3] - &quot;example.movie.2021.1080p.web-dl.x265-group.par2&quot; yEnc (1/1) 50000">
+    <groups>
+      <group>alt.binaries.movies</group>
+    </groups>
+    <segments>
+      <segment bytes="51200" number="1">par2main.QwErTy135790@news.example.com</segment>
+    </segments>
+  </file>
+</nzb>
