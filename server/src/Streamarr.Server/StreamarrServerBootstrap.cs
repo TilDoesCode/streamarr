@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Options;
@@ -46,6 +48,28 @@ public static class StreamarrServerBootstrap
                 new SemaphoreNntpGate(Math.Max(1, options.ConnectionBudget)),
                 disposeInner: true);
         });
+
+        // Newznab indexer fan-out (BRIEF §6.1 module 1): config store seeded from
+        // options, per-indexer rate limiting, ~60s search cache, concurrent fan-out.
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IIndexerConfigStore>(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value;
+            return new InMemoryIndexerConfigStore(opts.Indexers.Select(i => i.ToConfig()));
+        });
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Search);
+        services.AddSingleton(sp =>
+        {
+            var search = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Search;
+            return new SearchCache(search.CacheTtl, sp.GetRequiredService<TimeProvider>());
+        });
+        services.AddSingleton<IIndexerRateLimiter>(sp =>
+        {
+            var search = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Search;
+            return new IndexerRateLimiter(search.RateLimitInterval, sp.GetRequiredService<TimeProvider>());
+        });
+        services.AddHttpClient<INewznabClient, NewznabClient>();
+        services.AddSingleton<IndexerSearchService>();
 
         services.AddSingleton<IReleaseStore, InMemoryReleaseStore>();
         services.AddSingleton<SessionManager>();

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+  <channel>
+    <title>Alpha Indexer</title>
+    <newznab:response offset="0" total="1" />
+    <item>
+      <title>Example.Show.S01E02.1080p.WEB-DL.x265-GROUP</title>
+      <guid isPermaLink="true">https://alpha.example/details/t1</guid>
+      <pubDate>Mon, 05 Jul 2021 06:00:00 +0000</pubDate>
+      <enclosure url="https://alpha.example/getnzb/t1.nzb&amp;r=alphakey" length="2500000000" type="application/x-nzb" />
+      <newznab:attr name="category" value="5000" />
+      <newznab:attr name="category" value="5040" />
+      <newznab:attr name="size" value="2500000000" />
+      <newznab:attr name="guid" value="t1" />
+      <newznab:attr name="grabs" value="21" />
+      <newznab:attr name="season" value="S01" />
+      <newznab:attr name="episode" value="E02" />
+      <newznab:attr name="usenetdate" value="Mon, 05 Jul 2021 05:00:00 +0000" />
+    </item>
+  </channel>
+</rss>

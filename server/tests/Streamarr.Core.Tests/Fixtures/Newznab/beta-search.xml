@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+  <channel>
+    <atom:link href="https://beta.example/api" rel="self" type="application/rss+xml" />
+    <title>Beta Indexer</title>
+    <description>Beta Indexer API results</description>
+    <newznab:response offset="0" total="3" />
+
+    <!-- OVERLAP: same normalized title + size as alpha's a1 — must dedupe to one -->
+    <item>
+      <title>example.movie.2021.1080p.web-dl.x265.ddp5.1-group</title>
+      <guid isPermaLink="true">https://beta.example/details/b1</guid>
+      <pubDate>Wed, 30 Jun 2021 20:00:00 +0000</pubDate>
+      <enclosure url="https://beta.example/getnzb/b1.nzb&amp;apikey=betakey" length="5368709120" type="application/x-nzb" />
+      <newznab:attr name="category" value="2040" />
+      <newznab:attr name="size" value="5368709120" />
+      <newznab:attr name="guid" value="b1" />
+      <newznab:attr name="grabs" value="40" />
+      <newznab:attr name="usenetdate" value="Wed, 30 Jun 2021 10:00:00 +0000" />
+    </item>
+
+    <item>
+      <title>Different.Film.2019.1080p.BluRay.x264-TEAM</title>
+      <guid isPermaLink="true">https://beta.example/details/b2</guid>
+      <pubDate>Sat, 10 Aug 2019 14:00:00 +0000</pubDate>
+      <enclosure url="https://beta.example/getnzb/b2.nzb&amp;apikey=betakey" length="8000000000" type="application/x-nzb" />
+      <newznab:attr name="category" value="2040" />
+      <newznab:attr name="size" value="8000000000" />
+      <newznab:attr name="guid" value="b2" />
+      <newznab:attr name="grabs" value="88" />
+      <newznab:attr name="usenetdate" value="Sat, 10 Aug 2019 12:00:00 +0000" />
+    </item>
+
+    <!-- same title as alpha a1 but a DIFFERENT size: NOT a duplicate -->
+    <item>
+      <title>Example.Movie.2021.1080p.WEB-DL.x265.DDP5.1-GROUP</title>
+      <guid isPermaLink="true">https://beta.example/details/b3</guid>
+      <pubDate>Wed, 30 Jun 2021 21:00:00 +0000</pubDate>
+      <enclosure url="https://beta.example/getnzb/b3.nzb&amp;apikey=betakey" length="5300000000" type="application/x-nzb" />
+      <newznab:attr name="category" value="2040" />
+      <newznab:attr name="size" value="5300000000" />
+      <newznab:attr name="guid" value="b3" />
+      <newznab:attr name="grabs" value="9" />
+    </item>
+  </channel>
+</rss>

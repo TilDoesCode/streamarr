@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+  <channel>
+    <atom:link href="https://alpha.example/api" rel="self" type="application/rss+xml" />
+    <title>Alpha Indexer</title>
+    <description>Alpha Indexer API results</description>
+    <language>en-gb</language>
+    <newznab:response offset="0" total="4" />
+
+    <item>
+      <title>Example.Movie.2021.1080p.WEB-DL.x265.DDP5.1-GROUP</title>
+      <guid isPermaLink="true">https://alpha.example/details/a1</guid>
+      <link>https://alpha.example/getnzb/a1.nzb&amp;i=1&amp;r=alphakey</link>
+      <comments>https://alpha.example/details/a1#comments</comments>
+      <pubDate>Wed, 30 Jun 2021 12:00:00 +0000</pubDate>
+      <category>Movies &gt; HD</category>
+      <description>Example.Movie.2021.1080p.WEB-DL.x265.DDP5.1-GROUP</description>
+      <enclosure url="https://alpha.example/getnzb/a1.nzb&amp;i=1&amp;r=alphakey" length="5368709120" type="application/x-nzb" />
+      <newznab:attr name="category" value="2000" />
+      <newznab:attr name="category" value="2040" />
+      <newznab:attr name="size" value="5368709120" />
+      <newznab:attr name="guid" value="a1" />
+      <newznab:attr name="grabs" value="34" />
+      <newznab:attr name="usenetdate" value="Wed, 30 Jun 2021 11:00:00 +0000" />
+    </item>
+
+    <item>
+      <title>Example.Movie.2021.2160p.BluRay.x265.HDR10-GROUP</title>
+      <guid isPermaLink="true">https://alpha.example/details/a2</guid>
+      <pubDate>Thu, 01 Jul 2021 09:30:00 +0000</pubDate>
+      <category>Movies &gt; UHD</category>
+      <enclosure url="https://alpha.example/getnzb/a2.nzb&amp;i=1&amp;r=alphakey" length="27000000000" type="application/x-nzb" />
+      <newznab:attr name="category" value="2000" />
+      <newznab:attr name="category" value="2045" />
+      <newznab:attr name="size" value="27000000000" />
+      <newznab:attr name="guid" value="a2" />
+      <newznab:attr name="grabs" value="12" />
+      <newznab:attr name="usenetdate" value="Thu, 01 Jul 2021 08:00:00 +0000" />
+    </item>
+
+    <!-- size comes only from the enclosure length; no newznab:attr size -->
+    <item>
+      <title>Example.Movie.2021.720p.WEB-DL.x264-OTHER</title>
+      <guid isPermaLink="true">https://alpha.example/details/a3</guid>
+      <pubDate>Fri, 02 Jul 2021 18:45:00 +0000</pubDate>
+      <enclosure url="https://alpha.example/getnzb/a3.nzb&amp;i=1&amp;r=alphakey" length="3000000000" type="application/x-nzb" />
+      <newznab:attr name="category" value="2030" />
+      <newznab:attr name="guid" value="a3" />
+      <newznab:attr name="grabs" value="5" />
+    </item>
+
+    <!-- JUNK: no <title> — must be skipped, never crash the feed -->
+    <item>
+      <guid isPermaLink="true">https://alpha.example/details/junk-notitle</guid>
+      <enclosure url="https://alpha.example/getnzb/junk.nzb" length="123" type="application/x-nzb" />
+      <newznab:attr name="guid" value="junk-notitle" />
+    </item>
+
+    <!-- JUNK: no guid attr, no <guid> element — must be skipped -->
+    <item>
+      <title>Example.Movie.2021.NoGuid-GROUP</title>
+      <enclosure url="https://alpha.example/getnzb/noguid.nzb" length="456" type="application/x-nzb" />
+    </item>
+  </channel>
+</rss>

@@ -1,3 +1,5 @@
+using Streamarr.Core.Indexers;
+using Streamarr.Core.Providers;
 using Streamarr.Usenet.Models;
 
 namespace Streamarr.Server.Options;
@@ -34,7 +36,37 @@ public sealed class StreamarrOptions
     /// <summary>Priority-ordered provider list (DECISIONS.md #6: multi-provider from M1).</summary>
     public List<UsenetProviderOptions> Providers { get; set; } = [];
 
+    /// <summary>Configured Newznab indexers (BRIEF §6.3); seeds the in-memory config store.</summary>
+    public List<IndexerOptions> Indexers { get; set; } = [];
+
+    /// <summary>Fan-out tunables: cache TTL, per-indexer timeout, rate limit (BRIEF §6.1).</summary>
+    public IndexerSearchOptions Search { get; set; } = new();
+
     public HealthCheckOptions HealthCheck { get; set; } = new();
+}
+
+/// <summary>Config-bindable mirror of <see cref="IndexerConfig"/> (BRIEF §6.3).</summary>
+public sealed class IndexerOptions
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string BaseUrl { get; set; } = string.Empty;
+    public string ApiKey { get; set; } = string.Empty;
+    public List<int> Categories { get; set; } = [];
+    public bool Enabled { get; set; } = true;
+    public int Priority { get; set; }
+
+    public IndexerConfig ToConfig() => new()
+    {
+        // fall back to the name as a stable id when the config omits one
+        Id = string.IsNullOrWhiteSpace(Id) ? Name : Id,
+        Name = Name,
+        BaseUrl = BaseUrl,
+        ApiKey = ApiKey,
+        Categories = Categories.ToArray(),
+        Enabled = Enabled,
+        Priority = Priority,
+    };
 }
 
 public sealed class UsenetProviderOptions
