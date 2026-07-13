@@ -1,0 +1,14 @@
+{
+  "name": "streamarr-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Streamarr Management UI — React 19 SPA. Real app lands in M4; this is the M3 scaffold that pins the generated API client to the frozen OpenAPI spec.",
+  "scripts": {
+    "generate:api": "openapi-typescript ../server/openapi/v1.json --output src/api/schema.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.4",
+    "typescript": "^5.6.3"
+  }
+}
