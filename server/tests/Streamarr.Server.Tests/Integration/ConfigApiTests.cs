@@ -29,7 +29,16 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
 
     public ConfigApiTests(Factory factory) => _factory = factory;
 
+    /// <summary>An admin-authenticated client — config CRUD requires an admin session.</summary>
     private HttpClient Client()
+    {
+        var client = _factory.CreateClient();
+        client.AuthenticateAsAdminAsync().GetAwaiter().GetResult();
+        return client;
+    }
+
+    /// <summary>A machine-key client — used to prove machine keys cannot reach /config.</summary>
+    private HttpClient MachineClient()
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new("Bearer", ApiKey);
@@ -403,6 +412,38 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(HttpStatusCode.Unauthorized, (await anon.GetAsync("/api/v1/config/general")).StatusCode);
     }
 
+    [Fact]
+    public async Task Config_And_Debug_RejectMachineKeys_WithForbidden()
+    {
+        // A machine API key authenticates (search/resolve/stream/events/caps) but must
+        // never reach the admin surface (BRIEF §6.4).
+        using var machine = MachineClient();
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/indexers")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/providers")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/general")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/profiles")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/apikeys")).StatusCode);
+
+        var debug = await machine.PostAsJsonAsync("/api/v1/debug/search", new { q = "Example" });
+        Assert.Equal(HttpStatusCode.Forbidden, debug.StatusCode);
+
+        // …but the same machine key does reach its own scope.
+        Assert.Equal(HttpStatusCode.OK, (await machine.GetAsync("/api/v1/caps")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_Login_Then_Reaches_Config()
+    {
+        using var admin = _factory.CreateClient();
+        await admin.AuthenticateAsAdminAsync();
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/indexers")).StatusCode);
+
+        // A wrong password is rejected.
+        using var raw = _factory.CreateClient();
+        var bad = await raw.PostAsJsonAsync("/api/v1/auth/login", new { username = "admin", password = "wrong" });
+        Assert.Equal(HttpStatusCode.Unauthorized, bad.StatusCode);
+    }
+
     private static async Task<string> CreateIndexer(HttpClient client, string name, string apiKey, int[]? categories = null)
     {
         var response = await client.PostAsJsonAsync("/api/v1/config/indexers", new
@@ -428,6 +469,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Streamarr:ApiKey"] = ApiKey,
+                ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
                 ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
                 ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
             }));

@@ -31,10 +31,19 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
 
     public SearchEndpointTests(Factory factory) => _factory = factory;
 
+    /// <summary>A machine-key client — /search is in the machine scope (BRIEF §6.4).</summary>
     private HttpClient Client()
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new("Bearer", ApiKey);
+        return client;
+    }
+
+    /// <summary>An admin-authenticated client — /debug/search is admin-only (BRIEF §6.4).</summary>
+    private HttpClient AdminClient()
+    {
+        var client = _factory.CreateClient();
+        client.AuthenticateAsAdminAsync().GetAwaiter().GetResult();
         return client;
     }
 
@@ -99,7 +108,7 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
     [Fact]
     public async Task DebugSearch_ReturnsParsedFieldsScoreBreakdownAndRejectionReasons()
     {
-        using var client = Client();
+        using var client = AdminClient();
 
         var response = await client.PostAsJsonAsync("/api/v1/debug/search", new { q = "Example Movie", type = "movie" });
         response.EnsureSuccessStatusCode();
@@ -135,7 +144,7 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
     [Fact]
     public async Task DebugSearch_NeverExposesNzbUrl()
     {
-        using var client = Client();
+        using var client = AdminClient();
         var response = await client.PostAsJsonAsync("/api/v1/debug/search", new { q = "Example Movie", type = "movie" });
         var raw = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain(NzbSecret, raw);
@@ -153,6 +162,7 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Streamarr:ApiKey"] = ApiKey,
+                ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
                 ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
                 ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
                 ["Streamarr:Search:PerIndexerRateLimitMilliseconds"] = "0",
