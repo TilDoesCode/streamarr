@@ -27,7 +27,7 @@ Pre-alpha. Nothing here is stable yet.
 | M2 | Indexer search, release parsing, ranking, rejection, TMDB matching | ☑ |
 | M3 | Frozen `/api/v1`, OpenAPI spec, config API, auth | ☑ |
 | M4 | Management Web UI (React 19) | ☑ |
-| M5 | Jellyfin plugin — playback thin-slice | ☐ |
+| M5 | Jellyfin plugin — playback thin-slice | ☑ |
 | M6 | Jellyfin plugin — search interception + TTL cleanup | ☐ |
 | M7 | Hardening — dead-release fallback, connection budget, metrics | ☐ |
 
@@ -229,6 +229,27 @@ live proof of BRIEF §3.1 rule 4. The mock media is a real WebM (VP8 + Opus) gen
 with ffmpeg so the bundled Chromium can decode it. `web` (build + typecheck + Vitest),
 `e2e` (Playwright), and `api-drift` (spec/client staleness) all run in
 `.github/workflows/ci.yml`.
+
+**Shipped in M5 (Jellyfin playback thin-slice):** the `plugin/` Jellyfin plugin, built
+from the official template shape against **Jellyfin 10.10.7** (`Jellyfin.Controller`
+pinned; ABI recorded in `docs/jellyfin-compatibility.md`). A deliberately **minimal
+config page** (server URL, API key, TTL, interception toggle, profile id, pinned query)
+with **Test connection** (`/api/v1/health`) and **Materialize pinned work** buttons; an
+`IPluginServiceRegistrator` wiring a typed `HttpClient` over the Core Server API; the M5
+**bootstrap path** that materializes **one** isolated ephemeral `Movie` (dedicated
+"Streamarr (Usenet)" folder, tag `usenet-ephemeral`, stable GUID from `workId`, TMDB
+metadata passed through) via a "sync one pinned work" scheduled task / config button; an
+**`IMediaSourceProvider`** exposing one `MediaSourceInfo` **per release** (`RequiresOpening`,
+`OpenToken = releaseId`, no Usenet contact) whose `OpenMediaSource` calls `POST /resolve`
+→ HTTP `Path` + pre-probed `MediaStreams`/`RunTimeTicks` + bearer `RequiredHttpHeaders` +
+low `AnalyzeDurationMs`, following the server's `suggestedFallbackReleaseId` once on a
+dead release; `ILiveStream.Close` → `POST /sessions/{token}/close`; and playback
+`start`/`progress`/`stop` reported to `POST /api/v1/events`. **Zero domain logic —
+translation only** (BRIEF §11), pinned by mapper/store/tracker unit tests. Jellyfin
+(docker) **loads the plugin with zero errors**. `docker-compose.dev.yml` (Jellyfin +
+Core Server + optional Vite) and `server/Dockerfile` (multi-stage SPA → .NET → ffmpeg
+runtime) round out the dev stack. Manual Direct-Play/transcode acceptance is in
+`docs/m5-acceptance.md`.
 
 ### Jellyfin plugin
 ```bash

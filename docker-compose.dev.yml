@@ -1,0 +1,77 @@
+# Streamarr dev stack (BRIEF §4 "Packaging", Milestone 5).
+#
+#   jellyfin  — Jellyfin 10.10.7 with the Streamarr plugin DLL bind-mounted into its
+#               plugin dir (built separately, see below).
+#   streamarr — the Core Server (the product), built from server/Dockerfile.
+#   web       — optional Vite dev server for the Management UI (profile: web).
+#
+# The Jellyfin patch tag MUST match plugin targetAbi / Jellyfin.Controller — see
+# docs/jellyfin-compatibility.md.
+#
+# Usage:
+#   1. Build the plugin:   (cd plugin && ~/.dotnet/dotnet build Streamarr.Plugin/Streamarr.Plugin.csproj -c Release)
+#   2. Bring up the stack: docker compose -f docker-compose.dev.yml up --build
+#   3. Jellyfin at http://localhost:8096  ·  Core Server at http://localhost:8080
+#   4. In Jellyfin → Dashboard → Plugins, confirm "Streamarr" is listed and Active,
+#      then open its settings, set the Core Server URL to http://streamarr:8080 and the
+#      API key, "Test connection", and "Materialize pinned work".
+#
+# Optional web UI:  docker compose -f docker-compose.dev.yml --profile web up
+
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.10.7
+    container_name: streamarr-jellyfin
+    ports:
+      - "8096:8096"
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      # The plugin's build output (DLL + meta.json). Rebuild the plugin and restart
+      # this container to pick up changes. Mounted read-write because Jellyfin rewrites
+      # meta.json (plugin status) on load.
+      - ./plugin/Streamarr.Plugin/bin/Release/net8.0:/config/plugins/Streamarr
+    depends_on:
+      - streamarr
+    restart: unless-stopped
+
+  streamarr:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: streamarr-server
+    ports:
+      - "8080:8080"
+    environment:
+      # A dev bootstrap API key; the Jellyfin plugin uses the same value as its Bearer.
+      # Override for anything beyond local development.
+      Streamarr__ApiKey: "dev-streamarr-key"
+      Streamarr__Admin__Username: "admin"
+      Streamarr__Admin__Password: "streamarr"
+      ASPNETCORE_ENVIRONMENT: "Production"
+    volumes:
+      - streamarr-data:/app/data
+      - streamarr-keys:/app/keys
+    restart: unless-stopped
+
+  web:
+    image: node:20-bookworm-slim
+    container_name: streamarr-web
+    profiles: ["web"]
+    working_dir: /web
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    environment:
+      # Vite dev proxy target (see web/vite.config.ts).
+      STREAMARR_SERVER_ORIGIN: "http://streamarr:8080"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/web
+    depends_on:
+      - streamarr
+
+volumes:
+  jellyfin-config:
+  jellyfin-cache:
+  streamarr-data:
+  streamarr-keys:
