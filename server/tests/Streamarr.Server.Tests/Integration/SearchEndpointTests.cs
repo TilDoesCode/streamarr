@@ -150,6 +150,46 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
         Assert.DoesNotContain(NzbSecret, raw);
     }
 
+    // Powers the Management UI live preview (BRIEF §9.1): an unsaved draft profile sent in
+    // the request must reorder the ranked releases without any profile being saved first.
+    [Fact]
+    public async Task DebugSearch_DraftProfile_ReordersReleases()
+    {
+        using var client = AdminClient();
+
+        static async Task<string> TopReleaseId(HttpResponseMessage response)
+        {
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return doc.RootElement.GetProperty("results")[0].GetProperty("releases")[0]
+                .GetProperty("releaseId").GetString()!;
+        }
+
+        // Default profile prefers 1080p over 2160p, so the 1080p WEB-DL tops the list.
+        var withDefault = await client.PostAsJsonAsync("/api/v1/debug/search", new { q = "Example Movie", type = "movie" });
+        withDefault.EnsureSuccessStatusCode();
+        var defaultTop = await TopReleaseId(withDefault);
+
+        // A draft that prefers 2160p first must flip the ordering — proving the endpoint
+        // ranks with the inline draft, not the stored/default profile.
+        var draft = new
+        {
+            q = "Example Movie",
+            type = "movie",
+            profile = new
+            {
+                name = "Draft 2160p-first",
+                preferredResolutions = new[] { "2160p", "1080p", "720p" },
+                preferredSources = new[] { "BluRay", "WEB-DL" },
+                resolutionWeight = 1000,
+            },
+        };
+        var withDraft = await client.PostAsJsonAsync("/api/v1/debug/search", draft);
+        withDraft.EnsureSuccessStatusCode();
+        var draftTop = await TopReleaseId(withDraft);
+
+        Assert.NotEqual(defaultTop, draftTop);
+    }
+
     // ---- test host ------------------------------------------------------------------
 
     public sealed class Factory : WebApplicationFactory<Program>, IDisposable

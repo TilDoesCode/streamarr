@@ -1,3 +1,5 @@
+using Streamarr.Core.Profiles;
+
 namespace Streamarr.Server.Contracts;
 
 /// <summary>Response of GET /api/v1/search — the exact shape from BRIEF §6.2.</summary>
@@ -78,6 +80,14 @@ public sealed record DebugSearchRequest
     public string? ImdbId { get; init; }
     public int? TmdbId { get; init; }
     public string? ProfileId { get; init; }
+
+    /// <summary>
+    /// An unsaved draft profile to rank with, for the Management UI's live-preview
+    /// (BRIEF §9.1: "see how the current draft profile reorders results before saving").
+    /// When present it overrides <see cref="ProfileId"/>; when absent the endpoint ranks
+    /// with the profile the id selects (or the built-in default).
+    /// </summary>
+    public QualityProfile? Profile { get; init; }
 }
 
 /// <summary>

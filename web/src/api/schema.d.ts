@@ -1620,6 +1620,7 @@ export interface components {
             /** Format: int32 */
             tmdbId?: number | null;
             profileId?: string | null;
+            profile?: components["schemas"]["QualityProfile"];
         };
         /**
          * @description Response of POST /api/v1/debug/search: every release including rejected ones, with

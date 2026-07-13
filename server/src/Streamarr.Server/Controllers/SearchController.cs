@@ -72,6 +72,7 @@ public class SearchController(SearchService searchService) : ControllerBase
             ImdbId = request.ImdbId,
             TmdbId = request.TmdbId,
             ProfileId = request.ProfileId,
+            DraftProfile = request.Profile,
         };
 
         var aggregation = await searchService.SearchAsync(query, cancellationToken);

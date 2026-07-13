@@ -18,6 +18,12 @@ public sealed record SearchQuery
     public string? ImdbId { get; init; }
     public int? TmdbId { get; init; }
     public string? ProfileId { get; init; }
+
+    /// <summary>
+    /// An unsaved draft profile to rank with (BRIEF §9.1 live preview). When set it takes
+    /// precedence over <see cref="ProfileId"/>; used only by <c>/debug/search</c>.
+    /// </summary>
+    public QualityProfile? DraftProfile { get; init; }
 }
 
 /// <summary>
@@ -41,7 +47,8 @@ public sealed class SearchService(
         var newznabQuery = BuildNewznabQuery(query, context);
 
         var indexerResult = await indexerSearch.SearchAsync(newznabQuery, cancellationToken);
-        var profile = profiles.Get(query.ProfileId);
+        // A draft profile (live preview) overrides the stored/default selection.
+        var profile = query.DraftProfile ?? profiles.Get(query.ProfileId);
 
         var aggregation = await aggregator.AggregateAsync(
             indexerResult.Releases,

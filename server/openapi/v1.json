@@ -2259,6 +2259,9 @@
           "profileId": {
             "type": "string",
             "nullable": true
+          },
+          "profile": {
+            "$ref": "#/components/schemas/QualityProfile"
           }
         },
         "additionalProperties": false,
