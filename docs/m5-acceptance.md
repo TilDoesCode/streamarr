@@ -63,3 +63,68 @@ provider. The owner must run this once on a real Jellyfin client (web, mobile, o
 - TTL cleanup of ephemeral items and native-search interception are **M6**, not M5.
 - The plugin contains zero domain logic: ranking, health, and fallback selection are all
   the Core Server's (BRIEF §11). The plugin only translates.
+
+---
+
+# Milestone 6 — search interception + TTL cleanup
+
+M6 adds the `IAsyncActionFilter` that injects Usenet works into Jellyfin's **native** search
+(`/Items?searchTerm=` and `/Search/Hints`), plus the `IScheduledTask` that deletes ephemeral
+items past their TTL (BRIEF §8.2–8.5, Milestone 6).
+
+## Automated / headless verification (done in this repo)
+
+- ✅ Plugin builds against `Jellyfin.Controller` 10.10.7 with the filter + cleanup task
+  registered (`dotnet build -c Release`, 0 warnings/errors under `TreatWarningsAsErrors`).
+- ✅ `dotnet test plugin/Streamarr.Plugin.sln` — 24 tests: the merge/dedup + hint-shaping
+  (`SearchInjectionTests`) and TTL-expiry (`EphemeralCleanupTests`) logic, plus the M5 mapper/
+  store/tracker tests. Stable-GUID de-duplication and TTL decisions are pinned by these.
+- ✅ Jellyfin 10.10.7 (docker) **loads the plugin with zero errors** with the search action
+  filter registered into `MvcOptions` — no exceptions from `Streamarr.Plugin.Search` at startup.
+- ✅ **Non-negotiable fall-through proven headlessly** (BRIEF §11). With the startup wizard
+  completed via API and an authenticated token:
+  - Interception **off** (default): `/Search/Hints` and `/Items?searchTerm=` → `200` (native).
+  - Interception **on** with the Core Server **unreachable**: both endpoints still → `200`,
+    returning native results with a fast fall-through — killing the Core Server never breaks
+    native Jellyfin search.
+  (See `docs/jellyfin-compatibility.md` → "Headless fall-through verification (M6)".)
+
+## Manual acceptance (owner — requires a live Core Server + real credentials + a client)
+
+Headless CI cannot exercise real Usenet works flowing into a client's search UI (needs indexer/
+provider credentials and a real client). Run this once end to end.
+
+### Setup
+
+1. Configure real indexers + a Usenet provider + TMDB key in the Streamarr Management UI so
+   `GET /api/v1/search` returns works with releases.
+2. `docker compose -f docker-compose.dev.yml up --build`.
+3. Jellyfin → **Dashboard → Plugins → Streamarr**: set Core Server URL + API key, **Test
+   connection**, then turn **Enable search interception** **on**.
+
+### Checklist
+
+- [ ] Searching a movie title in a native Jellyfin client (web/mobile/TV) surfaces the Usenet
+      work **alongside** local library results.
+- [ ] The injected item lives under the isolated **"Streamarr (Usenet)"** folder and **never
+      appears in "Latest Media" / recommendations** (it is a plain non-library folder, tagged
+      `usenet-ephemeral`).
+- [ ] Selecting the injected result and pressing play resolves + plays it (the M5 playback path:
+      version picker, `/resolve`, session appears in `GET /api/v1/sessions`).
+- [ ] **Repeat the same search** — the work updates in place; **no duplicate** item appears
+      (stable GUID derived from `workId`).
+- [ ] **Kill the Core Server** (or toggle interception off) and search again — native library
+      search is **fully intact**; no errors surface in the client. (Proven headlessly above; the
+      manual step confirms the client UX.)
+- [ ] **TTL cleanup:** set a short `EphemeralTtlMinutes`, run **Dashboard → Scheduled Tasks →
+      "Streamarr: clean up ephemeral items"**, and confirm stale ephemeral items are removed via
+      `ILibraryManager` while native items are untouched.
+
+### Notes
+
+- Session teardown is authoritative on the Core Server (it owns session TTL, BRIEF §6.1); the
+  plugin also closes each session on Jellyfin's `CloseLiveStream` (`StreamarrLiveStream.Close`).
+- TV works materialize as a bare `Episode` (season/episode index set); movies as `Movie`. Both
+  share the identical lazy-resolve/playback path.
+- The plugin still contains zero domain logic — the Core Server does all searching/ranking/
+  health/fallback; the filter only materializes what the server returned and merges it in.

@@ -33,6 +33,14 @@ public sealed class EphemeralReleaseStore
         return null;
     }
 
+    /// <summary>
+    /// Reads an entry <b>without</b> updating <see cref="Entry.LastAccessedUtc"/>. Used by the
+    /// TTL cleanup task (BRIEF §8.5), which must observe the true last-access time rather than
+    /// refreshing it just by looking.
+    /// </summary>
+    public Entry? Peek(Guid itemId)
+        => _byItem.TryGetValue(itemId, out var entry) ? entry : null;
+
     public IReadOnlyList<ReleaseDto> ReleasesFor(Guid itemId)
         => Get(itemId)?.Work.Releases ?? [];
 

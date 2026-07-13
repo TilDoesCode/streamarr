@@ -28,7 +28,7 @@ Pre-alpha. Nothing here is stable yet.
 | M3 | Frozen `/api/v1`, OpenAPI spec, config API, auth | ☑ |
 | M4 | Management Web UI (React 19) | ☑ |
 | M5 | Jellyfin plugin — playback thin-slice | ☑ |
-| M6 | Jellyfin plugin — search interception + TTL cleanup | ☐ |
+| M6 | Jellyfin plugin — search interception + TTL cleanup | ☑ |
 | M7 | Hardening — dead-release fallback, connection budget, metrics | ☐ |
 
 ---
@@ -250,6 +250,25 @@ translation only** (BRIEF §11), pinned by mapper/store/tracker unit tests. Jell
 Core Server + optional Vite) and `server/Dockerfile` (multi-stage SPA → .NET → ffmpeg
 runtime) round out the dev stack. Manual Direct-Play/transcode acceptance is in
 `docs/m5-acceptance.md`.
+
+**Shipped in M6 (search interception + TTL cleanup):** an **`IAsyncActionFilter`**
+(`plugin/Streamarr.Plugin/Search/StreamarrSearchActionFilter.cs`) registered into the MVC
+pipeline via `Configure<MvcOptions>` (mirroring the Meilisearch reference's plugin-side
+registration). It intercepts `/Items` (when a `searchTerm` is present) and `/Search/Hints`,
+dispatching on the **response value type** (`QueryResult<BaseItemDto>` / `SearchHintResult`),
+calls `GET /api/v1/search` under a **4s deadline**, materializes/refreshes ephemeral works
+(one per work, stable GUID so repeats update not duplicate; `Movie`/`Episode`; `Tmdb`/`Imdb`
++ `UsenetWorkId` provider ids; TMDB metadata passthrough; ranked release list cached with
+`lastAccessedUtc`), and merges them into the native response. **Every path is behind the
+config toggle and try/catch-guarded** — any error, timeout, or killed/unreachable Core
+Server falls through to unmodified native results (BRIEF §8.2, §11), proven headlessly (both
+endpoints return `200` with interception off *and* with the Core Server down). An
+**`IScheduledTask`** (`EphemeralCleanupTask`, hourly) deletes `usenet-ephemeral` items past
+their TTL via `ILibraryManager`. The version-fragile HTTP-pipeline coupling is isolated to
+the one filter file and documented as **known-fragile** in `docs/jellyfin-compatibility.md`
+(BRIEF §13); the merge/dedup and TTL-expiry logic are host-free and unit-tested. Full
+in-client injection + duplicate-free repeat + cleanup with real credentials is the manual
+checklist in `docs/m5-acceptance.md`.
 
 ### Jellyfin plugin
 ```bash

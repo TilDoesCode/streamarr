@@ -1,5 +1,6 @@
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
@@ -9,10 +10,11 @@ namespace Streamarr.Plugin.Library;
 
 /// <summary>
 /// Materializes ephemeral works as real, isolated Jellyfin items (BRIEF §8.3). This is a
-/// pure translation of a <see cref="WorkDto"/> into a <see cref="Movie"/> — it makes no
-/// domain decisions. GUIDs are derived deterministically from the workId so repeated
-/// materialization updates rather than duplicates. Items live under a dedicated hidden
-/// folder tagged <c>usenet-ephemeral</c> so Usenet results never pollute the real library.
+/// pure translation of a <see cref="WorkDto"/> into a <see cref="Movie"/> or
+/// <see cref="Episode"/> — it makes no domain decisions. GUIDs are derived deterministically
+/// from the workId so repeated materialization updates rather than duplicates. Items live under
+/// a dedicated hidden folder tagged <c>usenet-ephemeral</c> so Usenet results never pollute the
+/// real library, and the TTL cleanup task (BRIEF §8.5) enumerates + deletes them by that tag.
 /// </summary>
 public sealed class EphemeralLibraryService(
     ILibraryManager libraryManager,
@@ -29,39 +31,55 @@ public sealed class EphemeralLibraryService(
 
     /// <summary>
     /// Creates or refreshes the ephemeral item for a work and caches its release list.
-    /// Returns the item id. Only movie works are materialized in the M5 thin-slice.
+    /// Returns the item id. Movie works become a <see cref="Movie"/>; tv works become a bare
+    /// <see cref="Episode"/> (season/episode index numbers set), both under the isolated folder.
     /// </summary>
     public async Task<Guid> MaterializeAsync(WorkDto work, CancellationToken ct)
     {
         var folder = await EnsureFolderAsync(ct).ConfigureAwait(false);
         var itemId = ItemIdFor(work.WorkId);
+        var isEpisode = IsEpisode(work);
 
-        var existing = libraryManager.GetItemById(itemId) as Movie;
-        var movie = existing ?? new Movie { Id = itemId };
-
-        movie.Name = work.Title;
-        movie.ProductionYear = work.Year;
-        movie.Overview = work.Overview;
-        movie.ParentId = folder.Id;
-        movie.IsVirtualItem = false;
-        if (work.Year is { } year)
-            movie.PremiereDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        if (work.RuntimeMinutes is { } minutes && minutes > 0)
-            movie.RunTimeTicks = TimeSpan.FromMinutes(minutes).Ticks;
-
-        ApplyProviderIds(movie, work);
-        ApplyTags(movie);
-        TryApplyPoster(movie, work.PosterUrl);
-
-        if (existing is null)
+        var existing = libraryManager.GetItemById(itemId);
+        // If a repeat search flipped the media type for this workId (should never happen), drop the
+        // stale item so we never hand Jellyfin a mismatched entity for a stable GUID.
+        if (existing is not null && ((isEpisode && existing is not Episode) || (!isEpisode && existing is not Movie)))
         {
-            libraryManager.CreateItem(movie, folder);
+            libraryManager.DeleteItem(existing, new DeleteOptions { DeleteFileLocation = false });
+            existing = null;
+        }
+
+        var isNew = existing is null;
+        BaseItem item = existing ?? (isEpisode ? new Episode { Id = itemId } : new Movie { Id = itemId });
+
+        item.Name = work.Title;
+        item.ProductionYear = work.Year;
+        item.Overview = work.Overview;
+        item.ParentId = folder.Id;
+        item.IsVirtualItem = false;
+        if (work.Year is { } year)
+            item.PremiereDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        if (work.RuntimeMinutes is { } minutes && minutes > 0)
+            item.RunTimeTicks = TimeSpan.FromMinutes(minutes).Ticks;
+        if (isEpisode && item is Episode episode)
+        {
+            episode.IndexNumber = work.Episode;
+            episode.ParentIndexNumber = work.Season;
+        }
+
+        ApplyProviderIds(item, work);
+        ApplyTags(item);
+        TryApplyPoster(item, work.PosterUrl);
+
+        if (isNew)
+        {
+            libraryManager.CreateItem(item, folder);
             logger.LogInformation("Materialized ephemeral work {WorkId} as item {ItemId}", work.WorkId, itemId);
         }
         else
         {
             await libraryManager
-                .UpdateItemAsync(movie, folder, ItemUpdateType.MetadataEdit, ct)
+                .UpdateItemAsync(item, folder, ItemUpdateType.MetadataEdit, ct)
                 .ConfigureAwait(false);
             logger.LogDebug("Refreshed ephemeral work {WorkId} (item {ItemId})", work.WorkId, itemId);
         }
@@ -69,6 +87,21 @@ public sealed class EphemeralLibraryService(
         store.Put(itemId, work);
         return itemId;
     }
+
+    /// <summary>
+    /// All real items currently tagged <see cref="EphemeralTag"/> (folders excluded). Used by the
+    /// TTL cleanup task; querying by tag also catches items orphaned by a plugin restart that lost
+    /// the in-memory <see cref="EphemeralReleaseStore"/>.
+    /// </summary>
+    public IReadOnlyList<BaseItem> GetEphemeralItems()
+        => libraryManager
+            .GetItemList(new InternalItemsQuery { Recursive = true, Tags = [EphemeralTag] })
+            .Where(i => i is not Folder)
+            .ToList();
+
+    /// <summary>Deletes a materialized ephemeral item (no file on disk — these are virtual).</summary>
+    public void Delete(BaseItem item)
+        => libraryManager.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false });
 
     private async Task<Folder> EnsureFolderAsync(CancellationToken ct)
     {
@@ -92,6 +125,10 @@ public sealed class EphemeralLibraryService(
         logger.LogInformation("Created isolated ephemeral folder {FolderId}", folderId);
         return folder;
     }
+
+    private static bool IsEpisode(WorkDto work)
+        => string.Equals(work.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(work.MediaType, "episode", StringComparison.OrdinalIgnoreCase);
 
     private static void ApplyProviderIds(BaseItem item, WorkDto work)
     {

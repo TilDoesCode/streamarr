@@ -2,6 +2,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Model.Tasks;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Streamarr.Plugin.Api;
@@ -10,6 +11,7 @@ using Streamarr.Plugin.Library;
 using Streamarr.Plugin.MediaSources;
 using Streamarr.Plugin.Playback;
 using Streamarr.Plugin.ScheduledTasks;
+using Streamarr.Plugin.Search;
 
 namespace Streamarr.Plugin;
 
@@ -40,10 +42,20 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // The lazy media-source provider Jellyfin discovers via DI.
         serviceCollection.AddSingleton<IMediaSourceProvider, StreamarrMediaSourceProvider>();
 
-        // The bootstrap scheduled task ("sync one pinned work").
+        // Scheduled tasks: the M5 pinned-work bootstrap and the M6 TTL cleanup (BRIEF §8.5).
         serviceCollection.AddSingleton<IScheduledTask, SyncPinnedWorkTask>();
+        serviceCollection.AddSingleton<IScheduledTask, EphemeralCleanupTask>();
 
         // Playback-event bridge (subscribes to ISessionManager on startup).
         serviceCollection.AddHostedService<PlaybackEventEntryPoint>();
+
+        // Search interception (BRIEF §8.2). Registering an IAsyncActionFilter into MvcOptions is
+        // the plugin-side mechanism for augmenting Jellyfin's /Items + /Search/Hints responses
+        // (the meilisearch reference plugs into search a different way — via ISearchProvider — but
+        // an action filter is what BRIEF §8.2 mandates so the raw QueryResult/hints can be mutated).
+        // The filter itself is behind a config toggle and fully try/catch-guarded; this registration
+        // is inert until InterceptionEnabled is set. Its ctor deps resolve from DI per request.
+        serviceCollection.Configure<MvcOptions>(options =>
+            options.Filters.Add<StreamarrSearchActionFilter>());
     }
 }

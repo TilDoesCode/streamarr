@@ -9,17 +9,26 @@ data model.
 
 Target: **Jellyfin 10.10.7** (`net8.0`). See [`../docs/jellyfin-compatibility.md`](../docs/jellyfin-compatibility.md).
 
-## What it does (M5 thin-slice)
+## What it does (M5 playback + M6 search interception)
 
 | Piece | File | Role |
 |---|---|---|
 | `Plugin` + config page | `Plugin.cs`, `Configuration/` | Server URL, API key, TTL, interception toggle, profile id, pinned query; "Test connection" + "Materialize pinned work" buttons |
 | Typed HTTP client | `Api/StreamarrApiClient.cs` | Transport over `/health`, `/search`, `/resolve`, `/sessions/{token}/close`, `/events` |
-| Service wiring | `PluginServiceRegistrator.cs` | Registers the typed `HttpClient`, the media-source provider, the event bridge, the bootstrap task |
-| Ephemeral materialization | `Library/` | One isolated `Movie` per work, stable GUID from `workId`, tag `usenet-ephemeral`, TMDB metadata passed through |
+| Service wiring | `PluginServiceRegistrator.cs` | Registers the typed `HttpClient`, media-source provider, event bridge, scheduled tasks, and the search action filter (`Configure<MvcOptions>`) |
+| Ephemeral materialization | `Library/` | One isolated `Movie`/`Episode` per work, stable GUID from `workId`, tag `usenet-ephemeral`, TMDB metadata passed through; enumerates + deletes by tag for cleanup |
+| **Search interception** ⚠️ | `Search/StreamarrSearchActionFilter.cs` | **The single version-fragile file.** `IAsyncActionFilter` over `/Items` (with `searchTerm`) + `/Search/Hints`: calls `/api/v1/search` (short timeout), materializes/merges ephemeral works. Fully try/catch-guarded behind the toggle — any error/timeout falls through to native results |
+| Search merge/hint shaping | `Search/SearchInjection.cs` | Host-free, unit-tested merge + dedup + hint building (no domain logic) |
 | Lazy media sources | `MediaSources/` | `IMediaSourceProvider`: one `MediaSourceInfo` per release (`RequiresOpening`), `OpenMediaSource` → `/resolve`, dead → server fallback once; `ILiveStream.Close` → session close |
 | Playback events | `Playback/` | Hooks `ISessionManager` start/progress/stop → `POST /api/v1/events` |
 | Bootstrap task | `ScheduledTasks/SyncPinnedWorkTask.cs` | "Sync one pinned work" — materializes one item for the M5 smoke test |
+| **TTL cleanup task** | `ScheduledTasks/EphemeralCleanupTask.cs` | `IScheduledTask` (hourly): deletes `usenet-ephemeral` items past their TTL via `ILibraryManager` |
+
+> **Never breaks native search.** The action filter is behind the `InterceptionEnabled` toggle
+> and wraps every path in try/catch: a killed/unreachable Core Server, a timeout, or a Jellyfin
+> ABI change all fall through to unmodified native results (BRIEF §8.2, §11). Verified headlessly
+> — see [`../docs/jellyfin-compatibility.md`](../docs/jellyfin-compatibility.md) and
+> [`../docs/m5-acceptance.md`](../docs/m5-acceptance.md#milestone-6--search-interception--ttl-cleanup).
 
 ## Build
 
