@@ -3,12 +3,50 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Streamarr Management UI — React 19 SPA. Real app lands in M4; this is the M3 scaffold that pins the generated API client to the frozen OpenAPI spec.",
+  "description": "Streamarr Management UI — React 19 SPA (BRIEF §9). Talks only to /api/v1; must work with Jellyfin absent.",
   "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit",
     "generate:api": "openapi-typescript ../server/openapi/v1.json --output src/api/schema.d.ts"
   },
+  "dependencies": {
+    "@hookform/resolvers": "^3.9.1",
+    "@radix-ui/react-dialog": "^1.1.4",
+    "@radix-ui/react-label": "^2.1.1",
+    "@radix-ui/react-slot": "^1.1.1",
+    "@radix-ui/react-tabs": "^1.1.2",
+    "@tanstack/react-query": "^5.62.11",
+    "@tanstack/react-router": "^1.95.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.469.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.54.2",
+    "sonner": "^1.7.1",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.24.1"
+  },
   "devDependencies": {
+    "@tanstack/react-query-devtools": "^5.62.11",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
     "openapi-typescript": "^7.4.4",
-    "typescript": "^5.6.3"
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7",
+    "vitest": "^3.2.4"
   }
 }

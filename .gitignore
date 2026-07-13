@@ -14,6 +14,9 @@ dist/
 web/dist/
 *.tsbuildinfo
 
+# Built SPA copied into the server's web root for the single-origin prod path (Docker/CI)
+server/src/Streamarr.Server/wwwroot/
+
 # Local state
 *.db
 *.db-shm

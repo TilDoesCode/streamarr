@@ -169,12 +169,25 @@ password is generated and logged **once**. Machine clients authenticate with a s
 ```bash
 cd web
 npm install
-npm run generate:api           # ../server/openapi/v1.json → src/api/schema.d.ts (checked in; CI fails on drift)
-# Vite dev server, Vitest, Playwright land in M4.
+npm run generate:api   # ../server/openapi/v1.json → src/api/schema.d.ts (checked in; CI fails on drift)
+npm run dev            # Vite dev server on :5173, proxying /api + /openapi to the Core Server
+npm test               # Vitest + Testing Library
+npm run build          # type-check + production SPA build → web/dist
 ```
 
-`pnpm gen:api` is checked in CI — a stale generated client fails the build. Never
-hand-write API types.
+Dev serves the SPA on Vite (proxy to `http://localhost:5199` by default, override with
+`STREAMARR_SERVER_ORIGIN`). **Production is single-origin:** copy `web/dist/*` into the
+Core Server's `wwwroot/` and it serves the SPA as static files with an SPA fallback
+(`UseStreamarrServer`), while `/api` and `/openapi` keep their own behavior.
+
+`npm run generate:api` is checked in CI — a stale generated client fails the build.
+Never hand-write API types. See `web/README.md` for the router + codegen rationale.
+
+**Shipped in M4a:** login + admin JWT auth, auth guard, app shell (sidebar for every
+§9.1 view, dark-mode toggle, responsive to tablet), and the Settings view (general
+config, machine API keys, password change). The remaining §9.1 views (indexers,
+providers, profiles, search/debug, playback preview, sessions) are routed placeholders
+that land in later M4 tasks.
 
 ### Jellyfin plugin
 ```bash
