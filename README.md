@@ -185,9 +185,19 @@ Never hand-write API types. See `web/README.md` for the router + codegen rationa
 
 **Shipped in M4a:** login + admin JWT auth, auth guard, app shell (sidebar for every
 §9.1 view, dark-mode toggle, responsive to tablet), and the Settings view (general
-config, machine API keys, password change). The remaining §9.1 views (indexers,
-providers, profiles, search/debug, playback preview, sessions) are routed placeholders
-that land in later M4 tasks.
+config, machine API keys, password change).
+
+**Shipped in M4b:** the Indexers view (CRUD, per-indexer Test surfacing caps + latency,
+enable/disable toggle, priority ordering), the Usenet Providers view (CRUD with
+host/port/SSL/credentials/max-connections/priority, Test connection showing the auth
+result + achievable connections, write-only secrets), and the Quality Profiles view
+(full editor for weights, preferred resolutions/sources/codecs/languages, group
+allow/deny, size bands, rejection rules) with a **live preview** that runs a sample
+query through `POST /debug/search` using the unsaved draft profile to show how it
+reorders results before saving. All views use TanStack Query mutations with
+invalidation + optimistic updates and render the typed error envelope as toasts +
+inline errors. The remaining §9.1 views (search/debug playground, playback preview,
+sessions) are routed placeholders that land in later M4 tasks.
 
 ### Jellyfin plugin
 ```bash

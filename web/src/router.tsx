@@ -5,12 +5,15 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { Database, PlayCircle, Radio, Search, Server, SlidersHorizontal } from "lucide-react";
+import { PlayCircle, Radio, Search } from "lucide-react";
 import { getToken } from "@/api/token";
 import { AppShell } from "@/components/app-shell";
 import { LoginPage } from "@/pages/login";
 import { DashboardPage } from "@/pages/dashboard";
 import { SettingsPage } from "@/pages/settings";
+import { IndexersPage } from "@/pages/indexers";
+import { ProvidersPage } from "@/pages/providers";
+import { ProfilesPage } from "@/pages/profiles";
 import { Placeholder } from "@/pages/placeholder";
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
@@ -56,37 +59,19 @@ const settingsRoute = createRoute({
 const indexersRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/indexers",
-  component: () => (
-    <Placeholder
-      title="Indexers"
-      icon={Database}
-      description="CRUD Newznab indexers, test caps and latency, and set priority ordering."
-    />
-  ),
+  component: IndexersPage,
 });
 
 const providersRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/providers",
-  component: () => (
-    <Placeholder
-      title="Usenet Providers"
-      icon={Server}
-      description="Manage priority-ordered Usenet providers with SSL, credentials, and max connections; test reachable connections."
-    />
-  ),
+  component: ProvidersPage,
 });
 
 const profilesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/profiles",
-  component: () => (
-    <Placeholder
-      title="Quality Profiles"
-      icon={SlidersHorizontal}
-      description="Edit the ranking profile — weights, preferred resolutions/sources/codecs, size bands — with a live /debug/search preview."
-    />
-  ),
+  component: ProfilesPage,
 });
 
 const searchRoute = createRoute({

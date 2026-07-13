@@ -17,3 +17,23 @@ export type CreateApiKeyRequest = S["CreateApiKeyRequest"];
 export type CreatedApiKeyResponse = S["CreatedApiKeyResponse"];
 
 export type HealthResponse = S["HealthResponse"];
+
+export type IndexerResponse = S["IndexerResponse"];
+export type IndexerWrite = S["IndexerWrite"];
+export type IndexerTestResult = S["IndexerTestResult"];
+
+export type ProviderResponse = S["ProviderResponse"];
+export type ProviderWrite = S["ProviderWrite"];
+export type ProviderTestResult = S["ProviderTestResult"];
+
+export type QualityProfile = S["QualityProfile"];
+export type SizeBand = S["SizeBand"];
+
+export type DebugSearchRequest = S["DebugSearchRequest"];
+export type DebugSearchResponse = S["DebugSearchResponse"];
+export type DebugWorkDto = S["DebugWorkDto"];
+export type DebugReleaseDto = S["DebugReleaseDto"];
+export type ParsedFieldsDto = S["ParsedFieldsDto"];
+export type ScoreLineDto = S["ScoreLineDto"];
+export type RejectionDto = S["RejectionDto"];
+export type IndexerDiagnosticDto = S["IndexerDiagnosticDto"];
