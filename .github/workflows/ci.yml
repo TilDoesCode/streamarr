@@ -54,6 +54,54 @@ jobs:
         working-directory: web
         run: npm run build
 
+  e2e:
+    name: Web E2E (Playwright, Jellyfin-absent smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The mock NNTP fixture is a real WebM generated with ffmpeg (VP8 + Opus) so the
+      # bundled Chromium can actually decode it in <video> (BRIEF §9.1.6 canary).
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Restore server
+        run: dotnet restore server/Streamarr.sln
+
+      - name: Install web deps
+        working-directory: web
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # `npm run e2e` boots the real Core Server (Streamarr.E2E.Harness) with a mock NNTP
+      # server + canned indexer/TMDB fixtures + seeded admin, serves the built SPA, and drives
+      # login → add indexer → search → resolve → preview-play with Jellyfin absent (BRIEF §3.1
+      # rule 4). CI=true → the harness is started fresh (no reuse) and .only is forbidden.
+      - name: Run Playwright smoke E2E
+        working-directory: web
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          if-no-files-found: ignore
+
   api-drift:
     name: OpenAPI spec + generated client are not stale
     runs-on: ubuntu-latest

@@ -214,6 +214,22 @@ and the full **Dashboard** (health cards per-indexer/per-provider, live session 
 NNTP connections vs the configured budget, a live Recharts throughput chart, and
 recent resolves with health outcomes).
 
+**Shipped in M4d (M4 acceptance):** the web test suite. **Vitest + Testing Library**
+component tests cover the two logic-heavy views — the Quality Profiles editor (built-in
+read-only guard, live-preview ranked ordering, and edited-draft weights flowing into
+the `POST /debug/search` re-rank) and the Search/Debug table (lists rejected releases
+with reasons, the *show rejected* filter, name filter, sort re-ordering, breakdown-row
+expansion, and resolve → health outcome + media info). A **Playwright smoke E2E**
+(`web/e2e/smoke.spec.ts`) drives the real Core Server — booted by the
+`Streamarr.E2E.Harness` launcher against an **in-process mock NNTP server + canned
+indexer/TMDB fixtures + seeded admin**, serving the built SPA at a single origin — from
+**login → add indexer → search → resolve → preview-play**, asserting the `<video>`
+reaches `readyState ≥ 2` and `currentTime` advances **with Jellyfin absent** — the
+live proof of BRIEF §3.1 rule 4. The mock media is a real WebM (VP8 + Opus) generated
+with ffmpeg so the bundled Chromium can decode it. `web` (build + typecheck + Vitest),
+`e2e` (Playwright), and `api-drift` (spec/client staleness) all run in
+`.github/workflows/ci.yml`.
+
 ### Jellyfin plugin
 ```bash
 cd plugin

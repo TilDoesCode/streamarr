@@ -4,11 +4,11 @@ React 19 + TypeScript SPA that configures, operates, tunes, and debugs the Core
 Server. It talks **only** to the public `/api/v1` contract and must keep working with
 Jellyfin absent (BRIEF §3.1 rule 4, §9).
 
-> **Status: M4a.** Login, admin-JWT auth guard, the app shell (sidebar for every §9.1
-> view, dark-mode toggle, tablet-responsive), and the **Settings** view (general
-> config, machine API keys, admin password) ship here. The other §9.1 views (indexers,
-> providers, quality profiles, search/debug, playback preview, sessions) are routed
-> **placeholders** — present so the shell nav is complete — and land in later M4 tasks.
+> **Status: M4 complete.** Every §9.1 view is live — login + auth guard, dashboard,
+> indexers, providers, quality profiles (with live preview), search/debug playground,
+> playback preview, sessions, and settings. Vitest component tests cover the two
+> logic-heavy views and a **Playwright smoke E2E** proves the interface-agnostic
+> contract end-to-end with Jellyfin absent (see *Testing* below).
 
 ## Stack
 
@@ -27,10 +27,31 @@ Jellyfin absent (BRIEF §3.1 rule 4, §9).
 npm install
 npm run generate:api   # ../server/openapi/v1.json → src/api/schema.d.ts (checked in)
 npm run dev            # Vite dev server on :5173
-npm test               # Vitest + Testing Library
+npm test               # Vitest + Testing Library (component tests, src/**)
 npm run typecheck      # tsc project build, no emit
 npm run build          # type-check + production SPA build → dist/
+npm run e2e            # Playwright smoke E2E (boots the real server, see Testing)
 ```
+
+## Testing
+
+- **Vitest + Testing Library** (`src/**/*.test.tsx`) — component tests focused on the two
+  logic-heavy views: the **Quality Profiles editor** (built-in read-only guard, the live
+  preview's ranked ordering, and edited draft weights flowing into the `POST /debug/search`
+  re-rank) and the **Search/Debug table** (rejected-release listing + reasons, the *show
+  rejected*/name filters, sort re-ordering, breakdown-row expansion, and resolve → health
+  outcome + media info). Vitest is scoped to `src/` so it never collects the E2E specs.
+- **Playwright smoke E2E** (`e2e/smoke.spec.ts`) — the acceptance test for BRIEF §3.1
+  rule 4. `npm run e2e` builds the SPA, then boots the **real Core Server** via the
+  `Streamarr.E2E.Harness` launcher (`server/tests/Streamarr.E2E.Harness`) against an
+  **in-process mock NNTP server + canned indexer/TMDB fixtures + a seeded admin**, serving
+  the built SPA at a single origin, and drives **login → add indexer → search → resolve →
+  preview-play**. It asserts the `<video>` reaches `readyState ≥ 2` and `currentTime`
+  advances — real bytes, real decode — **with Jellyfin absent**. The fixture media is a
+  real WebM (VP8 + Opus) generated with ffmpeg so the bundled Chromium can decode it, so
+  `ffmpeg` must be on the PATH. The harness needs the .NET 8 SDK (`~/.dotnet/dotnet`).
+  All three — `web`, `e2e`, and the spec/client drift check — run in
+  `.github/workflows/ci.yml`.
 
 ## Dev vs. prod serving (both implemented — BRIEF §4)
 
@@ -77,7 +98,9 @@ src/
   api/        schema.d.ts (generated), client.ts (fetch wrapper), types.ts, queries.ts, token.ts
   components/ ui/ (shadcn-style primitives), app-shell.tsx, theme-toggle.tsx, nav.ts
   lib/        auth.tsx (session context), theme.tsx (dark mode), utils.ts (cn)
-  pages/      login.tsx, dashboard.tsx, settings/*, placeholder.tsx
+  pages/      login, dashboard, indexers, providers, profiles, search, playback, sessions, settings/*
   router.tsx  typed route tree + auth guard
   main.tsx    providers (Theme, Query, Auth) + RouterProvider
+e2e/          smoke.spec.ts — Playwright smoke E2E (drives the real server harness)
+playwright.config.ts   builds the SPA + boots Streamarr.E2E.Harness as the webServer
 ```
