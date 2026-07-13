@@ -29,7 +29,7 @@ Pre-alpha. Nothing here is stable yet.
 | M4 | Management Web UI (React 19) | ☑ |
 | M5 | Jellyfin plugin — playback thin-slice | ☑ |
 | M6 | Jellyfin plugin — search interception + TTL cleanup | ☑ |
-| M7 | Hardening — dead-release fallback, connection budget, metrics | ☐ |
+| M7 | Hardening — dead-release fallback, connection budget, metrics | ☑ |
 
 ---
 
@@ -269,6 +269,33 @@ the one filter file and documented as **known-fragile** in `docs/jellyfin-compat
 (BRIEF §13); the merge/dedup and TTL-expiry logic are host-free and unit-tested. Full
 in-client injection + duplicate-free repeat + cleanup with real credentials is the manual
 checklist in `docs/m5-acceptance.md`.
+
+**Shipped in M7 (hardening — M7 complete):** the failure-mode hardening the brief calls
+the default reality without an *arr stack. **Auto-fallback** — `POST /resolve` on a dead
+release now transparently retries the next-best release of the same work, bounded by
+`MaxFallbackHops` (default 3), and surfaces exactly what happened: the response carries an
+`attempts` trail (`{releaseId, status}` per hop), `fallbackFromReleaseId`, and — when
+auto-fallback is off (`autoFallback:false`) or exhausted — a `suggestedFallbackReleaseId`.
+A new **`ReleaseHealthCache`** (TTL `HealthCacheTtlSeconds`, default 1800s) remembers dead
+classifications and **feeds them back into ranking** — a release found dead on resolve is
+rejected (`dead-on-usenet`) and demoted on later searches, and skipped as a fallback —
+proven by unit tests and the `Resolve_DeadRelease_AutoFallsBackToHealthySibling` /
+`…ExhaustsFallback…` integration cases. The **global NNTP connection budget**
+(`SemaphoreNntpGate`, priority gate: BODY/ARTICLE outrank STAT/HEAD) is asserted across
+**two concurrent mock-NNTP streams** — the cap is never exceeded and both streams make
+progress. **Provider failover** — `MultiProviderNntpClient` over priority-ordered providers
++ `ProviderCircuitBreaker` — is integration-tested with two mock providers where the primary
+starts 430-ing mid-stream and the block-account backup takes over per segment. **Observability:**
+Serilog structured logging + one-line-per-request request logging, and an authenticated
+**`GET /api/v1/metrics`** JSON snapshot (sessions, connections vs budget + per-provider,
+bytes served, resolves/fallbacks, search-cache hit rate, per-indexer latency). **Packaging:**
+the multi-stage `server/Dockerfile` (SPA → .NET → ffmpeg+curl runtime) is wired into
+`docker-compose.dev.yml` (Jellyfin + Core + optional Vite) with a liveness healthcheck. A
+**segment-streaming load test** (64 concurrent range reads, all byte-exact under the budget)
+records its findings in `docs/m7-cache-loadtest.md`. Final docs land in `docs/`:
+[`architecture.md`](docs/architecture.md), [`api.md`](docs/api.md),
+[`setup.md`](docs/setup.md), [`ranker-tuning.md`](docs/ranker-tuning.md), and the
+[`jellyfin-compatibility.md`](docs/jellyfin-compatibility.md) final pass.
 
 ### Jellyfin plugin
 ```bash

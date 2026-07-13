@@ -4,6 +4,12 @@ The Streamarr plugin's search interception and media-source APIs are version-sen
 (BRIEF §8, §11; DECISIONS.md #2). This document pins the exact versions the plugin is
 built and tested against. Change these three values together and re-run the load check.
 
+> The plugin is a **thin adapter** — it translates between the Core Server's
+> interface-agnostic `/api/v1` and Jellyfin's data model, and contains zero domain
+> logic (BRIEF §11). See [`architecture.md`](./architecture.md) for the boundary and
+> [`api.md`](./api.md) for the contract it consumes. This doc is only about the
+> Jellyfin-facing coupling.
+
 ## Pinned versions
 
 | What | Value |
@@ -72,6 +78,25 @@ Core Server is unreachable.
 If a future Jellyfin release changes any of the above, **only `StreamarrSearchActionFilter.cs`
 needs updating** — update it and re-run the headless load + fall-through check.
 
+### M7 relationship — the plugin stays thin; the Core got smarter
+
+M7 hardened the **Core Server**, not the plugin. The plugin remains a pure adapter, and
+nothing in this file changed shape. Two M7 behaviours are worth noting for anyone
+debugging the Jellyfin path:
+
+- **Server-side auto-fallback backstops the plugin's manual fallback.** BRIEF §8.4 has
+  the plugin follow `suggestedFallbackReleaseId` **once** on a dead release. As of M7,
+  `POST /api/v1/resolve` already walks the next-best releases of the work itself
+  (bounded by `Streamarr:MaxFallbackHops`) and returns the first healthy one, with an
+  `attempts` trail and `fallbackFromReleaseId`. So by the time the plugin sees a
+  response, the Core has usually *already* recovered — the plugin's single-hop retry is
+  now a rarely-exercised backstop, not the primary mechanism. Fallback selection is a
+  Core concern (BRIEF §11); the plugin still decides nothing.
+- **The connection budget is global.** Concurrent Jellyfin streams share the same
+  `Streamarr:ConnectionBudget` gate as every other client; the plugin does no
+  connection accounting of its own. Per-provider/​budget state is observable at
+  `GET /api/v1/metrics`.
+
 ### Headless fall-through verification (M6)
 
 `docker run jellyfin/jellyfin:10.10.7` with the built plugin mounted, startup wizard completed
@@ -109,3 +134,28 @@ covered by the manual checklist in [`m5-acceptance.md`](./m5-acceptance.md).
 > The plugin folder must be mounted **read-write**: Jellyfin rewrites `meta.json`
 > (plugin status) on load. A read-only mount surfaces as
 > `IOException: Read-only file system : '/config/plugins/Streamarr/meta.json'`.
+
+## Re-testing on a Jellyfin upgrade
+
+The action filter couples to Jellyfin's HTTP pipeline and **must be re-verified on
+every Jellyfin release** (BRIEF §11, §13). To move to a new patch/minor:
+
+1. **Bump the three pinned values in lockstep** (they must always match):
+   - `Jellyfin.Controller` NuGet in `plugin/Streamarr.Plugin/Streamarr.Plugin.csproj`,
+   - `targetAbi` in `plugin/Streamarr.Plugin/meta.json`,
+   - the `jellyfin/jellyfin:<tag>` image in `docker-compose.dev.yml`,
+
+   and update the **Pinned versions** table above.
+2. **Rebuild** the plugin (`dotnet build -c Release`, warnings-as-errors) and run
+   `dotnet test plugin/Streamarr.Plugin.sln` — the host-free mapper/store/tracker,
+   `SearchInjectionTests`, and `EphemeralCleanupTests` must stay green.
+3. **Re-run the headless load + fall-through check** (the tables above): load the plugin
+   into the pinned docker image with **zero** exceptions from `Streamarr.Plugin.Search`,
+   then confirm `/Search/Hints` and `/Items?searchTerm=` return `200` both with
+   interception off and with interception on while the Core Server is unreachable.
+4. **Re-check the bound interfaces** against the new `Jellyfin.Controller` (the two
+   lists above). If a signature moved, the fix is confined to `MediaSources/`,
+   `Playback/`, or the single `Search/StreamarrSearchActionFilter.cs` file.
+5. **Run the manual acceptance** in [`m5-acceptance.md`](./m5-acceptance.md) once with a
+   real client + real credentials (Direct Play, forced transcode, session teardown,
+   events, and search injection).
