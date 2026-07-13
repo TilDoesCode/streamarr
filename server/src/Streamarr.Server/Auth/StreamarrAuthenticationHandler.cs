@@ -32,13 +32,8 @@ public sealed class StreamarrAuthenticationHandler(
 {
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var header = Request.Headers.Authorization.ToString();
-        const string scheme = "Bearer ";
-        if (!header.StartsWith(scheme, StringComparison.Ordinal))
-            return Task.FromResult(AuthenticateResult.NoResult());
-
-        var token = header[scheme.Length..].Trim();
-        if (token.Length == 0)
+        var token = ExtractBearerToken();
+        if (token is null)
             return Task.FromResult(AuthenticateResult.NoResult());
 
         // 1) machine API key (static bootstrap or minted).
@@ -51,6 +46,36 @@ public sealed class StreamarrAuthenticationHandler(
             return Task.FromResult(Success(new ClaimsPrincipal(new ClaimsIdentity(principal.Claims, AuthRoles.Scheme))));
 
         return Task.FromResult(AuthenticateResult.Fail("Invalid or expired bearer token."));
+    }
+
+    /// <summary>
+    /// The bearer token arrives as <c>Authorization: Bearer &lt;token&gt;</c> for every
+    /// caller. A browser <c>&lt;video&gt;</c>/<c>&lt;audio&gt;</c> element cannot set that
+    /// header, so <c>GET /api/v1/stream/{token}</c> additionally accepts the same token as
+    /// an <c>access_token</c> query parameter — the mechanism Jellyfin itself uses. It is
+    /// scoped to the stream path so credentials never travel in query strings elsewhere;
+    /// <c>/stream</c> stays a generic, authenticated, Range-capable byte source
+    /// (BRIEF §3.3, §6.4).
+    /// </summary>
+    private string? ExtractBearerToken()
+    {
+        var header = Request.Headers.Authorization.ToString();
+        const string scheme = "Bearer ";
+        if (header.StartsWith(scheme, StringComparison.Ordinal))
+        {
+            var token = header[scheme.Length..].Trim();
+            if (token.Length > 0)
+                return token;
+        }
+
+        if (Request.Path.StartsWithSegments("/api/v1/stream", StringComparison.Ordinal))
+        {
+            var query = Request.Query["access_token"].ToString().Trim();
+            if (query.Length > 0)
+                return query;
+        }
+
+        return null;
     }
 
     private bool IsMachineKey(string token)

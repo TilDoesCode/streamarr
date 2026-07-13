@@ -292,4 +292,46 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
     }
+
+    // A browser <video> element cannot send an Authorization header, so /stream also
+    // accepts the bearer token as an `access_token` query parameter (BRIEF §3.3, §6.4).
+    // This is what makes the Management UI's playback-preview canary work.
+
+    [Fact]
+    public async Task Stream_AcceptsAccessTokenQueryParam_ForBrowserVideoElement()
+    {
+        using var authed = fixture.CreateClient();
+        var resolved = await ResolveAsync(authed, StreamarrServerFixture.DirectReleaseId);
+
+        // A client with no Authorization header — like a browser <video> element — still
+        // streams when the token rides along as ?access_token=…
+        using var anonymous = fixture.CreateClient(authenticated: false);
+        var url = $"{resolved.StreamUrl}?access_token={StreamarrServerFixture.ApiKey}";
+        using var response = await anonymous.GetAsync(url);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(fixture.Video, await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task Stream_RejectsWrongAccessTokenQueryParam()
+    {
+        using var authed = fixture.CreateClient();
+        var resolved = await ResolveAsync(authed, StreamarrServerFixture.DirectReleaseId);
+
+        using var anonymous = fixture.CreateClient(authenticated: false);
+        using var response = await anonymous.GetAsync($"{resolved.StreamUrl}?access_token=wrong-key");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AccessTokenQueryParam_IsIgnoredOutsideStreamEndpoint()
+    {
+        // The query-param credential is scoped to /stream; it must NOT authenticate
+        // other endpoints (defensive: keeps credentials out of query strings elsewhere).
+        using var anonymous = fixture.CreateClient(authenticated: false);
+        using var response = await anonymous.GetAsync(
+            $"/api/v1/sessions?access_token={StreamarrServerFixture.ApiKey}");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 }
