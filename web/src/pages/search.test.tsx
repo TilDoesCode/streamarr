@@ -133,6 +133,24 @@ describe("SearchPage debug playground", () => {
     expect(await screen.findByText(/looks like a sample clip/i)).toBeInTheDocument();
   });
 
+  it("filters the table by release name", async () => {
+    const user = await runSearch();
+    await user.type(screen.getByLabelText(/filter releases/i), "SAMPLE");
+    // Only the matching (rejected) release survives the name filter.
+    expect(screen.getByText(/Example\.2021\.SAMPLE\.720p/)).toBeInTheDocument();
+    expect(screen.queryByText(/Example\.2021\.2160p\.BluRay/)).not.toBeInTheDocument();
+    expect(screen.getByText(/1 shown · 2 releases · 1 rejected/)).toBeInTheDocument();
+  });
+
+  it("re-sorts by size, moving the largest release to the top of the table", async () => {
+    const user = await runSearch();
+    await user.click(screen.getByRole("button", { name: /^size/i }));
+    const rows = screen.getAllByRole("row");
+    // rows[0] is the header; the first data row is the largest (5 GiB 2160p) release.
+    const firstData = rows[1];
+    expect(within(firstData).getByText(/Example\.2021\.2160p\.BluRay/)).toBeInTheDocument();
+  });
+
   it("resolves a release and shows the health outcome and pre-probed media info", async () => {
     const user = await runSearch();
     const acceptedRow = screen.getByText(/Example\.2021\.2160p\.BluRay/).closest("tr")!;

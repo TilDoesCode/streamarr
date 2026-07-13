@@ -109,6 +109,30 @@ describe("ProfilesPage live preview", () => {
     expect(Array.isArray(profile.preferredResolutions)).toBe(true);
   });
 
+  it("sends edited draft weights to the live preview so it re-ranks with unsaved changes", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProfilesPage />);
+
+    // The only seeded profile is the read-only built-in, so start a new (editable) draft.
+    await user.click(await screen.findByRole("button", { name: "New profile" }));
+
+    // A draft needs a name before it validates (buildDraft parses the whole form).
+    await user.type(screen.getByLabelText("Name", { exact: true }), "My profile");
+
+    // Bump the resolution weight — this is the live-preview reorder lever (BRIEF §9.1).
+    const resolutionWeight = screen.getByLabelText("Resolution", { exact: true });
+    await user.clear(resolutionWeight);
+    await user.type(resolutionWeight, "250");
+
+    await user.type(screen.getByLabelText(/sample query/i), "Example Movie");
+    await user.click(screen.getByRole("button", { name: /preview/i }));
+
+    await waitFor(() => expect(debugBodies).toHaveLength(1));
+    const profile = debugBodies[0].profile as Record<string, unknown>;
+    // The edited (unsaved) weight rides along in the request that drives the re-rank.
+    expect(profile.resolutionWeight).toBe(250);
+  });
+
   it("renders preview releases in the ranked order returned by the server", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProfilesPage />);

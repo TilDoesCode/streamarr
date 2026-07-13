@@ -30,5 +30,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Vitest component tests live under src/. Playwright E2E specs live under e2e/ and
+    // must NOT be collected by Vitest (they use @playwright/test, not the jsdom runner).
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["e2e/**", "node_modules/**", "dist/**"],
   },
 });
