@@ -102,6 +102,29 @@ async function toApiError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, code, message, envelope);
 }
 
+/**
+ * Turn a resolve response's absolute `streamUrl` into a URL a browser `<video>` element can
+ * play directly (BRIEF §9.1.6 playback-preview canary). Two things happen:
+ *  1. We reduce it to a same-origin path (+ query) so the request goes through the same
+ *     origin the SPA loads from — the Vite dev proxy forwards `/api` to Kestrel in dev, and
+ *     the Core Server serves both the SPA and the API in production.
+ *  2. A `<video>` element can't send an `Authorization` header, so the bearer token rides
+ *     along as an `access_token` query parameter — which the `/stream` endpoint accepts.
+ */
+export function streamUrlWithToken(streamUrl: string, token: string | null = getToken()): string {
+  let path = streamUrl;
+  try {
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const u = new URL(streamUrl, origin);
+    path = u.pathname + u.search;
+  } catch {
+    // already a relative path — use as-is
+  }
+  if (!token) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}access_token=${encodeURIComponent(token)}`;
+}
+
 /** Best-effort human message from any thrown value (used by toasts / inline errors). */
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message;

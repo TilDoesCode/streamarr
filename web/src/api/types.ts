@@ -37,3 +37,10 @@ export type ParsedFieldsDto = S["ParsedFieldsDto"];
 export type ScoreLineDto = S["ScoreLineDto"];
 export type RejectionDto = S["RejectionDto"];
 export type IndexerDiagnosticDto = S["IndexerDiagnosticDto"];
+
+export type ResolveRequest = S["ResolveRequest"];
+export type ResolveResponse = S["ResolveResponse"];
+export type MediaStreamInfo = S["MediaStreamInfo"];
+
+export type SessionResponse = S["SessionResponse"];
+export type ReachabilityStatus = S["ReachabilityStatus"];

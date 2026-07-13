@@ -5,7 +5,6 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { PlayCircle, Radio, Search } from "lucide-react";
 import { getToken } from "@/api/token";
 import { AppShell } from "@/components/app-shell";
 import { LoginPage } from "@/pages/login";
@@ -14,7 +13,9 @@ import { SettingsPage } from "@/pages/settings";
 import { IndexersPage } from "@/pages/indexers";
 import { ProvidersPage } from "@/pages/providers";
 import { ProfilesPage } from "@/pages/profiles";
-import { Placeholder } from "@/pages/placeholder";
+import { SearchPage } from "@/pages/search";
+import { PlaybackPage } from "@/pages/playback";
+import { SessionsPage } from "@/pages/sessions";
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
 
@@ -77,37 +78,23 @@ const profilesRoute = createRoute({
 const searchRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/search",
-  component: () => (
-    <Placeholder
-      title="Search / Debug"
-      icon={Search}
-      description="The ranker-tuning playground: every release from /debug/search with parsed fields, per-rule score breakdown, and rejection reasons."
-    />
-  ),
+  component: SearchPage,
 });
 
+// The debug playground hands a resolved release to the preview via ?releaseId=…
 const playbackRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/playback",
-  component: () => (
-    <Placeholder
-      title="Playback Preview"
-      icon={PlayCircle}
-      description="Play a resolved stream in a plain HTML5 <video> — the architectural canary that proves the API works with Jellyfin absent."
-    />
-  ),
+  validateSearch: (search: Record<string, unknown>): { releaseId?: string } => ({
+    releaseId: typeof search.releaseId === "string" ? search.releaseId : undefined,
+  }),
+  component: PlaybackPage,
 });
 
 const sessionsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/sessions",
-  component: () => (
-    <Placeholder
-      title="Sessions"
-      icon={Radio}
-      description="Live sessions: bytes served, NNTP connections held, originating front-end, and force-close."
-    />
-  ),
+  component: SessionsPage,
 });
 
 const routeTree = rootRoute.addChildren([

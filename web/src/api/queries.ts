@@ -17,24 +17,69 @@ import type {
   ProviderTestResult,
   ProviderWrite,
   QualityProfile,
+  ResolveRequest,
+  ResolveResponse,
+  SessionResponse,
 } from "./types";
 
 // One place for every query key so cache invalidation stays consistent (BRIEF §9.2).
 export const queryKeys = {
-  health: ["health"] as const,
+  health: (deep: boolean) => ["health", deep] as const,
   generalConfig: ["config", "general"] as const,
   apiKeys: ["config", "apikeys"] as const,
   indexers: ["config", "indexers"] as const,
   providers: ["config", "providers"] as const,
   profiles: ["config", "profiles"] as const,
+  sessions: ["sessions"] as const,
 };
 
-export function useHealth(enabled = true) {
+/**
+ * Service health (BRIEF §9.1 dashboard). `deep` runs the per-indexer/per-provider
+ * reachability probes; pass `false` for a cheap liveness ping.
+ */
+export function useHealth({ deep = true, enabled = true, refetchInterval = 15_000 } = {}) {
   return useQuery({
-    queryKey: queryKeys.health,
-    queryFn: ({ signal }) => apiFetch<HealthResponse>("/health", { query: { deep: false }, signal }),
+    queryKey: queryKeys.health(deep),
+    queryFn: ({ signal }) => apiFetch<HealthResponse>("/health", { query: { deep }, signal }),
     enabled,
-    refetchInterval: 15_000,
+    refetchInterval,
+  });
+}
+
+// ---- Resolve + sessions (BRIEF §9.1.6/§9.1.7) ----------------------------------------
+
+/**
+ * Resolve a release: fetch NZB, health-check, open a session, pre-probe media info, and
+ * return a stream URL (BRIEF §6.2 POST /resolve). A mutation — the operator triggers it on
+ * demand from the debug playground and the playback-preview canary.
+ */
+export function useResolve() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ResolveRequest) =>
+      apiFetch<ResolveResponse>("/resolve", { method: "POST", body }),
+    // A successful resolve opens a session — reflect it in the sessions list.
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.sessions }),
+  });
+}
+
+/** Live session list (BRIEF §9.1.7), polled so the view stays current without SSE. */
+export function useSessions({ enabled = true, refetchInterval = 3_000 } = {}) {
+  return useQuery({
+    queryKey: queryKeys.sessions,
+    queryFn: ({ signal }) => apiFetch<SessionResponse[]>("/sessions", { signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+/** Force-close a live session (BRIEF §9.1.7). */
+export function useCloseSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) =>
+      apiFetch<void>(`/sessions/${encodeURIComponent(token)}/close`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.sessions }),
   });
 }
 

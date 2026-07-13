@@ -26,7 +26,7 @@ Pre-alpha. Nothing here is stable yet.
 | M1 | Streaming core (NNTP → yEnc → RAR random access → HTTP+Range) | ☑ |
 | M2 | Indexer search, release parsing, ranking, rejection, TMDB matching | ☑ |
 | M3 | Frozen `/api/v1`, OpenAPI spec, config API, auth | ☑ |
-| M4 | Management Web UI (React 19) | ☐ |
+| M4 | Management Web UI (React 19) | ☑ |
 | M5 | Jellyfin plugin — playback thin-slice | ☐ |
 | M6 | Jellyfin plugin — search interception + TTL cleanup | ☐ |
 | M7 | Hardening — dead-release fallback, connection budget, metrics | ☐ |
@@ -196,8 +196,23 @@ allow/deny, size bands, rejection rules) with a **live preview** that runs a sam
 query through `POST /debug/search` using the unsaved draft profile to show how it
 reorders results before saving. All views use TanStack Query mutations with
 invalidation + optimistic updates and render the typed error envelope as toasts +
-inline errors. The remaining §9.1 views (search/debug playground, playback preview,
-sessions) are routed placeholders that land in later M4 tasks.
+inline errors.
+
+**Shipped in M4c (M4 complete):** the **Search / Debug playground** (query form →
+`POST /debug/search`, a table of *every* release incl. rejected ones with raw name,
+parsed fields, per-rule score breakdown, plain-language rejection reasons, indexer,
+size, age, grabs; client-side filter/sort; a per-release **Resolve** button showing
+the health-check outcome + pre-probed media info), the **Playback preview** — the
+**architectural canary** (BRIEF §3.1 rule 4): it direct-plays a resolved stream in a
+plain HTML5 `<video>` with Jellyfin absent, instrumenting time-to-first-frame and
+seek latency; because a `<video>` element cannot set an `Authorization` header, the
+bearer token rides as an `access_token` query parameter that `/stream` accepts
+(scoped to the stream path, the mechanism Jellyfin itself uses) — the endpoint stays a
+generic, authenticated, Range-capable byte source — the **Sessions** view (live list
+via `refetchInterval`: release, bytes served, NNTP connections, source, force-close),
+and the full **Dashboard** (health cards per-indexer/per-provider, live session count,
+NNTP connections vs the configured budget, a live Recharts throughput chart, and
+recent resolves with health outcomes).
 
 ### Jellyfin plugin
 ```bash

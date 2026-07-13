@@ -16,8 +16,8 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-// The full §9.1 view set. Dashboard + Settings + Login ship in M4a; the remaining views are
-// scaffolded as routed placeholders so the shell nav is complete and each lands incrementally.
+// The full §9.1 view set: Dashboard, Indexers, Providers, Quality Profiles, Search / Debug,
+// Playback Preview, Sessions, and Settings — every view is now a live route.
 export const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/indexers", label: "Indexers", icon: Database },
