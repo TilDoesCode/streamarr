@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Streamarr.Core.Profiles;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 
@@ -8,8 +10,10 @@ namespace Streamarr.Server.Controllers;
 /// <summary>
 /// Quality profile CRUD (BRIEF §6.2 / §7.3). The built-in default profile is always
 /// listed and cannot be edited or deleted; user profiles are stored as JSON. No secrets.
+/// Admin session required (BRIEF §6.4).
 /// </summary>
 [ApiController]
+[Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/profiles")]
 public class ProfilesController(ProfileConfigService profiles) : ControllerBase
 {

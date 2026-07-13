@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 
@@ -7,8 +9,10 @@ namespace Streamarr.Server.Controllers;
 /// <summary>
 /// Usenet provider config CRUD + connectivity test (BRIEF §6.2, DECISIONS.md #6).
 /// The password is write-only: GETs return it masked; PUT omits-to-keep.
+/// Admin session required (BRIEF §6.4).
 /// </summary>
 [ApiController]
+[Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/providers")]
 public class ProvidersController(ProviderConfigService providers, ProviderConnectionTester tester) : ControllerBase
 {

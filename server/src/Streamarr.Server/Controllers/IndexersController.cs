@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 
@@ -6,9 +8,10 @@ namespace Streamarr.Server.Controllers;
 
 /// <summary>
 /// Indexer config CRUD + connectivity test (BRIEF §6.2). Secrets are write-only:
-/// GETs return a masked API key; PUT omits-to-keep. Admin-scoped in later milestones.
+/// GETs return a masked API key; PUT omits-to-keep. Admin session required (BRIEF §6.4).
 /// </summary>
 [ApiController]
+[Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/indexers")]
 public class IndexersController(IndexerConfigService indexers, IndexerCapsTester tester) : ControllerBase
 {

@@ -24,6 +24,16 @@ public sealed class StreamarrOptions
     public string ConnectionString { get; set; } = string.Empty;
 
     /// <summary>
+    /// First-run admin bootstrap (BRIEF §6.4). Username defaults to "admin"; the password
+    /// is taken from here or the STREAMARR_ADMIN_PASSWORD env var, else a random one is
+    /// generated and logged once. Only used when the users table is empty.
+    /// </summary>
+    public AdminBootstrapOptions Admin { get; set; } = new();
+
+    /// <summary>Lifetime of an admin session JWT issued by <c>POST /api/v1/auth/login</c>.</summary>
+    public int AdminSessionTtlSeconds { get; set; } = 3600;
+
+    /// <summary>
     /// Directory the Data Protection key ring (secret encryption) persists to; empty
     /// defaults to a "keys" folder next to the app so ciphertext survives restarts.
     /// </summary>
@@ -56,6 +66,15 @@ public sealed class StreamarrOptions
     public TmdbOptions Tmdb { get; set; } = new();
 
     public HealthCheckOptions HealthCheck { get; set; } = new();
+}
+
+/// <summary>First-run admin credentials (BRIEF §6.4). Seeds the extensible users table.</summary>
+public sealed class AdminBootstrapOptions
+{
+    public string Username { get; set; } = "admin";
+
+    /// <summary>Plaintext bootstrap password; empty means "generate and log once".</summary>
+    public string Password { get; set; } = string.Empty;
 }
 
 /// <summary>Config-bindable mirror of <see cref="IndexerConfig"/> (BRIEF §6.3).</summary>

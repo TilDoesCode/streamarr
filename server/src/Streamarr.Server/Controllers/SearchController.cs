@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Core.Parser;
 using Streamarr.Core.Ranking;
 using Streamarr.Core.Search;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Services;
 
@@ -50,6 +52,9 @@ public class SearchController(SearchService searchService) : ControllerBase
         return Ok(new SearchResponse { Results = aggregation.Works.Select(ToWorkDto).ToArray() });
     }
 
+    // /debug/search exposes rejected releases, parsed fields, and score breakdowns —
+    // a tuning/dev tool, so it is admin-only; machine keys cannot reach it (BRIEF §6.4).
+    [Authorize(Policy = AuthRoles.AdminPolicy)]
     [HttpPost("debug/search")]
     [ProducesResponseType(typeof(DebugSearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]

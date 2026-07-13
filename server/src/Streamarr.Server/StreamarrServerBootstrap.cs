@@ -1,7 +1,10 @@
 using System.IO;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Core.Profiles;
@@ -35,8 +38,62 @@ public static class StreamarrServerBootstrap
             .AddApplicationPart(typeof(StreamarrServerBootstrap).Assembly);
 
         // OpenAPI is the cross-interface contract (BRIEF.md §3.1); Swashbuckle serves it.
+        // The spec is frozen at /openapi/v1.json and checked into the repo — the web
+        // client and any future client generate from it.
         services.AddEndpointsApiExplorer();
-        services.AddSwaggerGen();
+        services.AddSwaggerGen(o =>
+        {
+            o.SwaggerDoc("v1", new OpenApiInfo
+            {
+                Title = "Streamarr Core Server API",
+                Version = "v1",
+                Description = "Interface-agnostic API for Usenet search, resolve, and byte-range streaming (BRIEF §6.2).",
+            });
+
+            // Both auth modes arrive as `Authorization: Bearer <token>` (BRIEF §6.4):
+            // a machine API key or an admin session JWT. Documented as one bearer scheme.
+            var scheme = new OpenApiSecurityScheme
+            {
+                Name = "Authorization",
+                Type = SecuritySchemeType.Http,
+                Scheme = "bearer",
+                BearerFormat = "API key or JWT",
+                In = ParameterLocation.Header,
+                Description = "Machine API key or admin session JWT.",
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "bearer" },
+            };
+            o.AddSecurityDefinition("bearer", scheme);
+            o.AddSecurityRequirement(new OpenApiSecurityRequirement { [scheme] = Array.Empty<string>() });
+
+            foreach (var xml in Directory.GetFiles(AppContext.BaseDirectory, "Streamarr.*.xml"))
+                o.IncludeXmlComments(xml, includeControllerXmlComments: true);
+        });
+
+        // --- two-mode auth (BRIEF §6.4) ------------------------------------------------
+        // A single custom scheme resolves a bearer token to either a machine principal
+        // (API key) or an admin principal (session JWT); the fallback policy requires an
+        // authenticated principal on every endpoint, and AdminPolicy gates /config + /debug.
+        services.AddSingleton<UserService>();
+        services.AddSingleton<JwtTokenService>();
+        services.AddSingleton<AdminBootstrap>();
+
+        services.AddAuthentication(AuthRoles.Scheme)
+            .AddScheme<AuthenticationSchemeOptions, StreamarrAuthenticationHandler>(AuthRoles.Scheme, _ => { });
+
+        services.AddAuthorization(o =>
+        {
+            var authenticated = new AuthorizationPolicyBuilder(AuthRoles.Scheme)
+                .RequireAuthenticatedUser()
+                .Build();
+            // Every endpoint without an explicit attribute still requires authentication
+            // (BRIEF §11: auth on every endpoint; /stream never public).
+            o.FallbackPolicy = authenticated;
+            o.DefaultPolicy = authenticated;
+            o.AddPolicy(AuthRoles.AdminPolicy, p => p
+                .AddAuthenticationSchemes(AuthRoles.Scheme)
+                .RequireAuthenticatedUser()
+                .RequireRole(AuthRoles.Admin));
+        });
 
         services.Configure<StreamarrOptions>(builder.Configuration.GetSection(StreamarrOptions.SectionName));
 
@@ -146,15 +203,19 @@ public static class StreamarrServerBootstrap
         using (var scope = app.Services.CreateScope())
         {
             scope.ServiceProvider.GetRequiredService<StreamarrDbInitializer>().Initialize();
+            // First-run admin bootstrap (BRIEF §6.4): seed the empty users table so the
+            // Management UI has an account to log in with.
+            scope.ServiceProvider.GetRequiredService<AdminBootstrap>().EnsureAdminAsync().GetAwaiter().GetResult();
         }
 
+        // The frozen OpenAPI spec is always served (not just in Development) at a stable
+        // route — it is the checked-in contract the clients generate from (BRIEF §3.1).
+        app.UseSwagger(o => o.RouteTemplate = "openapi/{documentName}.json");
         if (app.Environment.IsDevelopment())
-        {
-            app.UseSwagger();
-            app.UseSwaggerUI();
-        }
+            app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "Streamarr v1"));
 
-        app.UseMiddleware<ApiKeyAuthMiddleware>();
+        app.UseAuthentication();
+        app.UseAuthorization();
         app.MapControllers();
 
         return app;

@@ -16,6 +16,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<GeneralConfigEntity> GeneralConfig => Set<GeneralConfigEntity>();
     public DbSet<WatchEventEntity> WatchEvents => Set<WatchEventEntity>();
     public DbSet<ApiKeyEntity> ApiKeys => Set<ApiKeyEntity>();
+    public DbSet<UserEntity> Users => Set<UserEntity>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -50,6 +51,13 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.KeyHash).IsUnique();
+        });
+
+        model.Entity<UserEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Username).IsRequired();
+            e.HasIndex(x => x.Username).IsUnique();
         });
     }
 }

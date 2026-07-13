@@ -13,6 +13,13 @@ public sealed class GeneralConfigEntity
     /// <summary>Data-Protection ciphertext of the TMDB API key (secret, at rest).</summary>
     public string? TmdbApiKeyEncrypted { get; set; }
 
+    /// <summary>
+    /// Data-Protection ciphertext of the HMAC key that signs admin session JWTs (BRIEF
+    /// §6.4). Generated once on first run so tokens survive restarts; never exposed by the
+    /// config API.
+    /// </summary>
+    public string? JwtSigningKeyEncrypted { get; set; }
+
     public int SessionTtlSeconds { get; set; } = 3600;
 
     public int SearchCacheTtlSeconds { get; set; } = 60;

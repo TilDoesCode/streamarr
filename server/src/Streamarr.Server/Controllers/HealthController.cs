@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Streamarr.Core.Indexers;
 using Streamarr.Server.Config;
@@ -28,6 +29,7 @@ public sealed record HealthResponse
 /// <c>?deep=false</c> to skip the reachability probes.
 /// </summary>
 [ApiController]
+[AllowAnonymous]
 [Route("api/v1/health")]
 public class HealthController(
     IIndexerConfigStore indexers,

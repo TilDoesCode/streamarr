@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 
@@ -8,8 +10,10 @@ namespace Streamarr.Server.Controllers;
 /// Machine API key management (BRIEF §6.4 / §9.1). The plaintext token is returned only
 /// once, at creation; thereafter only its prefix and metadata are visible. Keys are
 /// revoked (soft-deleted), not hard-deleted, so past issuance stays auditable.
+/// Admin session required — machine keys cannot mint or revoke keys (BRIEF §6.4).
 /// </summary>
 [ApiController]
+[Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/apikeys")]
 public class ApiKeysController(ApiKeyService apiKeys) : ControllerBase
 {
