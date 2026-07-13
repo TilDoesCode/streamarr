@@ -214,9 +214,37 @@ public static class StreamarrServerBootstrap
         if (app.Environment.IsDevelopment())
             app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "Streamarr v1"));
 
+        // --- Management SPA, production single-origin path (BRIEF §4) -------------------
+        // In development the Vite dev server proxies /api to Kestrel; in production the
+        // Core Server itself serves the built SPA from wwwroot as static files, with an
+        // SPA fallback so client-side routes (/settings, /login, …) resolve to index.html.
+        // Both paths are implemented; this half is inert until wwwroot/index.html exists.
+        var webRoot = app.Environment.WebRootPath
+            ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+        var spaEnabled = File.Exists(Path.Combine(webRoot, "index.html"));
+        if (spaEnabled)
+        {
+            // Static files MUST run before routing, otherwise the SPA fallback endpoint
+            // shadows real asset requests (documented ASP.NET ordering gotcha).
+            app.UseDefaultFiles();
+            app.UseStaticFiles();
+        }
+
+        // Explicit routing so the static-files middleware above is guaranteed to run first
+        // (minimal hosting would otherwise auto-insert routing at the very top).
+        app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
+
+        if (spaEnabled)
+        {
+            // Any GET that is not an API or OpenAPI route and did not match a static file
+            // falls through to the SPA shell. Anonymous: the shell (incl. the login page)
+            // must load before the user has a token; the API stays auth-gated (BRIEF §6.4).
+            app.MapFallbackToFile("{*path:regex(^(?!api/|openapi/).*$)}", "index.html")
+                .AllowAnonymous();
+        }
 
         return app;
     }
