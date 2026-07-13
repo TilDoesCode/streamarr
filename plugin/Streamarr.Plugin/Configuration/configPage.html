@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Streamarr</title>
+</head>
+<body>
+<div id="StreamarrConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-controller="__plugin/StreamarrConfigPage.js">
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="StreamarrConfigForm">
+                <div class="verticalSection verticalSection-extrabottompadding">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle">Streamarr</h2>
+                    </div>
+                    <p class="fieldDescription">
+                        The Streamarr plugin is a thin adapter. Indexers, Usenet providers and
+                        quality profiles are configured in the Streamarr Management UI — not here.
+                        This page only tells Jellyfin how to reach the Core Server.
+                    </p>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ServerUrl">Core Server URL</label>
+                        <input is="emby-input" type="url" id="ServerUrl" name="ServerUrl" required />
+                        <div class="fieldDescription">e.g. http://streamarr:8080</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ApiKey">Machine API key</label>
+                        <input is="emby-input" type="text" id="ApiKey" name="ApiKey" />
+                        <div class="fieldDescription">A machine API key issued by the Core Server (Bearer).</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EphemeralTtlMinutes">Ephemeral item TTL (minutes)</label>
+                        <input is="emby-input" type="number" id="EphemeralTtlMinutes" name="EphemeralTtlMinutes" min="1" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ProfileId">Quality profile id (optional)</label>
+                        <input is="emby-input" type="text" id="ProfileId" name="ProfileId" />
+                        <div class="fieldDescription">Leave blank to use the server's default profile.</div>
+                    </div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="InterceptionEnabled" name="InterceptionEnabled" />
+                        <span>Enable search interception (M6 — off by default)</span>
+                    </label>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="PinnedWorkQuery">Pinned-work query (M5 bootstrap)</label>
+                        <input is="emby-input" type="text" id="PinnedWorkQuery" name="PinnedWorkQuery" />
+                        <div class="fieldDescription">Query used by "Materialize pinned work" and the sync task.</div>
+                    </div>
+                </div>
+
+                <div>
+                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                        <span>Save</span>
+                    </button>
+                    <button is="emby-button" type="button" id="TestConnection" class="raised block emby-button">
+                        <span>Test connection</span>
+                    </button>
+                    <button is="emby-button" type="button" id="SyncPinnedWork" class="raised block emby-button">
+                        <span>Materialize pinned work</span>
+                    </button>
+                </div>
+
+                <p id="StreamarrStatus" class="fieldDescription" style="margin-top:1em;"></p>
+            </form>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = "6f8d5c7a-9b2e-4a1f-8c3d-2e5a7b9c0d11";
+
+            function status(msg) {
+                document.querySelector('#StreamarrConfigPage #StreamarrStatus').textContent = msg;
+            }
+
+            document.querySelector('#StreamarrConfigPage').addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    var page = document.querySelector('#StreamarrConfigPage');
+                    page.querySelector('#ServerUrl').value = config.ServerUrl || '';
+                    page.querySelector('#ApiKey').value = config.ApiKey || '';
+                    page.querySelector('#EphemeralTtlMinutes').value = config.EphemeralTtlMinutes || 720;
+                    page.querySelector('#ProfileId').value = config.ProfileId || '';
+                    page.querySelector('#InterceptionEnabled').checked = !!config.InterceptionEnabled;
+                    page.querySelector('#PinnedWorkQuery').value = config.PinnedWorkQuery || '';
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            document.querySelector('#StreamarrConfigForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                var page = document.querySelector('#StreamarrConfigPage');
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.ServerUrl = page.querySelector('#ServerUrl').value;
+                    config.ApiKey = page.querySelector('#ApiKey').value;
+                    config.EphemeralTtlMinutes = parseInt(page.querySelector('#EphemeralTtlMinutes').value, 10) || 720;
+                    config.ProfileId = page.querySelector('#ProfileId').value;
+                    config.InterceptionEnabled = page.querySelector('#InterceptionEnabled').checked;
+                    config.PinnedWorkQuery = page.querySelector('#PinnedWorkQuery').value;
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+                return false;
+            });
+
+            document.querySelector('#TestConnection').addEventListener('click', function () {
+                status('Testing…');
+                ApiClient.ajax({
+                    type: 'GET',
+                    url: ApiClient.getUrl('Streamarr/TestConnection'),
+                    dataType: 'json'
+                }).then(function (r) {
+                    status(r.Ok
+                        ? ('Connected. Server version ' + (r.Version || 'unknown') + ' (' + (r.Status || '') + ')')
+                        : ('Failed: ' + (r.Error || 'unknown error')));
+                }).catch(function () {
+                    status('Request failed — is the plugin loaded and are you signed in as admin?');
+                });
+            });
+
+            document.querySelector('#SyncPinnedWork').addEventListener('click', function () {
+                status('Materializing pinned work…');
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('Streamarr/SyncPinnedWork'),
+                    dataType: 'json'
+                }).then(function (r) {
+                    status(r.Message || (r.Ok ? 'Done.' : 'Failed.'));
+                }).catch(function () {
+                    status('Request failed.');
+                });
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

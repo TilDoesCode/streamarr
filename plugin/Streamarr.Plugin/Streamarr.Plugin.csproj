@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <RootNamespace>Streamarr.Plugin</RootNamespace>
+    <AssemblyName>Streamarr.Plugin</AssemblyName>
+    <!-- Keep the version in lockstep with build.yaml / the manifest. -->
+    <Version>0.1.0.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Jellyfin 10.10.x ABI. The exact patch is pinned in docs/jellyfin-compatibility.md
+      and mirrored by the docker-compose.dev.yml image tag. The host supplies these
+      assemblies at runtime, so they are never copied into the plugin output.
+    -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.10.7">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration\configPage.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ships next to the DLL so Jellyfin recognizes the plugin folder and its ABI. -->
+    <Content Include="meta.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
