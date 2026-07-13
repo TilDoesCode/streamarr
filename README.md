@@ -25,7 +25,7 @@ Pre-alpha. Nothing here is stable yet.
 |---|---|---|
 | M1 | Streaming core (NNTP → yEnc → RAR random access → HTTP+Range) | ☑ |
 | M2 | Indexer search, release parsing, ranking, rejection, TMDB matching | ☑ |
-| M3 | Frozen `/api/v1`, OpenAPI spec, config API, auth | ☐ |
+| M3 | Frozen `/api/v1`, OpenAPI spec, config API, auth | ☑ |
 | M4 | Management Web UI (React 19) | ☐ |
 | M5 | Jellyfin plugin — playback thin-slice | ☐ |
 | M6 | Jellyfin plugin — search interception + TTL cleanup | ☐ |
@@ -152,19 +152,25 @@ normal transcoding pipeline.
 
 ### Core
 ```bash
-cd core
-dotnet run                     # http://localhost:5000, OpenAPI at /swagger
-dotnet test                    # parser corpus + ranker ordering tests
+cd server
+dotnet run --project src/Streamarr.Server   # OpenAPI spec at /openapi/v1.json, Swagger UI at /swagger (dev)
+dotnet test                                 # parser corpus, ranker ordering, auth, streaming tests
+
+# Re-freeze the OpenAPI contract after an API change (CI fails on drift):
+scripts/freeze-openapi.sh
 ```
+
+On first run with an empty users table, an admin account is bootstrapped: from
+`STREAMARR_ADMIN_PASSWORD` / `Streamarr:Admin:Password` if set, otherwise a random
+password is generated and logged **once**. Machine clients authenticate with a static
+`Streamarr:ApiKey` or a key minted via `POST /api/v1/config/apikeys`.
 
 ### Management UI
 ```bash
 cd web
-pnpm install
-pnpm gen:api                   # regenerate the API client from the OpenAPI spec
-pnpm dev                       # Vite dev server, proxied to the Core
-pnpm test                      # Vitest
-pnpm test:e2e                  # Playwright smoke
+npm install
+npm run generate:api           # ../server/openapi/v1.json → src/api/schema.d.ts (checked in; CI fails on drift)
+# Vite dev server, Vitest, Playwright land in M4.
 ```
 
 `pnpm gen:api` is checked in CI — a stale generated client fails the build. Never

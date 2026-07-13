@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  server:
+    name: Server build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore server/Streamarr.sln
+
+      - name: Build
+        run: dotnet build server/Streamarr.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test server/Streamarr.sln --configuration Release --no-build
+
+  api-drift:
+    name: OpenAPI spec + generated client are not stale
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 1) Re-freeze the OpenAPI spec from the actual server code. If the API changed
+      #    without re-freezing server/openapi/v1.json, this diff fails.
+      - name: Regenerate OpenAPI spec
+        run: server/scripts/freeze-openapi.sh
+
+      # 2) Regenerate the TypeScript client from the (re-frozen) spec. If the checked-in
+      #    web/src/api/schema.d.ts is stale, this diff fails (BRIEF §9.2).
+      - name: Install web deps
+        working-directory: web
+        run: npm ci
+
+      - name: Regenerate API client
+        working-directory: web
+        run: npm run generate:api
+
+      - name: Fail on drift
+        run: |
+          if ! git diff --exit-code -- server/openapi/v1.json web/src/api/schema.d.ts; then
+            echo "::error::OpenAPI spec or generated client is stale. Run server/scripts/freeze-openapi.sh and web 'npm run generate:api', then commit."
+            exit 1
+          fi
