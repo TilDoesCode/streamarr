@@ -29,6 +29,10 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
     public const string FallbackReleaseId = "rel-fallback";
     public const string DeadWorkId = "tmdb-movie-9";
 
+    // A work whose only release is dead — auto-fallback has nothing to fall back to.
+    public const string DeadOnlyReleaseId = "rel-dead-only";
+    public const string DeadOnlyWorkId = "tmdb-movie-10";
+
     /// <summary>RAR volume chunk size — range tests cross this boundary on purpose.</summary>
     public const int RarChunkSize = 150_000;
 
@@ -80,6 +84,11 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
         var fallback = NzbTestFixtures.PublishFile(Nntp, "video.mkv", Video, "fallback");
         var fallbackNzb = WriteNzb("fallback.nzb", fallback);
 
+        // 6) dead-only: a work whose sole release is dead (auto-fallback exhausts)
+        var deadOnly = NzbTestFixtures.PublishFile(
+            Nntp, "video.mkv", Video, "dead-only", publishArticle: i => i == 0);
+        var deadOnlyNzb = WriteNzb("dead-only.nzb", deadOnly);
+
         // --- boot the real server on a random loopback port ------------------------------
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -90,6 +99,8 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
+            // Keep the structured-logging output quiet in the test run.
+            ["Serilog:MinimumLevel:Default"] = "Warning",
             ["Streamarr:ApiKey"] = ApiKey,
             ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_tempDir, "streamarr.db")}",
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_tempDir, "keys"),
@@ -122,6 +133,7 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
         Register(store, "tmdb-movie-3", DegradedReleaseId, degradedNzb);
         Register(store, DeadWorkId, DeadReleaseId, deadNzb, score: 900);
         Register(store, DeadWorkId, FallbackReleaseId, fallbackNzb, score: 850);
+        Register(store, DeadOnlyWorkId, DeadOnlyReleaseId, deadOnlyNzb, score: 700);
     }
 
     private static void Register(IReleaseStore store, string workId, string releaseId, string nzbPath, int score = 800)

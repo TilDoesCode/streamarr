@@ -52,6 +52,13 @@ services:
     volumes:
       - streamarr-data:/app/data
       - streamarr-keys:/app/keys
+    healthcheck:
+      # Liveness probe (BRIEF §6.2). Jellyfin waits on this before starting.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health?deep=false"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   web:

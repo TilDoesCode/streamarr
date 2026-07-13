@@ -27,7 +27,7 @@ public interface IReleaseStore
     RegisteredRelease? FindFallback(string workId, string excludeReleaseId);
 }
 
-public sealed class InMemoryReleaseStore : IReleaseStore
+public sealed class InMemoryReleaseStore(IReleaseHealthCache? healthCache = null) : IReleaseStore
 {
     private readonly ConcurrentDictionary<string, RegisteredRelease> _releases = new(StringComparer.Ordinal);
 
@@ -42,6 +42,9 @@ public sealed class InMemoryReleaseStore : IReleaseStore
             .Where(r => r.WorkId == workId
                         && r.Release.ReleaseId != excludeReleaseId
                         && !r.Release.Rejected
-                        && r.Release.Health != ReleaseHealth.Dead)
+                        && r.Release.Health != ReleaseHealth.Dead
+                        // A release resolved dead in a prior attempt stays skipped for the
+                        // cache TTL, so auto-fallback never loops back onto it (BRIEF §10-M7).
+                        && !(healthCache?.IsDead(r.Release.ReleaseId) ?? false))
             .MaxBy(r => r.Release.Score);
 }

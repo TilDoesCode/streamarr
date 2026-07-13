@@ -7,6 +7,23 @@ public sealed record ResolveRequest
 
     /// <summary>Originating front-end ("jellyfin", "web", …) for session attribution.</summary>
     public string? Client { get; init; }
+
+    /// <summary>
+    /// When true (the default), a release that resolves dead transparently retries the
+    /// next-best release of the same work, bounded, and returns the first healthy one
+    /// (BRIEF §10-M7). Set false to get the raw classification of exactly this release
+    /// plus a <see cref="ResolveResponse.SuggestedFallbackReleaseId"/> for manual retry.
+    /// </summary>
+    public bool AutoFallback { get; init; } = true;
+}
+
+/// <summary>One release the resolve pipeline attempted, with its health classification.</summary>
+public sealed record ResolveAttempt
+{
+    public required string ReleaseId { get; init; }
+
+    /// <summary>"ready" | "degraded" | "dead".</summary>
+    public required string Status { get; init; }
 }
 
 /// <summary>
@@ -43,8 +60,23 @@ public sealed record ResolveResponse
     public IReadOnlyList<MediaStreamInfo> MediaStreams { get; init; } = [];
     public int SessionTtlSeconds { get; init; }
 
-    /// <summary>Next-best release of the same work, set when this one is dead.</summary>
+    /// <summary>
+    /// Next-best release of the same work. Set when the resolved release is dead and
+    /// auto-fallback is disabled (or exhausted), so a front-end can still retry manually.
+    /// </summary>
     public string? SuggestedFallbackReleaseId { get; init; }
+
+    /// <summary>
+    /// When this response is the result of auto-fallback, the release originally
+    /// requested (which resolved dead). Null when the requested release resolved directly.
+    /// </summary>
+    public string? FallbackFromReleaseId { get; init; }
+
+    /// <summary>
+    /// The chain of releases the resolve pipeline tried, in order, each with its health
+    /// classification — so a front-end can surface exactly what happened (BRIEF §10-M7).
+    /// </summary>
+    public IReadOnlyList<ResolveAttempt> Attempts { get; init; } = [];
 }
 
 /// <summary>One live session as listed by GET /api/v1/sessions.</summary>

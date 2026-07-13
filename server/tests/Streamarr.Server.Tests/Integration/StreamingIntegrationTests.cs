@@ -213,15 +213,54 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
     }
 
     [Fact]
-    public async Task Resolve_MostlyMissingRelease_IsDead_WithSuggestedFallback()
+    public async Task Resolve_DeadRelease_AutoFallsBackToHealthySibling()
     {
         using var client = fixture.CreateClient();
+        // Auto-fallback is on by default: a dead release transparently retries the
+        // next-best release of the same work and returns the healthy one (BRIEF §10-M7).
         var resolved = await ResolveAsync(client, StreamarrServerFixture.DeadReleaseId);
+
+        Assert.Equal("ready", resolved.Status);
+        Assert.Equal(StreamarrServerFixture.FallbackReleaseId, resolved.ReleaseId);
+        Assert.Equal(StreamarrServerFixture.DeadReleaseId, resolved.FallbackFromReleaseId);
+        Assert.NotNull(resolved.StreamUrl);
+
+        // The response surfaces exactly what happened: dead → ready.
+        Assert.Collection(resolved.Attempts,
+            a => { Assert.Equal(StreamarrServerFixture.DeadReleaseId, a.ReleaseId); Assert.Equal("dead", a.Status); },
+            a => { Assert.Equal(StreamarrServerFixture.FallbackReleaseId, a.ReleaseId); Assert.Equal("ready", a.Status); });
+    }
+
+    [Fact]
+    public async Task Resolve_DeadRelease_WithAutoFallbackOff_IsDead_WithSuggestedFallback()
+    {
+        using var client = fixture.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/resolve",
+            new ResolveRequest { ReleaseId = StreamarrServerFixture.DeadReleaseId, AutoFallback = false });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var resolved = (await response.Content.ReadFromJsonAsync<ResolveResponse>())!;
 
         Assert.Equal("dead", resolved.Status);
         Assert.Null(resolved.StreamUrl);
         Assert.Empty(resolved.MediaStreams);
         Assert.Equal(StreamarrServerFixture.FallbackReleaseId, resolved.SuggestedFallbackReleaseId);
+        var attempt = Assert.Single(resolved.Attempts);
+        Assert.Equal(StreamarrServerFixture.DeadReleaseId, attempt.ReleaseId);
+    }
+
+    [Fact]
+    public async Task Resolve_DeadOnlyWork_ExhaustsFallback_AndReportsDead()
+    {
+        using var client = fixture.CreateClient();
+        var resolved = await ResolveAsync(client, StreamarrServerFixture.DeadOnlyReleaseId);
+
+        Assert.Equal("dead", resolved.Status);
+        Assert.Null(resolved.StreamUrl);
+        Assert.Null(resolved.SuggestedFallbackReleaseId); // nothing left to suggest
+        var attempt = Assert.Single(resolved.Attempts);
+        Assert.Equal(StreamarrServerFixture.DeadOnlyReleaseId, attempt.ReleaseId);
+        Assert.Equal("dead", attempt.Status);
     }
 
     // ---------------------------------------------------------------- sessions

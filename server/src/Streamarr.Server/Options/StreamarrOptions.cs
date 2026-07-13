@@ -46,6 +46,19 @@ public sealed class StreamarrOptions
 
     public int SessionSweepIntervalSeconds { get; set; } = 30;
 
+    /// <summary>
+    /// Maximum number of automatic fallback hops when a release resolves dead
+    /// (BRIEF §10-M7). Bounded so a fully-dead work fails fast instead of walking
+    /// an arbitrarily long release list.
+    /// </summary>
+    public int MaxFallbackHops { get; set; } = 3;
+
+    /// <summary>
+    /// How long a dead classification is remembered and fed back into ranking +
+    /// fallback selection (BRIEF §10-M7). Zero disables the health cache.
+    /// </summary>
+    public int HealthCacheTtlSeconds { get; set; } = 1800;
+
     /// <summary>Segments to read ahead while streaming (nzbdav's articleBufferSize).</summary>
     public int ArticleReadAheadCount { get; set; } = 3;
 

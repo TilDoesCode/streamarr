@@ -749,6 +749,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MetricsResponse"];
+                        "application/json": components["schemas"]["MetricsResponse"];
+                        "text/json": components["schemas"]["MetricsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config/profiles": {
         parameters: {
             query?: never;
@@ -1581,6 +1618,19 @@ export interface components {
             currentPassword?: string | null;
             newPassword?: string | null;
         };
+        ConnectionMetrics: {
+            /**
+             * Format: int32
+             * @description The global NNTP connection budget shared across all sessions.
+             */
+            budget?: number;
+            /**
+             * Format: int32
+             * @description NNTP commands currently occupying a connection across all sessions.
+             */
+            inUse?: number;
+            providers?: components["schemas"]["ProviderConnectionMetric"][] | null;
+        };
         CreateApiKeyRequest: {
             name: string | null;
         };
@@ -1709,6 +1759,18 @@ export interface components {
             elapsedMs?: number;
             error?: string | null;
         };
+        IndexerLatencyMetric: {
+            id: string | null;
+            name: string | null;
+            /** Format: int64 */
+            requests?: number;
+            /** Format: int64 */
+            failures?: number;
+            /** Format: double */
+            lastLatencyMs?: number;
+            /** Format: double */
+            avgLatencyMs?: number;
+        };
         /** @description Indexer as returned by the config API — the API key is masked, never plaintext. */
         IndexerResponse: {
             id: string | null;
@@ -1784,6 +1846,20 @@ export interface components {
             channels?: number | null;
             language?: string | null;
         };
+        /**
+         * @description Snapshot returned by GET /api/v1/metrics (BRIEF §10-M7 observability): live sessions,
+         *     NNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback
+         *     counts, search-cache hit rate, and per-indexer latency.
+         */
+        MetricsResponse: {
+            sessions: components["schemas"]["SessionMetrics"];
+            connections: components["schemas"]["ConnectionMetrics"];
+            resolves: components["schemas"]["ResolveMetrics"];
+            searchCache: components["schemas"]["SearchCacheMetrics"];
+            /** Format: int64 */
+            bytesServedTotal?: number;
+            indexers?: components["schemas"]["IndexerLatencyMetric"][] | null;
+        };
         /** @description The raw parser output for a release (BRIEF §7.1), surfaced for tuning. */
         ParsedFieldsDto: {
             title?: string | null;
@@ -1808,6 +1884,21 @@ export interface components {
             absoluteEpisodes?: number[] | null;
             seasonPack?: boolean;
             airDate?: string | null;
+        };
+        ProviderConnectionMetric: {
+            name: string | null;
+            /** Format: int32 */
+            priority?: number;
+            /** Format: int32 */
+            liveConnections?: number;
+            /** Format: int32 */
+            activeConnections?: number;
+            /** Format: int32 */
+            idleConnections?: number;
+            /** Format: int32 */
+            availableConnections?: number;
+            /** @description True while the provider's circuit breaker is open (failover in effect). */
+            tripped?: boolean;
         };
         /** @description Provider as returned by the config API — the password is masked, never plaintext. */
         ProviderResponse: {
@@ -1944,11 +2035,33 @@ export interface components {
             /** @description "unknown" | "ready" | "degraded" | "dead" (known only after a resolve). */
             health: string | null;
         };
+        /** @description One release the resolve pipeline attempted, with its health classification. */
+        ResolveAttempt: {
+            releaseId: string | null;
+            /** @description "ready" | "degraded" | "dead". */
+            status: string | null;
+        };
+        ResolveMetrics: {
+            /** Format: int64 */
+            total?: number;
+            /**
+             * Format: int64
+             * @description Resolves that returned a release reached via auto-fallback.
+             */
+            viaFallback?: number;
+        };
         /** @description Request body of POST /api/v1/resolve (BRIEF §6.2). */
         ResolveRequest: {
             releaseId: string | null;
             /** @description Originating front-end ("jellyfin", "web", …) for session attribution. */
             client?: string | null;
+            /**
+             * @description When true (the default), a release that resolves dead transparently retries the
+             *     next-best release of the same work, bounded, and returns the first healthy one
+             *     (BRIEF §10-M7). Set false to get the raw classification of exactly this release
+             *     plus a Streamarr.Server.Contracts.ResolveResponse.SuggestedFallbackReleaseId for manual retry.
+             */
+            autoFallback?: boolean;
         };
         /** @description Response of POST /api/v1/resolve — the exact shape from BRIEF §6.2. */
         ResolveResponse: {
@@ -1965,8 +2078,21 @@ export interface components {
             mediaStreams?: components["schemas"]["MediaStreamInfo"][] | null;
             /** Format: int32 */
             sessionTtlSeconds?: number;
-            /** @description Next-best release of the same work, set when this one is dead. */
+            /**
+             * @description Next-best release of the same work. Set when the resolved release is dead and
+             *     auto-fallback is disabled (or exhausted), so a front-end can still retry manually.
+             */
             suggestedFallbackReleaseId?: string | null;
+            /**
+             * @description When this response is the result of auto-fallback, the release originally
+             *     requested (which resolved dead). Null when the requested release resolved directly.
+             */
+            fallbackFromReleaseId?: string | null;
+            /**
+             * @description The chain of releases the resolve pipeline tried, in order, each with its health
+             *     classification — so a front-end can surface exactly what happened (BRIEF §10-M7).
+             */
+            attempts?: components["schemas"]["ResolveAttempt"][] | null;
         };
         /** @description One line of the score breakdown (BRIEF §7.3): a rule and its point value. */
         ScoreLineDto: {
@@ -1974,9 +2100,33 @@ export interface components {
             /** Format: int32 */
             points: number;
         };
+        SearchCacheMetrics: {
+            /** Format: int32 */
+            entries?: number;
+            /** Format: int64 */
+            hits?: number;
+            /** Format: int64 */
+            misses?: number;
+            /**
+             * Format: double
+             * @description Hit / (hit + miss); 0 when no lookups have happened yet.
+             */
+            hitRate?: number;
+        };
         /** @description Response of GET /api/v1/search — the exact shape from BRIEF §6.2. */
         SearchResponse: {
             results: components["schemas"]["WorkDto"][] | null;
+        };
+        SessionMetrics: {
+            /**
+             * Format: int32
+             * @description Sessions currently live.
+             */
+            active?: number;
+            /** Format: int64 */
+            openedTotal?: number;
+            /** Format: int64 */
+            closedTotal?: number;
         };
         /** @description One live session as listed by GET /api/v1/sessions. */
         SessionResponse: {

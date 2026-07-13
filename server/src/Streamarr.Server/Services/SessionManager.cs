@@ -16,14 +16,21 @@ namespace Streamarr.Server.Services;
 public sealed class ActiveSession
 {
     private long _bytesServed;
+    private readonly StreamarrMetrics? _metrics;
 
-    internal ActiveSession(StreamSession session, ResolvedMediaFile file, INntpClient nntpClient, CountingNntpGate nntpUsage)
+    internal ActiveSession(
+        StreamSession session,
+        ResolvedMediaFile file,
+        INntpClient nntpClient,
+        CountingNntpGate nntpUsage,
+        StreamarrMetrics? metrics = null)
     {
         Session = session;
         File = file;
         NntpClient = nntpClient;
         NntpUsage = nntpUsage;
         ContentType = ContainerContentTypes.For(file.Container);
+        _metrics = metrics;
     }
 
     public StreamSession Session { get; }
@@ -40,7 +47,10 @@ public sealed class ActiveSession
     public void Touch() => Session.LastAccessedAt = DateTimeOffset.UtcNow;
 
     internal void AddBytesServed(long count)
-        => Session.BytesServed = Interlocked.Add(ref _bytesServed, count);
+    {
+        Session.BytesServed = Interlocked.Add(ref _bytesServed, count);
+        _metrics?.AddBytesServed(count);
+    }
 
     internal void MarkClosed() => Session.State = SessionState.Closed;
 }
@@ -55,9 +65,13 @@ public sealed class ActiveSession
 public sealed class SessionManager(
     INntpClient nntpClient,
     IOptions<StreamarrOptions> options,
-    ILogger<SessionManager> logger) : BackgroundService
+    ILogger<SessionManager> logger,
+    StreamarrMetrics? metrics = null) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
+
+    /// <summary>Total NNTP commands in flight across all live sessions (connections in use).</summary>
+    public int NntpConnectionsInUse => _sessions.Values.Sum(s => s.NntpUsage.InFlight);
 
     public ActiveSession CreateSession(string releaseId, string workId, ResolvedMediaFile file, string? client)
     {
@@ -82,8 +96,9 @@ public sealed class SessionManager(
             State = SessionState.Ready,
         };
 
-        var active = new ActiveSession(session, file, sessionClient, usage);
+        var active = new ActiveSession(session, file, sessionClient, usage, metrics);
         _sessions[token] = active;
+        metrics?.SessionOpened();
         logger.LogInformation(
             "Opened session {Token} for release {ReleaseId} ({FileName}, {SizeBytes} bytes, ttl {Ttl})",
             token, releaseId, file.FileName, file.SizeBytes, session.TimeToLive);
@@ -117,6 +132,7 @@ public sealed class SessionManager(
             return false;
 
         session.MarkClosed();
+        metrics?.SessionClosed();
         logger.LogInformation(
             "Closed session {Token} for release {ReleaseId} ({BytesServed} bytes served)",
             token, session.Session.ReleaseId, session.BytesServed);
@@ -139,6 +155,7 @@ public sealed class SessionManager(
                 continue;
 
             expired.MarkClosed();
+            metrics?.SessionClosed();
             removed++;
             logger.LogInformation(
                 "Expired session {Token} for release {ReleaseId} (idle past ttl)",

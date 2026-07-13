@@ -48,6 +48,38 @@ public class WorkAggregatorTests
     }
 
     [Fact]
+    public async Task DemotesReleasesKnownDeadFromTheHealthCache()
+    {
+        var tmdb = new FakeTmdbClient
+        {
+            OnSearchMovie = (_, _) => FakeTmdbClient.Movie(1, "Example Movie", 2021, runtime: 120),
+        };
+
+        // A prior resolve found the higher-scoring release dead on Usenet.
+        var healthCache = new ReleaseHealthCache(TimeSpan.FromMinutes(30));
+        healthCache.Record("dead", ReleaseHealth.Dead);
+
+        var aggregator = new WorkAggregator(tmdb, new ReleaseEvaluator(), healthCache);
+        var result = await aggregator.AggregateAsync(
+            [
+                Raw("Example.Movie.2021.2160p.BluRay.x265.TrueHD-GROUP", 20_000_000_000, "dead"),
+                Raw("Example.Movie.2021.1080p.WEB-DL.x265.DDP5.1-GROUP", 4_000_000_000, "healthy"),
+            ],
+            [], SearchContext.Any, Profile, CancellationToken.None);
+
+        var work = Assert.Single(result.Works);
+        // Even though the 2160p release would normally outrank the 1080p one, the cached
+        // dead classification rejects it and sinks it below the healthy release.
+        Assert.Equal("healthy", work.Releases[0].ReleaseId);
+        Assert.False(work.Releases[0].Rejected);
+
+        var dead = result.Releases.Single(r => r.Release.ReleaseId == "dead");
+        Assert.True(dead.Release.Rejected);
+        Assert.Equal(ReleaseHealth.Dead, dead.Release.Health);
+        Assert.Contains(dead.Assessment.Rejections, r => r.Code == RejectionCode.DeadOnUsenet);
+    }
+
+    [Fact]
     public async Task RanksAcceptedReleasesAboveRejectedOnes()
     {
         var tmdb = new FakeTmdbClient

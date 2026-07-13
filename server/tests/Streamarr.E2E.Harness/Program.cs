@@ -51,6 +51,7 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {
+    ["Serilog:MinimumLevel:Default"] = "Warning",
     ["Streamarr:ApiKey"] = "e2e-api-key",
     ["Streamarr:Admin:Username"] = "admin",
     ["Streamarr:Admin:Password"] = adminPassword,

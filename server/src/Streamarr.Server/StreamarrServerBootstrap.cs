@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
+using Serilog;
+using Serilog.Events;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Core.Profiles;
@@ -31,6 +33,17 @@ public static class StreamarrServerBootstrap
     public static WebApplicationBuilder AddStreamarrServer(this WebApplicationBuilder builder)
     {
         var services = builder.Services;
+
+        // Structured logging (BRIEF §10-M7 observability). Serilog replaces the default
+        // logger; it reads any "Serilog" config section, enriches with request context,
+        // and writes structured lines to the console. Request logging is added in
+        // UseStreamarrServer. Honors the host's existing minimum level in tests.
+        builder.Host.UseSerilog((context, loggerConfig) => loggerConfig
+            .ReadFrom.Configuration(context.Configuration)
+            .Enrich.FromLogContext()
+            .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            .WriteTo.Console(
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"));
 
         // explicit application part so controllers are found when the server is
         // composed from a test host (entry-assembly discovery misses them there)
@@ -145,6 +158,11 @@ public static class StreamarrServerBootstrap
                 disposeInner: true);
         });
 
+        // Observability (BRIEF §10-M7): process-wide metrics behind /api/v1/metrics, and
+        // the seam the indexer fan-out reports per-indexer latency into.
+        services.AddSingleton<StreamarrMetrics>();
+        services.AddSingleton<IIndexerLatencyRecorder>(sp => sp.GetRequiredService<StreamarrMetrics>());
+
         // Newznab indexer fan-out (BRIEF §6.1 module 1): config store seeded from
         // options, per-indexer rate limiting, ~60s search cache, concurrent fan-out.
         services.AddSingleton(TimeProvider.System);
@@ -183,6 +201,16 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<WorkAggregator>();
         services.AddSingleton<SearchService>();
 
+        // Remembers dead classifications so they feed back into ranking + fallback
+        // selection and survive re-searches (BRIEF §10-M7).
+        services.AddSingleton<IReleaseHealthCache>(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value;
+            return new ReleaseHealthCache(
+                TimeSpan.FromSeconds(Math.Max(0, opts.HealthCacheTtlSeconds)),
+                sp.GetRequiredService<TimeProvider>());
+        });
+
         services.AddSingleton<IReleaseStore, InMemoryReleaseStore>();
         services.AddSingleton<SessionManager>();
         services.AddHostedService(sp => sp.GetRequiredService<SessionManager>());
@@ -197,6 +225,10 @@ public static class StreamarrServerBootstrap
 
     public static WebApplication UseStreamarrServer(this WebApplication app)
     {
+        // One structured summary line per request (method, path, status, elapsed) —
+        // BRIEF §10-M7 observability. Cheap and emitted at Information.
+        app.UseSerilogRequestLogging();
+
         // Apply migrations, seed from options on first run, and overlay the persisted
         // config onto the running options — before any request or hosted service resolves
         // a config-derived singleton (BRIEF §6.3).

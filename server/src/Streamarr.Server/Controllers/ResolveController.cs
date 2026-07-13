@@ -10,7 +10,7 @@ namespace Streamarr.Server.Controllers;
 /// <summary>POST /api/v1/resolve (BRIEF §6.2).</summary>
 [ApiController]
 [Route("api/v1")]
-public class ResolveController(ResolveService resolveService, IServer server) : ControllerBase
+public class ResolveController(ResolveService resolveService, StreamarrMetrics metrics, IServer server) : ControllerBase
 {
     [HttpPost("resolve")]
     [ProducesResponseType(typeof(ResolveResponse), StatusCodes.Status200OK)]
@@ -27,9 +27,11 @@ public class ResolveController(ResolveService resolveService, IServer server) : 
             var response = await resolveService.ResolveAsync(
                 request.ReleaseId,
                 request.Client,
+                request.AutoFallback,
                 token => $"{publicBase}/api/v1/stream/{token}",
                 token => $"{localBase}/api/v1/stream/{token}",
                 ct);
+            metrics.ResolveCompleted(viaFallback: response.FallbackFromReleaseId is not null);
             return Ok(response);
         }
         catch (ReleaseNotFoundException e)

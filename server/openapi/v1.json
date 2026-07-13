@@ -916,6 +916,35 @@
         }
       }
     },
+    "/api/v1/metrics": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/config/profiles": {
       "get": {
         "tags": [
@@ -2119,6 +2148,29 @@
         "additionalProperties": false,
         "description": "Body of POST /api/v1/auth/password — admin self-service password change."
       },
+      "ConnectionMetrics": {
+        "type": "object",
+        "properties": {
+          "budget": {
+            "type": "integer",
+            "description": "The global NNTP connection budget shared across all sessions.",
+            "format": "int32"
+          },
+          "inUse": {
+            "type": "integer",
+            "description": "NNTP commands currently occupying a connection across all sessions.",
+            "format": "int32"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderConnectionMetric"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateApiKeyRequest": {
         "required": [
           "name"
@@ -2546,6 +2598,40 @@
         "additionalProperties": false,
         "description": "Per-indexer fan-out diagnostics for the debug view."
       },
+      "IndexerLatencyMetric": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failures": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastLatencyMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgLatencyMs": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "IndexerResponse": {
         "required": [
           "baseUrl",
@@ -2789,6 +2875,42 @@
         "additionalProperties": false,
         "description": "Neutral media stream shape — deliberately NOT Jellyfin's MediaStream schema\r\n(BRIEF §6.2): the plugin maps this onto Jellyfin's model, other front-ends\r\nconsume it as-is."
       },
+      "MetricsResponse": {
+        "required": [
+          "connections",
+          "resolves",
+          "searchCache",
+          "sessions"
+        ],
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "$ref": "#/components/schemas/SessionMetrics"
+          },
+          "connections": {
+            "$ref": "#/components/schemas/ConnectionMetrics"
+          },
+          "resolves": {
+            "$ref": "#/components/schemas/ResolveMetrics"
+          },
+          "searchCache": {
+            "$ref": "#/components/schemas/SearchCacheMetrics"
+          },
+          "bytesServedTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "indexers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexerLatencyMetric"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Snapshot returned by GET /api/v1/metrics (BRIEF §10-M7 observability): live sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency."
+      },
       "ParsedFieldsDto": {
         "required": [
           "mediaType"
@@ -2887,6 +3009,43 @@
         },
         "additionalProperties": false,
         "description": "The raw parser output for a release (BRIEF §7.1), surfaced for tuning."
+      },
+      "ProviderConnectionMetric": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "liveConnections": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "activeConnections": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "idleConnections": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "availableConnections": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tripped": {
+            "type": "boolean",
+            "description": "True while the provider's circuit breaker is open (failover in effect)."
+          }
+        },
+        "additionalProperties": false
       },
       "ProviderResponse": {
         "required": [
@@ -3302,6 +3461,41 @@
         "additionalProperties": false,
         "description": "A ranked release as surfaced by `/search`. The NZB URL and indexer API key are\r\nnever present here — they stay server-side (BRIEF §6.2)."
       },
+      "ResolveAttempt": {
+        "required": [
+          "releaseId",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "\"ready\" | \"degraded\" | \"dead\".",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One release the resolve pipeline attempted, with its health classification."
+      },
+      "ResolveMetrics": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "viaFallback": {
+            "type": "integer",
+            "description": "Resolves that returned a release reached via auto-fallback.",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
       "ResolveRequest": {
         "required": [
           "releaseId"
@@ -3316,6 +3510,10 @@
             "type": "string",
             "description": "Originating front-end (\"jellyfin\", \"web\", …) for session attribution.",
             "nullable": true
+          },
+          "autoFallback": {
+            "type": "boolean",
+            "description": "When true (the default), a release that resolves dead transparently retries the\r\nnext-best release of the same work, bounded, and returns the first healthy one\r\n(BRIEF §10-M7). Set false to get the raw classification of exactly this release\r\nplus a Streamarr.Server.Contracts.ResolveResponse.SuggestedFallbackReleaseId for manual retry."
           }
         },
         "additionalProperties": false,
@@ -3369,7 +3567,20 @@
           },
           "suggestedFallbackReleaseId": {
             "type": "string",
-            "description": "Next-best release of the same work, set when this one is dead.",
+            "description": "Next-best release of the same work. Set when the resolved release is dead and\r\nauto-fallback is disabled (or exhausted), so a front-end can still retry manually.",
+            "nullable": true
+          },
+          "fallbackFromReleaseId": {
+            "type": "string",
+            "description": "When this response is the result of auto-fallback, the release originally\r\nrequested (which resolved dead). Null when the requested release resolved directly.",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResolveAttempt"
+            },
+            "description": "The chain of releases the resolve pipeline tried, in order, each with its health\r\nclassification — so a front-end can surface exactly what happened (BRIEF §10-M7).",
             "nullable": true
           }
         },
@@ -3395,6 +3606,29 @@
         "additionalProperties": false,
         "description": "One line of the score breakdown (BRIEF §7.3): a rule and its point value."
       },
+      "SearchCacheMetrics": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hits": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "misses": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hitRate": {
+            "type": "number",
+            "description": "Hit / (hit + miss); 0 when no lookups have happened yet.",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "SearchResponse": {
         "required": [
           "results"
@@ -3411,6 +3645,25 @@
         },
         "additionalProperties": false,
         "description": "Response of GET /api/v1/search — the exact shape from BRIEF §6.2."
+      },
+      "SessionMetrics": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "integer",
+            "description": "Sessions currently live.",
+            "format": "int32"
+          },
+          "openedTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "closedTotal": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
       },
       "SessionResponse": {
         "required": [
@@ -3613,6 +3866,10 @@
     {
       "name": "Indexers",
       "description": "Indexer config CRUD + connectivity test (BRIEF §6.2). Secrets are write-only:\r\nGETs return a masked API key; PUT omits-to-keep. Admin session required (BRIEF §6.4)."
+    },
+    {
+      "name": "Metrics",
+      "description": "GET /api/v1/metrics (BRIEF §10-M7 observability): a JSON snapshot of sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency. Authenticated (any bearer),\r\nlike /sessions — it exposes operational, not secret, data."
     },
     {
       "name": "Profiles",

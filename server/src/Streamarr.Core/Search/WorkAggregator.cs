@@ -15,7 +15,7 @@ namespace Streamarr.Core.Search;
 /// releases into <see cref="Work"/>s. TMDB is queried once per distinct work (not per
 /// release) so a page of releases costs a handful of lookups, all cache-friendly.
 /// </summary>
-public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator)
+public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator, IReleaseHealthCache? healthCache = null)
 {
     public async Task<SearchAggregation> AggregateAsync(
         IReadOnlyList<Release> releases,
@@ -67,6 +67,13 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator)
             var groupReleases = new List<EvaluatedRelease>(group.Count());
             foreach (var parsed in group)
             {
+                // A dead classification from a prior resolve outranks the (Unknown) health a
+                // freshly re-registered release carries, so known-dead releases stay demoted
+                // and rejected across re-searches (BRIEF §10-M7: feed deadness into ranking).
+                var health = healthCache?.Get(parsed.Release.ReleaseId) is { } cached
+                    ? cached
+                    : parsed.Release.Health;
+
                 var assessment = evaluator.Evaluate(
                     ReleaseSignals.FromParsed(
                         parsed.Info,
@@ -74,7 +81,7 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator)
                         runtimeMinutes: runtime,
                         ageDays: parsed.Release.AgeDays,
                         grabs: parsed.Release.Grabs,
-                        health: parsed.Release.Health),
+                        health: health),
                     profile);
 
                 var enriched = ReleaseEvaluator.Apply(parsed.Release, assessment) with
@@ -82,6 +89,7 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator)
                     Quality = QualityOf(parsed.Info),
                     Languages = parsed.Info.Languages,
                     ReleaseGroup = parsed.Info.ReleaseGroup,
+                    Health = health,
                 };
 
                 groupReleases.Add(new EvaluatedRelease

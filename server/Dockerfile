@@ -25,9 +25,10 @@ RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
 
 # ---- 3. runtime ---------------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
-# ffmpeg supplies ffprobe, which /resolve runs against the stream (BRIEF §6.2).
+# ffmpeg supplies ffprobe, which /resolve runs against the stream (BRIEF §6.2);
+# curl backs the compose healthcheck (GET /api/v1/health).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app ./

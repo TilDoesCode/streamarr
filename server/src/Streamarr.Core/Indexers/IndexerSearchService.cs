@@ -20,7 +20,8 @@ public sealed class IndexerSearchService(
     SearchCache cache,
     IndexerSearchOptions options,
     TimeProvider? timeProvider = null,
-    ILogger<IndexerSearchService>? logger = null)
+    ILogger<IndexerSearchService>? logger = null,
+    IIndexerLatencyRecorder? latencyRecorder = null)
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ILogger _logger = logger ?? NullLogger<IndexerSearchService>.Instance;
@@ -49,6 +50,15 @@ public sealed class IndexerSearchService(
             .ToArray();
 
         var perIndexer = await Task.WhenAll(tasks);
+
+        foreach (var r in perIndexer)
+        {
+            latencyRecorder?.Record(
+                r.Outcome.IndexerId,
+                r.Outcome.IndexerName,
+                r.Outcome.Elapsed.TotalMilliseconds,
+                r.Outcome.Status == IndexerOutcomeStatus.Succeeded);
+        }
 
         var releases = Dedupe(perIndexer);
         var result = new IndexerSearchResult

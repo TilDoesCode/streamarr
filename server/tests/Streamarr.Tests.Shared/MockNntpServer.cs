@@ -33,12 +33,25 @@ public sealed class MockNntpServer : IAsyncDisposable
     public string Password { get; init; } = "pass";
     public bool RequireAuth { get; init; }
 
+    /// <summary>
+    /// When set, the provider pretends it no longer carries any article — STAT/BODY/ARTICLE
+    /// answer 430 (as an exhausted / DMCA'd / block-expired provider would). Flipping this on
+    /// mid-stream drives the multi-provider failover path (BRIEF §10-M7). Volatile so a test
+    /// thread can toggle it while the server is serving.
+    /// </summary>
+    public volatile bool RejectBodies;
+
     /// <summary>message-id (no brackets) → raw yEnc article text (CRLF lines, not dot-stuffed).</summary>
     public ConcurrentDictionary<string, string> Articles { get; } = new();
 
     public int MaxObservedConnections => _maxObservedConnections;
     public int CommandsServed => _commandsServed;
+
+    /// <summary>Article bodies this server actually delivered (BODY/ARTICLE 2xx).</summary>
+    public int BodiesServed => _bodiesServed;
+
     private int _commandsServed;
+    private int _bodiesServed;
 
     private async Task AcceptLoop()
     {
@@ -152,7 +165,7 @@ public sealed class MockNntpServer : IAsyncDisposable
     private async Task RespondStat(StreamWriter writer, string[] parts)
     {
         var id = ExtractMessageId(parts);
-        if (id != null && Articles.ContainsKey(id))
+        if (!RejectBodies && id != null && Articles.ContainsKey(id))
             await writer.WriteAsync($"223 0 <{id}>\r\n");
         else
             await writer.WriteAsync("430 No article with that message-id\r\n");
@@ -182,11 +195,13 @@ public sealed class MockNntpServer : IAsyncDisposable
         }
 
         var id = ExtractMessageId(parts);
-        if (id == null || !Articles.TryGetValue(id, out var article))
+        if (RejectBodies || id == null || !Articles.TryGetValue(id, out var article))
         {
             await writer.WriteAsync("430 No article with that message-id\r\n");
             return;
         }
+
+        Interlocked.Increment(ref _bodiesServed);
 
         if (includeHeaders)
         {
