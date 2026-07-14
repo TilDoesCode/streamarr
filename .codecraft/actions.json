@@ -1,0 +1,138 @@
+{
+  "$schema": "../../codecraft/packages/shared/actions.schema.json",
+  "actions": [
+    {
+      "id": "plugin-build",
+      "label": "Build Jellyfin Plugin",
+      "group": "build",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "plugin/Streamarr.Plugin/Streamarr.Plugin.csproj",
+        "-c",
+        "Release"
+      ],
+      "shell": true,
+      "env": {
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1"
+      }
+    },
+    {
+      "id": "stack",
+      "label": "Full Testing Stack (Jellyfin + Core Server + Web)",
+      "group": "dev",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f",
+        "docker-compose.dev.yml",
+        "--profile",
+        "web",
+        "up",
+        "--build"
+      ],
+      "shell": true,
+      "env": {
+        "PLUGIN_TFM": "net9.0",
+        "STREAMARR_ADMIN_USERNAME": "admin",
+        "STREAMARR_ADMIN_PASSWORD": "streamarr-dev",
+        "STREAMARR_API_KEY": "dev-streamarr-api-key-change-me-0123456789"
+      },
+      "appName": {
+        "streamarr": { "port": 39080, "portEnv": "STREAMARR_PORT" },
+        "jellyfin": { "port": 39096, "portEnv": "JELLYFIN_PORT" },
+        "web": { "port": 39173, "portEnv": "STREAMARR_WEB_PORT" }
+      }
+    },
+    {
+      "id": "stack-down",
+      "label": "Stop Testing Stack (remove containers)",
+      "group": "other",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f",
+        "docker-compose.dev.yml",
+        "--profile",
+        "web",
+        "down",
+        "--remove-orphans"
+      ],
+      "shell": true
+    },
+    {
+      "id": "server",
+      "label": "Core Server (native dev)",
+      "group": "dev",
+      "command": "sh",
+      "args": [
+        "-c",
+        "mkdir -p /tmp/streamarr-dev/keys && exec env Streamarr__TrustedOrigins__0=\"${CODECRAFT_URL_WEB_DEV:-}\" dotnet run --no-launch-profile --project src/Streamarr.Server/Streamarr.Server.csproj"
+      ],
+      "cwd": "./server",
+      "shell": true,
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+        "Streamarr__ApiKey": "dev-streamarr-api-key-change-me-0123456789",
+        "Streamarr__Admin__Username": "admin",
+        "Streamarr__Admin__Password": "streamarr-dev",
+        "Streamarr__ConnectionString": "Data Source=/tmp/streamarr-dev/streamarr.db",
+        "Streamarr__DataProtectionKeysPath": "/tmp/streamarr-dev/keys"
+      },
+      "appName": {
+        "server": { "port": 39190, "portEnv": "ASPNETCORE_HTTP_PORTS" }
+      }
+    },
+    {
+      "id": "web",
+      "label": "Management UI (native dev)",
+      "group": "dev",
+      "command": "sh",
+      "args": [
+        "-c",
+        "STREAMARR_SERVER_ORIGIN=\"${CODECRAFT_URL_SERVER:-http://localhost:39190}\" exec npm run dev -- --host --port \"$PORT\""
+      ],
+      "cwd": "./web",
+      "shell": true,
+      "appName": {
+        "web-dev": { "port": 39191, "portEnv": "PORT" }
+      }
+    },
+    {
+      "id": "test-server",
+      "label": "Server Tests (.NET)",
+      "group": "test",
+      "command": "dotnet",
+      "args": ["test", "server/Streamarr.sln", "-c", "Release"],
+      "shell": true,
+      "env": {
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1"
+      }
+    },
+    {
+      "id": "test-web",
+      "label": "Web Unit Tests (Vitest)",
+      "group": "test",
+      "command": "npm",
+      "args": ["test"],
+      "cwd": "./web",
+      "shell": true
+    },
+    {
+      "id": "e2e",
+      "label": "Web E2E (Playwright + real Core Server)",
+      "group": "test",
+      "command": "npm",
+      "args": ["run", "e2e"],
+      "cwd": "./web",
+      "shell": true,
+      "env": {
+        "E2E_ADMIN_PASSWORD": "streamarr-e2e"
+      },
+      "appName": {
+        "e2e": { "port": 39099, "portEnv": "E2E_PORT" }
+      }
+    }
+  ]
+}

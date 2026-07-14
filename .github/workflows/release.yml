@@ -1,0 +1,272 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build without publishing (MAJOR.MINOR.PATCH)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+
+jobs:
+  validate:
+    name: Full release validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate release version
+        run: |
+          version="${RELEASE_VERSION#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          grep -Eq "\"version\": \"$version\.0\"" plugin/Streamarr.Plugin/meta.json
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Setup Node 24
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Restore .NET dependencies
+        run: |
+          dotnet restore server/Streamarr.sln
+          dotnet restore plugin/Streamarr.Plugin.sln
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build and test server
+        run: |
+          dotnet build server/Streamarr.sln --configuration Release --no-restore
+          dotnet test server/Streamarr.sln --configuration Release --no-build
+
+      - name: Build and test Jellyfin plugin
+        run: |
+          dotnet build plugin/Streamarr.Plugin.sln --configuration Release --no-restore
+          dotnet test plugin/Streamarr.Plugin.sln --configuration Release --no-build
+
+      - name: Host-load plugin against Jellyfin 10.11.11
+        run: bash plugin/scripts/smoke-jellyfin.sh
+
+      - name: Type-check, test, and build web UI
+        working-directory: web
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Reject stale OpenAPI artifacts
+        run: |
+          server/scripts/freeze-openapi.sh
+          (cd web && npm run generate:api)
+          git diff --exit-code -- server/openapi/v1.json web/src/api/schema.d.ts
+
+      - name: Install Playwright Chromium and ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          (cd web && npx playwright install --with-deps chromium)
+
+      - name: Run browser-to-stream E2E
+        working-directory: web
+        env:
+          CI: "true"
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-playwright-report
+          path: web/playwright-report
+          if-no-files-found: ignore
+
+  container-smoke:
+    name: Production image smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Build production image
+        run: docker build --pull -f server/Dockerfile -t streamarr:release-smoke .
+
+      - name: Run read-only, non-root image
+        env:
+          STREAMARR_API_KEY: release-smoke-machine-key-0123456789abcdef
+          STREAMARR_ADMIN_PASSWORD: release-smoke-admin-password
+        run: |
+          test "$(docker image inspect streamarr:release-smoke --format '{{.Config.User}}')" = "app"
+          docker run -d --name streamarr-release-smoke -p 127.0.0.1:18080:8080 \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+            --tmpfs /app/data:rw,nosuid,nodev,uid=1654,gid=1654,mode=0700,size=64m \
+            --tmpfs /app/keys:rw,nosuid,nodev,uid=1654,gid=1654,mode=0700,size=16m \
+            -e Streamarr__ApiKey="$STREAMARR_API_KEY" \
+            -e Streamarr__Admin__Password="$STREAMARR_ADMIN_PASSWORD" \
+            streamarr:release-smoke
+          trap 'docker rm -f streamarr-release-smoke >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 45); do
+            curl -fsS http://127.0.0.1:18080/api/v1/health >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/api/v1/health
+          curl -fsS http://127.0.0.1:18080/ | grep -Fq '<div id="root">'
+          docker exec streamarr-release-smoke test -s /app/data/streamarr.db
+          docker exec streamarr-release-smoke test -d /app/keys
+
+  packages:
+    name: Plugin and home-install artifacts
+    needs: [validate, container-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build release archives
+        run: scripts/package-release.sh "${RELEASE_VERSION#v}" artifacts/release
+
+      - name: Verify checksums, archive contents, and both Compose modes
+        run: scripts/verify-release-artifacts.sh "${RELEASE_VERSION#v}" artifacts/release
+
+      - name: Attest downloadable artifacts
+        uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
+        with:
+          subject-path: |
+            artifacts/release/streamarr-jellyfin-*.zip
+            artifacts/release/streamarr-home-*.tar.gz
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: streamarr-${{ env.RELEASE_VERSION }}
+          path: artifacts/release/*
+          if-no-files-found: error
+
+  publish-image:
+    name: Publish multi-architecture image
+    if: github.event_name == 'push'
+    needs: [validate, container-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+            type=sha
+          labels: |
+            org.opencontainers.image.title=Streamarr
+            org.opencontainers.image.description=Search and stream Usenet content on demand
+
+      - name: Build and push linux/amd64 and linux/arm64
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest published image
+        uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  github-release:
+    name: Publish GitHub release
+    if: github.event_name == 'push'
+    needs: [packages, publish-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: streamarr-${{ env.RELEASE_VERSION }}
+          path: artifacts/release
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "Streamarr ${GITHUB_REF_NAME#v}"

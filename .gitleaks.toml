@@ -1,0 +1,11 @@
+title = "Streamarr Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Known non-secret TMDB masking fixture"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)server/tests/Streamarr\.Server\.Tests/Integration/ConfigApiTests\.cs$''']
+regexes = ['''tmdbApiKey\s*=\s*"tmdb-secret-123"''']

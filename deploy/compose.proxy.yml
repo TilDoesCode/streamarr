@@ -1,0 +1,7 @@
+# Optional overlay for a reverse proxy that reaches Streamarr from a non-loopback
+# address. Enable it by uncommenting COMPOSE_FILE in .env.
+services:
+  streamarr:
+    environment:
+      Streamarr__TrustedProxies__0: "${STREAMARR_TRUSTED_PROXY:?Set the proxy exact source IP in .env}"
+      Streamarr__TrustedOrigins__0: "${STREAMARR_TRUSTED_ORIGIN:?Set the browser-visible origin in .env}"

@@ -1,0 +1,84 @@
+name: streamarr
+
+services:
+  streamarr:
+    image: "${STREAMARR_IMAGE:-ghcr.io/tildoescode/streamarr:latest}"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${STREAMARR_BIND_ADDRESS:-127.0.0.1}:${STREAMARR_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Streamarr__ApiKey: "${STREAMARR_API_KEY:?Set STREAMARR_API_KEY in .env}"
+      Streamarr__Admin__Username: "${STREAMARR_ADMIN_USERNAME:-admin}"
+      Streamarr__Admin__Password: "${STREAMARR_ADMIN_PASSWORD:?Set STREAMARR_ADMIN_PASSWORD in .env}"
+      Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
+      Streamarr__DataProtectionKeysPath: /app/keys
+    volumes:
+      - streamarr-data:/app/data
+      - streamarr-keys:/app/keys
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/v1/health?deep=false"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # Optional: start this service with `docker compose --profile jellyfin up -d`.
+  # If you already run Jellyfin, install the bundled plugin there instead.
+  jellyfin-config-init:
+    profiles: ["jellyfin"]
+    image: "${JELLYFIN_IMAGE:-jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db}"
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "mkdir -p /config/plugins && chown ${JELLYFIN_UID:-1000}:${JELLYFIN_GID:-1000} /config /config/plugins"
+    volumes:
+      - jellyfin-config:/config
+
+  jellyfin:
+    profiles: ["jellyfin"]
+    image: "${JELLYFIN_IMAGE:-jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db}"
+    init: true
+    user: "${JELLYFIN_UID:-1000}:${JELLYFIN_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOME: /config
+    ports:
+      - "${JELLYFIN_BIND_ADDRESS:-127.0.0.1}:${JELLYFIN_PORT:-8096}:8096"
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - ./plugin:/config/plugins/Streamarr
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    depends_on:
+      streamarr:
+        condition: service_healthy
+      jellyfin-config-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  streamarr-data:
+  streamarr-keys:
+  jellyfin-config:
+  jellyfin-cache:
