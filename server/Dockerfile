@@ -24,7 +24,7 @@ RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
       -c Release -o /app --no-self-contained
 
 # ---- 3. runtime ---------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:77526aac4254c2b26764c2ab09700f6bdbcad2e2cb748e0d57bc01ebdced6515 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble@sha256:7644f992230d35cf230017189d4038c0ae0f7388b13f4f7ae1900a155bafb597 AS runtime
 # ffmpeg supplies ffprobe, which /resolve runs against the stream (BRIEF §6.2);
 # curl backs the compose healthcheck (GET /api/v1/health).
 RUN apt-get update \
