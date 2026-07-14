@@ -168,6 +168,7 @@ jobs:
         run: scripts/verify-release-artifacts.sh "${RELEASE_VERSION#v}" artifacts/release
 
       - name: Attest downloadable artifacts
+        if: github.event.repository.private == false
         uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
         with:
           subject-path: |
@@ -243,6 +244,7 @@ jobs:
           sbom: true
 
       - name: Attest published image
+        if: github.event.repository.private == false
         uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
         with:
           subject-name: ${{ steps.image.outputs.name }}

@@ -25,7 +25,7 @@ Choose a release version from [GitHub Releases](https://github.com/TilDoesCode/s
 then run the following on the home server (the example shows the initial release):
 
 ```bash
-VERSION=0.2.1
+VERSION=0.2.2
 mkdir -p "$HOME/streamarr" && cd "$HOME/streamarr"
 curl -fLO "https://github.com/TilDoesCode/streamarr/releases/download/v${VERSION}/streamarr-home-${VERSION}.tar.gz"
 curl -fLO "https://github.com/TilDoesCode/streamarr/releases/download/v${VERSION}/SHA256SUMS"
@@ -37,8 +37,8 @@ grep "streamarr-home-${VERSION}.tar.gz" SHA256SUMS | sha256sum --check -
 tar -xzf "streamarr-home-${VERSION}.tar.gz"
 ```
 
-The release workflow also signs build-provenance attestations. If you use GitHub CLI,
-you can additionally verify the archive with
+When the repository is public, the release workflow also signs build-provenance
+attestations. If you use GitHub CLI, you can then additionally verify the archive with
 `gh attestation verify streamarr-home-${VERSION}.tar.gz --repo TilDoesCode/streamarr`.
 
 ### 2. Create the private configuration
