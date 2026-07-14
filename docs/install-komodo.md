@@ -83,7 +83,7 @@ you set).
 
 | Variable | Default | Use it to… |
 |---|---|---|
-| `STREAMARR_IMAGE` | `…/streamarr:latest` | Pin a specific version, e.g. `ghcr.io/tildoescode/streamarr:0.2.2` |
+| `STREAMARR_IMAGE` | `…/streamarr:latest` | Pin a specific version, e.g. `ghcr.io/tildoescode/streamarr:0.3.0` |
 | `STREAMARR_BIND_ADDRESS` | `0.0.0.0` | Lock the port to one LAN address, e.g. `192.168.1.20` |
 | `STREAMARR_PORT` | `8080` | Publish on a different host port |
 

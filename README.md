@@ -30,7 +30,7 @@ Choose a release version from [GitHub Releases](https://github.com/TilDoesCode/s
 then run the following on the home server (the example shows the initial release):
 
 ```bash
-VERSION=0.2.2
+VERSION=0.3.0
 mkdir -p "$HOME/streamarr" && cd "$HOME/streamarr"
 curl -fLO "https://github.com/TilDoesCode/streamarr/releases/download/v${VERSION}/streamarr-home-${VERSION}.tar.gz"
 curl -fLO "https://github.com/TilDoesCode/streamarr/releases/download/v${VERSION}/SHA256SUMS"

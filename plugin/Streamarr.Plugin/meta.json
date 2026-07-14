@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.2.2.0",
+    "version": "0.3.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "M5 thin-slice: playback via IMediaSourceProvider, pinned-work bootstrap, playback event reporting."
+    "changelog": "Semantic TMDB search aliases, canonical metadata and artwork, and release-gated Jellyfin discovery."
 }
