@@ -1,0 +1,21 @@
+[
+  {
+    "guid": "6f8d5c7a-9b2e-4a1f-8c3d-2e5a7b9c0d11",
+    "name": "Streamarr",
+    "description": "Stream Usenet content on demand through the Streamarr Core Server. Thin adapter — no download-to-disk.",
+    "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
+    "owner": "streamarr",
+    "category": "General",
+    "imageUrl": "",
+    "versions": [
+      {
+        "version": "0.2.2.0",
+        "changelog": "M5 thin-slice: playback via IMediaSourceProvider, pinned-work bootstrap, playback event reporting.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.2.2/streamarr-jellyfin-0.2.2.zip",
+        "checksum": "cc0b4df5ae715e182184de1268141f82",
+        "timestamp": "2026-07-14T15:06:13Z"
+      }
+    ]
+  }
+]

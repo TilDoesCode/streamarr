@@ -97,7 +97,7 @@ You do **not** need to copy any files. Streamarr publishes a Jellyfin plugin cat
 2. Enter:
    - **Repository Name:** `Streamarr`
    - **Repository URL:**
-     `https://github.com/TilDoesCode/streamarr/releases/latest/download/manifest.json`
+     `https://raw.githubusercontent.com/TilDoesCode/streamarr/main/manifest.json`
 3. Save, then open **Dashboard → Plugins → Catalog**. Under it you'll find
    **Streamarr** — click it and press **Install**.
 4. **Restart Jellyfin** when it asks (in Komodo, just redeploy/restart your Jellyfin

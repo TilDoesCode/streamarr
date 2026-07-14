@@ -21,8 +21,7 @@ Each GitHub release publishes these matching artifacts:
 |---|---|
 | `ghcr.io/tildoescode/streamarr:<version>` | Multi-architecture Core Server image with the production Management UI and `ffprobe` included (`linux/amd64`, `linux/arm64`) |
 | `streamarr-home-<version>.tar.gz` | Ready-to-run production Compose file, pinned image version, environment template, and matching Jellyfin plugin |
-| `streamarr-jellyfin-<version>.zip` | Standalone plugin for an existing Jellyfin 10.11.11 server |
-| `manifest.json` | Jellyfin plugin‑catalog manifest — add its `releases/latest/download/manifest.json` URL in Jellyfin to install and auto‑update the plugin without copying files |
+| `streamarr-jellyfin-<version>.zip` | Standalone plugin for an existing Jellyfin 10.11.11 server (also installable from the plugin catalog — see below) |
 | `SHA256SUMS` | Checksums for both downloadable archives |
 
 ### 1. Download and verify a release
@@ -103,7 +102,7 @@ already mounts the bundled plugin. Complete Jellyfin's setup wizard, then open
 
 For an existing Jellyfin 10.11.11 installation, the easiest option is Jellyfin's own
 plugin catalog: in **Dashboard → Plugins → Repositories** add
-`https://github.com/TilDoesCode/streamarr/releases/latest/download/manifest.json`, then
+`https://raw.githubusercontent.com/TilDoesCode/streamarr/main/manifest.json`, then
 install **Streamarr** from **Catalog** and restart Jellyfin. It auto-updates from there.
 (Komodo users: the full walkthrough is in [docs/install-komodo.md](docs/install-komodo.md).)
 To install by hand instead, stop Jellyfin, copy every file from the bundle's `plugin/`

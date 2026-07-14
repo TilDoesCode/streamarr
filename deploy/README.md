@@ -13,7 +13,7 @@ Management UI.
 To start the included Jellyfin 10.11.11 container too, run
 `docker compose --profile jellyfin up -d`. If Jellyfin already exists, the easiest way to
 add the plugin is Jellyfin's plugin catalog: add
-`https://github.com/TilDoesCode/streamarr/releases/latest/download/manifest.json` under
+`https://raw.githubusercontent.com/TilDoesCode/streamarr/main/manifest.json` under
 **Dashboard → Plugins → Repositories**, install **Streamarr** from **Catalog**, and
 restart Jellyfin. Otherwise copy the contents of `plugin/` to
 `<jellyfin-config>/plugins/Streamarr/`, ensure Jellyfin can write that directory, and

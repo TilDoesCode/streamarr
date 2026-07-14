@@ -167,28 +167,6 @@ jobs:
       - name: Verify checksums, archive contents, and both Compose modes
         run: scripts/verify-release-artifacts.sh "${RELEASE_VERSION#v}" artifacts/release
 
-      - name: Merge older versions into the Jellyfin plugin manifest
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Pull the manifest from the previous "latest" release (if any) and
-          # append its versions so the published manifest.json lists the full
-          # history. First release: nothing to merge, keep the single version.
-          if gh release download --repo "$GITHUB_REPOSITORY" \
-               --pattern manifest.json --dir prev 2>/dev/null; then
-            jq -s '
-              .[0][0].versions[0].version as $current
-              | .[0][0].versions = (
-                  .[0][0].versions
-                  + (.[1][0].versions | map(select(.version != $current)))
-                )
-              | .[0]
-            ' artifacts/release/manifest.json prev/manifest.json > merged.json
-            mv merged.json artifacts/release/manifest.json
-            rm -rf prev
-          fi
-
       - name: Attest downloadable artifacts
         if: github.event.repository.private == false
         uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
@@ -287,12 +265,48 @@ jobs:
           name: streamarr-${{ env.RELEASE_VERSION }}
           path: artifacts/release
 
+      # Checked out with push credentials so the committed Jellyfin plugin
+      # catalog (manifest.json on the default branch) can be updated below.
+      - name: Check out default branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: main
+          path: repo
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" artifacts/release/* \
+          version="${RELEASE_VERSION#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "artifacts/release/streamarr-jellyfin-$version.zip" \
+            "artifacts/release/streamarr-home-$version.tar.gz" \
+            "artifacts/release/SHA256SUMS" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --generate-notes \
-            --title "Streamarr ${GITHUB_REF_NAME#v}"
+            --title "Streamarr $version"
+
+      # The plugin zip now exists as a release asset, so its sourceUrl resolves.
+      # Prepend this version to the committed catalog (deduping re-releases) and
+      # push it to the default branch. Jellyfin polls this file's raw URL.
+      - name: Publish plugin version to the Jellyfin manifest
+        working-directory: repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          jq -s '
+            .[1][0].versions[0].version as $new
+            | .[0][0].versions = (
+                .[1][0].versions + (.[0][0].versions | map(select(.version != $new)))
+              )
+            | .[0]
+          ' manifest.json ../artifacts/release/manifest.json > manifest.next.json
+          mv manifest.next.json manifest.json
+          if git diff --quiet -- manifest.json; then
+            echo "manifest.json already lists ${RELEASE_VERSION#v}; nothing to publish."
+          else
+            git add manifest.json
+            git commit -m "chore(release): publish ${RELEASE_VERSION#v} to the Jellyfin plugin catalog"
+            git push origin HEAD:main
+          fi
