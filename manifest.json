@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.3.0.0",
+        "changelog": "Semantic TMDB search aliases, canonical metadata and artwork, and release-gated Jellyfin discovery.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.3.0/streamarr-jellyfin-0.3.0.zip",
+        "checksum": "74b76dc499423cd1586b99285bd61b66",
+        "timestamp": "2026-07-14T19:07:10Z"
+      },
+      {
         "version": "0.2.2.0",
         "changelog": "M5 thin-slice: playback via IMediaSourceProvider, pinned-work bootstrap, playback event reporting.",
         "targetAbi": "10.11.11.0",
