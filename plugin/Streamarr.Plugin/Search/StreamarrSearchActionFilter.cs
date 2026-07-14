@@ -1,5 +1,6 @@
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
+using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -40,6 +41,7 @@ public sealed class StreamarrSearchActionFilter(
     StreamarrApiClient api,
     EphemeralLibraryService library,
     IDtoService dtoService,
+    IImageProcessor imageProcessor,
     IUserManager userManager,
     ILibraryManager libraryManager,
     ILogger<StreamarrSearchActionFilter> logger) : IAsyncActionFilter
@@ -174,7 +176,11 @@ public sealed class StreamarrSearchActionFilter(
                     continue;
                 }
 
-                injected.Add(SearchInjection.BuildHint(itemId, work));
+                injected.Add(SearchInjection.BuildHint(
+                    itemId,
+                    work,
+                    ImageTag(item, ImageType.Primary),
+                    ImageTag(item, ImageType.Backdrop)));
             }
             catch (Exception ex)
             {
@@ -201,7 +207,7 @@ public sealed class StreamarrSearchActionFilter(
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(InterceptTimeout);
-            var response = await api.SearchAsync(term, cts.Token).ConfigureAwait(false);
+            var response = await api.SearchAsync(term, constraints.CoreMediaType, cts.Token).ConfigureAwait(false);
             return response?.Results
                        .Where(w => w.Releases.Count > 0)
                        .Where(constraints.Allows)
@@ -270,6 +276,20 @@ public sealed class StreamarrSearchActionFilter(
         // the private Streamarr folder to any normal library view.
         var episode = SearchInjection.IsEpisode(work);
         return StreamarrItemVisibility.HasCompatibleLibrary(user, episode);
+    }
+
+    private string? ImageTag(BaseItem item, ImageType imageType)
+    {
+        try
+        {
+            var image = item.GetImageInfo(imageType, 0);
+            return image is null ? null : imageProcessor.GetImageCacheTag(item, image);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Could not build {ImageType} tag for ephemeral item {ItemId}", imageType, item.Id);
+            return null;
+        }
     }
 
     internal static SearchInjection.Constraints GetConstraints(HttpRequest request, bool isHintRequest)

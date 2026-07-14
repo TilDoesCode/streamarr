@@ -64,18 +64,60 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
         Assert.Equal(120, work.RuntimeMinutes);
         Assert.False(string.IsNullOrEmpty(work.PosterUrl));
 
-        Assert.Equal(4, work.Releases.Count);
-
-        // Accepted releases all rank above every rejected one.
-        var lastAccepted = work.Releases.ToList().FindLastIndex(r => !r.Rejected);
-        var firstRejected = work.Releases.ToList().FindIndex(r => r.Rejected);
-        Assert.True(lastAccepted < firstRejected);
+        Assert.Equal(2, work.Releases.Count);
+        Assert.All(work.Releases, release => Assert.False(release.Rejected));
 
         // The top release is a fully-parsed, accepted release with a score.
         var top = work.Releases[0];
         Assert.False(top.Rejected);
         Assert.True(top.Score > 0);
         Assert.Equal("1080p", top.Quality.Resolution);
+    }
+
+    [Fact]
+    public async Task Search_ResolvesSemanticAlias_AndReturnsCanonicalAvailableMovieOnly()
+    {
+        using var client = Client();
+
+        var response = await client.GetFromJsonAsync<SearchResponse>("/api/v1/search?q=Dune+2");
+
+        Assert.NotNull(response);
+        var work = Assert.Single(response!.Results);
+        Assert.Equal("tmdb-movie-693134", work.WorkId);
+        Assert.Equal("Dune: Part Two", work.Title);
+        Assert.Equal(2024, work.Year);
+        Assert.Equal(693134, work.TmdbId);
+        Assert.Equal("tt15239678", work.ImdbId);
+        Assert.Equal(167, work.RuntimeMinutes);
+        Assert.Equal("https://image.example/poster/dune-part-two.jpg", work.PosterUrl);
+        Assert.Equal("https://image.example/backdrop/dune-part-two.jpg", work.BackdropUrl);
+        Assert.Equal("Paul Atreides unites with Chani and the Fremen.", work.Overview);
+
+        var release = Assert.Single(work.Releases);
+        Assert.Equal("Dune.Part.Two.2024.1080p.WEB-DL.x265.DDP5.1-GROUP", release.Title);
+        Assert.False(release.Rejected);
+    }
+
+    [Fact]
+    public async Task Search_HidesWorkWhenEveryReleaseFailsQualityChecks_ButDebugKeepsIt()
+    {
+        using var client = Client();
+        var publicResponse = await client.GetFromJsonAsync<SearchResponse>(
+            "/api/v1/search?q=Unavailable+Movie&type=movie");
+
+        Assert.NotNull(publicResponse);
+        Assert.Empty(publicResponse!.Results);
+
+        using var admin = AdminClient();
+        var debugResponse = await admin.PostAsJsonAsync(
+            "/api/v1/debug/search",
+            new { q = "Unavailable Movie", type = "movie" });
+        debugResponse.EnsureSuccessStatusCode();
+        using var debug = JsonDocument.Parse(await debugResponse.Content.ReadAsStringAsync());
+        var debugWork = Assert.Single(debug.RootElement.GetProperty("results").EnumerateArray());
+        var releases = debugWork.GetProperty("releases").EnumerateArray().ToArray();
+        Assert.NotEmpty(releases);
+        Assert.All(releases, release => Assert.True(release.GetProperty("rejected").GetBoolean()));
     }
 
     [Fact]
@@ -233,7 +275,7 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
     /// <summary>Returns a fixed page of releases: two good, one sample, one undersized fake.</summary>
     private sealed class FakeSearchNewznabClient : INewznabClient
     {
-        private static readonly NewznabItem[] Items =
+        private static readonly NewznabItem[] ExampleItems =
         [
             Item("Example.Movie.2021.1080p.WEB-DL.x265.DDP5.1-GROUP", 5_000_000_000, "good-1080", grabs: 34),
             Item("Example.Movie.2021.2160p.BluRay.x265.HDR10-GROUP", 25_000_000_000, "good-2160", grabs: 12),
@@ -241,11 +283,31 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             Item("Example.Movie.2021.1080p.WEB-DL.x264-FAKE", 1_000_000, "fake", grabs: 0),
         ];
 
+        private static readonly NewznabItem[] DuneItems =
+        [
+            Item("Dune.Part.Two.2024.1080p.WEB-DL.x265.DDP5.1-GROUP", 7_000_000_000, "dune-good", grabs: 95),
+            Item("Dune.Part.Two.2024.1080p.WEB-DL.x264.sample-GROUP", 5_000_000_000, "dune-sample", grabs: 1),
+        ];
+
+        private static readonly NewznabItem[] UnavailableItems =
+        [
+            Item("Unavailable.Movie.2024.1080p.WEB-DL.x264.sample-GROUP", 4_000_000_000, "unavailable-sample", grabs: 1),
+            Item("Unavailable.Movie.2024.1080p.WEB-DL.x264-FAKE", 1_000_000, "unavailable-fake", grabs: 0),
+        ];
+
         public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
             => Task.FromResult(new NewznabCapabilities());
 
         public Task<NewznabSearchResponse> SearchAsync(IndexerConfig indexer, NewznabQuery query, CancellationToken cancellationToken)
-            => Task.FromResult(new NewznabSearchResponse { Items = Items });
+        {
+            var items = query.TmdbId switch
+            {
+                693134 => DuneItems,
+                900001 => UnavailableItems,
+                _ => ExampleItems,
+            };
+            return Task.FromResult(new NewznabSearchResponse { Items = items });
+        }
 
         private static NewznabItem Item(string title, long size, string guid, int grabs)
             => new()
@@ -273,11 +335,50 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             Overview = "An example work.",
         };
 
+        private static readonly TmdbMatch DunePartTwo = new()
+        {
+            MediaType = MediaType.Movie,
+            TmdbId = 693134,
+            ImdbId = "tt15239678",
+            Title = "Dune: Part Two",
+            Year = 2024,
+            RuntimeMinutes = 167,
+            PosterUrl = "https://image.example/poster/dune-part-two.jpg",
+            BackdropUrl = "https://image.example/backdrop/dune-part-two.jpg",
+            Overview = "Paul Atreides unites with Chani and the Fremen.",
+        };
+
+        private static readonly TmdbMatch UnavailableMovie = new()
+        {
+            MediaType = MediaType.Movie,
+            TmdbId = 900001,
+            ImdbId = "tt9000010",
+            Title = "Unavailable Movie",
+            Year = 2024,
+            RuntimeMinutes = 120,
+            PosterUrl = "https://image.example/poster/unavailable.jpg",
+        };
+
+        public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
+            => Task.FromResult<TmdbMatch?>(
+                query.Equals("Dune 2", StringComparison.OrdinalIgnoreCase) ? DunePartTwo : ExampleMovie);
+
         public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
-            => Task.FromResult<TmdbMatch?>(ExampleMovie);
+            => Task.FromResult<TmdbMatch?>(
+                title.Equals("Unavailable Movie", StringComparison.OrdinalIgnoreCase)
+                    ? UnavailableMovie
+                    : title.Equals("Dune 2", StringComparison.OrdinalIgnoreCase)
+                        ? DunePartTwo
+                        : ExampleMovie);
 
         public Task<TmdbMatch?> SearchTvAsync(string title, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(null);
-        public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(ExampleMovie);
+        public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
+            => Task.FromResult<TmdbMatch?>(tmdbId switch
+            {
+                693134 => DunePartTwo,
+                900001 => UnavailableMovie,
+                _ => ExampleMovie,
+            });
         public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(null);
         public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(ExampleMovie);
     }

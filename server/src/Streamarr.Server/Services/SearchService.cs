@@ -2,6 +2,7 @@ using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Core.Profiles;
 using Streamarr.Core.Search;
+using Streamarr.Core.Tmdb;
 
 namespace Streamarr.Server.Services;
 
@@ -27,15 +28,17 @@ public sealed record SearchQuery
 }
 
 /// <summary>
-/// Wires the full M2 search pipeline (BRIEF §6.2 / §7): indexer fan-out → parse →
-/// TMDB match + rank + reject → aggregate to works, and registers every resolved
-/// release (with its server-side NZB URL) in the store so <c>/resolve</c> can find it.
+/// Wires the full search pipeline (BRIEF §6.2 / §7): resolve free-text intent through
+/// TMDB → canonical indexer fan-out → parse + identity-check → rank + reject → aggregate
+/// to works, and registers every resolved release (with its server-side NZB URL) in the
+/// store so <c>/resolve</c> can find it.
 /// Both <c>/search</c> and <c>/debug/search</c> run this identical pipeline; they only
 /// differ in how much of the <see cref="SearchAggregation"/> they project to the wire.
 /// </summary>
 public sealed class SearchService(
     IndexerSearchService indexerSearch,
     WorkAggregator aggregator,
+    ITmdbClient tmdb,
     IProfileProvider profiles,
     IReleaseStore releaseStore)
 {
@@ -44,7 +47,16 @@ public sealed class SearchService(
         ArgumentNullException.ThrowIfNull(query);
 
         var context = BuildContext(query);
-        var newznabQuery = BuildNewznabQuery(query, context);
+        var semanticTarget = await ResolveSemanticTargetAsync(query, context, cancellationToken);
+        if (semanticTarget is not null)
+            context = WithSemanticTarget(context, semanticTarget);
+
+        // Once TMDB understands an alias such as "Dune 2", search the indexers with the
+        // canonical title and stable ids. The indexer still receives q= as a compatibility
+        // fallback for implementations that ignore one or both external-id parameters.
+        var newznabQuery = semanticTarget is null
+            ? BuildNewznabQuery(query, context)
+            : BuildCanonicalNewznabQuery(semanticTarget, context);
 
         var indexerResult = await indexerSearch.SearchAsync(newznabQuery, cancellationToken);
         // A draft profile (live preview) overrides the stored/default selection.
@@ -57,6 +69,11 @@ public sealed class SearchService(
             profile,
             cancellationToken);
 
+        // A semantic query names one concrete TMDB work. Never advertise unrelated rows an
+        // indexer happened to include in its page; a miss is a clean empty result.
+        if (semanticTarget is not null)
+            aggregation = KeepSemanticTarget(aggregation, semanticTarget);
+
         // Register every release (incl. rejected — a fallback may still pick one) so a
         // later /resolve can look it up. The store carries the NZB URL that never leaves
         // the server.
@@ -64,6 +81,63 @@ public sealed class SearchService(
             releaseStore.Register(evaluated.WorkId, evaluated.Release);
 
         return aggregation;
+    }
+
+    private async Task<TmdbMatch?> ResolveSemanticTargetAsync(
+        SearchQuery query,
+        SearchContext context,
+        CancellationToken cancellationToken)
+    {
+        if (context.HasIds || string.IsNullOrWhiteSpace(query.Q))
+            return null;
+
+        var term = query.Q.Trim();
+        return context.RequestedType switch
+        {
+            MediaType.Movie => await tmdb.SearchMovieAsync(term, year: null, cancellationToken),
+            MediaType.Tv => await tmdb.SearchTvAsync(term, cancellationToken),
+            _ => await tmdb.SearchAnyAsync(term, cancellationToken),
+        };
+    }
+
+    private static SearchContext WithSemanticTarget(SearchContext context, TmdbMatch target)
+        => context with
+        {
+            RequestedType = target.MediaType,
+            ImdbId = target.ImdbId,
+            TmdbId = target.TmdbId,
+            CanonicalTitle = target.Title,
+            CanonicalYear = target.Year,
+            ResolvedTarget = target,
+        };
+
+    private static NewznabQuery BuildCanonicalNewznabQuery(TmdbMatch target, SearchContext context)
+        => new()
+        {
+            Kind = target.MediaType == MediaType.Tv
+                ? NewznabSearchKind.Tv
+                : NewznabSearchKind.Movie,
+            Term = target.Title,
+            ImdbId = target.ImdbId,
+            TmdbId = target.TmdbId,
+            Season = context.Season,
+            Episode = context.Episode,
+        };
+
+    private static SearchAggregation KeepSemanticTarget(SearchAggregation aggregation, TmdbMatch target)
+    {
+        var works = aggregation.Works
+            .Where(work => work.MediaType == target.MediaType && work.TmdbId == target.TmdbId)
+            .ToArray();
+        if (works.Length == 0)
+            return SearchAggregation.Empty with { Outcomes = aggregation.Outcomes };
+
+        var workIds = works.Select(work => work.WorkId).ToHashSet(StringComparer.Ordinal);
+        return aggregation with
+        {
+            Works = works,
+            Releases = aggregation.Releases.Where(release => workIds.Contains(release.WorkId)).ToArray(),
+        };
     }
 
     private static SearchContext BuildContext(SearchQuery query) => new()

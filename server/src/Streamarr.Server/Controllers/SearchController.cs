@@ -57,7 +57,17 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
         try
         {
             var aggregation = await searchService.SearchAsync(query, cancellationToken);
-            return Ok(new SearchResponse { Results = aggregation.Works.Select(ToWorkDto).ToArray() });
+            return Ok(new SearchResponse
+            {
+                // Public discovery is an availability promise: expose only works with at least
+                // one release accepted by the selected quality profile, and never offer rejected
+                // versions for playback. /debug/search retains the complete assessment.
+                Results = aggregation.Works
+                    .Select(ToSearchWorkDto)
+                    .Where(work => work is not null)
+                    .Cast<WorkDto>()
+                    .ToArray(),
+            });
         }
         finally
         {
@@ -118,7 +128,13 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
 
     // ---- /search mapping -----------------------------------------------------------
 
-    private static WorkDto ToWorkDto(Work work) => new()
+    private static WorkDto? ToSearchWorkDto(Work work)
+    {
+        var accepted = work.Releases.Where(release => !release.Rejected).ToArray();
+        return accepted.Length == 0 ? null : ToWorkDto(work, accepted);
+    }
+
+    private static WorkDto ToWorkDto(Work work, IReadOnlyList<Release> releases) => new()
     {
         WorkId = work.WorkId,
         MediaType = MediaTypeSlug(work.MediaType),
@@ -132,7 +148,7 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
         RuntimeMinutes = work.RuntimeMinutes,
         Season = work.Season,
         Episode = work.Episode,
-        Releases = work.Releases.Select(ToReleaseDto).ToArray(),
+        Releases = releases.Select(ToReleaseDto).ToArray(),
     };
 
     private static ReleaseDto ToReleaseDto(Release release) => new()

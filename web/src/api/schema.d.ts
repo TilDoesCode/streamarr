@@ -2393,7 +2393,10 @@ export interface components {
              */
             hitRate?: number;
         };
-        /** @description Response of GET /api/v1/search — the exact shape from BRIEF §6.2. */
+        /**
+         * @description Response of GET /api/v1/search — only works with at least one accepted release;
+         *     rejected releases remain available exclusively through the debug contract.
+         */
         SearchResponse: {
             results: components["schemas"]["WorkDto"][] | null;
         };

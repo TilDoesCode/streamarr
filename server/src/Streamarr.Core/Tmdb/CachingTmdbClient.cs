@@ -21,6 +21,9 @@ public sealed class CachingTmdbClient(
         ? configured
         : TimeSpan.FromSeconds(20);
 
+    public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
+        => GetOrAddAsync($"search-any|{query.ToLowerInvariant()}", ct => inner.SearchAnyAsync(query, ct), cancellationToken);
+
     public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
         => GetOrAddAsync($"search-movie|{title.ToLowerInvariant()}|{year}", ct => inner.SearchMovieAsync(title, year, ct), cancellationToken);
 

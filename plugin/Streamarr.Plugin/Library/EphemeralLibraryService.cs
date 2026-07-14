@@ -112,7 +112,8 @@ public sealed class EphemeralLibraryService(
 
         ApplyProviderIds(item, work);
         ApplyTags(item);
-        TryApplyPoster(item, work.PosterUrl);
+        TryApplyImage(item, work.PosterUrl, ImageType.Primary);
+        TryApplyImage(item, work.BackdropUrl, ImageType.Backdrop);
 
         if (isNew)
         {
@@ -316,19 +317,19 @@ public sealed class EphemeralLibraryService(
         item.Tags = tags.ToArray();
     }
 
-    private void TryApplyPoster(BaseItem item, string? posterUrl)
+    private void TryApplyImage(BaseItem item, string? imageUrl, ImageType imageType)
     {
-        if (string.IsNullOrWhiteSpace(posterUrl))
+        if (string.IsNullOrWhiteSpace(imageUrl))
             return;
         try
         {
-            // Pass the TMDB poster through as a remote image so we never rely on
+            // Pass TMDB artwork through as remote images so we never rely on
             // Jellyfin's own metadata fetcher for our items (BRIEF §3.2).
-            item.SetImage(new ItemImageInfo { Path = posterUrl, Type = ImageType.Primary }, 0);
+            item.SetImage(new ItemImageInfo { Path = imageUrl, Type = imageType }, 0);
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Could not attach poster for {Name}", item.Name);
+            logger.LogDebug(ex, "Could not attach {ImageType} artwork for {Name}", imageType, item.Name);
         }
     }
 }

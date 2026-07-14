@@ -86,6 +86,22 @@ public class SearchInjectionTests
     }
 
     [Fact]
+    public void BuildHint_maps_materialized_artwork_tags()
+    {
+        var id = Guid.NewGuid();
+
+        var hint = SearchInjection.BuildHint(
+            id,
+            Movie("tmdb-movie-1", "Example"),
+            primaryImageTag: "primary-tag",
+            backdropImageTag: "backdrop-tag");
+
+        Assert.Equal("primary-tag", hint.PrimaryImageTag);
+        Assert.Equal("backdrop-tag", hint.BackdropImageTag);
+        Assert.Equal(id.ToString("N"), hint.BackdropImageItemId);
+    }
+
+    [Fact]
     public void BuildHint_maps_tv_work_to_episode_with_index_numbers()
     {
         var work = new WorkDto
@@ -127,6 +143,7 @@ public class SearchInjectionTests
             null);
 
         Assert.Equal(3, root.RemainingCapacity(nativeCount: 2, defaultLimit: 20));
+        Assert.Equal("movie", root.CoreMediaType);
         Assert.True(root.Allows(Movie("movie", "Movie")));
         Assert.False(root.Allows(new WorkDto { WorkId = "tv", MediaType = "tv" }));
         Assert.Equal(0, (root with { StartIndex = 1 }).RemainingCapacity(0, 20));
@@ -137,6 +154,13 @@ public class SearchInjectionTests
             .Allows(Movie("movie", "Movie")));
         Assert.False((root with { ExcludeItemTypes = new HashSet<BaseItemKind> { BaseItemKind.Movie } })
             .Allows(Movie("movie", "Movie")));
+        Assert.Equal(
+            "tv",
+            (root with { IncludeItemTypes = new HashSet<BaseItemKind> { BaseItemKind.Episode } }).CoreMediaType);
+        Assert.Null((root with
+        {
+            IncludeItemTypes = new HashSet<BaseItemKind> { BaseItemKind.Movie, BaseItemKind.Episode },
+        }).CoreMediaType);
     }
 
     [Fact]

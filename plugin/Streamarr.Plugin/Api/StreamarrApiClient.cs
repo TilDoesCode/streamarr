@@ -73,9 +73,14 @@ public sealed class StreamarrApiClient
     }
 
     public async Task<SearchResponse?> SearchAsync(string query, CancellationToken ct)
+        => await SearchAsync(query, mediaType: null, ct).ConfigureAwait(false);
+
+    public async Task<SearchResponse?> SearchAsync(string query, string? mediaType, CancellationToken ct)
     {
         var profile = Config.ProfileId;
         var url = $"/api/v1/search?q={Uri.EscapeDataString(query)}";
+        if (mediaType is "movie" or "tv")
+            url += $"&type={mediaType}";
         if (!string.IsNullOrWhiteSpace(profile))
             url += $"&profileId={Uri.EscapeDataString(profile)}";
         var response = await SendAsync<SearchResponse>(HttpMethod.Get, url, null, ct).ConfigureAwait(false);

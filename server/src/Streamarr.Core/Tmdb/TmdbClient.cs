@@ -20,6 +20,21 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
 
     private bool HasKey => !string.IsNullOrWhiteSpace(options.ApiKey);
 
+    public async Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
+    {
+        if (!HasKey || string.IsNullOrWhiteSpace(query))
+            return null;
+
+        using var doc = await GetAsync($"search/multi?query={Uri.EscapeDataString(query)}", cancellationToken);
+        var result = FirstMediaResult(doc);
+        return result switch
+        {
+            { Type: MediaType.Movie, Id: var id } => await GetMovieAsync(id, cancellationToken),
+            { Type: MediaType.Tv, Id: var id } => await GetTvAsync(id, cancellationToken),
+            _ => null,
+        };
+    }
+
     public async Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
     {
         if (!HasKey || string.IsNullOrWhiteSpace(title))
@@ -27,7 +42,7 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
 
         var query = new StringBuilder("search/movie?query=").Append(Uri.EscapeDataString(title));
         if (year is { } y)
-            query.Append("&year=").Append(y.ToString(CultureInfo.InvariantCulture));
+            query.Append("&primary_release_year=").Append(y.ToString(CultureInfo.InvariantCulture));
 
         using var doc = await GetAsync(query.ToString(), cancellationToken);
         var id = FirstResultId(doc);
@@ -196,6 +211,32 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
         return PositiveIdOrNull(GetInt(results[0], "id"));
     }
 
+    private static MediaResult? FirstMediaResult(JsonDocument? doc)
+    {
+        if (doc is null
+            || !doc.RootElement.TryGetProperty("results", out var results)
+            || results.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        // Multi-search can also contain people. Walk a bounded prefix and select the first
+        // actual work, preserving TMDB's relevance order without ever treating a person as media.
+        foreach (var result in results.EnumerateArray().Take(20))
+        {
+            var id = PositiveIdOrNull(GetInt(result, "id"));
+            var type = GetBoundedString(result, "media_type", 16);
+            if (id is null)
+                continue;
+            if (string.Equals(type, "movie", StringComparison.Ordinal))
+                return new MediaResult(MediaType.Movie, id.Value);
+            if (string.Equals(type, "tv", StringComparison.Ordinal))
+                return new MediaResult(MediaType.Tv, id.Value);
+        }
+
+        return null;
+    }
+
     private static string? ExternalImdbId(JsonElement root)
     {
         if (root.TryGetProperty("external_ids", out var ext) && ext.ValueKind == JsonValueKind.Object)
@@ -252,4 +293,6 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
     private static int? RuntimeOrNull(int? value) => value is > 0 and <= 100_000 ? value : null;
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private readonly record struct MediaResult(MediaType Type, int Id);
 }

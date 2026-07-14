@@ -181,6 +181,60 @@ public class WorkAggregatorTests
     }
 
     [Fact]
+    public async Task SemanticTarget_SelectsMatchingTitleInsteadOfLargestUnrelatedGroup()
+    {
+        var tmdb = new FakeTmdbClient
+        {
+            OnGetMovie = id => FakeTmdbClient.Movie(id, "Dune: Part Two", 2024, runtime: 167),
+            OnSearchMovie = (title, _) => title.Contains("Other", StringComparison.OrdinalIgnoreCase)
+                ? FakeTmdbClient.Movie(7, "Other Movie", 2024, runtime: 100)
+                : null,
+        };
+
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Movie,
+            TmdbId = 693134,
+            CanonicalTitle = "Dune: Part Two",
+            CanonicalYear = 2024,
+            ResolvedTarget = FakeTmdbClient.Movie(693134, "Dune: Part Two", 2024, runtime: 167),
+        };
+        var result = await Run(Aggregator(tmdb), context,
+            Raw("Other.Movie.2024.1080p.WEB-DL.x265-GROUP", 4_000_000_000, "other-a"),
+            Raw("Other.Movie.2024.720p.WEB-DL.x264-GROUP", 2_000_000_000, "other-b"),
+            Raw("Dune.2.2024.1080p.WEB-DL.x265-GROUP", 7_000_000_000, "dune"));
+
+        var dune = Assert.Single(result.Works, work => work.TmdbId == 693134);
+        Assert.Single(dune.Releases);
+        Assert.Equal("dune", dune.Releases[0].ReleaseId);
+        Assert.Equal(0, tmdb.GetMovieCalls);
+    }
+
+    [Fact]
+    public async Task SemanticTarget_DoesNotAttachIdToConflictingTitleOrYear()
+    {
+        var tmdb = new FakeTmdbClient
+        {
+            OnGetMovie = id => FakeTmdbClient.Movie(id, "Dune: Part Two", 2024, runtime: 167),
+            OnSearchMovie = (_, _) => FakeTmdbClient.Movie(7, "Other Movie", 2023, runtime: 100),
+        };
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Movie,
+            TmdbId = 693134,
+            CanonicalTitle = "Dune: Part Two",
+            CanonicalYear = 2024,
+            ResolvedTarget = FakeTmdbClient.Movie(693134, "Dune: Part Two", 2024, runtime: 167),
+        };
+
+        var result = await Run(Aggregator(tmdb), context,
+            Raw("Other.Movie.2023.1080p.WEB-DL.x265-GROUP", 4_000_000_000, "other"));
+
+        Assert.DoesNotContain(result.Works, work => work.TmdbId == 693134);
+        Assert.Equal(0, tmdb.GetMovieCalls);
+    }
+
+    [Fact]
     public async Task SeparatesDistinctMoviesIntoDifferentWorks()
     {
         var tmdb = new FakeTmdbClient

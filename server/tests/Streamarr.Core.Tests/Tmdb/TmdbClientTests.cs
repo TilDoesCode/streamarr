@@ -27,6 +27,46 @@ public class TmdbClientTests
         => new(new HttpClient(handler), new TmdbOptions { ApiKey = apiKey });
 
     [Fact]
+    public async Task SearchAny_UsesMultiSearchOrderingAndSkipsPeople()
+    {
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/search/multi", StringComparison.Ordinal))
+            {
+                return Json("""
+                    {"results":[
+                      {"id":99,"media_type":"person","name":"Someone"},
+                      {"id":693134,"media_type":"movie","title":"Dune: Part Two"}
+                    ]}
+                    """);
+            }
+
+            if (path.EndsWith("/movie/693134", StringComparison.Ordinal))
+            {
+                return Json("""
+                    {"id":693134,"title":"Dune: Part Two","release_date":"2024-02-27",
+                     "runtime":167,"poster_path":"/dune.jpg","backdrop_path":"/dune-bg.jpg",
+                     "imdb_id":"tt15239678","overview":"Paul faces a choice."}
+                    """);
+            }
+
+            return StubHttpMessageHandler.Status(HttpStatusCode.NotFound);
+        });
+
+        var match = await Client(handler).SearchAnyAsync("Dune 2", default);
+
+        Assert.NotNull(match);
+        Assert.Equal(MediaType.Movie, match!.MediaType);
+        Assert.Equal(693134, match.TmdbId);
+        Assert.Equal("Dune: Part Two", match.Title);
+        Assert.Equal(2024, match.Year);
+        Assert.Equal(167, match.RuntimeMinutes);
+        Assert.Equal("https://image.tmdb.org/t/p/w500/dune.jpg", match.PosterUrl);
+        Assert.Equal("https://image.tmdb.org/t/p/w1280/dune-bg.jpg", match.BackdropUrl);
+    }
+
+    [Fact]
     public async Task SearchMovie_ResolvesIdThenEnrichesFromDetail()
     {
         var handler = new StubHttpMessageHandler(req =>
@@ -54,6 +94,7 @@ public class TmdbClientTests
         Assert.Equal("tt1234567", match.ImdbId);
         Assert.Equal("https://image.tmdb.org/t/p/w500/poster.jpg", match.PosterUrl);
         Assert.Equal("https://image.tmdb.org/t/p/w1280/back.jpg", match.BackdropUrl);
+        Assert.Contains("primary_release_year=2021", handler.Requests[0].Query, StringComparison.Ordinal);
     }
 
     [Fact]

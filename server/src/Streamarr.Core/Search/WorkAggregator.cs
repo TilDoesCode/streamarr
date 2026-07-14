@@ -40,14 +40,22 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
             .GroupBy(p => KeyFor(p.Info, context))
             .ToArray();
 
-        // The id-based path (imdbId / tmdbId) applies only to the single largest group
-        // of the matching media type — a page for one title — so a stray mis-parse can't
-        // hijack another movie's releases with the requested id.
+        // The id-based path (imdbId / tmdbId) applies to one primary title group only.
+        // Semantic searches choose the group closest to the canonical TMDB title/year;
+        // explicit id-only calls retain the historical largest-group fallback. This keeps
+        // a stray or noisy indexer result from hijacking the requested work's identity.
         var primaryKey = context.HasIds
             ? groups
                 .Where(g => g.Key.Type == (context.RequestedType ?? MediaType.Movie))
-                .OrderByDescending(g => g.Count())
-                .Select(g => (MatchKey?)g.Key)
+                .Select(g => new
+                {
+                    Group = g,
+                    Similarity = CanonicalSimilarity(g.Key, context),
+                })
+                .Where(candidate => candidate.Similarity >= 0)
+                .OrderByDescending(candidate => candidate.Similarity)
+                .ThenByDescending(candidate => candidate.Group.Count())
+                .Select(candidate => (MatchKey?)candidate.Group.Key)
                 .FirstOrDefault()
             : null;
 
@@ -143,6 +151,9 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
 
     private async Task<TmdbMatch?> ResolveAsync(MatchKey key, SearchContext context, string title, bool usePrimaryIds, CancellationToken ct)
     {
+        if (usePrimaryIds && context.ResolvedTarget is { } target && target.MediaType == key.Type)
+            return target;
+
         if (key.Type == MediaType.Tv)
         {
             if (usePrimaryIds && context.TmdbId is { } tvId)
@@ -184,6 +195,59 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
             .Select(p => p.Info.Title)
             .FirstOrDefault(t => !string.IsNullOrWhiteSpace(t))
            ?? group.Key.TitleKey;
+
+    /// <summary>
+    /// Confidence that an indexer title group is the canonical semantic target. Explicit
+    /// id-only API calls have no canonical title and retain the historical largest-group
+    /// behavior (all groups get confidence 0). A semantic target must clear a conservative
+    /// title threshold, with a conflicting release year treated as a definite mismatch.
+    /// </summary>
+    private static double CanonicalSimilarity(MatchKey key, SearchContext context)
+    {
+        if (string.IsNullOrWhiteSpace(context.CanonicalTitle))
+            return 0;
+        if (key.Year is { } releaseYear
+            && context.CanonicalYear is { } canonicalYear
+            && releaseYear != canonicalYear)
+        {
+            return -1;
+        }
+
+        var left = SemanticTitleTokens(key.TitleKey);
+        var right = SemanticTitleTokens(context.CanonicalTitle);
+        if (left.Length == 0 || right.Length == 0)
+            return -1;
+        if (left.SequenceEqual(right, StringComparer.Ordinal))
+            return 1;
+
+        var leftSet = left.ToHashSet(StringComparer.Ordinal);
+        var rightSet = right.ToHashSet(StringComparer.Ordinal);
+        var intersection = leftSet.Count(rightSet.Contains);
+        var dice = 2d * intersection / (leftSet.Count + rightSet.Count);
+        return dice >= 0.72 ? dice : -1;
+    }
+
+    private static string[] SemanticTitleTokens(string title)
+        => NewznabQuery.NormalizeTerm(title)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(NormalizeOrdinalToken)
+            .ToArray();
+
+    private static string NormalizeOrdinalToken(string token) => token switch
+    {
+        "0" => "zero",
+        "1" or "i" => "one",
+        "2" or "ii" => "two",
+        "3" or "iii" => "three",
+        "4" or "iv" => "four",
+        "5" or "v" => "five",
+        "6" or "vi" => "six",
+        "7" or "vii" => "seven",
+        "8" or "viii" => "eight",
+        "9" or "ix" => "nine",
+        "10" or "x" => "ten",
+        _ => token,
+    };
 
     private static string WorkId(MatchKey key, TmdbMatch? match, string title)
     {

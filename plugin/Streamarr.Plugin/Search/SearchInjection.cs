@@ -34,6 +34,24 @@ public static class SearchInjection
         public bool CanInjectAtRoot
             => IsValid && StartIndex == 0 && (!ParentId.HasValue || ParentId.Value == Guid.Empty);
 
+        /// <summary>
+        /// Translate an unambiguous Jellyfin item-kind constraint to Core's neutral media type.
+        /// Mixed/global searches stay unconstrained so Core can use TMDB's mixed ordering.
+        /// </summary>
+        public string? CoreMediaType
+        {
+            get
+            {
+                if (IsMovie == true)
+                    return "movie";
+                if (IncludeItemTypes.Count == 1 && IncludeItemTypes.Contains(BaseItemKind.Movie))
+                    return "movie";
+                if (IncludeItemTypes.Count == 1 && IncludeItemTypes.Contains(BaseItemKind.Episode))
+                    return "tv";
+                return null;
+            }
+        }
+
         public int RemainingCapacity(int nativeCount, int defaultLimit)
         {
             if (!CanInjectAtRoot || !IncludeMedia)
@@ -110,19 +128,26 @@ public static class SearchInjection
     }
 
     /// <summary>Builds the search hint for a materialized ephemeral work.</summary>
-    public static SearchHint BuildHint(Guid itemId, WorkDto work) => new()
-    {
-        Id = itemId,
-        Name = work.Title,
-        MatchedTerm = work.Title,
-        ProductionYear = work.Year,
-        Type = KindFor(work),
-        MediaType = MediaType.Video,
-        IsFolder = false,
-        RunTimeTicks = RuntimeTicks(work.RuntimeMinutes),
-        IndexNumber = work.Episode,
-        ParentIndexNumber = work.Season,
-    };
+    public static SearchHint BuildHint(
+        Guid itemId,
+        WorkDto work,
+        string? primaryImageTag = null,
+        string? backdropImageTag = null) => new()
+        {
+            Id = itemId,
+            Name = work.Title,
+            MatchedTerm = work.Title,
+            ProductionYear = work.Year,
+            Type = KindFor(work),
+            MediaType = MediaType.Video,
+            IsFolder = false,
+            RunTimeTicks = RuntimeTicks(work.RuntimeMinutes),
+            IndexNumber = work.Episode,
+            ParentIndexNumber = work.Season,
+            PrimaryImageTag = primaryImageTag,
+            BackdropImageTag = backdropImageTag,
+            BackdropImageItemId = backdropImageTag is null ? null : itemId.ToString("N"),
+        };
 
     public static bool IsEpisode(WorkDto work)
         => string.Equals(work.MediaType, "tv", StringComparison.OrdinalIgnoreCase)

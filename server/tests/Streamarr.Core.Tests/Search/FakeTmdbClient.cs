@@ -10,17 +10,25 @@ namespace Streamarr.Core.Tests.Search;
 /// </summary>
 internal sealed class FakeTmdbClient : ITmdbClient
 {
+    public Func<string, TmdbMatch?> OnSearchAny { get; set; } = _ => null;
     public Func<string, int?, TmdbMatch?> OnSearchMovie { get; set; } = (_, _) => null;
     public Func<string, TmdbMatch?> OnSearchTv { get; set; } = _ => null;
     public Func<int, TmdbMatch?> OnGetMovie { get; set; } = _ => null;
     public Func<int, TmdbMatch?> OnGetTv { get; set; } = _ => null;
     public Func<string, TmdbMatch?> OnFindByImdb { get; set; } = _ => null;
 
+    public int SearchAnyCalls { get; private set; }
     public int SearchMovieCalls { get; private set; }
     public int SearchTvCalls { get; private set; }
     public int GetMovieCalls { get; private set; }
     public int GetTvCalls { get; private set; }
     public int FindByImdbCalls { get; private set; }
+
+    public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
+    {
+        SearchAnyCalls++;
+        return Task.FromResult(OnSearchAny(query));
+    }
 
     public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
     {

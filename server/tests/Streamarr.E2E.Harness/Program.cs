@@ -151,6 +151,9 @@ file sealed class CannedTmdbClient : ITmdbClient
         Overview = "A canned fixture work used by the Streamarr Playwright smoke E2E.",
     };
 
+    public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
+        => Task.FromResult<TmdbMatch?>(ExampleMovie);
+
     public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
         => Task.FromResult<TmdbMatch?>(ExampleMovie);
 

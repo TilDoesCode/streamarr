@@ -9,6 +9,13 @@ namespace Streamarr.Core.Tmdb;
 /// </summary>
 public interface ITmdbClient
 {
+    /// <summary>
+    /// Resolve an unconstrained user query to TMDB's best movie or TV match. This uses
+    /// TMDB's mixed search ordering, which is important for front-ends such as Jellyfin
+    /// whose global search does not necessarily tell Core which media kind the user meant.
+    /// </summary>
+    Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken);
+
     Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken);
 
     Task<TmdbMatch?> SearchTvAsync(string title, CancellationToken cancellationToken);

@@ -50,6 +50,28 @@ public class ApiClientSecurityTests
         await Assert.ThrowsAsync<InvalidDataException>(() => api.GetHealthAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Search_forwards_unambiguous_media_type_and_escapes_query()
+    {
+        Uri? requested = null;
+        var handler = new CallbackHandler(request =>
+        {
+            requested = request.RequestUri;
+            return Json(HttpStatusCode.OK, "{\"results\":[]}");
+        });
+        var config = new PluginConfiguration { ServerUrl = "https://core.example" };
+        var api = new StreamarrApiClient(
+            new HttpClient(handler),
+            NullLogger<StreamarrApiClient>.Instance,
+            () => config);
+
+        _ = await api.SearchAsync("Dune 2 & more", "movie", CancellationToken.None);
+
+        Assert.NotNull(requested);
+        Assert.Equal("Dune 2 & more", System.Web.HttpUtility.ParseQueryString(requested!.Query)["q"]);
+        Assert.Equal("movie", System.Web.HttpUtility.ParseQueryString(requested.Query)["type"]);
+    }
+
     private static HttpResponseMessage Json(HttpStatusCode status, string body) => new(status)
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json"),

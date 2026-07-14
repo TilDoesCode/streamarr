@@ -99,6 +99,12 @@ Query params: `q` (required unless `imdbId`/`tmdbId` given), `type`
 ranking-profile override). Returns works, each with its **ranked** releases. The NZB
 URL and indexer API keys are never present (BRIEF §6.2).
 
+Free-text queries are resolved through TMDB first, so aliases such as `Dune 2` can be
+searched at indexers using the canonical title and TMDB/IMDb ids. A public search result
+is an availability promise: rejected releases are omitted, and a work is omitted when
+none of its releases pass the selected profile's rejection checks. Use `/debug/search`
+to inspect the rejected candidates and their reasons.
+
 ```json
 {
   "results": [

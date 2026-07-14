@@ -2,7 +2,10 @@ using Streamarr.Core.Profiles;
 
 namespace Streamarr.Server.Contracts;
 
-/// <summary>Response of GET /api/v1/search — the exact shape from BRIEF §6.2.</summary>
+/// <summary>
+/// Response of GET /api/v1/search — only works with at least one accepted release;
+/// rejected releases remain available exclusively through the debug contract.
+/// </summary>
 public sealed record SearchResponse
 {
     public required IReadOnlyList<WorkDto> Results { get; init; }

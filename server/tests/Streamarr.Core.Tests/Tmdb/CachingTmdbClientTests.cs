@@ -7,8 +7,15 @@ public class CachingTmdbClientTests
 {
     private sealed class CountingTmdbClient : ITmdbClient
     {
+        public int AnySearches;
         public int MovieSearches;
         public TmdbMatch? Result;
+
+        public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
+        {
+            AnySearches++;
+            return Task.FromResult(Result);
+        }
 
         public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
         {
@@ -32,6 +39,9 @@ public class CachingTmdbClientTests
         public int Started => Volatile.Read(ref _started);
 
         public void Release() => _release.TrySetResult();
+
+        public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
+            => SearchMovieAsync(query, null, cancellationToken);
 
         public async Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
         {
@@ -80,6 +90,17 @@ public class CachingTmdbClientTests
 
         Assert.Same(first, second);
         Assert.Equal(1, inner.MovieSearches);
+    }
+
+    [Fact]
+    public async Task CachesUnconstrainedSemanticSearches()
+    {
+        var inner = new CountingTmdbClient { Result = Sample };
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(1));
+
+        Assert.Same(Sample, await caching.SearchAnyAsync("Dune 2", default));
+        Assert.Same(Sample, await caching.SearchAnyAsync("Dune 2", default));
+        Assert.Equal(1, inner.AnySearches);
     }
 
     [Fact]

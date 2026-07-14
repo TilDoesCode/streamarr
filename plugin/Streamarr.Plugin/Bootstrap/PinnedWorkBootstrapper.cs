@@ -25,7 +25,7 @@ public sealed class PinnedWorkBootstrapper(
         SearchResponse? search;
         try
         {
-            search = await api.SearchAsync(query, ct).ConfigureAwait(false);
+            search = await api.SearchAsync(query, "movie", ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
