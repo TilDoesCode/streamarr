@@ -1,5 +1,12 @@
 name: CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -7,14 +14,42 @@ on:
     branches: [main]
 
 jobs:
+  secrets:
+    name: Secret history + worktree scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # This post-v2.3.9 commit is pinned because it updates the official action to
+      # the Node 24 action runtime. The scanner binary is pinned independently.
+      - name: Install Gitleaks and scan the event commit range
+        uses: gitleaks/gitleaks-action@961680e5305a30eb575f3ddf6bb6b2e265b68f0a # master (Node 24)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_VERSION: 8.30.1
+
+      - name: Scan complete Git history and checked-out worktree
+        run: |
+          gitleaks git --redact --exit-code 1 .
+          gitleaks dir --redact --exit-code 1 .
+
   server:
     name: Server build + tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 8.0.x
 
@@ -27,20 +62,80 @@ jobs:
       - name: Test
         run: dotnet test server/Streamarr.sln --configuration Release --no-build
 
+      - name: Audit production, test, and tool dependencies
+        run: >-
+          dotnet restore server/Streamarr.sln
+          -p:NuGetAudit=true -p:NuGetAuditMode=all
+          -p:WarningsAsErrors=NU1902%3BNU1903%3BNU1904
+
+      - name: Reject deprecated direct production dependencies
+        run: |
+          set -o pipefail
+          for project in server/src/*/*.csproj; do
+            dotnet list "$project" package --deprecated --format json |
+              jq -e '[.projects[]?.frameworks[]?.topLevelPackages[]?] | length == 0'
+          done
+
+  plugin:
+    name: Jellyfin plugin build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Restore
+        run: dotnet restore plugin/Streamarr.Plugin.sln
+
+      - name: Build
+        run: dotnet build plugin/Streamarr.Plugin.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test plugin/Streamarr.Plugin.sln --configuration Release --no-build
+
+      - name: Host-load against Jellyfin 10.11.11
+        run: bash plugin/scripts/smoke-jellyfin.sh
+
+      - name: Audit production and test dependencies
+        run: >-
+          dotnet restore plugin/Streamarr.Plugin.sln
+          -p:NuGetAudit=true -p:NuGetAuditMode=all
+          -p:WarningsAsErrors=NU1902%3BNU1903%3BNU1904
+
+      - name: Reject deprecated direct production dependencies
+        run: |
+          set -o pipefail
+          dotnet list plugin/Streamarr.Plugin/Streamarr.Plugin.csproj package \
+            --deprecated --format json |
+            jq -e '[.projects[]?.frameworks[]?.topLevelPackages[]?] | length == 0'
+
   web:
     name: Web build + tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          node-version: 20
+          persist-credentials: false
+
+      - name: Setup Node 24
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
 
       - name: Install
         working-directory: web
         run: npm ci
+
+      - name: Audit dependencies
+        working-directory: web
+        run: npm audit --audit-level=moderate
 
       - name: Type-check
         working-directory: web
@@ -54,21 +149,82 @@ jobs:
         working-directory: web
         run: npm run build
 
+  container:
+    name: Hardened container build + smoke
+    runs-on: ubuntu-latest
+    env:
+      STREAMARR_API_KEY: ci-only-machine-key-0123456789abcdef
+      STREAMARR_ADMIN_PASSWORD: ci-only-admin-password
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate Compose
+        run: docker compose -f docker-compose.dev.yml config --quiet
+
+      - name: Build production image
+        run: docker build --pull -f server/Dockerfile -t streamarr:ci .
+
+      - name: Reject all critical production-image vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: streamarr:ci
+          grype-version: v0.110.0
+          fail-build: true
+          severity-cutoff: critical
+          only-fixed: false
+          output-format: table
+
+      - name: Reject fixable high/critical production-image vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: streamarr:ci
+          grype-version: v0.110.0
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+
+      - name: Verify non-root runtime and persistent paths
+        run: |
+          test "$(docker image inspect streamarr:ci --format '{{.Config.User}}')" = "app"
+          docker run -d --name streamarr-ci -p 127.0.0.1:18080:8080 \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+            --tmpfs /app/data:rw,nosuid,nodev,uid=1654,gid=1654,mode=0700,size=64m \
+            --tmpfs /app/keys:rw,nosuid,nodev,uid=1654,gid=1654,mode=0700,size=16m \
+            -e Streamarr__ApiKey="$STREAMARR_API_KEY" \
+            -e Streamarr__Admin__Password="$STREAMARR_ADMIN_PASSWORD" \
+            streamarr:ci
+          trap 'docker rm -f streamarr-ci >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/api/v1/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/api/v1/health
+          docker exec streamarr-ci test -f /app/data/streamarr.db
+          docker exec streamarr-ci test -d /app/keys
+
   e2e:
     name: Web E2E (Playwright, Jellyfin-absent smoke)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 8.0.x
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - name: Setup Node 24
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 20
+          node-version: 24
 
       # The mock NNTP fixture is a real WebM generated with ffmpeg (VP8 + Opus) so the
       # bundled Chromium can actually decode it in <video> (BRIEF §9.1.6 canary).
@@ -96,7 +252,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-report
           path: web/playwright-report
@@ -106,17 +262,19 @@ jobs:
     name: OpenAPI spec + generated client are not stale
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 8.0.x
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - name: Setup Node 24
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 20
+          node-version: 24
 
       # 1) Re-freeze the OpenAPI spec from the actual server code. If the API changed
       #    without re-freezing server/openapi/v1.json, this diff fails.

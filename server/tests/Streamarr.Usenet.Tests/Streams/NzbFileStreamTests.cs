@@ -160,4 +160,37 @@ public class NzbFileStreamTests
         var buffer = new byte[16];
         Assert.Equal(0, await stream.ReadAsync(buffer.AsMemory()));
     }
+
+    [Fact]
+    public async Task Read_IsBoundedByAdvertisedLength_AndDisposedReadThrows()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+
+        var stream = client.GetFileStream(segmentIds, 100, articleBufferSize: 0);
+        var buffer = new byte[1000];
+        Assert.Equal(100, await stream.ReadAsync(buffer));
+        Assert.Equal(100, stream.Position);
+        Assert.Equal(0, await stream.ReadAsync(buffer));
+
+        await stream.DisposeAsync();
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+            await stream.ReadAsync(buffer));
+        Assert.Throws<ObjectDisposedException>(() => stream.Seek(0, SeekOrigin.Begin));
+        Assert.Throws<ObjectDisposedException>(() => _ = stream.Position);
+    }
+
+    [Fact]
+    public async Task ZeroLengthRead_DoesNotOpenAnArticle()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+        var before = server.CommandsServed;
+
+        await using var stream = client.GetFileStream(segmentIds, FileBytes.Length, articleBufferSize: 0);
+        Assert.Equal(0, await stream.ReadAsync(Memory<byte>.Empty));
+        Assert.Equal(before, server.CommandsServed);
+    }
 }

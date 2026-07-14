@@ -13,6 +13,8 @@ namespace Streamarr.Tests.Shared;
 /// </summary>
 public sealed class MockNntpServer : IAsyncDisposable
 {
+    private const int BodyWriterBufferChars = 64 * 1024;
+
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
     private readonly List<Task> _clients = [];
@@ -40,6 +42,9 @@ public sealed class MockNntpServer : IAsyncDisposable
     /// thread can toggle it while the server is serving.
     /// </summary>
     public volatile bool RejectBodies;
+
+    /// <summary>Additional synthetic headers emitted by HEAD, for parser-bound tests.</summary>
+    public int ExtraHeadHeaders { get; init; }
 
     /// <summary>message-id (no brackets) → raw yEnc article text (CRLF lines, not dot-stuffed).</summary>
     public ConcurrentDictionary<string, string> Articles { get; } = new();
@@ -86,7 +91,14 @@ public sealed class MockNntpServer : IAsyncDisposable
             using var _ = client;
             await using var stream = client.GetStream();
             using var reader = new StreamReader(stream, Encoding.Latin1);
-            await using var writer = new StreamWriter(stream, Encoding.Latin1) { AutoFlush = true };
+            await using var writer = new StreamWriter(
+                stream,
+                Encoding.Latin1,
+                BodyWriterBufferChars,
+                leaveOpen: true)
+            {
+                AutoFlush = true,
+            };
 
             await writer.WriteAsync("200 mock-nntp ready\r\n");
 
@@ -183,6 +195,8 @@ public sealed class MockNntpServer : IAsyncDisposable
         await writer.WriteAsync($"221 0 <{id}>\r\n");
         await writer.WriteAsync($"Message-ID: <{id}>\r\n");
         await writer.WriteAsync("Subject: mock article\r\n");
+        for (var i = 0; i < ExtraHeadHeaders; i++)
+            await writer.WriteAsync($"X-Test-{i}: value\r\n");
         await writer.WriteAsync(".\r\n");
     }
 
@@ -215,6 +229,13 @@ public sealed class MockNntpServer : IAsyncDisposable
             await writer.WriteAsync($"222 0 <{id}>\r\n");
         }
 
+        // BODY payloads are normally delivered by an NNTP server in network-sized
+        // chunks. AutoFlush would instead turn every 128-character yEnc line into a
+        // separate socket flush. Under concurrent range tests that artificial packet
+        // storm can starve loopback delivery long enough to hit the client's protocol
+        // timeout. Keep the already-flushed status line incremental, then buffer the
+        // bounded article body and flush it once at the terminator.
+        writer.AutoFlush = false;
         var lines = article.Split("\r\n");
         // a trailing CRLF produces one empty trailing element — not a body line
         var lineCount = lines.Length > 0 && lines[^1].Length == 0 ? lines.Length - 1 : lines.Length;
@@ -226,6 +247,8 @@ public sealed class MockNntpServer : IAsyncDisposable
         }
 
         await writer.WriteAsync(".\r\n");
+        await writer.FlushAsync();
+        writer.AutoFlush = true;
     }
 
     private static string? ExtractMessageId(string[] parts)

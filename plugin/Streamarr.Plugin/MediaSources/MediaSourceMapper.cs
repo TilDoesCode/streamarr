@@ -17,12 +17,13 @@ public static class MediaSourceMapper
 {
     /// <summary>
     /// The pre-open "version" for a release: <c>RequiresOpening = true</c>,
-    /// <c>OpenToken = releaseId</c>, no Usenet contact yet (BRIEF §8.4).
+    /// an opaque one-use offer capability in <c>OpenToken</c>, and no Usenet contact yet
+    /// (BRIEF §8.4).
     /// </summary>
-    public static MediaSourceInfo ToUnopenedSource(ReleaseDto release) => new()
+    public static MediaSourceInfo ToUnopenedSource(ReleaseDto release, string openCapability) => new()
     {
         Id = release.ReleaseId,
-        OpenToken = release.ReleaseId,
+        OpenToken = openCapability,
         Name = FormatVersionName(release),
         Protocol = MediaProtocol.Http,
         IsRemote = true,
@@ -38,18 +39,14 @@ public static class MediaSourceMapper
 
     /// <summary>
     /// The opened source after a successful <c>/resolve</c>: a concrete HTTP path with
-    /// pre-probed streams, a low analyze duration, and the Bearer ffmpeg must send
+    /// pre-probed streams and a low analyze duration. Authentication is carried by the
+    /// session-capability URL returned by Core; no machine credential is exposed to clients
     /// (BRIEF §8.4, §11 "pre-probe media info server-side").
     /// </summary>
     public static MediaSourceInfo ToOpenedSource(
         ResolveResponse resolve,
-        string liveStreamId,
-        string apiKey)
+        string liveStreamId)
     {
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            headers["Authorization"] = "Bearer " + apiKey;
-
         return new MediaSourceInfo
         {
             Id = liveStreamId,
@@ -68,7 +65,7 @@ public static class MediaSourceMapper
             RunTimeTicks = resolve.RunTimeTicks,
             // Server already probed against the stream; keep ffmpeg's own analysis short.
             AnalyzeDurationMs = 1000,
-            RequiredHttpHeaders = headers,
+            RequiredHttpHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             MediaStreams = MapStreams(resolve.MediaStreams),
         };
     }

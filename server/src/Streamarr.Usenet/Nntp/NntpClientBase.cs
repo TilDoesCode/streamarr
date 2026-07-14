@@ -58,7 +58,19 @@ public abstract class NntpClientBase : INntpClient
     {
         if (file.Segments.Count == 0) return 0;
         var headers = await GetYencHeadersAsync(file.Segments[^1].MessageId, ct).ConfigureAwait(false);
-        return headers.PartOffset + headers.PartSize;
+        long size;
+        try
+        {
+            size = checked(headers.PartOffset + headers.PartSize);
+        }
+        catch (OverflowException e)
+        {
+            throw new InvalidDataException("The yEnc file size overflowed its valid range.", e);
+        }
+
+        if (size is < 1 or > YencHeader.MaxFileSizeBytes || headers.FileSize != size)
+            throw new InvalidDataException("The yEnc last-part range does not match its declared file size.");
+        return size;
     }
 
     public virtual async Task<NzbFileStream> GetFileStreamAsync(

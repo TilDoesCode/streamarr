@@ -25,13 +25,32 @@ public sealed class StreamarrOptions
 
     /// <summary>
     /// First-run admin bootstrap (BRIEF §6.4). Username defaults to "admin"; the password
-    /// is taken from here or the STREAMARR_ADMIN_PASSWORD env var, else a random one is
-    /// generated and logged once. Only used when the users table is empty.
+    /// is taken from here or the STREAMARR_ADMIN_PASSWORD env var. Development generates and
+    /// logs a random fallback; other environments fail fast. Only used when the users table is empty.
     /// </summary>
     public AdminBootstrapOptions Admin { get; set; } = new();
 
     /// <summary>Lifetime of an admin session JWT issued by <c>POST /api/v1/auth/login</c>.</summary>
     public int AdminSessionTtlSeconds { get; set; } = 3600;
+
+    /// <summary>Per-client fixed-window limit for anonymous login attempts.</summary>
+    public int LoginAttemptsPerMinute { get; set; } = 5;
+
+    /// <summary>
+    /// Exact reverse-proxy IP addresses permitted to supply forwarded client and
+    /// protocol headers. Loopback proxies remain trusted by the framework defaults.
+    /// </summary>
+    public List<string> TrustedProxies { get; set; } = [];
+
+    /// <summary>
+    /// Additional absolute origins (<c>scheme://host[:port]</c>) accepted by the CSRF
+    /// same-origin check for cookie-authenticated unsafe requests. Needed when the
+    /// Management UI is served from a different public URL than the Core Server sees —
+    /// e.g. behind a TLS-terminating tunnel or Codecraft's forwarded per-app URLs, where
+    /// the browser's Origin can never match the origin Kestrel reconstructs locally.
+    /// Empty by default; blank entries are ignored (unset via env injection).
+    /// </summary>
+    public List<string> TrustedOrigins { get; set; } = [];
 
     /// <summary>
     /// Directory the Data Protection key ring (secret encryption) persists to; empty
@@ -45,6 +64,18 @@ public sealed class StreamarrOptions
     public int SessionTtlSeconds { get; set; } = 3600;
 
     public int SessionSweepIntervalSeconds { get; set; } = 30;
+
+    /// <summary>Maximum number of simultaneously live capability sessions.</summary>
+    public int MaxSessions { get; set; } = 64;
+
+    /// <summary>Maximum number of concurrently open HTTP stream bodies.</summary>
+    public int MaxConcurrentStreams { get; set; } = 128;
+
+    /// <summary>Maximum number of full NZB/health/materialization resolve pipelines in flight.</summary>
+    public int MaxConcurrentResolves { get; set; } = 4;
+
+    /// <summary>Maximum number of concurrent indexer fan-out searches.</summary>
+    public int MaxConcurrentSearches { get; set; } = 4;
 
     /// <summary>
     /// Maximum number of automatic fallback hops when a release resolves dead
@@ -66,6 +97,35 @@ public sealed class StreamarrOptions
 
     public int FfprobeTimeoutSeconds { get; set; } = 60;
 
+    /// <summary>Maximum number of ffprobe child processes running at once.</summary>
+    public int MaxConcurrentFfprobe { get; set; } = 2;
+
+    /// <summary>Maximum downloaded NZB size before parsing.</summary>
+    public int MaxNzbBytes { get; set; } = 64 * 1024 * 1024;
+
+    public int MaxNzbFiles { get; set; } = 10_000;
+    public int MaxNzbSegments { get; set; } = 1_000_000;
+
+    /// <summary>Maximum decoded size of one materialized media file.</summary>
+    public long MaxMediaBytes { get; set; } = 16L * 1024 * 1024 * 1024 * 1024;
+
+    /// <summary>
+    /// Explicit test/development escape hatch for local NZB paths. Disabled by default;
+    /// production indexer results must resolve to HTTP(S) on their configured origin.
+    /// </summary>
+    public bool AllowLocalNzbFiles { get; set; }
+
+    public int SearchCacheMaxEntries { get; set; } = 1_000;
+    public int HealthCacheMaxEntries { get; set; } = 10_000;
+    public int ReleaseStoreMaxEntries { get; set; } = 10_000;
+    public int TmdbCacheMaxEntries { get; set; } = 5_000;
+
+    /// <summary>Maximum retained playback-event rows; oldest rows are pruned on write.</summary>
+    public int MaxWatchEvents { get; set; } = 10_000;
+
+    /// <summary>Lifetime of a shared deep dependency-health snapshot.</summary>
+    public int DeepHealthCacheSeconds { get; set; } = 30;
+
     /// <summary>Priority-ordered provider list (DECISIONS.md #6: multi-provider from M1).</summary>
     public List<UsenetProviderOptions> Providers { get; set; } = [];
 
@@ -86,7 +146,7 @@ public sealed class AdminBootstrapOptions
 {
     public string Username { get; set; } = "admin";
 
-    /// <summary>Plaintext bootstrap password; empty means "generate and log once".</summary>
+    /// <summary>Plaintext bootstrap password; empty is permitted only in Development.</summary>
     public string Password { get; set; } = string.Empty;
 }
 

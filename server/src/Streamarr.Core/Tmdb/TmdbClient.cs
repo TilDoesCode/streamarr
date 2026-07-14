@@ -46,7 +46,7 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
 
     public async Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
     {
-        if (!HasKey)
+        if (!HasKey || tmdbId <= 0)
             return null;
 
         using var doc = await GetAsync($"movie/{tmdbId}", cancellationToken);
@@ -58,19 +58,20 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
         {
             MediaType = MediaType.Movie,
             TmdbId = tmdbId,
-            ImdbId = NullIfEmpty(GetString(root, "imdb_id")),
-            Title = GetString(root, "title") ?? GetString(root, "original_title") ?? $"Movie {tmdbId}",
-            Year = YearOf(GetString(root, "release_date")),
-            Overview = NullIfEmpty(GetString(root, "overview")),
-            PosterUrl = Image(GetString(root, "poster_path"), options.PosterSize),
-            BackdropUrl = Image(GetString(root, "backdrop_path"), options.BackdropSize),
-            RuntimeMinutes = PositiveOrNull(GetInt(root, "runtime")),
+            ImdbId = NullIfEmpty(GetBoundedString(root, "imdb_id", 32)),
+            Title = GetBoundedString(root, "title", 512) ??
+                    GetBoundedString(root, "original_title", 512) ?? $"Movie {tmdbId}",
+            Year = YearOf(GetBoundedString(root, "release_date", 32)),
+            Overview = NullIfEmpty(GetBoundedString(root, "overview", 8_192)),
+            PosterUrl = Image(GetBoundedString(root, "poster_path", 1_024), options.PosterSize),
+            BackdropUrl = Image(GetBoundedString(root, "backdrop_path", 1_024), options.BackdropSize),
+            RuntimeMinutes = RuntimeOrNull(GetInt(root, "runtime")),
         };
     }
 
     public async Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken)
     {
-        if (!HasKey)
+        if (!HasKey || tmdbId <= 0)
             return null;
 
         using var doc = await GetAsync($"tv/{tmdbId}?append_to_response=external_ids", cancellationToken);
@@ -83,11 +84,12 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
             MediaType = MediaType.Tv,
             TmdbId = tmdbId,
             ImdbId = ExternalImdbId(root),
-            Title = GetString(root, "name") ?? GetString(root, "original_name") ?? $"Series {tmdbId}",
-            Year = YearOf(GetString(root, "first_air_date")),
-            Overview = NullIfEmpty(GetString(root, "overview")),
-            PosterUrl = Image(GetString(root, "poster_path"), options.PosterSize),
-            BackdropUrl = Image(GetString(root, "backdrop_path"), options.BackdropSize),
+            Title = GetBoundedString(root, "name", 512) ??
+                    GetBoundedString(root, "original_name", 512) ?? $"Series {tmdbId}",
+            Year = YearOf(GetBoundedString(root, "first_air_date", 32)),
+            Overview = NullIfEmpty(GetBoundedString(root, "overview", 8_192)),
+            PosterUrl = Image(GetBoundedString(root, "poster_path", 1_024), options.PosterSize),
+            BackdropUrl = Image(GetBoundedString(root, "backdrop_path", 1_024), options.BackdropSize),
             RuntimeMinutes = FirstEpisodeRuntime(root),
         };
     }
@@ -105,13 +107,13 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
         var root = doc.RootElement;
         if (root.TryGetProperty("movie_results", out var movies) && movies.ValueKind == JsonValueKind.Array && movies.GetArrayLength() > 0)
         {
-            var tmdbId = GetInt(movies[0], "id");
+            var tmdbId = PositiveIdOrNull(GetInt(movies[0], "id"));
             return tmdbId is { } m ? await GetMovieAsync(m, cancellationToken) : null;
         }
 
         if (root.TryGetProperty("tv_results", out var shows) && shows.ValueKind == JsonValueKind.Array && shows.GetArrayLength() > 0)
         {
-            var tmdbId = GetInt(shows[0], "id");
+            var tmdbId = PositiveIdOrNull(GetInt(shows[0], "id"));
             return tmdbId is { } t ? await GetTvAsync(t, cancellationToken) : null;
         }
 
@@ -121,17 +123,45 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
     private async Task<JsonDocument?> GetAsync(string relativeUrl, CancellationToken cancellationToken)
     {
         var url = BuildUrl(relativeUrl);
+        var route = relativeUrl.Split('?', 2)[0];
         try
         {
             using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("TMDB {Url} returned HTTP {Status}", relativeUrl, (int)response.StatusCode);
+                _logger.LogDebug("TMDB {Route} returned HTTP {Status}", route, (int)response.StatusCode);
+                return null;
+            }
+
+            if (response.Content.Headers.ContentLength is { } length && length > options.MaxResponseBytes)
+            {
+                _logger.LogWarning("TMDB {Route} response exceeded the configured size limit", route);
                 return null;
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            await using var bounded = new MemoryStream(Math.Min(options.MaxResponseBytes, 64 * 1024));
+            var buffer = new byte[64 * 1024];
+            var total = 0;
+            while (true)
+            {
+                var remaining = options.MaxResponseBytes - total;
+                var read = await stream.ReadAsync(
+                    buffer.AsMemory(0, Math.Min(buffer.Length, remaining + 1)),
+                    cancellationToken);
+                if (read == 0)
+                    break;
+                total += read;
+                if (total > options.MaxResponseBytes)
+                {
+                    _logger.LogWarning("TMDB {Route} response exceeded the configured size limit", route);
+                    return null;
+                }
+                await bounded.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            }
+
+            bounded.Position = 0;
+            return await JsonDocument.ParseAsync(bounded, cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -139,7 +169,9 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or IOException or OperationCanceledException)
         {
-            _logger.LogWarning(e, "TMDB request {Url} failed: {Message}", relativeUrl, e.Message);
+            // Do not attach the HttpRequestException: some handlers include the full URI, which
+            // carries the TMDB API key in its query string.
+            _logger.LogWarning("TMDB request {Route} failed ({ErrorType})", route, e.GetType().Name);
             return null;
         }
     }
@@ -161,13 +193,13 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
             return null;
         if (!doc.RootElement.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array || results.GetArrayLength() == 0)
             return null;
-        return GetInt(results[0], "id");
+        return PositiveIdOrNull(GetInt(results[0], "id"));
     }
 
     private static string? ExternalImdbId(JsonElement root)
     {
         if (root.TryGetProperty("external_ids", out var ext) && ext.ValueKind == JsonValueKind.Object)
-            return NullIfEmpty(GetString(ext, "imdb_id"));
+            return NullIfEmpty(GetBoundedString(ext, "imdb_id", 32));
         return null;
     }
 
@@ -175,9 +207,10 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
     {
         if (root.TryGetProperty("episode_run_time", out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
-            foreach (var el in arr.EnumerateArray())
+            foreach (var el in arr.EnumerateArray().Take(100))
             {
-                if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var minutes) && minutes > 0)
+                if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var minutes) &&
+                    minutes is > 0 and <= 100_000)
                     return minutes;
             }
         }
@@ -186,24 +219,37 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
     }
 
     private string? Image(string? path, string size)
-        => string.IsNullOrWhiteSpace(path)
+        => string.IsNullOrWhiteSpace(path) || !path.StartsWith("/", StringComparison.Ordinal)
             ? null
             : $"{options.ImageBaseUrl.TrimEnd('/')}/{size}{path}";
 
     private static int? YearOf(string? date)
-        => date is { Length: >= 4 } && int.TryParse(date.AsSpan(0, 4), out var year) ? year : null;
+        => date is { Length: >= 4 } && int.TryParse(date.AsSpan(0, 4), out var year) &&
+           year is >= 1800 and <= 3000
+            ? year
+            : null;
 
     private static string? GetString(JsonElement element, string name)
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
 
+    private static string? GetBoundedString(JsonElement element, string name, int maxChars)
+    {
+        var value = GetString(element, name);
+        return value is { Length: > 0 } && value.Length <= maxChars && !value.Any(char.IsControl)
+            ? value
+            : null;
+    }
+
     private static int? GetInt(JsonElement element, string name)
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var i)
             ? i
             : null;
 
-    private static int? PositiveOrNull(int? value) => value is > 0 ? value : null;
+    private static int? PositiveIdOrNull(int? value) => value is > 0 ? value : null;
+
+    private static int? RuntimeOrNull(int? value) => value is > 0 and <= 100_000 ? value : null;
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }

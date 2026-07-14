@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { setSession } from "@/api/token";
@@ -15,6 +15,14 @@ const indexer = {
   priority: 0,
 };
 
+const backupIndexer = {
+  ...indexer,
+  id: "ix2",
+  name: "DrunkenSlug",
+  baseUrl: "https://api.drunkenslug.com",
+  priority: 1,
+};
+
 const testResult = {
   success: true,
   latencyMs: 123,
@@ -26,17 +34,23 @@ const testResult = {
 };
 
 let putBodies: Array<Record<string, unknown>> = [];
+let orderBodies: Array<Record<string, unknown>> = [];
 
 function installFetch() {
   putBodies = [];
+  orderBodies = [];
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     if (url.endsWith("/config/indexers") && method === "GET") {
-      return jsonResponse(200, [indexer]);
+      return jsonResponse(200, [indexer, backupIndexer]);
     }
     if (url.includes("/config/indexers/ix1/test") && method === "POST") {
       return jsonResponse(200, testResult);
+    }
+    if (url.endsWith("/config/indexers/order") && method === "PUT") {
+      orderBodies.push(init?.body ? JSON.parse(init.body as string) : {});
+      return jsonResponse(204, {});
     }
     if (url.includes("/config/indexers/ix1") && method === "PUT") {
       putBodies.push(init?.body ? JSON.parse(init.body as string) : {});
@@ -60,7 +74,7 @@ function jsonResponse(status: number, body: unknown): Promise<Response> {
 
 describe("IndexersPage", () => {
   beforeEach(() => {
-    setSession({ token: "t", username: "admin", role: "admin", expiresAt: future() });
+    setSession({ username: "admin", role: "admin", expiresAt: future() });
     installFetch();
   });
   afterEach(() => vi.restoreAllMocks());
@@ -75,7 +89,8 @@ describe("IndexersPage", () => {
     renderWithProviders(<IndexersPage />);
     await screen.findByText("NZBGeek");
 
-    await user.click(screen.getByRole("button", { name: /test/i }));
+    const row = screen.getByText("NZBGeek").closest("li")!;
+    await user.click(within(row).getByRole("button", { name: /test/i }));
 
     expect(await screen.findByText(/latency 123 ms/i)).toBeInTheDocument();
     expect(screen.getByText(/7 categories/i)).toBeInTheDocument();
@@ -92,6 +107,33 @@ describe("IndexersPage", () => {
     expect(putBodies[0].enabled).toBe(false);
     // Omit-to-keep: no plaintext key is sent when just toggling.
     expect("apiKey" in putBodies[0]).toBe(false);
+  });
+
+  it("adds an allowed download host through the edit form", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<IndexersPage />);
+    await screen.findByText("NZBGeek");
+
+    const row = screen.getByText("NZBGeek").closest("li")!;
+    await user.click(within(row).getByRole("button", { name: /edit nzbgeek/i }));
+
+    await user.click(await screen.findByRole("button", { name: /add host/i }));
+    await user.type(screen.getByLabelText(/allowed download host 1/i), "dl.nzbgeek.info");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(putBodies).toHaveLength(1));
+    expect(putBodies[0].allowedDownloadHosts).toEqual(["dl.nzbgeek.info"]);
+  });
+
+  it("reorders with one atomic order request", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<IndexersPage />);
+    await screen.findByText("NZBGeek");
+
+    await user.click(screen.getByRole("button", { name: /move nzbgeek down/i }));
+
+    await waitFor(() => expect(orderBodies).toEqual([{ ids: ["ix2", "ix1"] }]));
+    expect(putBodies).toHaveLength(0);
   });
 });
 

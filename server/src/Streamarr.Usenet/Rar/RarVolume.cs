@@ -55,6 +55,12 @@ public sealed record RarVolume
 
 public static partial class RarVolumeReader
 {
+    private const int MaxHeadersPerVolume = 10_000;
+    private const int MaxStoredSlicesPerVolume = 10_000;
+    private const long MaxServiceDataBytes = 16L * 1024 * 1024;
+    private const int MaxArchivePathChars = 4096;
+    private const int MaxPartNumber = 1_000_000;
+
     /// <summary>
     /// Walks the RAR headers of one volume (RAR4 or RAR5) on a seekable stream
     /// without reading file data, and maps every stored file's raw byte range.
@@ -70,19 +76,33 @@ public static partial class RarVolumeReader
     {
         var headers = await Task.Run(() => ReadHeaders(stream, ct), ct).ConfigureAwait(false);
 
-        var slices = headers
-            .Where(x => x.HeaderType == HeaderType.File)
-            .Select(x => new RarStoredSlice
+        var slices = new List<RarStoredSlice>();
+        foreach (var header in headers.Where(x => x.HeaderType == HeaderType.File))
+        {
+            if (slices.Count >= MaxStoredSlicesPerVolume)
+                throw new InvalidDataException("RAR volume contains too many stored file slices.");
+
+            var path = header.GetFileName();
+            var dataStart = header.GetDataStartPosition();
+            var dataSize = header.GetAdditionalDataSize();
+            var uncompressedSize = header.GetUncompressedSize();
+            if (string.IsNullOrEmpty(path) || path.Length > MaxArchivePathChars || path.Any(char.IsControl))
+                throw new InvalidDataException("RAR volume contains an invalid file path.");
+            if (dataStart < 0 || dataSize < 0 || uncompressedSize < 0 ||
+                stream.CanSeek && (dataStart > stream.Length || dataSize > stream.Length - dataStart))
             {
-                PathWithinArchive = x.GetFileName(),
-                ByteRangeWithinPart = LongRange.FromStartAndSize(
-                    x.GetDataStartPosition(),
-                    x.GetAdditionalDataSize()),
-                FileUncompressedSize = x.GetUncompressedSize(),
-                IsSplitBefore = x.GetIsSplitBefore(),
-                IsSplitAfter = x.GetIsSplitAfter(),
-            })
-            .ToList();
+                throw new InvalidDataException("RAR volume contains an invalid stored-file byte range.");
+            }
+
+            slices.Add(new RarStoredSlice
+            {
+                PathWithinArchive = path,
+                ByteRangeWithinPart = LongRange.FromStartAndSize(dataStart, dataSize),
+                FileUncompressedSize = uncompressedSize,
+                IsSplitBefore = header.GetIsSplitBefore(),
+                IsSplitAfter = header.GetIsSplitAfter(),
+            });
+        }
 
         return new RarVolume
         {
@@ -100,9 +120,13 @@ public static partial class RarVolumeReader
         var readerOptions = new ReaderOptions();
         var headerFactory = new RarHeaderFactory(StreamingMode.Seekable, readerOptions);
         var headers = new List<IRarHeader>();
+        var headerCount = 0;
         foreach (var header in headerFactory.ReadHeaders(stream))
         {
             ct.ThrowIfCancellationRequested();
+            headerCount++;
+            if (headerCount > MaxHeadersPerVolume)
+                throw new InvalidDataException("RAR volume contains too many headers.");
 
             // keep archive headers (they carry the volume number)
             if (header.HeaderType is HeaderType.Archive or HeaderType.EndArchive)
@@ -116,8 +140,14 @@ public static partial class RarVolumeReader
             {
                 if (header.GetFileName() == "CMT")
                 {
-                    var buffer = new byte[header.GetCompressedSize()];
-                    _ = stream.Read(buffer, 0, buffer.Length);
+                    var size = header.GetCompressedSize();
+                    if (size < 0 || size > MaxServiceDataBytes || !stream.CanSeek ||
+                        stream.Position > stream.Length || size > stream.Length - stream.Position)
+                    {
+                        throw new InvalidDataException("RAR comment data has an invalid or excessive size.");
+                    }
+
+                    stream.Seek(size, SeekOrigin.Current);
                 }
 
                 continue;
@@ -159,19 +189,22 @@ public static partial class RarVolumeReader
 
     public static int? GetPartNumberFromFilename(string filename)
     {
+        if (string.IsNullOrEmpty(filename) || filename.Length > MaxArchivePathChars)
+            return null;
+
         // handle the `.partXXX.rar` format
         var partMatch = PartNumberRegex().Match(filename);
-        if (partMatch.Success)
-            return int.Parse(partMatch.Groups[1].Value);
+        if (partMatch.Success && int.TryParse(partMatch.Groups[1].Value, out var part) && part <= MaxPartNumber)
+            return part;
 
         // handle the `.rXXX` format
         var rMatch = RNumberRegex().Match(filename);
-        if (rMatch.Success)
-            return int.Parse(rMatch.Groups[1].Value);
+        if (rMatch.Success && int.TryParse(rMatch.Groups[1].Value, out var rPart) && rPart <= MaxPartNumber)
+            return rPart;
 
         // handle the `.rar` format.
         if (filename.EndsWith(".rar", StringComparison.OrdinalIgnoreCase))
-            return -1;
+            return filename.Contains(".part", StringComparison.OrdinalIgnoreCase) ? null : -1;
 
         //  could not determine from filename
         return null;
@@ -185,10 +218,10 @@ public static partial class RarVolumeReader
         return sansExtension;
     }
 
-    [GeneratedRegex(@"\.part(\d+)\.rar$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\.part(\d{1,10})\.rar$", RegexOptions.IgnoreCase)]
     private static partial Regex PartNumberRegex();
 
-    [GeneratedRegex(@"\.r(\d+)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\.r(\d{1,10})$", RegexOptions.IgnoreCase)]
     private static partial Regex RNumberRegex();
 
     [GeneratedRegex(@"\.part\d+$", RegexOptions.IgnoreCase)]

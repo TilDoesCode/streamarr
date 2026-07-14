@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Loader2,
   PlayCircle,
+  Plus,
   Search as SearchIcon,
   ArrowDownUp,
 } from "lucide-react";
@@ -16,14 +17,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { HealthBadge, ResolveOutcome } from "@/components/resolve-outcome";
-import { useDebugSearch, useResolve } from "@/api/queries";
+import { useAllowIndexerDownloadHost, useDebugSearch, useResolve } from "@/api/queries";
 import type {
   DebugReleaseDto,
   DebugWorkDto,
   ParsedFieldsDto,
   ScoreLineDto,
 } from "@/api/types";
-import { errorMessage } from "@/api/client";
+import { ApiError, errorMessage } from "@/api/client";
 import { cn, formatBytes } from "@/lib/utils";
 
 interface Row {
@@ -125,6 +126,7 @@ export function SearchPage() {
               <Input
                 aria-label="Query"
                 placeholder="e.g. Dune Part Two 2024"
+                maxLength={256}
                 value={form.q}
                 onChange={set("q")}
                 className="flex-1"
@@ -151,7 +153,7 @@ export function SearchPage() {
             <div className="grid gap-3 sm:grid-cols-4">
               <Adv label="Season" value={form.season} onChange={set("season")} type="number" placeholder="1" />
               <Adv label="Episode" value={form.episode} onChange={set("episode")} type="number" placeholder="2" />
-              <Adv label="IMDb ID" value={form.imdbId} onChange={set("imdbId")} placeholder="tt1234567" />
+              <Adv label="IMDb ID" value={form.imdbId} onChange={set("imdbId")} maxLength={32} placeholder="tt1234567" />
               <Adv label="TMDB ID" value={form.tmdbId} onChange={set("tmdbId")} type="number" placeholder="12345" />
             </div>
           </form>
@@ -200,7 +202,7 @@ export function SearchPage() {
               />
               Show rejected
             </label>
-            <div className="flex items-center gap-1">
+            <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto">
               <ArrowDownUp className="size-4 text-muted-foreground" />
               {SORTS.map((s) => (
                 <Button
@@ -221,7 +223,7 @@ export function SearchPage() {
                 </Button>
               ))}
             </div>
-            <span className="ml-auto text-sm text-muted-foreground">
+            <span className="w-full text-sm text-muted-foreground sm:ml-auto sm:w-auto">
               {rows.length} shown · {total} releases · {rejected} rejected
             </span>
           </div>
@@ -234,10 +236,18 @@ export function SearchPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-sm">
+            <div
+              className="overflow-x-auto rounded-lg border"
+              role="region"
+              aria-label="Search results"
+              tabIndex={0}
+            >
+              <table className="min-w-[50rem] w-full text-sm">
                 <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
+                    <th className="sticky left-0 bg-muted px-2 py-2">
+                      <span className="sr-only">Actions</span>
+                    </th>
                     <th className="w-8" />
                     <th className="px-2 py-2 text-left font-medium">Release</th>
                     <th className="px-2 py-2 text-left font-medium">Indexer</th>
@@ -245,7 +255,6 @@ export function SearchPage() {
                     <th className="px-2 py-2 text-right font-medium">Age</th>
                     <th className="px-2 py-2 text-right font-medium">Grabs</th>
                     <th className="px-2 py-2 text-right font-medium">Score</th>
-                    <th className="px-2 py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -277,11 +286,31 @@ function Adv({
 function ReleaseRow({ work, release }: { work: DebugWorkDto; release: DebugReleaseDto }) {
   const [open, setOpen] = useState(false);
   const resolve = useResolve();
+  const allowHost = useAllowIndexerDownloadHost();
+
+  // The server rejects a download whose host isn't the indexer's origin with a structured
+  // nzb_host_not_allowed error carrying the offending host + indexer, so we can offer a
+  // one-click fix (BRIEF §6.3) instead of sending the operator to the indexer settings.
+  const hostBlock =
+    resolve.error instanceof ApiError && resolve.error.code === "nzb_host_not_allowed"
+      ? resolve.error.envelope?.error
+      : undefined;
 
   async function doResolve() {
     setOpen(true);
     try {
       await resolve.mutateAsync({ releaseId: release.releaseId!, client: "web" });
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  }
+
+  async function addHostAndRetry() {
+    if (!hostBlock?.host || !hostBlock.indexerId) return;
+    try {
+      await allowHost.mutateAsync({ indexerId: hostBlock.indexerId, host: hostBlock.host });
+      toast.success(`Added ${hostBlock.host} to ${release.indexer}'s allowed download hosts.`);
+      await doResolve();
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -295,6 +324,11 @@ function ReleaseRow({ work, release }: { work: DebugWorkDto; release: DebugRelea
           release.rejected && "opacity-60",
         )}
       >
+        <td className="sticky left-0 bg-card px-2 py-2 text-right shadow-[8px_0_12px_-12px_hsl(var(--foreground))]">
+          <Button size="sm" variant="outline" onClick={doResolve} disabled={resolve.isPending}>
+            {resolve.isPending ? <Loader2 className="size-4 animate-spin" /> : "Resolve"}
+          </Button>
+        </td>
         <td className="pl-2">
           <button
             type="button"
@@ -328,11 +362,6 @@ function ReleaseRow({ work, release }: { work: DebugWorkDto; release: DebugRelea
             <span className="font-mono tabular-nums">{release.score}</span>
           )}
         </td>
-        <td className="px-2 py-2 text-right">
-          <Button size="sm" variant="outline" onClick={doResolve} disabled={resolve.isPending}>
-            {resolve.isPending ? <Loader2 className="size-4 animate-spin" /> : "Resolve"}
-          </Button>
-        </td>
       </tr>
       {open && (
         <tr className="border-t bg-muted/20">
@@ -353,7 +382,24 @@ function ReleaseRow({ work, release }: { work: DebugWorkDto; release: DebugRelea
                 </p>
               )}
               {resolve.isError && (
-                <p className="text-sm text-destructive">{errorMessage(resolve.error)}</p>
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive">{errorMessage(resolve.error)}</p>
+                  {hostBlock?.host && hostBlock.indexerId && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={addHostAndRetry}
+                      disabled={allowHost.isPending || resolve.isPending}
+                    >
+                      {allowHost.isPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Plus className="size-4" />
+                      )}
+                      Allow “{hostBlock.host}” &amp; retry
+                    </Button>
+                  )}
+                </div>
               )}
               {resolve.isSuccess && resolve.data && (
                 <div className="space-y-3 rounded-md border p-3">

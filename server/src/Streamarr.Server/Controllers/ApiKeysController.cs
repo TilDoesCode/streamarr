@@ -27,7 +27,8 @@ public class ApiKeysController(ApiKeyService apiKeys) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<CreatedApiKeyResponse>> Create([FromBody] CreateApiKeyRequest request, CancellationToken ct)
     {
-        if (request is null || string.IsNullOrWhiteSpace(request.Name))
+        if (request is null || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 128 ||
+            request.Name.Any(char.IsControl))
             return BadRequest(ErrorResponse.Of("invalid_api_key", "A non-empty 'name' is required."));
 
         var (entity, token) = await apiKeys.CreateAsync(request.Name.Trim(), ct);
@@ -41,9 +42,12 @@ public class ApiKeysController(ApiKeyService apiKeys) : ControllerBase
 
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Revoke(string id, CancellationToken ct)
-        => await apiKeys.RevokeAsync(id, ct)
+        => string.IsNullOrWhiteSpace(id) || id.Length > 128 || id.Any(char.IsControl)
+            ? BadRequest(ErrorResponse.Of("invalid_api_key", "A valid API key id is required."))
+            : await apiKeys.RevokeAsync(id, ct)
             ? NoContent()
             : NotFound(ErrorResponse.Of("not_found", $"No active API key with id '{id}'."));
 }

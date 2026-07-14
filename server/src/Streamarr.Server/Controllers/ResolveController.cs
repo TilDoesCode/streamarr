@@ -17,9 +17,16 @@ public class ResolveController(ResolveService resolveService, StreamarrMetrics m
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status502BadGateway)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<ResolveResponse>> Resolve([FromBody] ResolveRequest request, CancellationToken ct)
     {
-        var publicBase = $"{Request.Scheme}://{Request.Host}";
+        if (request is null || string.IsNullOrWhiteSpace(request.ReleaseId) || request.ReleaseId.Length > 256 ||
+            request.ReleaseId.Any(char.IsControl) ||
+            request.Client?.Length > 64 || request.Client?.Any(char.IsControl) == true)
+        {
+            return BadRequest(ErrorResponse.Of("invalid_resolve", "A valid releaseId and client are required."));
+        }
+
         var localBase = LocalBaseUrl();
 
         try
@@ -28,7 +35,7 @@ public class ResolveController(ResolveService resolveService, StreamarrMetrics m
                 request.ReleaseId,
                 request.Client,
                 request.AutoFallback,
-                token => $"{publicBase}/api/v1/stream/{token}",
+                token => $"/api/v1/stream/{token}",
                 token => $"{localBase}/api/v1/stream/{token}",
                 ct);
             metrics.ResolveCompleted(viaFallback: response.FallbackFromReleaseId is not null);
@@ -42,9 +49,20 @@ public class ResolveController(ResolveService resolveService, StreamarrMetrics m
         {
             return UnprocessableEntity(ErrorResponse.Of("no_playable_file", e.Message));
         }
+        catch (NzbOriginNotAllowedException e)
+        {
+            return UnprocessableEntity(
+                ErrorResponse.OfHostNotAllowed("nzb_host_not_allowed", e.Message, e.Host, e.IndexerId));
+        }
         catch (InvalidDataException e)
         {
             return UnprocessableEntity(ErrorResponse.Of("invalid_release", e.Message));
+        }
+        catch (ResourceCapacityException)
+        {
+            Response.Headers.RetryAfter = "1";
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                ErrorResponse.Of("capacity_reached", "Server streaming capacity is currently reached; retry shortly."));
         }
         catch (UsenetException e)
         {
@@ -54,7 +72,7 @@ public class ResolveController(ResolveService resolveService, StreamarrMetrics m
         catch (Exception e) when (e is HttpRequestException or IOException)
         {
             return StatusCode(StatusCodes.Status502BadGateway,
-                ErrorResponse.Of("nzb_fetch_failed", e.Message));
+                ErrorResponse.Of("nzb_fetch_failed", "The NZB could not be downloaded from its configured indexer."));
         }
     }
 
@@ -67,7 +85,9 @@ public class ResolveController(ResolveService resolveService, StreamarrMetrics m
         var address = addresses?.FirstOrDefault(a => a.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
                       ?? addresses?.FirstOrDefault();
         if (string.IsNullOrEmpty(address))
-            return $"{Request.Scheme}://{Request.Host}";
+            // TestServer has no reachable listener. Never fall back to the untrusted
+            // Host header with a capability token; ffprobe will fail softly instead.
+            return "http://127.0.0.1:1";
 
         var loopback = address
             .Replace("://+", "://127.0.0.1")

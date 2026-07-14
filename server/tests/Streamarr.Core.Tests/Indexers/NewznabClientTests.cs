@@ -93,6 +93,22 @@ public class NewznabClientTests
     }
 
     [Fact]
+    public async Task SearchAsync_EnforcesRequestedItemLimit_WhenIndexerIgnoresIt()
+    {
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Xml(NewznabFixtures.Load("alpha-search.xml")));
+        var client = new NewznabClient(
+            new HttpClient(handler),
+            options: new IndexerSearchOptions { DefaultLimit = 100 });
+
+        var response = await client.SearchAsync(
+            Indexer(),
+            new NewznabQuery { Term = "example", Limit = 1 },
+            CancellationToken.None);
+
+        Assert.Single(response.Items);
+    }
+
+    [Fact]
     public async Task GetCapabilitiesAsync_ParsesCaps()
     {
         var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Xml(NewznabFixtures.Load("caps.xml")));

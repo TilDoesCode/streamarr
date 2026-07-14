@@ -21,6 +21,7 @@ export type HealthResponse = S["HealthResponse"];
 export type IndexerResponse = S["IndexerResponse"];
 export type IndexerWrite = S["IndexerWrite"];
 export type IndexerTestResult = S["IndexerTestResult"];
+export type ReorderRequest = S["ReorderRequest"];
 
 export type ProviderResponse = S["ProviderResponse"];
 export type ProviderWrite = S["ProviderWrite"];

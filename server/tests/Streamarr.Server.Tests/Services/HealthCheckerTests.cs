@@ -103,4 +103,11 @@ public class HealthCheckerTests
         Assert.Equal(segments[0], sample[0]);
         Assert.Equal(segments[^1], sample[^1]);
     }
+
+    [Fact]
+    public void SampleEvenly_OneSample_ReturnsFirstWithoutDividingByZero()
+    {
+        Assert.Equal(["s0"], HealthChecker.SampleEvenly(["s0", "s1", "s2"], 1));
+        Assert.Empty(HealthChecker.SampleEvenly(["s0", "s1"], 0));
+    }
 }

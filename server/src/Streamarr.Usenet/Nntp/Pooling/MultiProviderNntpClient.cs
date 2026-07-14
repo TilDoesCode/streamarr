@@ -17,14 +17,32 @@ namespace Streamarr.Usenet.Nntp.Pooling;
 /// tried, so a block/backup account transparently backfills the primary
 /// (DECISIONS.md #6: the pool is written against a provider list from the start).
 /// </summary>
-public class MultiProviderNntpClient(
-    List<MultiConnectionNntpClient> providers,
-    ILogger? logger = null
-) : NntpClientBase
+public class MultiProviderNntpClient : NntpClientBase
 {
-    private readonly ILogger _logger = logger ?? NullLogger.Instance;
+    private readonly ILogger _logger;
+    private MultiConnectionNntpClient[] _providers;
 
-    public IReadOnlyList<MultiConnectionNntpClient> Providers => providers;
+    public MultiProviderNntpClient(List<MultiConnectionNntpClient> providers, ILogger? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(providers);
+        _providers = [.. providers];
+        _logger = logger ?? NullLogger.Instance;
+    }
+
+    public IReadOnlyList<MultiConnectionNntpClient> Providers => Volatile.Read(ref _providers);
+
+    /// <summary>
+    /// Atomically replaces the provider snapshot. Existing borrowed connections may
+    /// finish; idle connections and later returns from the retired pools are disposed.
+    /// New commands immediately use the replacement list.
+    /// </summary>
+    public void ReplaceProviders(List<MultiConnectionNntpClient> providers)
+    {
+        ArgumentNullException.ThrowIfNull(providers);
+        var retired = Interlocked.Exchange(ref _providers, [.. providers]);
+        foreach (var provider in retired)
+            provider.Dispose();
+    }
 
     public override Task ConnectAsync(string host, int port, bool useSsl, CancellationToken ct)
     {
@@ -97,8 +115,7 @@ public class MultiProviderNntpClient(
 
         void OnConnectionReadyAgain(ArticleBodyResult articleBodyResult)
         {
-            if (articleBodyResult == ArticleBodyResult.Retrieved)
-                onConnectionReadyAgain?.Invoke(ArticleBodyResult.Retrieved);
+            onConnectionReadyAgain?.Invoke(articleBodyResult);
         }
     }
 
@@ -130,8 +147,7 @@ public class MultiProviderNntpClient(
 
         void OnConnectionReadyAgain(ArticleBodyResult articleBodyResult)
         {
-            if (articleBodyResult == ArticleBodyResult.Retrieved)
-                onConnectionReadyAgain?.Invoke(ArticleBodyResult.Retrieved);
+            onConnectionReadyAgain?.Invoke(articleBodyResult);
         }
     }
 
@@ -178,7 +194,7 @@ public class MultiProviderNntpClient(
 
     private List<MultiConnectionNntpClient> GetOrderedProviders()
     {
-        var enabled = providers
+        var enabled = Providers
             .Where(x => x.ProviderType != UsenetProviderType.Disabled)
             .OrderBy(x => x.Priority)
             .ThenBy(x => x.ProviderType)
@@ -193,7 +209,8 @@ public class MultiProviderNntpClient(
 
     public override void Dispose()
     {
-        foreach (var provider in providers)
+        var retired = Interlocked.Exchange(ref _providers, []);
+        foreach (var provider in retired)
             provider.Dispose();
         GC.SuppressFinalize(this);
     }

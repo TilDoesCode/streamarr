@@ -7,13 +7,15 @@ namespace Streamarr.Server.Auth;
 /// <summary>
 /// First-run admin bootstrap (BRIEF §6.4). When the users table is empty, creates a single
 /// admin from (in priority order) the STREAMARR_ADMIN_PASSWORD env var, the
-/// <c>Streamarr:Admin:Password</c> config value, or a freshly generated random password
-/// that is logged exactly once. The username defaults to "admin". Extensible: this only
+/// <c>Streamarr:Admin:Password</c> config value, or (in Development only) a freshly
+/// generated random password that is logged exactly once. Production fails fast when
+/// no password is supplied. The username defaults to "admin". Extensible: this only
 /// seeds the empty table; further users are added through the (future) user API.
 /// </summary>
 public sealed class AdminBootstrap(
     UserService users,
     IOptions<StreamarrOptions> options,
+    IHostEnvironment environment,
     ILogger<AdminBootstrap> logger)
 {
     public const string PasswordEnvVar = "STREAMARR_ADMIN_PASSWORD";
@@ -30,6 +32,15 @@ public sealed class AdminBootstrap(
 
         var envPassword = Environment.GetEnvironmentVariable(PasswordEnvVar);
         var configured = FirstNonEmpty(envPassword, admin.Password);
+
+        if (configured is null && !environment.IsDevelopment())
+        {
+            throw new InvalidOperationException(
+                $"A bootstrap admin password is required outside Development. Set {PasswordEnvVar} or Streamarr:Admin:Password.");
+        }
+
+        if (configured is { Length: < 12 or > 1024 } || configured?.Any(char.IsControl) == true)
+            throw new InvalidOperationException("The bootstrap admin password must be 12-1024 characters without control characters.");
 
         var password = configured ?? GeneratePassword();
         await users.CreateAsync(username, password, AuthRoles.Admin, ct);

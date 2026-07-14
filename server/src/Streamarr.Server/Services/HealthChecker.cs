@@ -52,7 +52,9 @@ public class HealthChecker(INntpClient nntpClient, IOptions<StreamarrOptions> op
             catch (Exception e)
             {
                 // a segment we cannot STAT is a segment we cannot stream
-                logger.LogWarning(e, "STAT failed for segment <{SegmentId}>; counting it as missing", segmentId);
+                logger.LogWarning(
+                    "NNTP STAT failed with {FailureType}; counting the sampled segment as missing",
+                    e.GetType().Name);
                 Interlocked.Increment(ref missing);
             }
         });
@@ -70,8 +72,12 @@ public class HealthChecker(INntpClient nntpClient, IOptions<StreamarrOptions> op
     /// <summary>Evenly-spread sample including the first and last segment.</summary>
     internal static IReadOnlyList<string> SampleEvenly(IReadOnlyList<string> segmentIds, int maxSamples)
     {
-        if (maxSamples <= 0 || segmentIds.Count <= maxSamples)
+        if (maxSamples <= 0 || segmentIds.Count == 0)
+            return [];
+        if (segmentIds.Count <= maxSamples)
             return segmentIds;
+        if (maxSamples == 1)
+            return [segmentIds[0]];
 
         var sample = new List<string>(maxSamples);
         var previousIndex = -1;

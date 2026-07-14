@@ -2,9 +2,20 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
+// Newer Node releases may expose their own experimental global `localStorage`. Pin the test
+// global to jsdom's origin-aware implementation so production code and tests share one store.
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: window.localStorage,
+});
+Object.defineProperty(globalThis, "sessionStorage", {
+  configurable: true,
+  value: window.sessionStorage,
+});
+
 afterEach(() => {
   cleanup();
-  localStorage.clear();
+  window.localStorage.clear();
   vi.restoreAllMocks();
 });
 

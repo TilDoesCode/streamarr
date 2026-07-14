@@ -1,5 +1,5 @@
 import type { components } from "./schema";
-import { clearSession, getToken } from "./token";
+import { clearSession, getSession } from "./token";
 
 /** The server's typed error envelope (BRIEF §9.2): `{ error: { code, message } }`. */
 export type ErrorEnvelope = components["schemas"]["ErrorResponse"];
@@ -22,8 +22,25 @@ export class ApiError extends Error {
 // The app registers a handler so a 401 anywhere routes the user back to login without the
 // fetch layer importing the router (BRIEF §9: "401 → redirect to login").
 let onUnauthorized: (() => void) | null = null;
+let authenticatedRequestController = new AbortController();
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
+}
+
+/** Abort every in-flight request made under the current administrator session. */
+export function abortAuthenticatedRequests() {
+  authenticatedRequestController.abort();
+  authenticatedRequestController = new AbortController();
+}
+
+/** Ask the server to expire its HttpOnly admin cookie without coupling logout to API errors. */
+export async function requestAdminLogout(): Promise<void> {
+  await fetch(buildUrl("/auth/logout"), {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    keepalive: true,
+  });
 }
 
 export interface RequestOptions {
@@ -33,6 +50,23 @@ export interface RequestOptions {
   /** Query-string params; undefined/null values are dropped. */
   query?: Record<string, string | number | boolean | null | undefined>;
   signal?: AbortSignal;
+}
+
+function linkSignals(first: AbortSignal, second: AbortSignal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (first.aborted || second.aborted) controller.abort();
+  else {
+    first.addEventListener("abort", abort, { once: true });
+    second.addEventListener("abort", abort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    dispose() {
+      first.removeEventListener("abort", abort);
+      second.removeEventListener("abort", abort);
+    },
+  };
 }
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
@@ -47,24 +81,32 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
 }
 
 /**
- * Thin typed fetch wrapper over the Core Server API (BRIEF §9.2). Injects the bearer token,
- * serializes/deserializes JSON, normalizes the typed error envelope into {@link ApiError},
- * and triggers the login redirect on 401.
+ * Thin typed fetch wrapper over the Core Server API (BRIEF §9.2). Uses the same-origin HttpOnly
+ * admin cookie, serializes/deserializes JSON, normalizes the typed error envelope into
+ * {@link ApiError}, and triggers the login redirect on 401.
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, query, signal } = options;
 
   const headers: Record<string, string> = { Accept: "application/json" };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const hasSession = getSession() !== null;
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(buildUrl(path, query), {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
-  });
+  const linkedSignal = hasSession && signal
+    ? linkSignals(signal, authenticatedRequestController.signal)
+    : null;
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path, query), {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: "same-origin",
+      signal: linkedSignal?.signal ?? (hasSession ? authenticatedRequestController.signal : signal),
+    });
+  } finally {
+    linkedSignal?.dispose();
+  }
 
   if (res.status === 401) {
     clearSession();
@@ -103,26 +145,20 @@ async function toApiError(res: Response): Promise<ApiError> {
 }
 
 /**
- * Turn a resolve response's absolute `streamUrl` into a URL a browser `<video>` element can
- * play directly (BRIEF §9.1.6 playback-preview canary). Two things happen:
- *  1. We reduce it to a same-origin path (+ query) so the request goes through the same
- *     origin the SPA loads from — the Vite dev proxy forwards `/api` to Kestrel in dev, and
- *     the Core Server serves both the SPA and the API in production.
- *  2. A `<video>` element can't send an `Authorization` header, so the bearer token rides
- *     along as an `access_token` query parameter — which the `/stream` endpoint accepts.
+ * Turn a resolve response's absolute `streamUrl` into a same-origin URL a browser `<video>`
+ * element can play directly (BRIEF §9.1.6 playback-preview canary). The opaque token embedded
+ * in the stream path is the capability for that single session; the administrator bearer token
+ * must never be copied into a URL.
  */
-export function streamUrlWithToken(streamUrl: string, token: string | null = getToken()): string {
-  let path = streamUrl;
+export function streamUrlForPlayback(streamUrl: string): string {
   try {
     const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
     const u = new URL(streamUrl, origin);
-    path = u.pathname + u.search;
+    return u.pathname + u.search + u.hash;
   } catch {
     // already a relative path — use as-is
+    return streamUrl;
   }
-  if (!token) return path;
-  const sep = path.includes("?") ? "&" : "?";
-  return `${path}${sep}access_token=${encodeURIComponent(token)}`;
 }
 
 /** Best-effort human message from any thrown value (used by toasts / inline errors). */

@@ -17,6 +17,7 @@ import type {
   ProviderTestResult,
   ProviderWrite,
   QualityProfile,
+  ReorderRequest,
   ResolveRequest,
   ResolveResponse,
   SessionResponse,
@@ -31,6 +32,7 @@ export const queryKeys = {
   providers: ["config", "providers"] as const,
   profiles: ["config", "profiles"] as const,
   sessions: ["sessions"] as const,
+  resolvedRelease: (releaseId: string) => ["resolve", releaseId] as const,
 };
 
 /**
@@ -59,7 +61,14 @@ export function useResolve() {
     mutationFn: (body: ResolveRequest) =>
       apiFetch<ResolveResponse>("/resolve", { method: "POST", body }),
     // A successful resolve opens a session — reflect it in the sessions list.
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.sessions }),
+    onSuccess: (data, variables) => {
+      // Reuse the exact session when Search hands off to Playback. Resolving the same release
+      // again would create a duplicate session and leave the first one orphaned.
+      const sessionLifetimeMs = Math.max(60_000, (data.sessionTtlSeconds ?? 3_600) * 1_000);
+      qc.setQueryDefaults(["resolve"], { gcTime: sessionLifetimeMs });
+      qc.setQueryData(queryKeys.resolvedRelease(variables.releaseId ?? ""), data);
+      qc.invalidateQueries({ queryKey: queryKeys.sessions });
+    },
   });
 }
 
@@ -175,6 +184,31 @@ export function useUpdateIndexer() {
   });
 }
 
+/** Atomically replace indexer priority order. The server validates the complete id set. */
+export function useReorderIndexers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch<void>("/config/indexers/order", {
+        method: "PUT",
+        body: { ids } satisfies ReorderRequest,
+      }),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: queryKeys.indexers });
+      const previous = qc.getQueryData<IndexerResponse[]>(queryKeys.indexers);
+      const priority = new Map(ids.map((id, index) => [id, index]));
+      qc.setQueryData<IndexerResponse[]>(queryKeys.indexers, (old) =>
+        old?.map((item) => ({ ...item, priority: priority.get(item.id ?? "") ?? item.priority })),
+      );
+      return { previous };
+    },
+    onError: (_error, _ids, context) => {
+      if (context?.previous) qc.setQueryData(queryKeys.indexers, context.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.indexers }),
+  });
+}
+
 export function useDeleteIndexer() {
   const qc = useQueryClient();
   return useMutation({
@@ -187,6 +221,32 @@ export function useTestIndexer() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<IndexerTestResult>(`/config/indexers/${id}/test`, { method: "POST" }),
+  });
+}
+
+/**
+ * Add a download host to an indexer's allow-list. Used by the resolve failure UI when the
+ * server rejects an NZB download whose host isn't the indexer's BaseUrl origin (BRIEF §6.3):
+ * fetch the current indexer, append the host (api key omitted → server keeps it), and PUT.
+ */
+export function useAllowIndexerDownloadHost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ indexerId, host }: { indexerId: string; host: string }) => {
+      const indexer = await apiFetch<IndexerResponse>(`/config/indexers/${indexerId}`);
+      const hosts = indexer.allowedDownloadHosts ?? [];
+      if (hosts.some((h) => h.toLowerCase() === host.toLowerCase())) return indexer;
+      const body: IndexerWrite = {
+        name: indexer.name,
+        baseUrl: indexer.baseUrl,
+        categories: indexer.categories,
+        allowedDownloadHosts: [...hosts, host],
+        enabled: indexer.enabled,
+        priority: indexer.priority,
+      };
+      return apiFetch<IndexerResponse>(`/config/indexers/${indexerId}`, { method: "PUT", body });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.indexers }),
   });
 }
 
@@ -223,6 +283,31 @@ export function useUpdateProvider() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.previous) qc.setQueryData(queryKeys.providers, ctx.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.providers }),
+  });
+}
+
+/** Atomically replace provider priority order. The server validates the complete id set. */
+export function useReorderProviders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch<void>("/config/providers/order", {
+        method: "PUT",
+        body: { ids } satisfies ReorderRequest,
+      }),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: queryKeys.providers });
+      const previous = qc.getQueryData<ProviderResponse[]>(queryKeys.providers);
+      const priority = new Map(ids.map((id, index) => [id, index]));
+      qc.setQueryData<ProviderResponse[]>(queryKeys.providers, (old) =>
+        old?.map((item) => ({ ...item, priority: priority.get(item.id ?? "") ?? item.priority })),
+      );
+      return { previous };
+    },
+    onError: (_error, _ids, context) => {
+      if (context?.previous) qc.setQueryData(queryKeys.providers, context.previous);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.providers }),
   });

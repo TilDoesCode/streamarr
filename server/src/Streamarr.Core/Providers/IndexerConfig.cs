@@ -13,6 +13,14 @@ public sealed record IndexerConfig
     /// <summary>Newznab category ids to search (e.g. 2000 movies, 5000 tv).</summary>
     public IReadOnlyList<int> Categories { get; init; } = [];
 
+    /// <summary>
+    /// Extra hostnames — besides the <see cref="BaseUrl"/> host — that NZB download links
+    /// returned by this indexer are permitted to point at. Some indexers serve the Newznab
+    /// API on one host but hand out NZB downloads from a separate CDN/download host; those
+    /// hosts must be listed here or the origin guard rejects the download (BRIEF §6.3).
+    /// </summary>
+    public IReadOnlyList<string> AllowedDownloadHosts { get; init; } = [];
+
     public bool Enabled { get; init; } = true;
 
     /// <summary>Lower value = preferred.</summary>

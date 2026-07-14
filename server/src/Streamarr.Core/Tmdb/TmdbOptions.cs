@@ -23,5 +23,16 @@ public sealed class TmdbOptions
     /// <summary>Result-cache lifetime; TMDB metadata is cached aggressively (BRIEF §6.1).</summary>
     public int CacheTtlHours { get; set; } = 24;
 
+    /// <summary>Maximum decompressed JSON response body accepted from TMDB.</summary>
+    public int MaxResponseBytes { get; set; } = 4 * 1024 * 1024;
+
+    /// <summary>Hard lifetime for one shared upstream lookup, including admission wait.</summary>
+    public int RequestTimeoutSeconds { get; set; } = 20;
+
+    /// <summary>Maximum number of TMDB requests in flight across all callers.</summary>
+    public int MaxConcurrentRequests { get; set; } = 4;
+
     public TimeSpan CacheTtl => TimeSpan.FromHours(Math.Max(0, CacheTtlHours));
+
+    public TimeSpan RequestTimeout => TimeSpan.FromSeconds(Math.Max(1, RequestTimeoutSeconds));
 }

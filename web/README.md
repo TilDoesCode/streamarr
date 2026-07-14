@@ -24,7 +24,7 @@ Jellyfin absent (BRIEF §3.1 rule 4, §9).
 ## Commands
 
 ```bash
-npm install
+npm ci
 npm run generate:api   # ../server/openapi/v1.json → src/api/schema.d.ts (checked in)
 npm run dev            # Vite dev server on :5173
 npm test               # Vitest + Testing Library (component tests, src/**)
@@ -32,6 +32,10 @@ npm run typecheck      # tsc project build, no emit
 npm run build          # type-check + production SPA build → dist/
 npm run e2e            # Playwright smoke E2E (boots the real server, see Testing)
 ```
+
+The checked-in `.npmrc` disables dependency lifecycle scripts during installation. The
+current toolchain builds without them; `package.json` also records the reviewed, pinned
+`esbuild` script approval for npm's future allow-list enforcement.
 
 ## Testing
 
@@ -46,8 +50,10 @@ npm run e2e            # Playwright smoke E2E (boots the real server, see Testin
   `Streamarr.E2E.Harness` launcher (`server/tests/Streamarr.E2E.Harness`) against an
   **in-process mock NNTP server + canned indexer/TMDB fixtures + a seeded admin**, serving
   the built SPA at a single origin, and drives **login → add indexer → search → resolve →
-  preview-play**. It asserts the `<video>` reaches `readyState ≥ 2` and `currentTime`
-  advances — real bytes, real decode — **with Jellyfin absent**. The fixture media is a
+  preview-play → logout**. It asserts HttpOnly cookie authentication, capability-only media
+  URLs, single-session handoff, mobile controls, accessible drawer focus, cross-tab logout,
+  and that the `<video>` reaches `readyState ≥ 2` and `currentTime` advances — real bytes,
+  real decode — **with Jellyfin absent**. The fixture media is a
   real WebM (VP8 + Opus) generated with ffmpeg so the bundled Chromium can decode it, so
   `ffmpeg` must be on the PATH. The harness needs the .NET 8 SDK (`~/.dotnet/dotnet`).
   All three — `web`, `e2e`, and the spec/client drift check — run in
@@ -77,8 +83,9 @@ npm run generate:api   # ../server/openapi/v1.json → src/api/schema.d.ts
 `src/api/schema.d.ts` is checked in. CI regenerates it and **fails on any git diff**
 (`.github/workflows/ci.yml`), so the client can never drift from the spec. Everything in
 `src/api/types.ts` re-exports `components["schemas"][...]`; the thin `apiFetch` wrapper
-(`src/api/client.ts`) injects the bearer token, normalizes the typed error envelope into
-`ApiError`, and redirects to login on 401.
+(`src/api/client.ts`) uses the server's same-origin HttpOnly admin cookie, normalizes the typed
+error envelope into `ApiError`, and redirects to login on 401. JavaScript persists only
+non-secret username/role/expiry metadata; it never stores or sends the admin JWT.
 
 ## Why TanStack Router + openapi-typescript (DECISIONS.md #7)
 

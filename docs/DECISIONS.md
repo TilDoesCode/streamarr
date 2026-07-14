@@ -15,7 +15,7 @@ them in later milestones without the project owner's sign-off.
 
 ## Repo conventions
 
-- Layout: `server/` (ASP.NET Core, .NET 8), `plugin/` (Jellyfin net8.0), `web/`
+- Layout: `server/` (ASP.NET Core, .NET 8), `plugin/` (Jellyfin net9.0), `web/`
   (React 19 + Vite), `docs/`, `refs/` (git-ignored reference clones).
 - Work lands on `main`; every milestone task commits granular, test-passing commits
   and pushes. `dotnet` lives at `~/.dotnet/dotnet` (PATH is set in `~/.zprofile`).

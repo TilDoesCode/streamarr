@@ -89,4 +89,38 @@ public class NzbDocumentTests
         using var stream = new MemoryStream("<nzb><file"u8.ToArray());
         await Assert.ThrowsAsync<InvalidDataException>(() => NzbDocument.LoadAsync(stream));
     }
+
+    [Fact]
+    public async Task CommandInjectingMessageId_IsRejected()
+    {
+        const string xml = """
+            <nzb><file subject="video.mkv"><segments>
+            <segment bytes="123" number="1">safe@example.test&#13;&#10;DATE</segment>
+            </segments></file></nzb>
+            """;
+        await using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+        await Assert.ThrowsAsync<InvalidDataException>(() => NzbDocument.LoadAsync(stream));
+    }
+
+    [Theory]
+    [InlineData("0", "1")]
+    [InlineData("-1", "1")]
+    [InlineData("123", "0")]
+    [InlineData("123", "-1")]
+    [InlineData("1073741825", "1")]
+    public async Task InvalidSegmentArithmetic_IsRejected(string bytes, string number)
+    {
+        var xml = $"<nzb><file subject=\"video.mkv\"><segments><segment bytes=\"{bytes}\" number=\"{number}\">part@example.test</segment></segments></file></nzb>";
+        await using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+        await Assert.ThrowsAsync<InvalidDataException>(() => NzbDocument.LoadAsync(stream));
+    }
+
+    [Fact]
+    public async Task ConfiguredFileLimit_IsEnforced()
+    {
+        const string xml = "<nzb><file subject=\"one\"/><file subject=\"two\"/></nzb>";
+        await using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+        await Assert.ThrowsAsync<InvalidDataException>(() => NzbDocument.LoadAsync(
+            stream, limits: NzbDocumentLimits.Default with { MaxFiles = 1 }));
+    }
 }

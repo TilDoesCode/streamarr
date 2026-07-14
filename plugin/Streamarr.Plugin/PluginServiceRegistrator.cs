@@ -27,13 +27,28 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // Typed HttpClient over the Core Server API. Base address / auth are read per-call
         // from the live PluginConfiguration, so a short handler lifetime is fine.
         serviceCollection.AddHttpClient<StreamarrApiClient>(client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+                client.MaxResponseContentBufferSize = StreamarrApiClient.MaxApiResponseBytes;
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                MaxConnectionsPerServer = 8,
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            })
+            // Core credentials and session capabilities appear in headers/URLs. The typed
+            // transport performs its own redacted failure logging, so factory URI logs are off.
+            .RemoveAllLoggers();
 
         // Shared singleton caches / lookup tables.
         serviceCollection.AddSingleton<EphemeralReleaseStore>();
         serviceCollection.AddSingleton<PlaybackSessionTracker>();
+        serviceCollection.AddSingleton<PlaybackEventDispatcher>();
+        serviceCollection.AddSingleton<MediaSourceOfferStore>();
+        serviceCollection.AddHttpContextAccessor();
 
         // Adapters (stateless).
         serviceCollection.AddSingleton<EphemeralLibraryService>();

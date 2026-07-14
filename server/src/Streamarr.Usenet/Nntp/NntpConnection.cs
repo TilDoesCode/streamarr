@@ -23,6 +23,16 @@ namespace Streamarr.Usenet.Nntp;
 /// </summary>
 public sealed class NntpConnection : IDisposable
 {
+    private const int MaxControlLineChars = 16 * 1024;
+    private const int MaxArticleLineChars = 1024 * 1024;
+    private const int MaxArticleHeaderCount = 256;
+    private const int MaxArticleHeaderLineCount = 512;
+    private const int MaxArticleHeaderChars = 256 * 1024;
+    private const long MaxEncodedArticleBytes = 64L * 1024 * 1024;
+    private const int ReadBufferChars = 8 * 1024;
+    private static readonly TimeSpan MaxArticleReadDuration = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan MaxHeaderReadDuration = TimeSpan.FromSeconds(30);
+
     private TcpClient? _tcpClient;
     private Stream? _stream;
     private StreamReader? _reader;
@@ -30,6 +40,9 @@ public sealed class NntpConnection : IDisposable
     private AsyncSemaphore _commandLock = new(1);
     private CancellationTokenSource _cts = new();
     private volatile ExceptionDispatchInfo? _backgroundException;
+    private readonly char[] _readBuffer = new char[ReadBufferChars];
+    private int _readBufferOffset;
+    private int _readBufferLength;
     private bool _disposed;
 
     public async Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
@@ -46,9 +59,13 @@ public sealed class NntpConnection : IDisposable
             if (useSsl)
             {
                 var sslStream = new SslStream(_stream, false);
-                await sslStream.AuthenticateAsClientAsync(host, null,
-                    System.Security.Authentication.SslProtocols.Tls12 |
-                    System.Security.Authentication.SslProtocols.Tls13, true).ConfigureAwait(false);
+                await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+                {
+                    TargetHost = host,
+                    EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
+                                          System.Security.Authentication.SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.Online,
+                }, cancellationToken).ConfigureAwait(false);
                 _stream = sslStream;
             }
 
@@ -57,7 +74,8 @@ public sealed class NntpConnection : IDisposable
             _writer = new StreamWriter(_stream, Encoding.Latin1) { AutoFlush = true };
 
             // Read the server response
-            var response = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+            using var greetingCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            var response = await ReadLineAsync(greetingCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
             // NNTP servers typically respond with "200" or "201" for successful connection
@@ -73,23 +91,26 @@ public sealed class NntpConnection : IDisposable
 
     public async Task<NntpResponse> AuthenticateAsync(string user, string pass, CancellationToken cancellationToken)
     {
+        ValidateCommandValue(user, nameof(user));
+        ValidateCommandValue(pass, nameof(pass));
         await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
+            using var commandCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
 
             // Send AUTHINFO USER command
-            await WriteLineAsync($"AUTHINFO USER {user}".AsMemory(), _cts.Token).ConfigureAwait(false);
-            var userResponse = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+            await WriteLineAsync($"AUTHINFO USER {user}".AsMemory(), commandCts.Token).ConfigureAwait(false);
+            var userResponse = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
             var userResponseCode = ParseResponseCode(userResponse);
 
             // Password required
             if (userResponseCode == (int)NntpResponseType.PasswordRequired)
             {
                 // Send AUTHINFO PASS command
-                await WriteLineAsync($"AUTHINFO PASS {pass}".AsMemory(), _cts.Token).ConfigureAwait(false);
-                var passResponse = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+                await WriteLineAsync($"AUTHINFO PASS {pass}".AsMemory(), commandCts.Token).ConfigureAwait(false);
+                var passResponse = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
                 var passResponseCode = ParseResponseCode(passResponse);
 
                 return new NntpResponse
@@ -118,10 +139,11 @@ public sealed class NntpConnection : IDisposable
         {
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
+            using var commandCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
 
             // Send STAT command with message-id
-            await WriteLineAsync($"STAT <{segmentId}>".AsMemory(), _cts.Token).ConfigureAwait(false);
-            var response = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+            await WriteLineAsync($"STAT <{segmentId}>".AsMemory(), commandCts.Token).ConfigureAwait(false);
+            var response = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
             return new NntpStatResponse
@@ -144,9 +166,10 @@ public sealed class NntpConnection : IDisposable
         {
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
+            using var commandCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
 
-            await WriteLineAsync("DATE".AsMemory(), _cts.Token).ConfigureAwait(false);
-            var response = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+            await WriteLineAsync("DATE".AsMemory(), commandCts.Token).ConfigureAwait(false);
+            var response = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
             var dateTime = responseCode == (int)NntpResponseType.DateAndTime
@@ -173,15 +196,17 @@ public sealed class NntpConnection : IDisposable
         {
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
+            using var commandCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            commandCts.CancelAfter(MaxHeaderReadDuration);
 
-            await WriteLineAsync($"HEAD <{segmentId}>".AsMemory(), _cts.Token).ConfigureAwait(false);
-            var response = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+            await WriteLineAsync($"HEAD <{segmentId}>".AsMemory(), commandCts.Token).ConfigureAwait(false);
+            var response = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
             NntpArticleHeaders? headers = null;
             if (responseCode == (int)NntpResponseType.ArticleRetrievedHeadFollows)
             {
-                headers = await ParseArticleHeadersAsync(readUntilTerminator: true, _cts.Token)
+                headers = await ParseArticleHeadersAsync(readUntilTerminator: true, commandCts.Token)
                     .ConfigureAwait(false);
             }
 
@@ -222,15 +247,19 @@ public sealed class NntpConnection : IDisposable
         }
 
         var isReadBodyToPipeAsyncStarted = false;
+        CancellationTokenSource? articleCts = null;
 
         try
         {
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
 
+            articleCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            articleCts.CancelAfter(MaxArticleReadDuration);
+
             // Send BODY command with message-id
-            await WriteLineAsync($"BODY <{segmentId}>".AsMemory(), _cts.Token).ConfigureAwait(false);
-            var response = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+            await WriteLineAsync($"BODY <{segmentId}>".AsMemory(), articleCts.Token).ConfigureAwait(false);
+            var response = await ReadLineAsync(articleCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
             // Article retrieved - body follows
@@ -240,11 +269,11 @@ public sealed class NntpConnection : IDisposable
 
                 // Start background task to read the body and write to pipe
                 isReadBodyToPipeAsyncStarted = true;
-                _ = ReadBodyToPipeAsync(pipe.Writer, _cts.Token, () =>
+                _ = ReadBodyToPipeAsync(pipe.Writer, articleCts.Token, result =>
                 {
-                    pipe.Writer.Complete();
+                    articleCts.Dispose();
                     _commandLock.Release();
-                    onConnectionReadyAgain?.Invoke(ArticleBodyResult.Retrieved);
+                    onConnectionReadyAgain?.Invoke(result);
                 });
 
                 // Return immediately with the stream
@@ -269,6 +298,7 @@ public sealed class NntpConnection : IDisposable
         {
             if (!isReadBodyToPipeAsyncStarted)
             {
+                articleCts?.Dispose();
                 _commandLock.Release();
                 onConnectionReadyAgain?.Invoke(ArticleBodyResult.NotRetrieved);
             }
@@ -298,33 +328,37 @@ public sealed class NntpConnection : IDisposable
         }
 
         var isReadBodyToPipeAsyncStarted = false;
+        CancellationTokenSource? articleCts = null;
 
         try
         {
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
 
+            articleCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            articleCts.CancelAfter(MaxArticleReadDuration);
+
             // Send ARTICLE command with message-id
-            await WriteLineAsync($"ARTICLE <{segmentId}>".AsMemory(), _cts.Token).ConfigureAwait(false);
-            var response = await ReadLineAsync(_cts.Token).ConfigureAwait(false);
+            await WriteLineAsync($"ARTICLE <{segmentId}>".AsMemory(), articleCts.Token).ConfigureAwait(false);
+            var response = await ReadLineAsync(articleCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
             // Article retrieved - head and body follow
             if (responseCode == (int)NntpResponseType.ArticleRetrievedHeadAndBodyFollow)
             {
                 // Parse headers (terminated by the blank separator line)
-                var headers = await ParseArticleHeadersAsync(readUntilTerminator: false, _cts.Token)
+                var headers = await ParseArticleHeadersAsync(readUntilTerminator: false, articleCts.Token)
                     .ConfigureAwait(false);
 
                 var pipe = CreateBodyPipe();
 
                 // Start background task to read the body and write to pipe
                 isReadBodyToPipeAsyncStarted = true;
-                _ = ReadBodyToPipeAsync(pipe.Writer, _cts.Token, () =>
+                _ = ReadBodyToPipeAsync(pipe.Writer, articleCts.Token, result =>
                 {
-                    pipe.Writer.Complete();
+                    articleCts.Dispose();
                     _commandLock.Release();
-                    onConnectionReadyAgain?.Invoke(ArticleBodyResult.Retrieved);
+                    onConnectionReadyAgain?.Invoke(result);
                 });
 
                 return new NntpArticleResponse
@@ -350,6 +384,7 @@ public sealed class NntpConnection : IDisposable
         {
             if (!isReadBodyToPipeAsyncStarted)
             {
+                articleCts?.Dispose();
                 _commandLock.Release();
                 onConnectionReadyAgain?.Invoke(ArticleBodyResult.NotRetrieved);
             }
@@ -379,61 +414,86 @@ public sealed class NntpConnection : IDisposable
     }
 
     private static Pipe CreateBodyPipe() => new(new PipeOptions(
-        pauseWriterThreshold: long.MaxValue,
-        resumeWriterThreshold: long.MaxValue - 1
+        pauseWriterThreshold: 2 * 1024 * 1024,
+        resumeWriterThreshold: 1024 * 1024,
+        minimumSegmentSize: 16 * 1024,
+        useSynchronizationContext: false
     ));
 
-    private async Task ReadBodyToPipeAsync(PipeWriter writer, CancellationToken cancellationToken, Action onFinally)
+    private static void ValidateCommandValue(string value, string paramName)
     {
+        ArgumentNullException.ThrowIfNull(value, paramName);
+        if (value.Length > 4096 || value.Any(c => char.IsControl(c) || c is '\r' or '\n'))
+            throw new ArgumentException("NNTP command values cannot contain control characters.", paramName);
+    }
+
+    private async Task ReadBodyToPipeAsync(
+        PipeWriter writer,
+        CancellationToken cancellationToken,
+        Action<ArticleBodyResult> onFinally)
+    {
+        var articleResult = ArticleBodyResult.NotRetrieved;
+        Exception? failure = null;
         try
         {
             if (_reader == null)
-            {
-                await writer.CompleteAsync().ConfigureAwait(false);
-                return;
-            }
+                throw new UsenetProtocolException("Invalid NNTP response: article stream is unavailable.");
 
+            long encodedBytes = 0;
             var shouldWrite = true;
 
             // Read lines until we encounter the termination sequence (single dot on a line)
-            while (!cancellationToken.IsCancellationRequested)
+            while (true)
             {
-                var line = await ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var line = await ReadLineAsync(cancellationToken, MaxArticleLineChars).ConfigureAwait(false);
 
                 if (line == null)
-                {
-                    // End of stream
-                    break;
-                }
+                    throw new UsenetProtocolException("Invalid NNTP response: article terminator is missing.");
 
                 // Check for NNTP termination sequence (single dot)
                 if (line == ".")
                 {
+                    articleResult = ArticleBodyResult.Retrieved;
                     break;
                 }
 
-                if (!shouldWrite) continue;
+                if (line.Length > MaxEncodedArticleBytes - encodedBytes - 2)
+                    throw new UsenetProtocolException(
+                        $"Invalid NNTP response: article exceeds the {MaxEncodedArticleBytes} byte limit.");
+                encodedBytes += line.Length + 2;
+
+                // A seek can intentionally dispose a partially consumed pipe. Continue
+                // draining the bounded/time-limited article so this connection remains
+                // protocol-synchronized and reusable, but stop buffering discarded data.
+                if (!shouldWrite)
+                    continue;
 
                 WriteLineToPipe(writer, line);
 
                 // Flush periodically to make data available for reading
-                var result = await RunWithTimeoutAsync(writer.FlushAsync, cancellationToken).ConfigureAwait(false);
-                if (result.IsCompleted || result.IsCanceled)
-                {
+                var flush = await RunWithTimeoutAsync(writer.FlushAsync, cancellationToken).ConfigureAwait(false);
+                if (flush.IsCanceled)
+                    throw new OperationCanceledException("The article consumer canceled reading.", cancellationToken);
+                if (flush.IsCompleted)
                     shouldWrite = false;
-                }
             }
         }
         catch (Exception e)
         {
-            lock (this)
-            {
-                _backgroundException = ExceptionDispatchInfo.Capture(e);
-            }
+            failure = e;
+            MarkConnectionUnhealthy(e);
         }
         finally
         {
-            onFinally.Invoke();
+            try
+            {
+                await writer.CompleteAsync(failure).ConfigureAwait(false);
+            }
+            finally
+            {
+                onFinally.Invoke(articleResult);
+            }
         }
     }
 
@@ -464,6 +524,9 @@ public sealed class NntpConnection : IDisposable
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string? currentHeaderName = null;
         var currentHeaderValue = new StringBuilder();
+        var headerCount = 0;
+        var headerLineCount = 0;
+        var totalHeaderChars = 0;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -473,6 +536,14 @@ public sealed class NntpConnection : IDisposable
             {
                 throw new UsenetProtocolException("Invalid NNTP response: missing article headers.");
             }
+
+            headerLineCount++;
+            if (headerLineCount > MaxArticleHeaderLineCount ||
+                line.Length > MaxArticleHeaderChars - totalHeaderChars)
+            {
+                throw new UsenetProtocolException("Invalid NNTP response: article headers exceed the size limit.");
+            }
+            totalHeaderChars += line.Length;
 
             // Empty line (ARTICLE separator) or "." (HEAD terminator) signals end of headers
             if (string.IsNullOrEmpty(line) || line == ".")
@@ -511,6 +582,10 @@ public sealed class NntpConnection : IDisposable
                 var colonIndex = line.IndexOf(':');
                 if (colonIndex > 0)
                 {
+                    headerCount++;
+                    if (headerCount > MaxArticleHeaderCount)
+                        throw new UsenetProtocolException("Invalid NNTP response: too many article headers.");
+
                     currentHeaderName = line[..colonIndex].Trim();
                     currentHeaderValue.Clear();
 
@@ -539,6 +614,8 @@ public sealed class NntpConnection : IDisposable
         _writer = null;
         _stream = null;
         _tcpClient = null;
+        _readBufferOffset = 0;
+        _readBufferLength = 0;
         _commandLock = new AsyncSemaphore(1);
         _cts = new CancellationTokenSource();
         lock (this)
@@ -594,22 +671,113 @@ public sealed class NntpConnection : IDisposable
         }
         catch (OperationCanceledException) when (cts.Token.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            throw new TimeoutException("Timeout writing to NNTP stream.");
+            var error = new TimeoutException("Timeout writing to NNTP stream.");
+            MarkConnectionUnhealthy(error);
+            throw error;
+        }
+        catch (OperationCanceledException e)
+        {
+            MarkConnectionUnhealthy(e);
+            throw;
         }
     }
 
-    private async ValueTask<string?> ReadLineAsync(CancellationToken ct)
+    private async ValueTask<string?> ReadLineAsync(CancellationToken ct, int maxChars = MaxControlLineChars)
     {
         using var cts = CreateCtsWithTimeout(ct);
         try
         {
-            return await _reader!.ReadLineAsync(cts.Token).ConfigureAwait(false);
+            return await ReadBoundedLineCoreAsync(maxChars, cts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cts.Token.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            throw new TimeoutException("Timeout reading from NNTP stream.");
+            var error = new TimeoutException("Timeout reading from NNTP stream.");
+            MarkConnectionUnhealthy(error);
+            throw error;
+        }
+        catch (OperationCanceledException e)
+        {
+            MarkConnectionUnhealthy(e);
+            throw;
+        }
+        catch (UsenetProtocolException e)
+        {
+            MarkConnectionUnhealthy(e);
+            throw;
         }
     }
+
+    private void MarkConnectionUnhealthy(Exception error)
+    {
+        lock (this)
+        {
+            _backgroundException = ExceptionDispatchInfo.Capture(error);
+        }
+
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Connection teardown won the race.
+        }
+
+        _tcpClient?.Dispose();
+    }
+
+    /// <summary>
+    /// Reads through a fixed-size intermediate buffer so an untrusted peer cannot make
+    /// <see cref="StreamReader.ReadLineAsync(CancellationToken)"/> grow an unbounded string.
+    /// Data following a newline remains in the buffer for the next protocol read.
+    /// </summary>
+    private async ValueTask<string?> ReadBoundedLineCoreAsync(int maxChars, CancellationToken ct)
+    {
+        StringBuilder? builder = null;
+
+        while (true)
+        {
+            if (_readBufferOffset >= _readBufferLength)
+            {
+                _readBufferLength = await _reader!.ReadAsync(_readBuffer.AsMemory(), ct).ConfigureAwait(false);
+                _readBufferOffset = 0;
+                if (_readBufferLength == 0)
+                {
+                    if (builder is null)
+                        return null;
+                    return RemoveTrailingCarriageReturn(builder.ToString());
+                }
+            }
+
+            var chunkStart = _readBufferOffset;
+            var newline = Array.IndexOf(
+                _readBuffer,
+                '\n',
+                chunkStart,
+                _readBufferLength - chunkStart);
+            var chunkLength = newline >= 0 ? newline - chunkStart : _readBufferLength - chunkStart;
+            var accumulated = builder?.Length ?? 0;
+            if (chunkLength > maxChars - accumulated)
+                throw new UsenetProtocolException($"Invalid NNTP response: line exceeds the {maxChars} character limit.");
+
+            if (newline >= 0)
+            {
+                _readBufferOffset = newline + 1;
+                if (builder is null)
+                    return RemoveTrailingCarriageReturn(new string(_readBuffer, chunkStart, chunkLength));
+
+                builder.Append(_readBuffer, chunkStart, chunkLength);
+                return RemoveTrailingCarriageReturn(builder.ToString());
+            }
+
+            builder ??= new StringBuilder(Math.Min(maxChars, Math.Max(ReadBufferChars, chunkLength * 2)));
+            builder.Append(_readBuffer, chunkStart, chunkLength);
+            _readBufferOffset = _readBufferLength;
+        }
+    }
+
+    private static string RemoveTrailingCarriageReturn(string value)
+        => value.EndsWith('\r') ? value[..^1] : value;
 
     private async ValueTask<T> RunWithTimeoutAsync<T>(Func<CancellationToken, ValueTask<T>> func, CancellationToken ct)
     {

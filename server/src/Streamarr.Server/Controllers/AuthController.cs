@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Contracts;
 using StreamarrOpts = Streamarr.Server.Options.StreamarrOptions;
@@ -22,13 +23,15 @@ public class AuthController(
 {
     /// <summary>Exchange admin credentials for a short-lived session token.</summary>
     [AllowAnonymous]
+    [EnableRateLimiting("login")]
     [HttpPost("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
-        if (request is null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrEmpty(request.Password))
+        if (request is null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrEmpty(request.Password) ||
+            request.Username.Length > 128 || request.Password.Length > 1024)
             return BadRequest(ErrorResponse.Of("invalid_login", "'username' and 'password' are required."));
 
         var user = await users.AuthenticateAsync(request.Username.Trim(), request.Password, ct);
@@ -36,6 +39,8 @@ public class AuthController(
             return Unauthorized(ErrorResponse.Of("invalid_credentials", "Incorrect username or password."));
 
         var (token, expiresAt) = jwt.CreateToken(user);
+        Response.Headers.CacheControl = "private, no-store, max-age=0";
+        Response.Cookies.Append(AdminAuthCookie.Name, token, AdminAuthCookie.Options(Request.IsHttps, expiresAt));
         return Ok(new LoginResponse
         {
             Token = token,
@@ -44,6 +49,18 @@ public class AuthController(
             Username = user.Username,
             Role = user.Role,
         });
+    }
+
+    /// <summary>Expire the browser admin-session cookie.</summary>
+    [Authorize(Policy = AuthRoles.AdminPolicy)]
+    [HttpPost("logout")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult Logout()
+    {
+        Response.Headers.CacheControl = "private, no-store, max-age=0";
+        jwt.RevokeAll();
+        Response.Cookies.Delete(AdminAuthCookie.Name, AdminAuthCookie.Options(Request.IsHttps));
+        return NoContent();
     }
 
     /// <summary>The identity behind the presented bearer token (machine or admin).</summary>
@@ -65,8 +82,8 @@ public class AuthController(
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
     {
-        if (request is null || string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length < 8)
-            return BadRequest(ErrorResponse.Of("invalid_password", "'newPassword' must be at least 8 characters."));
+        if (request is null || string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length is < 12 or > 1024)
+            return BadRequest(ErrorResponse.Of("invalid_password", "'newPassword' must be between 12 and 1024 characters."));
 
         var username = User.Identity?.Name;
         if (string.IsNullOrEmpty(username))
@@ -77,6 +94,9 @@ public class AuthController(
             return BadRequest(ErrorResponse.Of("invalid_credentials", "The current password is incorrect."));
 
         await users.ChangePasswordAsync(user.Id, request.NewPassword, ct);
+        jwt.RevokeAll();
+        Response.Headers.CacheControl = "private, no-store, max-age=0";
+        Response.Cookies.Delete(AdminAuthCookie.Name, AdminAuthCookie.Options(Request.IsHttps));
         return NoContent();
     }
 }

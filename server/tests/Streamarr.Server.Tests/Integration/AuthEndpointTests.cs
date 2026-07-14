@@ -10,13 +10,13 @@ namespace Streamarr.Server.Tests.Integration;
 /// <summary>
 /// The two-mode auth contract (BRIEF §6.4, §11): every /api/v1 endpoint rejects a missing
 /// or invalid bearer token, machine API keys reach only their scope
-/// (search/resolve/stream/events/caps/sessions) and are forbidden from /config and /debug,
+/// (search/resolve/events/caps) and are forbidden from administrative inventory/config/debug,
 /// and admin session JWTs unlock everything. Health is the documented unauthenticated
 /// liveness probe.
 /// </summary>
 public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
 {
-    private const string ApiKey = "machine-key-for-auth-tests";
+    private const string ApiKey = "machine-key-for-auth-tests-0123456789";
     private readonly Factory _factory;
 
     public AuthEndpointTests(Factory factory) => _factory = factory;
@@ -26,17 +26,16 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
     [
         ["GET", "/api/v1/search?q=x"],
         ["POST", "/api/v1/resolve"],
-        ["GET", "/api/v1/stream/some-token"],
         ["GET", "/api/v1/caps"],
         ["POST", "/api/v1/events"],
         ["GET", "/api/v1/sessions"],
-        ["POST", "/api/v1/sessions/some-token/close"],
         ["POST", "/api/v1/debug/search"],
         ["GET", "/api/v1/config/indexers"],
         ["GET", "/api/v1/config/providers"],
         ["GET", "/api/v1/config/general"],
         ["GET", "/api/v1/config/profiles"],
         ["GET", "/api/v1/config/apikeys"],
+        ["GET", "/api/v1/metrics"],
         ["GET", "/api/v1/auth/me"],
         ["POST", "/api/v1/auth/password"],
     ];
@@ -76,7 +75,8 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
 
         // In scope (BRIEF §6.4): caps is reachable.
         Assert.Equal(HttpStatusCode.OK, (await machine.GetAsync("/api/v1/caps")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await machine.GetAsync("/api/v1/sessions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/sessions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/metrics")).StatusCode);
 
         // Out of scope: /config + /debug are forbidden (authenticated, wrong role → 403).
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/general")).StatusCode);

@@ -1,6 +1,7 @@
 using Jellyfin.Data.Enums;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Search;
+using Microsoft.AspNetCore.Http;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Search;
 
@@ -110,4 +111,74 @@ public class SearchInjectionTests
     [InlineData("episode", BaseItemKind.Episode)]
     public void KindFor_maps_media_type(string mediaType, BaseItemKind expected)
         => Assert.Equal(expected, SearchInjection.KindFor(new WorkDto { MediaType = mediaType }));
+
+    [Fact]
+    public void Constraints_honor_page_parent_limit_types_and_media_filters()
+    {
+        var root = new SearchInjection.Constraints(
+            0,
+            5,
+            null,
+            new HashSet<BaseItemKind> { BaseItemKind.Movie },
+            new HashSet<BaseItemKind>(),
+            new HashSet<MediaType> { MediaType.Video },
+            true,
+            null,
+            null);
+
+        Assert.Equal(3, root.RemainingCapacity(nativeCount: 2, defaultLimit: 20));
+        Assert.True(root.Allows(Movie("movie", "Movie")));
+        Assert.False(root.Allows(new WorkDto { WorkId = "tv", MediaType = "tv" }));
+        Assert.Equal(0, (root with { StartIndex = 1 }).RemainingCapacity(0, 20));
+        Assert.Equal(0, (root with { ParentId = Guid.NewGuid() }).RemainingCapacity(0, 20));
+        Assert.Equal(0, (root with { Limit = 2 }).RemainingCapacity(2, 20));
+        Assert.False((root with { IncludeMedia = false }).Allows(Movie("movie", "Movie")));
+        Assert.False((root with { MediaTypes = new HashSet<MediaType> { MediaType.Audio } })
+            .Allows(Movie("movie", "Movie")));
+        Assert.False((root with { ExcludeItemTypes = new HashSet<BaseItemKind> { BaseItemKind.Movie } })
+            .Allows(Movie("movie", "Movie")));
+    }
+
+    [Fact]
+    public void Constraints_do_not_repeat_synthetic_results_on_later_pages()
+    {
+        var constraints = new SearchInjection.Constraints(
+            20,
+            20,
+            null,
+            new HashSet<BaseItemKind>(),
+            new HashSet<BaseItemKind>(),
+            new HashSet<MediaType>(),
+            true,
+            null,
+            null);
+
+        Assert.False(constraints.CanInjectAtRoot);
+        Assert.Equal(0, constraints.RemainingCapacity(0, 20));
+        Assert.False(constraints.Allows(Movie("movie", "Movie")));
+    }
+
+    [Theory]
+    [InlineData("?startIndex=not-a-number")]
+    [InlineData("?limit=-1")]
+    [InlineData("?parentId=not-a-guid")]
+    [InlineData("?includeItemTypes=Movie,Bogus")]
+    [InlineData("?includeItemTypes=Movie,,Episode")]
+    [InlineData("?includeItemTypes=0")]
+    [InlineData("?mediaTypes=unsupported")]
+    [InlineData("?userId=00000000-0000-0000-0000-000000000000")]
+    [InlineData("?isMovie=perhaps")]
+    [InlineData("?recursive=false")]
+    [InlineData("?tags=family")]
+    [InlineData("?collapseBoxSetItems=true")]
+    public void Malformed_or_unsupported_native_constraints_fail_closed(string queryString)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(queryString);
+
+        var constraints = StreamarrSearchActionFilter.GetConstraints(context.Request, isHintRequest: false);
+
+        Assert.False(constraints.IsValid);
+        Assert.False(constraints.CanInjectAtRoot);
+    }
 }

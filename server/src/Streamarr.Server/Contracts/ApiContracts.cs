@@ -51,7 +51,7 @@ public sealed record ResolveResponse
     /// <summary>"ready" | "degraded" | "dead".</summary>
     public required string Status { get; init; }
 
-    /// <summary>Absolute stream URL; null when the release is dead.</summary>
+    /// <summary>Same-origin relative capability path; null when the release is dead.</summary>
     public string? StreamUrl { get; init; }
 
     public string? Container { get; init; }
@@ -104,10 +104,23 @@ public sealed record ErrorResponse
 
     public static ErrorResponse Of(string code, string message)
         => new() { Error = new ErrorDetail { Code = code, Message = message } };
+
+    /// <summary>
+    /// A "download host not allowed" error carrying the offending host and owning indexer,
+    /// so a front-end can offer to add the host to the indexer's allowed download hosts.
+    /// </summary>
+    public static ErrorResponse OfHostNotAllowed(string code, string message, string host, string indexerId)
+        => new() { Error = new ErrorDetail { Code = code, Message = message, Host = host, IndexerId = indexerId } };
 }
 
 public sealed record ErrorDetail
 {
     public required string Code { get; init; }
     public required string Message { get; init; }
+
+    /// <summary>Populated only for the <c>nzb_host_not_allowed</c> error: the rejected download host.</summary>
+    public string? Host { get; init; }
+
+    /// <summary>Populated only for the <c>nzb_host_not_allowed</c> error: the owning indexer's id.</summary>
+    public string? IndexerId { get; init; }
 }

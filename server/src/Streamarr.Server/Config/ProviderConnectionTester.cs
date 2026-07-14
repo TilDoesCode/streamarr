@@ -30,11 +30,24 @@ public sealed class ProviderConnectionTester(Func<INntpClient>? connectionFactor
 
     public async Task<ProviderTestResult> TestAsync(UsenetProvider provider, CancellationToken ct)
     {
-        var requested = Math.Max(1, provider.MaxConnections);
+        var requested = Math.Clamp(provider.MaxConnections, 1, 100);
+        using var concurrency = new SemaphoreSlim(10, 10);
 
-        // Probe all requested connections concurrently; count the ones that authenticate.
+        // Probe the requested capacity with a bounded fan-out so an admin typo cannot
+        // create hundreds of simultaneous outbound handshakes.
         var probes = Enumerable.Range(0, requested)
-            .Select(_ => TryOneAsync(provider, ct))
+            .Select(async _ =>
+            {
+                await concurrency.WaitAsync(ct);
+                try
+                {
+                    return await TryOneAsync(provider, ct);
+                }
+                finally
+                {
+                    concurrency.Release();
+                }
+            })
             .ToArray();
 
         var outcomes = await Task.WhenAll(probes);
@@ -64,7 +77,11 @@ public sealed class ProviderConnectionTester(Func<INntpClient>? connectionFactor
         {
             await client.ConnectAsync(provider.Host, provider.Port, provider.UseSsl, timeoutCts.Token);
             if (!string.IsNullOrEmpty(provider.Username))
-                await client.AuthenticateAsync(provider.Username, provider.Password, timeoutCts.Token);
+            {
+                var auth = await client.AuthenticateAsync(provider.Username, provider.Password, timeoutCts.Token);
+                if (!auth.Success)
+                    return (false, $"authentication failed (NNTP {auth.ResponseCode})");
+            }
 
             return (true, null);
         }

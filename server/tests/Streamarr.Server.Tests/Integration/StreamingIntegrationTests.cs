@@ -269,10 +269,12 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
     public async Task Sessions_ListAndClose_LifecycleWorks()
     {
         using var client = fixture.CreateClient();
+        using var admin = fixture.CreateClient(authenticated: false);
+        await admin.AuthenticateAsAdminAsync();
         var resolved = await ResolveAsync(client, StreamarrServerFixture.DirectReleaseId);
         var token = resolved.StreamUrl!.Split('/').Last();
 
-        var sessions = await client.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
+        var sessions = await admin.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
         var session = Assert.Single(sessions!, s => s.Token == token);
         Assert.Equal(StreamarrServerFixture.DirectReleaseId, session.ReleaseId);
         Assert.Equal("tests", session.Client);
@@ -285,7 +287,7 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
         using var afterClose = await client.GetAsync(resolved.StreamUrl);
         Assert.Equal(HttpStatusCode.NotFound, afterClose.StatusCode);
 
-        var remaining = await client.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
+        var remaining = await admin.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
         Assert.DoesNotContain(remaining!, s => s.Token == token);
 
         using var closeAgain = await client.PostAsync($"/api/v1/sessions/{token}/close", null);
@@ -308,10 +310,10 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
 
-        // /stream is never public (BRIEF §6.4)
+        // The unguessable session URL is the only credential required for streaming.
         using (var response = await anonymous.GetAsync(resolved.StreamUrl))
         {
-            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
 
         using (var response = await anonymous.GetAsync("/api/v1/sessions"))
@@ -322,7 +324,7 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
         anonymous.DefaultRequestHeaders.Authorization = new("Bearer", "wrong-key");
         using (var response = await anonymous.GetAsync(resolved.StreamUrl))
         {
-            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
 
         // the liveness probe stays open
@@ -332,18 +334,17 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
         }
     }
 
-    // A browser <video> element cannot send an Authorization header, so /stream also
-    // accepts the bearer token as an `access_token` query parameter (BRIEF §3.3, §6.4).
-    // This is what makes the Management UI's playback-preview canary work.
+    // A browser <video> element cannot send an Authorization header, so the path's
+    // 192-bit session token is itself a narrowly-scoped capability credential.
 
     [Fact]
-    public async Task Stream_AcceptsAccessTokenQueryParam_ForBrowserVideoElement()
+    public async Task Stream_CapabilityWorksWithoutBroadBearer_ForBrowserVideoElement()
     {
         using var authed = fixture.CreateClient();
         var resolved = await ResolveAsync(authed, StreamarrServerFixture.DirectReleaseId);
 
-        // A client with no Authorization header — like a browser <video> element — still
-        // streams when the token rides along as ?access_token=…
+        // Any unrelated access_token query value is ignored; only the capability path
+        // token authorizes the byte stream.
         using var anonymous = fixture.CreateClient(authenticated: false);
         var url = $"{resolved.StreamUrl}?access_token={StreamarrServerFixture.ApiKey}";
         using var response = await anonymous.GetAsync(url);
@@ -353,14 +354,14 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
     }
 
     [Fact]
-    public async Task Stream_RejectsWrongAccessTokenQueryParam()
+    public async Task Stream_IgnoresWrongAccessTokenQueryParam()
     {
         using var authed = fixture.CreateClient();
         var resolved = await ResolveAsync(authed, StreamarrServerFixture.DirectReleaseId);
 
         using var anonymous = fixture.CreateClient(authenticated: false);
         using var response = await anonymous.GetAsync($"{resolved.StreamUrl}?access_token=wrong-key");
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]

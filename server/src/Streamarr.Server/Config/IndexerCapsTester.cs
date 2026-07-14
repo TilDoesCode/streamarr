@@ -50,7 +50,7 @@ public sealed class IndexerCapsTester(INewznabClient client)
             {
                 Success = false,
                 LatencyMs = sw.Elapsed.TotalMilliseconds,
-                Error = e.Message,
+                Error = "Indexer request failed.",
             };
         }
     }

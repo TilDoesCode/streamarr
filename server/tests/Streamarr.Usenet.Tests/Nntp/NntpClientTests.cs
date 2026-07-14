@@ -147,6 +147,38 @@ public class NntpClientTests
     }
 
     [Fact]
+    public async Task Head_RejectsExcessiveHeaderCounts()
+    {
+        await using var server = new MockNntpServer { ExtraHeadHeaders = 300 };
+        server.Articles["headers@test"] = YencTestEncoder.Encode([9], "x.bin");
+        using var client = await Connect(server);
+
+        await Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.HeadAsync("headers@test", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Body_RejectsOverlongWireLines_AndSignalsConnectionFailure()
+    {
+        await using var server = new MockNntpServer();
+        server.Articles["long-line@test"] = new string('x', 1024 * 1024 + 1) + "\r\n";
+        using var connection = new NntpConnection();
+        await connection.ConnectAsync(server.Host, server.Port, useSsl: false, CancellationToken.None);
+        var completed = new TaskCompletionSource<ArticleBodyResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var response = await connection.BodyAsync(
+            "long-line@test",
+            result => completed.TrySetResult(result),
+            CancellationToken.None);
+        await using var body = response.Stream!;
+
+        await Assert.ThrowsAnyAsync<Exception>(() => body.CopyToAsync(Stream.Null));
+        Assert.Equal(
+            ArticleBodyResult.NotRetrieved,
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
     public async Task GetYencHeaders_ProbesPartOffsets()
     {
         var whole = YencTestEncoder.LcgBytes(4, 9000);

@@ -40,6 +40,7 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
         var file = candidate.Files[0];
         var segmentIds = file.GetSegmentIds();
         var size = await nntpClient.GetFileSizeAsync(file, ct);
+        ValidateMediaSize(size);
         var readAhead = options.Value.ArticleReadAheadCount;
 
         return new ResolvedMediaFile
@@ -53,6 +54,9 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
 
     private async Task<ResolvedMediaFile> MaterializeRarAsync(MediaFileCandidate candidate, CancellationToken ct)
     {
+        if (candidate.Files.Count > RarArchiveIndexer.MaxVolumes)
+            throw new InvalidDataException($"RAR sets may contain at most {RarArchiveIndexer.MaxVolumes} volumes.");
+
         var readAhead = options.Value.ArticleReadAheadCount;
         var volumes = new (string[] SegmentIds, long Size)[candidate.Files.Count];
         var parsedVolumes = new List<RarVolume>(candidate.Files.Count);
@@ -62,6 +66,7 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
             var file = candidate.Files[i];
             var segmentIds = file.GetSegmentIds();
             var size = await nntpClient.GetFileSizeAsync(file, ct);
+            ValidateMediaSize(size);
             volumes[i] = (segmentIds, size);
 
             await using var headerStream = new NzbFileStream(segmentIds, size, nntpClient, articleBufferSize: 0);
@@ -74,6 +79,7 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
         var media = storedFiles.Where(f => MediaFileSelector.IsMediaFileName(f.PathWithinArchive)).MaxBy(f => f.Size)
                     ?? storedFiles.MaxBy(f => f.Size)
                     ?? throw new NoPlayableFileException("The RAR set contains no stored files.");
+        ValidateMediaSize(media.Size);
 
         return new ResolvedMediaFile
         {
@@ -89,4 +95,10 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
 
     private static string Extension(string fileName)
         => Path.GetExtension(fileName).TrimStart('.').ToLowerInvariant();
+
+    private void ValidateMediaSize(long size)
+    {
+        if (size is < 1 || size > options.Value.MaxMediaBytes)
+            throw new InvalidDataException("The decoded media size is outside the configured safety limit.");
+    }
 }

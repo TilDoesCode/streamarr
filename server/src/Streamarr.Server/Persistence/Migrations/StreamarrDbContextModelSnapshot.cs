@@ -82,6 +82,10 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AllowedDownloadHosts")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ApiKeyEncrypted")
                         .HasColumnType("TEXT");
 

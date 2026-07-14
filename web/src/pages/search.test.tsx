@@ -106,7 +106,7 @@ async function runSearch() {
 
 describe("SearchPage debug playground", () => {
   beforeEach(() => {
-    setSession({ token: "t", username: "admin", role: "admin", expiresAt: future() });
+    setSession({ username: "admin", role: "admin", expiresAt: future() });
     installFetch();
   });
   afterEach(() => vi.restoreAllMocks());
@@ -160,6 +160,51 @@ describe("SearchPage debug playground", () => {
     await waitFor(() => expect(screen.getByLabelText(/media streams/i)).toBeInTheDocument());
     expect(screen.getByText("ready")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /play preview/i })).toBeInTheDocument();
+  });
+
+  it("offers a one-click allow-host fix when resolve fails on an off-origin download host", async () => {
+    // Resolve fails with the structured host error until the host is added to the indexer.
+    const hostError = {
+      error: {
+        code: "nzb_host_not_allowed",
+        message: "The NZB download host 'dl.indexer.example' is not allowed for indexer 'mock'.",
+        host: "dl.indexer.example",
+        indexerId: "ix1",
+      },
+    };
+    let hostAllowed = false;
+    const put: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/debug/search") && method === "POST") return jsonResponse(200, debugResponse);
+        if (url.match(/\/config\/indexers\/ix1$/) && method === "GET")
+          return jsonResponse(200, { id: "ix1", name: "mock", baseUrl: "https://indexer.example", allowedDownloadHosts: [] });
+        if (url.match(/\/config\/indexers\/ix1$/) && method === "PUT") {
+          put.push(JSON.parse(init!.body as string));
+          hostAllowed = true;
+          return jsonResponse(200, {});
+        }
+        if (url.includes("/resolve") && method === "POST")
+          return hostAllowed ? jsonResponse(200, resolveResponse) : jsonResponse(422, hostError);
+        return jsonResponse(404, { error: { code: "not_found", message: "no" } });
+      }),
+    );
+
+    const user = await runSearch();
+    const acceptedRow = screen.getByText(/Example\.2021\.2160p\.BluRay/).closest("tr")!;
+    await user.click(within(acceptedRow).getByRole("button", { name: /resolve/i }));
+
+    // The failure surfaces the offending host and a quick-add button.
+    const fix = await screen.findByRole("button", { name: /allow .*dl\.indexer\.example.* & retry/i });
+    await user.click(fix);
+
+    // It PUT the host onto the indexer, then re-resolved successfully.
+    await waitFor(() => expect(put).toHaveLength(1));
+    expect(put[0].allowedDownloadHosts).toEqual(["dl.indexer.example"]);
+    await waitFor(() => expect(screen.getByText("ready")).toBeInTheDocument());
   });
 });
 

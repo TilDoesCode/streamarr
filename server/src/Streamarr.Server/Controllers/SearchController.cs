@@ -19,11 +19,12 @@ namespace Streamarr.Server.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1")]
-public class SearchController(SearchService searchService) : ControllerBase
+public class SearchController(SearchService searchService, SearchConcurrencyGate searchGate) : ControllerBase
 {
     [HttpGet("search")]
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SearchResponse>> Search(
         [FromQuery] string? q,
         [FromQuery] string? type,
@@ -36,6 +37,8 @@ public class SearchController(SearchService searchService) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(q) && string.IsNullOrWhiteSpace(imdbId) && tmdbId is null)
             return BadRequest(ErrorResponse.Of("missing_query", "Provide 'q', 'imdbId' or 'tmdbId'."));
+        if (ValidateQuery(q, type, season, episode, imdbId, tmdbId, profileId) is { } validation)
+            return BadRequest(validation);
 
         var query = new SearchQuery
         {
@@ -48,8 +51,18 @@ public class SearchController(SearchService searchService) : ControllerBase
             ProfileId = profileId,
         };
 
-        var aggregation = await searchService.SearchAsync(query, cancellationToken);
-        return Ok(new SearchResponse { Results = aggregation.Works.Select(ToWorkDto).ToArray() });
+        if (!await searchGate.TryEnterAsync(cancellationToken))
+            return SearchCapacityReached();
+
+        try
+        {
+            var aggregation = await searchService.SearchAsync(query, cancellationToken);
+            return Ok(new SearchResponse { Results = aggregation.Works.Select(ToWorkDto).ToArray() });
+        }
+        finally
+        {
+            searchGate.Exit();
+        }
     }
 
     // /debug/search exposes rejected releases, parsed fields, and score breakdowns —
@@ -58,10 +71,16 @@ public class SearchController(SearchService searchService) : ControllerBase
     [HttpPost("debug/search")]
     [ProducesResponseType(typeof(DebugSearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<DebugSearchResponse>> DebugSearch([FromBody] DebugSearchRequest request, CancellationToken cancellationToken)
     {
         if (request is null || (string.IsNullOrWhiteSpace(request.Q) && string.IsNullOrWhiteSpace(request.ImdbId) && request.TmdbId is null))
             return BadRequest(ErrorResponse.Of("missing_query", "Provide 'q', 'imdbId' or 'tmdbId'."));
+        if (ValidateQuery(request.Q, request.Type, request.Season, request.Episode,
+                request.ImdbId, request.TmdbId, request.ProfileId) is { } validation)
+            return BadRequest(validation);
+        if (request.Profile is not null && ProfilesController.ValidateProfile(request.Profile) is { } profileValidation)
+            return BadRequest(profileValidation);
 
         var query = new SearchQuery
         {
@@ -75,8 +94,26 @@ public class SearchController(SearchService searchService) : ControllerBase
             DraftProfile = request.Profile,
         };
 
-        var aggregation = await searchService.SearchAsync(query, cancellationToken);
-        return Ok(ToDebugResponse(aggregation));
+        if (!await searchGate.TryEnterAsync(cancellationToken))
+            return SearchCapacityReached();
+
+        try
+        {
+            var aggregation = await searchService.SearchAsync(query, cancellationToken);
+            return Ok(ToDebugResponse(aggregation));
+        }
+        finally
+        {
+            searchGate.Exit();
+        }
+    }
+
+    private ObjectResult SearchCapacityReached()
+    {
+        Response.Headers.RetryAfter = "1";
+        return StatusCode(
+            StatusCodes.Status429TooManyRequests,
+            ErrorResponse.Of("capacity_reached", "Search capacity is currently reached; retry shortly."));
     }
 
     // ---- /search mapping -----------------------------------------------------------
@@ -226,4 +263,26 @@ public class SearchController(SearchService searchService) : ControllerBase
     };
 
     private static string MediaTypeSlug(MediaType type) => type == MediaType.Tv ? "tv" : "movie";
+
+    private static ErrorResponse? ValidateQuery(
+        string? q,
+        string? type,
+        int? season,
+        int? episode,
+        string? imdbId,
+        int? tmdbId,
+        string? profileId)
+    {
+        if (q?.Length > 256 || imdbId?.Length > 32 || profileId?.Length > 128)
+            return ErrorResponse.Of("invalid_query", "One or more query values exceed their length limit.");
+        if (type is not null && type.Trim().ToLowerInvariant() is not ("movie" or "tv" or "any"))
+            return ErrorResponse.Of("invalid_query", "'type' must be movie, tv, or any.");
+        if (season is < 0 or > 100_000 || episode is < 0 or > 100_000 || tmdbId is <= 0)
+            return ErrorResponse.Of("invalid_query", "Season, episode, and TMDB identifiers must be within valid ranges.");
+        if (imdbId is { Length: > 0 } id &&
+            (!id.StartsWith("tt", StringComparison.OrdinalIgnoreCase) || id.Length < 3 ||
+             !id.AsSpan(2).ToString().All(char.IsAsciiDigit)))
+            return ErrorResponse.Of("invalid_query", "'imdbId' must have the form tt followed by digits.");
+        return null;
+    }
 }

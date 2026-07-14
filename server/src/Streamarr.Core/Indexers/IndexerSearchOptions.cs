@@ -15,6 +15,15 @@ public sealed class IndexerSearchOptions
     /// <summary>Result cap sent to each indexer when the query doesn't set one.</summary>
     public int DefaultLimit { get; set; } = 100;
 
+    /// <summary>Maximum bytes accepted from one Newznab XML response.</summary>
+    public int MaxResponseBytes { get; set; } = 16 * 1024 * 1024;
+
+    /// <summary>Maximum enabled indexers included in one fan-out.</summary>
+    public int MaxIndexersPerSearch { get; set; } = 32;
+
+    /// <summary>Process-wide maximum number of in-flight Newznab requests.</summary>
+    public int MaxConcurrentIndexerRequests { get; set; } = 8;
+
     public TimeSpan CacheTtl => TimeSpan.FromSeconds(Math.Max(0, SearchCacheTtlSeconds));
     public TimeSpan PerIndexerTimeout => TimeSpan.FromSeconds(Math.Max(1, PerIndexerTimeoutSeconds));
     public TimeSpan RateLimitInterval => TimeSpan.FromMilliseconds(Math.Max(0, PerIndexerRateLimitMilliseconds));

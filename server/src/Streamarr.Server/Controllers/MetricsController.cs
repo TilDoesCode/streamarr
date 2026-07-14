@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Streamarr.Core.Indexers;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
@@ -11,10 +13,11 @@ namespace Streamarr.Server.Controllers;
 /// <summary>
 /// GET /api/v1/metrics (BRIEF §10-M7 observability): a JSON snapshot of sessions,
 /// NNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback
-/// counts, search-cache hit rate, and per-indexer latency. Authenticated (any bearer),
-/// like /sessions — it exposes operational, not secret, data.
+/// counts, search-cache hit rate, and per-indexer latency. Admin-only, like session
+/// listing, because provider/indexer names and circuit state are operational inventory.
 /// </summary>
 [ApiController]
+[Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/metrics")]
 public class MetricsController(
     StreamarrMetrics metrics,

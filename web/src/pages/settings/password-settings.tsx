@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChangePassword } from "@/api/queries";
 import { errorMessage } from "@/api/client";
+import { useAuth } from "@/lib/auth";
 
-// Mirrors AuthController.ChangePassword: new password must be at least 8 characters.
+// Mirrors AuthController.ChangePassword so invalid or excessive values never hit the network.
 const schema = z
   .object({
-    currentPassword: z.string().min(1, "Enter your current password"),
-    newPassword: z.string().min(8, "Must be at least 8 characters"),
-    confirmPassword: z.string().min(1, "Confirm the new password"),
+    currentPassword: z.string().min(1, "Enter your current password").max(1024, "Maximum 1024 characters"),
+    newPassword: z.string().min(12, "Must be at least 12 characters").max(1024, "Maximum 1024 characters"),
+    confirmPassword: z.string().min(1, "Confirm the new password").max(1024, "Maximum 1024 characters"),
   })
   .refine((v) => v.newPassword === v.confirmPassword, {
     path: ["confirmPassword"],
@@ -25,6 +26,7 @@ type FormValues = z.infer<typeof schema>;
 
 export function PasswordSettings() {
   const change = useChangePassword();
+  const { logout } = useAuth();
   const {
     register,
     handleSubmit,
@@ -41,8 +43,10 @@ export function PasswordSettings() {
         currentPassword: values.currentPassword,
         newPassword: values.newPassword,
       });
-      toast.success("Password changed.");
       reset({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast.success("Password changed. Sign in again with the new password.");
+      // The server revokes every existing admin JWT after a password change.
+      logout();
     } catch (err) {
       toast.error(errorMessage(err));
     }

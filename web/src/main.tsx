@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 import { router } from "./router";
 import { AuthProvider } from "./lib/auth";
 import { ThemeProvider } from "./lib/theme";
-import { setUnauthorizedHandler } from "./api/client";
+import { abortAuthenticatedRequests, setUnauthorizedHandler } from "./api/client";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -24,17 +24,23 @@ const queryClient = new QueryClient({
   },
 });
 
-// A 401 anywhere clears the session (in the fetch layer) and bounces to login (BRIEF §9).
-setUnauthorizedHandler(() => {
+function resetAuthenticatedUi() {
+  // Cancel requests before dropping their cached admin data. Navigating unmounts playback,
+  // which also stops any active media request immediately.
+  abortAuthenticatedRequests();
+  void queryClient.cancelQueries();
   queryClient.clear();
-  void router.navigate({ to: "/login" });
-});
+  void router.navigate({ to: "/login", replace: true });
+}
+
+// A 401 anywhere clears the session (in the fetch layer) and bounces to login (BRIEF §9).
+setUnauthorizedHandler(resetAuthenticatedUi);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
+        <AuthProvider onSignedOut={resetAuthenticatedUi}>
           <RouterProvider router={router} />
           <Toaster richColors closeButton position="top-right" />
         </AuthProvider>

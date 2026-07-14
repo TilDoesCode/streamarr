@@ -32,6 +32,16 @@ public class GeneralConfigController(GeneralConfigService general) : ControllerB
             return BadRequest(ErrorResponse.Of("invalid_config", "'connectionBudget' must be at least 1."));
         if (write.SessionTtlSeconds is < 1)
             return BadRequest(ErrorResponse.Of("invalid_config", "'sessionTtlSeconds' must be at least 1."));
+        if (write.ConnectionBudget is > 1_000)
+            return BadRequest(ErrorResponse.Of("invalid_config", "'connectionBudget' must not exceed 1000."));
+        if (write.SessionTtlSeconds is > 2_592_000)
+            return BadRequest(ErrorResponse.Of("invalid_config", "'sessionTtlSeconds' must not exceed 2592000."));
+        if (write.SearchCacheTtlSeconds is < 0 or > 3600)
+            return BadRequest(ErrorResponse.Of("invalid_config", "'searchCacheTtlSeconds' must be between 0 and 3600."));
+        if (write.SegmentCacheSizeMb is < 0 or > 1_048_576)
+            return BadRequest(ErrorResponse.Of("invalid_config", "'segmentCacheSizeMb' is outside its allowed range."));
+        if (write.TmdbApiKey?.Length > 4096 || Options.StreamarrOptionsValidator.ContainsControl(write.TmdbApiKey))
+            return BadRequest(ErrorResponse.Of("invalid_config", "'tmdbApiKey' is too long or contains control characters."));
 
         var updated = await general.UpdateAsync(write, ct);
         return Ok(GeneralConfigResponse.From(updated));

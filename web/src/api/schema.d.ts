@@ -107,6 +107,17 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -182,6 +193,40 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                         "text/json": components["schemas"]["ErrorResponse"];
                     };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Expire the browser admin-session cookie. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };
@@ -482,6 +527,28 @@ export interface paths {
                         "text/json": components["schemas"]["HealthResponse"];
                     };
                 };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
             };
         };
         put?: never;
@@ -596,6 +663,17 @@ export interface paths {
                         "text/json": components["schemas"]["IndexerResponse"];
                     };
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -680,6 +758,17 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -693,6 +782,57 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/indexers/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Atomically assigns contiguous priorities in the supplied full order. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ReorderRequest"];
+                    "text/json": components["schemas"]["ReorderRequest"];
+                    "application/*+json": components["schemas"]["ReorderRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -728,6 +868,17 @@ export interface paths {
                         "text/plain": components["schemas"]["IndexerTestResult"];
                         "application/json": components["schemas"]["IndexerTestResult"];
                         "text/json": components["schemas"]["IndexerTestResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Not Found */
@@ -1107,6 +1258,17 @@ export interface paths {
                         "text/json": components["schemas"]["ProviderResponse"];
                     };
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -1191,6 +1353,17 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -1204,6 +1377,57 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/providers/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Atomically assigns contiguous priorities in the supplied full order. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ReorderRequest"];
+                    "text/json": components["schemas"]["ReorderRequest"];
+                    "application/*+json": components["schemas"]["ReorderRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1239,6 +1463,17 @@ export interface paths {
                         "text/plain": components["schemas"]["ProviderTestResult"];
                         "application/json": components["schemas"]["ProviderTestResult"];
                         "text/json": components["schemas"]["ProviderTestResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Not Found */
@@ -1317,6 +1552,17 @@ export interface paths {
                         "text/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Bad Gateway */
                 502: {
                     headers: {
@@ -1382,6 +1628,17 @@ export interface paths {
                         "text/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
             };
         };
         put?: never;
@@ -1429,6 +1686,17 @@ export interface paths {
                 };
                 /** @description Bad Request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1701,6 +1969,10 @@ export interface components {
         ErrorDetail: {
             code: string | null;
             message: string | null;
+            /** @description Populated only for the `nzb_host_not_allowed` error: the rejected download host. */
+            host?: string | null;
+            /** @description Populated only for the `nzb_host_not_allowed` error: the owning indexer's id. */
+            indexerId?: string | null;
         };
         /** @description Typed error envelope rendered consistently by every endpoint. */
         ErrorResponse: {
@@ -1779,6 +2051,8 @@ export interface components {
             apiKey?: string | null;
             hasApiKey?: boolean;
             categories?: number[] | null;
+            /** @description Extra hostnames NZB downloads may use besides the BaseUrl host. */
+            allowedDownloadHosts?: string[] | null;
             enabled?: boolean;
             /** Format: int32 */
             priority?: number;
@@ -1804,6 +2078,8 @@ export interface components {
             baseUrl: string | null;
             apiKey?: string | null;
             categories?: number[] | null;
+            /** @description Extra hostnames NZB downloads may use besides the BaseUrl host. */
+            allowedDownloadHosts?: string[] | null;
             enabled?: boolean | null;
             /** Format: int32 */
             priority?: number | null;
@@ -2035,6 +2311,10 @@ export interface components {
             /** @description "unknown" | "ready" | "degraded" | "dead" (known only after a resolve). */
             health: string | null;
         };
+        /** @description Transactional priority order; every current row id must appear exactly once. */
+        ReorderRequest: {
+            ids: string[] | null;
+        };
         /** @description One release the resolve pipeline attempted, with its health classification. */
         ResolveAttempt: {
             releaseId: string | null;
@@ -2068,7 +2348,7 @@ export interface components {
             releaseId: string | null;
             /** @description "ready" | "degraded" | "dead". */
             status: string | null;
-            /** @description Absolute stream URL; null when the release is dead. */
+            /** @description Same-origin relative capability path; null when the release is dead. */
             streamUrl?: string | null;
             container?: string | null;
             /** Format: int64 */

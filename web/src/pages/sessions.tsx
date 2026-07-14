@@ -19,10 +19,12 @@ export function SessionsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h2 className="text-xl font-semibold tracking-tight">Sessions</h2>
-        {isFetching && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-        <span className="ml-auto text-sm text-muted-foreground">
+      <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold tracking-tight">Sessions</h2>
+          {isFetching && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+        </div>
+        <span className="text-sm text-muted-foreground sm:ml-auto">
           {sessions.length} live · {totalConns} NNTP conns · {formatBytes(totalBytes)} served
         </span>
       </div>
@@ -53,17 +55,24 @@ export function SessionsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
+        <div
+          className="overflow-x-auto rounded-lg border"
+          role="region"
+          aria-label="Live sessions"
+          tabIndex={0}
+        >
+          <table className="min-w-[48rem] w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
+                <th className="sticky left-0 bg-muted px-3 py-2">
+                  <span className="sr-only">Actions</span>
+                </th>
                 <th className="px-3 py-2 text-left font-medium">Release</th>
                 <th className="px-3 py-2 text-left font-medium">State</th>
                 <th className="px-3 py-2 text-left font-medium">Source</th>
                 <th className="px-3 py-2 text-right font-medium">Bytes served</th>
                 <th className="px-3 py-2 text-right font-medium">NNTP</th>
                 <th className="px-3 py-2 text-right font-medium">Age</th>
-                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -101,6 +110,29 @@ function SessionRow({ session }: { session: SessionResponse }) {
 
   return (
     <tr className="border-t">
+      <td className="sticky left-0 bg-card px-3 py-2 text-right shadow-[8px_0_12px_-12px_hsl(var(--foreground))]">
+        {confirming ? (
+          <div className="flex items-center justify-end gap-1">
+            <Button size="sm" variant="destructive" onClick={forceClose} disabled={close.isPending}>
+              {close.isPending && <Loader2 className="size-4 animate-spin" />}
+              Confirm
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={close.isPending}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setConfirming(true)}
+            aria-label={`Force-close session ${session.releaseId ?? ""}`}
+          >
+            <XCircle className="size-4" />
+            Close
+          </Button>
+        )}
+      </td>
       <td className="px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="truncate font-mono text-xs" title={session.releaseId ?? ""}>
@@ -126,29 +158,6 @@ function SessionRow({ session }: { session: SessionResponse }) {
       </td>
       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
         {timeAgo(session.createdAt)}
-      </td>
-      <td className="px-3 py-2 text-right">
-        {confirming ? (
-          <div className="flex items-center justify-end gap-1">
-            <Button size="sm" variant="destructive" onClick={forceClose} disabled={close.isPending}>
-              {close.isPending && <Loader2 className="size-4 animate-spin" />}
-              Confirm
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={close.isPending}>
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setConfirming(true)}
-            aria-label={`Force-close session ${session.releaseId ?? ""}`}
-          >
-            <XCircle className="size-4" />
-            Close
-          </Button>
-        )}
       </td>
     </tr>
   );

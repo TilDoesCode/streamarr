@@ -33,6 +33,7 @@ import {
   useCreateProvider,
   useDeleteProvider,
   useProviders,
+  useReorderProviders,
   useTestProvider,
   useUpdateProvider,
 } from "@/api/queries";
@@ -40,14 +41,14 @@ import type { ProviderResponse, ProviderTestResult, ProviderWrite } from "@/api/
 import { errorMessage } from "@/api/client";
 
 const schema = z.object({
-  name: z.string().trim().min(1, "A name is required"),
-  host: z.string().trim().min(1, "A host is required"),
+  name: z.string().trim().min(1, "A name is required").max(128, "Maximum 128 characters"),
+  host: z.string().trim().min(1, "A host is required").max(253, "Maximum 253 characters"),
   port: z.coerce.number().int("Whole number").min(1, "1–65535").max(65535, "1–65535"),
   useSsl: z.boolean(),
-  username: z.string().optional(),
-  password: z.string().optional(),
-  maxConnections: z.coerce.number().int("Whole number").min(1, "At least 1"),
-  priority: z.coerce.number().int("Whole number").min(0, "Cannot be negative"),
+  username: z.string().max(512, "Maximum 512 characters").optional(),
+  password: z.string().max(4096, "Maximum 4096 characters").optional(),
+  maxConnections: z.coerce.number().int("Whole number").min(1, "At least 1").max(100, "Maximum 100"),
+  priority: z.coerce.number().int("Whole number").min(0, "Cannot be negative").max(100_000, "Maximum 100000"),
   enabled: z.boolean(),
   isBackupOnly: z.boolean(),
 });
@@ -55,6 +56,7 @@ type FormValues = z.input<typeof schema>;
 
 export function ProvidersPage() {
   const { data, isLoading, isError, error } = useProviders();
+  const reorder = useReorderProviders();
   const [editing, setEditing] = useState<ProviderResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<ProviderResponse | null>(null);
@@ -63,9 +65,23 @@ export function ProvidersPage() {
     (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.name ?? "").localeCompare(b.name ?? ""),
   );
 
+  async function swap(first: ProviderResponse, second?: ProviderResponse) {
+    if (!second?.id || !first.id) return;
+    const ids = sorted.flatMap((item) => (item.id ? [item.id] : []));
+    const firstIndex = ids.indexOf(first.id);
+    const secondIndex = ids.indexOf(second.id);
+    if (firstIndex < 0 || secondIndex < 0) return;
+    [ids[firstIndex], ids[secondIndex]] = [ids[secondIndex], ids[firstIndex]];
+    try {
+      await reorder.mutateAsync(ids);
+    } catch (err) {
+      toast.error(`Could not reorder providers: ${errorMessage(err)}`);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Usenet Providers</h2>
           <p className="text-sm text-muted-foreground">
@@ -97,6 +113,8 @@ export function ProvidersPage() {
               isLast={i === sorted.length - 1}
               neighborAbove={sorted[i - 1]}
               neighborBelow={sorted[i + 1]}
+              reorderPending={reorder.isPending}
+              onMove={(other) => swap(provider, other)}
               onEdit={() => setEditing(provider)}
               onDelete={() => setToDelete(provider)}
             />
@@ -124,6 +142,8 @@ function ProviderRow({
   isLast,
   neighborAbove,
   neighborBelow,
+  reorderPending,
+  onMove,
   onEdit,
   onDelete,
 }: {
@@ -132,6 +152,8 @@ function ProviderRow({
   isLast: boolean;
   neighborAbove?: ProviderResponse;
   neighborBelow?: ProviderResponse;
+  reorderPending: boolean;
+  onMove: (other?: ProviderResponse) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -162,24 +184,6 @@ function ProviderRow({
     }
   }
 
-  async function swapWith(other?: ProviderResponse) {
-    if (!other) return;
-    try {
-      await Promise.all([
-        update.mutateAsync({
-          id: provider.id!,
-          body: { ...writeFrom(provider), priority: other.priority ?? 0 },
-        }),
-        update.mutateAsync({
-          id: other.id!,
-          body: { ...writeFrom(other), priority: provider.priority ?? 0 },
-        }),
-      ]);
-    } catch (err) {
-      toast.error(errorMessage(err));
-    }
-  }
-
   async function runTest() {
     setResult(null);
     try {
@@ -197,15 +201,15 @@ function ProviderRow({
 
   return (
     <li className="rounded-lg border bg-card">
-      <div className="flex items-center gap-3 p-3">
+      <div className="flex flex-wrap items-center gap-3 p-3">
         <div className="flex flex-col">
           <Button
             variant="ghost"
             size="icon"
             className="size-6"
-            disabled={isFirst || update.isPending}
+            disabled={isFirst || reorderPending}
             aria-label={`Move ${provider.name} up`}
-            onClick={() => swapWith(neighborAbove)}
+            onClick={() => onMove(neighborAbove)}
           >
             <ArrowUp className="size-3.5" />
           </Button>
@@ -213,9 +217,9 @@ function ProviderRow({
             variant="ghost"
             size="icon"
             className="size-6"
-            disabled={isLast || update.isPending}
+            disabled={isLast || reorderPending}
             aria-label={`Move ${provider.name} down`}
-            onClick={() => swapWith(neighborBelow)}
+            onClick={() => onMove(neighborBelow)}
           >
             <ArrowDown className="size-3.5" />
           </Button>
@@ -238,7 +242,7 @@ function ProviderRow({
           </p>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex w-full items-center justify-end gap-1 border-t pt-2 sm:w-auto sm:border-0 sm:pt-0">
           <div className="mr-2">
             <Switch
               checked={!!provider.enabled}
@@ -376,7 +380,7 @@ function ProviderFormDialog({
           <Field id="name" label="Name" error={errors.name?.message}>
             <Input id="name" aria-invalid={!!errors.name} {...register("name")} />
           </Field>
-          <div className="grid grid-cols-[1fr_7rem] gap-4">
+          <div className="grid gap-4 sm:grid-cols-[1fr_7rem]">
             <Field id="host" label="Host" error={errors.host?.message}>
               <Input id="host" placeholder="news.example.com" aria-invalid={!!errors.host} {...register("host")} />
             </Field>
@@ -384,7 +388,7 @@ function ProviderFormDialog({
               <Input id="port" type="number" min={1} max={65535} aria-invalid={!!errors.port} {...register("port")} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field id="username" label="Username" error={errors.username?.message}>
               <Input id="username" autoComplete="off" aria-invalid={!!errors.username} {...register("username")} />
             </Field>
@@ -404,7 +408,7 @@ function ProviderFormDialog({
               />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field id="maxConnections" label="Max connections" error={errors.maxConnections?.message}>
               <Input id="maxConnections" type="number" min={1} aria-invalid={!!errors.maxConnections} {...register("maxConnections")} />
             </Field>

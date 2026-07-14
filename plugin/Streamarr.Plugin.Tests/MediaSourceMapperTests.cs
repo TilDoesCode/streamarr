@@ -32,10 +32,10 @@ public class MediaSourceMapperTests
     [Fact]
     public void UnopenedSource_requires_opening_and_carries_release_token()
     {
-        var source = MediaSourceMapper.ToUnopenedSource(SampleRelease());
+        var source = MediaSourceMapper.ToUnopenedSource(SampleRelease(), "opaque-offer");
 
         Assert.True(source.RequiresOpening);
-        Assert.Equal("rel-123", source.OpenToken);
+        Assert.Equal("opaque-offer", source.OpenToken);
         Assert.Equal("rel-123", source.Id);
         Assert.True(source.IsRemote);
         Assert.Equal(MediaProtocol.Http, source.Protocol);
@@ -54,7 +54,7 @@ public class MediaSourceMapperTests
     }
 
     [Fact]
-    public void OpenedSource_has_path_headers_streams_and_low_analyze_duration()
+    public void OpenedSource_has_capability_path_no_machine_secret_streams_and_low_analyze_duration()
     {
         var resolve = new ResolveResponse
         {
@@ -73,7 +73,7 @@ public class MediaSourceMapperTests
             ],
         };
 
-        var source = MediaSourceMapper.ToOpenedSource(resolve, "live-1", "secret-key");
+        var source = MediaSourceMapper.ToOpenedSource(resolve, "live-1");
 
         Assert.Equal("https://host/api/v1/stream/tok-abc", source.Path);
         Assert.Equal(MediaProtocol.Http, source.Protocol);
@@ -83,7 +83,8 @@ public class MediaSourceMapperTests
         Assert.Equal("mkv", source.Container);
         Assert.Equal(78_000_000_000, source.RunTimeTicks);
         Assert.Equal(1000, source.AnalyzeDurationMs);
-        Assert.Equal("Bearer secret-key", source.RequiredHttpHeaders["Authorization"]);
+        Assert.Empty(source.RequiredHttpHeaders);
+        Assert.DoesNotContain("secret-key", source.Path, StringComparison.Ordinal);
         Assert.Equal(3, source.MediaStreams.Count);
         Assert.Equal(MediaStreamType.Video, source.MediaStreams[0].Type);
         Assert.Equal(MediaStreamType.Audio, source.MediaStreams[1].Type);
@@ -99,5 +100,39 @@ public class MediaSourceMapperTests
     public void TokenFromStreamUrl_extracts_token(string? url, string? expected)
     {
         Assert.Equal(expected, StreamarrApiClient.TokenFromStreamUrl(url));
+    }
+
+    [Fact]
+    public void Stream_capability_is_resolved_only_against_configured_core_origin()
+    {
+        Assert.Equal(
+            "https://core.example:8443/api/v1/stream/tok-abc",
+            StreamarrApiClient.ResolveStreamUrl("https://core.example:8443", "/api/v1/stream/tok-abc"));
+        Assert.Equal(
+            "https://core.example:8443/api/v1/stream/tok-abc",
+            StreamarrApiClient.ResolveStreamUrl(
+                "https://core.example:8443",
+                "https://core.example:8443/api/v1/stream/tok-abc"));
+
+        Assert.Throws<InvalidOperationException>(() => StreamarrApiClient.ResolveStreamUrl(
+            "https://core.example:8443",
+            "https://attacker.example/api/v1/stream/tok-abc"));
+        Assert.Throws<InvalidOperationException>(() => StreamarrApiClient.ResolveStreamUrl(
+            "https://core.example:8443",
+            "/api/v1/stream/tok-abc?access_token=secret"));
+        Assert.Throws<InvalidOperationException>(() => StreamarrApiClient.ResolveStreamUrl(
+            "https://core.example:8443",
+            "/api/v1/admin"));
+    }
+
+    [Fact]
+    public void Capability_session_is_redacted_from_transport_log_path()
+    {
+        Assert.Equal(
+            "/api/v1/sessions/{session}/close",
+            StreamarrApiClient.SafeLogPath("/api/v1/sessions/highly-secret/close"));
+        Assert.Equal(
+            "/api/v1/search",
+            StreamarrApiClient.SafeLogPath("/api/v1/search?q=private-viewing-history&profileId=secret"));
     }
 }

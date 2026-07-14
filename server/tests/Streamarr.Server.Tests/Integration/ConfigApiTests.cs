@@ -11,6 +11,7 @@ using Streamarr.Core.Indexers;
 using Streamarr.Core.Providers;
 using Streamarr.Server.Config;
 using Streamarr.Tests.Shared;
+using Streamarr.Usenet.Nntp.Pooling;
 
 namespace Streamarr.Server.Tests.Integration;
 
@@ -21,7 +22,7 @@ namespace Streamarr.Server.Tests.Integration;
 /// </summary>
 public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
 {
-    private const string ApiKey = "test-api-key";
+    private const string ApiKey = "test-api-key-aaaaaaaaaaaaaaaaaaaa";
     private const string SecretIndexerKey = "super-secret-indexer-key";
     private const string Mask = "••••••••";
 
@@ -125,6 +126,34 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
     }
 
     [Fact]
+    public async Task ProviderAndIndexer_ClientIdsAndOversizedRouteIds_AreRejectedAsBadRequests()
+    {
+        using var client = Client();
+
+        var indexer = await client.PostAsJsonAsync("/api/v1/config/indexers", new
+        {
+            id = "client-controlled",
+            name = "unsafe-id",
+            baseUrl = "https://idx.example",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, indexer.StatusCode);
+
+        var provider = await client.PostAsJsonAsync("/api/v1/config/providers", new
+        {
+            id = "client-controlled",
+            name = "unsafe-id",
+            host = "news.example",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, provider.StatusCode);
+
+        var oversized = new string('x', 129);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync($"/api/v1/config/indexers/{oversized}")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync($"/api/v1/config/providers/{oversized}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Indexer_Test_ReturnsCapsWithLatency()
     {
         using var client = Client();
@@ -164,6 +193,8 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(Mask, created.GetProperty("password").GetString());
         Assert.True(created.GetProperty("hasPassword").GetBoolean());
         Assert.Equal("user", created.GetProperty("username").GetString());
+        Assert.Contains(_factory.Services.GetRequiredService<MultiProviderNntpClient>().Providers,
+            p => p.ProviderName == "primary");
 
         var raw = await client.GetStringAsync("/api/v1/config/providers");
         Assert.DoesNotContain("hunter2", raw);
@@ -179,6 +210,46 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(30, entity!.MaxConnections);
 
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/v1/config/providers/{id}")).StatusCode);
+        Assert.DoesNotContain(_factory.Services.GetRequiredService<MultiProviderNntpClient>().Providers,
+            p => p.ProviderName == "primary");
+    }
+
+    [Fact]
+    public async Task ProviderAndIndexer_Reorder_IsTransactionalAndContiguous()
+    {
+        using var client = Client();
+        var p1 = await CreateProvider(client, "order-p1");
+        var p2 = await CreateProvider(client, "order-p2");
+        var providers = (await client.GetFromJsonAsync<JsonElement>("/api/v1/config/providers"))
+            .EnumerateArray().Select(x => x.GetProperty("id").GetString()!).ToArray();
+        var providerOrder = providers.Reverse().ToArray();
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.PutAsJsonAsync("/api/v1/config/providers/order", new { ids = providerOrder })).StatusCode);
+        var reorderedProviders = (await client.GetFromJsonAsync<JsonElement>("/api/v1/config/providers"))
+            .EnumerateArray().ToArray();
+        Assert.Equal(providerOrder, reorderedProviders.Select(x => x.GetProperty("id").GetString()));
+        Assert.Equal(Enumerable.Range(0, providerOrder.Length),
+            reorderedProviders.Select(x => x.GetProperty("priority").GetInt32()));
+
+        var invalid = await client.PutAsJsonAsync("/api/v1/config/providers/order", new { ids = new[] { p1, p1 } });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var i1 = await CreateIndexer(client, "order-i1", "key");
+        var i2 = await CreateIndexer(client, "order-i2", "key");
+        var indexers = (await client.GetFromJsonAsync<JsonElement>("/api/v1/config/indexers"))
+            .EnumerateArray().Select(x => x.GetProperty("id").GetString()!).Reverse().ToArray();
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.PutAsJsonAsync("/api/v1/config/indexers/order", new { ids = indexers })).StatusCode);
+        var reorderedIndexers = (await client.GetFromJsonAsync<JsonElement>("/api/v1/config/indexers"))
+            .EnumerateArray().ToArray();
+        Assert.Equal(indexers, reorderedIndexers.Select(x => x.GetProperty("id").GetString()));
+        Assert.Equal(Enumerable.Range(0, indexers.Length),
+            reorderedIndexers.Select(x => x.GetProperty("priority").GetInt32()));
+
+        await client.DeleteAsync($"/api/v1/config/providers/{p1}");
+        await client.DeleteAsync($"/api/v1/config/providers/{p2}");
+        await client.DeleteAsync($"/api/v1/config/indexers/{i1}");
+        await client.DeleteAsync($"/api/v1/config/indexers/{i2}");
     }
 
     [Fact]
@@ -313,6 +384,49 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/v1/config/profiles/{id}")).StatusCode);
     }
 
+    [Fact]
+    public async Task Profile_RejectsUnsafeRangesWeightsAndLists()
+    {
+        using var client = Client();
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/config/profiles", new
+        {
+            id = "caller-controlled",
+            name = "custom id",
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/config/profiles", new
+        {
+            name = "bad-weight",
+            resolutionWeight = -1,
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/config/profiles", new
+        {
+            name = "bad-band",
+            minBytesPerMinute = 100,
+            maxBytesPerMinute = 10,
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/config/profiles", new
+        {
+            name = "overlap",
+            groupAllowList = new[] { "GROUP" },
+            groupDenyList = new[] { "group" },
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/config/profiles", new
+        {
+            name = "null-list",
+            preferredResolutions = (string[]?)null,
+        })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/debug/search", new
+        {
+            q = "example",
+            profile = new
+            {
+                name = "invalid draft",
+                preferredSources = (string[]?)null,
+            },
+        })).StatusCode);
+    }
+
     // ---- events ----------------------------------------------------------------------
 
     [Fact]
@@ -381,6 +495,28 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         // Revoke → the token no longer authenticates.
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/v1/config/apikeys/{id}")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await minted.GetAsync("/api/v1/caps")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ApiKey_RejectsOversizedName()
+    {
+        using var client = Client();
+        var response = await client.PostAsJsonAsync("/api/v1/config/apikeys", new { name = new string('x', 129) });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OversizedApiBody_ReturnsSafe413()
+    {
+        using var client = Client();
+        using var content = new StringContent(
+            JsonSerializer.Serialize(new { name = new string('x', 1024 * 1024 + 1) }),
+            System.Text.Encoding.UTF8,
+            "application/json");
+        using var response = await client.PostAsync("/api/v1/config/apikeys", content);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<Streamarr.Server.Contracts.ErrorResponse>();
+        Assert.Equal("payload_too_large", error!.Error.Code);
     }
 
     // ---- caps ------------------------------------------------------------------------
@@ -457,6 +593,19 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
     }
 
+    private static async Task<string> CreateProvider(HttpClient client, string name)
+    {
+        var response = await client.PostAsJsonAsync("/api/v1/config/providers", new
+        {
+            name,
+            host = "news.example",
+            enabled = true,
+            maxConnections = 1,
+        });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+    }
+
     // ---- test host -------------------------------------------------------------------
 
     public sealed class Factory : WebApplicationFactory<Program>, IDisposable
@@ -472,6 +621,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
                 ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
                 ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
                 ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
+                ["Streamarr:LoginAttemptsPerMinute"] = "1000",
             }));
 
             builder.ConfigureTestServices(services =>

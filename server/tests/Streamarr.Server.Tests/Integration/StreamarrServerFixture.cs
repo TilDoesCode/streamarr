@@ -20,7 +20,7 @@ namespace Streamarr.Server.Tests.Integration;
 /// </summary>
 public sealed class StreamarrServerFixture : IAsyncLifetime
 {
-    public const string ApiKey = "test-api-key";
+    public const string ApiKey = "test-api-key-aaaaaaaaaaaaaaaaaaaa";
 
     public const string DirectReleaseId = "rel-direct";
     public const string RarReleaseId = "rel-rar";
@@ -102,10 +102,12 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
             // Keep the structured-logging output quiet in the test run.
             ["Serilog:MinimumLevel:Default"] = "Warning",
             ["Streamarr:ApiKey"] = ApiKey,
+            ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
             ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_tempDir, "streamarr.db")}",
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_tempDir, "keys"),
             ["Streamarr:ConnectionBudget"] = "12",
             ["Streamarr:SessionTtlSeconds"] = "300",
+            ["Streamarr:AllowLocalNzbFiles"] = "true",
             ["Streamarr:HealthCheck:SampleCount"] = "24",
             ["Streamarr:HealthCheck:DeadMissingRatio"] = "0.5",
             ["Streamarr:Providers:0:Name"] = "mock",

@@ -15,6 +15,59 @@ namespace Streamarr.Plugin.Search;
 public static class SearchInjection
 {
     /// <summary>
+    /// The subset of Jellyfin search constraints that synthetic items can safely honor. A
+    /// non-root or later-page query is never augmented: appending after Jellyfin has already
+    /// paged its native results would repeat synthetic entries on every page.
+    /// </summary>
+    public sealed record Constraints(
+        int StartIndex,
+        int? Limit,
+        Guid? ParentId,
+        IReadOnlySet<BaseItemKind> IncludeItemTypes,
+        IReadOnlySet<BaseItemKind> ExcludeItemTypes,
+        IReadOnlySet<MediaType> MediaTypes,
+        bool IncludeMedia,
+        bool? IsMovie,
+        bool? IsSeries,
+        bool IsValid = true)
+    {
+        public bool CanInjectAtRoot
+            => IsValid && StartIndex == 0 && (!ParentId.HasValue || ParentId.Value == Guid.Empty);
+
+        public int RemainingCapacity(int nativeCount, int defaultLimit)
+        {
+            if (!CanInjectAtRoot || !IncludeMedia)
+                return 0;
+
+            var effectiveLimit = Limit ?? defaultLimit;
+            return effectiveLimit <= 0 ? 0 : Math.Max(0, effectiveLimit - nativeCount);
+        }
+
+        public bool Allows(WorkDto work)
+        {
+            if (!CanInjectAtRoot || !IncludeMedia)
+                return false;
+
+            var kind = KindFor(work);
+            if (IncludeItemTypes.Count > 0 && !IncludeItemTypes.Contains(kind))
+                return false;
+            if (ExcludeItemTypes.Contains(kind))
+                return false;
+            if (MediaTypes.Count > 0 && !MediaTypes.Contains(MediaType.Video))
+                return false;
+
+            if (IsMovie is { } wantsMovie && (kind == BaseItemKind.Movie) != wantsMovie)
+                return false;
+
+            // Streamarr currently materializes TV search works as episodes, never Series items.
+            if (IsSeries == true || (IsSeries == false && kind == BaseItemKind.Series))
+                return false;
+
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Appends injected ephemeral works to the native result set, de-duplicated by item id and
     /// preserving native ordering first. Returns the native list unchanged when nothing is
     /// injected so a no-op interception never reallocates.

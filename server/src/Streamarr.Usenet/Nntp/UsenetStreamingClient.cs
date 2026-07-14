@@ -5,6 +5,7 @@
 // built from a plain provider list instead of nzbdav's ConfigManager/Websocket stack.
 
 using Microsoft.Extensions.Logging;
+using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp.Pooling;
 
@@ -57,9 +58,24 @@ public static class UsenetStreamingClient
     )
     {
         var connection = new SingleConnectionNntpClient();
-        await connection.ConnectAsync(provider.Host, provider.Port, provider.UseSsl, ct).ConfigureAwait(false);
-        if (!string.IsNullOrEmpty(provider.Username))
-            await connection.AuthenticateAsync(provider.Username, provider.Password, ct).ConfigureAwait(false);
-        return connection;
+        try
+        {
+            await connection.ConnectAsync(provider.Host, provider.Port, provider.UseSsl, ct).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(provider.Username))
+            {
+                var auth = await connection.AuthenticateAsync(provider.Username, provider.Password, ct)
+                    .ConfigureAwait(false);
+                if (!auth.Success)
+                    throw new CouldNotLoginToUsenetException(
+                        $"Provider authentication failed with NNTP status {auth.ResponseCode}.");
+            }
+
+            return connection;
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
     }
 }

@@ -18,6 +18,8 @@ public class MetricsEndpointTests(StreamarrServerFixture fixture)
         var resolved = (await resolveResponse.Content.ReadFromJsonAsync<ResolveResponse>())!;
         _ = await client.GetByteArrayAsync(resolved.StreamUrl!);
 
+        await client.AuthenticateAsAdminAsync();
+
         var metrics = await client.GetFromJsonAsync<MetricsResponse>("/api/v1/metrics");
         Assert.NotNull(metrics);
 
@@ -45,5 +47,13 @@ public class MetricsEndpointTests(StreamarrServerFixture fixture)
         using var anonymous = fixture.CreateClient(authenticated: false);
         using var response = await anonymous.GetAsync("/api/v1/metrics");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Metrics_RejectMachineCredentials()
+    {
+        using var machine = fixture.CreateClient();
+        using var response = await machine.GetAsync("/api/v1/metrics");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }

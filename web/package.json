@@ -4,6 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Streamarr Management UI — React 19 SPA (BRIEF §9). Talks only to /api/v1; must work with Jellyfin absent.",
+  "engines": {
+    "node": ">=22 <25",
+    "npm": ">=10"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -52,5 +56,8 @@
     "typescript": "^5.6.3",
     "vite": "^6.0.7",
     "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
   }
 }

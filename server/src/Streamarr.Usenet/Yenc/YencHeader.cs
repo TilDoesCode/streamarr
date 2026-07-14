@@ -9,6 +9,9 @@ namespace Streamarr.Usenet.Yenc;
 /// </summary>
 public record YencHeader
 {
+    /// <summary>Hard safety ceiling for decoded files carried by this NNTP stack.</summary>
+    public const long MaxFileSizeBytes = 16L * 1024 * 1024 * 1024 * 1024;
+
     public required string FileName { get; init; }
     public required long FileSize { get; init; }
     public required int LineLength { get; init; }

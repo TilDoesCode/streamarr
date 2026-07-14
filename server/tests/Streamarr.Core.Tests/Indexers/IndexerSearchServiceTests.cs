@@ -34,7 +34,20 @@ public class IndexerSearchServiceTests
         Assert.Equal(2, result.Releases.Count);
         Assert.Contains(result.Outcomes, o => o.IndexerName == "Alpha" && o.Succeeded);
         Assert.Contains(result.Outcomes, o => o.IndexerName == "Beta" && o.Succeeded);
+        Assert.Contains(result.Releases, release => release.IndexerId == "alpha");
+        Assert.Contains(result.Releases, release => release.IndexerId == "beta");
         Assert.False(result.FromCache);
+    }
+
+    [Fact]
+    public void ReleaseId_IsBoundToStableIndexerConfigId_NotDisplayName()
+    {
+        var beforeRename = IndexerSearchService.ReleaseId("indexer-config-id", "upstream-guid");
+        var afterRename = IndexerSearchService.ReleaseId("indexer-config-id", "upstream-guid");
+        var anotherIndexer = IndexerSearchService.ReleaseId("other-config-id", "upstream-guid");
+
+        Assert.Equal(beforeRename, afterRename);
+        Assert.NotEqual(beforeRename, anotherIndexer);
     }
 
     [Fact]
@@ -50,6 +63,30 @@ public class IndexerSearchServiceTests
         Assert.Single(result.Releases);
         Assert.Single(result.Outcomes);
         Assert.Equal(1, client.SearchCallCount);
+    }
+
+    [Fact]
+    public async Task FanOut_CapsIndexerCountAndProcessWideConcurrency()
+    {
+        var options = new IndexerSearchOptions
+        {
+            PerIndexerRateLimitMilliseconds = 0,
+            MaxIndexersPerSearch = 4,
+            MaxConcurrentIndexerRequests = 2,
+        };
+        var indexers = Enumerable.Range(0, 6)
+            .Select(i => NewznabFixtures.Indexer($"Indexer{i}", i))
+            .ToArray();
+        var client = new FakeNewznabClient();
+        foreach (var indexer in indexers)
+            client.Delays(indexer.Name, TimeSpan.FromMilliseconds(30));
+
+        var result = await Service(client, indexers, options)
+            .SearchAsync(Query, CancellationToken.None);
+
+        Assert.Equal(4, result.Outcomes.Count);
+        Assert.Equal(4, client.SearchCallCount);
+        Assert.InRange(client.MaxObservedConcurrentCalls, 1, 2);
     }
 
     [Fact]
@@ -97,7 +134,7 @@ public class IndexerSearchServiceTests
 
         var alpha = result.Outcomes.Single(o => o.IndexerName == "Alpha");
         Assert.Equal(IndexerOutcomeStatus.Failed, alpha.Status);
-        Assert.Equal("boom", alpha.Error);
+        Assert.Equal("Indexer request failed", alpha.Error);
     }
 
     [Fact]

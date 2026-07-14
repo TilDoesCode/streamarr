@@ -242,7 +242,10 @@ public class MultiConnectionNntpClient(
 
             void OnConnectionReadyAgain(ArticleBodyResult articleBodyResult)
             {
-                if (articleBodyResult != ArticleBodyResult.Retrieved) return;
+                if (articleBodyResult == ArticleBodyResult.NotRetrieved)
+                {
+                    Quietly(() => connectionLock.Replace());
+                }
 
                 Quietly(() => connectionLock.Dispose());
                 Quietly(() => onConnectionReadyAgain?.Invoke(articleBodyResult));

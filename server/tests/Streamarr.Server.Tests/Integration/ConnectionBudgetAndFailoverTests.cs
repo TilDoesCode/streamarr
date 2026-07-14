@@ -22,7 +22,7 @@ namespace Streamarr.Server.Tests.Integration;
 /// </summary>
 public sealed class ConnectionBudgetAndFailoverTests : IAsyncLifetime
 {
-    private const string ApiKey = "hardening-key";
+    private const string ApiKey = "test-api-key-aaaaaaaaaaaaaaaaaaaa";
     private byte[] _video = null!;
 
     public async Task InitializeAsync() => _video = await TestMediaFile.GenerateMkvAsync(durationSeconds: 30);
@@ -148,10 +148,12 @@ public sealed class ConnectionBudgetAndFailoverTests : IAsyncLifetime
         {
             ["Serilog:MinimumLevel:Default"] = "Warning",
             ["Streamarr:ApiKey"] = ApiKey,
+            ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
             ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_tempDir, $"{Guid.NewGuid():N}.db")}",
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_tempDir, $"keys-{Guid.NewGuid():N}"),
             ["Streamarr:ConnectionBudget"] = budget.ToString(),
             ["Streamarr:SessionTtlSeconds"] = "300",
+            ["Streamarr:AllowLocalNzbFiles"] = "true",
         };
 
         for (var i = 0; i < providers.Length; i++)

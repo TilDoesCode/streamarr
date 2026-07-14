@@ -20,13 +20,17 @@ pieces are) and [`api.md`](./api.md) (what they expose).
 Server, with an optional Vite web profile.
 
 ```bash
-# 1. Build the Jellyfin plugin (its DLL is bind-mounted into Jellyfin)
-(cd plugin && ~/.dotnet/dotnet build Streamarr.Plugin/Streamarr.Plugin.csproj -c Release)
+# 1. Configure unique credentials. Compose fails while either value is empty.
+cp .env.example .env
+${EDITOR:-vi} .env
 
-# 2. Bring up Jellyfin + Core Server
+# 2. Build the Jellyfin plugin (its DLL is bind-mounted into Jellyfin)
+(cd plugin && dotnet build Streamarr.Plugin/Streamarr.Plugin.csproj -c Release)
+
+# 3. Bring up Jellyfin + Core Server
 docker compose -f docker-compose.dev.yml up --build
 
-# 3. (optional) also run the Management UI on Vite
+# 4. (optional) also run the Management UI on Vite
 docker compose -f docker-compose.dev.yml --profile web up --build
 ```
 
@@ -37,8 +41,12 @@ docker compose -f docker-compose.dev.yml --profile web up --build
 - **Vite web** (profile `web`) → `http://localhost:5173`, proxying `/api` + `/openapi`
   to the Core.
 
-The compose file seeds a dev bootstrap: `Streamarr__ApiKey=dev-streamarr-key`, admin
-`admin` / `streamarr`. **Override all three for anything beyond local development.**
+The compose file reads the bootstrap username, password and machine key from `.env`,
+fails fast when either secret is empty, and binds every published port to loopback.
+Set `JELLYFIN_UID` / `JELLYFIN_GID` to the owner of the plugin build output and the
+Jellyfin volumes (the example defaults to `1000:1000`). Both application containers
+run without Linux capabilities, with a read-only root filesystem and
+`no-new-privileges`; only their declared volumes and bounded tmpfs mounts are writable.
 The Jellyfin container mounts the plugin's build output read-write into
 `/config/plugins/Streamarr` (Jellyfin rewrites `meta.json` on load; a read-only mount
 fails).
@@ -60,23 +68,61 @@ static files — **single container, single origin** (BRIEF §4). The multi-stag
 ```bash
 # build context is the repo root
 docker build -f server/Dockerfile -t streamarr .
-docker run -p 8080:8080 \
+docker run --init --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+  -p 127.0.0.1:8080:8080 \
   -e STREAMARR_ADMIN_PASSWORD='choose-a-strong-one' \
-  -e Streamarr__ApiKey='mint-a-machine-key' \
+  -e Streamarr__ApiKey='replace-with-at-least-32-random-characters' \
   -v streamarr-data:/app/data -v streamarr-keys:/app/keys \
   streamarr
 ```
+
+The image stores SQLite at `/app/data/streamarr.db`, persists Data Protection keys at
+`/app/keys`, and runs as the unprivileged `app` user. Back up both volumes together.
+
+The application port is intentionally HTTP-only inside the container. A production
+installation **must** terminate HTTPS at a trusted reverse proxy/VPN ingress and proxy
+to this loopback/private port. Do not change the example to `-p 8080:8080` on an
+internet-facing host. Configure the proxy to redact `/api/v1/stream/*` paths and all
+query strings from access logs, and limit request/body sizes at the edge as a second
+layer of defense.
+
+For example, a Caddy instance on the same host can terminate TLS automatically:
+
+```caddyfile
+streamarr.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Keep proxy access logging disabled for stream paths unless its configuration can
+reliably redact the capability token.
+
+Loopback reverse proxies are trusted automatically. If the proxy reaches Kestrel from
+another container or host, add only its exact source address through
+`Streamarr__TrustedProxies__0` (and increment the final index for additional proxies).
+Do not configure an entire client network: only listed proxy addresses may supply
+`X-Forwarded-For` and `X-Forwarded-Proto`, and Streamarr accepts one forwarding hop.
 
 When `wwwroot/index.html` exists the server enables static-file serving + an SPA
 fallback (client routes like `/settings` resolve to `index.html`), while `/api` and
 `/openapi` keep their own behavior. In development you instead run Vite (`npm run dev`)
 proxying to Kestrel — both paths are supported.
 
+Cookie-authenticated state changes require a same-origin request. When the Management UI
+is reached through a TLS-terminating tunnel or a forwarded per-app URL (e.g. Codecraft dev
+actions), the browser's `Origin` can never match the origin Kestrel reconstructs locally,
+so those `POST`/`PUT`/`DELETE`s fail with `403 csrf_rejected`. List each browser-visible
+origin (`scheme://host[:port]`, no path) through `Streamarr__TrustedOrigins__0` (increment
+the index for more). Leave it empty for a plain single-origin deployment. The dev stack and
+native `server` action already wire this from the `CODECRAFT_URL_*` public URLs.
+
 ---
 
 ## 3. Configuration — where it lives
 
-Config resolves from three overlapping places (later wins for a given key):
+Config resolves from four overlapping places (later wins for a given key):
 
 1. **`appsettings.json`** — checked-in defaults, under the `Streamarr` section.
 2. **`appsettings.Local.json`** — **git-ignored**; put real provider credentials, real
@@ -86,13 +132,18 @@ Config resolves from three overlapping places (later wins for a given key):
 4. **The Management UI / config API** — the SQLite-backed **source of truth** for
    indexers, providers, profiles, general config, and API keys. On startup the
    persisted config is overlaid onto the bound options, so once you have configured
-   things in the UI, that is what runs.
+   things in the UI, that is what runs. Provider pool changes are applied atomically to
+   subsequent NNTP commands; an already-borrowed connection may finish before its retired
+   pool is disposed.
 
 **First-run bootstrap:** with an empty users table an admin is seeded from
-`STREAMARR_ADMIN_PASSWORD` / `Streamarr:Admin:Password` if set, otherwise a random
-password is **generated and logged once**. Machine clients authenticate with the static
-`Streamarr:ApiKey` or a key minted via `POST /api/v1/config/apikeys`. Secrets are
-encrypted at rest (ASP.NET Data Protection key ring under
+`STREAMARR_ADMIN_PASSWORD` / `Streamarr:Admin:Password`. Outside Development a
+configured 12–1024 character password without control characters is required and a
+missing value fails startup. Only Development may generate and log a random fallback
+once. Machine clients authenticate with the optional static `Streamarr:ApiKey` or a key
+minted via `POST /api/v1/config/apikeys`; when enabled, the static key must be 32–4096
+characters without whitespace or control characters. Secrets are encrypted at rest
+(ASP.NET Data Protection key ring under
 `Streamarr:DataProtectionKeysPath`) and never returned in plaintext by the API.
 
 ---
@@ -140,11 +191,15 @@ failure, not a UI bug.
 2. In Jellyfin → **Dashboard → Plugins**, confirm **Streamarr** is listed and Active.
 3. Open its (deliberately minimal) config page: set **Core Server URL**
    (`http://streamarr:8080` in compose) and the **machine API key**, hit **Test
-   connection** (`GET /api/v1/health`).
+   connection**. This calls anonymous shallow `GET /api/v1/health?deep=false` and then
+   authenticated `GET /api/v1/caps`; both must succeed, so the test validates the URL
+   and the key rather than liveness alone.
 4. Turn on **Enable search interception**.
 
 Usenet results now appear alongside your local library and play through Jellyfin's
-transcoding pipeline. The plugin is **pinned to Jellyfin 10.10.7** and the search
+transcoding pipeline. Synthetic items live under a private, hidden implementation
+folder and are returned only through eligible intercepted searches; they do not appear
+in normal library browsing. The plugin is **pinned to Jellyfin 10.11.11** and the search
 interception is version-fragile — see
 [`jellyfin-compatibility.md`](./jellyfin-compatibility.md) and the manual acceptance
 checklist in [`m5-acceptance.md`](./m5-acceptance.md).
@@ -161,18 +216,35 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 
 | Key | Default | Meaning |
 |---|---|---|
-| `ApiKey` | `""` | Static bootstrap machine API key for bearer auth. Empty disables it; keys minted via the config API still work. |
+| `ApiKey` | `""` | Static bootstrap machine API key for bearer auth. Empty disables it; when enabled it must be 32–4096 characters without whitespace/control characters. Keys minted via the config API still work. |
 | `ConnectionString` | `""` | SQLite connection string. Empty → `streamarr.db` next to the app. |
-| `AdminSessionTtlSeconds` | `3600` | Lifetime of the admin session JWT from `POST /auth/login`. |
+| `AdminSessionTtlSeconds` | `3600` | Lifetime of the admin session cookie/JWT from `POST /auth/login`. |
+| `LoginAttemptsPerMinute` | `5` | Fixed-window login-attempt limit per client IP. |
 | `DataProtectionKeysPath` | `""` | Directory the secret-encryption key ring persists to. Empty → a `keys` folder next to the app. |
 | `ConnectionBudget` | `20` | **Global** NNTP connection budget shared across all sessions (BODY/ARTICLE outrank STAT/HEAD). |
 | `SessionTtlSeconds` | `3600` | Session lifetime; a stream token maps to a session until this elapses (or it is closed). |
 | `SessionSweepIntervalSeconds` | `30` | How often the session manager sweeps for expired sessions. |
+| `MaxSessions` | `64` | Hard cap on simultaneously live capability sessions. |
+| `MaxConcurrentStreams` | `128` | Hard cap on concurrently open HTTP stream bodies. |
+| `MaxConcurrentResolves` | `4` | Hard cap on full NZB/health/materialization resolve pipelines in flight. |
+| `MaxConcurrentSearches` | `4` | Hard cap on concurrent indexer fan-out searches. |
 | `MaxFallbackHops` | `3` | **(M7)** Max automatic fallback hops when a release resolves dead, so a fully-dead work fails fast. |
 | `HealthCacheTtlSeconds` | `1800` | **(M7)** How long a dead classification is remembered and fed back into ranking + fallback selection. `0` disables the health cache. |
 | `ArticleReadAheadCount` | `3` | Segments read ahead while streaming (nzbdav's article buffer size). |
 | `FfprobePath` | `ffprobe` | Path to the `ffprobe` binary used to pre-probe the stream at resolve. |
 | `FfprobeTimeoutSeconds` | `60` | Timeout for the server-side `ffprobe` run. |
+| `MaxConcurrentFfprobe` | `2` | Hard cap on concurrent `ffprobe` child processes. |
+| `MaxNzbBytes` | `67108864` | Maximum compressed NZB response size accepted from an indexer. |
+| `MaxNzbFiles` | `10000` | Maximum file entries accepted from one NZB. |
+| `MaxNzbSegments` | `1000000` | Maximum total segment entries accepted from one NZB. |
+| `MaxMediaBytes` | `17592186044416` | Maximum decoded size of one materialized media file (16 TiB). |
+| `AllowLocalNzbFiles` | `false` | Test-only escape hatch for local NZB paths; keep disabled in production. |
+| `SearchCacheMaxEntries` | `1000` | Hard bound for the in-memory search cache. |
+| `HealthCacheMaxEntries` | `10000` | Hard bound for cached release-health classifications. |
+| `ReleaseStoreMaxEntries` | `10000` | Hard bound for the in-memory release lookup store. |
+| `TmdbCacheMaxEntries` | `5000` | Hard bound for cached TMDB metadata. |
+| `MaxWatchEvents` | `10000` | Maximum retained playback-event rows; oldest rows are pruned on write. |
+| `DeepHealthCacheSeconds` | `30` | Shared cache lifetime for admin-only dependency probes. |
 | `Admin` | — | First-run admin bootstrap (below). |
 | `Providers[]` | `[]` | Priority-ordered Usenet providers (below). |
 | `Indexers[]` | `[]` | Newznab indexers seeding the config store (below). |
@@ -185,7 +257,7 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | Key | Default | Meaning |
 |---|---|---|
 | `Admin.Username` | `admin` | Bootstrap admin username (only used when the users table is empty). |
-| `Admin.Password` | `""` | Bootstrap password; empty → generate a random one and log it **once**. Also settable via `STREAMARR_ADMIN_PASSWORD`. |
+| `Admin.Password` | `""` | Bootstrap password, also settable via `STREAMARR_ADMIN_PASSWORD`. Must be 12–1024 characters without control characters. Required outside Development; only Development generates/logs a random fallback once. |
 
 ### `Providers[]` (each entry)
 
@@ -220,6 +292,9 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `PerIndexerTimeoutSeconds` | `30` | Per-indexer request timeout; a slow indexer is dropped, not awaited. |
 | `PerIndexerRateLimitMilliseconds` | `1000` | Minimum gap between consecutive requests to the same indexer. |
 | `DefaultLimit` | `100` | Result cap sent to each indexer when the query sets none. |
+| `MaxResponseBytes` | `16777216` | Maximum XML response body accepted from one indexer. |
+| `MaxIndexersPerSearch` | `32` | Maximum enabled indexers included in one fan-out. |
+| `MaxConcurrentIndexerRequests` | `8` | Process-wide maximum in-flight Newznab requests across all searches. |
 
 ### `Tmdb`
 
@@ -231,6 +306,9 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `PosterSize` / `BackdropSize` | `w500` / `w1280` | Requested image sizes. |
 | `Language` | `null` | Optional ISO 639-1 response language (e.g. `en-US`). |
 | `CacheTtlHours` | `24` | Metadata cache lifetime (cached aggressively). |
+| `MaxResponseBytes` | `4194304` | Maximum decompressed JSON response body accepted from TMDB. |
+| `RequestTimeoutSeconds` | `20` | Hard lifetime for one shared upstream lookup, including admission wait. |
+| `MaxConcurrentRequests` | `4` | Process-wide maximum TMDB requests in flight. |
 
 ### `HealthCheck`
 

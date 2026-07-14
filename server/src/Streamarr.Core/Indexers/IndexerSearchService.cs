@@ -25,18 +25,21 @@ public sealed class IndexerSearchService(
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ILogger _logger = logger ?? NullLogger<IndexerSearchService>.Instance;
+    private readonly SemaphoreSlim _requestGate = new(Math.Max(1, options.MaxConcurrentIndexerRequests));
 
     public async Task<IndexerSearchResult> SearchAsync(NewznabQuery query, CancellationToken cancellationToken)
     {
         var cacheKey = query.CacheKey();
         if (cache.TryGet(cacheKey, out var cached))
         {
-            _logger.LogDebug("Search cache hit for {CacheKey}", cacheKey);
+            _logger.LogDebug("Search cache hit");
             return cached with { FromCache = true };
         }
 
-        var indexers = configStore.GetEnabled();
-        if (indexers.Count == 0)
+        var indexers = configStore.GetEnabled()
+            .Take(Math.Max(1, options.MaxIndexersPerSearch))
+            .ToArray();
+        if (indexers.Length == 0)
             return IndexerSearchResult.Empty;
 
         var effectiveQuery = query.Limit is null
@@ -77,22 +80,30 @@ public sealed class IndexerSearchService(
 
         try
         {
-            await rateLimiter.WaitAsync(indexer.Id, cancellationToken);
-
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(options.PerIndexerTimeout);
+            await rateLimiter.WaitAsync(indexer.Id, timeoutCts.Token);
+            await _requestGate.WaitAsync(timeoutCts.Token);
 
-            var response = await client.SearchAsync(indexer, query, timeoutCts.Token);
-            var releases = response.Items
-                .Select(item => ToRelease(indexer, item))
-                .ToArray();
+            IReadOnlyList<Release> releases;
+            try
+            {
+                var response = await client.SearchAsync(indexer, query, timeoutCts.Token);
+                releases = response.Items
+                    .Select(item => ToRelease(indexer, item))
+                    .ToArray();
+            }
+            finally
+            {
+                _requestGate.Release();
+            }
 
             return new IndexerResult(indexer, releases, new IndexerOutcome
             {
                 IndexerId = indexer.Id,
                 IndexerName = indexer.Name,
                 Status = IndexerOutcomeStatus.Succeeded,
-                ItemCount = releases.Length,
+                ItemCount = releases.Count,
                 Elapsed = _time.GetElapsedTime(started),
             });
         }
@@ -108,8 +119,13 @@ public sealed class IndexerSearchService(
         }
         catch (Exception e)
         {
-            _logger.LogWarning(e, "Indexer {Indexer} failed: {Message}", indexer.Name, e.Message);
-            return Failure(indexer, IndexerOutcomeStatus.Failed, e.Message, started);
+            // Transport exception messages can contain the full Newznab URL, including
+            // its API-key query parameter. Retain only the non-sensitive failure type.
+            _logger.LogWarning(
+                "Indexer {Indexer} failed with {FailureType}",
+                indexer.Name,
+                e.GetType().Name);
+            return Failure(indexer, IndexerOutcomeStatus.Failed, "Indexer request failed", started);
         }
     }
 
@@ -156,9 +172,10 @@ public sealed class IndexerSearchService(
 
         return new Release
         {
-            ReleaseId = ReleaseId(indexer.Name, item.Guid),
+            ReleaseId = ReleaseId(indexer.Id, item.Guid),
             Title = item.Title,
             Indexer = indexer.Name,
+            IndexerId = indexer.Id,
             SizeBytes = item.SizeBytes,
             Grabs = item.Grabs,
             AgeDays = ageDays,
@@ -166,10 +183,10 @@ public sealed class IndexerSearchService(
         };
     }
 
-    /// <summary>Stable release id: sha256 of the indexer name + indexer guid (BRIEF §6.2).</summary>
-    internal static string ReleaseId(string indexerName, string guid)
+    /// <summary>Stable release id: sha256 of the config id + indexer guid (BRIEF §6.2).</summary>
+    internal static string ReleaseId(string indexerId, string guid)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{indexerName}\n{guid}"));
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{indexerId}\n{guid}"));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 

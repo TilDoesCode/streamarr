@@ -11,7 +11,10 @@ namespace Streamarr.Core.Indexers;
 /// Newznab request URL, fetches it, and hands the body to
 /// <see cref="NewznabXmlParser"/>. Stateless — one instance serves every indexer.
 /// </summary>
-public sealed class NewznabClient(HttpClient httpClient, ILogger<NewznabClient>? logger = null) : INewznabClient
+public sealed class NewznabClient(
+    HttpClient httpClient,
+    ILogger<NewznabClient>? logger = null,
+    IndexerSearchOptions? options = null) : INewznabClient
 {
     private readonly ILogger _logger = logger ?? NullLogger<NewznabClient>.Instance;
 
@@ -26,7 +29,14 @@ public sealed class NewznabClient(HttpClient httpClient, ILogger<NewznabClient>?
     {
         var url = BuildUrl(indexer, query.Function, query);
         var body = await GetStringAsync(indexer, url, cancellationToken);
-        var response = NewznabXmlParser.ParseSearch(body);
+        // An indexer is untrusted and may ignore the requested Newznab limit. Enforce it while
+        // materializing XML so one response cannot turn a bounded fan-out into thousands of
+        // retained release objects.
+        var itemLimit = Math.Clamp(
+            query.Limit ?? options?.DefaultLimit ?? 100,
+            1,
+            NewznabXmlParser.MaxItems);
+        var response = NewznabXmlParser.ParseSearch(body, itemLimit);
         _logger.LogDebug("Indexer {Indexer} returned {Count} item(s) for {Function}",
             indexer.Name, response.Items.Count, query.Function);
         return response;
@@ -37,7 +47,7 @@ public sealed class NewznabClient(HttpClient httpClient, ILogger<NewznabClient>?
         HttpResponseMessage response;
         try
         {
-            response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseContentRead, cancellationToken);
+            response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -46,7 +56,7 @@ public sealed class NewznabClient(HttpClient httpClient, ILogger<NewznabClient>?
         }
         catch (HttpRequestException e)
         {
-            throw new NewznabRequestException($"Request to indexer '{indexer.Name}' failed: {e.Message}", e);
+            throw new NewznabRequestException($"Request to indexer '{indexer.Name}' failed.", e);
         }
 
         using (response)
@@ -57,7 +67,24 @@ public sealed class NewznabClient(HttpClient httpClient, ILogger<NewznabClient>?
                     $"Indexer '{indexer.Name}' returned HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
             }
 
-            return await response.Content.ReadAsStringAsync(cancellationToken);
+            var maxBytes = Math.Max(1024, options?.MaxResponseBytes ?? 16 * 1024 * 1024);
+            if (response.Content.Headers.ContentLength is { } length && length > maxBytes)
+                throw new NewznabRequestException($"Indexer '{indexer.Name}' returned an oversized response.");
+
+            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var body = new MemoryStream(Math.Min(maxBytes, 1024 * 1024));
+            var buffer = new byte[64 * 1024];
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer, cancellationToken);
+                if (read == 0)
+                    break;
+                if (body.Length + read > maxBytes)
+                    throw new NewznabRequestException($"Indexer '{indexer.Name}' returned an oversized response.");
+                await body.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            }
+
+            return Encoding.UTF8.GetString(body.GetBuffer(), 0, checked((int)body.Length));
         }
     }
 

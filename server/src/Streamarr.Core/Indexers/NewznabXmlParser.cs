@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace Streamarr.Core.Indexers;
@@ -11,14 +12,25 @@ namespace Streamarr.Core.Indexers;
 /// </summary>
 public static class NewznabXmlParser
 {
+    internal const int MaxItems = 1_000;
+    private const int MaxTitleChars = 512;
+    private const int MaxGuidChars = 512;
+    private const int MaxNzbUrlChars = 2_048;
+    private const int MaxAttributesPerItem = 256;
+    private const int MaxAttributeNameChars = 64;
+    private const int MaxAttributeValueChars = 2_048;
+    private const int MaxCategoriesPerItem = 128;
+    private const int MaxCapabilityCategories = 256;
+    private const int MaxCapabilitySubcategories = 1_024;
+    private const int MaxCapabilityTextChars = 256;
     private static readonly XNamespace Newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
 
-    public static NewznabSearchResponse ParseSearch(string xml)
+    public static NewznabSearchResponse ParseSearch(string xml, int maxItems = MaxItems)
     {
         XDocument doc;
         try
         {
-            doc = XDocument.Parse(xml);
+            doc = ParseDocument(xml);
         }
         catch (System.Xml.XmlException e)
         {
@@ -34,8 +46,9 @@ public static class NewznabXmlParser
         if (responseEl is not null && int.TryParse(responseEl.Attribute("total")?.Value, out var t))
             total = t;
 
-        var items = new List<NewznabItem>();
-        foreach (var itemEl in channel.Elements("item"))
+        var itemLimit = Math.Clamp(maxItems, 1, MaxItems);
+        var items = new List<NewznabItem>(Math.Min(itemLimit, 256));
+        foreach (var itemEl in channel.Elements("item").Take(itemLimit))
         {
             var item = TryParseItem(itemEl);
             if (item is not null)
@@ -47,21 +60,21 @@ public static class NewznabXmlParser
 
     private static NewznabItem? TryParseItem(XElement itemEl)
     {
-        var title = itemEl.Element("title")?.Value?.Trim();
-        if (string.IsNullOrWhiteSpace(title))
+        var title = BoundedValue(itemEl.Element("title")?.Value, MaxTitleChars);
+        if (title is null)
             return null;
 
         var attrs = ReadAttributes(itemEl);
 
-        var guid = FirstAttr(attrs, "guid")
-            ?? itemEl.Element("guid")?.Value?.Trim();
-        if (string.IsNullOrWhiteSpace(guid))
+        var guid = BoundedValue(
+            FirstAttr(attrs, "guid") ?? itemEl.Element("guid")?.Value,
+            MaxGuidChars);
+        if (guid is null)
             return null;
 
         var enclosure = itemEl.Element("enclosure");
-        var nzbUrl = enclosure?.Attribute("url")?.Value?.Trim();
-        if (string.IsNullOrWhiteSpace(nzbUrl))
-            nzbUrl = itemEl.Element("link")?.Value?.Trim();
+        var nzbUrl = BoundedValue(enclosure?.Attribute("url")?.Value, MaxNzbUrlChars)
+                     ?? BoundedValue(itemEl.Element("link")?.Value, MaxNzbUrlChars);
 
         long size = 0;
         if (TryParseLong(FirstAttr(attrs, "size"), out var attrSize))
@@ -75,6 +88,7 @@ public static class NewznabXmlParser
             .Where(c => c is not null)
             .Select(c => c!.Value)
             .Distinct()
+            .Take(MaxCategoriesPerItem)
             .ToArray();
 
         var grabs = 0;
@@ -83,9 +97,9 @@ public static class NewznabXmlParser
 
         return new NewznabItem
         {
-            Title = title!,
-            Guid = guid!,
-            NzbUrl = string.IsNullOrWhiteSpace(nzbUrl) ? null : nzbUrl,
+            Title = title,
+            Guid = guid,
+            NzbUrl = nzbUrl,
             SizeBytes = size,
             Categories = categories,
             Grabs = grabs,
@@ -99,7 +113,7 @@ public static class NewznabXmlParser
         XDocument doc;
         try
         {
-            doc = XDocument.Parse(xml);
+            doc = ParseDocument(xml);
         }
         catch (System.Xml.XmlException e)
         {
@@ -116,8 +130,8 @@ public static class NewznabXmlParser
 
         return new NewznabCapabilities
         {
-            ServerTitle = server?.Attribute("title")?.Value,
-            ServerVersion = server?.Attribute("version")?.Value,
+            ServerTitle = BoundedValue(server?.Attribute("title")?.Value, MaxCapabilityTextChars),
+            ServerVersion = BoundedValue(server?.Attribute("version")?.Value, MaxCapabilityTextChars),
             LimitMax = ParseIntAttr(limits, "max"),
             LimitDefault = ParseIntAttr(limits, "default"),
             SearchAvailable = IsAvailable(searching?.Element("search")),
@@ -133,24 +147,35 @@ public static class NewznabXmlParser
             return [];
 
         var result = new List<NewznabCategory>();
-        foreach (var catEl in categoriesEl.Elements("category"))
+        var remainingSubcategories = MaxCapabilitySubcategories;
+        foreach (var catEl in categoriesEl.Elements("category").Take(MaxCapabilityCategories))
         {
             if (!int.TryParse(catEl.Attribute("id")?.Value, out var id))
                 continue;
 
             var subs = new List<NewznabCategory>();
-            foreach (var subEl in catEl.Elements("subcat"))
+            foreach (var subEl in catEl.Elements("subcat").Take(remainingSubcategories))
             {
                 if (int.TryParse(subEl.Attribute("id")?.Value, out var subId))
-                    subs.Add(new NewznabCategory { Id = subId, Name = subEl.Attribute("name")?.Value ?? string.Empty });
+                {
+                    subs.Add(new NewznabCategory
+                    {
+                        Id = subId,
+                        Name = BoundedValue(subEl.Attribute("name")?.Value, MaxCapabilityTextChars) ?? string.Empty,
+                    });
+                    remainingSubcategories--;
+                }
             }
 
             result.Add(new NewznabCategory
             {
                 Id = id,
-                Name = catEl.Attribute("name")?.Value ?? string.Empty,
+                Name = BoundedValue(catEl.Attribute("name")?.Value, MaxCapabilityTextChars) ?? string.Empty,
                 Subcategories = subs,
             });
+
+            if (remainingSubcategories == 0)
+                break;
         }
 
         return result;
@@ -158,10 +183,11 @@ public static class NewznabXmlParser
 
     private static List<(string Name, string Value)> ReadAttributes(XElement itemEl)
         => itemEl.Elements(Newznab + "attr")
+            .Take(MaxAttributesPerItem)
             .Select(a => (
-                Name: a.Attribute("name")?.Value ?? string.Empty,
-                Value: a.Attribute("value")?.Value ?? string.Empty))
-            .Where(a => a.Name.Length > 0)
+                Name: BoundedValue(a.Attribute("name")?.Value, MaxAttributeNameChars) ?? string.Empty,
+                Value: BoundedValue(a.Attribute("value")?.Value, MaxAttributeValueChars) ?? string.Empty))
+            .Where(a => a.Name.Length > 0 && a.Value.Length > 0)
             .ToList();
 
     private static string? FirstAttr(List<(string Name, string Value)> attrs, string name)
@@ -193,5 +219,29 @@ public static class NewznabXmlParser
             DateTimeStyles.AssumeUniversal, out var loose)
             ? loose
             : null;
+    }
+
+    private static string? BoundedValue(string? value, int maxChars)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxChars && !trimmed.Any(char.IsControl) ? trimmed : null;
+    }
+
+    private static XDocument ParseDocument(string xml)
+    {
+        // Indexer responses are untrusted. Newznab does not require a DTD, so reject
+        // declarations outright instead of allowing entity expansion or resolver access.
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersFromEntities = 0,
+        };
+        using var input = new StringReader(xml);
+        using var reader = XmlReader.Create(input, settings);
+        return XDocument.Load(reader, LoadOptions.None);
     }
 }

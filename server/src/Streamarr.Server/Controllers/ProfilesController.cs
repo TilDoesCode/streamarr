@@ -26,6 +26,9 @@ public class ProfilesController(ProfileConfigService profiles) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public ActionResult<QualityProfile> Get(string id)
     {
+        if (InvalidId(id))
+            return BadRequest(ErrorResponse.Of("invalid_profile_id", "The profile id is invalid."));
+
         var profile = profiles.FindById(id);
         return profile is null
             ? NotFound(ErrorResponse.Of("not_found", $"No profile with id '{id}'."))
@@ -37,7 +40,11 @@ public class ProfilesController(ProfileConfigService profiles) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<QualityProfile>> Create([FromBody] QualityProfile profile, CancellationToken ct)
     {
-        if (Validate(profile) is { } error)
+        if (profile is null)
+            return BadRequest(ErrorResponse.Of("invalid_profile", "A profile body is required."));
+        if (!string.IsNullOrWhiteSpace(profile.Id))
+            return BadRequest(ErrorResponse.Of("invalid_profile", "'id' is server-generated and must be omitted."));
+        if (ValidateProfile(profile) is { } error)
             return BadRequest(error);
 
         var created = await profiles.CreateAsync(profile, ct);
@@ -50,9 +57,11 @@ public class ProfilesController(ProfileConfigService profiles) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<QualityProfile>> Update(string id, [FromBody] QualityProfile profile, CancellationToken ct)
     {
+        if (InvalidId(id))
+            return BadRequest(ErrorResponse.Of("invalid_profile_id", "The profile id is invalid."));
         if (id == DefaultProfiles.Standard.Id)
             return BadRequest(ErrorResponse.Of("read_only", "The built-in default profile cannot be edited."));
-        if (Validate(profile) is { } error)
+        if (ValidateProfile(profile) is { } error)
             return BadRequest(error);
 
         var updated = await profiles.UpdateAsync(id, profile, ct);
@@ -67,6 +76,8 @@ public class ProfilesController(ProfileConfigService profiles) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
+        if (InvalidId(id))
+            return BadRequest(ErrorResponse.Of("invalid_profile_id", "The profile id is invalid."));
         if (id == DefaultProfiles.Standard.Id)
             return BadRequest(ErrorResponse.Of("read_only", "The built-in default profile cannot be deleted."));
 
@@ -75,8 +86,58 @@ public class ProfilesController(ProfileConfigService profiles) : ControllerBase
             : NotFound(ErrorResponse.Of("not_found", $"No profile with id '{id}'."));
     }
 
-    private static ErrorResponse? Validate(QualityProfile? profile)
-        => profile is null || string.IsNullOrWhiteSpace(profile.Name)
-            ? ErrorResponse.Of("invalid_profile", "A non-empty 'name' is required.")
-            : null;
+    internal static ErrorResponse? ValidateProfile(QualityProfile? profile)
+    {
+        if (profile is null || string.IsNullOrWhiteSpace(profile.Name))
+            return ErrorResponse.Of("invalid_profile", "A non-empty 'name' is required.");
+        if (profile.Name.Length > 128 || profile.Id is null || profile.Id.Length > 128 ||
+            ContainsControl(profile.Name) || ContainsControl(profile.Id))
+            return ErrorResponse.Of("invalid_profile", "Profile id/name values are too long or contain control characters.");
+
+        IReadOnlyList<string>?[] lists =
+        {
+            profile.PreferredResolutions,
+            profile.PreferredSources,
+            profile.PreferredCodecs,
+            profile.PreferredLanguages,
+            profile.GroupAllowList,
+            profile.GroupDenyList,
+        };
+        if (lists.Any(list => list is null) || lists.Any(list => list!.Count > 100 || list.Any(v =>
+                string.IsNullOrWhiteSpace(v) || v.Length > 128 || ContainsControl(v))))
+            return ErrorResponse.Of("invalid_profile", "Preference lists may contain at most 100 bounded, non-empty values.");
+        if (lists.Any(list => list!.Distinct(StringComparer.OrdinalIgnoreCase).Count() != list!.Count))
+            return ErrorResponse.Of("invalid_profile", "Preference lists cannot contain duplicate values.");
+        if (profile.GroupAllowList.Intersect(profile.GroupDenyList, StringComparer.OrdinalIgnoreCase).Any())
+            return ErrorResponse.Of("invalid_profile", "A release group cannot appear in both allow and deny lists.");
+
+        var weights = new[]
+        {
+            profile.ResolutionWeight, profile.SourceWeight, profile.CodecWeight,
+            profile.LanguageWeight, profile.AudioWeight, profile.SizeWeight,
+            profile.ProperRepackBonus, profile.RecencyBonus, profile.GrabsBonus,
+            profile.GroupAllowBonus, profile.GroupDenyPenalty,
+        };
+        if (weights.Any(w => w is < 0 or > 1_000_000))
+            return ErrorResponse.Of("invalid_profile", "Profile weights and bonuses must be between 0 and 1000000.");
+
+        const long maxBand = 16L * 1024 * 1024 * 1024 * 1024;
+        if (!ValidBand(profile.MinBytesPerMinute, profile.MaxBytesPerMinute) ||
+            profile.SizeBands is null || profile.SizeBands.Count > 32)
+            return ErrorResponse.Of("invalid_profile", "The global size band or size-band count is invalid.");
+        foreach (var (key, band) in profile.SizeBands)
+        {
+            if (string.IsNullOrWhiteSpace(key) || key.Length > 32 || ContainsControl(key) || band is null ||
+                !ValidBand(band.MinBytesPerMinute, band.MaxBytesPerMinute))
+                return ErrorResponse.Of("invalid_profile", "One or more resolution size bands are invalid.");
+        }
+
+        return null;
+
+        static bool ValidBand(long min, long max) => min >= 0 && min <= max && max <= maxBand;
+        static bool ContainsControl(string value) => value.Any(char.IsControl);
+    }
+
+    private static bool InvalidId(string? id)
+        => string.IsNullOrWhiteSpace(id) || id.Length > 128 || id.Any(char.IsControl);
 }

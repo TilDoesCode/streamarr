@@ -39,19 +39,32 @@ public sealed class RarStoredFileStream : FastReadOnlyStream
 
     public override long Position
     {
-        get => _position;
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _position;
+        }
         set => Seek(value, SeekOrigin.Begin);
     }
 
     public override long Seek(long offset, SeekOrigin origin)
     {
-        var absoluteOffset = origin switch
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        long absoluteOffset;
+        try
         {
-            SeekOrigin.Begin => offset,
-            SeekOrigin.Current => _position + offset,
-            SeekOrigin.End => _file.Size + offset,
-            _ => throw new ArgumentOutOfRangeException(nameof(origin)),
-        };
+            absoluteOffset = origin switch
+            {
+                SeekOrigin.Begin => offset,
+                SeekOrigin.Current => checked(_position + offset),
+                SeekOrigin.End => checked(_file.Size + offset),
+                _ => throw new ArgumentOutOfRangeException(nameof(origin)),
+            };
+        }
+        catch (OverflowException exception)
+        {
+            throw new IOException("The requested RAR seek offset overflowed.", exception);
+        }
 
         if (absoluteOffset < 0)
             throw new IOException("Cannot seek before the beginning of the stream.");

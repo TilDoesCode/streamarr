@@ -5,6 +5,7 @@
 // fully managed incremental yEnc decoder including =yend CRC32 validation.
 
 using System.Text;
+using System.Globalization;
 using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Streams;
 
@@ -50,6 +51,7 @@ public class YencStream : FastReadOnlyNonSeekableStream
     private const int ReadBufferSize = 8192;
     private const int DecodeBufferSize = 1024;
     private const int LineAssemblyBufferSize = 1024;
+    private const int MaxEncodedLineBytes = 1024 * 1024;
 
     public YencStream(Stream innerStream, bool validateCrc = true)
     {
@@ -77,6 +79,9 @@ public class YencStream : FastReadOnlyNonSeekableStream
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
+        if (buffer.IsEmpty)
+            return 0;
+
         // Parse headers on first read
         if (!_headersRead)
         {
@@ -108,6 +113,7 @@ public class YencStream : FastReadOnlyNonSeekableStream
                 if (_readBufferLength == 0)
                 {
                     // EOF without =yend trailer
+                    ValidateDecodedSize();
                     _endReached = true;
                     break;
                 }
@@ -155,24 +161,29 @@ public class YencStream : FastReadOnlyNonSeekableStream
 
         _decodeBufferPosition = 0;
         _decodeBufferLength = written;
-        _decodedByteCount += written;
+        _decodedByteCount = checked(_decodedByteCount + written);
+        if (_yencHeader is { } header && _decodedByteCount > header.PartSize)
+            throw new InvalidDataException("The yEnc article decoded beyond its declared part size.");
         _crcState = Crc32.Update(_crcState, _decodeBuffer.AsSpan(0, written));
     }
 
     /// <summary>Parses the =yend line and validates size and CRC32 when present.</summary>
     private void HandleTrailer(string yendLine)
     {
-        if (!_validateCrc) return;
-
         var attributes = ParseAttributes(yendLine);
 
-        if (attributes.TryGetValue("size", out var sizeValue) &&
-            long.TryParse(sizeValue, out var expectedSize) &&
-            expectedSize != _decodedByteCount)
+        if (attributes.TryGetValue("size", out var sizeValue))
         {
-            throw new YencCrcMismatchException(
-                $"yEnc size mismatch: =yend declared {expectedSize} bytes but {_decodedByteCount} were decoded.");
+            if (!long.TryParse(sizeValue, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedSize) ||
+                expectedSize <= 0 || expectedSize > YencHeader.MaxFileSizeBytes)
+                throw new InvalidDataException("The yEnc trailer contains an invalid size.");
+            if (expectedSize != _decodedByteCount)
+                throw new YencCrcMismatchException(
+                    $"yEnc size mismatch: =yend declared {expectedSize} bytes but {_decodedByteCount} were decoded.");
         }
+
+        ValidateDecodedSize();
+        if (!_validateCrc) return;
 
         // pcrc32 = CRC of this part's decoded data; crc32 = CRC of the whole file.
         // For single-part files, crc32 covers the (only) part's data as well.
@@ -183,8 +194,15 @@ public class YencStream : FastReadOnlyNonSeekableStream
 
         if (crcAttribute == null) return;
 
-        if (!uint.TryParse(crcAttribute, System.Globalization.NumberStyles.HexNumber, null, out var expectedCrc))
-            return; // malformed crc attribute — tolerate
+        if (crcAttribute.Length != 8 ||
+            !uint.TryParse(
+                crcAttribute,
+                System.Globalization.NumberStyles.AllowHexSpecifier,
+                CultureInfo.InvariantCulture,
+                out var expectedCrc))
+        {
+            throw new InvalidDataException("The yEnc trailer contains an invalid CRC32 value.");
+        }
 
         var actualCrc = Crc32.Finalize(_crcState);
         if (actualCrc != expectedCrc)
@@ -279,6 +297,8 @@ public class YencStream : FastReadOnlyNonSeekableStream
 
     private void EnsureLineAssemblyCapacity(int required)
     {
+        if (required > MaxEncodedLineBytes)
+            throw new InvalidDataException("The yEnc article contains an oversized line.");
         if (_lineAssemblyBuffer.Length >= required) return;
         var newBuffer = new byte[Math.Max(required, _lineAssemblyBuffer.Length * 2)];
         _lineAssemblyBuffer.AsSpan(0, _lineAssemblyLength).CopyTo(newBuffer);
@@ -346,6 +366,8 @@ public class YencStream : FastReadOnlyNonSeekableStream
         }
 
         _yencHeader = ParseYencHeaders(ybeginLine, ypartLine);
+        if (_decodedByteCount > _yencHeader.PartSize)
+            throw new InvalidDataException("The yEnc article decoded beyond its declared part size.");
     }
 
     private static bool StartsWith(ReadOnlyMemory<byte> line, ReadOnlySpan<byte> prefix) =>
@@ -389,11 +411,28 @@ public class YencStream : FastReadOnlyNonSeekableStream
         var partNumber = 0;
         var totalParts = 0;
 
-        if (ybegin.TryGetValue("line", out var lineValue)) int.TryParse(lineValue, out lineLength);
-        if (ybegin.TryGetValue("size", out var sizeValue)) long.TryParse(sizeValue, out fileSize);
+        if (ybegin.TryGetValue("line", out var lineValue) &&
+            !int.TryParse(lineValue, NumberStyles.None, CultureInfo.InvariantCulture, out lineLength))
+            throw new InvalidDataException("The yEnc header contains an invalid line length.");
+        if (!ybegin.TryGetValue("size", out var sizeValue) ||
+            !long.TryParse(sizeValue, NumberStyles.None, CultureInfo.InvariantCulture, out fileSize))
+            throw new InvalidDataException("The yEnc header contains an invalid file size.");
         if (ybegin.TryGetValue("name", out var nameValue)) fileName = nameValue;
-        if (ybegin.TryGetValue("part", out var partValue)) int.TryParse(partValue, out partNumber);
-        if (ybegin.TryGetValue("total", out var totalValue)) int.TryParse(totalValue, out totalParts);
+        if (ybegin.TryGetValue("part", out var partValue) &&
+            !int.TryParse(partValue, NumberStyles.None, CultureInfo.InvariantCulture, out partNumber))
+            throw new InvalidDataException("The yEnc header contains an invalid part number.");
+        if (ybegin.TryGetValue("total", out var totalValue) &&
+            !int.TryParse(totalValue, NumberStyles.None, CultureInfo.InvariantCulture, out totalParts))
+            throw new InvalidDataException("The yEnc header contains an invalid part count.");
+
+        if (lineLength is < 1 or > MaxEncodedLineBytes ||
+            fileSize is < 1 or > YencHeader.MaxFileSizeBytes ||
+            string.IsNullOrWhiteSpace(fileName) || fileName.Length > 4096 || fileName.Any(char.IsControl))
+            throw new InvalidDataException("The yEnc header contains values outside their allowed range.");
+
+        var multipart = partNumber != 0 || totalParts != 0 || ypartLine is not null;
+        if (multipart && (partNumber < 1 || totalParts < 1 || partNumber > totalParts || totalParts > 1_000_000 || ypartLine is null))
+            throw new InvalidDataException("The yEnc multipart header is inconsistent.");
 
         // Parse =ypart line if present. Format: =ypart begin=1 end=123456
         var partSize = fileSize;
@@ -402,13 +441,15 @@ public class YencStream : FastReadOnlyNonSeekableStream
         if (ypartLine != null)
         {
             var ypart = ParseAttributes(ypartLine);
-            long partBegin = 0;
-            long partEnd = 0;
-            if (ypart.TryGetValue("begin", out var beginValue)) long.TryParse(beginValue, out partBegin);
-            if (ypart.TryGetValue("end", out var endValue)) long.TryParse(endValue, out partEnd);
+            if (!ypart.TryGetValue("begin", out var beginValue) ||
+                !long.TryParse(beginValue, NumberStyles.None, CultureInfo.InvariantCulture, out var partBegin) ||
+                !ypart.TryGetValue("end", out var endValue) ||
+                !long.TryParse(endValue, NumberStyles.None, CultureInfo.InvariantCulture, out var partEnd) ||
+                partBegin < 1 || partEnd < partBegin || partEnd > fileSize)
+                throw new InvalidDataException("The yEnc part range is invalid.");
 
             partOffset = partBegin - 1; // yEnc uses 1-based indexing
-            partSize = partEnd - partBegin + 1;
+            partSize = checked(partEnd - partBegin + 1);
         }
 
         return new YencHeader
@@ -421,6 +462,13 @@ public class YencStream : FastReadOnlyNonSeekableStream
             PartSize = partSize,
             PartOffset = partOffset
         };
+    }
+
+    private void ValidateDecodedSize()
+    {
+        if (_yencHeader is { } header && _decodedByteCount != header.PartSize)
+            throw new YencCrcMismatchException(
+                $"yEnc size mismatch: header declared {header.PartSize} bytes but {_decodedByteCount} were decoded.");
     }
 
     protected override void Dispose(bool disposing)

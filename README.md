@@ -2,6 +2,167 @@
 
 **Search and stream Usenet content on demand — no download, no watch, no delete.**
 
+## Install at home (release build)
+
+The supported home deployment is Docker Compose on a 64-bit Intel/AMD or ARM Linux
+host. A release contains everything specific to Streamarr; Docker downloads the base
+images. You need Docker Engine with the Compose plugin, `curl`, `tar`, and `openssl`.
+Real playback also requires a Usenet provider, a Newznab-compatible indexer, and
+optionally a TMDB API key.
+
+Each GitHub release publishes these matching artifacts:
+
+| Artifact | What it contains |
+|---|---|
+| `ghcr.io/tildoescode/streamarr:<version>` | Multi-architecture Core Server image with the production Management UI and `ffprobe` included (`linux/amd64`, `linux/arm64`) |
+| `streamarr-home-<version>.tar.gz` | Ready-to-run production Compose file, pinned image version, environment template, and matching Jellyfin plugin |
+| `streamarr-jellyfin-<version>.zip` | Standalone plugin for an existing Jellyfin 10.11.11 server |
+| `SHA256SUMS` | Checksums for both downloadable archives |
+
+### 1. Download and verify a release
+
+Choose a release version from [GitHub Releases](https://github.com/TilDoesCode/streamarr/releases),
+then run the following on the home server (the example shows the initial release):
+
+```bash
+VERSION=0.1.0
+mkdir -p "$HOME/streamarr" && cd "$HOME/streamarr"
+curl -fLO "https://github.com/TilDoesCode/streamarr/releases/download/v${VERSION}/streamarr-home-${VERSION}.tar.gz"
+curl -fLO "https://github.com/TilDoesCode/streamarr/releases/download/v${VERSION}/SHA256SUMS"
+
+# Linux:
+grep "streamarr-home-${VERSION}.tar.gz" SHA256SUMS | sha256sum --check -
+# macOS instead: grep "streamarr-home-${VERSION}.tar.gz" SHA256SUMS | shasum -a 256 --check -
+
+tar -xzf "streamarr-home-${VERSION}.tar.gz"
+```
+
+The release workflow also signs build-provenance attestations. If you use GitHub CLI,
+you can additionally verify the archive with
+`gh attestation verify streamarr-home-${VERSION}.tar.gz --repo TilDoesCode/streamarr`.
+
+### 2. Create the private configuration
+
+```bash
+cp .env.example .env
+openssl rand -hex 32   # generate the admin password
+openssl rand -hex 32   # generate a different machine API key
+${EDITOR:-vi} .env
+chmod 600 .env
+```
+
+Paste the two generated values into `STREAMARR_ADMIN_PASSWORD` and
+`STREAMARR_API_KEY`. Keep the values different. The admin password is used only for
+the Management UI; the machine key is used by Jellyfin. Compose refuses to start if
+either is empty.
+
+The default bind address is `127.0.0.1`, which is appropriate when a reverse proxy runs
+on the same server. For direct access only from a trusted home LAN, set
+`STREAMARR_BIND_ADDRESS` to the server's private LAN address (for example
+`192.168.1.20`) and allow port 8080 only from the LAN in the host firewall. Do not
+publish Streamarr directly to the internet.
+
+### 3. Start Streamarr Core
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+docker compose logs --tail=100 streamarr
+```
+
+Wait until `docker compose ps` reports `healthy`, then open
+`http://<configured-address>:8080`. The Core container includes the API and Management
+UI, runs as a non-root user with no Linux capabilities and a read-only root filesystem,
+and persists only its SQLite database and Data Protection key ring in named volumes.
+
+For a reverse proxy on the same host, proxy HTTPS to `127.0.0.1:8080`. If the proxy is
+in another container or on another machine, set `STREAMARR_TRUSTED_PROXY` to its exact
+source IP, set `STREAMARR_TRUSTED_ORIGIN` to the browser-visible origin (such as
+`https://streamarr.home.example`), and uncomment the `COMPOSE_FILE` line in `.env` to
+enable the supplied proxy overlay. Never configure a whole subnet as a trusted proxy.
+
+### 4. Add Jellyfin
+
+You can start a clean, matching Jellyfin 10.11.11 container from the same bundle:
+
+```bash
+# On Linux, first set JELLYFIN_UID/GID in .env to the output of id -u / id -g.
+docker compose --profile jellyfin up -d
+```
+
+It listens on the configured Jellyfin address/port (loopback port 8096 by default) and
+already mounts the bundled plugin. Complete Jellyfin's setup wizard, then open
+**Dashboard → Plugins → Streamarr**.
+
+For an existing Jellyfin 10.11.11 installation, stop Jellyfin, copy every file from
+the bundle's `plugin/` directory into its writable
+`<jellyfin-config>/plugins/Streamarr/` directory, and start Jellyfin again. Do not mix
+plugin and Core versions. The plugin is ABI-pinned to Jellyfin 10.11.11; upgrade
+Jellyfin only after the compatibility document names the new version.
+
+In the plugin settings, use:
+
+- Core URL `http://streamarr:8080` for the bundled Jellyfin container.
+- Core URL `http://127.0.0.1:8080` for a native Jellyfin process on the same host.
+- The home server's private URL for Jellyfin on another host/container network.
+- The exact `STREAMARR_API_KEY` from `.env`, then **Test connection** and enable search
+  interception.
+
+### 5. Configure and prove real playback
+
+In the Streamarr Management UI, configure a Usenet provider, an indexer, the optional
+TMDB key, and a quality profile—in that order. Use each connection's **Test** action.
+Before involving Jellyfin, use **Search / Debug → Resolve → Preview** and confirm the
+video plays and seeks in the browser. This proves indexer search, NZB retrieval, NNTP,
+RAR/yEnc handling, and HTTP Range streaming end to end.
+
+### Operate, upgrade, back up, and remove
+
+```bash
+# Status and logs
+docker compose ps
+docker compose logs -f --tail=200 streamarr
+
+# Upgrade after extracting a newer home bundle; keep your existing .env
+docker compose pull
+docker compose up -d
+
+# Stop without deleting persistent data
+docker compose down
+
+# Permanently remove containers AND all Streamarr/Jellyfin named volumes
+docker compose --profile jellyfin down -v
+```
+
+Back up the `streamarr_streamarr-data` and `streamarr_streamarr-keys` Docker volumes
+together while Streamarr is stopped; the database contains encrypted provider/indexer
+secrets and the key volume is required to decrypt them. Keep the matching release
+bundle and `.env` with the backup. To roll back, restore both volumes, restore the
+matching plugin directory, set `STREAMARR_IMAGE` to the earlier version, and run
+`docker compose up -d`.
+
+One simple stopped-volume backup is:
+
+```bash
+docker compose down
+mkdir -p backup
+docker run --rm -v streamarr_streamarr-data:/source:ro -v "$PWD/backup:/backup" \
+  alpine:3.22 tar -C /source -czf /backup/streamarr-data.tar.gz .
+docker run --rm -v streamarr_streamarr-keys:/source:ro -v "$PWD/backup:/backup" \
+  alpine:3.22 tar -C /source -czf /backup/streamarr-keys.tar.gz .
+cp .env "backup/.env"
+docker compose up -d
+```
+
+Store that backup somewhere other than the Docker host. Treat it as secret material.
+
+The pipeline behind a release runs server, web, plugin, real Jellyfin host-load, API
+drift, browser-to-stream E2E, production-container, archive, checksum, and both Compose
+mode checks before it publishes the GitHub release and multi-architecture image.
+
+---
+
 Streamarr is a self-hosted service that searches Usenet indexers, picks the best
 release, verifies it is actually still available, and streams it directly from your
 Usenet provider as a seekable HTTP byte stream. Nothing is written to disk.
@@ -97,7 +258,7 @@ Named explicitly, so we don't accidentally build hard dependencies on them:
 ## Repository layout
 
 ```
-core/       ASP.NET Core service (.NET 8) — the product
+server/     ASP.NET Core service (.NET 8) — the product
             ├── indexers/    Newznab fan-out
             ├── parsing/     release-name parser + test corpus
             ├── ranking/     quality profiles, scoring, rejection rules
@@ -105,7 +266,7 @@ core/       ASP.NET Core service (.NET 8) — the product
             ├── sessions/    resolve → session → stream lifecycle
             └── api/         /api/v1 + OpenAPI
 
-plugin/     Jellyfin plugin (.NET 8) — thin adapter, no business logic
+plugin/     Jellyfin 10.11.11 plugin (.NET 9) — thin adapter, no business logic
 
 web/        Management UI — React 19, TanStack Query, Vite, Tailwind + shadcn/ui
             API client generated from the OpenAPI spec (CI fails on drift)
@@ -115,13 +276,17 @@ docs/       Architecture, API contract, setup, ranker tuning
 
 ---
 
-## Quick start
+## Development quick start (build from source)
 
 ```bash
 git clone <repo> && cd streamarr
-cp .env.example .env      # set admin password + a machine API key
-docker compose up -d
+cp .env.example .env      # set strong, unique admin + machine credentials
+docker compose -f docker-compose.dev.yml up -d --build
 ```
+
+Compose deliberately refuses to start while either credential in `.env` is empty.
+All development ports bind to `127.0.0.1`; do not expose this stack directly to an
+untrusted network.
 
 Open the Management UI at `http://localhost:8080` and configure, in this order:
 
@@ -140,11 +305,23 @@ Core is sound.
 1. Build the plugin (`dotnet build plugin/ -c Release`) and drop the `.dll` into
    Jellyfin's plugin directory (`docker-compose.dev.yml` mounts it for you).
 2. In Jellyfin's dashboard, open the Streamarr plugin config, set the Core URL and
-   machine API key, and hit *Test connection*.
+   machine API key, and hit *Test connection*. The check combines the anonymous,
+   shallow liveness endpoint with an authenticated capabilities request, so a wrong
+   machine key cannot look healthy.
 3. Enable search interception.
 
 Usenet results now appear alongside your local library and play through Jellyfin's
 normal transcoding pipeline.
+
+### Security boundary
+
+The container serves plain HTTP because TLS normally terminates at a trusted reverse
+proxy or VPN ingress. For any non-loopback deployment, put Streamarr behind HTTPS and
+forward only the required client/protocol headers. Set `Streamarr__TrustedProxies__0`
+to the proxy's exact source IP when it is not on loopback; forwarded headers from other
+addresses are ignored. Never publish port 8080 directly to the internet. Stream URLs
+contain a short-lived, session-specific capability; they do not carry the admin JWT or
+machine API key and should still be excluded from access logs where practical.
 
 ---
 
@@ -160,10 +337,13 @@ dotnet test                                 # parser corpus, ranker ordering, au
 scripts/freeze-openapi.sh
 ```
 
-On first run with an empty users table, an admin account is bootstrapped: from
-`STREAMARR_ADMIN_PASSWORD` / `Streamarr:Admin:Password` if set, otherwise a random
-password is generated and logged **once**. Machine clients authenticate with a static
-`Streamarr:ApiKey` or a key minted via `POST /api/v1/config/apikeys`.
+On first run with an empty users table, an admin account is bootstrapped from
+`STREAMARR_ADMIN_PASSWORD` / `Streamarr:Admin:Password`. Outside Development this is
+required and must be 12–1024 characters without control characters; only Development
+may generate and log a random fallback once. Machine clients authenticate with a
+static `Streamarr:ApiKey` or a key minted via `POST /api/v1/config/apikeys`. The static
+key is optional, but when enabled it must be 32–4096 characters without whitespace or
+control characters.
 
 ### Management UI
 ```bash
@@ -183,7 +363,8 @@ Core Server's `wwwroot/` and it serves the SPA as static files with an SPA fallb
 `npm run generate:api` is checked in CI — a stale generated client fails the build.
 Never hand-write API types. See `web/README.md` for the router + codegen rationale.
 
-**Shipped in M4a:** login + admin JWT auth, auth guard, app shell (sidebar for every
+**Shipped in M4a:** login + HttpOnly admin-cookie auth (with bearer compatibility for
+non-browser clients), auth guard, app shell (sidebar for every
 §9.1 view, dark-mode toggle, responsive to tablet), and the Settings view (general
 config, machine API keys, password change).
 
@@ -205,10 +386,9 @@ size, age, grabs; client-side filter/sort; a per-release **Resolve** button show
 the health-check outcome + pre-probed media info), the **Playback preview** — the
 **architectural canary** (BRIEF §3.1 rule 4): it direct-plays a resolved stream in a
 plain HTML5 `<video>` with Jellyfin absent, instrumenting time-to-first-frame and
-seek latency; because a `<video>` element cannot set an `Authorization` header, the
-bearer token rides as an `access_token` query parameter that `/stream` accepts
-(scoped to the stream path, the mechanism Jellyfin itself uses) — the endpoint stays a
-generic, authenticated, Range-capable byte source — the **Sessions** view (live list
+seek latency; the resolved URL contains a short-lived, unguessable session capability,
+so no admin JWT or machine key is placed in the media URL — the endpoint stays a
+generic, capability-authorized, Range-capable byte source — the **Sessions** view (live list
 via `refetchInterval`: release, bytes served, NNTP connections, source, force-close),
 and the full **Dashboard** (health cards per-indexer/per-provider, live session count,
 NNTP connections vs the configured budget, a live Recharts throughput chart, and
@@ -231,19 +411,22 @@ with ffmpeg so the bundled Chromium can decode it. `web` (build + typecheck + Vi
 `.github/workflows/ci.yml`.
 
 **Shipped in M5 (Jellyfin playback thin-slice):** the `plugin/` Jellyfin plugin, built
-from the official template shape against **Jellyfin 10.10.7** (`Jellyfin.Controller`
+from the official template shape against **Jellyfin 10.11.11** (`Jellyfin.Controller`
 pinned; ABI recorded in `docs/jellyfin-compatibility.md`). A deliberately **minimal
 config page** (server URL, API key, TTL, interception toggle, profile id, pinned query)
-with **Test connection** (`/api/v1/health`) and **Materialize pinned work** buttons; an
+with **Test connection** (anonymous shallow `/api/v1/health` plus authenticated
+`/api/v1/caps`) and **Materialize pinned work** buttons; an
 `IPluginServiceRegistrator` wiring a typed `HttpClient` over the Core Server API; the M5
-**bootstrap path** that materializes **one** isolated ephemeral `Movie` (dedicated
-"Streamarr (Usenet)" folder, tag `usenet-ephemeral`, stable GUID from `workId`, TMDB
+**bootstrap path** that materializes **one** isolated ephemeral `Movie` (private,
+hidden implementation folder; tag `usenet-ephemeral`; stable GUID from `workId`; TMDB
 metadata passed through) via a "sync one pinned work" scheduled task / config button; an
 **`IMediaSourceProvider`** exposing one `MediaSourceInfo` **per release** (`RequiresOpening`,
-`OpenToken = releaseId`, no Usenet contact) whose `OpenMediaSource` calls `POST /resolve`
-→ HTTP `Path` + pre-probed `MediaStreams`/`RunTimeTicks` + bearer `RequiredHttpHeaders` +
-low `AnalyzeDurationMs`, following the server's `suggestedFallbackReleaseId` once on a
-dead release; `ILiveStream.Close` → `POST /sessions/{token}/close`; and playback
+an opaque, bounded, short-lived, one-use `OpenToken` tied to the authenticated Jellyfin
+user, item, work, and offered release; no Usenet contact) whose `OpenMediaSource`
+consumes that offer and calls `POST /resolve` → capability HTTP `Path` + pre-probed
+`MediaStreams`/`RunTimeTicks` + low `AnalyzeDurationMs`, accepting only a server fallback
+within the same offered work; no reusable credential or `RequiredHttpHeaders` is added
+to the media source. `ILiveStream.Close` → `POST /sessions/{token}/close`; playback
 `start`/`progress`/`stop` reported to `POST /api/v1/events`. **Zero domain logic —
 translation only** (BRIEF §11), pinned by mapper/store/tracker unit tests. Jellyfin
 (docker) **loads the plugin with zero errors**. `docker-compose.dev.yml` (Jellyfin +
@@ -263,7 +446,8 @@ calls `GET /api/v1/search` under a **4s deadline**, materializes/refreshes ephem
 config toggle and try/catch-guarded** — any error, timeout, or killed/unreachable Core
 Server falls through to unmodified native results (BRIEF §8.2, §11), proven headlessly (both
 endpoints return `200` with interception off *and* with the Core Server down). An
-**`IScheduledTask`** (`EphemeralCleanupTask`, hourly) deletes `usenet-ephemeral` items past
+**`IScheduledTask`** (`EphemeralCleanupTask`, hourly) deletes plugin-owned
+`usenet-ephemeral` items past
 their TTL via `ILibraryManager`. The version-fragile HTTP-pipeline coupling is isolated to
 the one filter file and documented as **known-fragile** in `docs/jellyfin-compatibility.md`
 (BRIEF §13); the merge/dedup and TTL-expiry logic are host-free and unit-tested. Full
@@ -376,9 +560,10 @@ quality definitions, or custom-format logic makes Streamarr a GPL-3.0 derivative
 - **Cold-start and seek latency** depend on your Usenet provider, the release's RAR
   layering, and the segment cache. Measure it (M1 records baselines); it is the
   single biggest UX variable.
-- **Ephemeral items** live in an isolated, TTL-cleaned virtual folder, excluded from
-  *Latest* and recommendations, so they never pollute your real library. They are not
-  permanent — they are search results.
+- **Ephemeral items** live under a private, hidden, TTL-cleaned implementation folder,
+  so the folder and its children do not enter normal library browsing, *Latest*, or
+  recommendations. Eligible items are returned only through intercepted search and
+  remain subject to the requesting user's compatible-library visibility policy.
 - **No torrents.** Usenet/NZB only.
 - **No subtitle search** yet; Jellyfin's own subtitle plugins still work for its
   items.
@@ -387,10 +572,13 @@ quality definitions, or custom-format logic makes Streamarr a GPL-3.0 derivative
 
 ## Security
 
-- Every endpoint requires authentication. `/stream` is **never** public — the token
-  is unguessable *and* the request must be authenticated.
-- Two auth modes: machine API keys (plugin, future headless clients) and an admin
-  session for the Management UI.
+- Administrative and machine operations require their scoped credentials. The browser
+  Management UI uses an HttpOnly, SameSite cookie; non-browser clients may use bearer
+  credentials.
+- `GET /api/v1/stream/{token}` and the matching close operation are authorized by the
+  short-lived, unguessable capability in the path. Possession of that capability grants
+  access only to that session. They do not accept `access_token` query auth, an admin
+  JWT, or a machine API key, and plugin media sources expose no reusable auth header.
 - Secrets (provider passwords, indexer keys) are encrypted at rest and never returned
   in plaintext by the config API.
 - nzbdav had a patched auth-bypass in versions 0.2.46–0.6.1. Keep the embedded core

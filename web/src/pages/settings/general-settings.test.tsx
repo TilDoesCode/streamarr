@@ -47,7 +47,7 @@ function jsonResponse(status: number, body: unknown): Promise<Response> {
 
 describe("GeneralSettings", () => {
   beforeEach(() => {
-    setSession({ token: "t", username: "admin", role: "admin", expiresAt: future() });
+    setSession({ username: "admin", role: "admin", expiresAt: future() });
     installFetch();
   });
   afterEach(() => vi.restoreAllMocks());

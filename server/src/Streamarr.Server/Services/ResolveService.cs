@@ -25,6 +25,8 @@ public sealed class ResolveService(
     IOptions<StreamarrOptions> options,
     ILogger<ResolveService> logger)
 {
+    private readonly SemaphoreSlim _resolveGate = new(Math.Max(1, options.Value.MaxConcurrentResolves));
+
     /// <param name="streamUrlForToken">Builds the public stream URL returned to the client.</param>
     /// <param name="localStreamUrlForToken">
     /// Builds a loopback stream URL for the in-process ffprobe run (the public
@@ -39,6 +41,33 @@ public sealed class ResolveService(
         => await ResolveAsync(releaseId, client, autoFallback: true, streamUrlForToken, localStreamUrlForToken, ct);
 
     public async Task<ResolveResponse> ResolveAsync(
+        string releaseId,
+        string? client,
+        bool autoFallback,
+        Func<string, string> streamUrlForToken,
+        Func<string, string> localStreamUrlForToken,
+        CancellationToken ct)
+    {
+        if (!await _resolveGate.WaitAsync(0, ct))
+            throw new ResourceCapacityException("The concurrent resolve limit has been reached.");
+
+        try
+        {
+            return await ResolveCoreAsync(
+                releaseId,
+                client,
+                autoFallback,
+                streamUrlForToken,
+                localStreamUrlForToken,
+                ct);
+        }
+        finally
+        {
+            _resolveGate.Release();
+        }
+    }
+
+    private async Task<ResolveResponse> ResolveCoreAsync(
         string releaseId,
         string? client,
         bool autoFallback,
@@ -130,7 +159,10 @@ public sealed class ResolveService(
         var nzbUrl = registered.Release.NzbUrl
             ?? throw new NoPlayableFileException("The release has no NZB location on record.");
 
-        var nzb = await nzbFetcher.FetchAsync(nzbUrl, ct);
+        var nzb = await nzbFetcher.FetchAsync(
+            nzbUrl,
+            registered.Release.IndexerId ?? registered.Release.Indexer,
+            ct);
         var candidate = MediaFileSelector.SelectPrimary(nzb)
             ?? throw new NoPlayableFileException("The NZB contains no playable media file.");
 
@@ -157,7 +189,20 @@ public sealed class ResolveService(
         var media = await materializer.MaterializeAsync(candidate, ct);
         var session = sessionManager.CreateSession(releaseId, registered.WorkId, media, client);
 
-        var probe = await ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), options.Value.ApiKey, ct);
+        FfprobeResult? probe;
+        try
+        {
+            // The loopback URL itself is a narrowly-scoped capability; never put an
+            // admin JWT or machine key in ffprobe's command line or HTTP headers.
+            probe = await ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), ct);
+        }
+        catch
+        {
+            // Cancellation/failure before a response must not strand an unreachable
+            // capability session until its TTL expires.
+            sessionManager.CloseSession(session.Token);
+            throw;
+        }
         if (probe == null)
         {
             logger.LogWarning(

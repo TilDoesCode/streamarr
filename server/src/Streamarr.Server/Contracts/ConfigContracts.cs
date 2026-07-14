@@ -4,6 +4,12 @@ using Streamarr.Server.Security;
 
 namespace Streamarr.Server.Contracts;
 
+/// <summary>Transactional priority order; every current row id must appear exactly once.</summary>
+public sealed record ReorderRequest
+{
+    public required IReadOnlyList<string> Ids { get; init; }
+}
+
 // ---- Indexers -----------------------------------------------------------------------
 
 /// <summary>Indexer as returned by the config API — the API key is masked, never plaintext.</summary>
@@ -15,6 +21,10 @@ public sealed record IndexerResponse
     public string? ApiKey { get; init; }
     public bool HasApiKey { get; init; }
     public IReadOnlyList<int> Categories { get; init; } = [];
+
+    /// <summary>Extra hostnames NZB downloads may use besides the BaseUrl host.</summary>
+    public IReadOnlyList<string> AllowedDownloadHosts { get; init; } = [];
+
     public bool Enabled { get; init; }
     public int Priority { get; init; }
 
@@ -26,6 +36,7 @@ public sealed record IndexerResponse
         ApiKey = SecretMasking.Masked(e.ApiKeyEncrypted),
         HasApiKey = !string.IsNullOrEmpty(e.ApiKeyEncrypted),
         Categories = Config.IndexerConfigService.ParseCategories(e.Categories),
+        AllowedDownloadHosts = Config.IndexerConfigService.ParseHosts(e.AllowedDownloadHosts),
         Enabled = e.Enabled,
         Priority = e.Priority,
     };

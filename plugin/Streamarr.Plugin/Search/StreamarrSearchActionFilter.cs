@@ -1,9 +1,10 @@
-using System.Security.Claims;
-using Jellyfin.Data.Entities;
+using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Search;
 using Microsoft.AspNetCore.Http;
@@ -48,6 +49,7 @@ public sealed class StreamarrSearchActionFilter(
 
     /// <summary>Upper bound on works materialized per search, to bound request cost.</summary>
     private const int MaxWorks = 20;
+    private const int MaxSearchTermLength = 256;
 
     private const string SearchTermKey = "searchTerm";
 
@@ -77,14 +79,16 @@ public sealed class StreamarrSearchActionFilter(
                     obj.Value = await InjectItemsAsync(items, term, context.HttpContext, ct).ConfigureAwait(false);
                     break;
                 case SearchHintResult hints:
-                    obj.Value = await InjectHintsAsync(hints, term, ct).ConfigureAwait(false);
+                    obj.Value = await InjectHintsAsync(hints, term, context.HttpContext, ct).ConfigureAwait(false);
                     break;
             }
         }
         catch (Exception ex)
         {
             // Non-negotiable: interception failure degrades to native results (BRIEF §11).
-            logger.LogWarning(ex, "Streamarr search interception failed; returning native results unchanged");
+            logger.LogWarning(
+                "Streamarr search interception failed ({FailureType}); returning native results unchanged",
+                ex.GetType().Name);
         }
     }
 
@@ -94,22 +98,35 @@ public sealed class StreamarrSearchActionFilter(
         HttpContext http,
         CancellationToken ct)
     {
-        var works = await FetchWorksAsync(term, ct).ConfigureAwait(false);
-        if (works.Count == 0)
+        var constraints = GetConstraints(http.Request, isHintRequest: false);
+        var capacity = constraints.RemainingCapacity(native.Items.Count, native.Items.Count + MaxWorks);
+        if (capacity == 0)
             return native;
 
         var user = ResolveUser(http);
-        var dtoOptions = new DtoOptions(true) { EnableUserData = user is not null };
+        if (user is null)
+            return native;
 
-        var injected = new List<BaseItemDto>(works.Count);
+        var works = await FetchWorksAsync(term, constraints, ct).ConfigureAwait(false);
+        if (works.Count == 0)
+            return native;
+
+        var dtoOptions = new DtoOptions(true) { EnableUserData = true };
+
+        var injected = new List<BaseItemDto>(Math.Min(works.Count, capacity));
         foreach (var work in works)
         {
+            if (injected.Count >= capacity)
+                break;
+
             try
             {
                 var itemId = await library.MaterializeAsync(work, ct).ConfigureAwait(false);
                 if (libraryManager.GetItemById(itemId) is not { } item)
                     continue;
-                injected.Add(dtoService.GetBaseItemDto(item, dtoOptions, user!, null!));
+                if (!CanExposeToUser(item, work, user))
+                    continue;
+                injected.Add(dtoService.GetBaseItemDto(item, dtoOptions, user, null!));
             }
             catch (Exception ex)
             {
@@ -119,25 +136,44 @@ public sealed class StreamarrSearchActionFilter(
 
         var merged = SearchInjection.MergeItems(native.Items, injected);
         var added = merged.Count - native.Items.Count;
-        logger.LogDebug("Injected {Added} Streamarr work(s) into /Items search for '{Term}'", added, term);
+        logger.LogDebug("Injected {Added} Streamarr work(s) into an /Items search", added);
         return new QueryResult<BaseItemDto>(native.StartIndex, native.TotalRecordCount + added, merged);
     }
 
     private async Task<SearchHintResult> InjectHintsAsync(
         SearchHintResult native,
         string term,
+        HttpContext http,
         CancellationToken ct)
     {
-        var works = await FetchWorksAsync(term, ct).ConfigureAwait(false);
+        var constraints = GetConstraints(http.Request, isHintRequest: true);
+        var capacity = constraints.RemainingCapacity(native.SearchHints.Count, native.SearchHints.Count + MaxWorks);
+        if (capacity == 0)
+            return native;
+
+        var user = ResolveUser(http);
+        if (user is null)
+            return native;
+
+        var works = await FetchWorksAsync(term, constraints, ct).ConfigureAwait(false);
         if (works.Count == 0)
             return native;
 
-        var injected = new List<SearchHint>(works.Count);
+        var injected = new List<SearchHint>(Math.Min(works.Count, capacity));
         foreach (var work in works)
         {
+            if (injected.Count >= capacity)
+                break;
+
             try
             {
                 var itemId = await library.MaterializeAsync(work, ct).ConfigureAwait(false);
+                if (libraryManager.GetItemById(itemId) is not { } item
+                    || !CanExposeToUser(item, work, user))
+                {
+                    continue;
+                }
+
                 injected.Add(SearchInjection.BuildHint(itemId, work));
             }
             catch (Exception ex)
@@ -148,7 +184,7 @@ public sealed class StreamarrSearchActionFilter(
 
         var merged = SearchInjection.MergeHints(native.SearchHints, injected);
         var added = merged.Count - native.SearchHints.Count;
-        logger.LogDebug("Injected {Added} Streamarr hint(s) into /Search/Hints for '{Term}'", added, term);
+        logger.LogDebug("Injected {Added} Streamarr hint(s) into /Search/Hints", added);
         return new SearchHintResult(merged, native.TotalRecordCount + added);
     }
 
@@ -156,7 +192,10 @@ public sealed class StreamarrSearchActionFilter(
     /// Calls <c>GET /api/v1/search</c> under a short deadline. Any failure/timeout returns an
     /// empty list so the caller falls through to native results untouched.
     /// </summary>
-    private async Task<IReadOnlyList<WorkDto>> FetchWorksAsync(string term, CancellationToken ct)
+    private async Task<IReadOnlyList<WorkDto>> FetchWorksAsync(
+        string term,
+        SearchInjection.Constraints constraints,
+        CancellationToken ct)
     {
         try
         {
@@ -165,36 +204,54 @@ public sealed class StreamarrSearchActionFilter(
             var response = await api.SearchAsync(term, cts.Token).ConfigureAwait(false);
             return response?.Results
                        .Where(w => w.Releases.Count > 0)
+                       .Where(constraints.Allows)
                        .Take(MaxWorks)
                        .ToList()
                    ?? [];
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Core Server search unavailable for '{Term}'; leaving native results intact", term);
+            logger.LogDebug(
+                "Core Server search unavailable ({FailureType}); leaving native results intact",
+                ex.GetType().Name);
             return [];
         }
     }
 
     private static string? GetSearchTerm(HttpRequest request)
-        => request.Query.TryGetValue(SearchTermKey, out var value) ? value.ToString() : null;
+    {
+        if (!request.Query.TryGetValue(SearchTermKey, out var value))
+            return null;
+        if (value.Count != 1)
+            return null;
+        var term = value.ToString().Trim();
+        return term.Length is > 0 and <= MaxSearchTermLength && !term.Any(char.IsControl) ? term : null;
+    }
 
     /// <summary>
-    /// Best-effort resolution of the requesting Jellyfin user (for DTO user-data), falling back to
-    /// the first user and finally to <c>null</c>. Never throws — DTO building tolerates a null user
-    /// because we disable user-data when it is absent.
+    /// Resolves the exact authenticated/target Jellyfin user. Never falls back to another account:
+    /// doing so would apply the wrong library and parental-control policy to injected results.
     /// </summary>
     private User? ResolveUser(HttpContext http)
     {
         try
         {
-            foreach (var claim in http.User?.Claims ?? Enumerable.Empty<Claim>())
+            const string userIdClaimType = "Jellyfin-UserId";
+            var claim = http.User?.Claims.FirstOrDefault(c =>
+                string.Equals(c.Type, userIdClaimType, StringComparison.Ordinal));
+            if (claim is null || !Guid.TryParse(claim.Value, out var authenticatedId) || authenticatedId == Guid.Empty)
+                return null;
+
+            var targetId = authenticatedId;
+            if (TryGuid(http.Request.Query["userId"].ToString(), out var requestedId)
+                && requestedId != Guid.Empty)
             {
-                if (Guid.TryParse(claim.Value, out var id) && userManager.GetUserById(id) is { } user)
-                    return user;
+                if (requestedId != authenticatedId && !(http.User?.IsInRole("Administrator") ?? false))
+                    return null;
+                targetId = requestedId;
             }
 
-            return userManager.Users.FirstOrDefault();
+            return userManager.GetUserById(targetId);
         }
         catch (Exception ex)
         {
@@ -202,4 +259,148 @@ public sealed class StreamarrSearchActionFilter(
             return null;
         }
     }
+
+    private bool CanExposeToUser(BaseItem item, WorkDto work, User user)
+    {
+        if (!item.IsVisible(user))
+            return false;
+
+        // A synthetic movie/episode is only offered when the requesting user can see at least
+        // one compatible Jellyfin library. This mirrors folder restrictions without attaching
+        // the private Streamarr folder to any normal library view.
+        var episode = SearchInjection.IsEpisode(work);
+        return StreamarrItemVisibility.HasCompatibleLibrary(user, episode);
+    }
+
+    internal static SearchInjection.Constraints GetConstraints(HttpRequest request, bool isHintRequest)
+    {
+        var query = request.Query;
+        var valid = true;
+
+        var startIndex = 0;
+        if (query.ContainsKey("startIndex")
+            && (!TryInt(query["startIndex"].ToString(), out startIndex) || startIndex < 0))
+        {
+            valid = false;
+        }
+
+        int? limit = null;
+        if (query.ContainsKey("limit"))
+        {
+            if (TryInt(query["limit"].ToString(), out var parsedLimit) && parsedLimit >= 0)
+                limit = parsedLimit;
+            else
+                valid = false;
+        }
+
+        Guid? parentId = null;
+        if (query.ContainsKey("parentId"))
+        {
+            if (TryGuid(query["parentId"].ToString(), out var parsedParent))
+                parentId = parsedParent;
+            else
+                valid = false;
+        }
+
+        if (query.ContainsKey("userId")
+            && (!TryGuid(query["userId"].ToString(), out var userId) || userId == Guid.Empty))
+        {
+            valid = false;
+        }
+
+        valid &= TryParseEnums(query, "includeItemTypes", out HashSet<BaseItemKind> includeItemTypes);
+        valid &= TryParseEnums(query, "excludeItemTypes", out HashSet<BaseItemKind> excludeItemTypes);
+        valid &= TryParseEnums(query, "mediaTypes", out HashSet<MediaType> mediaTypes);
+
+        var includeMedia = true;
+        if (isHintRequest && query.ContainsKey("includeMedia")
+            && !TryBool(query["includeMedia"].ToString(), out includeMedia))
+        {
+            valid = false;
+        }
+
+        bool? isMovie = null;
+        if (query.ContainsKey("isMovie"))
+        {
+            if (TryBool(query["isMovie"].ToString(), out var parsed))
+                isMovie = parsed;
+            else
+                valid = false;
+        }
+
+        bool? isSeries = null;
+        if (query.ContainsKey("isSeries"))
+        {
+            if (TryBool(query["isSeries"].ToString(), out var parsed))
+                isSeries = parsed;
+            else
+                valid = false;
+        }
+
+        if (query.ContainsKey("recursive")
+            && (!TryBool(query["recursive"].ToString(), out var recursive) || !recursive))
+        {
+            valid = false;
+        }
+
+        // Any unrecognized query option may be a native predicate or sort we cannot faithfully
+        // apply after Jellyfin has produced its page. Fail closed rather than broadening it.
+        HashSet<string> supportedKeys = new(
+        [
+            "searchTerm", "userId", "startIndex", "limit", "parentId", "includeItemTypes",
+            "excludeItemTypes", "mediaTypes", "includeMedia", "isMovie", "isSeries", "recursive",
+            "fields", "enableUserData", "imageTypeLimit", "enableImageTypes", "enableImages",
+            "enableTotalRecordCount", "includePeople", "includeGenres", "includeStudios",
+            "includeArtists", "api_key",
+        ], StringComparer.OrdinalIgnoreCase);
+        if (query.Keys.Any(key => !supportedKeys.Contains(key)))
+            valid = false;
+
+        return new SearchInjection.Constraints(
+            startIndex,
+            limit,
+            parentId,
+            includeItemTypes,
+            excludeItemTypes,
+            mediaTypes,
+            includeMedia,
+            isMovie,
+            isSeries,
+            valid);
+    }
+
+    private static bool TryParseEnums<TEnum>(
+        IQueryCollection query,
+        string key,
+        out HashSet<TEnum> parsed)
+        where TEnum : struct, Enum
+    {
+        parsed = [];
+        if (!query.ContainsKey(key))
+            return true;
+
+        var value = query[key].ToString();
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        foreach (var part in value.Split(',', StringSplitOptions.TrimEntries))
+        {
+            if (part.Length == 0)
+                return false;
+            if (!Enum.TryParse<TEnum>(part, true, out var item)
+                || !Enum.IsDefined(item)
+                || !string.Equals(Enum.GetName(item), part, StringComparison.OrdinalIgnoreCase))
+                return false;
+            parsed.Add(item);
+        }
+
+        return parsed.Count > 0;
+    }
+
+    private static bool TryInt(string value, out int parsed)
+        => int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out parsed);
+
+    private static bool TryGuid(string value, out Guid parsed) => Guid.TryParse(value, out parsed);
+
+    private static bool TryBool(string value, out bool parsed) => bool.TryParse(value, out parsed);
 }

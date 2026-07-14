@@ -40,6 +40,7 @@ public class HealthEndpointTests : IClassFixture<HealthEndpointTests.Factory>
             builder.UseEnvironment("Production");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["Streamarr:Admin:Password"] = Integration.TestAuth.AdminPassword,
                 ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
                 ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
             }));

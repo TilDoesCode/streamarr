@@ -19,28 +19,33 @@ browsable at `/swagger`.
 
 ## 1. Authentication
 
-Every endpoint requires authentication (BRIEF §6.4, §11). There are two modes, both
-arriving as `Authorization: Bearer <token>`, resolved by a single custom scheme
+Administrative and machine API endpoints use one authentication scheme with three
+credential transports, resolved by
 ([`StreamarrAuthenticationHandler`](../server/src/Streamarr.Server/Auth/StreamarrAuthenticationHandler.cs)):
 
 | Mode | Token | Scope |
 |---|---|---|
-| **Machine / API key** | The static bootstrap key (`Streamarr:ApiKey`) or a key minted via `POST /config/apikeys`. | `search`, `resolve`, `stream`, `events`, `caps`, `sessions`, `metrics`, `health`. **Not** `/config` or `/debug`. |
-| **Admin session** | A short-lived JWT from `POST /auth/login`. | Everything, including `/config/*` and `/debug/search`. |
+| **Machine / API key** | The static bootstrap key (`Streamarr:ApiKey`) or a key minted via `POST /config/apikeys`. | `search`, `resolve`, `events`, `caps`, and shallow `health`. **Not** `/config`, `/debug`, session listing, or metrics. |
+| **Browser admin session** | The HttpOnly, `SameSite=Strict` cookie set by `POST /auth/login`. | Everything, including `/config/*` and `/debug/search`. Unsafe requests additionally require an exact same-origin `Origin` header. |
+| **Non-browser admin session** | A short-lived JWT from `POST /auth/login`, sent as a bearer token. | The same admin scope; retained for CLI and API clients. |
 
-- API keys are tried first (a cheap constant-time hash compare); anything else is
-  validated as a JWT.
-- **`/stream` is never unauthenticated.** The token in the path is unguessable *and*
-  the request must be authenticated. Because a browser `<video>`/`<audio>` element
-  cannot set an `Authorization` header, `GET /api/v1/stream/{token}` **additionally**
-  accepts the same bearer token as an `?access_token=` query parameter — scoped to the
-  stream path only (the mechanism Jellyfin itself uses). Credentials never travel in
-  query strings anywhere else.
+- An explicit bearer header takes precedence over the ambient cookie. API keys are
+  tried first (a constant-time hash compare); anything else is validated as a JWT.
+- The Management UI never stores or sends the JWT. It uses the same-origin HttpOnly
+  cookie and keeps only non-secret username, role, and expiry metadata in browser
+  storage. `POST /auth/logout` expires the cookie and invalidates all issued admin
+  tokens; a password change does the same.
+- **`/stream/{token}` is capability-authorized.** Resolve creates a random 192-bit,
+  short-lived session token. Possession of that exact path authorizes only that stream;
+  no admin JWT or reusable machine API key belongs in the URL or query string. Treat the
+  complete stream path as a secret and redact it from proxy access logs.
+- `POST /sessions/{token}/close` uses the same capability. Listing sessions and reading
+  metrics require an admin session.
 - **Admin-only** endpoints (`/config/*`, `/config/apikeys`, `/auth/password`,
   `/debug/search`) reject a machine key with `403`. Machine keys cannot mint or revoke
   keys.
-- `GET /health` liveness is reachable unauthenticated; the reachability probes it runs
-  are the same regardless.
+- `GET /health` is anonymous, shallow liveness by default. `?deep=true` performs cached,
+  rate-limited dependency checks and requires an admin session.
 
 ### `POST /api/v1/auth/login`
 
@@ -63,8 +68,10 @@ Content-Type: application/json
 }
 ```
 `401` on bad credentials. Lifetime is `Streamarr:AdminSessionTtlSeconds` (default
-3600). Related: `GET /auth/me` (identity behind the current bearer, machine or admin),
-`POST /auth/password` (admin self-service change; `204`).
+3600). The response also sets the browser cookie; the returned bearer token is for
+non-browser clients. Related: `GET /auth/me` (identity behind the current credential),
+`POST /auth/logout` (`204`), and `POST /auth/password` (admin self-service change;
+`204`).
 
 ---
 
@@ -204,7 +211,7 @@ A healthy (`ready` or `degraded`) response:
 {
   "releaseId": "sha256-of-guid",
   "status": "ready",
-  "streamUrl": "https://server/api/v1/stream/<opaque-token>",
+  "streamUrl": "/api/v1/stream/<opaque-token>",
   "container": "mkv",
   "sizeBytes": 5368709120,
   "runTimeTicks": 78000000000,
@@ -265,7 +272,7 @@ skipped as a future fallback (see [`architecture.md`](./architecture.md) §5.3).
 
 ### `GET /api/v1/stream/{token}`
 
-A plain, authenticated, **Range-capable** HTTP byte stream (BRIEF §3.3). Player-
+A plain, capability-authorized, **Range-capable** HTTP byte stream (BRIEF §3.3). Player-
 agnostic by contract — ffmpeg, mpv, VLC, `<video>`, ExoPlayer, AVPlayer. **No
 Jellyfin-specific behavior may ever be added here.**
 
@@ -278,7 +285,6 @@ Jellyfin-specific behavior may ever be added here.**
 
 ```http
 GET /api/v1/stream/abc123 HTTP/1.1
-Authorization: Bearer <api-key>
 Range: bytes=1048576-2097151
 ```
 ```http
@@ -289,8 +295,8 @@ Content-Type: video/x-matroska
 Content-Length: 1048576
 ```
 
-For browser `<video>`: `GET /api/v1/stream/abc123?access_token=<api-key>` (see §1).
-Seek and time-to-first-byte characteristics are measured in
+The same URL works in browser `<video>` and Jellyfin/ffmpeg without attaching a reusable
+credential. Seek and time-to-first-byte characteristics are measured in
 [`m1-latency.md`](./m1-latency.md); concurrent-range behavior in
 [`m7-cache-loadtest.md`](./m7-cache-loadtest.md).
 
@@ -347,10 +353,11 @@ how watch state escapes a front-end's own DB. `202 Accepted`.
 
 ### `GET /api/v1/health`
 
-Liveness plus per-indexer (`t=caps`) and per-provider (connect + `AUTHINFO`)
-reachability. Reachability checks are time-boxed and isolated so one dead dependency
-never fails the probe. Pass `?deep=false` to skip the reachability probes (the compose
-healthcheck uses this).
+Anonymous, rate-limited liveness is shallow by default. Pass `?deep=true` with an admin
+session to run cached, time-boxed per-indexer (`t=caps`) and per-provider (connect +
+`AUTHINFO`) reachability checks. Dependency errors are reduced to safe status values;
+one dead dependency never turns the liveness endpoint into a server error. The Compose
+healthcheck uses the default shallow form.
 
 ```json
 {
@@ -368,7 +375,8 @@ from — a front-end's view of what this server supports (`mediaTypes`, `categor
 
 ### `GET /api/v1/metrics`
 
-Authenticated (any bearer) operational snapshot (BRIEF §10-M7). Not secret data.
+Admin-only operational snapshot (BRIEF §10-M7). It includes provider and session
+activity, so machine keys are intentionally insufficient.
 
 ```json
 {

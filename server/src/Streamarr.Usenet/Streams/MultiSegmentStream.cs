@@ -113,6 +113,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        if (buffer.IsEmpty) return 0;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -190,6 +191,7 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        if (buffer.IsEmpty) return 0;
 
         while (!cancellationToken.IsCancellationRequested)
         {

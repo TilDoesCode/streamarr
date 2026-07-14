@@ -1,7 +1,11 @@
 using System.IO;
+using System.Net;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
@@ -34,14 +38,18 @@ public static class StreamarrServerBootstrap
     {
         var services = builder.Services;
 
+        builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 1024 * 1024);
+
         // Structured logging (BRIEF §10-M7 observability). Serilog replaces the default
         // logger; it reads any "Serilog" config section, enriches with request context,
         // and writes structured lines to the console. Request logging is added in
         // UseStreamarrServer. Honors the host's existing minimum level in tests.
         builder.Host.UseSerilog((context, loggerConfig) => loggerConfig
             .ReadFrom.Configuration(context.Configuration)
-            .Enrich.FromLogContext()
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            // Typed HttpClient information logs contain full query strings. Newznab
+            // and TMDB authenticate in those query strings, so never emit these URIs.
+            .MinimumLevel.Override("System.Net.Http.HttpClient", LogEventLevel.Warning)
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"));
 
@@ -49,6 +57,55 @@ public static class StreamarrServerBootstrap
         // composed from a test host (entry-assembly discovery misses them there)
         services.AddControllers()
             .AddApplicationPart(typeof(StreamarrServerBootstrap).Assembly);
+
+        services.AddRateLimiter(o =>
+        {
+            o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            o.OnRejected = async (context, token) =>
+            {
+                context.HttpContext.Response.ContentType = "application/json";
+                context.HttpContext.Response.Headers.RetryAfter = "60";
+                await context.HttpContext.Response.WriteAsJsonAsync(
+                    Contracts.ErrorResponse.Of("rate_limited", "Too many requests; retry later."), token);
+            };
+            o.AddPolicy("login", context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = Math.Clamp(
+                        context.RequestServices.GetRequiredService<IOptions<StreamarrOptions>>()
+                            .Value.LoginAttemptsPerMinute,
+                        1,
+                        1_000),
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }));
+            o.AddPolicy("health", context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }));
+        });
+
+        // Honor one explicitly trusted reverse-proxy hop. The framework's loopback
+        // defaults stay in place; deployments may add exact proxy addresses without
+        // accepting spoofable forwarded headers from arbitrary clients.
+        services.AddOptions<ForwardedHeadersOptions>()
+            .Configure<IOptions<StreamarrOptions>>((forwarded, configured) =>
+            {
+                forwarded.ForwardedHeaders =
+                    ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                forwarded.ForwardLimit = 1;
+                foreach (var value in configured.Value.TrustedProxies)
+                {
+                    forwarded.KnownProxies.Add(IPAddress.Parse(value));
+                }
+            });
 
         // OpenAPI is the cross-interface contract (BRIEF.md §3.1); Swashbuckle serves it.
         // The spec is frozen at /openapi/v1.json and checked into the repo — the web
@@ -77,6 +134,7 @@ public static class StreamarrServerBootstrap
             };
             o.AddSecurityDefinition("bearer", scheme);
             o.AddSecurityRequirement(new OpenApiSecurityRequirement { [scheme] = Array.Empty<string>() });
+            o.OperationFilter<AllowAnonymousOperationFilter>();
 
             foreach (var xml in Directory.GetFiles(AppContext.BaseDirectory, "Streamarr.*.xml"))
                 o.IncludeXmlComments(xml, includeControllerXmlComments: true);
@@ -98,8 +156,9 @@ public static class StreamarrServerBootstrap
             var authenticated = new AuthorizationPolicyBuilder(AuthRoles.Scheme)
                 .RequireAuthenticatedUser()
                 .Build();
-            // Every endpoint without an explicit attribute still requires authentication
-            // (BRIEF §11: auth on every endpoint; /stream never public).
+            // Every endpoint without an explicit attribute still requires authentication.
+            // Stream/close explicitly opt out because their unguessable path capability is the
+            // narrowly-scoped credential and no ambient admin/machine secret belongs in media IO.
             o.FallbackPolicy = authenticated;
             o.DefaultPolicy = authenticated;
             o.AddPolicy(AuthRoles.AdminPolicy, p => p
@@ -108,7 +167,10 @@ public static class StreamarrServerBootstrap
                 .RequireRole(AuthRoles.Admin));
         });
 
-        services.Configure<StreamarrOptions>(builder.Configuration.GetSection(StreamarrOptions.SectionName));
+        services.AddSingleton<IValidateOptions<StreamarrOptions>, StreamarrOptionsValidator>();
+        services.AddOptions<StreamarrOptions>()
+            .Bind(builder.Configuration.GetSection(StreamarrOptions.SectionName))
+            .ValidateOnStart();
 
         // --- persistence + secret protection (BRIEF §4, §6.3) ---------------------------
         // Connection string + key-ring path resolve lazily from the bound options so
@@ -171,28 +233,54 @@ public static class StreamarrServerBootstrap
         services.AddSingleton(sp =>
         {
             var search = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Search;
-            return new SearchCache(search.CacheTtl, sp.GetRequiredService<TimeProvider>());
+            return new SearchCache(
+                search.CacheTtl,
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.SearchCacheMaxEntries);
         });
         services.AddSingleton<IIndexerRateLimiter>(sp =>
         {
             var search = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Search;
             return new IndexerRateLimiter(search.RateLimitInterval, sp.GetRequiredService<TimeProvider>());
         });
-        services.AddHttpClient<INewznabClient, NewznabClient>();
+        services.AddHttpClient<INewznabClient, NewznabClient>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                ConnectTimeout = TimeSpan.FromSeconds(15),
+            })
+            .RemoveAllLoggers();
         services.AddSingleton<IndexerSearchService>();
+        services.AddSingleton<SearchConcurrencyGate>();
 
         // TMDB matcher (BRIEF §6.1 module 3): a typed HttpClient wrapped in an
         // aggressive caching decorator. With no API key the client no-ops to null so
         // search still works before the owner supplies a key.
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Tmdb);
-        services.AddHttpClient<TmdbClient>();
+        services.AddHttpClient<TmdbClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                ConnectTimeout = TimeSpan.FromSeconds(15),
+            })
+            .RemoveAllLoggers();
         services.AddSingleton<ITmdbClient>(sp =>
         {
             var tmdbOptions = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Tmdb;
             return new CachingTmdbClient(
                 sp.GetRequiredService<TmdbClient>(),
                 tmdbOptions.CacheTtl,
-                sp.GetRequiredService<TimeProvider>());
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.TmdbCacheMaxEntries,
+                tmdbOptions.MaxConcurrentRequests,
+                tmdbOptions.RequestTimeout);
         });
 
         // Parse → reject → rank → aggregate to works (BRIEF §7).
@@ -208,17 +296,33 @@ public static class StreamarrServerBootstrap
             var opts = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value;
             return new ReleaseHealthCache(
                 TimeSpan.FromSeconds(Math.Max(0, opts.HealthCacheTtlSeconds)),
-                sp.GetRequiredService<TimeProvider>());
+                sp.GetRequiredService<TimeProvider>(),
+                opts.HealthCacheMaxEntries);
         });
 
-        services.AddSingleton<IReleaseStore, InMemoryReleaseStore>();
+        services.AddSingleton<IReleaseStore>(sp => new InMemoryReleaseStore(
+            sp.GetRequiredService<IReleaseHealthCache>(),
+            sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.ReleaseStoreMaxEntries));
         services.AddSingleton<SessionManager>();
         services.AddHostedService(sp => sp.GetRequiredService<SessionManager>());
         services.AddSingleton<HealthChecker>();
+        services.AddSingleton<Controllers.DeepHealthDiagnostics>();
         services.AddSingleton<MediaFileMaterializer>();
         services.AddSingleton<FfprobeClient>();
         services.AddSingleton<ResolveService>();
-        services.AddHttpClient<NzbFetcher>();
+        services.AddHttpClient<NzbFetcher>(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(60);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                MaxConnectionsPerServer = 8,
+                ConnectTimeout = TimeSpan.FromSeconds(15),
+            })
+            .RemoveAllLoggers();
 
         return builder;
     }
@@ -227,7 +331,57 @@ public static class StreamarrServerBootstrap
     {
         // One structured summary line per request (method, path, status, elapsed) —
         // BRIEF §10-M7 observability. Cheap and emitted at Information.
-        app.UseSerilogRequestLogging();
+        // Request paths can contain 192-bit stream capability tokens. Keep the useful
+        // method/status/timing summary without persisting path parameters.
+        app.UseSerilogRequestLogging(o =>
+        {
+            o.MessageTemplate = "HTTP {RequestMethod} {RequestPath} completed {StatusCode} in {Elapsed:0.0000} ms";
+            o.IncludeQueryInRequestPath = false;
+            o.GetMessageTemplateProperties = (context, elapsed, statusCode, _) =>
+            [
+                new LogEventProperty("RequestMethod", new ScalarValue(context.Request.Method)),
+                new LogEventProperty("RequestPath", new ScalarValue(RedactRequestPath(context.Request.Path))),
+                new LogEventProperty("StatusCode", new ScalarValue(statusCode)),
+                new LogEventProperty("Elapsed", new ScalarValue(elapsed)),
+            ];
+        });
+
+        app.UseForwardedHeaders();
+        if (!app.Environment.IsDevelopment())
+            app.UseHsts();
+
+        app.Use(async (context, next) =>
+        {
+            var headers = context.Response.Headers;
+            headers.XContentTypeOptions = "nosniff";
+            headers.XFrameOptions = "DENY";
+            headers["Referrer-Policy"] = "no-referrer";
+            var scriptPolicy = app.Environment.IsDevelopment()
+                ? "script-src 'self' 'unsafe-inline'; "
+                : "script-src 'self'; ";
+            headers["Content-Security-Policy"] =
+                "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; " +
+                "form-action 'self'; " + scriptPolicy + "style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; font-src 'self'";
+            headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            {
+                headers.CacheControl = "private, no-store, max-age=0";
+                headers.Pragma = "no-cache";
+                headers.Append("Vary", "Authorization");
+                headers.Append("Vary", "Cookie");
+            }
+
+            if (context.Request.ContentLength is > 1024 * 1024)
+            {
+                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(
+                    Contracts.ErrorResponse.Of("payload_too_large", "API request bodies are limited to 1 MiB."));
+                return;
+            }
+            await next();
+        });
 
         // Apply migrations, seed from options on first run, and overlay the persisted
         // config onto the running options — before any request or hosted service resolves
@@ -264,8 +418,41 @@ public static class StreamarrServerBootstrap
 
         // Explicit routing so the static-files middleware above is guaranteed to run first
         // (minimal hosting would otherwise auto-insert routing at the very top).
+        // Additional browser-visible origins trusted by the CSRF same-origin check, normalized
+        // once at startup. Populated when the SPA is served from a different public URL than the
+        // Core Server reconstructs locally (TLS-terminating tunnel / Codecraft forwarded URLs).
+        var trustedOrigins = app.Services.GetRequiredService<IOptions<StreamarrOptions>>().Value
+            .TrustedOrigins
+            .Select(value => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+                ? NormalizeOrigin(uri)
+                : null)
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+
         app.UseRouting();
+        app.UseRateLimiter();
         app.UseAuthentication();
+        app.Use(async (context, next) =>
+        {
+            var unsafeMethod = !HttpMethods.IsGet(context.Request.Method) &&
+                               !HttpMethods.IsHead(context.Request.Method) &&
+                               !HttpMethods.IsOptions(context.Request.Method) &&
+                               !HttpMethods.IsTrace(context.Request.Method);
+            var cookieAuthenticated = context.User.HasClaim(
+                AdminAuthCookie.MethodClaim,
+                AdminAuthCookie.MethodValue);
+
+            if (unsafeMethod && cookieAuthenticated && !HasSameOrigin(context.Request, trustedOrigins))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(
+                    Contracts.ErrorResponse.Of("csrf_rejected", "Cookie-authenticated state changes require a same-origin request."));
+                return;
+            }
+
+            await next();
+        });
         app.UseAuthorization();
         app.MapControllers();
 
@@ -280,4 +467,38 @@ public static class StreamarrServerBootstrap
 
         return app;
     }
+
+    internal static string RedactRequestPath(PathString path)
+    {
+        var value = path.Value ?? string.Empty;
+        if (path.StartsWithSegments("/api/v1/stream", StringComparison.OrdinalIgnoreCase))
+            return "/api/v1/stream/{capability}";
+
+        if (path.StartsWithSegments("/api/v1/sessions", StringComparison.OrdinalIgnoreCase,
+                out var remainder) &&
+            remainder.Value?.EndsWith("/close", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "/api/v1/sessions/{capability}/close";
+        }
+
+        return value;
+    }
+
+    private static bool HasSameOrigin(HttpRequest request, IReadOnlySet<string> trustedOrigins)
+    {
+        if (!Uri.TryCreate(request.Headers.Origin.ToString(), UriKind.Absolute, out var origin))
+            return false;
+        var sameOrigin =
+            string.Equals(origin.Scheme, request.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(origin.IdnHost, request.Host.Host, StringComparison.OrdinalIgnoreCase) &&
+            origin.Port == (request.Host.Port ?? (request.IsHttps ? 443 : 80));
+        // The exact-match path above assumes the browser and Kestrel see the same origin. When
+        // the UI is served through a forwarding proxy that terminates TLS or rewrites the host,
+        // fall back to an operator-configured allowlist of trusted browser-visible origins.
+        return sameOrigin || trustedOrigins.Contains(NormalizeOrigin(origin));
+    }
+
+    /// <summary>Canonical <c>scheme://host:port</c> form (lowercased, explicit port) for origin comparison.</summary>
+    private static string NormalizeOrigin(Uri uri)
+        => $"{uri.Scheme.ToLowerInvariant()}://{uri.IdnHost.ToLowerInvariant()}:{uri.Port}";
 }

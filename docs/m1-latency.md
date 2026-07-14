@@ -72,7 +72,7 @@ release's RAR layering, and segment-cache warmth (README "Known limitations").
 
 `--smoke` on the same machine (`2026-07-12`):
 
-- **ffprobe** reads the stream URL directly (with the bearer header): container
+- **ffprobe** reads the short-lived capability URL directly (without a reusable bearer): container
   `matroska,webm`, video `h264` 320×240, audio `aac`, duration 30.02 s → **PASS**.
 - **play + seek** — `mpv` is not installed on this machine; `ffplay` is a realtime GUI
   player whose headless seek does not exit cleanly, so the harness uses **ffmpeg** (the

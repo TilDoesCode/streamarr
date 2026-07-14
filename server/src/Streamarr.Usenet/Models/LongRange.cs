@@ -17,6 +17,10 @@ public record LongRange(long StartInclusive, long EndExclusive)
     public bool IsContainedWithin(LongRange range) =>
         range.Contains(this);
 
-    public static LongRange FromStartAndSize(long startInclusive, long size) =>
-        new(startInclusive, startInclusive + size);
+    public static LongRange FromStartAndSize(long startInclusive, long size)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(startInclusive);
+        ArgumentOutOfRangeException.ThrowIfNegative(size);
+        return new LongRange(startInclusive, checked(startInclusive + size));
+    }
 }

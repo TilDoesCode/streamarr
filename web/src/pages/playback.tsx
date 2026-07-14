@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Gauge, Loader2, PlayCircle, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,22 +8,41 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResolveOutcome } from "@/components/resolve-outcome";
-import { useResolve } from "@/api/queries";
+import { queryKeys, useCloseSession, useResolve } from "@/api/queries";
 import type { ResolveResponse } from "@/api/types";
-import { errorMessage, streamUrlWithToken } from "@/api/client";
+import { errorMessage, streamUrlForPlayback } from "@/api/client";
+import { SESSION_CLEARED_EVENT } from "@/api/token";
 import { formatMs } from "@/lib/utils";
 
 export function PlaybackPage() {
   // Decoupled from the router (avoids a page↔router import cycle); the playback route
   // validates `releaseId` into the search params.
   const { releaseId: initialReleaseId } = useSearch({ strict: false }) as { releaseId?: string };
+  const queryClient = useQueryClient();
   const resolve = useResolve();
+  const closeSession = useCloseSession();
+  const cached = initialReleaseId
+    ? queryClient.getQueryData<ResolveResponse>(queryKeys.resolvedRelease(initialReleaseId)) ?? null
+    : null;
   const [releaseId, setReleaseId] = useState(initialReleaseId ?? "");
-  const [resolved, setResolved] = useState<ResolveResponse | null>(null);
+  const [resolved, setResolved] = useState<ResolveResponse | null>(cached);
+  const autoResolveAttempt = useRef<string | null>(cached ? initialReleaseId ?? null : null);
 
-  // Auto-resolve when arriving from the debug playground with a releaseId in the URL.
+  // Search stores the resolve result in the shared query cache. Reusing it here preserves the
+  // already-open session; direct links still resolve once, including under React StrictMode.
   useEffect(() => {
-    if (initialReleaseId) void doResolve(initialReleaseId);
+    if (!initialReleaseId) return;
+    setReleaseId(initialReleaseId);
+    const handedOff = queryClient.getQueryData<ResolveResponse>(
+      queryKeys.resolvedRelease(initialReleaseId),
+    );
+    if (handedOff) {
+      autoResolveAttempt.current = initialReleaseId;
+      setResolved(handedOff);
+    } else if (autoResolveAttempt.current !== initialReleaseId) {
+      autoResolveAttempt.current = initialReleaseId;
+      void doResolve(initialReleaseId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialReleaseId]);
 
@@ -32,10 +52,14 @@ export function PlaybackPage() {
       toast.error("Enter a release id to resolve.");
       return;
     }
-    setResolved(null);
+    const previous = resolved;
     try {
       const data = await resolve.mutateAsync({ releaseId: trimmed, client: "web" });
       setResolved(data);
+      if (previous?.streamUrl && previous.streamUrl !== data.streamUrl) {
+        const oldToken = streamTokenFromUrl(previous.streamUrl);
+        if (oldToken) void closeSession.mutateAsync(oldToken).catch(() => undefined);
+      }
       if (!data.streamUrl) {
         toast.error(`Release is ${data.status ?? "not ready"} — nothing to play.`);
       }
@@ -71,6 +95,7 @@ export function PlaybackPage() {
               <Input
                 id="releaseId"
                 placeholder="Release id (from the Search / Debug playground)"
+                maxLength={256}
                 value={releaseId}
                 onChange={(e) => setReleaseId(e.target.value)}
               />
@@ -131,7 +156,19 @@ function Player({ streamUrl }: { streamUrl: string }) {
   const [error, setError] = useState<string | null>(null);
 
   // A fresh stream URL means a fresh measurement.
-  const src = streamUrlWithToken(streamUrl);
+  const src = streamUrlForPlayback(streamUrl);
+
+  useEffect(() => {
+    const stopPlayback = () => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+    window.addEventListener(SESSION_CLEARED_EVENT, stopPlayback);
+    return () => window.removeEventListener(SESSION_CLEARED_EVENT, stopPlayback);
+  }, []);
 
   useEffect(() => {
     loadStart.current = performance.now();
@@ -178,7 +215,7 @@ function Player({ streamUrl }: { streamUrl: string }) {
           controls
           playsInline
           preload="auto"
-          className="aspect-video w-full rounded-md bg-black"
+          className="aspect-video w-full rounded-md bg-zinc-950"
           onLoadedData={onLoadedData}
           onPlaying={recordFirstFrame}
           onSeeking={onSeeking}
@@ -192,7 +229,7 @@ function Player({ streamUrl }: { streamUrl: string }) {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Metric
             icon={<Timer className="size-4" />}
             label="Time to first frame"
@@ -208,12 +245,22 @@ function Player({ streamUrl }: { streamUrl: string }) {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Direct play only — no transcode. The token rides as an <code>access_token</code> query
-          param because a <code>&lt;video&gt;</code> element cannot set an Authorization header.
+          Direct play only — no transcode. The opaque path token grants access only to this
+          playback session; administrator credentials are never placed in the media URL.
         </p>
       </CardContent>
     </Card>
   );
+}
+
+function streamTokenFromUrl(streamUrl: string): string | null {
+  try {
+    const url = new URL(streamUrl, "http://localhost");
+    const match = url.pathname.match(/\/stream\/([^/]+)$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
 }
 
 function Metric({

@@ -145,10 +145,33 @@ public class YencStreamTests
     }
 
     [Fact]
+    public async Task MalformedCrc_IsRejectedWhenValidationIsEnabled()
+    {
+        var data = YencTestEncoder.LcgBytes(7, 512);
+        var article = YencTestEncoder.Encode(data, "file.bin")
+            .Replace("crc32=", "crc32=not-hex-");
+
+        await using var decoder = DecoderFor(article);
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await DecodeAll(decoder));
+    }
+
+    [Fact]
     public async Task MissingYbegin_Throws()
     {
         await using var decoder = DecoderFor("this is not yenc\r\n");
         await Assert.ThrowsAsync<InvalidDataException>(async () => await DecodeAll(decoder));
+    }
+
+    [Theory]
+    [InlineData("=ybegin line=128 size=-1 name=file.bin\r\n")]
+    [InlineData("=ybegin line=128 size=10 part=2 total=1 name=file.bin\r\n=ypart begin=1 end=10\r\n")]
+    [InlineData("=ybegin line=128 size=10 part=1 total=1 name=file.bin\r\n=ypart begin=0 end=10\r\n")]
+    [InlineData("=ybegin line=128 size=10 part=1 total=1 name=file.bin\r\n=ypart begin=9 end=3\r\n")]
+    [InlineData("=ybegin line=128 size=10 part=1 total=1 name=file.bin\r\n=ypart begin=1 end=11\r\n")]
+    public async Task InvalidHeaderArithmetic_IsRejected(string article)
+    {
+        await using var decoder = DecoderFor(article);
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await decoder.GetYencHeadersAsync());
     }
 
     [Fact]
@@ -165,5 +188,17 @@ public class YencStreamTests
             ms.Write(buffer, 0, read);
 
         Assert.Equal(data, ms.ToArray());
+    }
+
+    [Fact]
+    public async Task ZeroLengthRead_DoesNotConsumeHeaders()
+    {
+        var data = YencTestEncoder.LcgBytes(12, 256);
+        await using var inner = new MemoryStream(Encoding.Latin1.GetBytes(YencTestEncoder.Encode(data, "file.bin")));
+        await using var decoder = new YencStream(inner);
+
+        Assert.Equal(0, await decoder.ReadAsync(Memory<byte>.Empty));
+        Assert.Equal(0, inner.Position);
+        Assert.Equal(data, await DecodeAll(decoder));
     }
 }

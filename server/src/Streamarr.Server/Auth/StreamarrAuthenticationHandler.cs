@@ -32,31 +32,36 @@ public sealed class StreamarrAuthenticationHandler(
 {
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var token = ExtractBearerToken();
-        if (token is null)
-            return Task.FromResult(AuthenticateResult.NoResult());
+        var bearer = ExtractBearerToken();
+        if (bearer is not null)
+        {
+            // 1) machine API key (static bootstrap or minted).
+            if (IsMachineKey(bearer))
+                return Task.FromResult(Success(MachinePrincipal()));
 
-        // 1) machine API key (static bootstrap or minted).
-        if (IsMachineKey(token))
-            return Task.FromResult(Success(MachinePrincipal()));
+            // 2) admin session JWT.
+            var bearerPrincipal = jwt.Validate(bearer);
+            if (bearerPrincipal is not null)
+                return Task.FromResult(Success(AdminPrincipal(bearerPrincipal, fromCookie: false)));
 
-        // 2) admin session JWT.
-        var principal = jwt.Validate(token);
-        if (principal is not null)
-            return Task.FromResult(Success(new ClaimsPrincipal(new ClaimsIdentity(principal.Claims, AuthRoles.Scheme))));
+            return Task.FromResult(AuthenticateResult.Fail("Invalid or expired bearer token."));
+        }
 
-        return Task.FromResult(AuthenticateResult.Fail("Invalid or expired bearer token."));
+        // Browser cookies are admin-JWT-only. Never interpret a cookie value as a
+        // machine key, so ambient browser credentials cannot acquire machine scope.
+        if (Request.Cookies.TryGetValue(AdminAuthCookie.Name, out var cookie) &&
+            cookie.Length is > 0 and <= 8192)
+        {
+            var cookiePrincipal = jwt.Validate(cookie);
+            if (cookiePrincipal is not null)
+                return Task.FromResult(Success(AdminPrincipal(cookiePrincipal, fromCookie: true)));
+            return Task.FromResult(AuthenticateResult.Fail("Invalid or expired admin session cookie."));
+        }
+
+        return Task.FromResult(AuthenticateResult.NoResult());
     }
 
-    /// <summary>
-    /// The bearer token arrives as <c>Authorization: Bearer &lt;token&gt;</c> for every
-    /// caller. A browser <c>&lt;video&gt;</c>/<c>&lt;audio&gt;</c> element cannot set that
-    /// header, so <c>GET /api/v1/stream/{token}</c> additionally accepts the same token as
-    /// an <c>access_token</c> query parameter — the mechanism Jellyfin itself uses. It is
-    /// scoped to the stream path so credentials never travel in query strings elsewhere;
-    /// <c>/stream</c> stays a generic, authenticated, Range-capable byte source
-    /// (BRIEF §3.3, §6.4).
-    /// </summary>
+    /// <summary>Only the standard Authorization bearer header is accepted here.</summary>
     private string? ExtractBearerToken()
     {
         var header = Request.Headers.Authorization.ToString();
@@ -64,15 +69,8 @@ public sealed class StreamarrAuthenticationHandler(
         if (header.StartsWith(scheme, StringComparison.Ordinal))
         {
             var token = header[scheme.Length..].Trim();
-            if (token.Length > 0)
+            if (token.Length is > 0 and <= 8192)
                 return token;
-        }
-
-        if (Request.Path.StartsWithSegments("/api/v1/stream", StringComparison.Ordinal))
-        {
-            var query = Request.Query["access_token"].ToString().Trim();
-            if (query.Length > 0)
-                return query;
         }
 
         return null;
@@ -99,6 +97,14 @@ public sealed class StreamarrAuthenticationHandler(
             new Claim(ClaimTypes.Role, AuthRoles.Machine),
         ], AuthRoles.Scheme);
         return new ClaimsPrincipal(identity);
+    }
+
+    private static ClaimsPrincipal AdminPrincipal(ClaimsPrincipal principal, bool fromCookie)
+    {
+        var claims = principal.Claims.ToList();
+        if (fromCookie)
+            claims.Add(new Claim(AdminAuthCookie.MethodClaim, AdminAuthCookie.MethodValue));
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, AuthRoles.Scheme));
     }
 
     private AuthenticateResult Success(ClaimsPrincipal principal)

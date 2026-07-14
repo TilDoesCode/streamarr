@@ -38,7 +38,7 @@ public sealed class GeneralConfigService(IDbContextFactory<StreamarrDbContext> d
 
     private static async Task<GeneralConfigEntity> LoadAsync(StreamarrDbContext db, CancellationToken ct)
     {
-        var entity = await db.GeneralConfig.FirstOrDefaultAsync(ct);
+        var entity = await db.GeneralConfig.SingleOrDefaultAsync(g => g.Id == 1, ct);
         if (entity is null)
         {
             entity = new GeneralConfigEntity { Id = 1 };

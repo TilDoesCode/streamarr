@@ -52,13 +52,14 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {
     ["Serilog:MinimumLevel:Default"] = "Warning",
-    ["Streamarr:ApiKey"] = "e2e-api-key",
+    ["Streamarr:ApiKey"] = "e2e-api-key-0123456789abcdef-xyz",
     ["Streamarr:Admin:Username"] = "admin",
     ["Streamarr:Admin:Password"] = adminPassword,
     ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(tempDir, "streamarr.db")}",
     ["Streamarr:DataProtectionKeysPath"] = Path.Combine(tempDir, "keys"),
     ["Streamarr:ConnectionBudget"] = "12",
     ["Streamarr:SessionTtlSeconds"] = "600",
+    ["Streamarr:AllowLocalNzbFiles"] = "true",
     ["Streamarr:Search:PerIndexerRateLimitMilliseconds"] = "0",
     // No indexer is seeded on purpose: the Playwright flow *adds one through the UI*
     // (BRIEF §9.1) and search then fans out to the canned INewznabClient below.

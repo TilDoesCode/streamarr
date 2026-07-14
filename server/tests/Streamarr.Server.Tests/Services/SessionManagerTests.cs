@@ -10,7 +10,11 @@ public class SessionManagerTests
 
     private static SessionManager Manager(int ttlSeconds = 300) => new(
         new FakeNntpClient(),
-        Microsoft.Extensions.Options.Options.Create(new StreamarrOptions { SessionTtlSeconds = ttlSeconds }),
+        Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
+        {
+            SessionTtlSeconds = ttlSeconds,
+            MaxSessions = 200,
+        }),
         NullLogger<SessionManager>.Instance);
 
     private static ResolvedMediaFile MediaFile() => new()
@@ -102,5 +106,57 @@ public class SessionManagerTests
         Assert.Equal(session.Token, listed.Token);
         Assert.Equal("jellyfin", listed.Session.Client);
         Assert.Equal(0, listed.NntpUsage.InFlight);
+    }
+
+    [Fact]
+    public async Task ThrowingInnerDispose_DoesNotLeakStreamCapacityLease()
+    {
+        var options = new StreamarrOptions
+        {
+            SessionTtlSeconds = 300,
+            MaxSessions = 2,
+            MaxConcurrentStreams = 1,
+        };
+        var manager = new SessionManager(
+            new FakeNntpClient(),
+            Microsoft.Extensions.Options.Options.Create(options),
+            NullLogger<SessionManager>.Instance);
+        var opens = 0;
+        var media = MediaFile() with
+        {
+            OpenStream = _ => Interlocked.Increment(ref opens) == 1
+                ? new ThrowingDisposeStream(Payload)
+                : new MemoryStream(Payload),
+        };
+        var session = manager.CreateSession("rel", "work", media, null);
+
+        var first = manager.OpenStream(session);
+        await Assert.ThrowsAsync<IOException>(() => first.DisposeAsync().AsTask());
+
+        // The single permit was released in a finally despite the disposal failure.
+        await using var second = manager.OpenStream(session);
+        Assert.Equal(Payload[0], second.ReadByte());
+    }
+
+    [Fact]
+    public void SessionLimit_IsEnforced()
+    {
+        var manager = new SessionManager(
+            new FakeNntpClient(),
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
+            {
+                SessionTtlSeconds = 300,
+                MaxSessions = 1,
+            }),
+            NullLogger<SessionManager>.Instance);
+        manager.CreateSession("one", "work", MediaFile(), null);
+        Assert.Throws<ResourceCapacityException>(() =>
+            manager.CreateSession("two", "work", MediaFile(), null));
+    }
+
+    private sealed class ThrowingDisposeStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override ValueTask DisposeAsync()
+            => ValueTask.FromException(new IOException("simulated dispose failure"));
     }
 }

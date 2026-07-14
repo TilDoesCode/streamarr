@@ -12,6 +12,9 @@ namespace Streamarr.Server.Auth;
 /// </summary>
 public sealed class UserService(IDbContextFactory<StreamarrDbContext> dbFactory, TimeProvider time)
 {
+    private static readonly (string Hash, string Salt) DummyPassword =
+        PasswordHasher.Hash(Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)));
+
     public async Task<bool> AnyAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -40,9 +43,29 @@ public sealed class UserService(IDbContextFactory<StreamarrDbContext> dbFactory,
     /// <summary>Returns the user when the credentials match, else null (constant-time verify).</summary>
     public async Task<UserEntity?> AuthenticateAsync(string username, string password, CancellationToken ct)
     {
-        var user = await FindByUsernameAsync(username, ct);
-        if (user is null || !PasswordHasher.Verify(password, user.PasswordHash, user.PasswordSalt))
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var normalized = username.ToLower();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Username.ToLower() == normalized, ct);
+        if (user is null)
+        {
+            // Match the expensive verification path so the generic login response is
+            // not undermined by a username-existence timing oracle.
+            _ = PasswordHasher.Verify(password, DummyPassword.Hash, DummyPassword.Salt);
             return null;
+        }
+
+        var verification = PasswordHasher.VerifyDetailed(password, user.PasswordHash, user.PasswordSalt);
+        if (!verification.Valid)
+            return null;
+
+        if (verification.NeedsRehash)
+        {
+            var upgraded = PasswordHasher.Hash(password);
+            user.PasswordHash = upgraded.Hash;
+            user.PasswordSalt = upgraded.Salt;
+            await db.SaveChangesAsync(ct);
+        }
+
         return user;
     }
 

@@ -7,20 +7,20 @@ fallback decisions. Those are the Core Server's job (BRIEF §1.1, §3.1 rule 3, 
 plugin only translates between the Core Server's interface-agnostic API and Jellyfin's
 data model.
 
-Target: **Jellyfin 10.10.7** (`net8.0`). See [`../docs/jellyfin-compatibility.md`](../docs/jellyfin-compatibility.md).
+Target: **Jellyfin 10.11.11** (`net9.0`). See [`../docs/jellyfin-compatibility.md`](../docs/jellyfin-compatibility.md).
 
 ## What it does (M5 playback + M6 search interception)
 
 | Piece | File | Role |
 |---|---|---|
 | `Plugin` + config page | `Plugin.cs`, `Configuration/` | Server URL, API key, TTL, interception toggle, profile id, pinned query; "Test connection" + "Materialize pinned work" buttons |
-| Typed HTTP client | `Api/StreamarrApiClient.cs` | Transport over `/health`, `/search`, `/resolve`, `/sessions/{token}/close`, `/events` |
+| Typed HTTP client | `Api/StreamarrApiClient.cs` | Bounded transport over shallow `/health`, authenticated `/caps`, `/search`, `/resolve`, `/sessions/{token}/close`, and `/events` |
 | Service wiring | `PluginServiceRegistrator.cs` | Registers the typed `HttpClient`, media-source provider, event bridge, scheduled tasks, and the search action filter (`Configure<MvcOptions>`) |
-| Ephemeral materialization | `Library/` | One isolated `Movie`/`Episode` per work, stable GUID from `workId`, tag `usenet-ephemeral`, TMDB metadata passed through; enumerates + deletes by tag for cleanup |
+| Ephemeral materialization | `Library/` | One private virtual `Movie`/`Episode` per work, stable GUID from `workId`, explicit ownership ids, persisted bounded release cache, and ownership-safe TTL cleanup |
 | **Search interception** ⚠️ | `Search/StreamarrSearchActionFilter.cs` | **The single version-fragile file.** `IAsyncActionFilter` over `/Items` (with `searchTerm`) + `/Search/Hints`: calls `/api/v1/search` (short timeout), materializes/merges ephemeral works. Fully try/catch-guarded behind the toggle — any error/timeout falls through to native results |
 | Search merge/hint shaping | `Search/SearchInjection.cs` | Host-free, unit-tested merge + dedup + hint building (no domain logic) |
-| Lazy media sources | `MediaSources/` | `IMediaSourceProvider`: one `MediaSourceInfo` per release (`RequiresOpening`), `OpenMediaSource` → `/resolve`, dead → server fallback once; `ILiveStream.Close` → session close |
-| Playback events | `Playback/` | Hooks `ISessionManager` start/progress/stop → `POST /api/v1/events` |
+| Lazy media sources | `MediaSources/` | `IMediaSourceProvider`: one `MediaSourceInfo` per release (`RequiresOpening`) with an opaque, bounded, short-lived, one-use offer tied to the authenticated Jellyfin user/item/work/release; `OpenMediaSource` validates and consumes it before `/resolve`, accepts only an attributed same-work fallback, and exposes no reusable media auth header; `ILiveStream.Close` → capability session close |
+| Playback events | `Playback/` | Hooks `ISessionManager` start/progress/stop → bounded/coalesced delivery to `POST /api/v1/events` |
 | Bootstrap task | `ScheduledTasks/SyncPinnedWorkTask.cs` | "Sync one pinned work" — materializes one item for the M5 smoke test |
 | **TTL cleanup task** | `ScheduledTasks/EphemeralCleanupTask.cs` | `IScheduledTask` (hourly): deletes `usenet-ephemeral` items past their TTL via `ILibraryManager` |
 
@@ -37,7 +37,7 @@ Target: **Jellyfin 10.10.7** (`net8.0`). See [`../docs/jellyfin-compatibility.md
 (cd plugin && ~/.dotnet/dotnet build Streamarr.Plugin/Streamarr.Plugin.csproj -c Release)
 ```
 
-Output: `plugin/Streamarr.Plugin/bin/Release/net8.0/` — `Streamarr.Plugin.dll` + `meta.json`
+Output: `plugin/Streamarr.Plugin/bin/Release/net9.0/` — `Streamarr.Plugin.dll` + `meta.json`
 (the Jellyfin assemblies are **not** copied; the host supplies them).
 
 ## Test
@@ -64,7 +64,11 @@ docker compose -f ../docker-compose.dev.yml up --build
 ```
 
 Then configure it: Jellyfin → Dashboard → Plugins → **Streamarr** → set the Core Server
-URL + API key, "Test connection", "Materialize pinned work". Full acceptance steps are in
+URL + API key, "Test connection", "Materialize pinned work". The connection test requires
+both anonymous shallow health and authenticated capabilities, so a wrong machine key
+fails even when Core is live. Materialized items live under a private, hidden
+implementation folder and surface only through eligible intercepted searches. Full
+acceptance steps are in
 [`../docs/m5-acceptance.md`](../docs/m5-acceptance.md).
 
 ## Licensing

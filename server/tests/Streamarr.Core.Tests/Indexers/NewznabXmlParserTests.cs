@@ -44,6 +44,28 @@ public class NewznabXmlParserTests
     }
 
     [Fact]
+    public void ParseSearch_EnforcesCallerItemLimit()
+    {
+        var response = NewznabXmlParser.ParseSearch(
+            NewznabFixtures.Load("alpha-search.xml"),
+            maxItems: 1);
+
+        Assert.Single(response.Items);
+        Assert.Equal("a1", response.Items[0].Guid);
+    }
+
+    [Fact]
+    public void ParseSearch_SkipsOversizedIdentityFields()
+    {
+        var oversizedTitle = new string('x', 513);
+        var xml = $"<rss><channel><item><title>{oversizedTitle}</title><guid>safe</guid></item></channel></rss>";
+
+        var response = NewznabXmlParser.ParseSearch(xml);
+
+        Assert.Empty(response.Items);
+    }
+
+    [Fact]
     public void ParseSearch_EmptyChannel_ReturnsNoItems()
     {
         var response = NewznabXmlParser.ParseSearch(NewznabFixtures.Load("empty-search.xml"));
@@ -57,6 +79,17 @@ public class NewznabXmlParserTests
     {
         Assert.Throws<NewznabParseException>(
             () => NewznabXmlParser.ParseSearch(NewznabFixtures.Load("malformed.xml")));
+    }
+
+    [Fact]
+    public void ParseSearch_RejectsDocumentTypeAndEntityExpansion()
+    {
+        const string xml = """
+            <!DOCTYPE rss [<!ENTITY repeated "expanded">]>
+            <rss><channel><item><title>&repeated;</title><guid>safe</guid></item></channel></rss>
+            """;
+
+        Assert.Throws<NewznabParseException>(() => NewznabXmlParser.ParseSearch(xml));
     }
 
     [Fact]

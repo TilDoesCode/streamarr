@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -18,11 +18,11 @@
 
   <ItemGroup>
     <!--
-      Jellyfin 10.10.x ABI. The exact patch is pinned in docs/jellyfin-compatibility.md
+      Jellyfin 10.11.x ABI. The exact patch is pinned in docs/jellyfin-compatibility.md
       and mirrored by the docker-compose.dev.yml image tag. The host supplies these
       assemblies at runtime, so they are never copied into the plugin output.
     -->
-    <PackageReference Include="Jellyfin.Controller" Version="10.10.7">
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.11">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

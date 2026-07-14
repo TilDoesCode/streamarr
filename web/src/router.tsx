@@ -2,34 +2,41 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { getToken } from "@/api/token";
+import { getSession } from "@/api/token";
 import { AppShell } from "@/components/app-shell";
-import { LoginPage } from "@/pages/login";
-import { DashboardPage } from "@/pages/dashboard";
-import { SettingsPage } from "@/pages/settings";
-import { IndexersPage } from "@/pages/indexers";
-import { ProvidersPage } from "@/pages/providers";
-import { ProfilesPage } from "@/pages/profiles";
-import { SearchPage } from "@/pages/search";
-import { PlaybackPage } from "@/pages/playback";
-import { SessionsPage } from "@/pages/sessions";
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
+
+export function safeRedirectTarget(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0 || value.length > 2_048) return undefined;
+  // Return targets are created by our own route guard and are path-absolute. Reject protocol-
+  // relative and absolute URLs even if a future router version starts accepting them in `to`.
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return undefined;
+  try {
+    const base = new URL("https://streamarr.invalid/");
+    const parsed = new URL(value, base);
+    if (parsed.origin !== base.origin || parsed.username || parsed.password) return undefined;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return undefined;
+  }
+}
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
-    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    redirect: safeRedirectTarget(search.redirect),
   }),
   beforeLoad: () => {
     // Already signed in? Skip the login screen.
-    if (getToken()) throw redirect({ to: "/" });
+    if (getSession()) throw redirect({ to: "/" });
   },
-  component: LoginPage,
+  component: lazyRouteComponent(() => import("@/pages/login"), "LoginPage"),
 });
 
 // Authenticated layout: the guard (BRIEF §9) redirects unauthenticated users to /login,
@@ -38,7 +45,7 @@ const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "app",
   beforeLoad: ({ location }) => {
-    if (!getToken()) {
+    if (!getSession()) {
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
   },
@@ -48,37 +55,37 @@ const appRoute = createRoute({
 const dashboardRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/",
-  component: DashboardPage,
+  component: lazyRouteComponent(() => import("@/pages/dashboard"), "DashboardPage"),
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/settings",
-  component: SettingsPage,
+  component: lazyRouteComponent(() => import("@/pages/settings"), "SettingsPage"),
 });
 
 const indexersRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/indexers",
-  component: IndexersPage,
+  component: lazyRouteComponent(() => import("@/pages/indexers"), "IndexersPage"),
 });
 
 const providersRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/providers",
-  component: ProvidersPage,
+  component: lazyRouteComponent(() => import("@/pages/providers"), "ProvidersPage"),
 });
 
 const profilesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/profiles",
-  component: ProfilesPage,
+  component: lazyRouteComponent(() => import("@/pages/profiles"), "ProfilesPage"),
 });
 
 const searchRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/search",
-  component: SearchPage,
+  component: lazyRouteComponent(() => import("@/pages/search"), "SearchPage"),
 });
 
 // The debug playground hands a resolved release to the preview via ?releaseId=…
@@ -88,13 +95,13 @@ const playbackRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { releaseId?: string } => ({
     releaseId: typeof search.releaseId === "string" ? search.releaseId : undefined,
   }),
-  component: PlaybackPage,
+  component: lazyRouteComponent(() => import("@/pages/playback"), "PlaybackPage"),
 });
 
 const sessionsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/sessions",
-  component: SessionsPage,
+  component: lazyRouteComponent(() => import("@/pages/sessions"), "SessionsPage"),
 });
 
 const routeTree = rootRoute.addChildren([

@@ -1,6 +1,6 @@
 # Streamarr dev stack (BRIEF §4 "Packaging", Milestone 5).
 #
-#   jellyfin  — Jellyfin 10.10.7 with the Streamarr plugin DLL bind-mounted into its
+#   jellyfin  — the pinned Jellyfin version with the Streamarr plugin DLL bind-mounted into its
 #               plugin dir (built separately, see below).
 #   streamarr — the Core Server (the product), built from server/Dockerfile.
 #   web       — optional Vite dev server for the Management UI (profile: web).
@@ -9,30 +9,84 @@
 # docs/jellyfin-compatibility.md.
 #
 # Usage:
-#   1. Build the plugin:   (cd plugin && ~/.dotnet/dotnet build Streamarr.Plugin/Streamarr.Plugin.csproj -c Release)
-#   2. Bring up the stack: docker compose -f docker-compose.dev.yml up --build
-#   3. Jellyfin at http://localhost:8096  ·  Core Server at http://localhost:8080
-#   4. In Jellyfin → Dashboard → Plugins, confirm "Streamarr" is listed and Active,
+#   1. Copy .env.example to .env and set strong, unique credentials.
+#   2. Build the plugin:   (cd plugin && dotnet build Streamarr.Plugin/Streamarr.Plugin.csproj -c Release)
+#   3. Bring up the stack: docker compose -f docker-compose.dev.yml up --build
+#   4. Jellyfin at http://localhost:8096  ·  Core Server at http://localhost:8080
+#   5. In Jellyfin → Dashboard → Plugins, confirm "Streamarr" is listed and Active,
 #      then open its settings, set the Core Server URL to http://streamarr:8080 and the
 #      API key, "Test connection", and "Materialize pinned work".
 #
 # Optional web UI:  docker compose -f docker-compose.dev.yml --profile web up
 
 services:
+  web-deps-init:
+    image: node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169
+    profiles: ["web"]
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    command: ["chown", "${WEB_UID:-1000}:${WEB_GID:-1000}", "/web/node_modules"]
+    volumes:
+      - web-node-modules:/web/node_modules
+
+  # The plugin DLL is bind-mounted at /config/plugins/Streamarr, which is nested inside the
+  # jellyfin-config volume. Docker auto-creates the parent mountpoint /config/plugins owned by
+  # root, but Jellyfin runs as an unprivileged user with a read-only rootfs and all caps dropped,
+  # so its startup sanity check cannot write the /config/plugins/.jellyfin-plugin marker there.
+  # Pre-create and chown the plugins dir (same pattern as web-deps-init) before Jellyfin boots.
+  jellyfin-config-init:
+    image: jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db
+    container_name: streamarr-jellyfin-config-init
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "mkdir -p /config/plugins && chown ${JELLYFIN_UID:-1000}:${JELLYFIN_GID:-1000} /config /config/plugins"
+    volumes:
+      - jellyfin-config:/config
+
   jellyfin:
-    image: jellyfin/jellyfin:10.10.7
+    image: jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db
     container_name: streamarr-jellyfin
+    init: true
+    user: "${JELLYFIN_UID:-1000}:${JELLYFIN_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Persist ASP.NET Data Protection state below the writable config volume even though the
+      # image itself is read-only and has no writable OS-user home directory.
+      HOME: /config
     ports:
-      - "8096:8096"
+      - "127.0.0.1:${JELLYFIN_PORT:-8096}:8096"
     volumes:
       - jellyfin-config:/config
       - jellyfin-cache:/cache
       # The plugin's build output (DLL + meta.json). Rebuild the plugin and restart
       # this container to pick up changes. Mounted read-write because Jellyfin rewrites
       # meta.json (plugin status) on load.
-      - ./plugin/Streamarr.Plugin/bin/Release/net8.0:/config/plugins/Streamarr
+      - ./plugin/Streamarr.Plugin/bin/Release/${PLUGIN_TFM:-net9.0}:/config/plugins/Streamarr
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
     depends_on:
-      - streamarr
+      streamarr:
+        condition: service_healthy
+      jellyfin-config-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   streamarr:
@@ -40,18 +94,35 @@ services:
       context: .
       dockerfile: server/Dockerfile
     container_name: streamarr-server
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${STREAMARR_PORT:-8080}:8080"
     environment:
-      # A dev bootstrap API key; the Jellyfin plugin uses the same value as its Bearer.
-      # Override for anything beyond local development.
-      Streamarr__ApiKey: "dev-streamarr-key"
-      Streamarr__Admin__Username: "admin"
-      Streamarr__Admin__Password: "streamarr"
+      # Fail fast instead of starting with public, predictable credentials.
+      Streamarr__ApiKey: "${STREAMARR_API_KEY:?Set STREAMARR_API_KEY in .env}"
+      Streamarr__Admin__Username: "${STREAMARR_ADMIN_USERNAME:-admin}"
+      Streamarr__Admin__Password: "${STREAMARR_ADMIN_PASSWORD:?Set STREAMARR_ADMIN_PASSWORD in .env}"
+      Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
+      Streamarr__DataProtectionKeysPath: "/app/keys"
+      # Under Codecraft each app gets its own forwarded, TLS-terminated public URL, so
+      # cookie-authenticated POSTs carry an Origin that can never match what Kestrel
+      # reconstructs locally (http, internal host) — even for the SPA this container serves
+      # from wwwroot at its own origin. Trust both browser-visible URLs the UI can be opened
+      # from: the Vite `web` app and this Core Server's own public URL. Empty/unset (plain
+      # `docker compose up` with no Codecraft) binds blank entries, which are ignored.
+      Streamarr__TrustedOrigins__0: "${CODECRAFT_URL_WEB:-}"
+      Streamarr__TrustedOrigins__1: "${CODECRAFT_URL_STREAMARR:-}"
       ASPNETCORE_ENVIRONMENT: "Production"
     volumes:
       - streamarr-data:/app/data
       - streamarr-keys:/app/keys
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
     healthcheck:
       # Liveness probe (BRIEF §6.2). Jellyfin waits on this before starting.
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health?deep=false"]
@@ -62,23 +133,38 @@ services:
     restart: unless-stopped
 
   web:
-    image: node:20-bookworm-slim
+    image: node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169
     container_name: streamarr-web
     profiles: ["web"]
+    init: true
+    user: "${WEB_UID:-1000}:${WEB_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     working_dir: /web
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
       # Vite dev proxy target (see web/vite.config.ts).
       STREAMARR_SERVER_ORIGIN: "http://streamarr:8080"
+      NPM_CONFIG_CACHE: "/tmp/npm-cache"
     ports:
-      - "5173:5173"
+      - "127.0.0.1:${STREAMARR_WEB_PORT:-5173}:5173"
     volumes:
       - ./web:/web
+      - web-node-modules:/web/node_modules
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,uid=${WEB_UID:-1000},gid=${WEB_GID:-1000},size=128m
     depends_on:
-      - streamarr
+      streamarr:
+        condition: service_started
+      web-deps-init:
+        condition: service_completed_successfully
 
 volumes:
   jellyfin-config:
   jellyfin-cache:
   streamarr-data:
   streamarr-keys:
+  web-node-modules:

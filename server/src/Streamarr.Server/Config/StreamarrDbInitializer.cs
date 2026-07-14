@@ -17,6 +17,7 @@ namespace Streamarr.Server.Config;
 public sealed class StreamarrDbInitializer(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     IOptions<StreamarrOptions> options,
+    IValidateOptions<StreamarrOptions> validator,
     ISecretProtector protector)
 {
     public void Initialize()
@@ -26,6 +27,18 @@ public sealed class StreamarrDbInitializer(
 
         SeedIfEmpty(db);
         Overlay(db);
+
+        // Validate again after the database overlay. ValidateOnStart covers files and
+        // environment variables, but persisted values are applied later in this routine
+        // and must not bypass the same resource and transport safety constraints.
+        var validation = validator.Validate(StreamarrOptions.SectionName, options.Value);
+        if (validation.Failed)
+        {
+            throw new OptionsValidationException(
+                StreamarrOptions.SectionName,
+                typeof(StreamarrOptions),
+                validation.Failures);
+        }
     }
 
     /// <summary>Seed config tables from options the first time the DB is created.</summary>
@@ -71,7 +84,7 @@ public sealed class StreamarrDbInitializer(
             }
         }
 
-        if (!db.GeneralConfig.Any())
+        if (!db.GeneralConfig.Any(g => g.Id == 1))
         {
             db.GeneralConfig.Add(new GeneralConfigEntity
             {
@@ -94,7 +107,7 @@ public sealed class StreamarrDbInitializer(
     {
         var opts = options.Value;
 
-        var general = db.GeneralConfig.AsNoTracking().FirstOrDefault();
+        var general = db.GeneralConfig.AsNoTracking().SingleOrDefault(g => g.Id == 1);
         if (general is not null)
         {
             opts.ConnectionBudget = general.ConnectionBudget;

@@ -21,24 +21,24 @@
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="ServerUrl">Core Server URL</label>
-                        <input is="emby-input" type="url" id="ServerUrl" name="ServerUrl" required />
+                        <input is="emby-input" type="url" id="ServerUrl" name="ServerUrl" required maxlength="2048" autocomplete="off" />
                         <div class="fieldDescription">e.g. http://streamarr:8080</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="ApiKey">Machine API key</label>
-                        <input is="emby-input" type="text" id="ApiKey" name="ApiKey" />
+                        <input is="emby-input" type="password" id="ApiKey" name="ApiKey" maxlength="1024" autocomplete="new-password" />
                         <div class="fieldDescription">A machine API key issued by the Core Server (Bearer).</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="EphemeralTtlMinutes">Ephemeral item TTL (minutes)</label>
-                        <input is="emby-input" type="number" id="EphemeralTtlMinutes" name="EphemeralTtlMinutes" min="1" />
+                        <input is="emby-input" type="number" id="EphemeralTtlMinutes" name="EphemeralTtlMinutes" min="5" max="43200" />
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="ProfileId">Quality profile id (optional)</label>
-                        <input is="emby-input" type="text" id="ProfileId" name="ProfileId" />
+                        <input is="emby-input" type="text" id="ProfileId" name="ProfileId" maxlength="128" autocomplete="off" />
                         <div class="fieldDescription">Leave blank to use the server's default profile.</div>
                     </div>
 
@@ -49,7 +49,7 @@
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="PinnedWorkQuery">Pinned-work query (M5 bootstrap)</label>
-                        <input is="emby-input" type="text" id="PinnedWorkQuery" name="PinnedWorkQuery" />
+                        <input is="emby-input" type="text" id="PinnedWorkQuery" name="PinnedWorkQuery" maxlength="256" />
                         <div class="fieldDescription">Query used by "Materialize pinned work" and the sync task.</div>
                     </div>
                 </div>

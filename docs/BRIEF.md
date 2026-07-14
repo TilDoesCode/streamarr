@@ -17,7 +17,7 @@ Three components:
 1. **Core Server** (`server/`) — a standalone service that owns Usenet search,
    release selection/ranking, metadata matching, availability checks, on-demand byte
    streaming from Usenet, configuration, and watch state. **This is the product.**
-2. **Jellyfin Plugin** (`plugin/`) — a `net8.0` server plugin that is a *thin
+2. **Jellyfin Plugin** (`plugin/`) — a `net9.0` server plugin that is a *thin
    adapter*, surfacing the Core Server's results inside Jellyfin's native search and
    making them playable through Jellyfin's transcoding pipeline.
 3. **Management Web UI** (`web/`) — a React 19 SPA for configuring, operating,
@@ -92,9 +92,11 @@ normal for Jellyfin plugins.
 
 ### 3.3 Practical consequence for `/stream`
 
-`GET /stream/{token}` returns a plain, Range-capable HTTP byte stream — already
-player-agnostic (ffmpeg, mpv, VLC, `<video>`, ExoPlayer, AVPlayer). **Preserve that
-property.** Never add Jellyfin-specific behavior to this endpoint.
+`GET /api/v1/stream/{token}` returns a plain, Range-capable HTTP byte stream — already
+player-agnostic (ffmpeg, mpv, VLC, `<video>`, ExoPlayer, AVPlayer). The short-lived,
+unguessable path token is the capability for that session; the endpoint accepts no
+query credential and requires no admin JWT, machine API key, or media auth header.
+**Preserve that property.** Never add Jellyfin-specific behavior to this endpoint.
 
 ---
 
@@ -105,8 +107,8 @@ Long-lived NNTP connection pool; Kestrel with `Range` support. SQLite via EF Cor
 (config, profiles, release/session cache, watch events). OpenAPI exposed
 (Swashbuckle or built-in) — it is the cross-interface contract.
 
-**Jellyfin Plugin** — `net8.0`, from the official template
-(https://github.com/jellyfin/jellyfin-plugin-template). Target Jellyfin 10.10.x.
+**Jellyfin Plugin** — `net9.0`, from the official template
+(https://github.com/jellyfin/jellyfin-plugin-template). Target Jellyfin 10.11.11.
 
 **Management Web UI** — React 19 + TypeScript, Vite. TanStack Query v5 for all
 server state (no Redux; local UI state via `useState`/`useReducer`). **TanStack
@@ -158,18 +160,22 @@ into Jellyfin's plugin dir, Vite dev server optional alongside.
 2. Plugin's action filter intercepts the item/search query, calls `GET /api/v1/search`.
 3. Server fans out to indexers, parses + ranks releases, aggregates them to **works**
    (one movie/episode with N alternative releases), enriches via TMDB.
-4. Plugin materializes **one isolated ephemeral item per work**, sets TMDB/IMDb
-   ProviderIds, tags it ephemeral, stores the ranked release list keyed to the item,
-   and merges results into the search response.
+4. Plugin materializes **one isolated ephemeral item per work** under a private,
+   hidden implementation folder, sets TMDB/IMDb ProviderIds, tags it ephemeral, stores
+   the ranked release list keyed to the item, and merges only eligible results into
+   the search response.
 5. User hits play → Jellyfin requests `PlaybackInfo`.
 6. Plugin's `IMediaSourceProvider.GetMediaSources` returns one `MediaSourceInfo` per
-   release (selectable "versions"), each `RequiresOpening = true`,
-   `OpenToken = releaseId`. **No Usenet contact yet.**
-7. `OpenMediaSource(openToken)` → plugin calls `POST /api/v1/resolve` → server
-   health-checks, opens a session, ffprobes, returns stream URL + media streams.
+   release (selectable "versions"), each `RequiresOpening = true` with an opaque,
+   bounded, short-lived, one-use `OpenToken` tied to that authenticated Jellyfin user,
+   item, work, and offered release. **No Usenet contact yet.**
+7. `OpenMediaSource(openToken)` consumes and validates that offer, then calls
+   `POST /api/v1/resolve` → server health-checks, opens a session, ffprobes, returns a
+   stream-capability URL + media streams.
 8. Plugin returns `MediaSourceInfo { Path = streamUrl, Protocol = Http,
-   IsRemote = true, RequiresClosing = true, RequiredHttpHeaders = <bearer>,
-   MediaStreams = <pre-probed>, RunTimeTicks }`.
+   IsRemote = true, RequiresClosing = true,
+   MediaStreams = <pre-probed>, RunTimeTicks }` with no reusable credential in
+   `RequiredHttpHeaders`.
 9. Jellyfin streams via ffmpeg (Direct Play or transcode). Plugin reports playback
    events to `POST /api/v1/events`.
 10. `CloseLiveStream` → `POST /api/v1/sessions/{token}/close`. `IScheduledTask`
@@ -276,9 +282,12 @@ If `status == "dead"`, return the classification plus
 `suggestedFallbackReleaseId` (next-best ranked release for the same work) so any
 front-end can auto-retry.
 
-**`GET /stream/{token}`** — Range-capable byte stream. MUST honor `Range: bytes=…`,
-return `206` with correct `Content-Range` and `Accept-Ranges: bytes`, and support
-seeking anywhere (including inside RAR). Player-agnostic by contract.
+**`GET /stream/{token}`** — capability-authorized Range-capable byte stream. MUST honor
+`Range: bytes=…`, return `206` with correct `Content-Range` and
+`Accept-Ranges: bytes`, and support seeking anywhere (including inside RAR).
+Possession of the short-lived path capability grants access only to that session; no
+`access_token` query value, admin JWT, machine API key, or reusable media auth header
+is accepted or required. Player-agnostic by contract.
 
 **`POST /sessions/{token}/close`** — tear down a session.
 **`GET /sessions`** — list live sessions (release, bytes served, NNTP conns, client).
@@ -309,12 +318,15 @@ seeking anywhere (including inside RAR). Player-agnostic by contract.
 ### 6.4 Auth (two modes)
 
 - **Machine/API-key auth** — `Authorization: Bearer <api-key>` for the Jellyfin
-  plugin and any future headless client. Scoped to search/resolve/stream/events.
+  plugin and any future headless client. Scoped to machine operations such as
+  search/resolve/events; it is not carried into the media URL.
 - **Admin session auth** — username/password login for the Management UI, issuing a
-  short-lived JWT (or HTTP-only session cookie). Scoped to everything including
+  short-lived bearer JWT for non-browser clients and an HttpOnly session cookie for
+  the browser UI. Scoped to everything including
   `/config` and `/debug`.
-- **`/stream` is never unauthenticated** — the token must be unguessable *and* the
-  request authenticated (Jellyfin's ffmpeg sends `RequiredHttpHeaders`).
+- **`/stream/{token}` is capability-authorized** — resolve mints an unguessable,
+  short-lived session token that grants access only to that stream. Never put an admin
+  JWT or reusable machine key in a media URL.
 - Design the user model so it can grow into real multi-user later; do not hardcode a
   single admin.
 
@@ -372,7 +384,7 @@ version picker for free, and any future UI gets the same structure from the API.
 
 ## 8. Jellyfin Plugin specification (thin adapter — no domain logic)
 
-Base it on the official template. Target Jellyfin 10.10.x (exact patch pinned in
+Base it on the official template. Target Jellyfin 10.11.11 (exact patch pinned in
 `docs/jellyfin-compatibility.md`); the search interception is version-sensitive.
 
 ### 8.1 Structure
@@ -383,7 +395,8 @@ Base it on the official template. Target Jellyfin 10.10.x (exact patch pinned in
 - `IPluginServiceRegistrator` registering a typed `HttpClient` and plugin services.
 - The plugin's config page is deliberately **minimal** — real configuration lives in
   the Management UI. The plugin page only needs: server URL, API key, TTL, toggle,
-  and a "test connection" button (`GET /api/v1/health`).
+  and a "test connection" button (anonymous shallow `GET /api/v1/health?deep=false`
+  followed by authenticated `GET /api/v1/caps`).
 
 ### 8.2 Search interception
 
@@ -403,8 +416,10 @@ to native behavior. A broken filter must never break normal library search.**
 
 ### 8.3 Ephemeral item materialization (isolation is mandatory)
 
-- Create items under a **dedicated isolated virtual folder / collection**, excluded
-  from "Latest" and recommendations, so Usenet results never pollute the library.
+- Create items under a **private, hidden implementation folder**, excluded from normal
+  library browsing, "Latest", and recommendations. Expose eligible items only in the
+  intercepted search response, subject to the requesting user's compatible-library
+  visibility policy.
 - One item per **work**; type `Movie` or `Episode`.
 - Set `ProviderIds` (`Tmdb`, `Imdb`), a custom provider id (`UsenetWorkId = workId`),
   and a tag (`usenet-ephemeral`).
@@ -416,14 +431,18 @@ to native behavior. A broken filter must never break normal library search.**
 ### 8.4 Lazy media-source resolution — `IMediaSourceProvider`
 
 - `GetMediaSources(item)` → one `MediaSourceInfo` per ranked release:
-  `RequiresOpening = true`, `OpenToken = releaseId`, `IsRemote = true`,
+  `RequiresOpening = true`, an opaque, bounded, short-lived, one-use `OpenToken` tied
+  to the authenticated Jellyfin user/item/work/offered release, `IsRemote = true`,
   `Protocol = Http`, `Name = "1080p WEB-DL x265 · DDP5.1 · GER"`. **No Usenet
   contact.**
-- `OpenMediaSource(openToken)` → `POST /api/v1/resolve` → on `ready`, return
+- `OpenMediaSource(openToken)` → consume and validate the offer →
+  `POST /api/v1/resolve` → on `ready`, return
   `MediaSourceInfo { Path = streamUrl, Protocol = Http, RequiresClosing = true,
-  LiveStreamId, RequiredHttpHeaders = <bearer>, RunTimeTicks, MediaStreams }` with
-  **pre-populated MediaStreams** from resolve and a low `AnalyzeDurationMs`. On
-  `dead`, follow `suggestedFallbackReleaseId` once before surfacing an error.
+  LiveStreamId, RunTimeTicks, MediaStreams }` with
+  **pre-populated MediaStreams** from resolve, a low `AnalyzeDurationMs`, and no
+  reusable credential in `RequiredHttpHeaders`. Accept only server-attributed fallback
+  releases within the originally offered work; on `dead`, follow
+  `suggestedFallbackReleaseId` once before surfacing an error.
 - `CloseLiveStream(id)` → `POST /api/v1/sessions/{token}/close`.
 - Report `start` / `progress` / `stop` to `POST /api/v1/events` (hook Jellyfin's
   playback session events) — this is how watch state escapes Jellyfin's DB.
@@ -505,8 +524,9 @@ parser unit-tested against the real-release-name corpus; ranker ordering tested.
 
 ### Milestone 3 — OpenAPI, config API, auth
 Freeze `/api/v1`, publish the OpenAPI spec, implement config CRUD + both auth
-modes. **Accept:** spec is complete and generates a clean TS client; every endpoint
-rejects missing/invalid credentials; secrets never returned in plaintext.
+modes. **Accept:** spec is complete and generates a clean TS client; every operation
+has an explicit posture (scoped credential, session capability, or deliberately
+anonymous shallow liveness); secrets are never returned in plaintext.
 
 ### Milestone 4 — Management Web UI
 React 19 SPA: login, indexers, providers, profiles, debug playground, **playback
@@ -553,8 +573,10 @@ dead release transparently falls back; load-test the segment cache.
 - **Reject fakes/samples/password archives** in ranking.
 - **NNTP connection budget** enforced globally across concurrent sessions.
 - **Sessions closed on stop and on TTL.**
-- **Auth on every endpoint**; `/stream` never public. nzbdav had an auth-bypass
-  history — keep the embedded core current.
+- **Explicit auth posture on every endpoint:** scoped admin/machine credentials for
+  operations; an unguessable, short-lived session capability for `/stream/{token}` and
+  its close operation; only shallow health is deliberately anonymous. Never accept
+  reusable credentials in a media URL or query.
 - **DB pollution:** ephemeral items stay isolated and TTL-cleaned.
 - **Action-filter version fragility:** pin and integration-test against the target
   Jellyfin version; document it; isolate the coupling in one file.
@@ -577,7 +599,7 @@ dead release transparently falls back; load-test the segment cache.
 - `server/` — ASP.NET Core Core Server, embedded nzbdav core (attributed), parser +
   ranker with the release-name test corpus, SQLite persistence, OpenAPI spec,
   Dockerfile.
-- `plugin/` — Jellyfin `net8.0` thin-adapter plugin, minimal config page, target
+- `plugin/` — Jellyfin `net9.0` thin-adapter plugin, minimal config page, target
   Jellyfin version documented, build/install instructions.
 - `web/` — React 19 + TanStack Query management SPA, generated API client, tests.
 - `docker-compose.dev.yml` — Jellyfin + Core Server (+ Vite dev server), plugin

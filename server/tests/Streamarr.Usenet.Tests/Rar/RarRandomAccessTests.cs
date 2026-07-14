@@ -143,4 +143,22 @@ public class RarRandomAccessTests
         stream.Seek(0, SeekOrigin.End);
         Assert.Equal(0, await stream.ReadAsync(new byte[8].AsMemory()));
     }
+
+    [Fact]
+    public void Index_RejectsExcessiveOrDuplicateVolumeSetsBeforeBuildingSlices()
+    {
+        RarVolume Volume(int part) => new()
+        {
+            FileName = $"part{part}.rar",
+            PartSize = 1,
+            IsRar5 = true,
+            PartNumberFromFilename = part,
+            PartNumberFromHeader = null,
+            Slices = [],
+        };
+
+        Assert.Throws<InvalidDataException>(() =>
+            RarArchiveIndexer.Index(Enumerable.Range(0, RarArchiveIndexer.MaxVolumes + 1).Select(Volume)));
+        Assert.Throws<InvalidDataException>(() => RarArchiveIndexer.Index([Volume(1), Volume(1)]));
+    }
 }

@@ -11,12 +11,17 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
 {
     public HashSet<string> ExistingSegments { get; } = new(existingSegments ?? [], StringComparer.Ordinal);
     public List<string> StattedSegments { get; } = [];
+    public NntpResponse AuthenticationResponse { get; set; } = new()
+    {
+        ResponseCode = 281,
+        ResponseMessage = "281 authentication accepted",
+    };
 
     public override Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
-        => throw new NotSupportedException();
+        => Task.CompletedTask;
 
     public override Task<NntpResponse> AuthenticateAsync(string user, string pass, CancellationToken cancellationToken)
-        => throw new NotSupportedException();
+        => Task.FromResult(AuthenticationResponse);
 
     public override Task<NntpStatResponse> StatAsync(SegmentId segmentId, CancellationToken cancellationToken)
     {

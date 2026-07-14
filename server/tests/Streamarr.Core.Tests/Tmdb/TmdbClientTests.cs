@@ -8,6 +8,18 @@ namespace Streamarr.Core.Tests.Tmdb;
 
 public class TmdbClientTests
 {
+    private sealed class UnknownLengthContent(byte[] body) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+            => stream.WriteAsync(body).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
     private static HttpResponseMessage Json(string body)
         => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
@@ -123,5 +135,54 @@ public class TmdbClientTests
         await Client(handler, apiKey: "secret-key").SearchMovieAsync("X", null, default);
 
         Assert.All(handler.Requests, uri => Assert.Contains("api_key=secret-key", uri.Query));
+    }
+
+    [Fact]
+    public async Task RejectsOversizedUnknownLengthResponseAfterTheConfiguredLimit()
+    {
+        var body = Encoding.UTF8.GetBytes("{\"results\":[" + new string(' ', 8_192) + "]}");
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new UnknownLengthContent(body),
+        });
+        var client = new TmdbClient(
+            new HttpClient(handler),
+            new TmdbOptions { ApiKey = "test-key", MaxResponseBytes = 1_024 });
+
+        Assert.Null(await client.SearchMovieAsync("Example", null, default));
+    }
+
+    [Fact]
+    public async Task RejectsOversizedDeclaredResponseWithoutReadingIt()
+    {
+        var handler = new StubHttpMessageHandler(_ => Json("{\"results\":[" + new string(' ', 8_192) + "]}"));
+        var client = new TmdbClient(
+            new HttpClient(handler),
+            new TmdbOptions { ApiKey = "test-key", MaxResponseBytes = 1_024 });
+
+        Assert.Null(await client.SearchMovieAsync("Example", null, default));
+    }
+
+    [Fact]
+    public async Task DetailResponse_DropsOversizedOrUnsafeMetadataFields()
+    {
+        var oversizedTitle = new string('x', 513);
+        var handler = new StubHttpMessageHandler(_ => Json($$"""
+            {"id":1,"title":"{{oversizedTitle}}","original_title":"Safe fallback",
+             "overview":"unsafe\u0000text","poster_path":"https://elsewhere.example/p.jpg",
+             "backdrop_path":"/safe.jpg","runtime":100001,"release_date":"9999-01-01",
+             "imdb_id":"{{new string('i', 33)}}"}
+            """));
+
+        var match = await Client(handler).GetMovieAsync(1, default);
+
+        Assert.NotNull(match);
+        Assert.Equal("Safe fallback", match!.Title);
+        Assert.Null(match.Overview);
+        Assert.Null(match.PosterUrl);
+        Assert.Equal("https://image.tmdb.org/t/p/w1280/safe.jpg", match.BackdropUrl);
+        Assert.Null(match.RuntimeMinutes);
+        Assert.Null(match.Year);
+        Assert.Null(match.ImdbId);
     }
 }

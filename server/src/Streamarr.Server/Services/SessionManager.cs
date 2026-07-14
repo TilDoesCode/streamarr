@@ -69,40 +69,49 @@ public sealed class SessionManager(
     StreamarrMetrics? metrics = null) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
+    private readonly object _createGate = new();
+    private readonly SemaphoreSlim _streamGate = new(Math.Max(1, options.Value.MaxConcurrentStreams));
 
     /// <summary>Total NNTP commands in flight across all live sessions (connections in use).</summary>
     public int NntpConnectionsInUse => _sessions.Values.Sum(s => s.NntpUsage.InFlight);
 
     public ActiveSession CreateSession(string releaseId, string workId, ResolvedMediaFile file, string? client)
     {
-        // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
-        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
-        var now = DateTimeOffset.UtcNow;
-
-        var usage = new CountingNntpGate();
-        var sessionClient = new GatedNntpClient(nntpClient, usage);
-
-        var session = new StreamSession
+        lock (_createGate)
         {
-            Token = token,
-            ReleaseId = releaseId,
-            WorkId = workId,
-            CreatedAt = now,
-            LastAccessedAt = now,
-            TimeToLive = TimeSpan.FromSeconds(options.Value.SessionTtlSeconds),
-            Container = file.Container,
-            SizeBytes = file.SizeBytes,
-            Client = client,
-            State = SessionState.Ready,
-        };
+            SweepExpired();
+            if (_sessions.Count >= options.Value.MaxSessions)
+                throw new ResourceCapacityException("The live session limit has been reached.");
 
-        var active = new ActiveSession(session, file, sessionClient, usage, metrics);
-        _sessions[token] = active;
-        metrics?.SessionOpened();
-        logger.LogInformation(
-            "Opened session {Token} for release {ReleaseId} ({FileName}, {SizeBytes} bytes, ttl {Ttl})",
-            token, releaseId, file.FileName, file.SizeBytes, session.TimeToLive);
-        return active;
+            // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
+            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+            var now = DateTimeOffset.UtcNow;
+
+            var usage = new CountingNntpGate();
+            var sessionClient = new GatedNntpClient(nntpClient, usage);
+
+            var session = new StreamSession
+            {
+                Token = token,
+                ReleaseId = releaseId,
+                WorkId = workId,
+                CreatedAt = now,
+                LastAccessedAt = now,
+                TimeToLive = TimeSpan.FromSeconds(options.Value.SessionTtlSeconds),
+                Container = file.Container,
+                SizeBytes = file.SizeBytes,
+                Client = client,
+                State = SessionState.Ready,
+            };
+
+            var active = new ActiveSession(session, file, sessionClient, usage, metrics);
+            _sessions[token] = active;
+            metrics?.SessionOpened();
+            logger.LogInformation(
+                "Opened capability session for release {ReleaseId} ({FileName}, {SizeBytes} bytes, ttl {Ttl})",
+                releaseId, file.FileName, file.SizeBytes, session.TimeToLive);
+            return active;
+        }
     }
 
     public bool TryGetSession(string token, out ActiveSession session)
@@ -122,8 +131,19 @@ public sealed class SessionManager(
     /// <summary>Opens a fresh stream over the session's media file for one HTTP request.</summary>
     public Stream OpenStream(ActiveSession session)
     {
+        if (!_streamGate.Wait(0))
+            throw new ResourceCapacityException("The concurrent stream limit has been reached.");
+
         session.Touch();
-        return new SessionStream(session.File.OpenStream(session.NntpClient), session);
+        try
+        {
+            return new SessionStream(session.File.OpenStream(session.NntpClient), session, () => _streamGate.Release());
+        }
+        catch
+        {
+            _streamGate.Release();
+            throw;
+        }
     }
 
     public bool CloseSession(string token)
@@ -134,8 +154,8 @@ public sealed class SessionManager(
         session.MarkClosed();
         metrics?.SessionClosed();
         logger.LogInformation(
-            "Closed session {Token} for release {ReleaseId} ({BytesServed} bytes served)",
-            token, session.Session.ReleaseId, session.BytesServed);
+            "Closed capability session for release {ReleaseId} ({BytesServed} bytes served)",
+            session.Session.ReleaseId, session.BytesServed);
         return true;
     }
 
@@ -158,8 +178,8 @@ public sealed class SessionManager(
             metrics?.SessionClosed();
             removed++;
             logger.LogInformation(
-                "Expired session {Token} for release {ReleaseId} (idle past ttl)",
-                token, expired.Session.ReleaseId);
+                "Expired capability session for release {ReleaseId} (idle past ttl)",
+                expired.Session.ReleaseId);
         }
 
         return removed;
@@ -186,8 +206,9 @@ public sealed class SessionManager(
 /// refreshes the session's sliding TTL on activity, and refuses further reads
 /// once the session is closed (teardown cuts off in-flight requests).
 /// </summary>
-internal sealed class SessionStream(Stream inner, ActiveSession session) : Stream
+internal sealed class SessionStream(Stream inner, ActiveSession session, Action? onDispose = null) : Stream
 {
+    private int _disposed;
     public override bool CanRead => true;
     public override bool CanSeek => inner.CanSeek;
     public override bool CanWrite => false;
@@ -230,17 +251,39 @@ internal sealed class SessionStream(Stream inner, ActiveSession session) : Strea
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
-            inner.Dispose();
+        if (disposing && Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            try
+            {
+                inner.Dispose();
+            }
+            finally
+            {
+                onDispose?.Invoke();
+            }
+        }
         base.Dispose(disposing);
     }
 
     public override async ValueTask DisposeAsync()
     {
-        await inner.DisposeAsync();
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            try
+            {
+                await inner.DisposeAsync();
+            }
+            finally
+            {
+                onDispose?.Invoke();
+            }
+        }
         await base.DisposeAsync();
     }
 }
+
+/// <summary>A configured, retryable process/session/stream capacity was reached.</summary>
+public sealed class ResourceCapacityException(string message) : Exception(message);
 
 /// <summary>Content-Type by container so players negotiate correctly (BRIEF §6.2).</summary>
 public static class ContainerContentTypes

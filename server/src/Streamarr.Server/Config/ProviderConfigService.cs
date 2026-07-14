@@ -4,6 +4,8 @@ using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
 using Streamarr.Server.Security;
 using Streamarr.Usenet.Models;
+using Streamarr.Usenet.Nntp;
+using Streamarr.Usenet.Nntp.Pooling;
 
 namespace Streamarr.Server.Config;
 
@@ -13,7 +15,11 @@ namespace Streamarr.Server.Config;
 /// startup, and provider reachability in /health. A singleton over
 /// <see cref="IDbContextFactory{TContext}"/>.
 /// </summary>
-public sealed class ProviderConfigService(IDbContextFactory<StreamarrDbContext> dbFactory, ISecretProtector protector)
+public sealed class ProviderConfigService(
+    IDbContextFactory<StreamarrDbContext> dbFactory,
+    ISecretProtector protector,
+    MultiProviderNntpClient livePool,
+    ILoggerFactory loggerFactory)
 {
     public async Task<IReadOnlyList<ProviderEntity>> ListAsync(CancellationToken ct)
     {
@@ -32,7 +38,7 @@ public sealed class ProviderConfigService(IDbContextFactory<StreamarrDbContext> 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var entity = new ProviderEntity
         {
-            Id = string.IsNullOrWhiteSpace(write.Id) ? Guid.NewGuid().ToString("n") : write.Id!,
+            Id = Guid.NewGuid().ToString("n"),
             Name = write.Name,
             Host = write.Host,
             Port = write.Port ?? 563,
@@ -46,6 +52,7 @@ public sealed class ProviderConfigService(IDbContextFactory<StreamarrDbContext> 
         };
         db.Providers.Add(entity);
         await db.SaveChangesAsync(ct);
+        await ReloadPoolAsync(ct);
         return entity;
     }
 
@@ -70,6 +77,7 @@ public sealed class ProviderConfigService(IDbContextFactory<StreamarrDbContext> 
             entity.PasswordEncrypted = protector.Protect(write.Password);
 
         await db.SaveChangesAsync(ct);
+        await ReloadPoolAsync(ct);
         return entity;
     }
 
@@ -82,6 +90,28 @@ public sealed class ProviderConfigService(IDbContextFactory<StreamarrDbContext> 
 
         db.Providers.Remove(entity);
         await db.SaveChangesAsync(ct);
+        await ReloadPoolAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> ReorderAsync(IReadOnlyList<string> ids, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var rows = await db.Providers.ToListAsync(ct);
+        if (ids.Count != rows.Count || ids.Distinct(StringComparer.Ordinal).Count() != ids.Count ||
+            !rows.Select(x => x.Id).ToHashSet(StringComparer.Ordinal).SetEquals(ids))
+        {
+            return false;
+        }
+
+        var byId = rows.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        for (var priority = 0; priority < ids.Count; priority++)
+            byId[ids[priority]].Priority = priority;
+
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        await ReloadPoolAsync(ct);
         return true;
     }
 
@@ -98,6 +128,21 @@ public sealed class ProviderConfigService(IDbContextFactory<StreamarrDbContext> 
         Priority = e.Priority,
         Type = e.IsBackupOnly ? UsenetProviderType.BackupOnly : UsenetProviderType.Pooled,
     };
+
+    private async Task ReloadPoolAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var rows = await db.Providers.AsNoTracking()
+            .Where(p => p.Enabled)
+            .OrderBy(p => p.Priority)
+            .ThenBy(p => p.Name)
+            .ToListAsync(ct);
+        var clients = rows
+            .Select(ToProvider)
+            .Select(p => UsenetStreamingClient.CreateProviderClient(p, loggerFactory))
+            .ToList();
+        livePool.ReplaceProviders(clients);
+    }
 }
 
 /// <summary>Write model for provider create/update. Secret <see cref="Password"/> is write-only.</summary>

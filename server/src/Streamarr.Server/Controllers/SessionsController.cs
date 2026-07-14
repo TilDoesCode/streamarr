@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Services;
 
@@ -10,17 +12,22 @@ namespace Streamarr.Server.Controllers;
 public class SessionsController(SessionManager sessionManager) : ControllerBase
 {
     [HttpGet]
+    [Authorize(Policy = AuthRoles.AdminPolicy)]
     [ProducesResponseType(typeof(IReadOnlyList<SessionResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<SessionResponse>> List()
         => Ok(sessionManager.ListSessions().Select(ToResponse).ToList());
 
     [HttpPost("{token}/close")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public IActionResult Close(string token)
-        => sessionManager.CloseSession(token)
+    {
+        Response.Headers.CacheControl = "private, no-store, max-age=0";
+        return sessionManager.CloseSession(token)
             ? NoContent()
             : NotFound(ErrorResponse.Of("unknown_session", "No live session exists for this token."));
+    }
 
     private static SessionResponse ToResponse(ActiveSession active) => new()
     {

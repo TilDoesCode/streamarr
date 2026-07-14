@@ -18,10 +18,36 @@ async function login(page: Page) {
   await expect(page.getByRole("link", { name: "Indexers" })).toBeVisible();
 }
 
+async function liveSessionCount(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/v1/sessions", {
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error(`Could not list sessions (${response.status})`);
+    return ((await response.json()) as unknown[]).length;
+  });
+}
+
 test("login → add indexer → search → resolve → preview-play, with Jellyfin absent", async ({
   page,
+  context,
 }) => {
   await login(page);
+  const browserSession = await page.evaluate(() => ({
+    local: JSON.parse(window.localStorage.getItem("streamarr.session") ?? "null") as Record<
+      string,
+      unknown
+    > | null,
+    sessionValues: Object.values(window.sessionStorage),
+  }));
+  expect(browserSession.local).toEqual(
+    expect.objectContaining({ username: "admin", role: "admin" }),
+  );
+  expect(browserSession.local).not.toHaveProperty("token");
+  expect(browserSession.sessionValues).toEqual([]);
+  const adminCookie = (await context.cookies()).find((cookie) => cookie.name === "streamarr_admin");
+  expect(adminCookie).toMatchObject({ httpOnly: true, sameSite: "Strict" });
+  const sessionsBefore = await liveSessionCount(page);
 
   // --- add an indexer through the UI (BRIEF §9.1) --------------------------------------
   await page.getByRole("link", { name: "Indexers" }).click();
@@ -50,7 +76,15 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
 
   // --- resolve the release: health check + pre-probed media info (BRIEF §6.2) ----------
   const row = page.locator("tr", { hasText: RELEASE_TITLE });
-  await row.getByRole("button", { name: /resolve/i }).click();
+  const resolveButton = row.getByRole("button", { name: /resolve/i });
+
+  // Operational table actions remain visible without horizontal scrolling on a phone viewport.
+  await page.setViewportSize({ width: 320, height: 720 });
+  const resolveBox = await resolveButton.boundingBox();
+  expect(resolveBox).not.toBeNull();
+  expect(resolveBox!.x).toBeGreaterThanOrEqual(0);
+  expect(resolveBox!.x + resolveBox!.width).toBeLessThanOrEqual(320);
+  await resolveButton.click();
 
   // The resolve outcome shows "ready" and a Play preview link into the playback route.
   await expect(page.getByText("ready", { exact: true })).toBeVisible();
@@ -63,9 +97,10 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   const video = page.locator("video");
   await expect(video).toBeVisible();
 
-  // The <video> streams from a same-origin /stream path carrying the token as access_token
-  // (a <video> can't set an Authorization header).
-  await expect(video).toHaveAttribute("src", /\/api\/v1\/stream\/.*access_token=/);
+  // The <video> uses only the short-lived stream capability in its path. The administrator JWT
+  // must never appear in a URL.
+  await expect(video).toHaveAttribute("src", /^\/api\/v1\/stream\/[^?]+$/);
+  expect(await video.getAttribute("src")).not.toContain("access_token");
 
   // Drive playback: mute (autoplay policy) and play, then assert the browser decoded frames
   // (readyState >= 2 = HAVE_CURRENT_DATA) and the clock actually advances.
@@ -87,4 +122,42 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
       message: "video.currentTime never advanced — playback did not start",
     })
     .toBeGreaterThan(0);
+
+  // Search already opened the session. Playback must reuse it instead of resolving again.
+  await expect.poll(() => liveSessionCount(page)).toBe(sessionsBefore + 1);
+
+  // Validate the accessible mobile drawer and sticky Sessions action in a second, synchronized
+  // tab while the first tab keeps playing.
+  const peer = await context.newPage();
+  await peer.setViewportSize({ width: 375, height: 800 });
+  await peer.goto("/sessions");
+  await expect(peer.getByRole("heading", { name: "Sessions", level: 2 })).toBeVisible();
+  const closeSession = peer.getByRole("button", { name: /force-close/i }).last();
+  const closeBox = await closeSession.boundingBox();
+  expect(closeBox).not.toBeNull();
+  expect(closeBox!.x).toBeGreaterThanOrEqual(0);
+  expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(375);
+
+  const menuTrigger = peer.getByRole("button", { name: /open menu/i });
+  await menuTrigger.click();
+  await expect(peer.getByRole("dialog")).toBeVisible();
+  await peer.keyboard.press("Escape");
+  await expect(peer.getByRole("dialog")).toBeHidden();
+  await expect(menuTrigger).toBeFocused();
+
+  // Signing out while media is active clears this tab's admin state, stops playback, and logs
+  // out every other open console tab through the browser storage event.
+  const mainMenu = page.getByRole("button", { name: /open menu/i });
+  await mainMenu.click();
+  await page.getByRole("dialog").getByRole("button", { name: /sign out/i }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await expect(page.locator("video")).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("streamarr.session")))
+    .toBeNull();
+  await expect
+    .poll(async () => (await context.cookies()).some((cookie) => cookie.name === "streamarr_admin"))
+    .toBe(false);
+  await expect(peer).toHaveURL(/\/login/);
+  await peer.close();
 });

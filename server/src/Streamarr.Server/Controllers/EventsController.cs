@@ -23,6 +23,11 @@ public class EventsController(WatchEventService events) : ControllerBase
             return BadRequest(ErrorResponse.Of("invalid_event", "A non-empty 'releaseId' is required."));
         if (string.IsNullOrWhiteSpace(request.Event) || !Kinds.Contains(request.Event))
             return BadRequest(ErrorResponse.Of("invalid_event", "'event' must be one of: start, progress, stop."));
+        if (request.ReleaseId.Length > 256 || request.WorkId?.Length > 256 || request.Source?.Length > 64 ||
+            request.PositionTicks is < 0 ||
+            request.ReleaseId.Any(char.IsControl) || request.WorkId?.Any(char.IsControl) == true ||
+            request.Source?.Any(char.IsControl) == true)
+            return BadRequest(ErrorResponse.Of("invalid_event", "One or more event values are outside their allowed range."));
 
         await events.RecordAsync(new WatchEventWrite
         {

@@ -27,12 +27,26 @@ public interface IReleaseStore
     RegisteredRelease? FindFallback(string workId, string excludeReleaseId);
 }
 
-public sealed class InMemoryReleaseStore(IReleaseHealthCache? healthCache = null) : IReleaseStore
+public sealed class InMemoryReleaseStore(
+    IReleaseHealthCache? healthCache = null,
+    int maxEntries = 10_000) : IReleaseStore
 {
     private readonly ConcurrentDictionary<string, RegisteredRelease> _releases = new(StringComparer.Ordinal);
 
     public void Register(string workId, Release release)
-        => _releases[release.ReleaseId] = new RegisteredRelease { WorkId = workId, Release = release };
+    {
+        if (!_releases.ContainsKey(release.ReleaseId))
+        {
+            while (_releases.Count >= Math.Max(1, maxEntries))
+            {
+                var victim = _releases.Keys.FirstOrDefault();
+                if (victim is null || !_releases.TryRemove(victim, out _))
+                    break;
+            }
+        }
+
+        _releases[release.ReleaseId] = new RegisteredRelease { WorkId = workId, Release = release };
+    }
 
     public RegisteredRelease? Get(string releaseId)
         => _releases.GetValueOrDefault(releaseId);

@@ -23,6 +23,28 @@ public sealed record ReachabilityStatus
     public string? Error { get; init; }
 }
 
+/// <summary>Authenticated response of <c>GET /api/v1/caps</c>.</summary>
+public sealed record CapsResponse
+{
+    public IReadOnlyList<string> MediaTypes { get; init; } = [];
+    public IReadOnlyList<CapsCategory> Categories { get; init; } = [];
+    public IReadOnlyList<CapsProvider> Providers { get; init; } = [];
+}
+
+public sealed record CapsCategory
+{
+    public int Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+}
+
+public sealed record CapsProvider
+{
+    public string Name { get; init; } = string.Empty;
+    public int Priority { get; init; }
+    public bool Enabled { get; init; }
+    public bool BackupOnly { get; init; }
+}
+
 /// <summary>Response of <c>GET /api/v1/search</c>.</summary>
 public sealed record SearchResponse
 {
@@ -97,6 +119,14 @@ public sealed record ResolveResponse
     public IReadOnlyList<MediaStreamInfo> MediaStreams { get; init; } = [];
     public int SessionTtlSeconds { get; init; }
     public string? SuggestedFallbackReleaseId { get; init; }
+    public string? FallbackFromReleaseId { get; init; }
+    public IReadOnlyList<ResolveAttempt> Attempts { get; init; } = [];
+}
+
+public sealed record ResolveAttempt
+{
+    public string ReleaseId { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
 }
 
 public sealed record MediaStreamInfo

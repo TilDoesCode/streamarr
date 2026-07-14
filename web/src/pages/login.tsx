@@ -12,8 +12,8 @@ import { useAuth } from "@/lib/auth";
 import { errorMessage } from "@/api/client";
 
 const schema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
+  username: z.string().min(1, "Username is required").max(128, "Maximum 128 characters"),
+  password: z.string().min(1, "Password is required").max(1024, "Maximum 1024 characters"),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -43,7 +43,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">

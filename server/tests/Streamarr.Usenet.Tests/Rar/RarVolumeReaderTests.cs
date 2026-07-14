@@ -72,6 +72,9 @@ public class RarVolumeReaderTests
     public void PartNumberFromFilename_UnknownScheme_ReturnsNull()
     {
         Assert.Null(RarVolumeReader.GetPartNumberFromFilename("movie.mkv"));
+        Assert.Null(RarVolumeReader.GetPartNumberFromFilename("movie.part99999999999999999999.rar"));
+        Assert.Null(RarVolumeReader.GetPartNumberFromFilename("movie.r99999999999999999999"));
+        Assert.Null(RarVolumeReader.GetPartNumberFromFilename(new string('x', 5000) + ".rar"));
     }
 
     [Theory]

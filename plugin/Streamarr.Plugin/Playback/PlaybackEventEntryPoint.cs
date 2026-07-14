@@ -8,20 +8,19 @@ using Streamarr.Plugin.Library;
 namespace Streamarr.Plugin.Playback;
 
 /// <summary>
-/// Bridges Jellyfin's playback session events to <c>POST /api/v1/events</c> (BRIEF §8.4)
-/// so watch state escapes Jellyfin's DB into the Core Server. Only events for our
-/// ephemeral items are forwarded; everything else is ignored. Errors are swallowed —
-/// event reporting must never disrupt playback.
+/// Bridges Jellyfin playback callbacks to a bounded, drained Core delivery queue. Only events for
+/// plugin-owned ephemeral items are accepted, and callback threads never perform network I/O.
 /// </summary>
 public sealed class PlaybackEventEntryPoint(
     ISessionManager sessionManager,
     PlaybackSessionTracker tracker,
     EphemeralReleaseStore store,
-    StreamarrApiClient api,
+    PlaybackEventDispatcher dispatcher,
     ILogger<PlaybackEventEntryPoint> logger) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        dispatcher.Start();
         sessionManager.PlaybackStart += OnPlaybackStart;
         sessionManager.PlaybackProgress += OnPlaybackProgress;
         sessionManager.PlaybackStopped += OnPlaybackStopped;
@@ -29,12 +28,12 @@ public sealed class PlaybackEventEntryPoint(
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         sessionManager.PlaybackStart -= OnPlaybackStart;
         sessionManager.PlaybackProgress -= OnPlaybackProgress;
         sessionManager.PlaybackStopped -= OnPlaybackStopped;
-        return Task.CompletedTask;
+        await dispatcher.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void OnPlaybackStart(object? sender, PlaybackProgressEventArgs e) => Report("start", e);
@@ -43,25 +42,29 @@ public sealed class PlaybackEventEntryPoint(
 
     private void OnPlaybackStopped(object? sender, PlaybackStopEventArgs e)
     {
-        Report("stop", e);
-        tracker.Forget(e.MediaSourceId);
+        var attribution = Report("stop", e);
+        if (attribution?.SessionToken is { } token && dispatcher.EnqueueClose(token))
+            tracker.Forget(e.MediaSourceId);
     }
 
-    private void Report(string kind, PlaybackProgressEventArgs e)
+    private PlaybackSessionTracker.Attribution? Report(string kind, PlaybackProgressEventArgs e)
     {
         var item = e.Item;
         if (item is null)
-            return;
+            return null;
 
-        // Only forward events for our ephemeral items.
-        var entry = store.Get(item.Id);
+        // A start marks actual use; progress merely reads the persisted cache so it does not write
+        // the state file at Jellyfin's callback frequency.
+        var entry = string.Equals(kind, "start", StringComparison.Ordinal)
+            ? store.Get(item.Id)
+            : store.Peek(item.Id);
         var attribution = tracker.Resolve(e.MediaSourceId);
         if (entry is null && attribution is null)
-            return;
+            return null;
 
         var releaseId = attribution?.ReleaseId ?? e.MediaSourceId;
         if (string.IsNullOrWhiteSpace(releaseId))
-            return;
+            return attribution;
 
         var request = new EventRequest
         {
@@ -71,20 +74,9 @@ public sealed class PlaybackEventEntryPoint(
             PositionTicks = e.PlaybackPositionTicks,
             Source = "jellyfin",
         };
-
-        // Fire and forget — never block or throw into Jellyfin's event pipeline.
-        _ = ReportAsync(request);
-    }
-
-    private async Task ReportAsync(EventRequest request)
-    {
-        try
-        {
-            await api.ReportEventAsync(request, CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Failed to report playback event {Event} for {ReleaseId}", request.Event, request.ReleaseId);
-        }
+        var coalesceKey = attribution?.TrackingId.ToString("N") ?? $"{item.Id:N}:{releaseId}";
+        if (!dispatcher.EnqueueEvent(request, coalesceKey))
+            logger.LogDebug("Dropped Streamarr playback event {Event} for {ReleaseId}", kind, releaseId);
+        return attribution;
     }
 }

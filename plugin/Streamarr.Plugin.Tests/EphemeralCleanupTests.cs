@@ -22,4 +22,15 @@ public class EphemeralCleanupTests
     [Fact]
     public void Access_exactly_at_ttl_boundary_is_not_expired()
         => Assert.False(EphemeralCleanup.IsExpired(Now - Ttl, Now, Ttl));
+
+    [Fact]
+    public void Restart_fallback_prefers_saved_then_created_timestamp()
+    {
+        var saved = Now.AddHours(-2);
+        var created = Now.AddHours(-3);
+
+        Assert.Equal(saved, EphemeralCleanup.ResolveLastAccess(null, saved, created));
+        Assert.Equal(created, EphemeralCleanup.ResolveLastAccess(null, DateTime.MinValue, created));
+        Assert.Null(EphemeralCleanup.ResolveLastAccess(null, DateTime.MinValue, DateTime.MinValue));
+    }
 }

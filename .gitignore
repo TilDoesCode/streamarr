@@ -22,8 +22,15 @@ server/src/Streamarr.Server/wwwroot/
 *.db-shm
 *.db-wal
 .env
-.env.local
+.env.*
+!.env.example
 appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+*.pfx
+*.p12
+*.pem
+*.key
 
 # Data Protection key ring (secret encryption at rest)
 server/src/Streamarr.Server/keys/

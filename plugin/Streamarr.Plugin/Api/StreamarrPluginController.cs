@@ -1,40 +1,52 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using MediaBrowser.Common.Api;
+using Microsoft.Extensions.Logging;
 using Streamarr.Plugin.Bootstrap;
 
 namespace Streamarr.Plugin.Api;
 
 /// <summary>
 /// Minimal API surface for the plugin's config page (BRIEF §8.1): a "test connection"
-/// button hitting the Core Server's <c>/health</c>, and a button that runs the M5
-/// pinned-work bootstrap. Both are admin-only. No domain logic — the server does the work.
+/// button checking anonymous shallow <c>/health</c> plus authenticated <c>/caps</c>, and a
+/// button that runs the M5 pinned-work bootstrap. Both are admin-only. No domain logic —
+/// the server does the work.
 /// </summary>
 [ApiController]
-[Authorize(Policy = "DefaultAuthorization")]
+[Authorize(Policy = Policies.RequiresElevation)]
 [Route("Streamarr")]
 [Produces("application/json")]
 public sealed class StreamarrPluginController(
     StreamarrApiClient api,
-    PinnedWorkBootstrapper bootstrapper) : ControllerBase
+    PinnedWorkBootstrapper bootstrapper,
+    ILogger<StreamarrPluginController> logger) : ControllerBase
 {
     public sealed record TestConnectionResult(bool Ok, string? Version, string? Status, string? Error);
 
     public sealed record BootstrapResult(bool Ok, string Message, string? ItemId, string? WorkId);
 
-    /// <summary>Verifies the configured server URL + API key by calling <c>GET /api/v1/health</c>.</summary>
+    /// <summary>
+    /// Verifies the configured server URL and API key using shallow health followed by
+    /// authenticated capabilities.
+    /// </summary>
     [HttpGet("TestConnection")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<TestConnectionResult>> TestConnection(CancellationToken ct)
     {
         try
         {
-            var health = await api.GetHealthAsync(ct).ConfigureAwait(false);
-            return Ok(new TestConnectionResult(true, health?.Version, health?.Status, null));
+            var health = await api.TestConnectionAsync(ct).ConfigureAwait(false);
+            return Ok(new TestConnectionResult(true, health.Version, health.Status, null));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            return Ok(new TestConnectionResult(false, null, null, ex.Message));
+            logger.LogWarning("Streamarr Core connection test failed ({FailureType})", ex.GetType().Name);
+            return Ok(new TestConnectionResult(false, null, null, "connection_failed"));
         }
     }
 

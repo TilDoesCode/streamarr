@@ -1,5 +1,5 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import { clearSession, getSession, getToken, setSession, subscribe } from "./token";
+import { describe, expect, it, beforeEach, vi } from "vitest";
+import { clearSession, getSession, setSession, subscribe } from "./token";
 
 describe("token store", () => {
   beforeEach(() => {
@@ -7,27 +7,66 @@ describe("token store", () => {
     clearSession();
   });
 
-  it("persists and reads back a session", () => {
-    setSession({ token: "abc", username: "admin", role: "admin", expiresAt: farFuture() });
-    expect(getToken()).toBe("abc");
+  it("persists only non-secret session metadata", () => {
+    const expiresAt = farFuture();
+    setSession({ username: "admin", role: "admin", expiresAt });
     expect(getSession()?.username).toBe("admin");
-    expect(localStorage.getItem("streamarr.session")).toContain("abc");
+    const stored = JSON.parse(localStorage.getItem("streamarr.session")!) as Record<string, unknown>;
+    expect(stored).toEqual({ username: "admin", role: "admin", expiresAt });
+    expect(stored).not.toHaveProperty("token");
+    expect(sessionStorage).toHaveLength(0);
   });
 
-  it("clearSession wipes token and storage", () => {
-    setSession({ token: "abc", username: "admin", role: "admin", expiresAt: farFuture() });
+  it("clearSession wipes metadata and storage", () => {
+    const cleared = vi.fn();
+    window.addEventListener("streamarr:session-cleared", cleared, { once: true });
+    setSession({ username: "admin", role: "admin", expiresAt: farFuture() });
     clearSession();
-    expect(getToken()).toBeNull();
+    expect(getSession()).toBeNull();
     expect(localStorage.getItem("streamarr.session")).toBeNull();
+    expect(cleared).toHaveBeenCalledOnce();
   });
 
   it("notifies subscribers on change", () => {
     const seen: (string | null)[] = [];
-    const unsub = subscribe((s) => seen.push(s?.token ?? null));
-    setSession({ token: "x", username: "a", role: "admin", expiresAt: farFuture() });
+    const unsub = subscribe((s) => seen.push(s?.username ?? null));
+    setSession({ username: "a", role: "admin", expiresAt: farFuture() });
     clearSession();
     unsub();
-    expect(seen).toEqual(["x", null]);
+    expect(seen).toEqual(["a", null]);
+  });
+
+  it("synchronizes logout events from another tab", () => {
+    setSession({ username: "a", role: "admin", expiresAt: farFuture() });
+    const seen: (string | null)[] = [];
+    const unsub = subscribe((s) => seen.push(s?.username ?? null));
+
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "streamarr.session", newValue: null }),
+    );
+
+    expect(getSession()).toBeNull();
+    expect(seen).toEqual([null]);
+    unsub();
+  });
+
+  it("sanitizes legacy cross-tab records that still contain a JWT", () => {
+    const legacy = JSON.stringify({
+      token: "legacy-jwt-secret",
+      username: "admin",
+      role: "admin",
+      expiresAt: farFuture(),
+    });
+
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "streamarr.session", newValue: legacy }),
+    );
+
+    expect(getSession()?.username).toBe("admin");
+    expect(window.localStorage.getItem("streamarr.session")).not.toContain("legacy-jwt-secret");
+    expect(JSON.parse(window.localStorage.getItem("streamarr.session")!)).not.toHaveProperty(
+      "token",
+    );
   });
 });
 

@@ -1,7 +1,7 @@
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using Microsoft.Extensions.Logging;
-using Streamarr.Plugin.Api;
+using Streamarr.Plugin.Playback;
 
 namespace Streamarr.Plugin.MediaSources;
 
@@ -16,9 +16,12 @@ namespace Streamarr.Plugin.MediaSources;
 public sealed class StreamarrLiveStream(
     MediaSourceInfo mediaSource,
     string? streamToken,
-    StreamarrApiClient api,
+    PlaybackEventDispatcher dispatcher,
+    PlaybackSessionTracker tracker,
     ILogger logger) : ILiveStream
 {
+    private int _closeQueued;
+
     public int ConsumerCount { get; set; }
 
     public string? OriginalStreamId { get; set; }
@@ -33,20 +36,10 @@ public sealed class StreamarrLiveStream(
 
     public Task Open(CancellationToken openCancellationToken) => Task.CompletedTask;
 
-    public async Task Close()
+    public Task Close()
     {
-        if (string.IsNullOrWhiteSpace(streamToken))
-            return;
-        try
-        {
-            await api.CloseSessionAsync(streamToken, CancellationToken.None).ConfigureAwait(false);
-            logger.LogInformation("Closed Streamarr session {Token}", streamToken);
-        }
-        catch (Exception ex)
-        {
-            // Session close is best-effort; the server also reaps sessions on TTL.
-            logger.LogWarning(ex, "Failed to close Streamarr session {Token}", streamToken);
-        }
+        QueueClose();
+        return Task.CompletedTask;
     }
 
     public Stream GetStream()
@@ -54,6 +47,30 @@ public sealed class StreamarrLiveStream(
 
     public void Dispose()
     {
-        // Nothing unmanaged to release; session teardown happens in Close().
+        QueueClose();
+    }
+
+    private void QueueClose()
+    {
+        if (Interlocked.CompareExchange(ref _closeQueued, 1, 0) != 0)
+            return;
+
+        // A playback-stop callback may already have queued and forgotten this attribution.
+        // Jellyfin prefixes MediaSource.LiveStreamId after the provider returns. UniqueId captures
+        // the provider-issued id at construction time and remains stable for tracker lookup.
+        if (tracker.Resolve(UniqueId) is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(streamToken) || dispatcher.EnqueueClose(streamToken))
+        {
+            tracker.Forget(UniqueId);
+            logger.LogDebug("Queued a Streamarr capability session for closure");
+            return;
+        }
+
+        // Keep attribution so scheduled cleanup can retry instead of silently stranding a Core
+        // session when the bounded close queue is momentarily saturated.
+        Volatile.Write(ref _closeQueued, 0);
+        logger.LogWarning("Could not queue a Streamarr capability session for closure; cleanup will retry");
     }
 }

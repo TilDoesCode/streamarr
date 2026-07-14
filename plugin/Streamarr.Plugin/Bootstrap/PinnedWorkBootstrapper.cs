@@ -27,10 +27,16 @@ public sealed class PinnedWorkBootstrapper(
         {
             search = await api.SearchAsync(query, ct).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Pinned-work search failed for {Query}", query);
-            return new Result(false, $"Search failed: {ex.Message}", null, null);
+            logger.LogWarning(
+                "Pinned-work search failed ({FailureType})",
+                ex.GetType().Name);
+            return new Result(false, "Search failed; verify the Core Server configuration and logs.", null, null);
         }
 
         var work = search?.Results.FirstOrDefault(w =>

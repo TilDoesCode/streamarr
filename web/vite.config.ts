@@ -16,8 +16,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target: SERVER_ORIGIN, changeOrigin: true },
-      "/openapi": { target: SERVER_ORIGIN, changeOrigin: true },
+      // Preserve the browser-visible Host. Cookie-authenticated unsafe requests are protected
+      // by an exact Origin check in Kestrel, so rewriting Host would make legitimate dev POSTs
+      // look cross-origin and be rejected.
+      "/api": { target: SERVER_ORIGIN, changeOrigin: false },
+      "/openapi": { target: SERVER_ORIGIN, changeOrigin: false },
     },
   },
   build: {

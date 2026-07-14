@@ -11,6 +11,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import {
   useCreateIndexer,
   useDeleteIndexer,
   useIndexers,
+  useReorderIndexers,
   useTestIndexer,
   useUpdateIndexer,
 } from "@/api/queries";
@@ -40,20 +42,49 @@ import type { IndexerResponse, IndexerTestResult, IndexerWrite } from "@/api/typ
 import { errorMessage } from "@/api/client";
 
 const schema = z.object({
-  name: z.string().trim().min(1, "A name is required"),
-  baseUrl: z.string().trim().url("Must be a valid URL"),
-  apiKey: z.string().optional(),
+  name: z.string().trim().min(1, "A name is required").max(128, "Maximum 128 characters"),
+  baseUrl: z
+    .string()
+    .trim()
+    .url("Must be a valid URL")
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+      } catch {
+        return false;
+      }
+    }, "Use an HTTP(S) URL without embedded credentials"),
+  apiKey: z.string().max(4096, "Maximum 4096 characters").optional(),
   categories: z
     .string()
     .optional()
     .refine(
       (v) => !v || v.split(",").every((s) => /^\s*\d+\s*$/.test(s)),
       "Comma-separated category numbers only (e.g. 2000, 5000)",
+    )
+    .refine(
+      (v) => !v || (v.split(",").length <= 100 && v.split(",").every((s) => Number(s.trim()) <= 999_999)),
+      "Use at most 100 category IDs between 0 and 999999",
     ),
-  priority: z.coerce.number().int("Whole number").min(0, "Cannot be negative"),
+  priority: z.coerce.number().int("Whole number").min(0, "Cannot be negative").max(100_000, "Maximum 100000"),
   enabled: z.boolean(),
+  allowedDownloadHosts: z
+    .array(z.string())
+    .default([])
+    .refine(
+      (hosts) => hosts.filter((h) => h.trim()).length <= 32,
+      "Use at most 32 hosts",
+    )
+    .refine(
+      (hosts) => hosts.every((h) => !h.trim() || HOST_RE.test(h.trim())),
+      "Each entry must be a bare hostname — no scheme, port or path (e.g. dl.indexer.example)",
+    ),
 });
 type FormValues = z.input<typeof schema>;
+
+/** A bare DNS hostname: labels of letters/digits/hyphens separated by dots. */
+const HOST_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
 
 function parseCategories(input?: string): number[] {
   if (!input) return [];
@@ -65,6 +96,7 @@ function parseCategories(input?: string): number[] {
 
 export function IndexersPage() {
   const { data, isLoading, isError, error } = useIndexers();
+  const reorder = useReorderIndexers();
   const [editing, setEditing] = useState<IndexerResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<IndexerResponse | null>(null);
@@ -73,9 +105,23 @@ export function IndexersPage() {
     (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.name ?? "").localeCompare(b.name ?? ""),
   );
 
+  async function swap(first: IndexerResponse, second?: IndexerResponse) {
+    if (!second?.id || !first.id) return;
+    const ids = sorted.flatMap((item) => (item.id ? [item.id] : []));
+    const firstIndex = ids.indexOf(first.id);
+    const secondIndex = ids.indexOf(second.id);
+    if (firstIndex < 0 || secondIndex < 0) return;
+    [ids[firstIndex], ids[secondIndex]] = [ids[secondIndex], ids[firstIndex]];
+    try {
+      await reorder.mutateAsync(ids);
+    } catch (err) {
+      toast.error(`Could not reorder indexers: ${errorMessage(err)}`);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Indexers</h2>
           <p className="text-sm text-muted-foreground">
@@ -106,6 +152,8 @@ export function IndexersPage() {
               isLast={i === sorted.length - 1}
               neighborAbove={sorted[i - 1]}
               neighborBelow={sorted[i + 1]}
+              reorderPending={reorder.isPending}
+              onMove={(other) => swap(indexer, other)}
               onEdit={() => setEditing(indexer)}
               onDelete={() => setToDelete(indexer)}
             />
@@ -133,6 +181,8 @@ function IndexerRow({
   isLast,
   neighborAbove,
   neighborBelow,
+  reorderPending,
+  onMove,
   onEdit,
   onDelete,
 }: {
@@ -141,6 +191,8 @@ function IndexerRow({
   isLast: boolean;
   neighborAbove?: IndexerResponse;
   neighborBelow?: IndexerResponse;
+  reorderPending: boolean;
+  onMove: (other?: IndexerResponse) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -154,6 +206,7 @@ function IndexerRow({
       name: source.name,
       baseUrl: source.baseUrl,
       categories: source.categories,
+      allowedDownloadHosts: source.allowedDownloadHosts,
       enabled: source.enabled,
       priority: source.priority,
     };
@@ -162,25 +215,6 @@ function IndexerRow({
   async function toggleEnabled(enabled: boolean) {
     try {
       await update.mutateAsync({ id: indexer.id!, body: { ...writeFrom(indexer), enabled } });
-    } catch (err) {
-      toast.error(errorMessage(err));
-    }
-  }
-
-  // Swap priorities with a neighbour to move this indexer up or down the fan-out order.
-  async function swapWith(other?: IndexerResponse) {
-    if (!other) return;
-    try {
-      await Promise.all([
-        update.mutateAsync({
-          id: indexer.id!,
-          body: { ...writeFrom(indexer), priority: other.priority ?? 0 },
-        }),
-        update.mutateAsync({
-          id: other.id!,
-          body: { ...writeFrom(other), priority: indexer.priority ?? 0 },
-        }),
-      ]);
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -200,15 +234,15 @@ function IndexerRow({
 
   return (
     <li className="rounded-lg border bg-card">
-      <div className="flex items-center gap-3 p-3">
+      <div className="flex flex-wrap items-center gap-3 p-3">
         <div className="flex flex-col">
           <Button
             variant="ghost"
             size="icon"
             className="size-6"
-            disabled={isFirst || update.isPending}
+            disabled={isFirst || reorderPending}
             aria-label={`Move ${indexer.name} up`}
-            onClick={() => swapWith(neighborAbove)}
+            onClick={() => onMove(neighborAbove)}
           >
             <ArrowUp className="size-3.5" />
           </Button>
@@ -216,9 +250,9 @@ function IndexerRow({
             variant="ghost"
             size="icon"
             className="size-6"
-            disabled={isLast || update.isPending}
+            disabled={isLast || reorderPending}
             aria-label={`Move ${indexer.name} down`}
-            onClick={() => swapWith(neighborBelow)}
+            onClick={() => onMove(neighborBelow)}
           >
             <ArrowDown className="size-3.5" />
           </Button>
@@ -237,7 +271,7 @@ function IndexerRow({
           <p className="truncate text-xs text-muted-foreground">{indexer.baseUrl}</p>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex w-full items-center justify-end gap-1 border-t pt-2 sm:w-auto sm:border-0 sm:pt-0">
           <div className="mr-2 flex items-center gap-2">
             <Switch
               checked={!!indexer.enabled}
@@ -305,10 +339,21 @@ function IndexerFormDialog({
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", baseUrl: "", apiKey: "", categories: "", priority: 0, enabled: true },
+    defaultValues: {
+      name: "",
+      baseUrl: "",
+      apiKey: "",
+      categories: "",
+      priority: 0,
+      enabled: true,
+      allowedDownloadHosts: [],
+    },
   });
   void control;
   const enabled = watch("enabled");
+  const hosts = watch("allowedDownloadHosts") ?? [];
+  const setHosts = (next: string[]) =>
+    setValue("allowedDownloadHosts", next, { shouldValidate: true, shouldDirty: true });
 
   useEffect(() => {
     reset({
@@ -318,6 +363,7 @@ function IndexerFormDialog({
       categories: (indexer?.categories ?? []).join(", "),
       priority: indexer?.priority ?? 0,
       enabled: indexer?.enabled ?? true,
+      allowedDownloadHosts: indexer?.allowedDownloadHosts ?? [],
     });
   }, [indexer, reset]);
 
@@ -327,6 +373,7 @@ function IndexerFormDialog({
       name: parsed.name,
       baseUrl: parsed.baseUrl,
       categories: parseCategories(parsed.categories),
+      allowedDownloadHosts: parsed.allowedDownloadHosts.map((h) => h.trim()).filter(Boolean),
       priority: parsed.priority,
       enabled: parsed.enabled,
     };
@@ -381,7 +428,7 @@ function IndexerFormDialog({
               {...register("apiKey")}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field id="categories" label="Categories" hint="Comma-separated Newznab IDs." error={errors.categories?.message}>
               <Input id="categories" placeholder="2000, 5000" aria-invalid={!!errors.categories} {...register("categories")} />
             </Field>
@@ -389,6 +436,47 @@ function IndexerFormDialog({
               <Input id="priority" type="number" min={0} aria-invalid={!!errors.priority} {...register("priority")} />
             </Field>
           </div>
+          <div className="space-y-2">
+            <Label>Allowed download hosts</Label>
+            <p className="text-xs text-muted-foreground">
+              Extra hosts this indexer serves NZB downloads from, besides the Base URL host. Add
+              one if a resolve fails with “download host not allowed”.
+            </p>
+            {hosts.length > 0 && (
+              <div className="space-y-2">
+                {hosts.map((host, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      value={host}
+                      placeholder="dl.indexer.example"
+                      aria-label={`Allowed download host ${i + 1}`}
+                      aria-invalid={!!errors.allowedDownloadHosts}
+                      onChange={(e) => setHosts(hosts.map((h, j) => (j === i ? e.target.value : h)))}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove download host ${i + 1}`}
+                      onClick={() => setHosts(hosts.filter((_, j) => j !== i))}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={() => setHosts([...hosts, ""])}>
+              <Plus className="size-4" />
+              Add host
+            </Button>
+            {errors.allowedDownloadHosts && (
+              <p className="text-xs text-destructive">
+                {errors.allowedDownloadHosts.message as string}
+              </p>
+            )}
+          </div>
+
           <div className="flex items-center gap-3">
             <Switch id="enabled" checked={enabled} onCheckedChange={(v) => setValue("enabled", v)} aria-label="Enabled" />
             <Label htmlFor="enabled" className="cursor-pointer">

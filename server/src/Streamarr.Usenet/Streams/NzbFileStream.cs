@@ -5,6 +5,7 @@
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Utils;
+using Streamarr.Usenet.Yenc;
 
 namespace Streamarr.Usenet.Streams;
 
@@ -20,16 +21,28 @@ public class NzbFileStream(
     int articleBufferSize
 ) : FastReadOnlyStream
 {
+    private readonly bool _validated = ValidateArguments(fileSegmentIds, fileSize, articleBufferSize);
     private long _position;
     private bool _disposed;
     private Stream? _innerStream;
 
-    public override bool CanSeek => true;
+    public override bool CanSeek
+    {
+        get
+        {
+            _ = _validated;
+            return true;
+        }
+    }
     public override long Length => fileSize;
 
     public override long Position
     {
-        get => _position;
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _position;
+        }
         set => Seek(value, SeekOrigin.Begin);
     }
 
@@ -40,7 +53,12 @@ public class NzbFileStream(
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (buffer.IsEmpty) return 0;
         if (_position >= fileSize) return 0;
+        var remaining = fileSize - _position;
+        if (buffer.Length > remaining)
+            buffer = buffer[..checked((int)remaining)];
         _innerStream ??= await GetFileStream(_position, cancellationToken).ConfigureAwait(false);
         var read = await _innerStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
         _position += read;
@@ -49,13 +67,25 @@ public class NzbFileStream(
 
     public override long Seek(long offset, SeekOrigin origin)
     {
-        var absoluteOffset = origin switch
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        long absoluteOffset;
+        try
         {
-            SeekOrigin.Begin => offset,
-            SeekOrigin.Current => _position + offset,
-            SeekOrigin.End => fileSize + offset,
-            _ => throw new ArgumentOutOfRangeException(nameof(origin)),
-        };
+            absoluteOffset = origin switch
+            {
+                SeekOrigin.Begin => offset,
+                SeekOrigin.Current => checked(_position + offset),
+                SeekOrigin.End => checked(fileSize + offset),
+                _ => throw new ArgumentOutOfRangeException(nameof(origin)),
+            };
+        }
+        catch (OverflowException e)
+        {
+            throw new IOException("The requested seek offset overflowed.", e);
+        }
+
+        if (absoluteOffset < 0 || absoluteOffset > fileSize)
+            throw new IOException("Cannot seek outside the decoded file.");
         if (_position == absoluteOffset) return _position;
         _position = absoluteOffset;
         _innerStream?.Dispose();
@@ -72,7 +102,7 @@ public class NzbFileStream(
             async (guess) =>
             {
                 var header = await usenetClient.GetYencHeadersAsync(fileSegmentIds[guess], ct).ConfigureAwait(false);
-                return new LongRange(header.PartOffset, header.PartOffset + header.PartSize);
+                return new LongRange(header.PartOffset, checked(header.PartOffset + header.PartSize));
             },
             ct
         ).ConfigureAwait(false);
@@ -107,5 +137,19 @@ public class NzbFileStream(
         if (_innerStream != null) await _innerStream.DisposeAsync().ConfigureAwait(false);
         _disposed = true;
         GC.SuppressFinalize(this);
+    }
+
+    private static bool ValidateArguments(string[] segmentIds, long length, int readAhead)
+    {
+        ArgumentNullException.ThrowIfNull(segmentIds);
+        if (segmentIds.Length == 0 || segmentIds.Length > 1_000_000)
+            throw new ArgumentException("A bounded non-empty segment list is required.", nameof(segmentIds));
+        if (length is < 1 or > YencHeader.MaxFileSizeBytes)
+            throw new ArgumentOutOfRangeException(nameof(length));
+        if (readAhead is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(readAhead));
+        foreach (var id in segmentIds)
+            _ = SegmentId.Normalize(id);
+        return true;
     }
 }

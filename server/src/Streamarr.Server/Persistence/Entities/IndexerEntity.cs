@@ -17,6 +17,12 @@ public sealed class IndexerEntity
     /// <summary>Comma-separated Newznab category ids (e.g. "2000,5000").</summary>
     public string Categories { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Comma-separated extra hostnames NZB download links may use besides the
+    /// <see cref="BaseUrl"/> host (e.g. a separate download/CDN host).
+    /// </summary>
+    public string AllowedDownloadHosts { get; set; } = string.Empty;
+
     public bool Enabled { get; set; } = true;
     public int Priority { get; set; }
 }

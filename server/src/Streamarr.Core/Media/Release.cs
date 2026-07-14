@@ -27,13 +27,20 @@ public sealed record QualityInfo
 /// </summary>
 public sealed record Release
 {
-    /// <summary>Stable id derived from the indexer guid (sha256), used by /resolve.</summary>
+    /// <summary>Stable id derived from the indexer id + guid (sha256), used by /resolve.</summary>
     public required string ReleaseId { get; init; }
 
     /// <summary>Raw release name.</summary>
     public required string Title { get; init; }
 
     public required string Indexer { get; init; }
+
+    /// <summary>
+    /// Server-side config identity of the source indexer. Kept separate from the display name so
+    /// renaming an indexer, or configuring duplicate display names, cannot mis-bind an NZB URL to
+    /// another indexer's origin. Never projected through the public release DTO.
+    /// </summary>
+    public string? IndexerId { get; init; }
     public required long SizeBytes { get; init; }
 
     public QualityInfo Quality { get; init; } = new();

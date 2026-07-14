@@ -3,25 +3,126 @@ using System.Collections.Concurrent;
 namespace Streamarr.Plugin.Playback;
 
 /// <summary>
-/// Maps an opened Jellyfin media-source id (the live-stream id) back to the Core Server
-/// releaseId/workId that produced it, so playback events can be attributed to the right
-/// release (BRIEF §8.4). Purely a lookup table — no domain logic.
+/// Tracks every alias Jellyfin may use for an opened Core session. Removing any alias removes the
+/// entire attribution, preventing release-id aliases and session capabilities from accumulating.
 /// </summary>
 public sealed class PlaybackSessionTracker
 {
-    public sealed record Attribution(string ReleaseId, string? WorkId);
+    private const int MaxTrackedSessions = 512;
 
-    private readonly ConcurrentDictionary<string, Attribution> _byMediaSourceId = new(StringComparer.Ordinal);
+    public sealed record Attribution(
+        Guid TrackingId,
+        Guid ItemId,
+        string ReleaseId,
+        string? WorkId,
+        string? SessionToken,
+        DateTime OpenedUtc);
 
-    public void Track(string mediaSourceId, string releaseId, string? workId)
-        => _byMediaSourceId[mediaSourceId] = new Attribution(releaseId, workId);
+    private readonly ConcurrentDictionary<string, Attribution> _byAlias = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<Guid, Attribution> _byTrackingId = new();
+    private readonly object _gate = new();
+
+    public Attribution TrackSession(
+        Guid itemId,
+        string mediaSourceId,
+        string releaseId,
+        string? workId,
+        string? sessionToken,
+        params string?[] additionalAliases)
+    {
+        if (!TryTrackSession(
+                itemId,
+                mediaSourceId,
+                releaseId,
+                workId,
+                sessionToken,
+                out var attribution,
+                additionalAliases))
+        {
+            throw new InvalidOperationException($"The limit of {MaxTrackedSessions} active Streamarr sessions was reached.");
+        }
+
+        return attribution;
+    }
+
+    public bool TryTrackSession(
+        Guid itemId,
+        string mediaSourceId,
+        string releaseId,
+        string? workId,
+        string? sessionToken,
+        out Attribution attribution,
+        params string?[] additionalAliases)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mediaSourceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
+
+        attribution = new Attribution(
+            Guid.NewGuid(),
+            itemId,
+            releaseId,
+            workId,
+            sessionToken,
+            DateTime.UtcNow);
+        lock (_gate)
+        {
+            if (_byTrackingId.Count >= MaxTrackedSessions)
+                return false;
+
+            _byTrackingId[attribution.TrackingId] = attribution;
+            foreach (var alias in new string?[] { mediaSourceId, releaseId }.Concat(additionalAliases)
+                         .Where(a => !string.IsNullOrWhiteSpace(a))
+                         .Distinct(StringComparer.Ordinal))
+            {
+                _byAlias[alias!] = attribution;
+            }
+        }
+
+        return true;
+    }
 
     public Attribution? Resolve(string? mediaSourceId)
-        => mediaSourceId is not null && _byMediaSourceId.TryGetValue(mediaSourceId, out var a) ? a : null;
+        => mediaSourceId is not null && _byAlias.TryGetValue(mediaSourceId, out var value) ? value : null;
 
-    public void Forget(string? mediaSourceId)
+    public Attribution? Forget(string? mediaSourceId)
     {
-        if (mediaSourceId is not null)
-            _byMediaSourceId.TryRemove(mediaSourceId, out _);
+        var attribution = Resolve(mediaSourceId);
+        if (attribution is not null)
+            Forget(attribution);
+        return attribution;
+    }
+
+    public void Forget(Attribution attribution)
+    {
+        lock (_gate)
+            Remove(attribution);
+    }
+
+    public IReadOnlyList<Attribution> ForItem(Guid itemId)
+        => _byTrackingId.Values.Where(a => a.ItemId == itemId).ToArray();
+
+    public IReadOnlyList<Attribution> TakeForItem(Guid itemId)
+    {
+        lock (_gate)
+        {
+            var matches = _byTrackingId.Values.Where(a => a.ItemId == itemId).ToArray();
+            foreach (var attribution in matches)
+                Remove(attribution);
+            return matches;
+        }
+    }
+
+    public IReadOnlyCollection<Attribution> All() => _byTrackingId.Values.ToArray();
+
+    private void Remove(Attribution attribution)
+    {
+        ((ICollection<KeyValuePair<Guid, Attribution>>)_byTrackingId)
+            .Remove(new KeyValuePair<Guid, Attribution>(attribution.TrackingId, attribution));
+
+        foreach (var alias in _byAlias.Where(pair => pair.Value.TrackingId == attribution.TrackingId).ToArray())
+        {
+            ((ICollection<KeyValuePair<string, Attribution>>)_byAlias)
+                .Remove(new KeyValuePair<string, Attribution>(alias.Key, alias.Value));
+        }
     }
 }

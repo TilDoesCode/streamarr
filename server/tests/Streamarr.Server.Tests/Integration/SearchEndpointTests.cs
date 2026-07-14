@@ -24,7 +24,7 @@ namespace Streamarr.Server.Tests.Integration;
 /// </summary>
 public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Factory>
 {
-    private const string ApiKey = "test-api-key";
+    private const string ApiKey = "test-api-key-aaaaaaaaaaaaaaaaaaaa";
     private const string NzbSecret = "secret.example";
 
     private readonly Factory _factory;

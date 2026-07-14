@@ -6,8 +6,8 @@
     "owner": "streamarr",
     "category": "General",
     "version": "0.1.0.0",
-    "targetAbi": "10.10.7.0",
-    "framework": "net8.0",
+    "targetAbi": "10.11.11.0",
+    "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
     "changelog": "M5 thin-slice: playback via IMediaSourceProvider, pinned-work bootstrap, playback event reporting."

@@ -43,7 +43,8 @@ public sealed class SpaServingTests : IAsyncLifetime
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Streamarr:ApiKey"] = "spa-test-key",
+            ["Streamarr:ApiKey"] = "spa-test-key-0123456789abcdef-xyz",
+            ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
             ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_tempDir, "streamarr.db")}",
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_tempDir, "keys"),
             ["Streamarr:Providers:0:Name"] = "dummy",

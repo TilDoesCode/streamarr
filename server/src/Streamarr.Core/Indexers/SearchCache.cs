@@ -7,7 +7,7 @@ namespace Streamarr.Core.Indexers;
 /// normalized query (BRIEF §6.1 module 1). Absorbs the burst of identical
 /// searches a client issues while the user types/retries. Thread-safe.
 /// </summary>
-public sealed class SearchCache(TimeSpan ttl, TimeProvider? timeProvider = null)
+public sealed class SearchCache(TimeSpan ttl, TimeProvider? timeProvider = null, int maxEntries = 1_000)
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
@@ -44,11 +44,40 @@ public sealed class SearchCache(TimeSpan ttl, TimeProvider? timeProvider = null)
         if (ttl <= TimeSpan.Zero)
             return;
 
-        _entries[key] = new Entry(result, _time.GetUtcNow() + ttl);
+        var now = _time.GetUtcNow();
+        Prune(now);
+        _entries[key] = new Entry(result, now + ttl);
+        TrimToLimit();
     }
 
-    /// <summary>Approximate live-entry count (includes not-yet-evicted stale rows).</summary>
-    public int Count => _entries.Count;
+    public int Count
+    {
+        get
+        {
+            Prune(_time.GetUtcNow());
+            return _entries.Count;
+        }
+    }
+
+    private void Prune(DateTimeOffset now)
+    {
+        foreach (var pair in _entries)
+        {
+            if (pair.Value.ExpiresAtUtc <= now)
+                _entries.TryRemove(pair);
+        }
+    }
+
+    private void TrimToLimit()
+    {
+        var limit = Math.Max(1, maxEntries);
+        while (_entries.Count > limit)
+        {
+            var oldest = _entries.MinBy(p => p.Value.ExpiresAtUtc);
+            if (oldest.Key is null || !_entries.TryRemove(oldest))
+                break;
+        }
+    }
 
     private sealed record Entry(IndexerSearchResult Result, DateTimeOffset ExpiresAtUtc);
 }

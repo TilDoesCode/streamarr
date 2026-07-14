@@ -89,7 +89,7 @@ shapes the Core API. (BRIEF §1.2, §8.)
 | Component | Path | Role | Stack |
 |---|---|---|---|
 | **Core Server** | [`server/`](../server) | The product. Owns search, ranking, resolve, streaming, config, sessions, watch state. | C# / .NET 8, ASP.NET Core controllers, Kestrel + Range, SQLite via EF Core |
-| **Jellyfin plugin** | [`plugin/`](../plugin) | Thin adapter. Surfaces Core results inside Jellyfin's native search and makes them playable through Jellyfin's transcoding. **Zero domain logic.** | `net8.0`, Jellyfin 10.10.7 ABI |
+| **Jellyfin plugin** | [`plugin/`](../plugin) | Thin adapter. Surfaces Core results inside Jellyfin's native search and makes them playable through Jellyfin's transcoding. **Zero domain logic.** | `net9.0`, Jellyfin 10.11.11 ABI |
 | **Management Web UI** | [`web/`](../web) | Configure, operate, tune, debug the Core. The continuous proof of interface-agnosticism. | React 19, TanStack Query/Router, Vite, Tailwind + shadcn/ui |
 
 The boundary that matters is the vertical line down the middle of the diagram: the
@@ -147,10 +147,11 @@ Two paths run over the identical API. The only difference is who the client is.
    pre-probed `mediaStreams` + `runTimeTicks` and never has to probe a slow remote
    source (BRIEF §11). Returns `status` (`ready`/`degraded`/`dead`), a `streamUrl`,
    and the media info.
-3. **Stream.** `GET /api/v1/stream/{token}` → a plain, authenticated, Range-capable
-   byte stream. The UI's `<video>` element plays it directly (bearer rides as
-   `?access_token=` because a `<video>` cannot set an `Authorization` header — the
-   same mechanism Jellyfin uses; the token is scoped to the stream path).
+3. **Stream.** `GET /api/v1/stream/{token}` → a plain, capability-authorized,
+   Range-capable byte stream. Resolve creates a short-lived random session capability,
+   so the UI's `<video>` element needs no reusable bearer credential in its URL or
+   headers. The endpoint does not accept `access_token` query auth, an admin JWT, or a
+   machine key.
 4. **Events / close.** The client reports `start`/`progress`/`stop` to
    `POST /api/v1/events`; `POST /api/v1/sessions/{token}/close` tears the session down.
 
@@ -161,25 +162,29 @@ The same three calls, wrapped by the plugin's translation to Jellyfin's data mod
 1. User types a query in any Jellyfin client.
 2. The plugin's `IAsyncActionFilter` intercepts the `/Items?searchTerm=` /
    `/Search/Hints` request (under a short deadline) and calls `GET /api/v1/search`.
-3. It materializes **one isolated ephemeral item per work** (dedicated hidden folder,
-   stable GUID from `workId`, `Tmdb`/`Imdb`/`UsenetWorkId` provider ids, TMDB metadata
-   passed through, tagged `usenet-ephemeral`), caches the ranked release list, and
-   merges the items into the outgoing response. **Any error/timeout falls through to
-   native search** (BRIEF §11).
+3. It materializes **one isolated ephemeral item per work** (private, hidden
+   implementation folder; stable GUID from `workId`;
+   `Tmdb`/`Imdb`/`UsenetWorkId` provider ids; TMDB metadata passed through; tagged
+   `usenet-ephemeral`), caches the ranked release list, and merges eligible items into
+   the outgoing response. The requesting user's compatible-library visibility policy
+   still applies. **Any error/timeout falls through to native search** (BRIEF §11).
 4. Play → Jellyfin requests `PlaybackInfo`. The plugin's `IMediaSourceProvider`
    returns one `MediaSourceInfo` per release (`RequiresOpening = true`,
-   `OpenToken = releaseId`). **No Usenet contact yet.**
-5. `OpenMediaSource(openToken)` → the plugin calls `POST /api/v1/resolve`. On `ready`
-   it returns `MediaSourceInfo { Path = streamUrl, Protocol = Http, IsRemote = true,
-   RequiresClosing = true, RequiredHttpHeaders = <bearer>, MediaStreams = <pre-probed>,
-   RunTimeTicks, low AnalyzeDurationMs }`.
+   opaque, bounded, short-lived, one-use `OpenToken` tied to that authenticated user,
+   item, work, and offered release). **No Usenet contact yet.**
+5. `OpenMediaSource(openToken)` consumes and validates the offer, then calls
+   `POST /api/v1/resolve`. It accepts only a server-attributed release from the same
+   offered work. On `ready` it returns
+   `MediaSourceInfo { Path = streamUrl, Protocol = Http, IsRemote = true,
+   RequiresClosing = true, MediaStreams = <pre-probed>, RunTimeTicks,
+   low AnalyzeDurationMs }` with no reusable `RequiredHttpHeaders` credential.
 6. Jellyfin streams via ffmpeg (Direct Play or transcode). The plugin reports playback
    events to `POST /api/v1/events`.
 7. `ILiveStream.Close` → `POST /api/v1/sessions/{token}/close`. An `IScheduledTask`
    deletes ephemeral items past their TTL.
 
 The version-fragile coupling (steps 2–4) is isolated to single files and pinned to
-Jellyfin 10.10.7 — see [`jellyfin-compatibility.md`](./jellyfin-compatibility.md).
+Jellyfin 10.11.11 — see [`jellyfin-compatibility.md`](./jellyfin-compatibility.md).
 
 ---
 
@@ -270,7 +275,7 @@ Structured logging and metrics are first-class (BRIEF §10-M7):
 - **Serilog** replaces the default logger in the bootstrap: structured console output,
   `LogContext` enrichment, and `UseSerilogRequestLogging()` for a **single summary
   line per request** (method, path, status, elapsed).
-- **`GET /api/v1/metrics`** (authenticated JSON; any bearer, like `/sessions`) returns
+- **`GET /api/v1/metrics`** (admin-only JSON, like session listing) returns
   a live snapshot:
   - `sessions` — `active`, `openedTotal`, `closedTotal`
   - `connections` — `budget`, `inUse`, and per-provider
@@ -306,14 +311,16 @@ in-memory, not persisted (a restart drops live streams, by design).
 The whole point of the mandate (§1) is that this section is short.
 
 A custom web app, an RN/Expo app, or a TV app is **just another `/api/v1` client**. It
-authenticates with a machine API key (or grows the admin session model into real
-multi-user), calls `search`/`resolve`/`stream`/`events`, and generates its types from
-the same [`openapi/v1.json`](../server/openapi/v1.json). Watch state already
+authenticates operations with a machine API key (or grows the admin session model into
+real multi-user), calls `search`/`resolve`/`events`, then consumes the returned
+stream-session capability without carrying the reusable credential into the media
+request. It generates its types from the same
+[`openapi/v1.json`](../server/openapi/v1.json). Watch state already
 accumulates server-side via `/events`, so it is not trapped in any one front-end.
 
 The one capability Jellyfin gives us for free that a future client must replace is
-**transcoding**. `/stream` is deliberately a clean, generic, authenticated HTTP+Range
-byte source with **no Jellyfin-specific behavior** (BRIEF §3.3) — so an ffmpeg-based
+**transcoding**. `/stream` is deliberately a clean, generic, capability-authorized
+HTTP+Range byte source with **no Jellyfin-specific behavior** (BRIEF §3.3) — so an ffmpeg-based
 transcode/remux service can be inserted **in front of** `/stream` without touching the
 Core. Preserving that property is a non-negotiable: never add device-profile or
 container-negotiation logic to the stream endpoint.

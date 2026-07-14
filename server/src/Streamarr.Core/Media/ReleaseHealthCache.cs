@@ -22,7 +22,10 @@ public interface IReleaseHealthCache
 }
 
 /// <summary>In-memory, TTL'd implementation of <see cref="IReleaseHealthCache"/>.</summary>
-public sealed class ReleaseHealthCache(TimeSpan ttl, TimeProvider? timeProvider = null) : IReleaseHealthCache
+public sealed class ReleaseHealthCache(
+    TimeSpan ttl,
+    TimeProvider? timeProvider = null,
+    int maxEntries = 10_000) : IReleaseHealthCache
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
@@ -31,7 +34,14 @@ public sealed class ReleaseHealthCache(TimeSpan ttl, TimeProvider? timeProvider 
     {
         if (string.IsNullOrEmpty(releaseId) || ttl <= TimeSpan.Zero)
             return;
+        PruneExpired();
         _entries[releaseId] = new Entry(health, _time.GetUtcNow() + ttl);
+        while (_entries.Count > Math.Max(1, maxEntries))
+        {
+            var oldest = _entries.MinBy(p => p.Value.ExpiresAtUtc);
+            if (oldest.Key is null || !_entries.TryRemove(oldest))
+                break;
+        }
     }
 
     public ReleaseHealth? Get(string releaseId)
@@ -49,6 +59,16 @@ public sealed class ReleaseHealthCache(TimeSpan ttl, TimeProvider? timeProvider 
     }
 
     public bool IsDead(string releaseId) => Get(releaseId) == ReleaseHealth.Dead;
+
+    private void PruneExpired()
+    {
+        var now = _time.GetUtcNow();
+        foreach (var pair in _entries)
+        {
+            if (pair.Value.ExpiresAtUtc <= now)
+                _entries.TryRemove(pair);
+        }
+    }
 
     private readonly record struct Entry(ReleaseHealth Health, DateTimeOffset ExpiresAtUtc);
 }

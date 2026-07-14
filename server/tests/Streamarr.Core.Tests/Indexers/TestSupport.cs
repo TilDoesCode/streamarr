@@ -65,8 +65,12 @@ internal sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpRespon
 internal sealed class FakeNewznabClient : INewznabClient
 {
     private readonly Dictionary<string, Func<CancellationToken, Task<NewznabSearchResponse>>> _behaviours = new();
+    private int _searchCallCount;
+    private int _activeCalls;
+    private int _maxObservedConcurrentCalls;
 
-    public int SearchCallCount { get; private set; }
+    public int SearchCallCount => Volatile.Read(ref _searchCallCount);
+    public int MaxObservedConcurrentCalls => Volatile.Read(ref _maxObservedConcurrentCalls);
 
     public FakeNewznabClient Returns(string indexerName, params NewznabItem[] items)
     {
@@ -93,12 +97,30 @@ internal sealed class FakeNewznabClient : INewznabClient
     public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
         => Task.FromResult(new NewznabCapabilities());
 
-    public Task<NewznabSearchResponse> SearchAsync(IndexerConfig indexer, NewznabQuery query, CancellationToken cancellationToken)
+    public async Task<NewznabSearchResponse> SearchAsync(IndexerConfig indexer, NewznabQuery query, CancellationToken cancellationToken)
     {
-        SearchCallCount++;
-        return _behaviours.TryGetValue(indexer.Name, out var behaviour)
-            ? behaviour(cancellationToken)
-            : Task.FromResult(new NewznabSearchResponse { Items = [] });
+        Interlocked.Increment(ref _searchCallCount);
+        var active = Interlocked.Increment(ref _activeCalls);
+        InterlockedMax(ref _maxObservedConcurrentCalls, active);
+        try
+        {
+            return await (_behaviours.TryGetValue(indexer.Name, out var behaviour)
+                ? behaviour(cancellationToken)
+                : Task.FromResult(new NewznabSearchResponse { Items = [] }));
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeCalls);
+        }
+    }
+
+    private static void InterlockedMax(ref int location, int value)
+    {
+        int current;
+        while (value > (current = Volatile.Read(ref location)) &&
+               Interlocked.CompareExchange(ref location, value, current) != current)
+        {
+        }
     }
 
     public static NewznabItem Item(string title, long size, string guid, int grabs = 0)

@@ -63,10 +63,11 @@ public sealed class IndexerConfigService : IIndexerConfigStore
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var entity = new IndexerEntity
         {
-            Id = string.IsNullOrWhiteSpace(write.Id) ? Guid.NewGuid().ToString("n") : write.Id!,
+            Id = Guid.NewGuid().ToString("n"),
             Name = write.Name,
             BaseUrl = write.BaseUrl,
             Categories = JoinCategories(write.Categories),
+            AllowedDownloadHosts = JoinHosts(write.AllowedDownloadHosts),
             Enabled = write.Enabled ?? true,
             Priority = write.Priority ?? 0,
             // On create an omitted secret simply means "no key yet".
@@ -89,6 +90,7 @@ public sealed class IndexerConfigService : IIndexerConfigStore
         entity.Name = write.Name;
         entity.BaseUrl = write.BaseUrl;
         entity.Categories = JoinCategories(write.Categories);
+        entity.AllowedDownloadHosts = JoinHosts(write.AllowedDownloadHosts);
         entity.Enabled = write.Enabled ?? entity.Enabled;
         entity.Priority = write.Priority ?? entity.Priority;
 
@@ -114,6 +116,27 @@ public sealed class IndexerConfigService : IIndexerConfigStore
         return true;
     }
 
+    public async Task<bool> ReorderAsync(IReadOnlyList<string> ids, CancellationToken ct)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var rows = await db.Indexers.ToListAsync(ct);
+        if (ids.Count != rows.Count || ids.Distinct(StringComparer.Ordinal).Count() != ids.Count ||
+            !rows.Select(x => x.Id).ToHashSet(StringComparer.Ordinal).SetEquals(ids))
+        {
+            return false;
+        }
+
+        var byId = rows.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        for (var priority = 0; priority < ids.Count; priority++)
+            byId[ids[priority]].Priority = priority;
+
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        Reload();
+        return true;
+    }
+
     /// <summary>Decrypted config for one indexer (used by the /test endpoint).</summary>
     public IndexerConfig ToConfig(IndexerEntity e) => new()
     {
@@ -122,12 +145,39 @@ public sealed class IndexerConfigService : IIndexerConfigStore
         BaseUrl = e.BaseUrl,
         ApiKey = _protector.Unprotect(e.ApiKeyEncrypted),
         Categories = ParseCategories(e.Categories),
+        AllowedDownloadHosts = ParseHosts(e.AllowedDownloadHosts),
         Enabled = e.Enabled,
         Priority = e.Priority,
     };
 
     internal static string JoinCategories(IReadOnlyList<int>? categories)
         => categories is null ? string.Empty : string.Join(',', categories);
+
+    /// <summary>
+    /// Normalize the operator-supplied download hosts to a comma-separated column value:
+    /// trim, lower-case, drop blanks, and de-duplicate while preserving order.
+    /// </summary>
+    internal static string JoinHosts(IReadOnlyList<string>? hosts)
+        => hosts is null ? string.Empty : string.Join(',', NormalizeHosts(hosts));
+
+    internal static IReadOnlyList<string> ParseHosts(string csv)
+        => string.IsNullOrWhiteSpace(csv)
+            ? []
+            : NormalizeHosts(csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    private static IReadOnlyList<string> NormalizeHosts(IEnumerable<string> hosts)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+        foreach (var raw in hosts)
+        {
+            var host = raw?.Trim().ToLowerInvariant();
+            if (!string.IsNullOrEmpty(host) && seen.Add(host))
+                result.Add(host);
+        }
+
+        return result;
+    }
 
     internal static IReadOnlyList<int> ParseCategories(string csv)
         => string.IsNullOrWhiteSpace(csv)
@@ -147,6 +197,10 @@ public sealed record IndexerWrite
     public required string BaseUrl { get; init; }
     public string? ApiKey { get; init; }
     public IReadOnlyList<int>? Categories { get; init; }
+
+    /// <summary>Extra hostnames NZB downloads may use besides the BaseUrl host.</summary>
+    public IReadOnlyList<string>? AllowedDownloadHosts { get; init; }
+
     public bool? Enabled { get; init; }
     public int? Priority { get; init; }
 }

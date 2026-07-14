@@ -112,7 +112,14 @@ public sealed class ProfileConfigService : IProfileProvider
         try
         {
             var profile = JsonSerializer.Deserialize<QualityProfile>(row.PayloadJson, Json);
-            if (profile is null)
+            if (profile is null ||
+                profile.PreferredResolutions is null ||
+                profile.PreferredSources is null ||
+                profile.PreferredCodecs is null ||
+                profile.PreferredLanguages is null ||
+                profile.GroupAllowList is null ||
+                profile.GroupDenyList is null ||
+                profile.SizeBands is null)
                 return null;
 
             // Preserve the case-insensitive size-band lookup the defaults ship with.

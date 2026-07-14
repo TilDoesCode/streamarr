@@ -26,7 +26,10 @@ public sealed class JwtTokenService(
     private const string Audience = "streamarr";
 
     private readonly object _gate = new();
-    private SymmetricSecurityKey? _key;
+    // Reads happen on every authenticated request while password changes/logout rotate
+    // the key under a lock. Volatile publication prevents another request thread from
+    // continuing to validate against a stale key after rotation.
+    private volatile SymmetricSecurityKey? _key;
 
     public (string Token, DateTimeOffset ExpiresAt) CreateToken(UserEntity user)
     {
@@ -80,6 +83,30 @@ public sealed class JwtTokenService(
         }
     }
 
+    /// <summary>
+    /// Rotates the persisted signing key, immediately invalidating every issued admin
+    /// JWT. Password changes use this conservative global revocation until per-user
+    /// token versions are introduced.
+    /// </summary>
+    public void RevokeAll()
+    {
+        lock (_gate)
+        {
+            var bytes = RandomNumberGenerator.GetBytes(48);
+            using var db = dbFactory.CreateDbContext();
+            var general = db.GeneralConfig.SingleOrDefault(g => g.Id == 1);
+            if (general is null)
+            {
+                general = new GeneralConfigEntity { Id = 1 };
+                db.GeneralConfig.Add(general);
+            }
+
+            general.JwtSigningKeyEncrypted = protector.Protect(Convert.ToBase64String(bytes));
+            db.SaveChanges();
+            _key = new SymmetricSecurityKey(bytes);
+        }
+    }
+
     private SymmetricSecurityKey GetKey()
     {
         if (_key is not null)
@@ -95,7 +122,7 @@ public sealed class JwtTokenService(
     private byte[] LoadOrCreateKeyBytes()
     {
         using var db = dbFactory.CreateDbContext();
-        var general = db.GeneralConfig.FirstOrDefault();
+        var general = db.GeneralConfig.SingleOrDefault(g => g.Id == 1);
         if (general is null)
         {
             general = new GeneralConfigEntity { Id = 1 };
