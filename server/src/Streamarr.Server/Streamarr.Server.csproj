@@ -19,7 +19,7 @@
     <!-- Explicitly override EF8's permissive native lower bound. Older resolved
          SQLitePCLRaw native builds are affected by CVE-2025-6965. -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.28">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.17">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
