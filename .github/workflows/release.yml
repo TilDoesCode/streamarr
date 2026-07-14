@@ -167,6 +167,28 @@ jobs:
       - name: Verify checksums, archive contents, and both Compose modes
         run: scripts/verify-release-artifacts.sh "${RELEASE_VERSION#v}" artifacts/release
 
+      - name: Merge older versions into the Jellyfin plugin manifest
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Pull the manifest from the previous "latest" release (if any) and
+          # append its versions so the published manifest.json lists the full
+          # history. First release: nothing to merge, keep the single version.
+          if gh release download --repo "$GITHUB_REPOSITORY" \
+               --pattern manifest.json --dir prev 2>/dev/null; then
+            jq -s '
+              .[0][0].versions[0].version as $current
+              | .[0][0].versions = (
+                  .[0][0].versions
+                  + (.[1][0].versions | map(select(.version != $current)))
+                )
+              | .[0]
+            ' artifacts/release/manifest.json prev/manifest.json > merged.json
+            mv merged.json artifacts/release/manifest.json
+            rm -rf prev
+          fi
+
       - name: Attest downloadable artifacts
         if: github.event.repository.private == false
         uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4

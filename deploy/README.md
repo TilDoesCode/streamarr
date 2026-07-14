@@ -11,9 +11,16 @@ Management UI.
    configured by `STREAMARR_BIND_ADDRESS` and `STREAMARR_PORT`.
 
 To start the included Jellyfin 10.11.11 container too, run
-`docker compose --profile jellyfin up -d`. If Jellyfin already exists, copy the
-contents of `plugin/` to `<jellyfin-config>/plugins/Streamarr/`, ensure Jellyfin can
-write that directory, and restart Jellyfin.
+`docker compose --profile jellyfin up -d`. If Jellyfin already exists, the easiest way to
+add the plugin is Jellyfin's plugin catalog: add
+`https://github.com/TilDoesCode/streamarr/releases/latest/download/manifest.json` under
+**Dashboard → Plugins → Repositories**, install **Streamarr** from **Catalog**, and
+restart Jellyfin. Otherwise copy the contents of `plugin/` to
+`<jellyfin-config>/plugins/Streamarr/`, ensure Jellyfin can write that directory, and
+restart Jellyfin.
+
+Already run **Komodo**? `compose.komodo.yml` is a minimal Core-only stack you can paste
+straight into a Komodo UI stack — see `docs/install-komodo.md` in the repository.
 
 Keep `.env` private. Persist and back up the `streamarr-data` and `streamarr-keys`
 volumes together. The full installation, upgrade, reverse-proxy, backup, and first-run

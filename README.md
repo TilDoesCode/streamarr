@@ -4,6 +4,11 @@
 
 ## Install at home (release build)
 
+> **Already running [Komodo](https://komo.do) with a Jellyfin server?** Skip the manual
+> steps below and follow the copy‑paste guide in
+> **[docs/install-komodo.md](docs/install-komodo.md)** — one stack to paste, then install
+> the plugin into Jellyfin from a URL. No compiling, no file copying.
+
 The supported home deployment is Docker Compose on a 64-bit Intel/AMD or ARM Linux
 host. A release contains everything specific to Streamarr; Docker downloads the base
 images. You need Docker Engine with the Compose plugin, `curl`, `tar`, and `openssl`.
@@ -17,6 +22,7 @@ Each GitHub release publishes these matching artifacts:
 | `ghcr.io/tildoescode/streamarr:<version>` | Multi-architecture Core Server image with the production Management UI and `ffprobe` included (`linux/amd64`, `linux/arm64`) |
 | `streamarr-home-<version>.tar.gz` | Ready-to-run production Compose file, pinned image version, environment template, and matching Jellyfin plugin |
 | `streamarr-jellyfin-<version>.zip` | Standalone plugin for an existing Jellyfin 10.11.11 server |
+| `manifest.json` | Jellyfin plugin‑catalog manifest — add its `releases/latest/download/manifest.json` URL in Jellyfin to install and auto‑update the plugin without copying files |
 | `SHA256SUMS` | Checksums for both downloadable archives |
 
 ### 1. Download and verify a release
@@ -95,11 +101,16 @@ It listens on the configured Jellyfin address/port (loopback port 8096 by defaul
 already mounts the bundled plugin. Complete Jellyfin's setup wizard, then open
 **Dashboard → Plugins → Streamarr**.
 
-For an existing Jellyfin 10.11.11 installation, stop Jellyfin, copy every file from
-the bundle's `plugin/` directory into its writable
-`<jellyfin-config>/plugins/Streamarr/` directory, and start Jellyfin again. Do not mix
-plugin and Core versions. The plugin is ABI-pinned to Jellyfin 10.11.11; upgrade
-Jellyfin only after the compatibility document names the new version.
+For an existing Jellyfin 10.11.11 installation, the easiest option is Jellyfin's own
+plugin catalog: in **Dashboard → Plugins → Repositories** add
+`https://github.com/TilDoesCode/streamarr/releases/latest/download/manifest.json`, then
+install **Streamarr** from **Catalog** and restart Jellyfin. It auto-updates from there.
+(Komodo users: the full walkthrough is in [docs/install-komodo.md](docs/install-komodo.md).)
+To install by hand instead, stop Jellyfin, copy every file from the bundle's `plugin/`
+directory into its writable `<jellyfin-config>/plugins/Streamarr/` directory, and start
+Jellyfin again. Do not mix plugin and Core versions. The plugin is ABI-pinned to
+Jellyfin 10.11.11; upgrade Jellyfin only after the compatibility document names the new
+version.
 
 In the plugin settings, use:
 

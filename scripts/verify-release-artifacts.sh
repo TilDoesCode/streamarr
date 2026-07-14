@@ -26,9 +26,28 @@ for file in Streamarr.Plugin.dll meta.json; do
   test -s "$tmp_dir/plugin/$file"
 done
 
+# The Jellyfin plugin-repository manifest must be valid JSON and advertise this
+# release's plugin zip (matching sourceUrl and MD5 checksum) so an existing
+# Jellyfin server can install it from a URL.
+test -s "$artifact_dir/manifest.json"
+if command -v md5sum >/dev/null; then
+  zip_md5="$(md5sum "$artifact_dir/streamarr-jellyfin-$version.zip" | cut -d ' ' -f 1)"
+else
+  zip_md5="$(md5 -q "$artifact_dir/streamarr-jellyfin-$version.zip")"
+fi
+jq -e \
+  --arg version "$version.0" \
+  --arg checksum "$zip_md5" \
+  --arg sourceUrl "streamarr-jellyfin-$version.zip" \
+  '.[0].versions[0] as $v
+   | $v.version == $version
+   and $v.checksum == $checksum
+   and ($v.sourceUrl | endswith($sourceUrl))' \
+  "$artifact_dir/manifest.json" >/dev/null
+
 mkdir "$tmp_dir/home"
 tar -xzf "$artifact_dir/streamarr-home-$version.tar.gz" -C "$tmp_dir/home"
-for file in compose.yml compose.proxy.yml .env.example README.md plugin/Streamarr.Plugin.dll plugin/meta.json; do
+for file in compose.yml compose.komodo.yml compose.proxy.yml .env.example README.md plugin/Streamarr.Plugin.dll plugin/meta.json; do
   test -s "$tmp_dir/home/$file"
 done
 grep -Fq "STREAMARR_IMAGE=ghcr.io/tildoescode/streamarr:$version" "$tmp_dir/home/.env.example"
@@ -42,6 +61,11 @@ STREAMARR_API_KEY=verify-only-machine-key-0123456789abcdef \
 STREAMARR_ADMIN_PASSWORD=verify-only-admin-password \
   docker compose --env-file "$tmp_dir/home/.env.example" \
     -f "$tmp_dir/home/compose.yml" --profile jellyfin config --quiet
+
+STREAMARR_API_KEY=verify-only-machine-key-0123456789abcdef \
+STREAMARR_ADMIN_PASSWORD=verify-only-admin-password \
+  docker compose --env-file "$tmp_dir/home/.env.example" \
+    -f "$tmp_dir/home/compose.komodo.yml" config --quiet
 
 STREAMARR_API_KEY=verify-only-machine-key-0123456789abcdef \
 STREAMARR_ADMIN_PASSWORD=verify-only-admin-password \

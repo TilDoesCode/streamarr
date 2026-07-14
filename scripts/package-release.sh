@@ -22,7 +22,7 @@ source_plugin_version="$(sed -nE 's/^[[:space:]]*"version":[[:space:]]*"([0-9]+\
   exit 1
 }
 
-for command in dotnet zip tar; do
+for command in dotnet zip tar jq; do
   command -v "$command" >/dev/null || {
     echo "$command is required." >&2
     exit 1
@@ -56,7 +56,44 @@ done
   zip -q -9 "$output_dir/streamarr-jellyfin-$version.zip" ./*
 )
 
+# Jellyfin plugin-repository manifest. Lets an existing Jellyfin server install
+# and auto-update Streamarr from a URL instead of copying files by hand. This is
+# the single-version manifest; the release workflow merges older versions in.
+plugin_zip="$output_dir/streamarr-jellyfin-$version.zip"
+if command -v md5sum >/dev/null; then
+  checksum="$(md5sum "$plugin_zip" | cut -d ' ' -f 1)"
+else
+  checksum="$(md5 -q "$plugin_zip")"
+fi
+manifest_timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+source_url="https://github.com/TilDoesCode/streamarr/releases/download/v$version/streamarr-jellyfin-$version.zip"
+
+jq -n \
+  --slurpfile meta "$plugin_meta" \
+  --arg version "$version.0" \
+  --arg sourceUrl "$source_url" \
+  --arg checksum "$checksum" \
+  --arg timestamp "$manifest_timestamp" \
+  '[{
+      guid: $meta[0].guid,
+      name: $meta[0].name,
+      description: $meta[0].description,
+      overview: $meta[0].overview,
+      owner: $meta[0].owner,
+      category: $meta[0].category,
+      imageUrl: "",
+      versions: [{
+        version: $version,
+        changelog: $meta[0].changelog,
+        targetAbi: $meta[0].targetAbi,
+        sourceUrl: $sourceUrl,
+        checksum: $checksum,
+        timestamp: $timestamp
+      }]
+  }]' > "$output_dir/manifest.json"
+
 cp "$repo_root/deploy/compose.yml" "$tmp_dir/home/compose.yml"
+cp "$repo_root/deploy/compose.komodo.yml" "$tmp_dir/home/compose.komodo.yml"
 cp "$repo_root/deploy/compose.proxy.yml" "$tmp_dir/home/compose.proxy.yml"
 cp "$repo_root/deploy/.env.example" "$tmp_dir/home/.env.example"
 cp "$repo_root/deploy/README.md" "$tmp_dir/home/README.md"

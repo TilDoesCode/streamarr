@@ -1,0 +1,48 @@
+name: streamarr
+
+# Minimal Streamarr Core stack for Komodo (https://komo.do).
+#
+# Use this when you ALREADY run Jellyfin somewhere else. It starts only the
+# Streamarr Core Server (API + Management UI) — no bundled Jellyfin, no bind
+# mounts, no local files. Paste it into a Komodo "UI Defined" stack, set the
+# two secrets in the stack's Environment box, and deploy.
+#
+# See docs/install-komodo.md for the full walkthrough.
+
+services:
+  streamarr:
+    image: "${STREAMARR_IMAGE:-ghcr.io/tildoescode/streamarr:latest}"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Published on the Docker host so your existing Jellyfin can reach it at
+    # http://<docker-host-ip>:8080. Keep it off the public internet: bind it to
+    # a trusted LAN address or put it behind your reverse proxy.
+    ports:
+      - "${STREAMARR_BIND_ADDRESS:-0.0.0.0}:${STREAMARR_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Streamarr__ApiKey: "${STREAMARR_API_KEY:?Set STREAMARR_API_KEY in the Komodo environment}"
+      Streamarr__Admin__Username: "${STREAMARR_ADMIN_USERNAME:-admin}"
+      Streamarr__Admin__Password: "${STREAMARR_ADMIN_PASSWORD:?Set STREAMARR_ADMIN_PASSWORD in the Komodo environment}"
+      Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
+      Streamarr__DataProtectionKeysPath: /app/keys
+    volumes:
+      - streamarr-data:/app/data
+      - streamarr-keys:/app/keys
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/v1/health?deep=false"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  streamarr-data:
+  streamarr-keys:
