@@ -53,6 +53,11 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Install ffmpeg for media integration fixtures
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Restore
         run: dotnet restore server/Streamarr.sln
 

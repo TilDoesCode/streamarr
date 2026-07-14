@@ -49,6 +49,11 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Install ffmpeg for media integration fixtures
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Restore .NET dependencies
         run: |
           dotnet restore server/Streamarr.sln
@@ -84,11 +89,8 @@ jobs:
           (cd web && npm run generate:api)
           git diff --exit-code -- server/openapi/v1.json web/src/api/schema.d.ts
 
-      - name: Install Playwright Chromium and ffmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          (cd web && npx playwright install --with-deps chromium)
+      - name: Install Playwright Chromium
+        run: (cd web && npx playwright install --with-deps chromium)
 
       - name: Run browser-to-stream E2E
         working-directory: web
