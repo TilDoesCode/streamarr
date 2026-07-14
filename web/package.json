@@ -55,7 +55,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
     "vite": "^6.0.7",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "esbuild@0.25.12": true
