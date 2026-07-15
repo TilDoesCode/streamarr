@@ -84,7 +84,7 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   await page.getByRole("button", { name: /^search$/i }).click();
 
   // The canned release surfaces in the results table.
-  const releaseCell = page.getByText(RELEASE_TITLE);
+  const releaseCell = page.getByLabel("Search results").getByText(RELEASE_TITLE);
   await expect(releaseCell).toBeVisible();
 
   // --- resolve the release: health check + pre-probed media info (BRIEF §6.2) ----------
