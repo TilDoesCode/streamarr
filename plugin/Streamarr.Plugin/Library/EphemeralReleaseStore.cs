@@ -26,7 +26,7 @@ public sealed class EphemeralReleaseStore
     };
 
     private readonly ConcurrentDictionary<Guid, Entry> _byItem = new();
-    private readonly object _persistenceGate = new();
+    private readonly SemaphoreSlim _persistenceGate = new(1, 1);
     private readonly object _entryGate = new();
     private readonly string? _persistencePath;
     private readonly ILogger<EphemeralReleaseStore>? _logger;
@@ -74,6 +74,35 @@ public sealed class EphemeralReleaseStore
         Persist();
     }
 
+    /// <summary>
+    /// Updates a hierarchy page as one cache transaction and writes at most one persistence
+    /// snapshot. The cancellation token bounds the file write used by a cold season request.
+    /// </summary>
+    public async Task<bool> PutRangeAsync(
+        IEnumerable<KeyValuePair<Guid, WorkDto>> works,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(works);
+        var bounded = new List<KeyValuePair<Guid, WorkDto>>();
+        foreach (var pair in works)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            bounded.Add(new KeyValuePair<Guid, WorkDto>(pair.Key, BoundWork(pair.Value)));
+        }
+
+        if (bounded.Count == 0)
+            return true;
+
+        lock (_entryGate)
+        {
+            foreach (var pair in bounded)
+                _byItem[pair.Key] = new Entry(pair.Key, pair.Value);
+            TrimToLimit();
+        }
+
+        return await PersistAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public Entry? Get(Guid itemId)
     {
         if (_byItem.TryGetValue(itemId, out var entry))
@@ -110,6 +139,26 @@ public sealed class EphemeralReleaseStore
         lock (_entryGate)
             removed = _byItem.TryRemove(itemId, out _);
         if (removed)
+            Persist();
+        return removed;
+    }
+
+    /// <summary>Removes a complete owned subtree with one persistence snapshot.</summary>
+    public int RemoveRange(IEnumerable<Guid> itemIds)
+    {
+        ArgumentNullException.ThrowIfNull(itemIds);
+        var ids = itemIds.ToHashSet();
+        var removed = 0;
+        lock (_entryGate)
+        {
+            foreach (var itemId in ids)
+            {
+                if (_byItem.TryRemove(itemId, out _))
+                    removed++;
+            }
+        }
+
+        if (removed > 0)
             Persist();
         return removed;
     }
@@ -175,32 +224,77 @@ public sealed class EphemeralReleaseStore
         if (_persistencePath is null)
             return;
 
-        lock (_persistenceGate)
+        _persistenceGate.Wait();
+        try
         {
-            try
-            {
-                var directory = Path.GetDirectoryName(_persistencePath);
-                if (!string.IsNullOrEmpty(directory))
-                    Directory.CreateDirectory(directory);
+            var directory = Path.GetDirectoryName(_persistencePath);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
 
-                var temporaryPath = _persistencePath + ".tmp";
-                var payload = JsonSerializer.SerializeToUtf8Bytes(_byItem.Values.ToArray(), JsonOptions);
-                if (payload.Length > MaxPersistenceFileBytes)
-                {
-                    _logger?.LogWarning(
-                        "Streamarr release cache exceeded its {Limit}-byte persistence limit; retaining the previous snapshot",
-                        MaxPersistenceFileBytes);
-                    return;
-                }
+            var temporaryPath = _persistencePath + ".tmp";
+            var payload = SerializeSnapshot();
+            if (payload is null)
+                return;
 
-                File.WriteAllBytes(temporaryPath, payload);
-                File.Move(temporaryPath, _persistencePath, true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-            {
-                _logger?.LogWarning(ex, "Could not persist Streamarr ephemeral release cache to {Path}", _persistencePath);
-            }
+            File.WriteAllBytes(temporaryPath, payload);
+            File.Move(temporaryPath, _persistencePath, true);
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            _logger?.LogWarning(ex, "Could not persist Streamarr ephemeral release cache to {Path}", _persistencePath);
+        }
+        finally
+        {
+            _persistenceGate.Release();
+        }
+    }
+
+    private async Task<bool> PersistAsync(CancellationToken cancellationToken)
+    {
+        if (_persistencePath is null)
+            return true;
+
+        await _persistenceGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var directory = Path.GetDirectoryName(_persistencePath);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var temporaryPath = _persistencePath + ".tmp";
+            var payload = SerializeSnapshot();
+            if (payload is null)
+                return false;
+
+            await File.WriteAllBytesAsync(temporaryPath, payload, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporaryPath, _persistencePath, true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            _logger?.LogWarning(ex, "Could not persist Streamarr ephemeral release cache to {Path}", _persistencePath);
+            return false;
+        }
+        finally
+        {
+            _persistenceGate.Release();
+        }
+    }
+
+    private byte[]? SerializeSnapshot()
+    {
+        var payload = JsonSerializer.SerializeToUtf8Bytes(_byItem.Values.ToArray(), JsonOptions);
+        if (payload.Length > MaxPersistenceFileBytes)
+        {
+            _logger?.LogWarning(
+                "Streamarr release cache exceeded its {Limit}-byte persistence limit; retaining the previous snapshot",
+                MaxPersistenceFileBytes);
+            return null;
+        }
+
+        return payload;
     }
 
     private static WorkDto BoundWork(WorkDto work)

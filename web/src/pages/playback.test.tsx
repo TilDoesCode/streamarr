@@ -7,7 +7,7 @@ import { setSession } from "@/api/token";
 import { queryKeys } from "@/api/queries";
 import { PlaybackPage } from "./playback";
 
-let routeSearch: { releaseId?: string } = {};
+let routeSearch: { releaseId?: string; workId?: string } = {};
 vi.mock("@tanstack/react-router", () => ({ useSearch: () => routeSearch }));
 
 const resolveResponse = {
@@ -74,11 +74,14 @@ describe("PlaybackPage — architectural canary", () => {
   });
 
   it("reuses Search's resolved session without posting a second resolve", async () => {
-    routeSearch = { releaseId: "rel-direct" };
+    routeSearch = { releaseId: "rel-direct", workId: "tmdb-tv-1-s01e02" };
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
-    queryClient.setQueryData(queryKeys.resolvedRelease("rel-direct"), resolveResponse);
+    queryClient.setQueryData(
+      queryKeys.resolvedRelease("rel-direct", "tmdb-tv-1-s01e02"),
+      resolveResponse,
+    );
 
     const { container } = renderWithProviders(<PlaybackPage />, { queryClient });
 

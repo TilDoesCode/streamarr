@@ -68,6 +68,83 @@ public sealed record WorkDto
     public IReadOnlyList<ReleaseDto> Releases { get; init; } = [];
 }
 
+public sealed record TvSeriesSearchResponse
+{
+    public IReadOnlyList<TvSeriesDto> Results { get; init; } = [];
+}
+
+public sealed record TvSeriesDto
+{
+    public string WorkId { get; init; } = string.Empty;
+    public string MediaType { get; init; } = "series";
+    public string Title { get; init; } = string.Empty;
+    public int? Year { get; init; }
+    public int TmdbId { get; init; }
+    public string? ImdbId { get; init; }
+    public string? Overview { get; init; }
+    public string? PosterUrl { get; init; }
+    public string? BackdropUrl { get; init; }
+    public int? RuntimeMinutes { get; init; }
+    public int? SeasonCount { get; init; }
+    public int? EpisodeCount { get; init; }
+}
+
+public sealed record TvSeriesDetailsResponse
+{
+    public TvSeriesDto Series { get; init; } = new();
+    public IReadOnlyList<TvSeasonDto> Seasons { get; init; } = [];
+}
+
+public sealed record TvSeasonDto
+{
+    public string WorkId { get; init; } = string.Empty;
+    public string MediaType { get; init; } = "season";
+    public int TmdbId { get; init; }
+    public int SeasonNumber { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string? Overview { get; init; }
+    public string? AirDate { get; init; }
+    public string? PosterUrl { get; init; }
+    public int EpisodeCount { get; init; }
+}
+
+public sealed record TvSeasonDetailsResponse
+{
+    public TvSeriesDto Series { get; init; } = new();
+    public TvSeasonDto Season { get; init; } = new();
+    public IReadOnlyList<TvEpisodeDto> Episodes { get; init; } = [];
+}
+
+public sealed record TvEpisodeDto
+{
+    public string WorkId { get; init; } = string.Empty;
+    public string MediaType { get; init; } = "episode";
+    public int TmdbId { get; init; }
+    public string SeriesTitle { get; init; } = string.Empty;
+    public int SeasonNumber { get; init; }
+    public int EpisodeNumber { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string? Overview { get; init; }
+    public string? AirDate { get; init; }
+    public int? RuntimeMinutes { get; init; }
+    public string? StillUrl { get; init; }
+    public IReadOnlyList<ReleaseDto> Releases { get; init; } = [];
+
+    public WorkDto ToWork() => new()
+    {
+        WorkId = WorkId,
+        MediaType = "episode",
+        Title = SeriesTitle,
+        TmdbId = TmdbId,
+        Overview = Overview,
+        PosterUrl = StillUrl,
+        RuntimeMinutes = RuntimeMinutes,
+        Season = SeasonNumber,
+        Episode = EpisodeNumber,
+        Releases = Releases,
+    };
+}
+
 public sealed record ReleaseDto
 {
     public string ReleaseId { get; init; } = string.Empty;
@@ -101,6 +178,7 @@ public sealed record QualityDto
 public sealed record ResolveRequest
 {
     public required string ReleaseId { get; init; }
+    public string? WorkId { get; init; }
     public string? Client { get; init; }
 }
 

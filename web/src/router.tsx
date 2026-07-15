@@ -88,12 +88,13 @@ const searchRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/search"), "SearchPage"),
 });
 
-// The debug playground hands a resolved release to the preview via ?releaseId=…
+// Search hands a release and, when known, its owning work to the playback preview.
 const playbackRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/playback",
-  validateSearch: (search: Record<string, unknown>): { releaseId?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { releaseId?: string; workId?: string } => ({
     releaseId: typeof search.releaseId === "string" ? search.releaseId : undefined,
+    workId: typeof search.workId === "string" ? search.workId : undefined,
   }),
   component: lazyRouteComponent(() => import("@/pages/playback"), "PlaybackPage"),
 });

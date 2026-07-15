@@ -1,14 +1,19 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Film,
+  ImageOff,
+  Layers3,
+  ListVideo,
   Loader2,
   PlayCircle,
   Plus,
   Search as SearchIcon,
   ArrowDownUp,
+  Tv,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,13 +21,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HealthBadge, ResolveOutcome } from "@/components/resolve-outcome";
-import { useAllowIndexerDownloadHost, useDebugSearch, useResolve } from "@/api/queries";
+import {
+  useAllowIndexerDownloadHost,
+  useDebugSearch,
+  useGeneralConfig,
+  useResolve,
+  useSemanticSearch,
+  useTvSeasonDetails,
+  useTvSeriesDetails,
+  useTvSeriesSearch,
+} from "@/api/queries";
 import type {
   DebugReleaseDto,
   DebugWorkDto,
   ParsedFieldsDto,
+  ReleaseDto,
   ScoreLineDto,
+  TvEpisodeDto,
+  TvSeasonDto,
+  TvSeriesDto,
+  WorkDto,
 } from "@/api/types";
 import { ApiError, errorMessage } from "@/api/client";
 import { cn, formatBytes } from "@/lib/utils";
@@ -43,6 +63,696 @@ const SORTS: { key: SortKey; label: string }[] = [
 ];
 
 export function SearchPage() {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">Search</h2>
+        <p className="text-sm text-muted-foreground">
+          Discover available works by TMDB identity, or inspect the release pipeline in detail.
+        </p>
+      </div>
+
+      <Tabs defaultValue="discovery">
+        <TabsList
+          aria-label="Search mode"
+          className="grid h-auto w-full grid-cols-2 sm:inline-flex sm:h-9 sm:w-auto"
+        >
+          <TabsTrigger
+            value="discovery"
+            className="min-w-0 whitespace-normal px-2 leading-tight sm:px-3 sm:whitespace-nowrap"
+          >
+            Semantic discovery
+          </TabsTrigger>
+          <TabsTrigger
+            value="diagnostics"
+            className="min-w-0 whitespace-normal px-2 leading-tight sm:px-3 sm:whitespace-nowrap"
+          >
+            Release diagnostics
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="discovery" forceMount className="data-[state=inactive]:hidden">
+          <SemanticDiscovery />
+        </TabsContent>
+        <TabsContent value="diagnostics" forceMount className="data-[state=inactive]:hidden">
+          <DebugSearchPanel />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function SemanticDiscovery() {
+  const movieSearch = useSemanticSearch();
+  const seriesSearch = useTvSeriesSearch();
+  const config = useGeneralConfig();
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState<"any" | "movie" | "tv">("any");
+
+  async function run(e: React.FormEvent) {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q) {
+      toast.error("Enter a title, alias, or phrase to search.");
+      return;
+    }
+    try {
+      const requests: Promise<unknown>[] = [];
+      if (type !== "tv") {
+        // Explicitly constrain this branch so the legacy flat episode works never leak into
+        // user-facing discovery. TV has its own series hierarchy below.
+        requests.push(movieSearch.mutateAsync({ q, type: "movie" }));
+      } else {
+        movieSearch.reset();
+      }
+      if (type !== "movie") {
+        requests.push(seriesSearch.mutateAsync({ q, limit: 3 }));
+      } else {
+        seriesSearch.reset();
+      }
+      await Promise.all(requests);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  }
+
+  const movies = (movieSearch.data?.results ?? []).filter((work) => work.mediaType === "movie");
+  const series = seriesSearch.data?.results ?? [];
+  const pending = movieSearch.isPending || seriesSearch.isPending;
+  const searched = movieSearch.isSuccess || seriesSearch.isSuccess;
+  const searchError = movieSearch.error ?? seriesSearch.error;
+  const tmdbMissing = config.isSuccess && !config.data.hasTmdbApiKey;
+
+  return (
+    <div className="space-y-5">
+      {tmdbMissing && (
+        <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <div className="space-y-1">
+            <p className="font-medium">TMDB metadata is not configured</p>
+            <p className="text-muted-foreground">
+              Semantic discovery deliberately hides unidentified indexer titles. Add a TMDB API
+              key in <Link to="/settings" className="font-medium text-foreground underline underline-offset-4">Settings</Link>{" "}
+              to enable canonical titles, covers, and media sections.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          <div className="border-b bg-muted/30 px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Availability-aware catalog
+            </p>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Movies remain availability-filtered. TV search returns at most three canonical
+              series; seasons and their episode availability load only when you open them.
+            </p>
+          </div>
+          <form onSubmit={run} className="flex flex-col gap-3 p-5 sm:flex-row">
+            <div className="relative flex-1">
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="Semantic query"
+                placeholder="Try an alias, e.g. Dune 2"
+                maxLength={256}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="pl-9"
+                autoComplete="off"
+              />
+            </div>
+            <select
+              aria-label="Semantic media type"
+              value={type}
+              onChange={(event) => setType(event.target.value as typeof type)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="any">Movies &amp; TV</option>
+              <option value="movie">Movies</option>
+              <option value="tv">TV</option>
+            </select>
+            <Button type="submit" disabled={pending} className="sm:min-w-28">
+              {pending ? <Loader2 className="size-4 animate-spin" /> : <SearchIcon className="size-4" />}
+              Discover
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {searchError && (
+        <Card>
+          <CardContent className="flex items-center gap-2 pt-6 text-sm text-destructive">
+            <AlertTriangle className="size-4" />
+            {errorMessage(searchError)}
+          </CardContent>
+        </Card>
+      )}
+
+      {searched && !pending && !searchError && movies.length === 0 && series.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+            <ImageOff className="size-7 text-muted-foreground" />
+            <p className="font-medium">No semantic matches</p>
+            <p className="max-w-lg text-sm text-muted-foreground">
+              No movie with an accepted release or TV series candidate matched. Check metadata
+              configuration, try another title, or inspect Release diagnostics for raw hits.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {pending && (
+        <Card>
+          <CardContent className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground">
+            <Loader2 className="size-5 animate-spin" /> Finding canonical works…
+          </CardContent>
+        </Card>
+      )}
+
+      {movies.length > 0 && (
+        <DiscoverySection title="Movies" icon={Film} works={movies} />
+      )}
+      {series.length > 0 && (
+        <TvSeriesSection series={series} />
+      )}
+    </div>
+  );
+}
+
+function DiscoverySection({
+  title,
+  icon: Icon,
+  works,
+}: {
+  title: string;
+  icon: typeof Film;
+  works: WorkDto[];
+}) {
+  const headingId = `semantic-${title.toLowerCase()}`;
+  return (
+    <section aria-labelledby={headingId} className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Icon className="size-4 text-muted-foreground" />
+        <h3 id={headingId} className="font-semibold">{title}</h3>
+        <Badge variant="secondary">{works.length}</Badge>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {works.map((work) => (
+          <MovieDiscoveryCard key={work.workId ?? `${work.mediaType}-${work.tmdbId}`} work={work} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MovieDiscoveryCard({ work }: { work: WorkDto }) {
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
+  const releases = work.releases ?? [];
+  const top = releases[0];
+  const title = work.title ?? "Untitled";
+
+  return (
+    <Card
+      className={cn(
+        "group overflow-hidden border-border/80 transition-[border-color,box-shadow] duration-200",
+        "hover:border-foreground/25 hover:shadow-md",
+        open && "md:col-span-2 xl:col-span-3 border-foreground/20 shadow-md",
+      )}
+    >
+      <div className="relative">
+        <div className="grid min-h-56 grid-cols-[8rem_1fr]">
+          <div className="relative overflow-hidden bg-muted">
+            {work.posterUrl ? (
+              <img
+                src={work.posterUrl}
+                alt={`${title} poster`}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="h-full min-h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
+              />
+            ) : (
+              <div className="flex h-full min-h-56 items-center justify-center text-muted-foreground">
+                <ImageOff className="size-7" />
+              </div>
+            )}
+            <Badge className="absolute bottom-2 left-2 bg-background/90 text-foreground shadow-sm">
+              {releases.length} {releases.length === 1 ? "release" : "releases"}
+            </Badge>
+          </div>
+          <div className="flex min-w-0 flex-col p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="font-semibold leading-tight">{title}</h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {[work.year, work.runtimeMinutes ? `${work.runtimeMinutes} min` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
+                TMDB {work.tmdbId}
+              </Badge>
+            </div>
+
+            {work.overview && (
+              <p className="mt-3 overflow-hidden text-xs leading-5 text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
+                {work.overview}
+              </p>
+            )}
+
+            <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+              {top && (
+                <div className="flex flex-wrap gap-1.5">
+                  {qualityParts(top).map((part) => (
+                    <Badge key={part} variant="secondary" className="font-mono text-[10px]">{part}</Badge>
+                  ))}
+                </div>
+              )}
+              <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors group-hover:text-foreground">
+                {open ? "Hide details" : "View details"}
+                {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+              </span>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-label={`${title}, ${releases.length} ${releases.length === 1 ? "release" : "releases"}, ${open ? "collapse" : "expand"} details`}
+          aria-expanded={open}
+          aria-controls={detailsId}
+          onClick={() => setOpen((value) => !value)}
+          className="absolute inset-0 z-10 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        />
+      </div>
+
+      {open && (
+        <div id={detailsId} className="border-t bg-muted/15 px-4 py-5 sm:px-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(14rem,0.7fr)_minmax(0,2fr)]">
+            <div className="space-y-4">
+              <div>
+                <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  About this work
+                </h5>
+                <p className="mt-2 text-sm leading-6 text-foreground/85">
+                  {work.overview || "No synopsis is available from TMDB."}
+                </p>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                <DiscoveryFact label="Media" value="Movie" />
+                <DiscoveryFact label="Year" value={work.year?.toString()} />
+                <DiscoveryFact label="Runtime" value={work.runtimeMinutes ? `${work.runtimeMinutes} min` : undefined} />
+                <DiscoveryFact label="TMDB" value={work.tmdbId?.toString()} mono />
+                <DiscoveryFact label="IMDb" value={work.imdbId ?? undefined} mono />
+              </dl>
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Available releases
+                  </h5>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Ranked best first. Choose a release to resolve and play in the preview player.
+                  </p>
+                </div>
+                <Badge variant="secondary">{releases.length} available</Badge>
+              </div>
+              <div className="mt-3 space-y-2">
+                {releases.map((release, index) => (
+                  <DiscoveryRelease
+                    key={release.releaseId ?? `${release.title}-${index}`}
+                    release={release}
+                    rank={index + 1}
+                    workId={work.workId ?? undefined}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TvSeriesSection({ series }: { series: TvSeriesDto[] }) {
+  return (
+    <section aria-labelledby="semantic-tv-series" className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Tv className="size-4 text-muted-foreground" />
+        <h3 id="semantic-tv-series" className="font-semibold">TV series</h3>
+        <Badge variant="secondary">{series.length}</Badge>
+        <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">
+          Top TMDB matches · availability loads by season
+        </span>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {series.map((item) => (
+          <TvSeriesCard key={item.workId ?? `series-${item.tmdbId}`} series={item} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TvSeriesCard({ series }: { series: TvSeriesDto }) {
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
+  const tmdbId = series.tmdbId ?? 0;
+  const details = useTvSeriesDetails(tmdbId, open);
+  const seriesDetails = details.data;
+  const resolved = details.data?.series ?? series;
+  const seasons = details.data?.seasons ?? [];
+  const title = resolved.title ?? "Untitled series";
+
+  return (
+    <Card
+      className={cn(
+        "group overflow-hidden border-border/80 transition-[border-color,box-shadow] duration-200",
+        "hover:border-foreground/25 hover:shadow-md",
+        open && "md:col-span-2 xl:col-span-3 border-foreground/20 shadow-md",
+      )}
+    >
+      <div className="relative">
+        <div className="grid min-h-56 grid-cols-[8rem_1fr]">
+          <div className="relative overflow-hidden bg-muted">
+            {resolved.posterUrl ? (
+              <img
+                src={resolved.posterUrl}
+                alt={`${title} poster`}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="h-full min-h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
+              />
+            ) : (
+              <div className="flex h-full min-h-56 items-center justify-center text-muted-foreground">
+                <ImageOff className="size-7" />
+              </div>
+            )}
+            <Badge className="absolute bottom-2 left-2 bg-background/90 text-foreground shadow-sm">
+              Series
+            </Badge>
+          </div>
+          <div className="flex min-w-0 flex-col p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="font-semibold leading-tight">{title}</h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {[resolved.year, resolved.runtimeMinutes ? `${resolved.runtimeMinutes} min episodes` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
+                TMDB {resolved.tmdbId}
+              </Badge>
+            </div>
+
+            {resolved.overview && (
+              <p className="mt-3 overflow-hidden text-xs leading-5 text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
+                {resolved.overview}
+              </p>
+            )}
+
+            <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+              <div className="flex flex-wrap gap-1.5">
+                {resolved.seasonCount != null && (
+                  <Badge variant="secondary">{resolved.seasonCount} seasons</Badge>
+                )}
+                {resolved.episodeCount != null && (
+                  <Badge variant="secondary">{resolved.episodeCount} episodes</Badge>
+                )}
+              </div>
+              <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors group-hover:text-foreground">
+                {open ? "Hide seasons" : "Browse seasons"}
+                {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+              </span>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-label={`${title}, ${open ? "collapse" : "browse"} seasons`}
+          aria-expanded={open}
+          aria-controls={detailsId}
+          onClick={() => setOpen((value) => !value)}
+          className="absolute inset-0 z-10 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        />
+      </div>
+
+      {open && (
+        <div id={detailsId} className="border-t bg-muted/15 px-4 py-5 sm:px-5">
+          {details.isPending && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Loading the TMDB season directory…
+            </p>
+          )}
+          {details.isError && (
+            <p className="flex items-center gap-2 text-sm text-destructive">
+              <AlertTriangle className="size-4" /> {errorMessage(details.error)}
+            </p>
+          )}
+          {seriesDetails && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h5 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    <Layers3 className="size-4" /> Seasons
+                  </h5>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Opening a season runs one cached indexer search and maps all results to its episodes.
+                  </p>
+                </div>
+                <Badge variant="secondary">{seasons.length} directories</Badge>
+              </div>
+              <div className="space-y-2">
+                {seasons.map((season) => (
+                  <TvSeasonRow key={season.workId ?? season.seasonNumber} series={resolved} season={season} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TvSeasonRow({ series, season }: { series: TvSeriesDto; season: TvSeasonDto }) {
+  const [open, setOpen] = useState(false);
+  const tmdbId = series.tmdbId ?? 0;
+  const seasonNumber = season.seasonNumber ?? 0;
+  const details = useTvSeasonDetails(tmdbId, seasonNumber, open);
+  const seasonDetails = details.data;
+  const episodes = seasonDetails?.episodes ?? [];
+  const available = episodes.filter((episode) => (episode.releases?.length ?? 0) > 0).length;
+  const label = seasonNumber === 0 ? "Specials" : (season.title ?? `Season ${seasonNumber}`);
+
+  return (
+    <article className="overflow-hidden rounded-md border bg-background/80 shadow-sm">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`${label}, ${season.episodeCount ?? 0} episodes, ${open ? "collapse" : "load availability"}`}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-muted font-mono text-xs font-semibold">
+          {seasonNumber === 0 ? "SP" : `S${String(seasonNumber).padStart(2, "0")}`}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium">{label}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {season.episodeCount ?? 0} episodes{season.airDate ? ` · ${season.airDate}` : ""}
+          </span>
+        </span>
+        {seasonDetails && <Badge variant="secondary">{available} available</Badge>}
+        {details.isPending ? (
+          <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+        ) : open ? (
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+
+      {open && (
+        <div className="border-t bg-muted/10 p-3">
+          {details.isPending && (
+            <p className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Searching this season across configured indexers…
+            </p>
+          )}
+          {details.isError && (
+            <p className="flex items-center gap-2 py-3 text-sm text-destructive">
+              <AlertTriangle className="size-4" /> {errorMessage(details.error)}
+            </p>
+          )}
+          {seasonDetails && (
+            <div className="space-y-3">
+              {(seasonDetails.indexers ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5" aria-label={`${label} indexer diagnostics`}>
+                  {(seasonDetails.indexers ?? []).map((indexer) => (
+                    <Badge
+                      key={indexer.indexerId}
+                      variant={indexer.status === "succeeded" ? "success" : "destructive"}
+                      title={indexer.error ?? undefined}
+                    >
+                      {indexer.indexerName}: {indexer.itemCount ?? 0} · {Math.round(indexer.elapsedMs ?? 0)}ms
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="space-y-2">
+                {episodes.map((episode) => (
+                  <TvEpisodeRow key={episode.workId ?? episode.episodeNumber} episode={episode} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function TvEpisodeRow({ episode }: { episode: TvEpisodeDto }) {
+  const [open, setOpen] = useState(false);
+  const releases = episode.releases ?? [];
+  const coordinate = `S${String(episode.seasonNumber ?? 0).padStart(2, "0")}E${String(episode.episodeNumber ?? 0).padStart(2, "0")}`;
+  const canOpen = releases.length > 0;
+
+  return (
+    <article className="overflow-hidden rounded-md border bg-background">
+      <button
+        type="button"
+        disabled={!canOpen}
+        aria-expanded={canOpen ? open : undefined}
+        aria-label={`${coordinate} ${episode.title ?? "Episode"}, ${releases.length} releases${canOpen ? `, ${open ? "collapse" : "expand"}` : ""}`}
+        onClick={() => canOpen && setOpen((value) => !value)}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left enabled:transition-colors enabled:hover:bg-muted/35 disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <ListVideo className="size-4 shrink-0 text-muted-foreground" />
+        <span className="w-14 shrink-0 font-mono text-xs font-semibold">{coordinate}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{episode.title || `Episode ${episode.episodeNumber}`}</span>
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {[episode.airDate, episode.runtimeMinutes ? `${episode.runtimeMinutes} min` : null]
+              .filter(Boolean)
+              .join(" · ") || "Metadata pending"}
+          </span>
+        </span>
+        <Badge variant={releases.length > 0 ? "success" : "muted"}>
+          {releases.length > 0 ? `${releases.length} available` : "not found"}
+        </Badge>
+        {canOpen && (open
+          ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />)}
+      </button>
+
+      {open && (
+        <div className="space-y-2 border-t bg-muted/10 p-3">
+          {releases.map((release, index) => (
+            <DiscoveryRelease
+              key={release.releaseId ?? `${release.title}-${index}`}
+              release={release}
+              rank={index + 1}
+              workId={episode.workId ?? undefined}
+            />
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function DiscoveryFact({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value?: string;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={cn("mt-0.5 font-medium", mono && "font-mono")}>{value || "—"}</dd>
+    </div>
+  );
+}
+
+function DiscoveryRelease({
+  release,
+  rank,
+  workId,
+}: {
+  release: ReleaseDto;
+  rank: number;
+  workId?: string;
+}) {
+  const facts = [
+    release.indexer,
+    formatBytes(release.sizeBytes),
+    release.ageDays != null ? `${release.ageDays}d old` : null,
+    release.grabs != null ? `${release.grabs} grabs` : null,
+    `score ${release.score ?? 0}`,
+  ].filter(Boolean);
+
+  return (
+    <article className="rounded-md border bg-background/80 p-3 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 gap-3">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-muted font-mono text-[10px] font-semibold text-muted-foreground">
+            {rank}
+          </span>
+          <div className="min-w-0">
+            <p className="break-words font-mono text-xs leading-5" title={release.title ?? ""}>
+              {release.title || "Untitled release"}
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{facts.join(" · ")}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {qualityParts(release).map((part) => (
+                <Badge key={part} variant="outline" className="font-mono text-[10px]">{part}</Badge>
+              ))}
+              {(release.languages ?? []).map((language) => (
+                <Badge key={language} variant="muted" className="font-mono text-[10px]">{language}</Badge>
+              ))}
+              <HealthBadge status={release.health} />
+            </div>
+          </div>
+        </div>
+        {release.releaseId ? (
+          <Button asChild size="sm" className="shrink-0">
+            <Link to="/playback" search={{ releaseId: release.releaseId, workId }}>
+              <PlayCircle className="size-4" />
+              Play preview
+            </Link>
+          </Button>
+        ) : (
+          <Button size="sm" disabled className="shrink-0">
+            Release unavailable
+          </Button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function qualityParts(release: ReleaseDto): string[] {
+  return [
+    release.quality?.resolution,
+    release.quality?.source,
+    release.quality?.codec,
+    release.quality?.hdr,
+  ].filter((part): part is string => Boolean(part));
+}
+
+function DebugSearchPanel() {
   const debug = useDebugSearch();
   const [form, setForm] = useState({ q: "", type: "any", season: "", episode: "", imdbId: "", tmdbId: "" });
   const [filter, setFilter] = useState("");
@@ -299,7 +1009,11 @@ function ReleaseRow({ work, release }: { work: DebugWorkDto; release: DebugRelea
   async function doResolve() {
     setOpen(true);
     try {
-      await resolve.mutateAsync({ releaseId: release.releaseId!, client: "web" });
+      await resolve.mutateAsync({
+        releaseId: release.releaseId!,
+        workId: work.workId,
+        client: "web",
+      });
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -406,7 +1120,13 @@ function ReleaseRow({ work, release }: { work: DebugWorkDto; release: DebugRelea
                   <ResolveOutcome resolve={resolve.data} />
                   {resolve.data.streamUrl && (
                     <Button asChild size="sm">
-                      <Link to="/playback" search={{ releaseId: release.releaseId! }}>
+                      <Link
+                        to="/playback"
+                        search={{
+                          releaseId: release.releaseId!,
+                          workId: work.workId ?? undefined,
+                        }}
+                      >
                         <PlayCircle className="size-4" />
                         Play preview
                       </Link>

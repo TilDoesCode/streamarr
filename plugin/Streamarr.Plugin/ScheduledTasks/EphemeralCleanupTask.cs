@@ -15,7 +15,6 @@ namespace Streamarr.Plugin.ScheduledTasks;
 /// </summary>
 public sealed class EphemeralCleanupTask(
     EphemeralLibraryService library,
-    EphemeralReleaseStore store,
     PlaybackSessionTracker tracker,
     StreamarrApiClient api,
     ILogger<EphemeralCleanupTask> logger) : IScheduledTask
@@ -41,29 +40,50 @@ public sealed class EphemeralCleanupTask(
         var ttl = TimeSpan.FromMinutes(ttlMinutes);
         var now = DateTime.UtcNow;
 
-        var items = library.GetEphemeralItems();
-        var overflow = items
-            .OrderBy(item => EphemeralCleanup.ResolveLastAccess(
-                store.Peek(item.Id)?.LastAccessedUtc,
-                item.DateLastSaved,
-                item.DateCreated))
-            .Take(Math.Max(0, items.Count - EphemeralLibraryService.MaxEphemeralItems))
-            .Select(item => item.Id)
-            .ToHashSet();
+        var prunedReleaseEntries = await library.PruneOrphanedReleaseStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var initialCount = library.GetEphemeralItems().Count;
+        var failedSubtrees = new HashSet<Guid>();
         var deleted = 0;
-        for (var i = 0; i < items.Count; i++)
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var item = items[i];
-            var lastAccessed = EphemeralCleanup.ResolveLastAccess(
-                store.Peek(item.Id)?.LastAccessedUtc,
-                item.DateLastSaved,
-                item.DateCreated);
-            if (overflow.Contains(item.Id) || EphemeralCleanup.IsExpired(lastAccessed, now, ttl))
+            var lifecycle = library.GetLifecycleItems();
+            var overflow = Math.Max(0, lifecycle.Count - EphemeralLibraryService.MaxEphemeralItems);
+            var candidate = EphemeralLifecycle
+                .OrderForDeletion(lifecycle)
+                .FirstOrDefault(item => !item.SubtreeIds.Any(failedSubtrees.Contains)
+                                        && (overflow > 0
+                                            || EphemeralCleanup.IsExpired(item.EffectiveLastAccessUtc, now, ttl)));
+            if (candidate is null)
+                break;
+
+            try
             {
+                if (!tracker.TryClaimItemsForDeletion(
+                        candidate.SubtreeIds,
+                        requireNoSessions: false,
+                        out var sessions))
+                {
+                    failedSubtrees.UnionWith(candidate.SubtreeIds);
+                    continue;
+                }
+
                 try
                 {
-                    foreach (var session in tracker.TakeForItem(item.Id))
+                    var deletedIds = await library.TryDeleteLifecycleTreeAsync(
+                            candidate.Item.Id,
+                            candidate.SubtreeIds,
+                            now - ttl,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (deletedIds.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    deleted += deletedIds.Count;
+                    foreach (var session in sessions)
                     {
                         if (session.SessionToken is not { } token)
                             continue;
@@ -79,32 +99,33 @@ public sealed class EphemeralCleanupTask(
                             // Core also expires sessions by TTL; deletion must not be held hostage
                             // by a temporarily unavailable server.
                             logger.LogWarning(
-                                "Failed to close session for expired item {ItemId} ({FailureType})",
-                                item.Id,
-                                ex.GetType().Name);
+                                "Failed to close session for expired subtree {ItemId} ({FailureType})",
+                                candidate.Item.Id,
+                            ex.GetType().Name);
                         }
                     }
-
-                    library.Delete(item);
-                    store.Remove(item.Id);
-                    deleted++;
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                finally
                 {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to delete expired ephemeral item {ItemId}", item.Id);
+                    tracker.ReleaseDeletionClaim(candidate.SubtreeIds);
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                failedSubtrees.UnionWith(candidate.SubtreeIds);
+                logger.LogWarning(ex, "Failed to delete expired ephemeral subtree {ItemId}", candidate.Item.Id);
+            }
 
-            progress.Report(items.Count == 0 ? 100 : (i + 1) * 100.0 / items.Count);
+            progress.Report(initialCount == 0 ? 100 : Math.Min(100, deleted * 100.0 / initialCount));
         }
 
         logger.LogInformation(
-            "Ephemeral cleanup: deleted {Deleted} of {Total} ephemeral item(s) past a {Ttl} TTL",
-            deleted, items.Count, ttl);
+            "Ephemeral cleanup: deleted {Deleted} of {Total} ephemeral item(s) past a {Ttl} TTL and pruned {Pruned} orphaned release entry(s)",
+            deleted, initialCount, ttl, prunedReleaseEntries);
         progress.Report(100);
     }
 

@@ -20,6 +20,7 @@ public sealed class PlaybackSessionTracker
 
     private readonly ConcurrentDictionary<string, Attribution> _byAlias = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Guid, Attribution> _byTrackingId = new();
+    private readonly HashSet<Guid> _deletionClaims = [];
     private readonly object _gate = new();
 
     public Attribution TrackSession(
@@ -53,6 +54,30 @@ public sealed class PlaybackSessionTracker
         string? sessionToken,
         out Attribution attribution,
         params string?[] additionalAliases)
+        => TryTrackSession(
+            itemId,
+            mediaSourceId,
+            releaseId,
+            workId,
+            sessionToken,
+            canAdmit: null,
+            out attribution,
+            additionalAliases);
+
+    /// <summary>
+    /// Atomically revalidates an item while sharing the same lock as deletion claims and
+    /// session admission. This closes the window where cleanup could delete an item after
+    /// Core resolved it but before the resulting session was tracked.
+    /// </summary>
+    public bool TryTrackSession(
+        Guid itemId,
+        string mediaSourceId,
+        string releaseId,
+        string? workId,
+        string? sessionToken,
+        Func<bool>? canAdmit,
+        out Attribution attribution,
+        params string?[] additionalAliases)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(mediaSourceId);
         ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
@@ -66,7 +91,9 @@ public sealed class PlaybackSessionTracker
             DateTime.UtcNow);
         lock (_gate)
         {
-            if (_byTrackingId.Count >= MaxTrackedSessions)
+            if (_byTrackingId.Count >= MaxTrackedSessions
+                || _deletionClaims.Contains(itemId)
+                || canAdmit is not null && !canAdmit())
                 return false;
 
             _byTrackingId[attribution.TrackingId] = attribution;
@@ -113,6 +140,40 @@ public sealed class PlaybackSessionTracker
     }
 
     public IReadOnlyCollection<Attribution> All() => _byTrackingId.Values.ToArray();
+
+    /// <summary>
+    /// Atomically prevents new session admission for an item subtree. Capacity/retyping can require
+    /// an idle subtree; scheduled cleanup may claim active sessions and close them before deletion.
+    /// </summary>
+    public bool TryClaimItemsForDeletion(
+        IEnumerable<Guid> itemIds,
+        bool requireNoSessions,
+        out IReadOnlyList<Attribution> sessions)
+    {
+        ArgumentNullException.ThrowIfNull(itemIds);
+        var ids = itemIds.ToHashSet();
+        lock (_gate)
+        {
+            var matches = _byTrackingId.Values.Where(attribution => ids.Contains(attribution.ItemId)).ToArray();
+            sessions = matches;
+            if (ids.Count == 0
+                || ids.Any(_deletionClaims.Contains)
+                || (requireNoSessions && matches.Length > 0))
+            {
+                return false;
+            }
+
+            _deletionClaims.UnionWith(ids);
+            return true;
+        }
+    }
+
+    public void ReleaseDeletionClaim(IEnumerable<Guid> itemIds)
+    {
+        ArgumentNullException.ThrowIfNull(itemIds);
+        lock (_gate)
+            _deletionClaims.ExceptWith(itemIds);
+    }
 
     private void Remove(Attribution attribution)
     {

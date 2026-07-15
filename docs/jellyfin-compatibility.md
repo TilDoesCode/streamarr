@@ -55,10 +55,14 @@ Jellyfin server.
 
 The filter binds to these 10.11.x contracts (verified against `Jellyfin.Controller` 10.11.11):
 
-- The `/Items` action returns `MediaBrowser.Model.Querying.QueryResult<BaseItemDto>`, and
-  `/Search/Hints` returns `MediaBrowser.Model.Search.SearchHintResult`. We **dispatch on the
-  response value type**, not on the route string, so a route rename alone does not break us.
+- `/Items`, `/Shows/{seriesId}/Seasons`, and `/Shows/{seriesId}/Episodes` return
+  `MediaBrowser.Model.Querying.QueryResult<BaseItemDto>`; `/Search/Hints` returns
+  `MediaBrowser.Model.Search.SearchHintResult`. Both the concrete route family and response
+  value type are checked because unrelated people/artist endpoints reuse these DTOs.
 - The `searchTerm` query-string key selects search requests.
+- Jellyfin's series page uses `/Shows/{seriesId}/Seasons`; its season page uses
+  `/Shows/{seriesId}/Episodes` with either `seasonId` or `season`. `/Items?parentId=` is
+  supported as the generic lazy-navigation fallback.
 - `MediaBrowser.Controller.Dto.IDtoService.GetBaseItemDto(BaseItem, DtoOptions, User, BaseItem)`
   turns a materialized ephemeral item into a `BaseItemDto`.
 - `SearchHint.Id` (rather than the obsolete `SearchHint.ItemId`).
@@ -109,6 +113,11 @@ completed via the API, verify both rows after every Jellyfin upgrade:
 |---|---|---|
 | Interception **off** (default) | `200` (native) | `200` (native) |
 | Interception **on**, Core Server **unreachable** | `200` (native, fast fall-through) | `200` (native) |
+
+Reachable-host acceptance must additionally search for a TV title, assert that the injected
+item is a `Series`, open `/Shows/{id}/Seasons`, then open one returned season through
+`/Shows/{id}/Episodes`. The latter must return the complete canonical episode directory,
+including episodes without media sources; only available episodes expose playback offers.
 
 The current 10.11.11 real-host smoke verifies both rows plus reachable injection through
 both endpoints, load, connection auth, materialization, restart persistence,

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Streamarr.Core.Tmdb;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
 using Streamarr.Server.Security;
@@ -10,8 +11,13 @@ namespace Streamarr.Server.Config;
 /// the global NNTP connection budget, stored as a single row. Source of truth read at
 /// startup to seed the running options; the TMDB key is encrypted at rest.
 /// </summary>
-public sealed class GeneralConfigService(IDbContextFactory<StreamarrDbContext> dbFactory, ISecretProtector protector)
+public sealed class GeneralConfigService(
+    IDbContextFactory<StreamarrDbContext> dbFactory,
+    ISecretProtector protector,
+    TmdbOptions liveTmdbOptions)
 {
+    private readonly SemaphoreSlim _updateGate = new(1, 1);
+
     public async Task<GeneralConfigEntity> GetAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -20,20 +26,39 @@ public sealed class GeneralConfigService(IDbContextFactory<StreamarrDbContext> d
 
     public async Task<GeneralConfigEntity> UpdateAsync(GeneralConfigWrite write, CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var entity = await LoadAsync(db, ct);
+        await _updateGate.WaitAsync(ct);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct);
+            var entity = await LoadAsync(db, ct);
 
-        if (write.SessionTtlSeconds is { } ttl) entity.SessionTtlSeconds = ttl;
-        if (write.SearchCacheTtlSeconds is { } sc) entity.SearchCacheTtlSeconds = sc;
-        if (write.SegmentCacheSizeMb is { } sz) entity.SegmentCacheSizeMb = sz;
-        if (write.ConnectionBudget is { } budget) entity.ConnectionBudget = budget;
+            if (write.SessionTtlSeconds is { } ttl) entity.SessionTtlSeconds = ttl;
+            if (write.SearchCacheTtlSeconds is { } sc) entity.SearchCacheTtlSeconds = sc;
+            if (write.SegmentCacheSizeMb is { } sz) entity.SegmentCacheSizeMb = sz;
+            if (write.ConnectionBudget is { } budget) entity.ConnectionBudget = budget;
 
-        // Omit-to-keep for the secret TMDB key.
-        if (!SecretMasking.IsOmitted(write.TmdbApiKey))
-            entity.TmdbApiKeyEncrypted = protector.Protect(write.TmdbApiKey);
+            // Omit-to-keep for the secret TMDB key.
+            string? replacementCredential = null;
+            if (!SecretMasking.IsOmitted(write.TmdbApiKey))
+            {
+                replacementCredential = TmdbOptions.NormalizeCredential(write.TmdbApiKey);
+                entity.TmdbApiKeyEncrypted = protector.Protect(replacementCredential);
+            }
 
-        await db.SaveChangesAsync(ct);
-        return entity;
+            await db.SaveChangesAsync(ct);
+
+            // The TMDB client shares this options instance. Keep the durable commit and
+            // live assignment in the same serialized operation so concurrent PUTs cannot
+            // commit credential B and then overwrite the process with credential A.
+            if (replacementCredential is not null)
+                liveTmdbOptions.ApiKey = replacementCredential;
+
+            return entity;
+        }
+        finally
+        {
+            _updateGate.Release();
+        }
     }
 
     private static async Task<GeneralConfigEntity> LoadAsync(StreamarrDbContext db, CancellationToken ct)

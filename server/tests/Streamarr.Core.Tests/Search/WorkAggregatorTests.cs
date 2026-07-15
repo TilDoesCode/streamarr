@@ -149,6 +149,149 @@ public class WorkAggregatorTests
     }
 
     [Fact]
+    public async Task MultiEpisodeRelease_IsAttachedToEveryEpisodeWork()
+    {
+        var target = FakeTmdbClient.Tv(456, "Example Show", 2019, runtime: 42);
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Tv,
+            TmdbId = target.TmdbId,
+            CanonicalTitle = target.Title,
+            ResolvedTarget = target,
+            ResolvedTargetIsAuthoritative = true,
+        };
+
+        var result = await Run(Aggregator(new FakeTmdbClient()), context,
+            Raw("Example.Show.S01E01E02.1080p.WEB-DL.x265-GROUP", 3_000_000_000, "multi"));
+
+        Assert.Equal(2, result.Works.Count);
+        Assert.Equal([1, 2], result.Works.Select(work => work.Episode).Order());
+        Assert.All(result.Works, work =>
+        {
+            Assert.Equal(456, work.TmdbId);
+            Assert.Equal("multi", Assert.Single(work.Releases).ReleaseId);
+        });
+        Assert.Equal(2, result.Releases.Count);
+    }
+
+    [Theory]
+    [InlineData(2734, "Law & Order: Special Victims Unit", 1999, "Law.and.Order.SVU.S01E01.1080p.WEB-DL.x265-GROUP")]
+    [InlineData(37680, "Suits", 2011, "Suits.2018.S01E01.1080p.WEB-DL.x265-GROUP")]
+    public async Task AuthoritativeTvTarget_AcceptsCommonReleaseTitleAlias(
+        int tmdbId,
+        string canonicalTitle,
+        int canonicalYear,
+        string releaseTitle)
+    {
+        var target = FakeTmdbClient.Tv(tmdbId, canonicalTitle, canonicalYear, runtime: 43);
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Tv,
+            TmdbId = target.TmdbId,
+            Season = 1,
+            CanonicalTitle = target.Title,
+            CanonicalYear = target.Year,
+            ResolvedTarget = target,
+            ResolvedTargetIsAuthoritative = true,
+        };
+        var tmdb = new FakeTmdbClient();
+
+        var result = await Run(Aggregator(tmdb), context,
+            Raw(releaseTitle, 2_000_000_000, "alias"));
+
+        var work = Assert.Single(result.Works);
+        Assert.Equal($"tmdb-tv-{tmdbId}-s01e01", work.WorkId);
+        Assert.Equal(target.Title, work.Title);
+        Assert.Equal("alias", Assert.Single(work.Releases).ReleaseId);
+        Assert.Equal(0, tmdb.SearchTvCalls);
+    }
+
+    [Fact]
+    public async Task AuthoritativeTvTarget_DoesNotRelabelAnUnrelatedIndexerTitle()
+    {
+        var target = FakeTmdbClient.Tv(37680, "Suits", 2011, runtime: 43);
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Tv,
+            TmdbId = target.TmdbId,
+            Season = 1,
+            CanonicalTitle = target.Title,
+            CanonicalYear = target.Year,
+            ResolvedTarget = target,
+            ResolvedTargetIsAuthoritative = true,
+            SemanticCandidates = [target],
+        };
+
+        var result = await Run(Aggregator(new FakeTmdbClient()), context,
+            Raw("Totally.Other.Show.S01E01.1080p.WEB-DL.x265-GROUP", 2_000_000_000, "noise"));
+
+        Assert.DoesNotContain(result.Works, work => work.TmdbId == target.TmdbId);
+    }
+
+    [Fact]
+    public async Task AuthoritativeTvTarget_DoesNotExpandAnOrdinaryShortTitleAsAnAcronym()
+    {
+        var target = FakeTmdbClient.Tv(999, "It", 2025, runtime: 43);
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Tv,
+            TmdbId = target.TmdbId,
+            CanonicalTitle = target.Title,
+            CanonicalYear = target.Year,
+            ResolvedTarget = target,
+            ResolvedTargetIsAuthoritative = true,
+            SemanticCandidates = [target],
+        };
+
+        var result = await Run(Aggregator(new FakeTmdbClient()), context,
+            Raw("Inside.Track.S01E01.1080p.WEB-DL.x265-GROUP", 2_000_000_000, "noise"));
+
+        Assert.DoesNotContain(result.Works, work => work.TmdbId == target.TmdbId);
+    }
+
+    [Fact]
+    public async Task AuthoritativeTvTarget_DoesNotReuseSharedWordsInsideAnAcronymExpansion()
+    {
+        var target = FakeTmdbClient.Tv(1_000, "The Old Man", 2022, runtime: 43);
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Tv,
+            TmdbId = target.TmdbId,
+            CanonicalTitle = target.Title,
+            CanonicalYear = target.Year,
+            ResolvedTarget = target,
+            ResolvedTargetIsAuthoritative = true,
+            SemanticCandidates = [target],
+        };
+
+        var result = await Run(Aggregator(new FakeTmdbClient()), context,
+            Raw("The.Tom.S01E01.1080p.WEB-DL.x265-GROUP", 2_000_000_000, "noise"));
+
+        Assert.DoesNotContain(result.Works, work => work.TmdbId == target.TmdbId);
+    }
+
+    [Fact]
+    public async Task AuthoritativeTvTarget_ExpandsOnlyUppercaseReleaseAcronyms()
+    {
+        var target = FakeTmdbClient.Tv(1_001, "The Yellow Orange Umbrella", 2025, runtime: 43);
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Tv,
+            TmdbId = target.TmdbId,
+            CanonicalTitle = target.Title,
+            CanonicalYear = target.Year,
+            ResolvedTarget = target,
+            ResolvedTargetIsAuthoritative = true,
+            SemanticCandidates = [target],
+        };
+
+        var result = await Run(Aggregator(new FakeTmdbClient()), context,
+            Raw("The.You.S01E01.1080p.WEB-DL.x265-GROUP", 2_000_000_000, "noise"));
+
+        Assert.DoesNotContain(result.Works, work => work.TmdbId == target.TmdbId);
+    }
+
+    [Fact]
     public async Task FallsBackToUnmatchedWorkWhenTmdbMisses()
     {
         var tmdb = new FakeTmdbClient(); // every lookup returns null
@@ -232,6 +375,30 @@ public class WorkAggregatorTests
 
         Assert.DoesNotContain(result.Works, work => work.TmdbId == 693134);
         Assert.Equal(0, tmdb.GetMovieCalls);
+    }
+
+    [Fact]
+    public async Task PublicResolvedTarget_DoesNotTrustAnUnrelatedTitleGroup()
+    {
+        var target = FakeTmdbClient.Movie(693134, "Dune: Part Two", 2024, runtime: 167);
+        var tmdb = new FakeTmdbClient
+        {
+            OnSearchMovie = (_, _) => FakeTmdbClient.Movie(7, "Other Movie", 2024, runtime: 100),
+        };
+        var context = new SearchContext
+        {
+            RequestedType = MediaType.Movie,
+            TmdbId = target.TmdbId,
+            CanonicalTitle = target.Title,
+            CanonicalYear = target.Year,
+            ResolvedTarget = target,
+            SemanticCandidates = [target],
+        };
+
+        var result = await Run(Aggregator(tmdb), context,
+            Raw("Other.Movie.2024.1080p.WEB-DL.x265-GROUP", 4_000_000_000, "other"));
+
+        Assert.DoesNotContain(result.Works, work => work.TmdbId == target.TmdbId);
     }
 
     [Fact]

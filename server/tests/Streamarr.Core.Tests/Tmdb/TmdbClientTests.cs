@@ -67,6 +67,48 @@ public class TmdbClientTests
     }
 
     [Fact]
+    public async Task SearchCandidates_PreservesMediaOrderingAndIncludesDiscoveryArtwork()
+    {
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            Assert.EndsWith("/search/multi", req.RequestUri!.AbsolutePath, StringComparison.Ordinal);
+            return Json("""
+                {"results":[
+                  {"id":99,"media_type":"person","name":"Someone"},
+                  {"id":693134,"media_type":"movie","title":"Dune: Part Two",
+                   "release_date":"2024-02-27","poster_path":"/dune.jpg",
+                   "backdrop_path":"/dune-bg.jpg","overview":"Paul faces a choice."},
+                  {"id":90228,"media_type":"tv","name":"Dune: Prophecy",
+                   "first_air_date":"2024-11-17","poster_path":"/prophecy.jpg"},
+                  {"id":693134,"media_type":"movie","title":"duplicate"}
+                ]}
+                """);
+        });
+
+        var matches = await Client(handler).SearchCandidatesAsync("Dune 2", null, default);
+
+        Assert.Collection(
+            matches,
+            movie =>
+            {
+                Assert.Equal(MediaType.Movie, movie.MediaType);
+                Assert.Equal(693134, movie.TmdbId);
+                Assert.Equal("Dune: Part Two", movie.Title);
+                Assert.Equal(2024, movie.Year);
+                Assert.Equal("https://image.tmdb.org/t/p/w500/dune.jpg", movie.PosterUrl);
+                Assert.Equal("https://image.tmdb.org/t/p/w1280/dune-bg.jpg", movie.BackdropUrl);
+            },
+            show =>
+            {
+                Assert.Equal(MediaType.Tv, show.MediaType);
+                Assert.Equal(90228, show.TmdbId);
+                Assert.Equal("Dune: Prophecy", show.Title);
+                Assert.Equal("https://image.tmdb.org/t/p/w500/prophecy.jpg", show.PosterUrl);
+            });
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
     public async Task SearchMovie_ResolvesIdThenEnrichesFromDetail()
     {
         var handler = new StubHttpMessageHandler(req =>
@@ -126,6 +168,60 @@ public class TmdbClientTests
     }
 
     [Fact]
+    public async Task TvSeriesCatalog_ReadsOrderedSeasonDirectory()
+    {
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            Assert.EndsWith("/tv/37680", req.RequestUri!.AbsolutePath, StringComparison.Ordinal);
+            return Json("""
+                {"id":37680,"name":"Suits","first_air_date":"2011-06-23",
+                 "overview":"A legal drama.","poster_path":"/suits.jpg",
+                 "episode_run_time":[42],"external_ids":{"imdb_id":"tt1632701"},
+                 "seasons":[
+                   {"season_number":2,"name":"Season 2","episode_count":16,"air_date":"2012-06-14","poster_path":"/s2.jpg"},
+                   {"season_number":0,"name":"Specials","episode_count":2,"air_date":null},
+                   {"season_number":1,"name":"Season 1","episode_count":12,"air_date":"2011-06-23","poster_path":"/s1.jpg"}
+                 ]}
+                """);
+        });
+
+        var catalog = await Client(handler).GetTvSeriesCatalogAsync(37680, default);
+
+        Assert.NotNull(catalog);
+        Assert.Equal("Suits", catalog!.Series.Title);
+        Assert.Equal("tt1632701", catalog.Series.ImdbId);
+        Assert.Equal([0, 1, 2], catalog.Seasons.Select(season => season.SeasonNumber));
+        Assert.Equal(12, catalog.Seasons[1].EpisodeCount);
+        Assert.Equal("https://image.tmdb.org/t/p/w500/s1.jpg", catalog.Seasons[1].PosterUrl);
+    }
+
+    [Fact]
+    public async Task TvSeasonCatalog_ReadsCanonicalEpisodesAndStillArtwork()
+    {
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            Assert.EndsWith("/tv/37680/season/1", req.RequestUri!.AbsolutePath, StringComparison.Ordinal);
+            return Json("""
+                {"name":"Season 1","season_number":1,"air_date":"2011-06-23",
+                 "poster_path":"/season.jpg","episodes":[
+                   {"episode_number":2,"name":"Errors and Omissions","air_date":"2011-06-30","runtime":43,"still_path":"/e2.jpg","overview":"Harvey faces a problem."},
+                   {"episode_number":1,"name":"Pilot","air_date":"2011-06-23","runtime":72,"still_path":"/e1.jpg"},
+                   {"episode_number":0,"name":"invalid"}
+                 ]}
+                """);
+        });
+
+        var season = await Client(handler).GetTvSeasonCatalogAsync(37680, 1, default);
+
+        Assert.NotNull(season);
+        Assert.Equal("Season 1", season!.Title);
+        Assert.Equal([1, 2], season.Episodes.Select(episode => episode.EpisodeNumber));
+        Assert.Equal("Pilot", season.Episodes[0].Title);
+        Assert.Equal(72, season.Episodes[0].RuntimeMinutes);
+        Assert.Equal("https://image.tmdb.org/t/p/w1280/e1.jpg", season.Episodes[0].StillUrl);
+    }
+
+    [Fact]
     public async Task FindByImdb_MapsMovieResult()
     {
         var handler = new StubHttpMessageHandler(req =>
@@ -153,6 +249,43 @@ public class TmdbClientTests
     }
 
     [Fact]
+    public async Task Cache_RetriesImmediatelyAfterTransientTmdbFailure()
+    {
+        var attempts = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+            Interlocked.Increment(ref attempts) == 1
+                ? StubHttpMessageHandler.Status(HttpStatusCode.ServiceUnavailable)
+                : Json("""{"results":[{"id":693134,"media_type":"movie","title":"Dune: Part Two"}]}"""));
+        var caching = new CachingTmdbClient(Client(handler), TimeSpan.FromHours(24));
+
+        Assert.Empty(await caching.SearchCandidatesAsync("Dune 2", null, default));
+        var match = Assert.Single(await caching.SearchCandidatesAsync("Dune 2", null, default));
+
+        Assert.Equal(693134, match.TmdbId);
+        Assert.Equal(2, attempts);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task TransientHttpStatus_IsDistinguishedFromAuthoritativeMiss(HttpStatusCode status)
+    {
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Status(status));
+
+        await Assert.ThrowsAsync<TmdbTransientException>(
+            () => Client(handler).SearchMovieAsync("Example", null, default));
+    }
+
+    [Fact]
+    public async Task TransportFailure_IsDistinguishedFromAuthoritativeMiss()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("temporary transport failure"));
+
+        await Assert.ThrowsAsync<TmdbTransientException>(
+            () => Client(handler).SearchMovieAsync("Example", null, default));
+    }
+
+    [Fact]
     public async Task NoApiKey_ShortCircuitsWithoutHttpCall()
     {
         var handler = new StubHttpMessageHandler(_ => throw new InvalidOperationException("should not be called"));
@@ -176,6 +309,69 @@ public class TmdbClientTests
         await Client(handler, apiKey: "secret-key").SearchMovieAsync("X", null, default);
 
         Assert.All(handler.Requests, uri => Assert.Contains("api_key=secret-key", uri.Query));
+    }
+
+    [Fact]
+    public async Task ReadAccessToken_UsesBearerHeaderAndNeverAppearsInUrl()
+    {
+        const string token = "eyJheader.payload.signature";
+        string? scheme = null;
+        string? parameter = null;
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            scheme = req.Headers.Authorization?.Scheme;
+            parameter = req.Headers.Authorization?.Parameter;
+            return Json("""{"results":[]}""");
+        });
+
+        await Client(handler, apiKey: token).SearchCandidatesAsync("Dune 2", null, default);
+
+        Assert.Equal("Bearer", scheme);
+        Assert.Equal(token, parameter);
+        var request = Assert.Single(handler.Requests);
+        Assert.DoesNotContain(token, request.AbsoluteUri, StringComparison.Ordinal);
+        Assert.DoesNotContain("api_key=", request.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CredentialHelpers_NormalizePastedBearerPrefix()
+    {
+        const string token = "eyJheader.payload.signature";
+
+        Assert.Equal(token, TmdbOptions.NormalizeCredential($"  Bearer {token}  "));
+        Assert.True(TmdbOptions.IsBearerCredential(token));
+        Assert.False(TmdbOptions.IsBearerCredential("0123456789abcdef0123456789abcdef"));
+    }
+
+    [Fact]
+    public async Task CredentialAndRevision_ArePublishedAsOneAtomicSnapshot()
+    {
+        var options = new TmdbOptions();
+        const int updates = 10_000;
+
+        var writer = Task.Run(() =>
+        {
+            for (var i = 0; i < updates; i++)
+                options.ApiKey = $"key-{i}";
+        });
+        var reader = Task.Run(() =>
+        {
+            while (!writer.IsCompleted)
+            {
+                var snapshot = options.CredentialSnapshot;
+                if (snapshot.ApiKey.Length == 0)
+                {
+                    Assert.Equal(0, snapshot.Revision);
+                    continue;
+                }
+
+                var index = int.Parse(snapshot.ApiKey.AsSpan("key-".Length));
+                Assert.Equal(index + 1, snapshot.Revision);
+            }
+        });
+
+        await Task.WhenAll(writer, reader);
+        Assert.Equal(("key-9999", 10_000), options.CredentialSnapshot);
     }
 
     [Fact]

@@ -2383,6 +2383,229 @@
           }
         }
       }
+    },
+    "/api/v1/tv/search": {
+      "get": {
+        "tags": [
+          "TvCatalog"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeriesSearchResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeriesSearchResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeriesSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tv/{tmdbId}": {
+      "get": {
+        "tags": [
+          "TvCatalog"
+        ],
+        "parameters": [
+          {
+            "name": "tmdbId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeriesDetailsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeriesDetailsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeriesDetailsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tv/{tmdbId}/seasons/{seasonNumber}": {
+      "get": {
+        "tags": [
+          "TvCatalog"
+        ],
+        "parameters": [
+          {
+            "name": "tmdbId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "seasonNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "profileId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeasonDetailsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeasonDetailsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSeasonDetailsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3906,6 +4129,11 @@
             "type": "string",
             "nullable": true
           },
+          "workId": {
+            "type": "string",
+            "description": "Work that offered the release. Required to disambiguate releases spanning multiple\r\nepisodes; omitted by legacy clients whose release ids have a single owner.",
+            "nullable": true
+          },
           "client": {
             "type": "string",
             "description": "Originating front-end (\"jellyfin\", \"web\", …) for session attribution.",
@@ -4148,6 +4376,259 @@
         },
         "additionalProperties": false
       },
+      "TvEpisodeDto": {
+        "required": [
+          "episodeNumber",
+          "mediaType",
+          "releases",
+          "seasonNumber",
+          "seriesTitle",
+          "title",
+          "tmdbId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mediaType": {
+            "type": "string",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "seriesTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episodeNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "stillUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TvSeasonDetailsResponse": {
+        "required": [
+          "episodes",
+          "indexers",
+          "season",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/TvSeriesDto"
+          },
+          "season": {
+            "$ref": "#/components/schemas/TvSeasonDto"
+          },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TvEpisodeDto"
+            },
+            "nullable": true
+          },
+          "indexers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexerDiagnosticDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A canonical season directory with accepted releases overlaid per episode. Every TMDB\r\nepisode remains present even when no accepted release was found."
+      },
+      "TvSeasonDto": {
+        "required": [
+          "mediaType",
+          "seasonNumber",
+          "title",
+          "tmdbId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mediaType": {
+            "type": "string",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "episodeCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TvSeriesDetailsResponse": {
+        "required": [
+          "seasons",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/TvSeriesDto"
+          },
+          "seasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TvSeasonDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A series plus its lazily discoverable season directory."
+      },
+      "TvSeriesDto": {
+        "required": [
+          "mediaType",
+          "title",
+          "tmdbId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mediaType": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "imdbId": {
+            "type": "string",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "backdropUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "seasonCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "episodeCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A series-level work shown before any season performs an indexer search."
+      },
+      "TvSeriesSearchResponse": {
+        "required": [
+          "results"
+        ],
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TvSeriesDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "TMDB-ranked TV series candidates. The endpoint is intentionally capped at three."
+      },
       "WorkDto": {
         "required": [
           "mediaType",
@@ -4257,7 +4738,7 @@
     },
     {
       "name": "GeneralConfig",
-      "description": "General config GET/PUT (BRIEF §6.2): TMDB key, TTLs, cache sizes, NNTP budget. The\r\nTMDB key is write-only (masked on read, omit-to-keep on write). Scalar changes take\r\neffect on restart. Admin session required (BRIEF §6.4)."
+      "description": "General config GET/PUT (BRIEF §6.2): TMDB key, TTLs, cache sizes, NNTP budget. The\r\nTMDB credential is write-only (masked on read, omit-to-keep on write) and takes effect\r\nimmediately. Other scalar changes take effect on restart. Admin session required."
     },
     {
       "name": "Health",
@@ -4285,7 +4766,7 @@
     },
     {
       "name": "Search",
-      "description": "GET /api/v1/search + POST /api/v1/debug/search (BRIEF §6.2). Both run the identical\r\npipeline via Streamarr.Server.Services.SearchService; the debug endpoint just projects more of\r\nthe result (parsed fields, score breakdown, rejection reasons, indexer diagnostics).\r\nNeither ever exposes an NZB URL or indexer API key."
+      "description": "GET /api/v1/search + POST /api/v1/debug/search (BRIEF §6.2). Both run the identical\r\npipeline via Streamarr.Server.Services.SearchService; the debug endpoint also preserves raw buckets\r\nand projects parsed fields, score breakdown, rejection reasons, and indexer diagnostics.\r\nNeither ever exposes an NZB URL or indexer API key."
     },
     {
       "name": "Sessions",
@@ -4294,6 +4775,10 @@
     {
       "name": "Stream",
       "description": "GET /api/v1/stream/{token} — a capability-authorized, Range-capable HTTP byte\r\nstream (BRIEF §3.3): honors `Range: bytes=…` with 206 + Content-Range +\r\nAccept-Ranges, serves the full body otherwise, and seeks anywhere — including\r\ninside RAR-wrapped files. Player-agnostic by contract; no Jellyfin-specific\r\nbehavior may ever be added here."
+    },
+    {
+      "name": "TvCatalog",
+      "description": "Lazy TV series → season → episode catalog endpoints."
     }
   ]
 }

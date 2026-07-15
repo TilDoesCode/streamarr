@@ -147,12 +147,13 @@ in this order — each has a **Test** button:
 
 1. **Usenet provider** — host, port, SSL, credentials, max connections.
 2. **Indexer(s)** — a Newznab base URL + API key.
-3. **TMDB API key** — under Settings (optional but recommended).
+3. **TMDB credential** — under Settings; use either the short v3 API key or API Read Access
+   Token (required for semantic discovery and Jellyfin injection).
 4. **Quality profile** — start from the default and tune later.
 
-Before involving Jellyfin, use **Search / Debug → Resolve → Preview** and confirm a
-video plays in the browser. That proves the whole pipeline works. Then search in
-Jellyfin — Usenet results appear alongside your normal library and play through
+Before involving Jellyfin, use **Search → Release diagnostics → Resolve → Preview** and
+confirm a video plays in the browser. That proves the whole pipeline works. Then search
+in Jellyfin — Usenet results appear alongside your normal library and play through
 Jellyfin's transcoding.
 
 ---

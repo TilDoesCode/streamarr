@@ -1850,6 +1850,171 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tv/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TvSeriesSearchResponse"];
+                        "application/json": components["schemas"]["TvSeriesSearchResponse"];
+                        "text/json": components["schemas"]["TvSeriesSearchResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tv/{tmdbId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tmdbId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TvSeriesDetailsResponse"];
+                        "application/json": components["schemas"]["TvSeriesDetailsResponse"];
+                        "text/json": components["schemas"]["TvSeriesDetailsResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tv/{tmdbId}/seasons/{seasonNumber}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    profileId?: string;
+                };
+                header?: never;
+                path: {
+                    tmdbId: number;
+                    seasonNumber: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TvSeasonDetailsResponse"];
+                        "application/json": components["schemas"]["TvSeasonDetailsResponse"];
+                        "text/json": components["schemas"]["TvSeasonDetailsResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2333,6 +2498,11 @@ export interface components {
         /** @description Request body of POST /api/v1/resolve (BRIEF §6.2). */
         ResolveRequest: {
             releaseId: string | null;
+            /**
+             * @description Work that offered the release. Required to disambiguate releases spanning multiple
+             *     episodes; omitted by legacy clients whose release ids have a single owner.
+             */
+            workId?: string | null;
             /** @description Originating front-end ("jellyfin", "web", …) for session attribution. */
             client?: string | null;
             /**
@@ -2439,6 +2609,77 @@ export interface components {
             minBytesPerMinute: number;
             /** Format: int64 */
             maxBytesPerMinute: number;
+        };
+        TvEpisodeDto: {
+            workId: string | null;
+            mediaType: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            seriesTitle: string | null;
+            /** Format: int32 */
+            seasonNumber: number;
+            /** Format: int32 */
+            episodeNumber: number;
+            title: string | null;
+            overview?: string | null;
+            airDate?: string | null;
+            /** Format: int32 */
+            runtimeMinutes?: number | null;
+            stillUrl?: string | null;
+            releases: components["schemas"]["ReleaseDto"][] | null;
+        };
+        /**
+         * @description A canonical season directory with accepted releases overlaid per episode. Every TMDB
+         *     episode remains present even when no accepted release was found.
+         */
+        TvSeasonDetailsResponse: {
+            series: components["schemas"]["TvSeriesDto"];
+            season: components["schemas"]["TvSeasonDto"];
+            episodes: components["schemas"]["TvEpisodeDto"][] | null;
+            indexers: components["schemas"]["IndexerDiagnosticDto"][] | null;
+        };
+        TvSeasonDto: {
+            workId: string | null;
+            mediaType: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            /** Format: int32 */
+            seasonNumber: number;
+            title: string | null;
+            overview?: string | null;
+            airDate?: string | null;
+            posterUrl?: string | null;
+            /** Format: int32 */
+            episodeCount?: number;
+        };
+        /** @description A series plus its lazily discoverable season directory. */
+        TvSeriesDetailsResponse: {
+            series: components["schemas"]["TvSeriesDto"];
+            seasons: components["schemas"]["TvSeasonDto"][] | null;
+        };
+        /** @description A series-level work shown before any season performs an indexer search. */
+        TvSeriesDto: {
+            workId: string | null;
+            mediaType: string | null;
+            title: string | null;
+            /** Format: int32 */
+            year?: number | null;
+            /** Format: int32 */
+            tmdbId: number;
+            imdbId?: string | null;
+            overview?: string | null;
+            posterUrl?: string | null;
+            backdropUrl?: string | null;
+            /** Format: int32 */
+            runtimeMinutes?: number | null;
+            /** Format: int32 */
+            seasonCount?: number | null;
+            /** Format: int32 */
+            episodeCount?: number | null;
+        };
+        /** @description TMDB-ranked TV series candidates. The endpoint is intentionally capped at three. */
+        TvSeriesSearchResponse: {
+            results: components["schemas"]["TvSeriesDto"][] | null;
         };
         /** @description One aggregated work with its ranked releases (BRIEF §6.2 / §7.4). */
         WorkDto: {

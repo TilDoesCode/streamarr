@@ -13,8 +13,8 @@ namespace Streamarr.Server.Controllers;
 
 /// <summary>
 /// GET /api/v1/search + POST /api/v1/debug/search (BRIEF §6.2). Both run the identical
-/// pipeline via <see cref="SearchService"/>; the debug endpoint just projects more of
-/// the result (parsed fields, score breakdown, rejection reasons, indexer diagnostics).
+/// pipeline via <see cref="SearchService"/>; the debug endpoint also preserves raw buckets
+/// and projects parsed fields, score breakdown, rejection reasons, and indexer diagnostics.
 /// Neither ever exposes an NZB URL or indexer API key.
 /// </summary>
 [ApiController]
@@ -102,6 +102,7 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
             TmdbId = request.TmdbId,
             ProfileId = request.ProfileId,
             DraftProfile = request.Profile,
+            PreserveDiagnosticBuckets = true,
         };
 
         if (!await searchGate.TryEnterAsync(cancellationToken))
@@ -130,6 +131,11 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
 
     private static WorkDto? ToSearchWorkDto(Work work)
     {
+        // Public discovery is semantic: unidentified parser buckets belong only in the
+        // admin debug response. This prevents raw substring hits from appearing as fake
+        // movies/episodes (and without artwork) when TMDB is unavailable or finds no match.
+        if (work.TmdbId is null)
+            return null;
         var accepted = work.Releases.Where(release => !release.Rejected).ToArray();
         return accepted.Length == 0 ? null : ToWorkDto(work, accepted);
     }

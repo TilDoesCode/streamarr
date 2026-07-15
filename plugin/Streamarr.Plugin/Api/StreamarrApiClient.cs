@@ -87,11 +87,50 @@ public sealed class StreamarrApiClient
         return response is null ? null : StreamarrPayloadBounds.Normalize(response);
     }
 
+    public async Task<TvSeriesSearchResponse?> SearchTvSeriesAsync(string query, CancellationToken ct)
+    {
+        var response = await SendAsync<TvSeriesSearchResponse>(
+                HttpMethod.Get,
+                $"/api/v1/tv/search?q={Uri.EscapeDataString(query)}&limit=3",
+                null,
+                ct)
+            .ConfigureAwait(false);
+        return response is null ? null : StreamarrPayloadBounds.Normalize(response);
+    }
+
+    public async Task<TvSeriesDetailsResponse?> GetTvSeriesAsync(int tmdbId, CancellationToken ct)
+        => StreamarrPayloadBounds.Normalize(await SendAsync<TvSeriesDetailsResponse>(
+                HttpMethod.Get,
+                $"/api/v1/tv/{tmdbId}",
+                null,
+                ct)
+            .ConfigureAwait(false));
+
+    public async Task<TvSeasonDetailsResponse?> GetTvSeasonAsync(
+        int tmdbId,
+        int seasonNumber,
+        CancellationToken ct)
+    {
+        var profile = Config.ProfileId;
+        var path = $"/api/v1/tv/{tmdbId}/seasons/{seasonNumber}";
+        if (!string.IsNullOrWhiteSpace(profile))
+            path += $"?profileId={Uri.EscapeDataString(profile)}";
+        return StreamarrPayloadBounds.Normalize(await SendAsync<TvSeasonDetailsResponse>(
+                HttpMethod.Get,
+                path,
+                null,
+                ct)
+            .ConfigureAwait(false));
+    }
+
     public async Task<ResolveResponse?> ResolveAsync(string releaseId, CancellationToken ct)
+        => await ResolveAsync(releaseId, workId: null, ct).ConfigureAwait(false);
+
+    public async Task<ResolveResponse?> ResolveAsync(string releaseId, string? workId, CancellationToken ct)
         => StreamarrPayloadBounds.Normalize(await SendAsync<ResolveResponse>(
             HttpMethod.Post,
             "/api/v1/resolve",
-            new ResolveRequest { ReleaseId = releaseId, Client = "jellyfin" },
+            new ResolveRequest { ReleaseId = releaseId, WorkId = workId, Client = "jellyfin" },
             ct).ConfigureAwait(false));
 
     public async Task CloseSessionAsync(string token, CancellationToken ct)

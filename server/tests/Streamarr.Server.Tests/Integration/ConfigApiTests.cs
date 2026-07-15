@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Providers;
+using Streamarr.Core.Tmdb;
 using Streamarr.Server.Config;
 using Streamarr.Tests.Shared;
 using Streamarr.Usenet.Nntp.Pooling;
@@ -313,6 +314,8 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
     public async Task General_Get_Put_MasksTmdbKey()
     {
         using var client = Client();
+        var liveTmdb = _factory.Services.GetRequiredService<TmdbOptions>();
+        var revisionBefore = liveTmdb.CredentialRevision;
 
         await client.PutAsJsonAsync("/api/v1/config/general", new
         {
@@ -320,6 +323,9 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
             connectionBudget = 42,
             sessionTtlSeconds = 1800,
         });
+
+        Assert.Equal("tmdb-secret-123", liveTmdb.ApiKey);
+        Assert.True(liveTmdb.CredentialRevision > revisionBefore);
 
         var raw = await client.GetStringAsync("/api/v1/config/general");
         Assert.DoesNotContain("tmdb-secret-123", raw);
@@ -331,10 +337,13 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(1800, body.GetProperty("sessionTtlSeconds").GetInt32());
 
         // omit-to-keep: a PUT without the key leaves it in place.
+        var revisionBeforeOmittedWrite = liveTmdb.CredentialRevision;
         await client.PutAsJsonAsync("/api/v1/config/general", new { connectionBudget = 50 });
         var after = JsonDocument.Parse(await client.GetStringAsync("/api/v1/config/general")).RootElement;
         Assert.True(after.GetProperty("hasTmdbApiKey").GetBoolean());
         Assert.Equal(50, after.GetProperty("connectionBudget").GetInt32());
+        Assert.Equal("tmdb-secret-123", liveTmdb.ApiKey);
+        Assert.Equal(revisionBeforeOmittedWrite, liveTmdb.CredentialRevision);
     }
 
     [Fact]

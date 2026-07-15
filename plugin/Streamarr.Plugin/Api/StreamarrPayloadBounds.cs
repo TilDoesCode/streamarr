@@ -9,6 +9,8 @@ internal static class StreamarrPayloadBounds
     internal const int MaxWorksPerSearch = 20;
     internal const int MaxReleasesPerWork = 20;
     internal const int MaxMediaStreams = 64;
+    internal const int MaxSeasonsPerSeries = 250;
+    internal const int MaxEpisodesPerSeason = 1_000;
 
     internal static SearchResponse Normalize(SearchResponse response) => response with
     {
@@ -52,6 +54,58 @@ internal static class StreamarrPayloadBounds
                 .Select(Normalize)
                 .Where(release => release is not null)
                 .Cast<ReleaseDto>()
+                .ToArray(),
+        };
+    }
+
+    internal static TvSeriesSearchResponse Normalize(TvSeriesSearchResponse response) => response with
+    {
+        Results = (response.Results ?? [])
+            .Take(3)
+            .Select(Normalize)
+            .Where(series => series is not null)
+            .Cast<TvSeriesDto>()
+            .ToArray(),
+    };
+
+    internal static TvSeriesDetailsResponse? Normalize(TvSeriesDetailsResponse? response)
+    {
+        var series = Normalize(response?.Series);
+        if (series is null)
+            return null;
+
+        return response! with
+        {
+            Series = series,
+            Seasons = (response.Seasons ?? [])
+                .Take(MaxSeasonsPerSeries)
+                .Select(Normalize)
+                .Where(season => season is not null && season.TmdbId == series.TmdbId)
+                .Cast<TvSeasonDto>()
+                .OrderBy(season => season.SeasonNumber)
+                .ToArray(),
+        };
+    }
+
+    internal static TvSeasonDetailsResponse? Normalize(TvSeasonDetailsResponse? response)
+    {
+        var series = Normalize(response?.Series);
+        var season = Normalize(response?.Season);
+        if (series is null || season is null || series.TmdbId != season.TmdbId)
+            return null;
+
+        return response! with
+        {
+            Series = series,
+            Season = season,
+            Episodes = (response.Episodes ?? [])
+                .Take(MaxEpisodesPerSeason)
+                .Select(Normalize)
+                .Where(episode => episode is not null
+                                  && episode.TmdbId == series.TmdbId
+                                  && episode.SeasonNumber == season.SeasonNumber)
+                .Cast<TvEpisodeDto>()
+                .OrderBy(episode => episode.EpisodeNumber)
                 .ToArray(),
         };
     }
@@ -177,6 +231,87 @@ internal static class StreamarrPayloadBounds
                 .Cast<string>()
                 .ToArray(),
             Health = BoundedText(release.Health, 32) ?? "unknown",
+        };
+    }
+
+    private static TvSeriesDto? Normalize(TvSeriesDto? series)
+    {
+        if (series is null
+            || series.TmdbId <= 0
+            || !TryIdentifier(series.WorkId, 256, out var workId)
+            || !TryText(series.Title, 512, required: true, out var title))
+        {
+            return null;
+        }
+
+        return series with
+        {
+            WorkId = workId,
+            MediaType = "series",
+            Title = title!,
+            Year = series.Year is >= 1800 and <= 3000 ? series.Year : null,
+            ImdbId = BoundedText(series.ImdbId, 64),
+            Overview = BoundedText(series.Overview, 8 * 1024),
+            PosterUrl = BoundedHttpUrl(series.PosterUrl),
+            BackdropUrl = BoundedHttpUrl(series.BackdropUrl),
+            RuntimeMinutes = series.RuntimeMinutes is > 0 and <= 1440 ? series.RuntimeMinutes : null,
+            SeasonCount = series.SeasonCount is >= 0 and <= MaxSeasonsPerSeries ? series.SeasonCount : null,
+            EpisodeCount = series.EpisodeCount is >= 0 and <= 100_000 ? series.EpisodeCount : null,
+        };
+    }
+
+    private static TvSeasonDto? Normalize(TvSeasonDto? season)
+    {
+        if (season is null
+            || season.TmdbId <= 0
+            || season.SeasonNumber is < 0 or > 100_000
+            || !TryIdentifier(season.WorkId, 256, out var workId)
+            || !TryText(season.Title, 512, required: true, out var title))
+        {
+            return null;
+        }
+
+        return season with
+        {
+            WorkId = workId,
+            MediaType = "season",
+            Title = title!,
+            Overview = BoundedText(season.Overview, 8 * 1024),
+            AirDate = BoundedText(season.AirDate, 32),
+            PosterUrl = BoundedHttpUrl(season.PosterUrl),
+            EpisodeCount = Math.Clamp(season.EpisodeCount, 0, MaxEpisodesPerSeason),
+        };
+    }
+
+    private static TvEpisodeDto? Normalize(TvEpisodeDto? episode)
+    {
+        if (episode is null
+            || episode.TmdbId <= 0
+            || episode.SeasonNumber is < 0 or > 100_000
+            || episode.EpisodeNumber is < 1 or > 100_000
+            || !TryIdentifier(episode.WorkId, 256, out var workId)
+            || !TryText(episode.SeriesTitle, 512, required: true, out var seriesTitle)
+            || !TryText(episode.Title, 512, required: true, out var title))
+        {
+            return null;
+        }
+
+        return episode with
+        {
+            WorkId = workId,
+            MediaType = "episode",
+            SeriesTitle = seriesTitle!,
+            Title = title!,
+            Overview = BoundedText(episode.Overview, 8 * 1024),
+            AirDate = BoundedText(episode.AirDate, 32),
+            RuntimeMinutes = episode.RuntimeMinutes is > 0 and <= 1440 ? episode.RuntimeMinutes : null,
+            StillUrl = BoundedHttpUrl(episode.StillUrl),
+            Releases = (episode.Releases ?? [])
+                .Take(MaxReleasesPerWork)
+                .Select(Normalize)
+                .Where(release => release is not null)
+                .Cast<ReleaseDto>()
+                .ToArray(),
         };
     }
 

@@ -8,8 +8,24 @@ public class CachingTmdbClientTests
     private sealed class CountingTmdbClient : ITmdbClient
     {
         public int AnySearches;
+        public int CandidateSearches;
         public int MovieSearches;
+        public int SeriesCatalogSearches;
+        public int SeasonCatalogSearches;
+        public int TransientMovieFailures;
         public TmdbMatch? Result;
+        public TmdbTvSeriesCatalog? SeriesCatalogResult;
+        public TmdbTvSeasonCatalog? SeasonCatalogResult;
+
+        public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(
+            string query,
+            MediaType? mediaType,
+            CancellationToken cancellationToken)
+        {
+            CandidateSearches++;
+            IReadOnlyList<TmdbMatch> matches = Result is null ? [] : [Result];
+            return Task.FromResult(matches);
+        }
 
         public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
         {
@@ -20,12 +36,33 @@ public class CachingTmdbClientTests
         public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
         {
             MovieSearches++;
+            if (TransientMovieFailures > 0)
+            {
+                TransientMovieFailures--;
+                return Task.FromException<TmdbMatch?>(
+                    new TmdbTransientException("temporary TMDB failure"));
+            }
             return Task.FromResult(Result);
         }
 
         public Task<TmdbMatch?> SearchTvAsync(string title, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(null);
         public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(null);
         public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(null);
+        public Task<TmdbTvSeriesCatalog?> GetTvSeriesCatalogAsync(int tmdbId, CancellationToken cancellationToken)
+        {
+            SeriesCatalogSearches++;
+            return Task.FromResult(SeriesCatalogResult);
+        }
+
+        public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(
+            int tmdbId,
+            int seasonNumber,
+            CancellationToken cancellationToken)
+        {
+            SeasonCatalogSearches++;
+            return Task.FromResult(SeasonCatalogResult);
+        }
+
         public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(null);
     }
 
@@ -104,6 +141,47 @@ public class CachingTmdbClientTests
     }
 
     [Fact]
+    public async Task CachesOrderedDiscoveryCandidates()
+    {
+        var inner = new CountingTmdbClient { Result = Sample };
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(1));
+
+        var first = await caching.SearchCandidatesAsync("Dune 2", null, default);
+        var second = await caching.SearchCandidatesAsync("Dune 2", null, default);
+
+        Assert.Same(first, second);
+        Assert.Same(Sample, Assert.Single(first));
+        Assert.Equal(1, inner.CandidateSearches);
+    }
+
+    [Fact]
+    public async Task CachesSeriesAndSeasonDirectoriesIndependently()
+    {
+        var series = new TmdbTvSeriesCatalog { Series = Sample, Seasons = [] };
+        var season = new TmdbTvSeasonCatalog
+        {
+            TmdbId = 1,
+            SeasonNumber = 2,
+            Title = "Season 2",
+            Episodes = [],
+        };
+        var inner = new CountingTmdbClient
+        {
+            SeriesCatalogResult = series,
+            SeasonCatalogResult = season,
+        };
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(1));
+
+        Assert.Same(series, await caching.GetTvSeriesCatalogAsync(1, default));
+        Assert.Same(series, await caching.GetTvSeriesCatalogAsync(1, default));
+        Assert.Same(season, await caching.GetTvSeasonCatalogAsync(1, 2, default));
+        Assert.Same(season, await caching.GetTvSeasonCatalogAsync(1, 2, default));
+
+        Assert.Equal(1, inner.SeriesCatalogSearches);
+        Assert.Equal(1, inner.SeasonCatalogSearches);
+    }
+
+    [Fact]
     public async Task CachesMissesToo()
     {
         var inner = new CountingTmdbClient { Result = null };
@@ -113,6 +191,39 @@ public class CachingTmdbClientTests
         Assert.Null(await caching.SearchMovieAsync("Nope", null, default));
 
         Assert.Equal(1, inner.MovieSearches);
+    }
+
+    [Fact]
+    public async Task TransientFailure_IsNotCachedAndIdenticalCallRetriesImmediately()
+    {
+        var inner = new CountingTmdbClient
+        {
+            Result = Sample,
+            TransientMovieFailures = 1,
+        };
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(24));
+
+        Assert.Null(await caching.SearchMovieAsync("Example", null, default));
+        Assert.Same(Sample, await caching.SearchMovieAsync("Example", null, default));
+        Assert.Equal(2, inner.MovieSearches);
+    }
+
+    [Fact]
+    public async Task CredentialRevision_BypassesMissCachedByPreviousCredential()
+    {
+        var revision = 0L;
+        var inner = new CountingTmdbClient { Result = null };
+        var caching = new CachingTmdbClient(
+            inner,
+            TimeSpan.FromHours(1),
+            credentialRevision: () => revision);
+
+        Assert.Null(await caching.SearchMovieAsync("Dune 2", null, default));
+        inner.Result = Sample;
+        revision++;
+
+        Assert.Same(Sample, await caching.SearchMovieAsync("Dune 2", null, default));
+        Assert.Equal(2, inner.MovieSearches);
     }
 
     [Fact]

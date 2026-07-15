@@ -57,7 +57,7 @@ describe("GeneralSettings", () => {
     const budget = await screen.findByLabelText(/NNTP connection budget/i);
     expect(budget).toHaveValue(20);
     // Write-only TMDB key: field is blank with the mask as placeholder.
-    const tmdb = screen.getByLabelText(/TMDB API key/i) as HTMLInputElement;
+    const tmdb = screen.getByLabelText(/TMDB credential/i) as HTMLInputElement;
     expect(tmdb.value).toBe("");
     expect(tmdb.placeholder).toBe("••••••••");
   });
@@ -93,7 +93,7 @@ describe("GeneralSettings", () => {
   it("sends the TMDB key only when the operator types one", async () => {
     const user = userEvent.setup();
     renderWithProviders(<GeneralSettings />);
-    const tmdb = await screen.findByLabelText(/TMDB API key/i);
+    const tmdb = await screen.findByLabelText(/TMDB credential/i);
 
     await user.type(tmdb, "new-key");
     await user.click(screen.getByRole("button", { name: /save changes/i }));

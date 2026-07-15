@@ -6,7 +6,7 @@ protected archives, incomplete or DMCA'd uploads. Parsing, rejecting, and rankin
 is the difference between *"feels like streaming"* and *"every third click fails."*
 
 This guide explains the pipeline, every knob on a quality profile, the rejection
-codes, how to read a score breakdown in the Search/Debug playground, and the M7
+codes, how to read a score breakdown under Search → Release diagnostics, and the M7
 health-cache feedback — then walks a concrete tuning example.
 
 Companion: [`api.md`](./api.md) (the `/search`, `/debug/search`, and
@@ -183,7 +183,7 @@ every point**, so you tune against evidence, not vibes.
 In the Management UI's **Quality Profiles** editor, a **live preview** runs a sample
 query through `POST /debug/search` using your **unsaved draft profile** (passed inline
 as the request's `profile`) and shows the re-ranked ordering *before* you save. Edit a
-weight, watch the order change, then save. The **Search / Debug playground** is the
+weight, watch the order change, then save. **Search → Release diagnostics** is the
 same table for an already-saved profile, with a per-release **Resolve** button to see
 the health outcome + pre-probed media info.
 

@@ -92,19 +92,20 @@ export function GeneralSettings() {
       <CardHeader>
         <CardTitle>General</CardTitle>
         <CardDescription>
-          TMDB key, session &amp; cache TTLs, and the global NNTP connection budget (BRIEF §6.3).
-          Scalar changes take effect on restart.
+          TMDB credential, session &amp; cache TTLs, and the global NNTP connection budget
+          (BRIEF §6.3). A new TMDB credential takes effect immediately; other scalar changes
+          apply on restart.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
           <Field
             id="tmdbApiKey"
-            label="TMDB API key"
+            label="TMDB credential"
             hint={
               data?.hasTmdbApiKey
-                ? "A key is configured. Leave blank to keep it, or type a new key to replace it."
-                : "No key configured yet. Metadata matching is limited until one is set."
+                ? "An API key or Read Access Token is configured. Leave blank to keep it, or type a replacement."
+                : "Enter either the short v3 API key or the API Read Access Token (JWT) from TMDB."
             }
             error={errors.tmdbApiKey?.message}
           >
@@ -112,7 +113,7 @@ export function GeneralSettings() {
               id="tmdbApiKey"
               type="password"
               autoComplete="off"
-              placeholder={data?.hasTmdbApiKey ? MASK : "Enter a TMDB API key"}
+              placeholder={data?.hasTmdbApiKey ? MASK : "API key or read access token"}
               aria-invalid={!!errors.tmdbApiKey}
               {...register("tmdbApiKey")}
             />

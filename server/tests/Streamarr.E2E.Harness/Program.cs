@@ -59,6 +59,9 @@ builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
     ["Streamarr:DataProtectionKeysPath"] = Path.Combine(tempDir, "keys"),
     ["Streamarr:ConnectionBudget"] = "12",
     ["Streamarr:SessionTtlSeconds"] = "600",
+    // Marks metadata as configured in the Management UI; the actual external boundary is
+    // replaced by CannedTmdbClient below, so this fixture value is never sent anywhere.
+    ["Streamarr:Tmdb:ApiKey"] = "e2e-fixture-key",
     ["Streamarr:AllowLocalNzbFiles"] = "true",
     ["Streamarr:Search:PerIndexerRateLimitMilliseconds"] = "0",
     // No indexer is seeded on purpose: the Playwright flow *adds one through the UI*

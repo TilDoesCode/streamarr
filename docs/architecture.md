@@ -121,7 +121,7 @@ The modules (BRIEF §6.1):
 | **Indexer client** (the Prowlarr role) | `Core/Indexers` | Fans out to configured Newznab indexers (`t=caps`/`t=search`/`t=movie`/`t=tvsearch`), parses RSS/XML, dedupes, honors per-indexer rate limits, caches ~60 s by normalized query. |
 | **Release parser** | `Core/Parser` | Parses resolution/source/codec/HDR/audio/group/edition/proper-repack/languages, and for TV: S/E, season packs, dailies, absolute numbering (BRIEF §7.1). |
 | **Ranker + rejection** (the "hidden Radarr") | `Core/Ranking`, `Core/Profiles` | `WeightedSumRanker` scores each release; `RejectionRules` drop samples/fakes/password/non-media/incomplete/dead. See [`ranker-tuning.md`](./ranker-tuning.md). |
-| **TMDB matcher** | `Core/Tmdb` | Resolves free-text intent before indexer search (including mixed movie/TV queries), then supplies canonical title plus `tmdbId`/`imdbId`; enriches accepted works with poster, backdrop, overview, and runtime; caches aggressively. No key → lookups no-op to null so raw search still works. |
+| **TMDB matcher** | `Core/Tmdb` | Resolves free-text intent to ordered movie/TV candidates, intersects those identities with parsed release groups, and enriches accepted works with poster, backdrop, overview, and runtime; caches aggressively. No key → public discovery is empty while the raw diagnostic search still works. |
 | **NZB streaming core** (embedded nzbdav) | `Usenet/Nntp`, `Usenet/Nzb`, `Usenet/Rar` | NNTP pool, yEnc, NZB parse, RAR/7z random access, seeking, bounded read-ahead. The SABnzbd API / queue / WebDAV parts of nzbdav are dropped — we expose HTTP+Range directly. |
 | **Health checker** | `Core/Media` (`HealthChecker`) | STAT-samples the *media file's* segments (223 present / 430 missing), classifies `ready`/`degraded`/`dead` per `HealthCheck.*` config. |
 | **Session manager** | `Server/Services` (`SessionManager`) | A resolve opens a session (segment index, TTL); a stream token maps to a session; close tears it down. Sweeps expired sessions. |
@@ -137,16 +137,19 @@ Two paths run over the identical API. The only difference is who the client is.
 
 ### 4.1 Headless path (Management UI, or any future client)
 
-1. **Search.** `GET /api/v1/search?q=…` → the Core fans out to indexers, parses and
-   ranks releases, rejects the bad ones, aggregates to **works** (one movie/episode
-   with N alternative releases), enriches via TMDB. Returns works with ranked
-   releases. `nzbUrl` and indexer keys never cross the wire.
-2. **Resolve.** `POST /api/v1/resolve { releaseId }` → the Core fetches the NZB,
+1. **Search.** Movies use `GET /api/v1/search?q=…`: Core fans out to indexers, parses,
+   ranks, rejects, and aggregates to one work with N releases. TV uses a lazy directory:
+   `/tv/search` returns at most three TMDB series without touching indexers, `/tv/{id}`
+   returns season summaries, and `/tv/{id}/seasons/{season}` performs one season-scoped
+   indexer fan-out and overlays releases onto every canonical TMDB episode. It never
+   makes one indexer request per episode. `nzbUrl` and indexer keys never cross the wire.
+2. **Resolve.** `POST /api/v1/resolve { releaseId, workId }` → the Core fetches the NZB,
    identifies the primary media file (unwrapping RAR), STAT-samples its segments,
    opens a session, and **ffprobes the stream server-side** so the client gets
    pre-probed `mediaStreams` + `runTimeTicks` and never has to probe a slow remote
    source (BRIEF §11). Returns `status` (`ready`/`degraded`/`dead`), a `streamUrl`,
-   and the media info.
+   and the media info. `workId` is optional for backward compatibility but disambiguates
+   one release spanning multiple episode works and scopes fallback/session attribution.
 3. **Stream.** `GET /api/v1/stream/{token}` → a plain, capability-authorized,
    Range-capable byte stream. Resolve creates a short-lived random session capability,
    so the UI's `<video>` element needs no reusable bearer credential in its URL or
@@ -160,14 +163,17 @@ Two paths run over the identical API. The only difference is who the client is.
 The same three calls, wrapped by the plugin's translation to Jellyfin's data model:
 
 1. User types a query in any Jellyfin client.
-2. The plugin's `IAsyncActionFilter` intercepts the `/Items?searchTerm=` /
-   `/Search/Hints` request (under a short deadline) and calls `GET /api/v1/search`.
-3. It materializes **one isolated ephemeral item per work** (private, hidden
-   implementation folder; stable GUID from `workId`;
-   `Tmdb`/`Imdb`/`UsenetWorkId` provider ids; TMDB metadata passed through; tagged
-   `usenet-ephemeral`), caches the ranked release list, and merges eligible items into
-   the outgoing response. The requesting user's compatible-library visibility policy
-   still applies. **Any error/timeout falls through to native search** (BRIEF §11).
+2. The plugin's `IAsyncActionFilter` intercepts `/Items?searchTerm=` and `/Search/Hints`
+   under a short deadline. It concurrently requests availability-filtered movies and at
+   most three metadata-only TV series candidates; flat TV episode works are not injected.
+3. Movies materialize directly. TV candidates materialize as real Jellyfin `Series`
+   folders. Opening a series through `/Shows/{id}/Seasons` (or `/Items?parentId=`) lazily
+   creates its season directory without an indexer call. Opening one season through
+   `/Shows/{id}/Episodes` lazily creates every canonical `Episode` and stores any ranked
+   release offers returned by the single season search. All nodes use stable work-derived
+   GUIDs and live below the private hidden implementation folder. The requesting user's
+   compatible-library visibility policy still applies. **Any error/timeout falls through
+   to the unmodified native response** (BRIEF §11).
 4. Play → Jellyfin requests `PlaybackInfo`. The plugin's `IMediaSourceProvider`
    returns one `MediaSourceInfo` per release (`RequiresOpening = true`,
    opaque, bounded, short-lived, one-use `OpenToken` tied to that authenticated user,

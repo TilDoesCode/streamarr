@@ -158,10 +158,13 @@ Open the Management UI and configure, **in this order**:
    automatic (see [`architecture.md`](./architecture.md) §5.2).
 2. **Indexers** — Newznab base URL + API key per indexer. Hit **Test** → a `t=caps`
    roundtrip showing caps + latency. Enable/disable and order by priority.
-3. **TMDB API key** — under **Settings** → General. Without it, search still works but
-   works are not enriched with metadata/artwork.
+3. **TMDB credential** — enter either the short v3 API key or the API Read Access Token
+   (JWT) under **Settings** → General, or as `TMDB_API_KEY` in the Compose `.env` file.
+   It is required for public semantic discovery, canonical metadata, artwork, and Jellyfin
+   injection. Without it, raw/rejected indexer hits remain available only in the
+   **Release diagnostics** tab and `/debug/search`.
 4. **Quality profile** — start from the built-in **Standard** default and tune it later
-   in the Search/Debug playground. See [`ranker-tuning.md`](./ranker-tuning.md).
+   under **Search → Release diagnostics**. See [`ranker-tuning.md`](./ranker-tuning.md).
 
 ---
 
@@ -170,8 +173,9 @@ Open the Management UI and configure, **in this order**:
 This is the step that proves the Core is sound and the abstraction has not leaked
 (BRIEF §3.1 rule 4, §11):
 
-1. Open the **Search / Debug playground**, run a query, and inspect the releases —
-   parsed fields, per-rule score breakdown, and any rejection reasons.
+1. Open **Search**, use **Semantic discovery** to verify available works, then open
+   **Release diagnostics** to inspect parsed fields, per-rule score breakdown, and any
+   rejection reasons.
 2. **Resolve** a release: see the health-check outcome and the pre-probed media info.
 3. Hit **Playback preview**: the resolved stream plays in a plain HTML5 `<video>`
    element — **with Jellyfin not running at all** — instrumented for time-to-first-frame
@@ -197,9 +201,12 @@ failure, not a UI bug.
 4. Turn on **Enable search interception**.
 
 Usenet results now appear alongside your local library and play through Jellyfin's
-transcoding pipeline. Synthetic items live under a private, hidden implementation
-folder and are returned only through eligible intercepted searches; they do not appear
-in normal library browsing. The plugin is **pinned to Jellyfin 10.11.11** and the search
+transcoding pipeline. Movie results are availability-filtered immediately. TV results
+appear as series folders (at most three TMDB matches); seasons load when the series is
+opened, and one season-wide indexer search populates all canonical episodes when that
+season is opened. Synthetic items live under a private, hidden implementation folder
+and are returned only through eligible intercepted searches; they do not appear in
+normal library browsing. The plugin is **pinned to Jellyfin 10.11.11** and the search
 interception is version-fragile — see
 [`jellyfin-compatibility.md`](./jellyfin-compatibility.md) and the manual acceptance
 checklist in [`m5-acceptance.md`](./m5-acceptance.md).
@@ -300,7 +307,7 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 
 | Key | Default | Meaning |
 |---|---|---|
-| `ApiKey` | `""` | TMDB API key. Empty → every TMDB lookup no-ops to null (search still works, unenriched). |
+| `ApiKey` | `""` | TMDB v3 API key or API Read Access Token (JWT). Empty → public semantic search returns no works; raw indexer results remain available through `/debug/search`. |
 | `BaseUrl` | `https://api.themoviedb.org/3` | TMDB API base. |
 | `ImageBaseUrl` | `https://image.tmdb.org/t/p` | Image CDN base. |
 | `PosterSize` / `BackdropSize` | `w500` / `w1280` | Requested image sizes. |

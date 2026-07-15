@@ -16,17 +16,25 @@ import { formatMs } from "@/lib/utils";
 
 export function PlaybackPage() {
   // Decoupled from the router (avoids a page↔router import cycle); the playback route
-  // validates `releaseId` into the search params.
-  const { releaseId: initialReleaseId } = useSearch({ strict: false }) as { releaseId?: string };
+  // validates `releaseId` and its optional owning `workId` into the search params.
+  const { releaseId: initialReleaseId, workId: initialWorkId } = useSearch({ strict: false }) as {
+    releaseId?: string;
+    workId?: string;
+  };
   const queryClient = useQueryClient();
   const resolve = useResolve();
   const closeSession = useCloseSession();
   const cached = initialReleaseId
-    ? queryClient.getQueryData<ResolveResponse>(queryKeys.resolvedRelease(initialReleaseId)) ?? null
+    ? queryClient.getQueryData<ResolveResponse>(
+        queryKeys.resolvedRelease(initialReleaseId, initialWorkId),
+      ) ?? null
     : null;
   const [releaseId, setReleaseId] = useState(initialReleaseId ?? "");
   const [resolved, setResolved] = useState<ResolveResponse | null>(cached);
-  const autoResolveAttempt = useRef<string | null>(cached ? initialReleaseId ?? null : null);
+  const initialResolveKey = initialReleaseId
+    ? `${initialReleaseId}\u0000${initialWorkId ?? ""}`
+    : null;
+  const autoResolveAttempt = useRef<string | null>(cached ? initialResolveKey : null);
 
   // Search stores the resolve result in the shared query cache. Reusing it here preserves the
   // already-open session; direct links still resolve once, including under React StrictMode.
@@ -34,19 +42,19 @@ export function PlaybackPage() {
     if (!initialReleaseId) return;
     setReleaseId(initialReleaseId);
     const handedOff = queryClient.getQueryData<ResolveResponse>(
-      queryKeys.resolvedRelease(initialReleaseId),
+      queryKeys.resolvedRelease(initialReleaseId, initialWorkId),
     );
     if (handedOff) {
-      autoResolveAttempt.current = initialReleaseId;
+      autoResolveAttempt.current = initialResolveKey;
       setResolved(handedOff);
-    } else if (autoResolveAttempt.current !== initialReleaseId) {
-      autoResolveAttempt.current = initialReleaseId;
-      void doResolve(initialReleaseId);
+    } else if (autoResolveAttempt.current !== initialResolveKey) {
+      autoResolveAttempt.current = initialResolveKey;
+      void doResolve(initialReleaseId, initialWorkId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialReleaseId]);
+  }, [initialReleaseId, initialWorkId]);
 
-  async function doResolve(id: string) {
+  async function doResolve(id: string, workId?: string) {
     const trimmed = id.trim();
     if (!trimmed) {
       toast.error("Enter a release id to resolve.");
@@ -54,7 +62,7 @@ export function PlaybackPage() {
     }
     const previous = resolved;
     try {
-      const data = await resolve.mutateAsync({ releaseId: trimmed, client: "web" });
+      const data = await resolve.mutateAsync({ releaseId: trimmed, workId, client: "web" });
       setResolved(data);
       if (previous?.streamUrl && previous.streamUrl !== data.streamUrl) {
         const oldToken = streamTokenFromUrl(previous.streamUrl);
@@ -85,7 +93,10 @@ export function PlaybackPage() {
             className="flex flex-col gap-2 sm:flex-row"
             onSubmit={(e) => {
               e.preventDefault();
-              void doResolve(releaseId);
+              void doResolve(
+                releaseId,
+                releaseId.trim() === initialReleaseId ? initialWorkId : undefined,
+              );
             }}
           >
             <div className="flex-1 space-y-1">

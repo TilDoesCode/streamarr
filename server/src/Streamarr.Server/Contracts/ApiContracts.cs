@@ -5,6 +5,12 @@ public sealed record ResolveRequest
 {
     public required string ReleaseId { get; init; }
 
+    /// <summary>
+    /// Work that offered the release. Required to disambiguate releases spanning multiple
+    /// episodes; omitted by legacy clients whose release ids have a single owner.
+    /// </summary>
+    public string? WorkId { get; init; }
+
     /// <summary>Originating front-end ("jellyfin", "web", …) for session attribution.</summary>
     public string? Client { get; init; }
 

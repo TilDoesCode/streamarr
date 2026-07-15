@@ -10,7 +10,7 @@ public sealed record RegisteredRelease
 }
 
 /// <summary>
-/// Server-side registry mapping releaseId → release (incl. its NZB location, which
+/// Server-side registry mapping releaseId → owning work(s) + release (incl. its NZB location, which
 /// never leaves the server). Populated by /search in M2; in M1 it is fed directly
 /// by tests and tooling. /resolve looks releases up here (BRIEF §6.2).
 /// </summary>
@@ -18,7 +18,10 @@ public interface IReleaseStore
 {
     void Register(string workId, Release release);
 
-    RegisteredRelease? Get(string releaseId);
+    /// <summary>Atomically registers all work owners returned by one aggregation.</summary>
+    void RegisterRange(IEnumerable<RegisteredRelease> releases);
+
+    RegisteredRelease? Get(string releaseId, string? workId = null);
 
     /// <summary>
     /// The next-best ranked, non-rejected release of the same work — surfaced as
@@ -31,28 +34,60 @@ public sealed class InMemoryReleaseStore(
     IReleaseHealthCache? healthCache = null,
     int maxEntries = 10_000) : IReleaseStore
 {
-    private readonly ConcurrentDictionary<string, RegisteredRelease> _releases = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, RegisteredRelease>> _releases =
+        new(StringComparer.Ordinal);
+    private readonly object _registrationGate = new();
 
     public void Register(string workId, Release release)
+        => RegisterRange([new RegisteredRelease { WorkId = workId, Release = release }]);
+
+    public void RegisterRange(IEnumerable<RegisteredRelease> releases)
     {
-        if (!_releases.ContainsKey(release.ReleaseId))
+        ArgumentNullException.ThrowIfNull(releases);
+        var registrations = releases.ToArray();
+        lock (_registrationGate)
         {
-            while (_releases.Count >= Math.Max(1, maxEntries))
+            foreach (var releaseGroup in registrations.GroupBy(
+                         registered => registered.Release.ReleaseId,
+                         StringComparer.Ordinal))
             {
-                var victim = _releases.Keys.FirstOrDefault();
-                if (victim is null || !_releases.TryRemove(victim, out _))
-                    break;
+                if (!_releases.ContainsKey(releaseGroup.Key))
+                {
+                    while (_releases.Count >= Math.Max(1, maxEntries))
+                    {
+                        var victim = _releases.Keys.FirstOrDefault();
+                        if (victim is null || !_releases.TryRemove(victim, out _))
+                            break;
+                    }
+                }
+
+                var owners = _releases.GetOrAdd(
+                    releaseGroup.Key,
+                    static _ => new ConcurrentDictionary<string, RegisteredRelease>(StringComparer.Ordinal));
+                foreach (var registered in releaseGroup)
+                    owners[registered.WorkId] = registered;
             }
         }
-
-        _releases[release.ReleaseId] = new RegisteredRelease { WorkId = workId, Release = release };
     }
 
-    public RegisteredRelease? Get(string releaseId)
-        => _releases.GetValueOrDefault(releaseId);
+    public RegisteredRelease? Get(string releaseId, string? workId = null)
+    {
+        if (!string.IsNullOrWhiteSpace(workId))
+            return _releases.TryGetValue(releaseId, out var exactOwners)
+                ? exactOwners.GetValueOrDefault(workId)
+                : null;
+
+        // Backward-compatible callers that do not know the work get a stable owner. New
+        // hierarchy clients pass workId, which is required to disambiguate multi-episode
+        // releases registered under more than one episode.
+        return _releases.GetValueOrDefault(releaseId)?.Values
+            .OrderBy(registered => registered.WorkId, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
 
     public RegisteredRelease? FindFallback(string workId, string excludeReleaseId)
         => _releases.Values
+            .SelectMany(owners => owners.Values)
             .Where(r => r.WorkId == workId
                         && r.Release.ReleaseId != excludeReleaseId
                         && !r.Release.Rejected

@@ -99,11 +99,13 @@ Query params: `q` (required unless `imdbId`/`tmdbId` given), `type`
 ranking-profile override). Returns works, each with its **ranked** releases. The NZB
 URL and indexer API keys are never present (BRIEF §6.2).
 
-Free-text queries are resolved through TMDB first, so aliases such as `Dune 2` can be
-searched at indexers using the canonical title and TMDB/IMDb ids. A public search result
-is an availability promise: rejected releases are omitted, and a work is omitted when
-none of its releases pass the selected profile's rejection checks. Use `/debug/search`
-to inspect the rejected candidates and their reasons.
+Free-text queries are resolved to TMDB's ordered movie/TV candidates first, so aliases
+such as `Dune 2` can be intersected with the releases returned by indexers. A public
+search result is an identity and availability promise: unidentified parser buckets and
+rejected releases are omitted, and a work is omitted when none of its releases pass the
+selected profile's rejection checks. Use `/debug/search` to inspect raw or rejected
+candidates and their reasons. With no TMDB key, this public endpoint returns an empty
+result while `/debug/search` continues to expose the raw indexer pipeline.
 
 ```json
 {
@@ -142,6 +144,26 @@ to inspect the rejected candidates and their reasons.
 `health` is `"unknown"` until a release has been resolved (or is cached dead by the
 health cache); it is one of `unknown` | `ready` | `degraded` | `dead`. `mediaType` on
 a work is `"movie"` or `"tv"`; TV works also carry `season`/`episode`.
+
+### Lazy TV catalog
+
+TV discovery uses a hierarchy rather than returning a random flat sample of episodes:
+
+| Request | Result | External cost on a cache miss |
+|---|---|---|
+| `GET /api/v1/tv/search?q=Suits&limit=3` | Up to three TMDB-ranked series works | One TMDB search; **no indexer call** |
+| `GET /api/v1/tv/37680` | Series metadata plus every season summary | One TMDB series-detail call; **no indexer call** |
+| `GET /api/v1/tv/37680/seasons/1` | Every canonical episode, with accepted releases overlaid | One TMDB season-detail call plus **one season-scoped fan-out per configured indexer** |
+
+The server does not issue one indexer request per episode. A season is searched once,
+then parsed episode coordinates are distributed over the complete TMDB episode directory.
+Episodes with no accepted release remain in the response with `"releases": []`, allowing
+clients to show the complete season and distinguish “not found” from missing metadata.
+Season-pack matching is intentionally deferred.
+
+The series-search `limit` is constrained to `1..3`. The season endpoint accepts the same
+optional `profileId` ranking override as `/search` and returns per-indexer diagnostics in
+`indexers`. All three endpoints use the normal machine/admin authentication policy.
 
 ### `POST /api/v1/debug/search` (admin only)
 
@@ -202,12 +224,18 @@ STAT-samples its segments for a health classification, opens a session, and
 has to probe a slow remote source (BRIEF §11).
 
 ```json
-{ "releaseId": "sha256-of-guid", "client": "web", "autoFallback": true }
+{
+  "releaseId": "sha256-of-guid",
+  "workId": "tmdb-tv-90228-s01e02",
+  "client": "web",
+  "autoFallback": true
+}
 ```
 
 | Field | Meaning |
 |---|---|
 | `releaseId` | The release to resolve (required). |
+| `workId` | Owning work from the search result. Optional for legacy single-owner releases, but required to disambiguate a multi-episode release and keep fallback/session attribution on the selected episode. |
 | `client` | Originating front-end for session attribution (`"jellyfin"`, `"web"`, …). |
 | `autoFallback` | **Default `true`.** When a release resolves `dead`, transparently retry the next-best release of the same work, bounded by `Streamarr:MaxFallbackHops` (default 3), and return the first healthy one. Set `false` to get the raw classification of exactly this release plus a `suggestedFallbackReleaseId`. |
 
@@ -455,9 +483,10 @@ Reads return `ProviderResponse` with `password` masked and `hasPassword: true`. 
 
 ### General — `/api/v1/config/general`
 
-`GET` / `PUT`. TMDB key (write-only: masked on read as `hasTmdbApiKey`, omit-to-keep on
-write), plus `sessionTtlSeconds`, `searchCacheTtlSeconds`, `segmentCacheSizeMb`,
-`connectionBudget`. Scalar changes take effect on restart.
+`GET` / `PUT`. TMDB credential (a v3 API key or API Read Access Token; write-only,
+masked on read as `hasTmdbApiKey`, omit-to-keep on write), plus `sessionTtlSeconds`,
+`searchCacheTtlSeconds`, `segmentCacheSizeMb`, `connectionBudget`. Credential changes
+take effect immediately; other scalar changes take effect on restart.
 
 ### Profiles — `/api/v1/config/profiles`
 

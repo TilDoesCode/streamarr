@@ -38,10 +38,20 @@ public sealed class ResolveService(
         Func<string, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         CancellationToken ct)
-        => await ResolveAsync(releaseId, client, autoFallback: true, streamUrlForToken, localStreamUrlForToken, ct);
+        => await ResolveAsync(releaseId, workId: null, client, autoFallback: true, streamUrlForToken, localStreamUrlForToken, ct);
 
     public async Task<ResolveResponse> ResolveAsync(
         string releaseId,
+        string? client,
+        bool autoFallback,
+        Func<string, string> streamUrlForToken,
+        Func<string, string> localStreamUrlForToken,
+        CancellationToken ct)
+        => await ResolveAsync(releaseId, workId: null, client, autoFallback, streamUrlForToken, localStreamUrlForToken, ct);
+
+    public async Task<ResolveResponse> ResolveAsync(
+        string releaseId,
+        string? workId,
         string? client,
         bool autoFallback,
         Func<string, string> streamUrlForToken,
@@ -55,6 +65,7 @@ public sealed class ResolveService(
         {
             return await ResolveCoreAsync(
                 releaseId,
+                workId,
                 client,
                 autoFallback,
                 streamUrlForToken,
@@ -69,6 +80,7 @@ public sealed class ResolveService(
 
     private async Task<ResolveResponse> ResolveCoreAsync(
         string releaseId,
+        string? requestedWorkId,
         string? client,
         bool autoFallback,
         Func<string, string> streamUrlForToken,
@@ -80,7 +92,7 @@ public sealed class ResolveService(
         var visited = new HashSet<string>(StringComparer.Ordinal);
 
         var currentId = releaseId;
-        string? workId = null;
+        var workId = requestedWorkId;
 
         for (var hop = 0; ; hop++)
         {
@@ -88,7 +100,13 @@ public sealed class ResolveService(
             if (!visited.Add(currentId))
                 break;
 
-            var single = await ResolveSingleAsync(currentId, client, streamUrlForToken, localStreamUrlForToken, ct);
+            var single = await ResolveSingleAsync(
+                currentId,
+                workId,
+                client,
+                streamUrlForToken,
+                localStreamUrlForToken,
+                ct);
             workId = single.WorkId;
             attempts.Add(new ResolveAttempt { ReleaseId = currentId, Status = single.Response.Status });
 
@@ -149,12 +167,13 @@ public sealed class ResolveService(
     /// <summary>Resolve exactly one release (no fallback). Dead releases return no session.</summary>
     private async Task<SingleResolve> ResolveSingleAsync(
         string releaseId,
+        string? workId,
         string? client,
         Func<string, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         CancellationToken ct)
     {
-        var registered = releaseStore.Get(releaseId)
+        var registered = releaseStore.Get(releaseId, workId)
             ?? throw new ReleaseNotFoundException(releaseId);
         var nzbUrl = registered.Release.NzbUrl
             ?? throw new NoPlayableFileException("The release has no NZB location on record.");

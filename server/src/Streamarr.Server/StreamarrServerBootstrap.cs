@@ -280,7 +280,8 @@ public static class StreamarrServerBootstrap
                 sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.TmdbCacheMaxEntries,
                 tmdbOptions.MaxConcurrentRequests,
-                tmdbOptions.RequestTimeout);
+                tmdbOptions.RequestTimeout,
+                () => tmdbOptions.CredentialRevision);
         });
 
         // Parse → reject → rank → aggregate to works (BRIEF §7).
@@ -288,6 +289,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<IProfileProvider>(sp => sp.GetRequiredService<ProfileConfigService>());
         services.AddSingleton<WorkAggregator>();
         services.AddSingleton<SearchService>();
+        services.AddSingleton<TvCatalogService>();
 
         // Remembers dead classifications so they feed back into ranking + fallback
         // selection and survive re-searches (BRIEF §10-M7).

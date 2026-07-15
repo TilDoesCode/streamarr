@@ -86,6 +86,42 @@ public sealed class StreamarrMediaSourceProvider(
 
         var liveStreamId = Guid.NewGuid().ToString("N");
         var token = StreamarrApiClient.TokenFromStreamUrl(resolve.StreamUrl);
+        bool OfferStillValid()
+        {
+            try
+            {
+                var currentUser = userManager.GetUserById(userId);
+                var currentItem = libraryManager.GetItemById(offer.ItemId);
+                var currentEntry = store.Peek(offer.ItemId);
+                return currentUser is not null
+                       && currentItem is not null
+                       && currentItem.IsVisibleStandalone(currentUser)
+                       && currentEntry is not null
+                       && string.Equals(currentEntry.Work.WorkId, offer.WorkId, StringComparison.Ordinal)
+                       && currentEntry.Work.Releases.Any(release => string.Equals(
+                           release.ReleaseId,
+                           resolve.ReleaseId,
+                           StringComparison.Ordinal));
+            }
+            catch (Exception ex)
+            {
+                // Admission validation must fail closed without escaping past session cleanup.
+                logger.LogDebug(
+                    "Could not revalidate resolved Streamarr item {ItemId} ({FailureType})",
+                    offer.ItemId,
+                    ex.GetType().Name);
+                return false;
+            }
+        }
+
+        // Resolve may take seconds. Cleanup/reconciliation can retire the offered item in
+        // that time, so validate again before admitting the newly opened Core session.
+        if (!OfferStillValid())
+        {
+            await CloseRejectedSessionAsync(token, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException("The resolved Streamarr work was retired before playback could start.");
+        }
+
         // Remember which release this opened source represents so playback events can be
         // attributed to it. Both the live-stream id and the resolved release id are keyed.
         if (!tracker.TryTrackSession(
@@ -94,23 +130,13 @@ public sealed class StreamarrMediaSourceProvider(
                 resolve.ReleaseId,
                 offer.WorkId,
                 token,
+                OfferStillValid,
                 out _))
         {
-            if (!dispatcher.EnqueueClose(token) && token is not null)
-            {
-                try
-                {
-                    await api.CloseSessionAsync(token, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(
-                        "Could not close a Core session rejected by the plugin session limit ({FailureType})",
-                        ex.GetType().Name);
-                }
-            }
+            await CloseRejectedSessionAsync(token, cancellationToken).ConfigureAwait(false);
 
-            throw new InvalidOperationException("Too many active Streamarr playback sessions.");
+            throw new InvalidOperationException(
+                "The Streamarr item was retired or the active playback-session limit was reached.");
         }
 
         var source = MediaSourceMapper.ToOpenedSource(resolve, liveStreamId);
@@ -122,6 +148,23 @@ public sealed class StreamarrMediaSourceProvider(
         return stream;
     }
 
+    private async Task CloseRejectedSessionAsync(string? token, CancellationToken cancellationToken)
+    {
+        if (token is null || dispatcher.EnqueueClose(token))
+            return;
+
+        try
+        {
+            await api.CloseSessionAsync(token, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                "Could not close a Core session rejected during plugin admission ({FailureType})",
+                ex.GetType().Name);
+        }
+    }
+
     /// <summary>
     /// Resolves the release authorized by <paramref name="offer"/>; if the server reports
     /// it dead, follows <c>suggestedFallbackReleaseId</c> once (BRIEF §8.4). The plugin
@@ -130,7 +173,7 @@ public sealed class StreamarrMediaSourceProvider(
     private async Task<ResolveResponse> ResolveWithFallbackAsync(MediaSourceOfferStore.Offer offer, CancellationToken ct)
     {
         var releaseId = offer.ReleaseId;
-        var resolve = await api.ResolveAsync(releaseId, ct).ConfigureAwait(false)
+        var resolve = await api.ResolveAsync(releaseId, offer.WorkId, ct).ConfigureAwait(false)
                       ?? throw new InvalidOperationException($"Empty resolve response for release {releaseId}.");
         EnsureResolveWithinOffer(resolve, releaseId, offer.AllowedReleaseIds);
 
@@ -144,7 +187,7 @@ public sealed class StreamarrMediaSourceProvider(
             throw new InvalidOperationException("Core suggested a fallback outside the offered work.");
 
         logger.LogInformation("Release {ReleaseId} dead; following server fallback {Fallback}", releaseId, fallback);
-        var second = await api.ResolveAsync(fallback, ct).ConfigureAwait(false)
+        var second = await api.ResolveAsync(fallback, offer.WorkId, ct).ConfigureAwait(false)
                      ?? throw new InvalidOperationException($"Empty resolve response for fallback {fallback}.");
         EnsureResolveWithinOffer(second, fallback, offer.AllowedReleaseIds);
 

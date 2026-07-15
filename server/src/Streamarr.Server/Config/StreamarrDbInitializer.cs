@@ -114,9 +114,9 @@ public sealed class StreamarrDbInitializer(
             opts.SessionTtlSeconds = general.SessionTtlSeconds;
             opts.Search.SearchCacheTtlSeconds = general.SearchCacheTtlSeconds;
 
-            var tmdbKey = protector.Unprotect(general.TmdbApiKeyEncrypted);
-            if (!string.IsNullOrEmpty(tmdbKey))
-                opts.Tmdb.ApiKey = tmdbKey;
+            // Once the row exists it is authoritative, including an intentional clear.
+            // Otherwise an old environment credential would silently reappear on restart.
+            opts.Tmdb.ApiKey = protector.Unprotect(general.TmdbApiKeyEncrypted);
         }
 
         // Rebuild the provider list the NNTP pool is constructed from (M7 makes live

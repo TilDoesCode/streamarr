@@ -92,4 +92,51 @@ public class FindFallbackTests
 
         Assert.Null(store.FindFallback("work-1", excludeReleaseId: "a"));
     }
+
+    [Fact]
+    public void OneReleaseCanBeResolvedWithinEachEpisodeItSpans()
+    {
+        var store = new InMemoryReleaseStore();
+        store.Register("show-s01e01", Rel("multi", 900));
+        store.Register("show-s01e02", Rel("multi", 900));
+        store.Register("show-s01e01", Rel("fallback-e1", 800));
+        store.Register("show-s01e02", Rel("fallback-e2", 700));
+
+        Assert.Equal("show-s01e01", store.Get("multi", "show-s01e01")!.WorkId);
+        Assert.Equal("show-s01e02", store.Get("multi", "show-s01e02")!.WorkId);
+        Assert.Equal("fallback-e1", store.FindFallback("show-s01e01", "multi")!.Release.ReleaseId);
+        Assert.Equal("fallback-e2", store.FindFallback("show-s01e02", "multi")!.Release.ReleaseId);
+        Assert.Null(store.Get("multi", "show-s01e03"));
+    }
+
+    [Fact]
+    public void MultiEpisodeOwnersShareOneBoundedReleaseSlot()
+    {
+        var store = new InMemoryReleaseStore(maxEntries: 1);
+
+        store.RegisterRange(
+        [
+            new RegisteredRelease { WorkId = "show-s01e01", Release = Rel("season-pack", 900) },
+            new RegisteredRelease { WorkId = "show-s01e02", Release = Rel("season-pack", 900) },
+        ]);
+
+        Assert.Equal("show-s01e01", store.Get("season-pack", "show-s01e01")!.WorkId);
+        Assert.Equal("show-s01e02", store.Get("season-pack", "show-s01e02")!.WorkId);
+    }
+
+    [Fact]
+    public void ConcurrentRegistrationCannotExceedTheUniqueReleaseBound()
+    {
+        for (var iteration = 0; iteration < 100; iteration++)
+        {
+            var store = new InMemoryReleaseStore(maxEntries: 1);
+            store.Register("work-a", Rel("a", 900));
+
+            Parallel.Invoke(
+                () => store.Register("work-a-2", Rel("a", 900)),
+                () => store.Register("work-b", Rel("b", 800)));
+
+            Assert.False(store.Get("a") is not null && store.Get("b") is not null);
+        }
+    }
 }

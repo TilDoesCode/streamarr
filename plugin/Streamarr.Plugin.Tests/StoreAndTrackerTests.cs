@@ -168,4 +168,21 @@ public class StoreAndTrackerTests
         Assert.Equal(512, tracker.All().Count);
         Assert.NotNull(tracker.Resolve("live-0"));
     }
+
+    [Fact]
+    public void Tracker_deletion_claim_atomically_blocks_new_sessions_and_can_require_idle_items()
+    {
+        var tracker = new PlaybackSessionTracker();
+        var itemId = Guid.NewGuid();
+        Assert.True(tracker.TryClaimItemsForDeletion([itemId], true, out var sessions));
+        Assert.Empty(sessions);
+        Assert.False(tracker.TryTrackSession(itemId, "blocked", "blocked-release", null, null, out _));
+
+        tracker.ReleaseDeletionClaim([itemId]);
+        Assert.True(tracker.TryTrackSession(itemId, "active", "active-release", null, null, out _));
+        Assert.False(tracker.TryClaimItemsForDeletion([itemId], true, out _));
+        Assert.True(tracker.TryClaimItemsForDeletion([itemId], false, out sessions));
+        Assert.Single(sessions);
+        tracker.ReleaseDeletionClaim([itemId]);
+    }
 }

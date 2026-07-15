@@ -36,7 +36,8 @@ public static class SearchInjection
 
         /// <summary>
         /// Translate an unambiguous Jellyfin item-kind constraint to Core's neutral media type.
-        /// Mixed/global searches stay unconstrained so Core can use TMDB's mixed ordering.
+        /// Retained for callers that explicitly request legacy episode works; global discovery
+        /// now injects series folders instead of a flat episode sample.
         /// </summary>
         public string? CoreMediaType
         {
@@ -62,11 +63,23 @@ public static class SearchInjection
         }
 
         public bool Allows(WorkDto work)
+            => AllowsKind(KindFor(work));
+
+        public bool AllowsSeries(TvSeriesDto series)
+            => series.TmdbId > 0
+               && !string.IsNullOrWhiteSpace(series.WorkId)
+               && !string.IsNullOrWhiteSpace(series.Title)
+               && AllowsKind(BaseItemKind.Series);
+
+        public bool AllowsMovieDiscovery => AllowsKind(BaseItemKind.Movie);
+
+        public bool AllowsSeriesDiscovery => AllowsKind(BaseItemKind.Series);
+
+        private bool AllowsKind(BaseItemKind kind)
         {
             if (!CanInjectAtRoot || !IncludeMedia)
                 return false;
 
-            var kind = KindFor(work);
             if (IncludeItemTypes.Count > 0 && !IncludeItemTypes.Contains(kind))
                 return false;
             if (ExcludeItemTypes.Contains(kind))
@@ -77,8 +90,7 @@ public static class SearchInjection
             if (IsMovie is { } wantsMovie && (kind == BaseItemKind.Movie) != wantsMovie)
                 return false;
 
-            // Streamarr currently materializes TV search works as episodes, never Series items.
-            if (IsSeries == true || (IsSeries == false && kind == BaseItemKind.Series))
+            if (IsSeries is { } wantsSeries && (kind == BaseItemKind.Series) != wantsSeries)
                 return false;
 
             return true;
@@ -144,6 +156,26 @@ public static class SearchInjection
             RunTimeTicks = RuntimeTicks(work.RuntimeMinutes),
             IndexNumber = work.Episode,
             ParentIndexNumber = work.Season,
+            PrimaryImageTag = primaryImageTag,
+            BackdropImageTag = backdropImageTag,
+            BackdropImageItemId = backdropImageTag is null ? null : itemId.ToString("N"),
+        };
+
+    /// <summary>Builds a folder-style Jellyfin hint for a lazily populated TV series.</summary>
+    public static SearchHint BuildSeriesHint(
+        Guid itemId,
+        TvSeriesDto series,
+        string? primaryImageTag = null,
+        string? backdropImageTag = null) => new()
+        {
+            Id = itemId,
+            Name = series.Title,
+            MatchedTerm = series.Title,
+            ProductionYear = series.Year,
+            Type = BaseItemKind.Series,
+            MediaType = MediaType.Video,
+            IsFolder = true,
+            RunTimeTicks = RuntimeTicks(series.RuntimeMinutes),
             PrimaryImageTag = primaryImageTag,
             BackdropImageTag = backdropImageTag,
             BackdropImageItemId = backdropImageTag is null ? null : itemId.ToString("N"),

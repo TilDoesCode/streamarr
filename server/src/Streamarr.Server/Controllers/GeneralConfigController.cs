@@ -8,8 +8,8 @@ namespace Streamarr.Server.Controllers;
 
 /// <summary>
 /// General config GET/PUT (BRIEF §6.2): TMDB key, TTLs, cache sizes, NNTP budget. The
-/// TMDB key is write-only (masked on read, omit-to-keep on write). Scalar changes take
-/// effect on restart. Admin session required (BRIEF §6.4).
+/// TMDB credential is write-only (masked on read, omit-to-keep on write) and takes effect
+/// immediately. Other scalar changes take effect on restart. Admin session required.
 /// </summary>
 [ApiController]
 [Authorize(Policy = AuthRoles.AdminPolicy)]

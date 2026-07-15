@@ -38,6 +38,19 @@ public sealed record SearchContext
     /// </summary>
     public TmdbMatch? ResolvedTarget { get; init; }
 
+    /// <summary>
+    /// True only when the caller is an internal catalog expansion that already owns the
+    /// target identity. Public id searches still have to prove that an indexer title
+    /// resembles the resolved TMDB work before that identity may be attached.
+    /// </summary>
+    public bool ResolvedTargetIsAuthoritative { get; init; }
+
+    /// <summary>
+    /// Ordered TMDB discovery candidates for the free-text query. Release-title groups may
+    /// attach only to one of these candidates; unrelated substring hits remain unmatched.
+    /// </summary>
+    public IReadOnlyList<TmdbMatch> SemanticCandidates { get; init; } = [];
+
     /// <summary>True when an explicit TMDB or IMDb id was supplied for a targeted match.</summary>
     public bool HasIds => TmdbId is not null || !string.IsNullOrWhiteSpace(ImdbId);
 

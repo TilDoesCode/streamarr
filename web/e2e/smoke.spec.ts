@@ -65,8 +65,21 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   // The new indexer appears in the list.
   await expect(page.getByText("mock", { exact: true })).toBeVisible();
 
-  // --- run a search in the debug playground (BRIEF §9.1.5) -----------------------------
-  await page.getByRole("link", { name: "Search / Debug" }).click();
+  // --- verify production semantic discovery, then inspect raw releases -----------------
+  await page.getByRole("link", { name: "Search", exact: true }).click();
+  await page.getByLabel("Semantic query").fill("Example Movie");
+  await page.getByRole("button", { name: /discover/i }).click();
+  await expect(page.getByRole("heading", { name: "Movies" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Example Movie" })).toBeVisible();
+  await expect(page.getByRole("img", { name: /example movie poster/i })).toHaveAttribute(
+    "src",
+    "https://image.example/poster/12345.jpg",
+  );
+  await page.getByRole("button", { name: /example movie, 1 release, expand details/i }).click();
+  await expect(page.getByText(RELEASE_TITLE)).toBeVisible();
+  await expect(page.getByRole("link", { name: /play preview/i })).toBeVisible();
+
+  await page.getByRole("tab", { name: /release diagnostics/i }).click();
   await page.getByLabel("Query", { exact: true }).fill("Example Movie");
   await page.getByRole("button", { name: /^search$/i }).click();
 

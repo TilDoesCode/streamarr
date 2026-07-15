@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Core.Parser;
@@ -37,7 +38,9 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
             .ToArray();
 
         var groups = parsedReleases
-            .GroupBy(p => KeyFor(p.Info, context))
+            .SelectMany(parsed => KeysFor(parsed.Info, context)
+                .Select(key => new KeyedParsed(key, parsed)))
+            .GroupBy(member => member.Key, member => member.Parsed)
             .ToArray();
 
         // The id-based path (imdbId / tmdbId) applies to one primary title group only.
@@ -50,7 +53,7 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
                 .Select(g => new
                 {
                     Group = g,
-                    Similarity = CanonicalSimilarity(g.Key, context),
+                    Similarity = CanonicalSimilarity(g.Key, context, TitleFor(g)),
                 })
                 .Where(candidate => candidate.Similarity >= 0)
                 .OrderByDescending(candidate => candidate.Similarity)
@@ -151,8 +154,38 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
 
     private async Task<TmdbMatch?> ResolveAsync(MatchKey key, SearchContext context, string title, bool usePrimaryIds, CancellationToken ct)
     {
-        if (usePrimaryIds && context.ResolvedTarget is { } target && target.MediaType == key.Type)
-            return target;
+        if (context.ResolvedTarget is { } target && target.MediaType == key.Type)
+        {
+            // Catalog expansion already has an authoritative series id, but an indexer may
+            // ignore it and return another show. Accept only a bounded title/alias match;
+            // acronym expansion below covers common forms such as "SVU" without blindly
+            // relabeling every TV group as the requested series.
+            if (context.ResolvedTargetIsAuthoritative
+                && key.Type == MediaType.Tv
+                && context.TmdbId == target.TmdbId
+                && CanonicalSimilarity(key, target.Title, target.Year, title) >= 0)
+                return target;
+            if (usePrimaryIds && CanonicalSimilarity(key, target.Title, target.Year, title) >= 0)
+                return target;
+        }
+
+        // A free-text discovery query supplies TMDB's ordered candidate set up front. Match a
+        // release-title group only against that set, so an indexer's broad substring response
+        // cannot manufacture unrelated works. Enrich only candidates that actually have a
+        // plausible release group; the caching decorator collapses duplicate detail lookups.
+        if (context.SemanticCandidates.Count > 0)
+        {
+            var candidate = BestSemanticCandidate(key, context.SemanticCandidates, title);
+            if (candidate is null)
+                return null;
+            if (candidate.RuntimeMinutes is not null || !string.IsNullOrWhiteSpace(candidate.ImdbId))
+                return candidate;
+
+            var detailed = candidate.MediaType == MediaType.Tv
+                ? await tmdb.GetTvAsync(candidate.TmdbId, ct)
+                : await tmdb.GetMovieAsync(candidate.TmdbId, ct);
+            return detailed ?? candidate;
+        }
 
         if (key.Type == MediaType.Tv)
         {
@@ -173,7 +206,7 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
     }
 
     /// <summary>Bucket a release: media type + normalized title (+ year for movies, season/episode for TV).</summary>
-    private static MatchKey KeyFor(ParsedReleaseInfo info, SearchContext context)
+    private static IEnumerable<MatchKey> KeysFor(ParsedReleaseInfo info, SearchContext context)
     {
         var type = context.RequestedType
             ?? (info.MediaType == ParsedMediaType.Tv ? MediaType.Tv : MediaType.Movie);
@@ -183,11 +216,19 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
         if (type == MediaType.Tv)
         {
             var season = info.Season ?? context.Season;
-            var episode = info.Episodes.Count > 0 ? info.Episodes[0] : context.Episode;
-            return new MatchKey(MediaType.Tv, titleKey, Year: null, season, episode, info.SeasonPack);
+            if (info.Episodes.Count > 0)
+            {
+                foreach (var episode in info.Episodes.Distinct())
+                    yield return new MatchKey(MediaType.Tv, titleKey, Year: null, season, episode, info.SeasonPack);
+            }
+            else
+            {
+                yield return new MatchKey(MediaType.Tv, titleKey, Year: null, season, context.Episode, info.SeasonPack);
+            }
+            yield break;
         }
 
-        return new MatchKey(MediaType.Movie, titleKey, info.Year, Season: null, Episode: null, SeasonPack: false);
+        yield return new MatchKey(MediaType.Movie, titleKey, info.Year, Season: null, Episode: null, SeasonPack: false);
     }
 
     private static string TitleFor(IGrouping<MatchKey, Parsed> group)
@@ -202,21 +243,36 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
     /// behavior (all groups get confidence 0). A semantic target must clear a conservative
     /// title threshold, with a conflicting release year treated as a definite mismatch.
     /// </summary>
-    private static double CanonicalSimilarity(MatchKey key, SearchContext context)
+    private static double CanonicalSimilarity(
+        MatchKey key,
+        SearchContext context,
+        string? releaseTitle = null)
+        => CanonicalSimilarity(key, context.CanonicalTitle, context.CanonicalYear, releaseTitle);
+
+    private static double CanonicalSimilarity(
+        MatchKey key,
+        string? canonicalTitle,
+        int? canonicalYear,
+        string? releaseTitle = null)
     {
-        if (string.IsNullOrWhiteSpace(context.CanonicalTitle))
+        if (string.IsNullOrWhiteSpace(canonicalTitle))
             return 0;
         if (key.Year is { } releaseYear
-            && context.CanonicalYear is { } canonicalYear
-            && releaseYear != canonicalYear)
+            && canonicalYear is { } expectedYear
+            && releaseYear != expectedYear)
         {
             return -1;
         }
 
         var left = SemanticTitleTokens(key.TitleKey);
-        var right = SemanticTitleTokens(context.CanonicalTitle);
+        var right = SemanticTitleTokens(canonicalTitle);
+        var originalLeft = left;
+        var originalRight = right;
+        left = left.Where(token => !IsYearToken(token) || originalRight.Contains(token, StringComparer.Ordinal)).ToArray();
+        right = right.Where(token => !IsYearToken(token) || originalLeft.Contains(token, StringComparer.Ordinal)).ToArray();
         if (left.Length == 0 || right.Length == 0)
             return -1;
+        left = ExpandAcronyms(left, right, releaseTitle);
         if (left.SequenceEqual(right, StringComparer.Ordinal))
             return 1;
 
@@ -226,6 +282,95 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
         var dice = 2d * intersection / (leftSet.Count + rightSet.Count);
         return dice >= 0.72 ? dice : -1;
     }
+
+    /// <summary>
+    /// Expands an all-uppercase release acronym when it is the initials of consecutive
+    /// canonical words and independent literal title evidence also matches.
+    /// </summary>
+    private static string[] ExpandAcronyms(
+        string[] tokens,
+        string[] reference,
+        string? releaseTitle)
+    {
+        var uppercaseTokens = string.IsNullOrWhiteSpace(releaseTitle)
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : Regex.Split(releaseTitle, @"[^\p{L}\p{Nd}]+")
+                .Where(raw => raw.Length is >= 3 and <= 8
+                              && raw.Any(char.IsLetter)
+                              && raw.Where(char.IsLetter).All(char.IsUpper))
+                .Select(NewznabQuery.NormalizeTerm)
+                .ToHashSet(StringComparer.Ordinal);
+        var expanded = new List<string>(tokens.Length);
+        foreach (var token in tokens)
+        {
+            var replaced = false;
+            // Require some literal title evidence in addition to the acronym. With lower-cased
+            // parser tokens alone, a short ordinary title such as "It" must never be treated as
+            // the acronym for an unrelated "Inside Track" release.
+            var sharedLiterals = tokens
+                .Where(candidate => !string.Equals(candidate, token, StringComparison.Ordinal))
+                .Where(reference.Contains)
+                .ToHashSet(StringComparer.Ordinal);
+            if (sharedLiterals.Count > 0
+                && token.Length is >= 3 and <= 8
+                && token.All(char.IsAsciiLetter)
+                && uppercaseTokens.Contains(token)
+                && !reference.Contains(token, StringComparer.Ordinal))
+            {
+                for (var start = 0; start + token.Length <= reference.Length; start++)
+                {
+                    var matches = true;
+                    for (var offset = 0; offset < token.Length; offset++)
+                    {
+                        if (reference[start + offset].Length == 0
+                            || reference[start + offset][0] != token[offset])
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+
+                    if (!matches
+                        || reference.Skip(start).Take(token.Length).Any(sharedLiterals.Contains))
+                        continue;
+
+                    expanded.AddRange(reference.AsSpan(start, token.Length).ToArray());
+                    replaced = true;
+                    break;
+                }
+            }
+
+            if (!replaced)
+                expanded.Add(token);
+        }
+
+        return expanded.ToArray();
+    }
+
+    private static bool IsYearToken(string token)
+        => token.Length == 4
+           && int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var year)
+           && year is >= 1900 and <= 2099;
+
+
+    private static TmdbMatch? BestSemanticCandidate(
+        MatchKey key,
+        IReadOnlyList<TmdbMatch> candidates,
+        string? releaseTitle)
+        => candidates
+            .Select((candidate, order) => new
+            {
+                Candidate = candidate,
+                Order = order,
+                Similarity = candidate.MediaType == key.Type
+                    ? CanonicalSimilarity(key, candidate.Title, candidate.Year, releaseTitle)
+                    : -1,
+            })
+            .Where(candidate => candidate.Similarity >= 0)
+            .OrderByDescending(candidate => candidate.Similarity)
+            .ThenBy(candidate => candidate.Order)
+            .Select(candidate => candidate.Candidate)
+            .FirstOrDefault();
 
     private static string[] SemanticTitleTokens(string title)
         => NewznabQuery.NormalizeTerm(title)
@@ -316,6 +461,8 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
     }
 
     private readonly record struct Parsed(Release Release, ParsedReleaseInfo Info);
+
+    private readonly record struct KeyedParsed(MatchKey Key, Parsed Parsed);
 
     private readonly record struct MatchKey(MediaType Type, string TitleKey, int? Year, int? Season, int? Episode, bool SeasonPack);
 

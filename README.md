@@ -13,7 +13,7 @@ The supported home deployment is Docker Compose on a 64-bit Intel/AMD or ARM Lin
 host. A release contains everything specific to Streamarr; Docker downloads the base
 images. You need Docker Engine with the Compose plugin, `curl`, `tar`, and `openssl`.
 Real playback also requires a Usenet provider, a Newznab-compatible indexer, and
-optionally a TMDB API key.
+optionally a TMDB v3 API key or API Read Access Token.
 
 Each GitHub release publishes these matching artifacts:
 
@@ -121,11 +121,11 @@ In the plugin settings, use:
 
 ### 5. Configure and prove real playback
 
-In the Streamarr Management UI, configure a Usenet provider, an indexer, the optional
-TMDB key, and a quality profile—in that order. Use each connection's **Test** action.
-Before involving Jellyfin, use **Search / Debug → Resolve → Preview** and confirm the
-video plays and seeks in the browser. This proves indexer search, NZB retrieval, NNTP,
-RAR/yEnc handling, and HTTP Range streaming end to end.
+In the Streamarr Management UI, configure a Usenet provider, an indexer, a TMDB credential,
+and a quality profile—in that order. Use each connection's **Test** action. Before
+involving Jellyfin, use **Search → Release diagnostics → Resolve → Preview** and confirm
+the video plays and seeks in the browser. This proves indexer search, NZB retrieval,
+NNTP, RAR/yEnc handling, and HTTP Range streaming end to end.
 
 ### Operate, upgrade, back up, and remove
 
@@ -302,9 +302,9 @@ Open the Management UI at `http://localhost:8080` and configure, in this order:
 
 1. **Usenet provider** — host, port, SSL, credentials, max connections. Hit *Test*.
 2. **Indexers** — Newznab base URL + API key per indexer. Hit *Test*.
-3. **TMDB API key** — under Settings.
-4. **Quality profile** — or start from the default and tune it later in the
-   Search/Debug playground.
+3. **TMDB credential** — under Settings; either the short v3 API key or API Read Access Token.
+4. **Quality profile** — or start from the default and tune it later under
+   **Search → Release diagnostics**.
 
 Verify end to end **before touching Jellyfin**: run a search in the Debug playground,
 resolve a release, and hit *Preview* to play it in the browser. If that works, the
@@ -321,7 +321,9 @@ Core is sound.
 3. Enable search interception.
 
 Usenet results now appear alongside your local library and play through Jellyfin's
-normal transcoding pipeline.
+normal transcoding pipeline. TV search returns series folders instead of arbitrary
+episodes: seasons load when a series opens, and opening one season performs one
+season-wide indexer search before displaying its complete episode directory.
 
 ### Security boundary
 
@@ -446,13 +448,14 @@ runtime) round out the dev stack. Manual Direct-Play/transcode acceptance is in
 
 **Shipped in M6 (search interception + TTL cleanup):** an **`IAsyncActionFilter`**
 (`plugin/Streamarr.Plugin/Search/StreamarrSearchActionFilter.cs`) registered into the MVC
-pipeline via `Configure<MvcOptions>` (mirroring the Meilisearch reference's plugin-side
-registration). It intercepts `/Items` (when a `searchTerm` is present) and `/Search/Hints`,
-dispatching on the **response value type** (`QueryResult<BaseItemDto>` / `SearchHintResult`),
-calls `GET /api/v1/search` under a **4s deadline**, materializes/refreshes ephemeral works
-(one per work, stable GUID so repeats update not duplicate; `Movie`/`Episode`; `Tmdb`/`Imdb`
-+ `UsenetWorkId` provider ids; TMDB metadata passthrough; ranked release list cached with
-`lastAccessedUtc`), and merges them into the native response. **Every path is behind the
+pipeline via `Configure<MvcOptions>`. It intercepts `/Items` (when a `searchTerm` is
+present) and `/Search/Hints`, dispatching on the **response value type**
+(`QueryResult<BaseItemDto>` / `SearchHintResult`). Movies call `GET /api/v1/search` under
+a **4s deadline**. TV injects at most three `Series` shells from `/tv/search`, then handles
+Jellyfin's `/Shows/{id}/Seasons` and `/Shows/{id}/Episodes` navigation lazily: season
+listing has no indexer cost; opening one season performs one fan-out and materializes its
+complete canonical `Episode` directory. Stable GUIDs prevent duplicates; TMDB/IMDb and
+`UsenetWorkId` provider ids, artwork, and ranked release offers are preserved. **Every path is behind the
 config toggle and try/catch-guarded** — any error, timeout, or killed/unreachable Core
 Server falls through to unmodified native results (BRIEF §8.2, §11), proven headlessly (both
 endpoints return `200` with interception off *and* with the Core Server down). An
@@ -521,9 +524,9 @@ and Streamarr does them itself:
    NNTP `STAT` before playback, and a dead release automatically falls back to the
    next-best one.
 
-The Search/Debug playground in the Management UI exists precisely for this: it shows
-every release *including the rejected ones*, with parsed fields, the score breakdown
-per rule, and the rejection reason. Tune the ranker there, not in the dark.
+The **Release diagnostics** tab under Search exists precisely for this: it shows every
+release *including the rejected ones*, with parsed fields, the score breakdown per rule,
+and the rejection reason. Tune the ranker there, not in the dark.
 
 ---
 

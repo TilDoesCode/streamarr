@@ -121,6 +121,32 @@ public class SearchInjectionTests
         Assert.Null(hint.RunTimeTicks); // no runtime provided
     }
 
+    [Fact]
+    public void BuildSeriesHint_maps_series_as_folder_with_artwork()
+    {
+        var id = Guid.NewGuid();
+        var series = new TvSeriesDto
+        {
+            WorkId = "tmdb-tv-37680",
+            TmdbId = 37680,
+            Title = "Suits",
+            Year = 2011,
+            RuntimeMinutes = 42,
+        };
+
+        var hint = SearchInjection.BuildSeriesHint(id, series, "poster-tag", "backdrop-tag");
+
+        Assert.Equal(id, hint.Id);
+        Assert.Equal("Suits", hint.Name);
+        Assert.Equal(BaseItemKind.Series, hint.Type);
+        Assert.Equal(MediaType.Video, hint.MediaType);
+        Assert.True(hint.IsFolder);
+        Assert.Equal(2011, hint.ProductionYear);
+        Assert.Equal(TimeSpan.FromMinutes(42).Ticks, hint.RunTimeTicks);
+        Assert.Equal("poster-tag", hint.PrimaryImageTag);
+        Assert.Equal("backdrop-tag", hint.BackdropImageTag);
+    }
+
     [Theory]
     [InlineData("movie", BaseItemKind.Movie)]
     [InlineData("tv", BaseItemKind.Episode)]
@@ -164,6 +190,42 @@ public class SearchInjectionTests
     }
 
     [Fact]
+    public void Constraints_allow_series_discovery_only_when_native_filters_allow_series()
+    {
+        var series = new TvSeriesDto
+        {
+            WorkId = "tmdb-tv-37680",
+            TmdbId = 37680,
+            Title = "Suits",
+        };
+        var global = new SearchInjection.Constraints(
+            0,
+            20,
+            null,
+            new HashSet<BaseItemKind>(),
+            new HashSet<BaseItemKind>(),
+            new HashSet<MediaType> { MediaType.Video },
+            true,
+            null,
+            null);
+
+        Assert.True(global.AllowsMovieDiscovery);
+        Assert.True(global.AllowsSeriesDiscovery);
+        Assert.True(global.AllowsSeries(series));
+        Assert.False((global with { IsMovie = true }).AllowsSeriesDiscovery);
+        Assert.True((global with { IsSeries = true }).AllowsSeriesDiscovery);
+        Assert.False((global with { IsSeries = false }).AllowsSeriesDiscovery);
+        Assert.False((global with
+        {
+            IncludeItemTypes = new HashSet<BaseItemKind> { BaseItemKind.Movie },
+        }).AllowsSeriesDiscovery);
+        Assert.False((global with
+        {
+            ExcludeItemTypes = new HashSet<BaseItemKind> { BaseItemKind.Series },
+        }).AllowsSeries(series));
+    }
+
+    [Fact]
     public void Constraints_do_not_repeat_synthetic_results_on_later_pages()
     {
         var constraints = new SearchInjection.Constraints(
@@ -204,5 +266,68 @@ public class SearchInjectionTests
 
         Assert.False(constraints.IsValid);
         Assert.False(constraints.CanInjectAtRoot);
+    }
+
+    [Theory]
+    [InlineData("/Items", false, true)]
+    [InlineData("/items", false, true)]
+    [InlineData("/Search/Hints", true, true)]
+    [InlineData("/Artists", false, false)]
+    [InlineData("/Persons", false, false)]
+    [InlineData("/Items/RemoteSearch/Movie", false, false)]
+    [InlineData("/Items", true, false)]
+    public void Interception_is_scoped_to_media_search_routes(
+        string path,
+        bool isHintRequest,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            StreamarrSearchActionFilter.IsSupportedSearchPath(new PathString(path), isHintRequest));
+    }
+
+    [Theory]
+    [InlineData("/Shows/10000000-0000-0000-0000-000000000001/Seasons", true)]
+    [InlineData("/shows/10000000-0000-0000-0000-000000000001/episodes", true)]
+    [InlineData("/Shows/not-a-guid/Seasons", false)]
+    [InlineData("/Shows/10000000-0000-0000-0000-000000000001/NextUp", false)]
+    [InlineData("/Items/10000000-0000-0000-0000-000000000001", false)]
+    public void Hierarchy_interception_is_scoped_to_show_navigation_routes(string path, bool expected)
+        => Assert.Equal(expected, StreamarrSearchActionFilter.IsSupportedHierarchyPath(new PathString(path)));
+
+    [Theory]
+    [InlineData("", BaseItemKind.Season, true)]
+    [InlineData("?includeItemTypes=Season", BaseItemKind.Season, true)]
+    [InlineData("?includeItemTypes=Episode", BaseItemKind.Season, false)]
+    [InlineData("?excludeItemTypes=Season", BaseItemKind.Season, false)]
+    [InlineData("?mediaTypes=Video", BaseItemKind.Episode, true)]
+    [InlineData("?mediaTypes=Audio", BaseItemKind.Episode, false)]
+    [InlineData("?includeItemTypes=NotAType", BaseItemKind.Season, false)]
+    [InlineData("?isMissing=true&isSpecialSeason=false&sortBy=SortName&fields=Overview", BaseItemKind.Episode, true)]
+    public void Hierarchy_population_parses_kind_constraints_and_leaves_other_semantics_native(
+        string query,
+        BaseItemKind kind,
+        bool expected)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(query);
+
+        Assert.Equal(expected, StreamarrSearchActionFilter.HierarchyAllowsKind(context.Request.Query, kind));
+    }
+
+    [Theory]
+    [InlineData("?recursive=true&includeItemTypes=Episode", true)]
+    [InlineData("?recursive=true&includeItemTypes=Season,Episode", true)]
+    [InlineData("?recursive=true&excludeItemTypes=Episode", false)]
+    [InlineData("?recursive=false&includeItemTypes=Episode", false)]
+    [InlineData("?includeItemTypes=Episode", false)]
+    public void Recursive_hierarchy_expands_episode_descendants_when_native_query_can_return_them(
+        string query,
+        bool expected)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(query);
+
+        Assert.Equal(expected, StreamarrSearchActionFilter.HierarchyAllowsRecursiveEpisodes(context.Request.Query));
     }
 }

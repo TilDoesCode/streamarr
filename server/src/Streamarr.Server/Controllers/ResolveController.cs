@@ -22,6 +22,8 @@ public class ResolveController(ResolveService resolveService, StreamarrMetrics m
     {
         if (request is null || string.IsNullOrWhiteSpace(request.ReleaseId) || request.ReleaseId.Length > 256 ||
             request.ReleaseId.Any(char.IsControl) ||
+            request.WorkId is not null && string.IsNullOrWhiteSpace(request.WorkId) ||
+            request.WorkId?.Length > 256 || request.WorkId?.Any(char.IsControl) == true ||
             request.Client?.Length > 64 || request.Client?.Any(char.IsControl) == true)
         {
             return BadRequest(ErrorResponse.Of("invalid_resolve", "A valid releaseId and client are required."));
@@ -33,6 +35,7 @@ public class ResolveController(ResolveService resolveService, StreamarrMetrics m
         {
             var response = await resolveService.ResolveAsync(
                 request.ReleaseId,
+                request.WorkId,
                 request.Client,
                 request.AutoFallback,
                 token => $"/api/v1/stream/{token}",

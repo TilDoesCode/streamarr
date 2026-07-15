@@ -107,6 +107,10 @@ services:
       Streamarr__ApiKey: "${STREAMARR_API_KEY:?Set STREAMARR_API_KEY in .env}"
       Streamarr__Admin__Username: "${STREAMARR_ADMIN_USERNAME:-admin}"
       Streamarr__Admin__Password: "${STREAMARR_ADMIN_PASSWORD:?Set STREAMARR_ADMIN_PASSWORD in .env}"
+      # Optional at process level because it can also be entered later in Settings. Supplying
+      # it here makes a fresh Compose volume immediately capable of semantic discovery.
+      Streamarr__Tmdb__ApiKey: "${TMDB_API_KEY:-}"
+      Streamarr__Tmdb__Language: "${TMDB_LANGUAGE:-}"
       Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
       Streamarr__DataProtectionKeysPath: "/app/keys"
       # Under Codecraft each app gets its own forwarded, TLS-terminated public URL, so

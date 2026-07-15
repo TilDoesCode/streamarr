@@ -20,7 +20,11 @@ import type {
   ReorderRequest,
   ResolveRequest,
   ResolveResponse,
+  SearchResponse,
   SessionResponse,
+  TvSeasonDetailsResponse,
+  TvSeriesDetailsResponse,
+  TvSeriesSearchResponse,
 } from "./types";
 
 // One place for every query key so cache invalidation stays consistent (BRIEF §9.2).
@@ -32,7 +36,10 @@ export const queryKeys = {
   providers: ["config", "providers"] as const,
   profiles: ["config", "profiles"] as const,
   sessions: ["sessions"] as const,
-  resolvedRelease: (releaseId: string) => ["resolve", releaseId] as const,
+  resolvedRelease: (releaseId: string, workId?: string) =>
+    ["resolve", releaseId, workId ?? null] as const,
+  tvSeries: (tmdbId: number) => ["tv", tmdbId] as const,
+  tvSeason: (tmdbId: number, seasonNumber: number) => ["tv", tmdbId, "season", seasonNumber] as const,
 };
 
 /**
@@ -50,6 +57,74 @@ export function useHealth({ deep = true, enabled = true, refetchInterval = 15_00
 
 // ---- Resolve + sessions (BRIEF §9.1.6/§9.1.7) ----------------------------------------
 
+export interface SemanticSearchRequest {
+  q: string;
+  type?: "movie" | "tv";
+  season?: number;
+  episode?: number;
+  imdbId?: string;
+  tmdbId?: number;
+  profileId?: string;
+}
+
+/**
+ * User-facing discovery through the production /search contract. Unlike /debug/search,
+ * this returns only TMDB-identified works with at least one accepted release.
+ */
+export function useSemanticSearch() {
+  return useMutation({
+    mutationFn: (query: SemanticSearchRequest) =>
+      apiFetch<SearchResponse>("/search", {
+        query: {
+          q: query.q,
+          type: query.type,
+          season: query.season,
+          episode: query.episode,
+          imdbId: query.imdbId,
+          tmdbId: query.tmdbId,
+          profileId: query.profileId,
+        },
+      }),
+  });
+}
+
+/** TMDB-ranked TV works only; Core caps this at three and performs no indexer calls. */
+export function useTvSeriesSearch() {
+  return useMutation({
+    mutationFn: ({ q, limit = 3 }: { q: string; limit?: number }) =>
+      apiFetch<TvSeriesSearchResponse>("/tv/search", { query: { q, limit } }),
+  });
+}
+
+/** Load the season directory only when a series is opened. */
+export function useTvSeriesDetails(tmdbId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.tvSeries(tmdbId),
+    queryFn: ({ signal }) => apiFetch<TvSeriesDetailsResponse>(`/tv/${tmdbId}`, { signal }),
+    enabled: enabled && tmdbId > 0,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Load canonical episodes and run one season-scoped indexer fan-out. The server and client
+ * both cache this unit, so expanding individual episode rows never creates another search.
+ */
+export function useTvSeasonDetails(tmdbId: number, seasonNumber: number, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.tvSeason(tmdbId, seasonNumber),
+    queryFn: ({ signal }) =>
+      apiFetch<TvSeasonDetailsResponse>(`/tv/${tmdbId}/seasons/${seasonNumber}`, { signal }),
+    enabled: enabled && tmdbId > 0 && seasonNumber >= 0,
+    staleTime: 60_000,
+    // A season lookup fans out across every configured indexer. Keep focus and network
+    // transitions from silently repeating that expensive operation; callers can invalidate
+    // the query explicitly when the operator asks for fresh availability.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+
 /**
  * Resolve a release: fetch NZB, health-check, open a session, pre-probe media info, and
  * return a stream URL (BRIEF §6.2 POST /resolve). A mutation — the operator triggers it on
@@ -66,7 +141,10 @@ export function useResolve() {
       // again would create a duplicate session and leave the first one orphaned.
       const sessionLifetimeMs = Math.max(60_000, (data.sessionTtlSeconds ?? 3_600) * 1_000);
       qc.setQueryDefaults(["resolve"], { gcTime: sessionLifetimeMs });
-      qc.setQueryData(queryKeys.resolvedRelease(variables.releaseId ?? ""), data);
+      qc.setQueryData(
+        queryKeys.resolvedRelease(variables.releaseId ?? "", variables.workId ?? undefined),
+        data,
+      );
       qc.invalidateQueries({ queryKey: queryKeys.sessions });
     },
   });

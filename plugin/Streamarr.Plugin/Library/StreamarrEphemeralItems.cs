@@ -30,6 +30,26 @@ public sealed class StreamarrEpisode : Episode
     public override string GetClientTypeName() => nameof(BaseItemKind.Episode);
 }
 
+/// <summary>Series-level TV work used as the root of a lazily expanded hierarchy.</summary>
+public sealed class StreamarrSeries : Series
+{
+    public override bool IsVisible(User user, bool skipAllowedTagsCheck = false)
+        => base.IsVisible(user, skipAllowedTagsCheck)
+           && StreamarrItemVisibility.HasCompatibleLibrary(user, episode: true);
+
+    public override string GetClientTypeName() => nameof(BaseItemKind.Series);
+}
+
+/// <summary>Season directory below a <see cref="StreamarrSeries"/>.</summary>
+public sealed class StreamarrSeason : Season
+{
+    public override bool IsVisible(User user, bool skipAllowedTagsCheck = false)
+        => base.IsVisible(user, skipAllowedTagsCheck)
+           && StreamarrItemVisibility.HasCompatibleLibrary(user, episode: true);
+
+    public override string GetClientTypeName() => nameof(BaseItemKind.Season);
+}
+
 internal static class StreamarrItemVisibility
 {
     /// <summary>

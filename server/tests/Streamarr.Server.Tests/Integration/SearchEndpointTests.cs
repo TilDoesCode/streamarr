@@ -99,6 +99,34 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
     }
 
     [Fact]
+    public async Task Search_IntersectsMultipleTmdbCandidates_WithAvailableReleasesAndMergesAliases()
+    {
+        using var client = Client();
+
+        var response = await client.GetFromJsonAsync<SearchResponse>("/api/v1/search?q=Dune+catalog");
+
+        Assert.NotNull(response);
+        Assert.Collection(
+            response!.Results,
+            movie =>
+            {
+                Assert.Equal("tmdb-movie-693134", movie.WorkId);
+                Assert.Equal("Dune: Part Two", movie.Title);
+                Assert.Equal("https://image.example/poster/dune-part-two.jpg", movie.PosterUrl);
+                Assert.Equal(2, movie.Releases.Count);
+            },
+            episode =>
+            {
+                Assert.Equal("tmdb-tv-90228-s01e04", episode.WorkId);
+                Assert.Equal("Dune: Prophecy", episode.Title);
+                Assert.Equal("tv", episode.MediaType);
+                Assert.Equal("https://image.example/poster/dune-prophecy.jpg", episode.PosterUrl);
+                Assert.Single(episode.Releases);
+            });
+        Assert.DoesNotContain(response.Results, work => work.Title.Contains("Dirt", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Search_HidesWorkWhenEveryReleaseFailsQualityChecks_ButDebugKeepsIt()
     {
         using var client = Client();
@@ -121,6 +149,53 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
     }
 
     [Fact]
+    public async Task Search_HidesUnidentifiedIndexerBuckets_ButDebugKeepsThem()
+    {
+        using var client = Client();
+        var indexerSearchesBefore = FakeSearchNewznabClient.RawOnlySearches;
+        var publicResponse = await client.GetFromJsonAsync<SearchResponse>("/api/v1/search?q=Raw+only");
+
+        Assert.NotNull(publicResponse);
+        Assert.Empty(publicResponse!.Results);
+        Assert.Equal(indexerSearchesBefore, FakeSearchNewznabClient.RawOnlySearches);
+
+        using var admin = AdminClient();
+        var debugResponse = await admin.PostAsJsonAsync("/api/v1/debug/search", new { q = "Raw only" });
+        debugResponse.EnsureSuccessStatusCode();
+        using var debug = JsonDocument.Parse(await debugResponse.Content.ReadAsStringAsync());
+        var work = Assert.Single(debug.RootElement.GetProperty("results").EnumerateArray());
+        Assert.StartsWith("unmatched-", work.GetProperty("workId").GetString(), StringComparison.Ordinal);
+        Assert.Equal(indexerSearchesBefore + 1, FakeSearchNewznabClient.RawOnlySearches);
+    }
+
+    [Fact]
+    public async Task Search_WithExplicitTmdbId_ReturnsOnlyTitlesMatchingThatWork()
+    {
+        using var client = Client();
+
+        var response = await client.GetFromJsonAsync<SearchResponse>(
+            "/api/v1/search?q=ignored&type=movie&tmdbId=693134");
+
+        var work = Assert.Single(response!.Results);
+        Assert.Equal(693134, work.TmdbId);
+        Assert.All(work.Releases, release =>
+            Assert.Contains("Dune", release.Title, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Search_WithUnknownExplicitTmdbId_DoesNotFanOutToIndexers()
+    {
+        using var client = Client();
+        var searchesBefore = FakeSearchNewznabClient.TotalSearches;
+
+        var response = await client.GetFromJsonAsync<SearchResponse>(
+            "/api/v1/search?q=ignored&type=movie&tmdbId=999999");
+
+        Assert.Empty(response!.Results);
+        Assert.Equal(searchesBefore, FakeSearchNewznabClient.TotalSearches);
+    }
+
+    [Fact]
     public async Task Search_NeverExposesNzbUrl()
     {
         using var client = Client();
@@ -129,6 +204,59 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
 
         Assert.DoesNotContain(NzbSecret, raw);
         Assert.DoesNotContain("nzbUrl", raw, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TvSearch_ReturnsOnlyTopThreeSeriesWithoutTouchingIndexers()
+    {
+        using var client = Client();
+        var before = FakeSearchNewznabClient.SuitsSeasonSearches;
+
+        var response = await client.GetFromJsonAsync<TvSeriesSearchResponse>("/api/v1/tv/search?q=Suits");
+
+        Assert.NotNull(response);
+        Assert.Equal(3, response!.Results.Count);
+        Assert.Equal("Suits", response.Results[0].Title);
+        Assert.Equal(37680, response.Results[0].TmdbId);
+        Assert.All(response.Results, series => Assert.Equal("series", series.MediaType));
+        Assert.Equal(before, FakeSearchNewznabClient.SuitsSeasonSearches);
+    }
+
+    [Fact]
+    public async Task TvSeries_ReturnsSeasonDirectoryWithoutTouchingIndexers()
+    {
+        using var client = Client();
+        var before = FakeSearchNewznabClient.SuitsSeasonSearches;
+
+        var response = await client.GetFromJsonAsync<TvSeriesDetailsResponse>("/api/v1/tv/37680");
+
+        Assert.NotNull(response);
+        Assert.Equal("Suits", response!.Series.Title);
+        Assert.Equal(2, response.Series.SeasonCount);
+        Assert.Equal(6, response.Series.EpisodeCount);
+        Assert.Equal([0, 1, 2], response.Seasons.Select(season => season.SeasonNumber));
+        Assert.Equal(before, FakeSearchNewznabClient.SuitsSeasonSearches);
+    }
+
+    [Fact]
+    public async Task TvSeason_QueriesIndexerOnceAndOverlaysAvailabilityAcrossAllEpisodes()
+    {
+        using var client = Client();
+        var before = FakeSearchNewznabClient.SuitsSeasonSearches;
+
+        var response = await client.GetFromJsonAsync<TvSeasonDetailsResponse>(
+            "/api/v1/tv/37680/seasons/1");
+
+        Assert.NotNull(response);
+        Assert.Equal(before + 1, FakeSearchNewznabClient.SuitsSeasonSearches);
+        Assert.Equal(3, response!.Episodes.Count);
+        Assert.Equal("Pilot", response.Episodes[0].Title);
+        Assert.Equal(2, response.Episodes[0].Releases.Count);
+        Assert.Single(response.Episodes[1].Releases);
+        Assert.Empty(response.Episodes[2].Releases);
+        Assert.All(response.Episodes, episode => Assert.Equal("Suits", episode.SeriesTitle));
+        Assert.Single(response.Indexers);
+        Assert.Equal("succeeded", response.Indexers[0].Status);
     }
 
     [Fact]
@@ -230,6 +358,17 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
         var draftTop = await TopReleaseId(withDraft);
 
         Assert.NotEqual(defaultTop, draftTop);
+
+        // Public discovery drops broad substring noise, but the same semantic search keeps
+        // that raw parser bucket available to operators in diagnostics.
+        var diagnosticResponse = await client.PostAsJsonAsync(
+            "/api/v1/debug/search",
+            new { q = "Dune catalog" });
+        diagnosticResponse.EnsureSuccessStatusCode();
+        using var diagnostic = JsonDocument.Parse(await diagnosticResponse.Content.ReadAsStringAsync());
+        Assert.Contains(
+            diagnostic.RootElement.GetProperty("results").EnumerateArray(),
+            work => work.GetProperty("title").GetString()!.Contains("Dirt", StringComparison.OrdinalIgnoreCase));
     }
 
     // ---- test host ------------------------------------------------------------------
@@ -275,6 +414,10 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
     /// <summary>Returns a fixed page of releases: two good, one sample, one undersized fake.</summary>
     private sealed class FakeSearchNewznabClient : INewznabClient
     {
+        public static int SuitsSeasonSearches;
+        public static int RawOnlySearches;
+        public static int TotalSearches;
+
         private static readonly NewznabItem[] ExampleItems =
         [
             Item("Example.Movie.2021.1080p.WEB-DL.x265.DDP5.1-GROUP", 5_000_000_000, "good-1080", grabs: 34),
@@ -287,6 +430,15 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
         [
             Item("Dune.Part.Two.2024.1080p.WEB-DL.x265.DDP5.1-GROUP", 7_000_000_000, "dune-good", grabs: 95),
             Item("Dune.Part.Two.2024.1080p.WEB-DL.x264.sample-GROUP", 5_000_000_000, "dune-sample", grabs: 1),
+            Item("Other.Movie.2024.1080p.WEB-DL.x265-GROUP", 5_000_000_000, "explicit-id-noise", grabs: 20),
+        ];
+
+        private static readonly NewznabItem[] DuneCatalogItems =
+        [
+            Item("Dune.Part.Two.2024.1080p.WEB-DL.x265.DDP5.1-GROUP", 7_000_000_000, "catalog-dune-two", grabs: 95),
+            Item("Dune.Part.2.2024.2160p.BluRay.x265.HDR-GROUP", 20_000_000_000, "catalog-dune-2", grabs: 80),
+            Item("Dune.Prophecy.S01E04.1080p.WEB-DL.x265-GROUP", 3_000_000_000, "catalog-prophecy", grabs: 55),
+            Item("Dirt.Every.Day.S07E05.Junkyard.Dune.Machines.1080p.WEB-DL.x265-GROUP", 2_000_000_000, "catalog-noise", grabs: 10),
         ];
 
         private static readonly NewznabItem[] UnavailableItems =
@@ -295,17 +447,45 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             Item("Unavailable.Movie.2024.1080p.WEB-DL.x264-FAKE", 1_000_000, "unavailable-fake", grabs: 0),
         ];
 
+        private static readonly NewznabItem[] RawOnlyItems =
+        [
+            Item("Unidentified.Indexer.Bucket.2024.1080p.WEB-DL.x265-GROUP", 5_000_000_000, "raw-only", grabs: 5),
+        ];
+
+        private static readonly NewznabItem[] SuitsSeasonOneItems =
+        [
+            Item("Suits.S01E01.1080p.WEB-DL.x265-GROUP", 3_000_000_000, "suits-s01e01-a", grabs: 70),
+            Item("Suits.S01E01.720p.WEB-DL.x264-GROUP", 1_500_000_000, "suits-s01e01-b", grabs: 40),
+            Item("Suits.S01E02.1080p.WEB-DL.x265-GROUP", 3_100_000_000, "suits-s01e02", grabs: 65),
+            Item("Suits.S01.1080p.WEB-DL.x265-GROUP", 30_000_000_000, "suits-s01-pack", grabs: 90),
+        ];
+
         public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
             => Task.FromResult(new NewznabCapabilities());
 
         public Task<NewznabSearchResponse> SearchAsync(IndexerConfig indexer, NewznabQuery query, CancellationToken cancellationToken)
         {
-            var items = query.TmdbId switch
+            Interlocked.Increment(ref TotalSearches);
+            if (query is { TmdbId: 37680, Season: 1, Episode: null })
             {
-                693134 => DuneItems,
-                900001 => UnavailableItems,
-                _ => ExampleItems,
-            };
+                Interlocked.Increment(ref SuitsSeasonSearches);
+                return Task.FromResult(new NewznabSearchResponse { Items = SuitsSeasonOneItems });
+            }
+
+            if (string.Equals(query.Term, "Raw only", StringComparison.OrdinalIgnoreCase))
+            {
+                Interlocked.Increment(ref RawOnlySearches);
+                return Task.FromResult(new NewznabSearchResponse { Items = RawOnlyItems });
+            }
+
+            var items = string.Equals(query.Term, "Dune catalog", StringComparison.OrdinalIgnoreCase)
+                ? DuneCatalogItems
+                : query.TmdbId switch
+                    {
+                        693134 => DuneItems,
+                        900001 => UnavailableItems,
+                        _ => ExampleItems,
+                    };
             return Task.FromResult(new NewznabSearchResponse { Items = items });
         }
 
@@ -359,13 +539,82 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             PosterUrl = "https://image.example/poster/unavailable.jpg",
         };
 
+        private static readonly TmdbMatch DuneProphecy = new()
+        {
+            MediaType = MediaType.Tv,
+            TmdbId = 90228,
+            ImdbId = "tt10466872",
+            Title = "Dune: Prophecy",
+            Year = 2024,
+            RuntimeMinutes = 60,
+            PosterUrl = "https://image.example/poster/dune-prophecy.jpg",
+        };
+
+        private static readonly TmdbMatch Suits = new()
+        {
+            MediaType = MediaType.Tv,
+            TmdbId = 37680,
+            ImdbId = "tt1632701",
+            Title = "Suits",
+            Year = 2011,
+            RuntimeMinutes = 42,
+            PosterUrl = "https://image.example/poster/suits.jpg",
+            BackdropUrl = "https://image.example/backdrop/suits.jpg",
+            Overview = "A legal drama.",
+        };
+
+        private static readonly TmdbMatch SuitsLa = new()
+        {
+            MediaType = MediaType.Tv,
+            TmdbId = 259453,
+            Title = "Suits LA",
+            Year = 2025,
+        };
+
+        private static readonly TmdbMatch SuitsKorea = new()
+        {
+            MediaType = MediaType.Tv,
+            TmdbId = 79257,
+            Title = "Suits",
+            Year = 2018,
+        };
+
+        private static readonly TmdbMatch FourthSuitsMatch = new()
+        {
+            MediaType = MediaType.Tv,
+            TmdbId = 999004,
+            Title = "Suits: Another Match",
+            Year = 2026,
+        };
+
+        public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(
+            string query,
+            MediaType? mediaType,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<TmdbMatch> matches = query.Equals("Dune catalog", StringComparison.OrdinalIgnoreCase)
+                ? [DunePartTwo, DuneProphecy]
+                : query.Equals("Suits", StringComparison.OrdinalIgnoreCase) && mediaType == MediaType.Tv
+                    ? [Suits, SuitsLa, SuitsKorea, FourthSuitsMatch]
+                : query.Equals("Dune 2", StringComparison.OrdinalIgnoreCase)
+                    ? [DunePartTwo]
+                    : query.Equals("Raw only", StringComparison.OrdinalIgnoreCase)
+                        ? []
+                    : query.Equals("Unavailable Movie", StringComparison.OrdinalIgnoreCase)
+                        ? [UnavailableMovie]
+                        : [ExampleMovie];
+            return Task.FromResult(matches);
+        }
+
         public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
             => Task.FromResult<TmdbMatch?>(
                 query.Equals("Dune 2", StringComparison.OrdinalIgnoreCase) ? DunePartTwo : ExampleMovie);
 
         public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
             => Task.FromResult<TmdbMatch?>(
-                title.Equals("Unavailable Movie", StringComparison.OrdinalIgnoreCase)
+                title.Equals("Unidentified Indexer Bucket", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : title.Equals("Unavailable Movie", StringComparison.OrdinalIgnoreCase)
                     ? UnavailableMovie
                     : title.Equals("Dune 2", StringComparison.OrdinalIgnoreCase)
                         ? DunePartTwo
@@ -377,9 +626,44 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             {
                 693134 => DunePartTwo,
                 900001 => UnavailableMovie,
-                _ => ExampleMovie,
+                12345 => ExampleMovie,
+                _ => null,
             });
-        public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(null);
+        public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken)
+            => Task.FromResult<TmdbMatch?>(tmdbId == Suits.TmdbId ? Suits : null);
+
+        public Task<TmdbTvSeriesCatalog?> GetTvSeriesCatalogAsync(int tmdbId, CancellationToken cancellationToken)
+            => Task.FromResult<TmdbTvSeriesCatalog?>(tmdbId == Suits.TmdbId
+                ? new TmdbTvSeriesCatalog
+                {
+                    Series = Suits,
+                    Seasons =
+                    [
+                        new TmdbSeasonSummary { SeasonNumber = 0, Title = "Specials", EpisodeCount = 1 },
+                        new TmdbSeasonSummary { SeasonNumber = 1, Title = "Season 1", EpisodeCount = 3, PosterUrl = "https://image.example/poster/suits-s1.jpg" },
+                        new TmdbSeasonSummary { SeasonNumber = 2, Title = "Season 2", EpisodeCount = 2 },
+                    ],
+                }
+                : null);
+
+        public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(
+            int tmdbId,
+            int seasonNumber,
+            CancellationToken cancellationToken)
+            => Task.FromResult<TmdbTvSeasonCatalog?>(tmdbId == Suits.TmdbId && seasonNumber == 1
+                ? new TmdbTvSeasonCatalog
+                {
+                    TmdbId = tmdbId,
+                    SeasonNumber = seasonNumber,
+                    Title = "Season 1",
+                    Episodes =
+                    [
+                        new TmdbEpisode { EpisodeNumber = 1, Title = "Pilot", RuntimeMinutes = 72, StillUrl = "https://image.example/still/suits-s01e01.jpg" },
+                        new TmdbEpisode { EpisodeNumber = 2, Title = "Errors and Omissions", RuntimeMinutes = 43 },
+                        new TmdbEpisode { EpisodeNumber = 3, Title = "Inside Track", RuntimeMinutes = 42 },
+                    ],
+                }
+                : null);
         public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(ExampleMovie);
     }
 }

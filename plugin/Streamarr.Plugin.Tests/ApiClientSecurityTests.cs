@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Configuration;
@@ -70,6 +71,58 @@ public class ApiClientSecurityTests
         Assert.NotNull(requested);
         Assert.Equal("Dune 2 & more", System.Web.HttpUtility.ParseQueryString(requested!.Query)["q"]);
         Assert.Equal("movie", System.Web.HttpUtility.ParseQueryString(requested.Query)["type"]);
+    }
+
+    [Fact]
+    public async Task Tv_hierarchy_uses_bounded_discovery_and_profiled_season_routes()
+    {
+        var requested = new List<Uri>();
+        var handler = new CallbackHandler(request =>
+        {
+            requested.Add(request.RequestUri!);
+            return request.RequestUri!.AbsolutePath.EndsWith("/seasons/2", StringComparison.Ordinal)
+                ? Json(HttpStatusCode.OK, "{\"series\":{},\"season\":{},\"episodes\":[]}")
+                : Json(HttpStatusCode.OK, "{\"results\":[]}");
+        });
+        var config = new PluginConfiguration
+        {
+            ServerUrl = "https://core.example",
+            ProfileId = "german hd",
+        };
+        var api = new StreamarrApiClient(
+            new HttpClient(handler),
+            NullLogger<StreamarrApiClient>.Instance,
+            () => config);
+
+        _ = await api.SearchTvSeriesAsync("Suits & more", CancellationToken.None);
+        _ = await api.GetTvSeasonAsync(37680, 2, CancellationToken.None);
+
+        Assert.Equal(2, requested.Count);
+        Assert.Equal("Suits & more", System.Web.HttpUtility.ParseQueryString(requested[0].Query)["q"]);
+        Assert.Equal("3", System.Web.HttpUtility.ParseQueryString(requested[0].Query)["limit"]);
+        Assert.Equal("/api/v1/tv/37680/seasons/2", requested[1].AbsolutePath);
+        Assert.Equal("german hd", System.Web.HttpUtility.ParseQueryString(requested[1].Query)["profileId"]);
+    }
+
+    [Fact]
+    public async Task Resolve_forwards_the_episode_work_that_offered_a_multi_episode_release()
+    {
+        string? body = null;
+        var handler = new CallbackHandler(request =>
+        {
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json(HttpStatusCode.OK, "{\"releaseId\":\"multi\",\"status\":\"dead\"}");
+        });
+        var api = new StreamarrApiClient(
+            new HttpClient(handler),
+            NullLogger<StreamarrApiClient>.Instance,
+            () => new PluginConfiguration { ServerUrl = "https://core.example" });
+
+        _ = await api.ResolveAsync("multi", "tmdb-tv-1-s01e02", CancellationToken.None);
+
+        using var document = JsonDocument.Parse(body!);
+        Assert.Equal("multi", document.RootElement.GetProperty("releaseId").GetString());
+        Assert.Equal("tmdb-tv-1-s01e02", document.RootElement.GetProperty("workId").GetString());
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) => new(status)
