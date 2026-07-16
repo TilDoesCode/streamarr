@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.4.2.0",
+        "changelog": "Restore Jellyfin Web grouped movie and series search compatibility, with safer query constraint handling and bounded plugin diagnostics.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.4.2/streamarr-jellyfin-0.4.2.zip",
+        "checksum": "80400c4876af965972e42a29b7944353",
+        "timestamp": "2026-07-16T15:35:11Z"
+      },
+      {
         "version": "0.4.1.0",
         "changelog": "Lazy TV series and season discovery in Jellyfin, hardened release ownership, and TMDB API Read Access Token support.",
         "targetAbi": "10.11.11.0",
