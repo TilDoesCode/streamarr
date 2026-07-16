@@ -4,6 +4,7 @@ using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Querying;
 using Jellyfin.Data.Enums;
 using Microsoft.Extensions.Logging;
 using Streamarr.Plugin.Api;
@@ -116,7 +117,7 @@ public sealed class EphemeralLibraryService(
                 }
 
                 var item = existing as StreamarrSeason ?? new StreamarrSeason { Id = itemId };
-                PopulateSeason(item, season, parent.Id, details.Series.Title);
+                PopulateSeason(item, season, parent);
                 (existing is null ? creates : updates).Add(item);
             }
 
@@ -151,12 +152,13 @@ public sealed class EphemeralLibraryService(
             var seasonId = await MaterializeSeasonCoreAsync(
                     details.Season,
                     seriesId,
-                    details.Series.Title,
                     ct)
                 .ConfigureAwait(false);
-            if (libraryManager.GetItemById(seasonId) is not StreamarrSeason parent)
+            if (libraryManager.GetItemById(seriesId) is not StreamarrSeries seriesParent)
+                throw new InvalidOperationException($"The Streamarr series parent {seriesId} is missing.");
+            if (libraryManager.GetItemById(seasonId) is not StreamarrSeason seasonParent)
                 throw new InvalidOperationException($"The Streamarr season parent {seasonId} is missing.");
-            await ClearHierarchyCompletionAsync(parent, ct).ConfigureAwait(false);
+            await ClearHierarchyCompletionAsync(seasonParent, ct).ConfigureAwait(false);
 
             var ids = new List<Guid>(details.Episodes.Count);
             var creates = new List<BaseItem>();
@@ -172,7 +174,7 @@ public sealed class EphemeralLibraryService(
 
                 ids.Add(itemId);
                 var existing = libraryManager.GetItemById(itemId);
-                ValidateHierarchyOwnership(existing, parent.Id, episode.WorkId, itemId);
+                ValidateHierarchyOwnership(existing, seasonParent.Id, episode.WorkId, itemId);
                 if (existing is not null && existing is not StreamarrEpisode)
                 {
                     DeleteForRetype(existing, removeReleaseState: false);
@@ -181,12 +183,12 @@ public sealed class EphemeralLibraryService(
                 }
 
                 var item = existing as StreamarrEpisode ?? new StreamarrEpisode { Id = itemId };
-                PopulateEpisode(item, episode, seriesId, seasonId, details.Series);
+                PopulateEpisode(item, episode, seriesParent, seasonParent, details.Series);
                 (existing is null ? creates : updates).Add(item);
                 works.Add(new KeyValuePair<Guid, WorkDto>(itemId, episode.ToWork()));
             }
 
-            await RemoveStaleDirectChildrenAsync(parent.Id, BaseItemKind.Episode, ids.ToHashSet(), ct)
+            await RemoveStaleDirectChildrenAsync(seasonParent.Id, BaseItemKind.Episode, ids.ToHashSet(), ct)
                 .ConfigureAwait(false);
             store.RemoveRange(retiredStoreIds);
             await EnsureCapacityAsync(
@@ -195,11 +197,11 @@ public sealed class EphemeralLibraryService(
                     ct,
                     protectDescendantsOfProtectedItems: protectSeriesHierarchy)
                 .ConfigureAwait(false);
-            SaveBatch(creates, parent, ct);
-            await UpdateBatchAsync(updates, parent, ct).ConfigureAwait(false);
+            SaveBatch(creates, seasonParent, ct);
+            await UpdateBatchAsync(updates, seasonParent, ct).ConfigureAwait(false);
             if (!await store.PutRangeAsync(works, ct).ConfigureAwait(false))
                 throw new IOException("Could not persist the Streamarr episode release cache.");
-            await MarkHierarchyCompleteAsync(parent, ids.Count, ct).ConfigureAwait(false);
+            await MarkHierarchyCompleteAsync(seasonParent, ids.Count, ct).ConfigureAwait(false);
             return ids;
         }
         finally
@@ -265,6 +267,25 @@ public sealed class EphemeralLibraryService(
             .OfType<StreamarrSeason>()
             .Where(item => item.ParentId == seriesId && IsOwnedItem(item, seriesId))
             .OrderBy(item => item.IndexNumber)
+            .ToList();
+    }
+
+    public IReadOnlyList<StreamarrEpisode> GetOwnedEpisodes(Guid seasonId)
+    {
+        if (!TryGetOwnedSeason(seasonId, out var season, out _, out _, out _)
+            || season is null)
+        {
+            return [];
+        }
+
+        return GetEphemeralItems()
+            .OfType<StreamarrEpisode>()
+            .Where(item => item.ParentId == seasonId
+                           && item.SeasonId == seasonId
+                           && item.SeriesId == season.SeriesId
+                           && IsOwnedItem(item, seasonId))
+            .OrderBy(item => item.ParentIndexNumber)
+            .ThenBy(item => item.IndexNumber)
             .ToList();
     }
 
@@ -361,7 +382,6 @@ public sealed class EphemeralLibraryService(
     private async Task<Guid> MaterializeSeasonCoreAsync(
         TvSeasonDto season,
         Guid seriesId,
-        string seriesTitle,
         CancellationToken ct)
     {
         if (libraryManager.GetItemById(seriesId) is not StreamarrSeries parent)
@@ -379,7 +399,7 @@ public sealed class EphemeralLibraryService(
         var isNew = existing is null;
         await EnsureCapacityAsync(new HashSet<Guid> { seriesId, itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
         var item = existing as StreamarrSeason ?? new StreamarrSeason { Id = itemId };
-        PopulateSeason(item, season, parent.Id, seriesTitle);
+        PopulateSeason(item, season, parent);
         await SaveAsync(item, parent, isNew, ct).ConfigureAwait(false);
         return itemId;
     }
@@ -387,36 +407,43 @@ public sealed class EphemeralLibraryService(
     private void PopulateEpisode(
         StreamarrEpisode item,
         TvEpisodeDto episode,
-        Guid seriesId,
-        Guid seasonId,
-        TvSeriesDto series)
+        StreamarrSeries series,
+        StreamarrSeason season,
+        TvSeriesDto seriesMetadata)
     {
         item.Name = episode.Title;
         item.Overview = episode.Overview;
-        item.ParentId = seasonId;
-        item.SeriesId = seriesId;
-        item.SeasonId = seasonId;
-        item.SeriesName = series.Title;
+        item.ParentId = season.Id;
+        item.SeriesId = series.Id;
+        item.SeasonId = season.Id;
+        item.SeriesName = series.Name;
+        item.SeasonName = season.Name;
+        item.SeriesPresentationUniqueKey = series.GetPresentationUniqueKey();
         item.IndexNumber = episode.EpisodeNumber;
         item.ParentIndexNumber = episode.SeasonNumber;
-        item.IsVirtualItem = true;
+        // These are real catalog entries backed by the plugin media-source provider. Marking them
+        // virtual makes Jellyfin's native isMissing=false episode queries remove them.
+        item.IsVirtualItem = false;
         ApplyAirDate(item, episode.AirDate);
         if (episode.RuntimeMinutes is { } minutes && minutes > 0)
             item.RunTimeTicks = TimeSpan.FromMinutes(minutes).Ticks;
-        ApplyProviderIds(item, episode.WorkId, episode.TmdbId, series.ImdbId);
+        ApplyProviderIds(item, episode.WorkId, episode.TmdbId, seriesMetadata.ImdbId);
         ApplyTags(item);
         TryApplyImage(item, episode.StillUrl, ImageType.Primary);
     }
 
-    private void PopulateSeason(StreamarrSeason item, TvSeasonDto season, Guid seriesId, string seriesTitle)
+    private void PopulateSeason(StreamarrSeason item, TvSeasonDto season, StreamarrSeries series)
     {
         item.Name = season.Title;
         item.Overview = season.Overview;
-        item.ParentId = seriesId;
-        item.SeriesId = seriesId;
-        item.SeriesName = seriesTitle;
+        item.ParentId = series.Id;
+        item.SeriesId = series.Id;
+        item.SeriesName = series.Name;
+        // Jellyfin's Series.GetSeasons query joins on this key, not ParentId/SeriesId.
+        item.SeriesPresentationUniqueKey = series.GetPresentationUniqueKey();
         item.IndexNumber = season.SeasonNumber;
-        item.IsVirtualItem = true;
+        item.IsVirtualItem = false;
+        item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
         ApplyAirDate(item, season.AirDate);
         ApplyProviderIds(item, season.WorkId, season.TmdbId, imdbId: null);
         item.ProviderIds[CatalogChildCountProviderKey] = season.EpisodeCount.ToString(
@@ -437,6 +464,8 @@ public sealed class EphemeralLibraryService(
         if (series.RuntimeMinutes is { } minutes && minutes > 0)
             item.RunTimeTicks = TimeSpan.FromMinutes(minutes).Ticks;
         ApplyProviderIds(item, series.WorkId, series.TmdbId, series.ImdbId);
+        // Native season/episode queries are keyed through the persisted presentation key.
+        item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
         ApplyTags(item);
         TryApplyImage(item, series.PosterUrl, ImageType.Primary);
         TryApplyImage(item, series.BackdropUrl, ImageType.Backdrop);
@@ -801,6 +830,9 @@ public sealed class EphemeralLibraryService(
                     _ => false,
                 })
             .ToArray();
+        if (children.Any(child => !HasNavigableHierarchyMetadata(parent, child, childKind)))
+            return false;
+
         var childIds = children.Select(item => item.Id).ToArray();
         var workIds = children.ToDictionary(
             item => item.Id,
@@ -812,6 +844,44 @@ public sealed class EphemeralLibraryService(
                 ? itemId => store.Peek(itemId) is { } entry
                             && string.Equals(entry.Work.WorkId, workIds[itemId], StringComparison.Ordinal)
                 : null);
+    }
+
+    /// <summary>
+    /// Detects hierarchy rows written by pre-fix plugin versions. Jellyfin's native TV queries
+    /// join children by SeriesPresentationUniqueKey and exclude virtual/missing rows for normal
+    /// users, so a child-count marker alone is not sufficient evidence of a usable hierarchy.
+    /// </summary>
+    internal static bool HasNavigableHierarchyMetadata(
+        BaseItem parent,
+        BaseItem child,
+        BaseItemKind childKind)
+    {
+        return childKind switch
+        {
+            BaseItemKind.Season
+                when parent is StreamarrSeries series && child is StreamarrSeason season
+                => !season.IsVirtualItem
+                   && season.SeriesId == series.Id
+                   && !string.IsNullOrWhiteSpace(series.PresentationUniqueKey)
+                   && !string.IsNullOrWhiteSpace(season.PresentationUniqueKey)
+                   && string.Equals(
+                       season.SeriesPresentationUniqueKey,
+                       series.GetPresentationUniqueKey(),
+                       StringComparison.Ordinal),
+            BaseItemKind.Episode
+                when parent is StreamarrSeason season && child is StreamarrEpisode episode
+                => !episode.IsVirtualItem
+                   && episode.ParentId == season.Id
+                   && episode.SeasonId == season.Id
+                   && episode.SeriesId == season.SeriesId
+                   && !string.IsNullOrWhiteSpace(season.PresentationUniqueKey)
+                   && !string.IsNullOrWhiteSpace(season.SeriesPresentationUniqueKey)
+                   && string.Equals(
+                       episode.SeriesPresentationUniqueKey,
+                       season.SeriesPresentationUniqueKey,
+                       StringComparison.Ordinal),
+            _ => false,
+        };
     }
 
     /// <summary>
@@ -957,12 +1027,37 @@ public sealed class EphemeralLibraryService(
             return [];
         }
 
-        return folder
-            .GetRecursiveChildren()
-            .Where(i => IsOwnedFolder(i)
-                        && i.ProviderIds.TryGetValue(WorkIdProviderKey, out var workId)
-                        && !string.IsNullOrWhiteSpace(workId))
-            .ToList();
+        // Jellyfin's recursive repository query recognizes folders by its built-in CLR type-name
+        // map. Plugin Series/Season subclasses are persisted under their concrete names, so native
+        // recursion stops before nested episodes. Walk direct ParentId edges instead, requiring
+        // explicit ownership at every hop and de-duplicating ids to remain safe under corrupt data.
+        var result = new List<BaseItem>();
+        var discovered = new HashSet<Guid>();
+        var expandedParents = new HashSet<Guid>();
+        var pendingParents = new Stack<Guid>();
+        pendingParents.Push(folder.Id);
+        while (pendingParents.TryPop(out var parentId))
+        {
+            if (!expandedParents.Add(parentId))
+                continue;
+
+            var directChildren = libraryManager.GetItemList(new InternalItemsQuery
+            {
+                ParentId = parentId,
+                Recursive = false,
+            });
+            foreach (var item in directChildren)
+            {
+                if (!IsOwnedItem(item, parentId) || !discovered.Add(item.Id))
+                    continue;
+
+                result.Add(item);
+                if (item.IsFolder)
+                    pendingParents.Push(item.Id);
+            }
+        }
+
+        return result;
     }
 
     /// <summary>Deletes a materialized ephemeral item (no file on disk — these are virtual).</summary>

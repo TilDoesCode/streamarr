@@ -66,17 +66,23 @@ public sealed class StreamarrSearchActionFilter(
     {
         var config = Plugin.Instance?.Configuration;
         var interceptionEnabled = config is not null && config.InterceptionEnabled;
+        HierarchyRequest? hierarchyRequest = null;
         if (interceptionEnabled)
         {
             try
             {
-                if (TryGetHierarchyRequest(context, out var hierarchyRequest))
+                if (TryGetHierarchyRequest(context, out var parsedHierarchyRequest))
                 {
+                    hierarchyRequest = parsedHierarchyRequest;
+                    logger.LogDebug(
+                        "Preparing Streamarr hierarchy {ChildKind} children below item {ParentId}",
+                        parsedHierarchyRequest.ChildKind,
+                        parsedHierarchyRequest.ParentId);
                     using var hierarchyTimeout = CancellationTokenSource.CreateLinkedTokenSource(
                         context.HttpContext.RequestAborted);
                     hierarchyTimeout.CancelAfter(HierarchyTimeout);
                     await EnsureHierarchyAsync(
-                                hierarchyRequest,
+                                parsedHierarchyRequest,
                                 context.HttpContext,
                                 hierarchyTimeout.Token)
                             .WaitAsync(HierarchyTimeout, context.HttpContext.RequestAborted)
@@ -110,6 +116,20 @@ public sealed class StreamarrSearchActionFilter(
             {
                 case QueryResult<BaseItemDto> items:
                 {
+                    if (hierarchyRequest is not null
+                        && IsSupportedHierarchyPath(request.Path))
+                    {
+                        obj.Value = InjectHierarchyItems(
+                            items,
+                            hierarchyRequest,
+                            context.HttpContext);
+                        logger.LogDebug(
+                            "Streamarr hierarchy response {Path} contains {Count} item(s)",
+                            request.Path.Value,
+                            ((QueryResult<BaseItemDto>)obj.Value).Items.Count);
+                        break;
+                    }
+
                     if (!IsSupportedSearchPath(request.Path, isHintRequest: false))
                         break;
 
@@ -137,6 +157,136 @@ public sealed class StreamarrSearchActionFilter(
                 "Streamarr search interception failed ({FailureType}); returning native results unchanged",
                 ex.GetType().Name);
         }
+    }
+
+    /// <summary>
+    /// Jellyfin persists plugin subclasses under their concrete CLR type names, while its native
+    /// TV queries compare the exact built-in Season/Episode type names. Population still happens
+    /// before the action so native items retain precedence; this adapter adds only owned plugin
+    /// children that satisfy the route's available-item filters.
+    /// </summary>
+    private QueryResult<BaseItemDto> InjectHierarchyItems(
+        QueryResult<BaseItemDto> native,
+        HierarchyRequest request,
+        HttpContext http)
+    {
+        var user = ResolveUser(http);
+        if (user is null
+            || !HierarchyAllowsAvailableItems(http.Request.Query, request.ChildKind))
+        {
+            return native;
+        }
+
+        IReadOnlyList<BaseItem> children;
+        if (request.ChildKind == BaseItemKind.Season)
+        {
+            children = library.GetOwnedSeasons(request.ParentId);
+        }
+        else if (request.ChildKind == BaseItemKind.Episode
+                 && TryResolveHierarchySeason(request, out var season)
+                 && season is not null)
+        {
+            children = library.GetOwnedEpisodes(season.Id);
+        }
+        else
+        {
+            return native;
+        }
+
+        logger.LogDebug(
+            "Found {Count} owned Streamarr {ChildKind} candidate(s) for hierarchy response",
+            children.Count,
+            request.ChildKind);
+        IEnumerable<BaseItem> filtered = children;
+        if (request.ChildKind == BaseItemKind.Season
+            && TryOptionalBool(http.Request.Query, "isSpecialSeason", out var isSpecialSeason)
+            && isSpecialSeason.HasValue)
+        {
+            filtered = filtered.Where(item => (item.IndexNumber == 0) == isSpecialSeason.Value);
+        }
+
+        var visible = filtered
+            .Where(item => CanExposeToUser(item, isTv: true, user))
+            .ToList();
+        logger.LogDebug(
+            "Exposing {VisibleCount} of {CandidateCount} Streamarr {ChildKind} candidate(s) to user {UserId}",
+            visible.Count,
+            children.Count,
+            request.ChildKind,
+            user.Id);
+        IEnumerable<BaseItem> page = visible;
+        if (request.ChildKind == BaseItemKind.Episode)
+            page = ApplyEpisodePaging(page, http.Request.Query);
+
+        var dtoOptions = new DtoOptions(true) { EnableUserData = true };
+        var injected = page
+            .Select(item => dtoService.GetBaseItemDto(item, dtoOptions, user, null!))
+            .ToList();
+        var merged = SearchInjection.MergeItems(native.Items, injected);
+        var nativeIds = native.Items.Select(item => item.Id).ToHashSet();
+        var totalAdded = visible.Count(item => !nativeIds.Contains(item.Id));
+        return totalAdded == 0
+            ? native
+            : new QueryResult<BaseItemDto>(
+                native.StartIndex,
+                native.TotalRecordCount + totalAdded,
+                merged);
+    }
+
+    private bool TryResolveHierarchySeason(
+        HierarchyRequest request,
+        out StreamarrSeason? season)
+    {
+        season = null;
+        if (library.TryGetOwnedSeason(
+                request.ParentId,
+                out season,
+                out var parentSeries,
+                out _,
+                out _))
+        {
+            return season is not null
+                   && parentSeries is not null
+                   && (request.ExpectedSeriesId is null
+                       || parentSeries.Id == request.ExpectedSeriesId);
+        }
+
+        return (request.ExpectedSeriesId is null
+                || request.ParentId == request.ExpectedSeriesId)
+               && request.SeasonNumber is { } seasonNumber
+               && library.TryFindOwnedSeason(request.ParentId, seasonNumber, out season)
+               && season is not null;
+    }
+
+    private static IEnumerable<BaseItem> ApplyEpisodePaging(
+        IEnumerable<BaseItem> items,
+        IQueryCollection query)
+    {
+        if (query.TryGetValue("startItemId", out var startItemValue)
+            && startItemValue.Count == 1
+            && TryGuid(startItemValue.ToString(), out var startItemId)
+            && startItemId != Guid.Empty)
+        {
+            items = items.SkipWhile(item => item.Id != startItemId);
+        }
+
+        if (query.TryGetValue("startIndex", out var startIndexValue)
+            && startIndexValue.Count == 1
+            && TryInt(startIndexValue.ToString(), out var startIndex)
+            && startIndex > 0)
+        {
+            items = items.Skip(startIndex);
+        }
+
+        if (query.TryGetValue("limit", out var limitValue)
+            && limitValue.Count == 1
+            && TryInt(limitValue.ToString(), out var limit)
+            && limit >= 0)
+        {
+            items = items.Take(limit);
+        }
+
+        return items;
     }
 
     private async Task<QueryResult<BaseItemDto>> InjectItemsAsync(
@@ -590,6 +740,62 @@ public sealed class StreamarrSearchActionFilter(
                && (mediaTypes.Count == 0 || mediaTypes.Contains(MediaType.Video));
     }
 
+    internal static bool HierarchyAllowsAvailableItems(
+        IQueryCollection query,
+        BaseItemKind kind)
+    {
+        if (!HierarchyAllowsKind(query, kind)
+            || !TryOptionalBool(query, "isMissing", out var isMissing)
+            || isMissing == true)
+        {
+            return false;
+        }
+
+        if (kind == BaseItemKind.Season
+            && !TryOptionalBool(query, "isSpecialSeason", out _))
+        {
+            return false;
+        }
+
+        // Jellyfin applies adjacency and explicit random sorting after fetching the native rows.
+        // Do not broaden such requests when plugin subclasses cannot participate in that query.
+        if (query.ContainsKey("adjacentTo"))
+            return false;
+
+        if (kind != BaseItemKind.Episode)
+            return !query.ContainsKey("sortBy");
+
+        if (query.TryGetValue("sortBy", out var sortByValue)
+            && (sortByValue.Count != 1
+                || !Enum.TryParse<ItemSortBy>(sortByValue.ToString(), true, out var sortBy)
+                || !Enum.IsDefined(sortBy)
+                || sortBy == ItemSortBy.Random))
+        {
+            return false;
+        }
+
+        if (query.TryGetValue("startItemId", out var startItemValue)
+            && (startItemValue.Count != 1
+                || !TryGuid(startItemValue.ToString(), out var startItemId)
+                || startItemId == Guid.Empty))
+        {
+            return false;
+        }
+
+        if (query.TryGetValue("startIndex", out var startIndexValue)
+            && (startIndexValue.Count != 1
+                || !TryInt(startIndexValue.ToString(), out var startIndex)
+                || startIndex < 0))
+        {
+            return false;
+        }
+
+        return !query.TryGetValue("limit", out var limitValue)
+               || (limitValue.Count == 1
+                   && TryInt(limitValue.ToString(), out var limit)
+                   && limit >= 0);
+    }
+
     internal static bool HierarchyAllowsRecursiveEpisodes(IQueryCollection query)
         => query.TryGetValue("recursive", out var recursiveValue)
            && recursiveValue.Count == 1
@@ -910,4 +1116,18 @@ public sealed class StreamarrSearchActionFilter(
     private static bool TryGuid(string value, out Guid parsed) => Guid.TryParse(value, out parsed);
 
     private static bool TryBool(string value, out bool parsed) => bool.TryParse(value, out parsed);
+
+    private static bool TryOptionalBool(
+        IQueryCollection query,
+        string key,
+        out bool? parsed)
+    {
+        parsed = null;
+        if (!query.TryGetValue(key, out var value))
+            return true;
+        if (value.Count != 1 || !TryBool(value.ToString(), out var boolean))
+            return false;
+        parsed = boolean;
+        return true;
+    }
 }

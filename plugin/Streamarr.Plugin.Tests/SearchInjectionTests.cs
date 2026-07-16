@@ -378,6 +378,33 @@ public class SearchInjectionTests
     }
 
     [Theory]
+    [InlineData("", BaseItemKind.Season, true)]
+    [InlineData("?isMissing=false", BaseItemKind.Season, true)]
+    [InlineData("?isMissing=true", BaseItemKind.Season, false)]
+    [InlineData("?isMissing=perhaps", BaseItemKind.Season, false)]
+    [InlineData("?isSpecialSeason=false", BaseItemKind.Season, true)]
+    [InlineData("?isSpecialSeason=perhaps", BaseItemKind.Season, false)]
+    [InlineData("?adjacentTo=10000000-0000-0000-0000-000000000001", BaseItemKind.Season, false)]
+    [InlineData("?startIndex=0&limit=20", BaseItemKind.Episode, true)]
+    [InlineData("?startIndex=-1", BaseItemKind.Episode, false)]
+    [InlineData("?limit=invalid", BaseItemKind.Episode, false)]
+    [InlineData("?sortBy=SortName", BaseItemKind.Episode, true)]
+    [InlineData("?sortBy=Random", BaseItemKind.Episode, false)]
+    [InlineData("?sortBy=NotASort", BaseItemKind.Episode, false)]
+    public void Hierarchy_response_injection_accepts_only_available_filters_it_can_preserve(
+        string query,
+        BaseItemKind kind,
+        bool expected)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(query);
+
+        Assert.Equal(
+            expected,
+            StreamarrSearchActionFilter.HierarchyAllowsAvailableItems(context.Request.Query, kind));
+    }
+
+    [Theory]
     [InlineData("?recursive=true&includeItemTypes=Episode", true)]
     [InlineData("?recursive=true&includeItemTypes=Season,Episode", true)]
     [InlineData("?recursive=true&excludeItemTypes=Episode", false)]

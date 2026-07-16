@@ -1,4 +1,5 @@
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Model.Entities;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Library;
 using Streamarr.Plugin.Search;
@@ -8,6 +9,76 @@ namespace Streamarr.Plugin.Tests;
 public class HierarchyLifecycleTests
 {
     private static readonly DateTime Now = new(2026, 7, 15, 12, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void Pathless_streamarr_items_report_remote_instead_of_missing_to_clients()
+    {
+        BaseItem[] items =
+        [
+            new StreamarrMovie(),
+            new StreamarrSeries(),
+            new StreamarrSeason(),
+            new StreamarrEpisode(),
+        ];
+
+        Assert.All(items, item => Assert.Equal(LocationType.Remote, item.LocationType));
+    }
+
+    [Fact]
+    public void Hierarchy_completion_rejects_virtual_or_unlinked_legacy_children()
+    {
+        var series = new StreamarrSeries
+        {
+            Id = Guid.NewGuid(),
+            PresentationUniqueKey = "streamarr-series-key",
+        };
+        var season = new StreamarrSeason
+        {
+            Id = Guid.NewGuid(),
+            ParentId = series.Id,
+            SeriesId = series.Id,
+            PresentationUniqueKey = "streamarr-series-key-001",
+            SeriesPresentationUniqueKey = series.PresentationUniqueKey,
+            IsVirtualItem = false,
+        };
+        var episode = new StreamarrEpisode
+        {
+            Id = Guid.NewGuid(),
+            ParentId = season.Id,
+            SeasonId = season.Id,
+            SeriesId = series.Id,
+            SeriesPresentationUniqueKey = series.PresentationUniqueKey,
+            IsVirtualItem = false,
+        };
+
+        Assert.True(EphemeralLibraryService.HasNavigableHierarchyMetadata(
+            series,
+            season,
+            Jellyfin.Data.Enums.BaseItemKind.Season));
+        Assert.True(EphemeralLibraryService.HasNavigableHierarchyMetadata(
+            season,
+            episode,
+            Jellyfin.Data.Enums.BaseItemKind.Episode));
+
+        season.IsVirtualItem = true;
+        Assert.False(EphemeralLibraryService.HasNavigableHierarchyMetadata(
+            series,
+            season,
+            Jellyfin.Data.Enums.BaseItemKind.Season));
+        season.IsVirtualItem = false;
+        season.SeriesPresentationUniqueKey = null!;
+        Assert.False(EphemeralLibraryService.HasNavigableHierarchyMetadata(
+            series,
+            season,
+            Jellyfin.Data.Enums.BaseItemKind.Season));
+
+        season.SeriesPresentationUniqueKey = series.PresentationUniqueKey;
+        episode.IsVirtualItem = true;
+        Assert.False(EphemeralLibraryService.HasNavigableHierarchyMetadata(
+            season,
+            episode,
+            Jellyfin.Data.Enums.BaseItemKind.Episode));
+    }
 
     [Fact]
     public void Flat_owned_tv_item_can_move_to_hierarchy_but_unrelated_item_cannot()

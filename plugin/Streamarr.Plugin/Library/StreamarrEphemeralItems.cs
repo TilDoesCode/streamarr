@@ -3,6 +3,7 @@ using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
+using JellyfinLocationType = MediaBrowser.Model.Entities.LocationType;
 
 namespace Streamarr.Plugin.Library;
 
@@ -13,6 +14,10 @@ namespace Streamarr.Plugin.Library;
 /// </summary>
 public sealed class StreamarrMovie : Movie
 {
+    // Pathless plugin items are available through IMediaSourceProvider, not missing files.
+    // Reporting Virtual makes Jellyfin Web suppress playback before it requests PlaybackInfo.
+    public override JellyfinLocationType LocationType => JellyfinLocationType.Remote;
+
     public override bool IsVisible(User user, bool skipAllowedTagsCheck = false)
         => base.IsVisible(user, skipAllowedTagsCheck)
            && StreamarrItemVisibility.HasCompatibleLibrary(user, episode: false);
@@ -23,6 +28,8 @@ public sealed class StreamarrMovie : Movie
 /// <summary>TV counterpart to <see cref="StreamarrMovie"/>.</summary>
 public sealed class StreamarrEpisode : Episode
 {
+    public override JellyfinLocationType LocationType => JellyfinLocationType.Remote;
+
     public override bool IsVisible(User user, bool skipAllowedTagsCheck = false)
         => base.IsVisible(user, skipAllowedTagsCheck)
            && StreamarrItemVisibility.HasCompatibleLibrary(user, episode: true);
@@ -33,6 +40,8 @@ public sealed class StreamarrEpisode : Episode
 /// <summary>Series-level TV work used as the root of a lazily expanded hierarchy.</summary>
 public sealed class StreamarrSeries : Series
 {
+    public override JellyfinLocationType LocationType => JellyfinLocationType.Remote;
+
     public override bool IsVisible(User user, bool skipAllowedTagsCheck = false)
         => base.IsVisible(user, skipAllowedTagsCheck)
            && StreamarrItemVisibility.HasCompatibleLibrary(user, episode: true);
@@ -43,6 +52,8 @@ public sealed class StreamarrSeries : Series
 /// <summary>Season directory below a <see cref="StreamarrSeries"/>.</summary>
 public sealed class StreamarrSeason : Season
 {
+    public override JellyfinLocationType LocationType => JellyfinLocationType.Remote;
+
     public override bool IsVisible(User user, bool skipAllowedTagsCheck = false)
         => base.IsVisible(user, skipAllowedTagsCheck)
            && StreamarrItemVisibility.HasCompatibleLibrary(user, episode: true);

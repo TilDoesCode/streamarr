@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.4.2.0",
+    "version": "0.4.3.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Restore Jellyfin Web grouped movie and series search compatibility, with safer query constraint handling and bounded plugin diagnostics."
+    "changelog": "Fix Jellyfin movie playback and TV season/episode navigation, with correct remote-item availability and hierarchy metadata."
 }

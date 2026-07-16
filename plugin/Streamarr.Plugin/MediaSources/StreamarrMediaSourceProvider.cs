@@ -37,12 +37,33 @@ public sealed class StreamarrMediaSourceProvider(
         var userId = CurrentUserId();
         var user = userId == Guid.Empty ? null : userManager.GetUserById(userId);
         var entry = store.Get(item.Id);
-        if (user is null
-            || entry is null
-            || entry.ItemId != item.Id
-            || !item.IsVisibleStandalone(user)
-            || entry.Work.Releases.Count == 0)
+        if (user is null)
         {
+            logger.LogDebug(
+                "Declining Streamarr media sources for item {ItemId}: no authenticated Jellyfin user",
+                item.Id);
+            return Task.FromResult(Enumerable.Empty<MediaSourceInfo>());
+        }
+        if (entry is null || entry.ItemId != item.Id)
+        {
+            logger.LogDebug(
+                "Declining Streamarr media sources for item {ItemId}: no matching release-cache entry",
+                item.Id);
+            return Task.FromResult(Enumerable.Empty<MediaSourceInfo>());
+        }
+        if (!item.IsVisibleStandalone(user))
+        {
+            logger.LogDebug(
+                "Declining Streamarr media sources for item {ItemId}: item is not visible to user {UserId}",
+                item.Id,
+                user.Id);
+            return Task.FromResult(Enumerable.Empty<MediaSourceInfo>());
+        }
+        if (entry.Work.Releases.Count == 0)
+        {
+            logger.LogDebug(
+                "Declining Streamarr media sources for item {ItemId}: Core returned no releases",
+                item.Id);
             return Task.FromResult(Enumerable.Empty<MediaSourceInfo>());
         }
 

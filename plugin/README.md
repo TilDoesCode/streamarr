@@ -46,6 +46,19 @@ Output: `plugin/Streamarr.Plugin/bin/Release/net9.0/` — `Streamarr.Plugin.dll`
 (cd plugin && ~/.dotnet/dotnet test Streamarr.Plugin.sln -c Release)
 ```
 
+Run the isolated real-host click-through from the repository root:
+
+```bash
+dotnet build plugin/Streamarr.Plugin/Streamarr.Plugin.csproj -c Release
+bash plugin/scripts/smoke-jellyfin.sh
+```
+
+In Codecraft this is the **Jellyfin Plugin E2E (isolated)** test action. It starts the
+pinned Jellyfin image with a deterministic Core fixture, executes Jellyfin Web's grouped
+search request, then follows movie detail/PlaybackInfo and
+series → seasons → episodes. It also checks unavailable episodes, user isolation,
+restart persistence, and root/Latest isolation.
+
 ## Install
 
 Copy the build output into Jellyfin's plugin directory:

@@ -537,6 +537,117 @@ curl -fsS --get "$base_url/Search/Hints" \
 assert_item_present "$tmp_dir/items-reachable.json" Items
 assert_item_present "$tmp_dir/hints-reachable.json" SearchHints
 
+# Exercise the exact Jellyfin Web grouped-search request, then follow the same detail,
+# PlaybackInfo, season, and episode APIs used after clicking the injected results. This is the
+# regression path that a host-load-only smoke cannot cover.
+curl -fsS --get "$base_url/Items" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode 'recursive=true' \
+  --data-urlencode 'searchTerm=ci-search-canary' \
+  --data-urlencode 'includeItemTypes=Movie,Series,Episode,Playlist,MusicAlbum,Audio,TvChannel,PhotoAlbum,Photo,AudioBook,Book,BoxSet' \
+  --data-urlencode 'isMissing=false' \
+  --data-urlencode 'limit=800' \
+  --data-urlencode 'fields=PrimaryImageAspectRatio,CanDelete,MediaSourceCount' \
+  --data-urlencode 'enableTotalRecordCount=false' \
+  --data-urlencode 'imageTypeLimit=1' \
+  -o "$tmp_dir/grouped-search.json"
+assert_named_item "$tmp_dir/grouped-search.json" Items "$movie_name" Movie false
+assert_named_item "$tmp_dir/grouped-search.json" Items "$series_name" Series true
+movie_id="$(named_item_id "$tmp_dir/grouped-search.json" Items "$movie_name" Movie)"
+series_id="$(named_item_id "$tmp_dir/grouped-search.json" Items "$series_name" Series)"
+
+curl -fsS --get "$base_url/Items/$movie_id" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  -o "$tmp_dir/movie-detail.json"
+jq -e --arg id "$movie_id" '
+  .Id == $id
+    and .Type == "Movie"
+    and .LocationType == "Remote"
+' "$tmp_dir/movie-detail.json" >/dev/null
+curl -fsS "$base_url/Items/$movie_id/PlaybackInfo" \
+  -H "$allowed_header" \
+  -o "$tmp_dir/search-movie-playback.json"
+jq -e '
+  (.MediaSources | length) == 1
+    and .MediaSources[0].Id == "ci-smoke-release"
+' "$tmp_dir/search-movie-playback.json" >/dev/null
+
+curl -fsS --get "$base_url/Items/$series_id" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  -o "$tmp_dir/series-detail.json"
+jq -e --arg id "$series_id" '
+  .Id == $id
+    and .Type == "Series"
+    and .LocationType == "Remote"
+' "$tmp_dir/series-detail.json" >/dev/null
+
+tv_series_before="$(core_count tv_series)"
+curl -fsS --get "$base_url/Shows/$series_id/Seasons" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode 'fields=PrimaryImageAspectRatio,CanDelete,MediaSourceCount' \
+  --data-urlencode 'isMissing=false' \
+  --data-urlencode 'enableUserData=true' \
+  --data-urlencode 'imageTypeLimit=1' \
+  -o "$tmp_dir/series-seasons.json"
+[[ "$(core_count tv_series)" -eq $((tv_series_before + 1)) ]] \
+  || fail "Opening the series did not load its season catalog exactly once."
+jq -e '
+  (.Items | length) == 1
+    and .Items[0].Type == "Season"
+    and .Items[0].IndexNumber == 1
+    and .Items[0].LocationType == "Remote"
+' "$tmp_dir/series-seasons.json" >/dev/null
+season_id="$(jq -er '.Items[0].Id' "$tmp_dir/series-seasons.json")"
+
+tv_season_before="$(core_count tv_season)"
+curl -fsS --get "$base_url/Shows/$series_id/Episodes" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode "seasonId=$season_id" \
+  --data-urlencode 'fields=PrimaryImageAspectRatio,CanDelete,MediaSourceCount' \
+  --data-urlencode 'isMissing=false' \
+  --data-urlencode 'enableUserData=true' \
+  --data-urlencode 'imageTypeLimit=1' \
+  -o "$tmp_dir/season-episodes.json"
+[[ "$(core_count tv_season)" -eq $((tv_season_before + 1)) ]] \
+  || fail "Opening the season did not load its episode catalog exactly once."
+jq -e '
+  (.Items | length) == 2
+    and all(.Items[]; .Type == "Episode" and .LocationType == "Remote")
+' "$tmp_dir/season-episodes.json" >/dev/null
+available_episode_id="$(jq -er '.Items[] | select(.IndexNumber == 1) | .Id' "$tmp_dir/season-episodes.json")"
+unavailable_episode_id="$(jq -er '.Items[] | select(.IndexNumber == 2) | .Id' "$tmp_dir/season-episodes.json")"
+curl -fsS "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$allowed_header" \
+  -o "$tmp_dir/available-episode-playback.json"
+curl -fsS "$base_url/Items/$unavailable_episode_id/PlaybackInfo" \
+  -H "$allowed_header" \
+  -o "$tmp_dir/unavailable-episode-playback.json"
+jq -e '(.MediaSources | length) == 1' "$tmp_dir/available-episode-playback.json" >/dev/null
+jq -e '(.MediaSources | length) == 0' "$tmp_dir/unavailable-episode-playback.json" >/dev/null
+
+# Non-virtual season/episode rows are required for Jellyfin's native TV queries, but the private
+# implementation hierarchy must still remain absent from ordinary root and Latest traversal.
+curl -fsS --get "$base_url/Items" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode 'recursive=true' \
+  --data-urlencode 'limit=100' \
+  -o "$tmp_dir/root-items-after-hierarchy.json"
+curl -fsS --get "$base_url/Items/Latest" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode 'limit=100' \
+  -o "$tmp_dir/latest-items-after-hierarchy.json"
+for name in "$movie_name" "$series_name" "Season 1" "Available Episode" "Unavailable Episode"; do
+  assert_named_item_absent "$tmp_dir/root-items-after-hierarchy.json" Items "$name"
+  assert_named_item_absent "$tmp_dir/latest-items-after-hierarchy.json" Items "$name"
+done
+
 # Point interception at a closed loopback port inside the container. Native Jellyfin responses
 # must still succeed and the Core-only synthetic result must disappear from both endpoints.
 jq '.ServerUrl = "http://127.0.0.1:1" | .InterceptionEnabled = true' \

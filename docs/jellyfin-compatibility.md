@@ -120,9 +120,11 @@ item is a `Series`, open `/Shows/{id}/Seasons`, then open one returned season th
 including episodes without media sources; only available episodes expose playback offers.
 
 The current 10.11.11 real-host smoke verifies both rows plus reachable injection through
-both endpoints, load, connection auth, materialization, restart persistence,
-user-restricted playback offers, open/close, forged/cross-user/replayed-offer rejection,
-and root/Latest isolation. Full injection of real Usenet works into a client's search
+both endpoints, the exact Jellyfin Web grouped-search request, movie detail and PlaybackInfo,
+series → seasons → episodes navigation, available/unavailable episode offers, load,
+connection auth, materialization, restart persistence, user-restricted playback offers,
+open/close, forged/cross-user/replayed-offer rejection, and root/Latest isolation.
+Full injection of real Usenet works into a client's search
 (plus duplicate-free repeat behavior and TTL cleanup) requires a live Core
 Server with real indexer/provider credentials and a real client — that is the manual checklist in
 [`m5-acceptance.md`](./m5-acceptance.md#milestone-6--search-interception--ttl-cleanup). The
@@ -146,9 +148,17 @@ Emby.Server.Implementations.ApplicationHost: Core startup complete
 
 The script then completes the Jellyfin wizard and checks connection authorization,
 materialization/restart persistence, user isolation, one-use playback offers, Core
-open/close delivery, root/Latest isolation, reachable injection, and unreachable-Core
-fall-through. Full Direct Play / transcode playback requires a real client and is covered
-by the manual checklist in [`m5-acceptance.md`](./m5-acceptance.md).
+open/close delivery, root/Latest isolation, reachable injection, movie release discovery,
+cold season/episode expansion, and unreachable-Core fall-through. Run it with the
+**Jellyfin Plugin E2E (isolated)** Codecraft action, or directly:
+
+```bash
+dotnet build plugin/Streamarr.Plugin/Streamarr.Plugin.csproj -c Release
+bash plugin/scripts/smoke-jellyfin.sh
+```
+
+Full Direct Play / transcode playback requires a real client and is covered by the manual
+checklist in [`m5-acceptance.md`](./m5-acceptance.md).
 
 > The plugin folder must be mounted **read-write**: Jellyfin rewrites `meta.json`
 > (plugin status) on load. A read-only mount surfaces as
