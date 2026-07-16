@@ -7,7 +7,10 @@ repo_root="$(cd -- "$script_dir/../.." && pwd)"
 name="streamarr-jellyfin-plugin-ci-${RANDOM}"
 uid="$(id -u)"
 gid="$(id -g)"
-tmp_dir="$(mktemp -d "$repo_root/.streamarr-jellyfin-smoke.XXXXXX")"
+artifact_root="${STREAMARR_SMOKE_ARTIFACT_ROOT:-$repo_root/artifacts}"
+keep_artifacts="${STREAMARR_SMOKE_KEEP_ARTIFACTS:-0}"
+mkdir -p "$artifact_root"
+tmp_dir="$(mktemp -d "$artifact_root/jellyfin-smoke.XXXXXX")"
 log_file="$tmp_dir/jellyfin.log"
 fake_core_log="$tmp_dir/fake-core.log"
 fake_core_ready="$tmp_dir/fake-core.port"
@@ -19,6 +22,15 @@ fake_core_pid=""
 machine_key="ci-smoke-machine-key"
 admin_password="ci-smoke-admin-password"
 user_password="ci-smoke-user-password"
+movie_name="Streamarr CI Smoke Movie"
+series_name="Streamarr CI Smoke Series"
+
+redact_diagnostics() {
+  sed -E \
+    -e 's/(Bearer )[[:graph:]]+/\1<redacted>/g' \
+    -e 's/(Token="?)[^",[:space:]]+/\1<redacted>/g' \
+    -e 's/(ApiKey[^[:alnum:]]+)[^",<[:space:]]+/\1<redacted>/g'
+}
 
 cleanup() {
   status=$?
@@ -29,12 +41,18 @@ cleanup() {
     wait "$fake_core_pid" >/dev/null 2>&1 || true
   fi
   if [[ "$status" -ne 0 ]]; then
-    echo "---- Jellyfin smoke log ----" >&2
-    cat "$log_file" >&2 || true
-    echo "---- fake Core smoke log ----" >&2
-    cat "$fake_core_log" >&2 || true
+    echo "---- bounded Jellyfin/plugin diagnostics (last 250 matching lines) ----" >&2
+    grep -Ei 'Streamarr\.Plugin|\[ERR\]|\[WRN\]|exception|failed|failure' "$log_file" \
+      | tail -n 250 \
+      | redact_diagnostics >&2 || true
+    echo "---- bounded fake Core diagnostics (last 100 lines) ----" >&2
+    tail -n 100 "$fake_core_log" | redact_diagnostics >&2 || true
+    echo "Jellyfin smoke artifacts preserved at: $tmp_dir" >&2
+  elif [[ "$keep_artifacts" == "1" ]]; then
+    echo "Jellyfin smoke artifacts preserved at: $tmp_dir"
+  else
+    rm -rf "$tmp_dir"
   fi
-  rm -rf "$tmp_dir"
 }
 trap cleanup EXIT
 
@@ -97,15 +115,101 @@ assert_item_present() {
   ' "$file" >/dev/null
 }
 
+assert_named_item() {
+  local file="$1"
+  local collection="$2"
+  local name="$3"
+  local kind="$4"
+  local is_folder="$5"
+  jq -e --arg collection "$collection" --arg name "$name" --arg kind "$kind" \
+    --argjson isFolder "$is_folder" '
+    def values: if type == "array" then . else (.[$collection] // []) end;
+    [values[]? | select(.Name == $name)] as $matches
+    | ($matches | length) == 1
+      and $matches[0].Type == $kind
+      and $matches[0].IsFolder == $isFolder
+  ' "$file" >/dev/null
+}
+
+assert_named_item_absent() {
+  local file="$1"
+  local collection="$2"
+  local name="$3"
+  jq -e --arg collection "$collection" --arg name "$name" '
+    def values: if type == "array" then . else (.[$collection] // []) end;
+    [values[]? | select(.Name == $name)] | length == 0
+  ' "$file" >/dev/null
+}
+
+named_item_id() {
+  local file="$1"
+  local collection="$2"
+  local name="$3"
+  local kind="$4"
+  jq -er --arg collection "$collection" --arg name "$name" --arg kind "$kind" '
+    def values: if type == "array" then . else (.[$collection] // []) end;
+    [values[]? | select(.Name == $name and .Type == $kind)]
+    | select(length == 1)
+    | .[0].Id
+  ' "$file"
+}
+
+core_count() {
+  local key="$1"
+  curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er --arg key "$key" '.[$key]'
+}
+
 command -v curl >/dev/null || fail "curl is required."
 command -v docker >/dev/null || fail "docker is required."
 command -v jq >/dev/null || fail "jq is required."
 command -v python3 >/dev/null || fail "python3 is required."
-plugin_build="$repo_root/plugin/Streamarr.Plugin/bin/Release/net9.0"
+plugin_build="${STREAMARR_SMOKE_PLUGIN_BUILD:-$repo_root/plugin/Streamarr.Plugin/bin/Release/net9.0}"
 [[ -f "$plugin_build/Streamarr.Plugin.dll" ]] \
   || fail "Build the Release plugin before running the Jellyfin smoke."
 mkdir -p "$persistent_config" "$persistent_data" "$persistent_plugin_config" "$plugin_install"
 chmod 0700 "$persistent_config" "$persistent_data" "$persistent_plugin_config" "$plugin_install"
+# Keep host noise at Information/Warning while making the plugin's request classification,
+# injection, and hierarchy decisions visible in the bounded console diagnostics.
+jq -n '{
+  Serilog: {
+    MinimumLevel: {
+      Default: "Information",
+      Override: {
+        Microsoft: "Warning",
+        System: "Warning",
+        "Streamarr.Plugin": "Debug"
+      }
+    },
+    WriteTo: [
+      {
+        Name: "Console",
+        Args: {
+          outputTemplate: "[{Timestamp:HH:mm:ss}] [{Level:u3}] [{ThreadId}] {SourceContext}: {Message:lj}{NewLine}{Exception}"
+        }
+      },
+      {
+        Name: "Async",
+        Args: {
+          configure: [
+            {
+              Name: "File",
+              Args: {
+                path: "%JELLYFIN_LOG_DIR%//log_.log",
+                rollingInterval: "Day",
+                retainedFileCountLimit: 2,
+                rollOnFileSizeLimit: true,
+                fileSizeLimitBytes: 10000000,
+                outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] [{ThreadId}] {SourceContext}: {Message}{NewLine}{Exception}"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    Enrich: ["FromLogContext", "WithThreadId"]
+  }
+}' >"$persistent_config/logging.default.json"
+chmod 0600 "$persistent_config/logging.default.json"
 # Jellyfin writes its manifest beside the plugin assembly. Copy the build to an isolated install
 # directory so the non-root container cannot mutate repository build artifacts.
 cp -R "$plugin_build/." "$plugin_install/"
@@ -222,15 +326,22 @@ jq -e '.Ok == false and .Error == "connection_failed"' \
   "$tmp_dir/connection-wrong-key.json" >/dev/null
 post_plugin_config "$tmp_dir/plugin-config-valid.json"
 
-docker exec "$name" mkdir -p /media/movies
-code="$(curl -sS -o "$tmp_dir/library-create.json" -w '%{http_code}' \
+docker exec "$name" mkdir -p /media/movies /media/tv
+code="$(curl -sS -o "$tmp_dir/movie-library-create.json" -w '%{http_code}' \
   -X POST "$base_url/Library/VirtualFolders?name=SmokeMovies&collectionType=movies&paths=%2Fmedia%2Fmovies&refreshLibrary=false" \
   -H "$admin_header" \
   -H 'Content-Type: application/json' \
   --data '{}')"
 expect_code 204 "$code" "Movie library creation"
+code="$(curl -sS -o "$tmp_dir/tv-library-create.json" -w '%{http_code}' \
+  -X POST "$base_url/Library/VirtualFolders?name=SmokeTV&collectionType=tvshows&paths=%2Fmedia%2Ftv&refreshLibrary=false" \
+  -H "$admin_header" \
+  -H 'Content-Type: application/json' \
+  --data '{}')"
+expect_code 204 "$code" "TV library creation"
 curl -fsS "$base_url/Library/VirtualFolders" -H "$admin_header" -o "$tmp_dir/libraries.json"
-library_id="$(jq -er '.[] | select(.Name == "SmokeMovies") | .ItemId' "$tmp_dir/libraries.json")"
+movie_library_id="$(jq -er '.[] | select(.Name == "SmokeMovies" and .CollectionType == "movies") | .ItemId' "$tmp_dir/libraries.json")"
+tv_library_id="$(jq -er '.[] | select(.Name == "SmokeTV" and .CollectionType == "tvshows") | .ItemId' "$tmp_dir/libraries.json")"
 
 for username in streamarr-allowed streamarr-denied; do
   curl -fsS -X POST "$base_url/Users/New" \
@@ -241,10 +352,10 @@ for username in streamarr-allowed streamarr-denied; do
 done
 allowed_id="$(jq -er '.Id' "$tmp_dir/streamarr-allowed.json")"
 denied_id="$(jq -er '.Id' "$tmp_dir/streamarr-denied.json")"
-jq --arg folder "$library_id" '
+jq --arg movieFolder "$movie_library_id" --arg tvFolder "$tv_library_id" '
   .Policy
   | .EnableAllFolders = false
-  | .EnabledFolders = [$folder]
+  | .EnabledFolders = [$movieFolder, $tvFolder]
   | .BlockedMediaFolders = []
 ' "$tmp_dir/streamarr-allowed.json" >"$tmp_dir/allowed-policy.json"
 jq '
@@ -295,7 +406,7 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 [[ "$restarted" == "true" ]] || fail "Jellyfin did not become healthy after restart."
-docker exec "$name" mkdir -p /media/movies
+docker exec "$name" mkdir -p /media/movies /media/tv
 admin_token="$(auth_token streamarr-smoke-admin "$admin_password" "$admin_auth" "$tmp_dir/admin-reauth.json")"
 admin_header="Authorization: $admin_auth, Token=\"$admin_token\""
 curl -fsS "$base_url/Streamarr/TestConnection" \

@@ -11,13 +11,114 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 
 MAX_REQUEST_BYTES = 64 * 1024
 API_KEY = os.environ.get("STREAMARR_FAKE_CORE_API_KEY", "")
-COUNTS = {"caps": 0, "search": 0, "resolve": 0, "events": 0, "close": 0, "auth_failures": 0}
+COUNTS = {
+    "caps": 0,
+    "search": 0,
+    "tv_search": 0,
+    "tv_series": 0,
+    "tv_season": 0,
+    "resolve": 0,
+    "events": 0,
+    "close": 0,
+    "auth_failures": 0,
+}
 COUNTS_LOCK = threading.Lock()
+
+MOVIE = {
+    "workId": "ci-smoke-work",
+    "mediaType": "movie",
+    "title": "Streamarr CI Smoke Movie",
+    "year": 2026,
+    "tmdbId": 990000,
+    "runtimeMinutes": 90,
+    "releases": [
+        {
+            "releaseId": "ci-smoke-release",
+            "title": "CI.Smoke.Movie.1080p",
+            "indexer": "ci-fixture",
+            "sizeBytes": 1048576,
+            "quality": {
+                "resolution": "1080p",
+                "source": "WEB-DL",
+                "codec": "x264",
+            },
+            "languages": ["en"],
+            "health": "healthy",
+        }
+    ],
+}
+
+SERIES = {
+    "workId": "ci-smoke-series",
+    "mediaType": "series",
+    "title": "Streamarr CI Smoke Series",
+    "year": 2026,
+    "tmdbId": 990001,
+    "imdbId": "tt9900001",
+    "overview": "Deterministic TV hierarchy fixture for the Jellyfin smoke.",
+    "runtimeMinutes": 45,
+    "seasonCount": 1,
+    "episodeCount": 2,
+}
+
+SEASON = {
+    "workId": "ci-smoke-series-s01",
+    "mediaType": "season",
+    "tmdbId": 990001,
+    "seasonNumber": 1,
+    "title": "Season 1",
+    "overview": "The deterministic smoke season.",
+    "airDate": "2026-01-01",
+    "episodeCount": 2,
+}
+
+EPISODES = [
+    {
+        "workId": "ci-smoke-series-s01e01",
+        "mediaType": "episode",
+        "tmdbId": 990001,
+        "seriesTitle": "Streamarr CI Smoke Series",
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "title": "Available Episode",
+        "overview": "Canonical episode with a ranked release.",
+        "airDate": "2026-01-01",
+        "runtimeMinutes": 45,
+        "releases": [
+            {
+                "releaseId": "ci-smoke-tv-release",
+                "title": "CI.Smoke.Series.S01E01.1080p",
+                "indexer": "ci-fixture",
+                "sizeBytes": 2097152,
+                "quality": {
+                    "resolution": "1080p",
+                    "source": "WEB-DL",
+                    "codec": "x264",
+                },
+                "languages": ["en"],
+                "health": "healthy",
+            }
+        ],
+    },
+    {
+        "workId": "ci-smoke-series-s01e02",
+        "mediaType": "episode",
+        "tmdbId": 990001,
+        "seriesTitle": "Streamarr CI Smoke Series",
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "title": "Unavailable Episode",
+        "overview": "Canonical episode deliberately lacking a release.",
+        "airDate": "2026-01-08",
+        "runtimeMinutes": 45,
+        "releases": [],
+    },
+]
 
 
 def increment(name: str) -> None:
@@ -100,7 +201,9 @@ class Handler(BaseHTTPRequestHandler):
             payload.extend(chunk)
 
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
-        path = urlsplit(self.path).path
+        parsed_url = urlsplit(self.path)
+        path = parsed_url.path
+        query = parse_qs(parsed_url.query, keep_blank_values=True)
         if path == "/api/v1/health":
             self.send_json(200, {"status": "healthy", "version": "ci-fake-core"})
             return
@@ -117,35 +220,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/v1/search":
             increment("search")
-            self.send_json(
-                200,
-                {
-                    "results": [
-                        {
-                            "workId": "ci-smoke-work",
-                            "mediaType": "movie",
-                            "title": "Streamarr CI Smoke Movie",
-                            "year": 2026,
-                            "runtimeMinutes": 90,
-                            "releases": [
-                                {
-                                    "releaseId": "ci-smoke-release",
-                                    "title": "CI.Smoke.Release.1080p",
-                                    "indexer": "ci-fixture",
-                                    "sizeBytes": 1048576,
-                                    "quality": {
-                                        "resolution": "1080p",
-                                        "source": "WEB-DL",
-                                        "codec": "x264",
-                                    },
-                                    "languages": ["en"],
-                                    "health": "healthy",
-                                }
-                            ],
-                        }
-                    ]
-                },
-            )
+            requested_types = query.get("type", [])
+            results = [MOVIE] if not requested_types or requested_types == ["movie"] else []
+            self.send_json(200, {"results": results})
+            return
+        if path == "/api/v1/tv/search":
+            increment("tv_search")
+            self.send_json(200, {"results": [SERIES]})
+            return
+        if path == "/api/v1/tv/990001":
+            increment("tv_series")
+            self.send_json(200, {"series": SERIES, "seasons": [SEASON]})
+            return
+        if path == "/api/v1/tv/990001/seasons/1":
+            increment("tv_season")
+            self.send_json(200, {"series": SERIES, "season": SEASON, "episodes": EPISODES})
             return
         self.send_json(404, {"error": {"code": "not_found", "message": "Not found"}})
 

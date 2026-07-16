@@ -147,6 +147,12 @@ public sealed class StreamarrSearchActionFilter(
     {
         var constraints = GetConstraints(http.Request, isHintRequest: false);
         var capacity = constraints.RemainingCapacity(native.Items.Count, native.Items.Count + MaxWorks);
+        logger.LogDebug(
+            "Streamarr /Items constraints: valid={Valid}, movies={MoviesAllowed}, series={SeriesAllowed}, capacity={Capacity}",
+            constraints.IsValid,
+            constraints.AllowsMovieDiscovery,
+            constraints.AllowsSeriesDiscovery,
+            capacity);
         if (capacity == 0)
             return native;
 
@@ -216,6 +222,12 @@ public sealed class StreamarrSearchActionFilter(
     {
         var constraints = GetConstraints(http.Request, isHintRequest: true);
         var capacity = constraints.RemainingCapacity(native.SearchHints.Count, native.SearchHints.Count + MaxWorks);
+        logger.LogDebug(
+            "Streamarr /Search/Hints constraints: valid={Valid}, movies={MoviesAllowed}, series={SeriesAllowed}, capacity={Capacity}",
+            constraints.IsValid,
+            constraints.AllowsMovieDiscovery,
+            constraints.AllowsSeriesDiscovery,
+            capacity);
         if (capacity == 0)
             return native;
 
@@ -819,13 +831,22 @@ public sealed class StreamarrSearchActionFilter(
             valid = false;
         }
 
+        // Streamarr materializes available, non-missing items. Jellyfin Web explicitly sends
+        // isMissing=false for its grouped search, which is therefore safe to augment. A missing
+        // or malformed predicate cannot be represented by synthetic results and fails closed.
+        if (query.ContainsKey("isMissing")
+            && (!TryBool(query["isMissing"].ToString(), out var isMissing) || isMissing))
+        {
+            valid = false;
+        }
+
         // Any unrecognized query option may be a native predicate or sort we cannot faithfully
         // apply after Jellyfin has produced its page. Fail closed rather than broadening it.
         HashSet<string> supportedKeys = new(
         [
             "searchTerm", "userId", "startIndex", "limit", "parentId", "includeItemTypes",
             "excludeItemTypes", "mediaTypes", "includeMedia", "isMovie", "isSeries", "recursive",
-            "fields", "enableUserData", "imageTypeLimit", "enableImageTypes", "enableImages",
+            "isMissing", "fields", "enableUserData", "imageTypeLimit", "enableImageTypes", "enableImages",
             "enableTotalRecordCount", "includePeople", "includeGenres", "includeStudios",
             "includeArtists", "api_key",
         ], StringComparer.OrdinalIgnoreCase);
@@ -842,6 +863,10 @@ public sealed class StreamarrSearchActionFilter(
             includeMedia,
             isMovie,
             isSeries,
+            // A Jellyfin Series is a Folder and its /Items DTO has MediaType.Unknown. Search
+            // hints deliberately describe the same folder as Video. Keeping those distinct
+            // prevents Jellyfin Web's generic Videos query from stealing series from Shows.
+            isHintRequest ? MediaType.Video : MediaType.Unknown,
             valid);
     }
 

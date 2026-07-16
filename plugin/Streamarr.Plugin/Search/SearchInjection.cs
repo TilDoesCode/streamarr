@@ -29,6 +29,7 @@ public static class SearchInjection
         bool IncludeMedia,
         bool? IsMovie,
         bool? IsSeries,
+        MediaType SeriesMediaType,
         bool IsValid = true)
     {
         public bool CanInjectAtRoot
@@ -84,8 +85,12 @@ public static class SearchInjection
                 return false;
             if (ExcludeItemTypes.Contains(kind))
                 return false;
-            if (MediaTypes.Count > 0 && !MediaTypes.Contains(MediaType.Video))
-                return false;
+            if (MediaTypes.Count > 0)
+            {
+                var mediaType = kind == BaseItemKind.Series ? SeriesMediaType : MediaType.Video;
+                if (!MediaTypes.Contains(mediaType))
+                    return false;
+            }
 
             if (IsMovie is { } wantsMovie && (kind == BaseItemKind.Movie) != wantsMovie)
                 return false;

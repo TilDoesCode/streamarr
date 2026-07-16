@@ -154,6 +154,56 @@ by the manual checklist in [`m5-acceptance.md`](./m5-acceptance.md).
 > (plugin status) on load. A read-only mount surfaces as
 > `IOException: Read-only file system : '/config/plugins/Streamarr/meta.json'`.
 
+### Bounded plugin debug logging in the dev Jellyfin console
+
+The Compose test stack writes Jellyfin's Serilog configuration to
+`/config/config/logging.default.json`. After the `streamarr-jellyfin` container has
+completed its first startup, enable Debug for only the plugin namespace from the repository
+root:
+
+```bash
+docker exec streamarr-jellyfin sh -c \
+  'cat /config/config/logging.default.json' \
+  | jq '.Serilog.MinimumLevel.Override["Streamarr.Plugin"] = "Debug"' \
+  | docker exec -i streamarr-jellyfin sh -c '
+      umask 077
+      file=/config/config/logging.default.json
+      tmp="$file.tmp"
+      cat >"$tmp"
+      mv "$tmp" "$file"
+    '
+docker restart streamarr-jellyfin
+```
+
+Reproduce the request, then read a bounded, namespace-filtered slice of the Jellyfin console:
+
+```bash
+docker logs --since 10m --tail 400 streamarr-jellyfin 2>&1 \
+  | rg 'Streamarr\.Plugin'
+```
+
+Do not dump the container environment or
+`/config/plugins/configurations/Streamarr.Plugin.xml`: both can contain credentials.
+The plugin's structured search diagnostics report route/constraint decisions and bounded
+result counts, not the Core API key or playback capability tokens. Keep log requests bounded
+with both `--since` and `--tail` before sharing them.
+
+Return the namespace to Jellyfin's default level after debugging:
+
+```bash
+docker exec streamarr-jellyfin sh -c \
+  'cat /config/config/logging.default.json' \
+  | jq 'del(.Serilog.MinimumLevel.Override["Streamarr.Plugin"])' \
+  | docker exec -i streamarr-jellyfin sh -c '
+      umask 077
+      file=/config/config/logging.default.json
+      tmp="$file.tmp"
+      cat >"$tmp"
+      mv "$tmp" "$file"
+    '
+docker restart streamarr-jellyfin
+```
+
 ## Re-testing on a Jellyfin upgrade
 
 The action filter couples to Jellyfin's HTTP pipeline and **must be re-verified on

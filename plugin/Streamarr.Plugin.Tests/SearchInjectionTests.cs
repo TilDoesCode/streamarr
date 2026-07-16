@@ -166,7 +166,8 @@ public class SearchInjectionTests
             new HashSet<MediaType> { MediaType.Video },
             true,
             null,
-            null);
+            null,
+            MediaType.Unknown);
 
         Assert.Equal(3, root.RemainingCapacity(nativeCount: 2, defaultLimit: 20));
         Assert.Equal("movie", root.CoreMediaType);
@@ -204,14 +205,24 @@ public class SearchInjectionTests
             null,
             new HashSet<BaseItemKind>(),
             new HashSet<BaseItemKind>(),
-            new HashSet<MediaType> { MediaType.Video },
+            new HashSet<MediaType>(),
             true,
             null,
-            null);
+            null,
+            MediaType.Unknown);
 
         Assert.True(global.AllowsMovieDiscovery);
         Assert.True(global.AllowsSeriesDiscovery);
         Assert.True(global.AllowsSeries(series));
+        Assert.True((global with
+        {
+            MediaTypes = new HashSet<MediaType> { MediaType.Video },
+            SeriesMediaType = MediaType.Video,
+        }).AllowsSeriesDiscovery);
+        Assert.False((global with
+        {
+            MediaTypes = new HashSet<MediaType> { MediaType.Video },
+        }).AllowsSeriesDiscovery);
         Assert.False((global with { IsMovie = true }).AllowsSeriesDiscovery);
         Assert.True((global with { IsSeries = true }).AllowsSeriesDiscovery);
         Assert.False((global with { IsSeries = false }).AllowsSeriesDiscovery);
@@ -237,11 +248,60 @@ public class SearchInjectionTests
             new HashSet<MediaType>(),
             true,
             null,
-            null);
+            null,
+            MediaType.Unknown);
 
         Assert.False(constraints.CanInjectAtRoot);
         Assert.Equal(0, constraints.RemainingCapacity(0, 20));
         Assert.False(constraints.Allows(Movie("movie", "Movie")));
+    }
+
+    [Fact]
+    public void Jellyfin_web_grouped_search_accepts_non_missing_movies_and_series()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(
+            "?userId=10000000-0000-0000-0000-000000000001"
+            + "&recursive=true"
+            + "&searchTerm=Suits"
+            + "&includeItemTypes=Movie,Series,Episode,Playlist,MusicAlbum,Audio,TvChannel,PhotoAlbum,Photo,AudioBook,Book,BoxSet"
+            + "&isMissing=false"
+            + "&limit=800"
+            + "&fields=PrimaryImageAspectRatio,CanDelete,MediaSourceCount"
+            + "&enableTotalRecordCount=false"
+            + "&imageTypeLimit=1");
+
+        var constraints = StreamarrSearchActionFilter.GetConstraints(
+            context.Request,
+            isHintRequest: false);
+
+        Assert.True(constraints.IsValid);
+        Assert.True(constraints.CanInjectAtRoot);
+        Assert.True(constraints.AllowsMovieDiscovery);
+        Assert.True(constraints.AllowsSeriesDiscovery);
+    }
+
+    [Fact]
+    public void Jellyfin_web_generic_video_search_excludes_structured_movies_and_series()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(
+            "?userId=10000000-0000-0000-0000-000000000001"
+            + "&recursive=true"
+            + "&searchTerm=Suits"
+            + "&mediaTypes=Video"
+            + "&excludeItemTypes=Movie,Episode,TvChannel"
+            + "&fields=PrimaryImageAspectRatio,CanDelete,MediaSourceCount"
+            + "&enableTotalRecordCount=false"
+            + "&imageTypeLimit=1");
+
+        var constraints = StreamarrSearchActionFilter.GetConstraints(
+            context.Request,
+            isHintRequest: false);
+
+        Assert.True(constraints.IsValid);
+        Assert.False(constraints.AllowsMovieDiscovery);
+        Assert.False(constraints.AllowsSeriesDiscovery);
     }
 
     [Theory]
@@ -254,6 +314,8 @@ public class SearchInjectionTests
     [InlineData("?mediaTypes=unsupported")]
     [InlineData("?userId=00000000-0000-0000-0000-000000000000")]
     [InlineData("?isMovie=perhaps")]
+    [InlineData("?isMissing=perhaps")]
+    [InlineData("?isMissing=true")]
     [InlineData("?recursive=false")]
     [InlineData("?tags=family")]
     [InlineData("?collapseBoxSetItems=true")]
