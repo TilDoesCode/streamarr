@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.4.3.0",
+        "changelog": "Fix Jellyfin movie playback and TV season/episode navigation, with correct remote-item availability and hierarchy metadata.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.4.3/streamarr-jellyfin-0.4.3.zip",
+        "checksum": "b08d9b3dfd6addba9d11b63c88c34ba5",
+        "timestamp": "2026-07-16T18:34:45Z"
+      },
+      {
         "version": "0.4.2.0",
         "changelog": "Restore Jellyfin Web grouped movie and series search compatibility, with safer query constraint handling and bounded plugin diagnostics.",
         "targetAbi": "10.11.11.0",
