@@ -61,7 +61,10 @@ export function AppShell() {
   // Some screens (e.g. the Search / Debug playground) render a wide, multi-column table that
   // needs the full viewport width. Let those breathe instead of the comfortable-reading cap.
   const wideLayout = useRouterState({
-    select: (s) => s.location.pathname.startsWith("/search"),
+    select: (s) =>
+      ["/search", "/library", "/ephemeral", "/history"].some((path) =>
+        s.location.pathname.startsWith(path),
+      ),
   });
 
   return (

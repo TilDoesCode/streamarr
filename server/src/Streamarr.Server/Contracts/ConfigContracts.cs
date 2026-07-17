@@ -163,4 +163,9 @@ public sealed record EventRequest
 
     /// <summary>Originating front-end ("jellyfin" | "web" | …).</summary>
     public string? Source { get; init; }
+
+    public string? PlaybackSessionId { get; init; }
+    public string? ExternalUserId { get; init; }
+    public string? ExternalUserName { get; init; }
+    public string? DeviceName { get; init; }
 }

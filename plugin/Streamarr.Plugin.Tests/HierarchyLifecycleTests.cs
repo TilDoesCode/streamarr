@@ -168,13 +168,59 @@ public class HierarchyLifecycleTests
         var cutoff = Now.AddHours(-12);
 
         Assert.True(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), cutoff.AddMinutes(-1), cutoff, capacityOverflow: false));
+            expected, new HashSet<Guid>(expected), cutoff.AddMinutes(-1), cutoff, capacityOverflow: false, isEngaged: false));
         Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: false));
+            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: false, isEngaged: false));
         Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid> { root, child, Guid.NewGuid() }, cutoff.AddMinutes(-1), cutoff, false));
+            expected, new HashSet<Guid> { root, child, Guid.NewGuid() }, cutoff.AddMinutes(-1), cutoff, false, false));
         Assert.True(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: true));
+            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: true, isEngaged: false));
+    }
+
+    [Fact]
+    public void Engaged_subtrees_never_expire_by_ttl_but_yield_to_capacity_pressure()
+    {
+        var root = Guid.NewGuid();
+        var expected = new HashSet<Guid> { root };
+        var cutoff = Now.AddHours(-12);
+
+        // Expired by TTL yet engaged (resume position / favorite / watched) → protected.
+        Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
+            expected, new HashSet<Guid>(expected), cutoff.AddDays(-7), cutoff, capacityOverflow: false, isEngaged: true));
+        // The hard capacity bound still wins over engagement.
+        Assert.True(EphemeralLibraryService.CanDeleteLifecycleCandidate(
+            expected, new HashSet<Guid>(expected), cutoff.AddDays(-7), cutoff, capacityOverflow: true, isEngaged: true));
+    }
+
+    [Fact]
+    public void Engagement_rolls_up_to_ancestors_and_orders_engaged_subtrees_last()
+    {
+        var seriesId = Guid.NewGuid();
+        var seasonId = Guid.NewGuid();
+        var engagedEpisodeId = Guid.NewGuid();
+        var idleMovieId = Guid.NewGuid();
+        var candidates = EphemeralLifecycle.Build(
+        [
+            new EphemeralLifecycle.Node(seriesId, Guid.NewGuid(), Now.AddDays(-9)),
+            new EphemeralLifecycle.Node(seasonId, seriesId, Now.AddDays(-9)),
+            new EphemeralLifecycle.Node(engagedEpisodeId, seasonId, Now.AddDays(-9), IsEngaged: true),
+            new EphemeralLifecycle.Node(idleMovieId, Guid.NewGuid(), Now.AddMinutes(-1)),
+        ]);
+
+        // A half-watched episode protects its season and series from TTL expiry.
+        Assert.True(Assert.Single(candidates, item => item.ItemId == seriesId).IsEngaged);
+        Assert.True(Assert.Single(candidates, item => item.ItemId == seasonId).IsEngaged);
+        Assert.False(Assert.Single(candidates, item => item.ItemId == idleMovieId).IsEngaged);
+
+        // Under capacity pressure the idle movie goes first even though the engaged series
+        // subtree was accessed far longer ago.
+        var ordered = EphemeralLifecycle.OrderForDeletion(
+        [
+            Lifecycle(seriesId, isEngaged: true, seriesId, seasonId, engagedEpisodeId),
+            Lifecycle(idleMovieId, isEngaged: false, idleMovieId),
+        ]).ToList();
+        Assert.Equal(idleMovieId, ordered[0].Item.Id);
+        Assert.Equal(seriesId, ordered[1].Item.Id);
     }
 
     [Fact]
@@ -437,10 +483,17 @@ public class HierarchyLifecycleTests
     private static EphemeralLibraryService.LifecycleItem Lifecycle(
         Guid itemId,
         params Guid[] subtreeIds)
+        => Lifecycle(itemId, isEngaged: false, subtreeIds);
+
+    private static EphemeralLibraryService.LifecycleItem Lifecycle(
+        Guid itemId,
+        bool isEngaged,
+        params Guid[] subtreeIds)
         => new(
             new Folder { Id = itemId },
             subtreeIds.ToHashSet(),
-            Now);
+            Now,
+            isEngaged);
 
     private static WorkDto Work(string workId) => new()
     {

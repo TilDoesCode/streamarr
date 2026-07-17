@@ -33,6 +33,7 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
         ["GET", "/api/v1/config/indexers"],
         ["GET", "/api/v1/config/providers"],
         ["GET", "/api/v1/config/general"],
+        ["GET", "/api/v1/config/notifications"],
         ["GET", "/api/v1/config/profiles"],
         ["GET", "/api/v1/config/apikeys"],
         ["GET", "/api/v1/metrics"],
@@ -80,6 +81,7 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
 
         // Out of scope: /config + /debug are forbidden (authenticated, wrong role → 403).
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/general")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/notifications")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/apikeys")).StatusCode);
         var debug = await machine.PostAsJsonAsync("/api/v1/debug/search", new { q = "x" });
         Assert.Equal(HttpStatusCode.Forbidden, debug.StatusCode);
@@ -92,6 +94,7 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
         await admin.AuthenticateAsAdminAsync();
 
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/general")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/notifications")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/apikeys")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/caps")).StatusCode);
 

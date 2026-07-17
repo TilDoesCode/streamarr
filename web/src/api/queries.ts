@@ -3,13 +3,18 @@ import { apiFetch } from "./client";
 import type {
   ApiKeyResponse,
   ChangePasswordRequest,
+  CachedReleaseResponse,
   CreateApiKeyRequest,
   CreatedApiKeyResponse,
   DebugSearchRequest,
   DebugSearchResponse,
   GeneralConfigResponse,
   GeneralConfigWrite,
+  EphemeralFileResponse,
   HealthResponse,
+  NotificationConfigResponse,
+  NotificationConfigWrite,
+  NotificationTestResponse,
   IndexerResponse,
   IndexerTestResult,
   IndexerWrite,
@@ -24,6 +29,7 @@ import type {
   ResolveResponse,
   SearchResponse,
   SessionResponse,
+  StreamingHistoryResponse,
   TvSeasonDetailsResponse,
   TvSeriesDetailsResponse,
   TvSeriesSearchResponse,
@@ -33,11 +39,15 @@ import type {
 export const queryKeys = {
   health: (deep: boolean) => ["health", deep] as const,
   generalConfig: ["config", "general"] as const,
+  notificationConfig: ["config", "notifications"] as const,
   apiKeys: ["config", "apikeys"] as const,
   indexers: ["config", "indexers"] as const,
   providers: ["config", "providers"] as const,
   profiles: ["config", "profiles"] as const,
   sessions: ["sessions"] as const,
+  cachedReleases: ["library", "cached-releases"] as const,
+  ephemeralFiles: ["ephemeral-files"] as const,
+  streamingHistory: ["streaming-history"] as const,
   resolvedRelease: (releaseId: string, workId?: string) =>
     ["resolve", releaseId, workId ?? null] as const,
   tvSeries: (tmdbId: number) => ["tv", tmdbId] as const,
@@ -172,6 +182,41 @@ export function useCloseSession() {
   });
 }
 
+/** Persistent NZB cache library. */
+export function useCachedReleases() {
+  return useQuery({
+    queryKey: queryKeys.cachedReleases,
+    queryFn: ({ signal }) => apiFetch<CachedReleaseResponse[]>("/library/releases", { signal }),
+  });
+}
+
+export function useRemoveCachedRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (releaseId: string) =>
+      apiFetch<void>(`/library/releases/${encodeURIComponent(releaseId)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.cachedReleases }),
+  });
+}
+
+/** Live ephemeral media files, including chunk progress and active cache footprint. */
+export function useEphemeralFiles({ refetchInterval = 3_000 } = {}) {
+  return useQuery({
+    queryKey: queryKeys.ephemeralFiles,
+    queryFn: ({ signal }) => apiFetch<EphemeralFileResponse[]>("/ephemeral-files", { signal }),
+    refetchInterval,
+  });
+}
+
+/** Playback events with the external Jellyfin account attached. */
+export function useStreamingHistory(limit = 200) {
+  return useQuery({
+    queryKey: [...queryKeys.streamingHistory, limit],
+    queryFn: ({ signal }) =>
+      apiFetch<StreamingHistoryResponse[]>("/events", { query: { limit }, signal }),
+  });
+}
+
 export function useGeneralConfig() {
   return useQuery({
     queryKey: queryKeys.generalConfig,
@@ -187,6 +232,30 @@ export function useUpdateGeneralConfig() {
     onSuccess: (data) => {
       qc.setQueryData(queryKeys.generalConfig, data);
     },
+  });
+}
+
+export function useNotificationConfig() {
+  return useQuery({
+    queryKey: queryKeys.notificationConfig,
+    queryFn: ({ signal }) =>
+      apiFetch<NotificationConfigResponse>("/config/notifications", { signal }),
+  });
+}
+
+export function useUpdateNotificationConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (write: NotificationConfigWrite) =>
+      apiFetch<NotificationConfigResponse>("/config/notifications", { method: "PUT", body: write }),
+    onSuccess: (data) => qc.setQueryData(queryKeys.notificationConfig, data),
+  });
+}
+
+export function useTestNotification() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<NotificationTestResponse>("/config/notifications/test", { method: "POST" }),
   });
 }
 

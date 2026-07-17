@@ -6,6 +6,9 @@ import {
   Search,
   PlayCircle,
   Radio,
+  Archive,
+  TimerReset,
+  History,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -26,5 +29,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/search", label: "Search", icon: Search },
   { to: "/playback", label: "Playback Preview", icon: PlayCircle },
   { to: "/sessions", label: "Sessions", icon: Radio },
+  { to: "/library", label: "Cached Library", icon: Archive },
+  { to: "/ephemeral", label: "Ephemeral Files", icon: TimerReset },
+  { to: "/history", label: "Streaming History", icon: History },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

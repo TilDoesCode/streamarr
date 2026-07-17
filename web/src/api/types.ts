@@ -11,6 +11,9 @@ export type ChangePasswordRequest = S["ChangePasswordRequest"];
 
 export type GeneralConfigResponse = S["GeneralConfigResponse"];
 export type GeneralConfigWrite = S["GeneralConfigWrite"];
+export type NotificationConfigResponse = S["NotificationConfigResponse"];
+export type NotificationConfigWrite = S["NotificationConfigWrite"];
+export type NotificationTestResponse = S["NotificationTestResponse"];
 
 export type ApiKeyResponse = S["ApiKeyResponse"];
 export type CreateApiKeyRequest = S["CreateApiKeyRequest"];
@@ -56,4 +59,7 @@ export type ResolveResponse = S["ResolveResponse"];
 export type MediaStreamInfo = S["MediaStreamInfo"];
 
 export type SessionResponse = S["SessionResponse"];
+export type CachedReleaseResponse = S["CachedReleaseResponse"];
+export type EphemeralFileResponse = S["EphemeralFileResponse"];
+export type StreamingHistoryResponse = S["StreamingHistoryResponse"];
 export type ReachabilityStatus = S["ReachabilityStatus"];

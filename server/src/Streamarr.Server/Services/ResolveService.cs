@@ -32,27 +32,60 @@ public sealed class ResolveService(
     /// Builds a loopback stream URL for the in-process ffprobe run (the public
     /// host may not be reachable from the server itself, e.g. behind a proxy).
     /// </param>
-    public async Task<ResolveResponse> ResolveAsync(
+    public Task<ResolveResponse> ResolveAsync(
         string releaseId,
         string? client,
         Func<string, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         CancellationToken ct)
-        => await ResolveAsync(releaseId, workId: null, client, autoFallback: true, streamUrlForToken, localStreamUrlForToken, ct);
+        => ResolveAsync(releaseId, client, null, null, streamUrlForToken, localStreamUrlForToken, ct);
 
     public async Task<ResolveResponse> ResolveAsync(
+        string releaseId,
+        string? client,
+        string? requestedById,
+        string? requestedByName,
+        Func<string, string> streamUrlForToken,
+        Func<string, string> localStreamUrlForToken,
+        CancellationToken ct)
+        => await ResolveAsync(releaseId, workId: null, client, requestedById, requestedByName, autoFallback: true, streamUrlForToken, localStreamUrlForToken, ct);
+
+    public Task<ResolveResponse> ResolveAsync(
         string releaseId,
         string? client,
         bool autoFallback,
         Func<string, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         CancellationToken ct)
-        => await ResolveAsync(releaseId, workId: null, client, autoFallback, streamUrlForToken, localStreamUrlForToken, ct);
+        => ResolveAsync(releaseId, client, null, null, autoFallback, streamUrlForToken, localStreamUrlForToken, ct);
+
+    public async Task<ResolveResponse> ResolveAsync(
+        string releaseId,
+        string? client,
+        string? requestedById,
+        string? requestedByName,
+        bool autoFallback,
+        Func<string, string> streamUrlForToken,
+        Func<string, string> localStreamUrlForToken,
+        CancellationToken ct)
+        => await ResolveAsync(releaseId, workId: null, client, requestedById, requestedByName, autoFallback, streamUrlForToken, localStreamUrlForToken, ct);
+
+    public Task<ResolveResponse> ResolveAsync(
+        string releaseId,
+        string? workId,
+        string? client,
+        bool autoFallback,
+        Func<string, string> streamUrlForToken,
+        Func<string, string> localStreamUrlForToken,
+        CancellationToken ct)
+        => ResolveAsync(releaseId, workId, client, null, null, autoFallback, streamUrlForToken, localStreamUrlForToken, ct);
 
     public async Task<ResolveResponse> ResolveAsync(
         string releaseId,
         string? workId,
         string? client,
+        string? requestedById,
+        string? requestedByName,
         bool autoFallback,
         Func<string, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
@@ -67,6 +100,8 @@ public sealed class ResolveService(
                 releaseId,
                 workId,
                 client,
+                requestedById,
+                requestedByName,
                 autoFallback,
                 streamUrlForToken,
                 localStreamUrlForToken,
@@ -82,6 +117,8 @@ public sealed class ResolveService(
         string releaseId,
         string? requestedWorkId,
         string? client,
+        string? requestedById,
+        string? requestedByName,
         bool autoFallback,
         Func<string, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
@@ -104,6 +141,8 @@ public sealed class ResolveService(
                 currentId,
                 workId,
                 client,
+                requestedById,
+                requestedByName,
                 streamUrlForToken,
                 localStreamUrlForToken,
                 ct);
@@ -169,6 +208,8 @@ public sealed class ResolveService(
         string releaseId,
         string? workId,
         string? client,
+        string? requestedById,
+        string? requestedByName,
         Func<string, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         CancellationToken ct)
@@ -178,10 +219,17 @@ public sealed class ResolveService(
         var nzbUrl = registered.Release.NzbUrl
             ?? throw new NoPlayableFileException("The release has no NZB location on record.");
 
-        var nzb = await nzbFetcher.FetchAsync(
+        var cachedNzb = await nzbFetcher.FetchAsync(
+            new NzbCacheDescriptor(
+                registered.Release.ReleaseId,
+                registered.WorkId,
+                registered.Release.Title,
+                registered.Release.Indexer,
+                registered.Release.SizeBytes),
             nzbUrl,
             registered.Release.IndexerId ?? registered.Release.Indexer,
             ct);
+        var nzb = cachedNzb.Document;
         var candidate = MediaFileSelector.SelectPrimary(nzb)
             ?? throw new NoPlayableFileException("The NZB contains no playable media file.");
 
@@ -206,7 +254,14 @@ public sealed class ResolveService(
         healthCache.Record(releaseId, health.Health);
 
         var media = await materializer.MaterializeAsync(candidate, ct);
-        var session = sessionManager.CreateSession(releaseId, registered.WorkId, media, client);
+        var session = sessionManager.CreateSession(
+            releaseId,
+            registered.WorkId,
+            media,
+            client,
+            requestedById,
+            requestedByName,
+            registered.Release.Title);
 
         FfprobeResult? probe;
         try

@@ -204,12 +204,22 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<ProviderConfigService>();
         services.AddSingleton<ProfileConfigService>();
         services.AddSingleton<GeneralConfigService>();
+        services.AddSingleton<NotificationConfigService>();
         services.AddSingleton<WatchEventService>();
+        services.AddSingleton<NzbCacheService>();
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<IndexerCapsTester>();
         services.AddSingleton(_ => new ProviderConnectionTester());
         services.AddSingleton(_ => new ProviderSpeedTester());
         services.AddSingleton<StreamarrDbInitializer>();
+        services.AddHttpClient<PushoverClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.pushover.net/");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        }).RemoveAllLoggers();
+        services.AddSingleton<PushoverNotificationService>();
+        services.AddHostedService(sp => sp.GetRequiredService<PushoverNotificationService>());
+        services.AddHostedService<DependencyOutageMonitor>();
 
         // One pooled client per configured provider, fanned out in priority order …
         services.AddSingleton<MultiProviderNntpClient>(sp =>
@@ -381,7 +391,20 @@ public static class StreamarrServerBootstrap
                     Contracts.ErrorResponse.Of("payload_too_large", "API request bodies are limited to 1 MiB."));
                 return;
             }
-            await next();
+            try
+            {
+                await next();
+            }
+            catch (Exception exception)
+            {
+                app.Services.GetRequiredService<PushoverNotificationService>().Enqueue(
+                    new NotificationEvent(
+                        NotificationEventKind.Error,
+                        "Unhandled Streamarr error",
+                        $"{context.Request.Method} {RedactRequestPath(context.Request.Path)} failed: {exception.GetType().Name}",
+                        $"{context.Request.Method}:{RedactRequestPath(context.Request.Path)}"));
+                throw;
+            }
         });
 
         // Apply migrations, seed from options on first run, and overlay the persisted

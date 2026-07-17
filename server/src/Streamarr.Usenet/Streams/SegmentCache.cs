@@ -27,6 +27,25 @@ public sealed class SegmentCache : IDisposable
 
     public long CapacityBytes => _capacityBytes;
 
+    public (int Count, long Bytes) GetStats(IEnumerable<string> segmentIds)
+    {
+        ArgumentNullException.ThrowIfNull(segmentIds);
+        var count = 0;
+        long bytes = 0;
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            foreach (var key in segmentIds.Select(SegmentId.Normalize).Distinct(StringComparer.Ordinal))
+            {
+                if (!_entries.TryGetValue(key, out var entry))
+                    continue;
+                count++;
+                bytes += entry.Bytes.LongLength;
+            }
+        }
+        return (count, bytes);
+    }
+
     public Task<byte[]> GetOrAddAsync(
         string segmentId,
         Func<CancellationToken, Task<byte[]>> factory,

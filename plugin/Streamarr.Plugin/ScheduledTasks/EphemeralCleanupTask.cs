@@ -50,11 +50,15 @@ public sealed class EphemeralCleanupTask(
             cancellationToken.ThrowIfCancellationRequested();
             var lifecycle = library.GetLifecycleItems();
             var overflow = Math.Max(0, lifecycle.Count - EphemeralLibraryService.MaxEphemeralItems);
+            // Engaged subtrees (resume position, favorite, or watched state for any user) never
+            // expire by TTL: deleting them would silently clear the user's Continue Watching,
+            // Favorites, or Next Up state. Capacity overflow may still evict them — last.
             var candidate = EphemeralLifecycle
                 .OrderForDeletion(lifecycle)
                 .FirstOrDefault(item => !item.SubtreeIds.Any(failedSubtrees.Contains)
                                         && (overflow > 0
-                                            || EphemeralCleanup.IsExpired(item.EffectiveLastAccessUtc, now, ttl)));
+                                            || (!item.IsEngaged
+                                                && EphemeralCleanup.IsExpired(item.EffectiveLastAccessUtc, now, ttl))));
             if (candidate is null)
                 break;
 

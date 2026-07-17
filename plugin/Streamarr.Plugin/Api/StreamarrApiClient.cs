@@ -131,10 +131,25 @@ public sealed class StreamarrApiClient
         => await ResolveAsync(releaseId, workId: null, ct).ConfigureAwait(false);
 
     public async Task<ResolveResponse?> ResolveAsync(string releaseId, string? workId, CancellationToken ct)
+        => await ResolveAsync(releaseId, workId, requestedById: null, requestedByName: null, ct).ConfigureAwait(false);
+
+    public async Task<ResolveResponse?> ResolveAsync(
+        string releaseId,
+        string? workId,
+        string? requestedById,
+        string? requestedByName,
+        CancellationToken ct)
         => StreamarrPayloadBounds.Normalize(await SendAsync<ResolveResponse>(
             HttpMethod.Post,
             "/api/v1/resolve",
-            new ResolveRequest { ReleaseId = releaseId, WorkId = workId, Client = "jellyfin" },
+            new ResolveRequest
+            {
+                ReleaseId = releaseId,
+                WorkId = workId,
+                Client = "jellyfin",
+                RequestedById = requestedById,
+                RequestedByName = requestedByName,
+            },
             ct).ConfigureAwait(false));
 
     public async Task CloseSessionAsync(string token, CancellationToken ct)

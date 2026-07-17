@@ -126,7 +126,11 @@ The current 10.11.11 real-host smoke verifies both rows plus reachable injection
 both endpoints, the exact Jellyfin Web grouped-search request, movie detail and PlaybackInfo,
 series → seasons → episodes navigation, available/unavailable episode offers, load,
 connection auth, materialization, restart persistence, user-restricted playback offers,
-open/close, forged/cross-user/replayed-offer rejection, and root/Latest isolation.
+open/close, forged/cross-user/replayed-offer rejection, and the library-integration
+contract: the "Streamarr" library view exists for permitted users, ephemeral items join
+their recursive root/Latest queries, recorded progress puts an item into
+`/UserItems/Resume` (Continue Watching), a favorite toggle keeps it in `IsFavorite`
+queries, and a user with no media-folder access continues to see nothing anywhere.
 Full injection of real Usenet works into a client's search
 (plus duplicate-free repeat behavior and TTL cleanup) requires a live Core
 Server with real indexer/provider credentials and a real client — that is the manual checklist in

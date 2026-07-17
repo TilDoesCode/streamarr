@@ -90,6 +90,14 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool InterceptionEnabled { get; set; }
 
     /// <summary>
+    /// Presents the plugin's ephemeral folder as its own "Streamarr" library below the user
+    /// root. This integrates ephemeral items into Jellyfin's user-view-scoped flows — Continue
+    /// Watching, Next Up, Favorites and library browsing. Disabling it re-parents the folder
+    /// below the hidden aggregate root, restoring the fully isolated legacy behavior.
+    /// </summary>
+    public bool LibraryEnabled { get; set; } = true;
+
+    /// <summary>
     /// Optional Core Server quality-profile id to pass through on searches. Empty = use
     /// the server's default profile.
     /// </summary>

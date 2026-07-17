@@ -77,6 +77,10 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.MaxNzbBytes, 1024, 512 * 1024 * 1024, nameof(o.MaxNzbBytes));
         Range(o.MaxNzbFiles, 1, 100_000, nameof(o.MaxNzbFiles));
         Range(o.MaxNzbSegments, 1, 5_000_000, nameof(o.MaxNzbSegments));
+        Range(o.NzbCacheSizeMb, 1, 1_048_576, nameof(o.NzbCacheSizeMb));
+        Range(o.NzbCacheMaxEntries, 1, 1_000_000, nameof(o.NzbCacheMaxEntries));
+        if (o.NzbCachePath.Length > 4096 || ContainsControl(o.NzbCachePath))
+            failures.Add("NzbCachePath must not exceed 4096 characters or contain control characters.");
         if (o.MaxMediaBytes is < 1024 or > 64L * 1024 * 1024 * 1024 * 1024)
             failures.Add("MaxMediaBytes must be between 1 KiB and 64 TiB.");
         Range(o.SearchCacheMaxEntries, 1, 100_000, nameof(o.SearchCacheMaxEntries));

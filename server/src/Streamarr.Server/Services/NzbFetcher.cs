@@ -20,7 +20,8 @@ public class NzbFetcher(
     HttpClient httpClient,
     IOptions<StreamarrOptions> options,
     IIndexerConfigStore indexers,
-    ILogger<NzbFetcher>? logger = null)
+    ILogger<NzbFetcher>? logger = null,
+    NzbCacheService? cache = null)
 {
     private readonly ILogger _logger = logger ?? NullLogger<NzbFetcher>.Instance;
     private const int MaxRedirects = 3;
@@ -34,22 +35,37 @@ public class NzbFetcher(
         string? indexerName,
         CancellationToken cancellationToken)
     {
+        var bytes = await FetchBytesAsync(nzbUrl, indexerName, cancellationToken);
+        return await ParseAsync(bytes, cancellationToken);
+    }
+
+    public async Task<CachedNzb> FetchAsync(
+        NzbCacheDescriptor descriptor,
+        string nzbUrl,
+        string? indexerName,
+        CancellationToken cancellationToken)
+    {
+        if (cache is null)
+            return new CachedNzb(await FetchAsync(nzbUrl, indexerName, cancellationToken), false);
+
+        return await cache.GetOrCreateAsync(
+            descriptor,
+            ct => FetchBytesAsync(nzbUrl, indexerName, ct),
+            cancellationToken);
+    }
+
+    private async Task<byte[]> FetchBytesAsync(
+        string nzbUrl,
+        string? indexerName,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(nzbUrl))
             throw new InvalidDataException("The release has no valid NZB location.");
         if (nzbUrl.Length > MaxNzbUrlLength)
             throw new InvalidDataException($"The NZB location exceeds the {MaxNzbUrlLength} character limit.");
 
         await using var source = await OpenAsync(nzbUrl, indexerName, cancellationToken);
-        await using var bounded = await ReadBoundedAsync(source, options.Value.MaxNzbBytes, cancellationToken);
-        return await NzbDocument.LoadAsync(
-            bounded,
-            cancellationToken,
-            new NzbDocumentLimits
-            {
-                MaxFiles = options.Value.MaxNzbFiles,
-                MaxSegments = options.Value.MaxNzbSegments,
-                MaxSegmentsPerFile = options.Value.MaxNzbSegments,
-            });
+        return await ReadBoundedAsync(source, options.Value.MaxNzbBytes, cancellationToken);
     }
 
     private async Task<Stream> OpenAsync(string nzbUrl, string? indexerName, CancellationToken ct)
@@ -114,7 +130,7 @@ public class NzbFetcher(
         }
     }
 
-    private static async Task<MemoryStream> ReadBoundedAsync(Stream source, int maxBytes, CancellationToken ct)
+    private static async Task<byte[]> ReadBoundedAsync(Stream source, int maxBytes, CancellationToken ct)
     {
         var result = new MemoryStream(Math.Min(maxBytes, 1024 * 1024));
         var buffer = new byte[64 * 1024];
@@ -130,14 +146,27 @@ public class NzbFetcher(
                 await result.WriteAsync(buffer.AsMemory(0, read), ct);
             }
 
-            result.Position = 0;
-            return result;
+            return result.ToArray();
         }
         catch
         {
             await result.DisposeAsync();
             throw;
         }
+    }
+
+    private async Task<NzbDocument> ParseAsync(byte[] bytes, CancellationToken ct)
+    {
+        await using var stream = new MemoryStream(bytes, writable: false);
+        return await NzbDocument.LoadAsync(
+            stream,
+            ct,
+            new NzbDocumentLimits
+            {
+                MaxFiles = options.Value.MaxNzbFiles,
+                MaxSegments = options.Value.MaxNzbSegments,
+                MaxSegmentsPerFile = options.Value.MaxNzbSegments,
+            });
     }
 
     /// <summary>

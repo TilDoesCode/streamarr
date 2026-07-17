@@ -15,7 +15,7 @@ namespace Streamarr.Server.Persistence.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "8.0.28");
 
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ApiKeyEntity", b =>
                 {
@@ -46,6 +46,55 @@ namespace Streamarr.Server.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ApiKeys");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.CachedReleaseEntity", b =>
+                {
+                    b.Property<string>("ReleaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CacheFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CachedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FileCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("HitCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Indexer")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastAccessedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("NzbSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ReleaseSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SegmentCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ReleaseId");
+
+                    b.HasIndex("LastAccessedAt");
+
+                    b.ToTable("CachedReleases");
                 });
 
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.GeneralConfigEntity", b =>
@@ -110,6 +159,103 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Indexers");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.NotificationConfigEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AppTokenEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Device")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EmergencyExpireSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("EmergencyRetrySeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ErrorCooldownSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ErrorPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IncludeDeviceName")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IncludeReleaseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IncludeUserName")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MonitorIntervalSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyApplicationStarted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyErrors")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOutages")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyPlaybackProgress")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyPlaybackStarted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyPlaybackStopped")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyRecoveries")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyResolveFailed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyResolveSucceeded")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("OutageFailureThreshold")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("OutagePriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("OutageReminderMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProgressIntervalMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RecoveryPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Sound")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UsagePriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserKeyEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("NotificationConfig");
                 });
 
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ProfileEntity", b =>
@@ -211,7 +357,23 @@ namespace Streamarr.Server.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("DeviceName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Event")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalUserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalUserName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlaybackSessionId")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -234,6 +396,8 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PlaybackSessionId");
 
                     b.HasIndex("ReceivedAt");
 

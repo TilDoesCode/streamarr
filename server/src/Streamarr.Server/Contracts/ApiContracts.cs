@@ -14,6 +14,12 @@ public sealed record ResolveRequest
     /// <summary>Originating front-end ("jellyfin", "web", …) for session attribution.</summary>
     public string? Client { get; init; }
 
+    /// <summary>Stable account id in the originating front-end.</summary>
+    public string? RequestedById { get; init; }
+
+    /// <summary>Display name in the originating front-end.</summary>
+    public string? RequestedByName { get; init; }
+
     /// <summary>
     /// When true (the default), a release that resolves dead transparently retries the
     /// next-best release of the same work, bounded, and returns the first healthy one
@@ -98,9 +104,68 @@ public sealed record SessionResponse
     public int NntpConnectionsInFlight { get; init; }
     public long NntpCommandsTotal { get; init; }
     public string? Client { get; init; }
+    public string? RequestedById { get; init; }
+    public string? RequestedByName { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset LastAccessedAt { get; init; }
     public DateTimeOffset ExpiresAt { get; init; }
+}
+
+/// <summary>One release whose source NZB is available from Core's persistent cache.</summary>
+public sealed record CachedReleaseResponse
+{
+    public required string ReleaseId { get; init; }
+    public required string WorkId { get; init; }
+    public required string Title { get; init; }
+    public required string Indexer { get; init; }
+    public long ReleaseSizeBytes { get; init; }
+    public long NzbSizeBytes { get; init; }
+    public int FileCount { get; init; }
+    public int SegmentCount { get; init; }
+    public long HitCount { get; init; }
+    public DateTimeOffset CachedAt { get; init; }
+    public DateTimeOffset LastAccessedAt { get; init; }
+}
+
+/// <summary>Operational view of a live ephemeral media file and its chunk footprint.</summary>
+public sealed record EphemeralFileResponse
+{
+    public required string Token { get; init; }
+    public required string ReleaseId { get; init; }
+    public required string WorkId { get; init; }
+    public required string Title { get; init; }
+    public required string FileName { get; init; }
+    public required string State { get; init; }
+    public string? Container { get; init; }
+    public string? Client { get; init; }
+    public string? RequestedById { get; init; }
+    public string? RequestedByName { get; init; }
+    public long SizeBytes { get; init; }
+    public long BytesServed { get; init; }
+    public int ChunksQueried { get; init; }
+    public int TotalChunks { get; init; }
+    public double EstimatedStreamedPercent { get; init; }
+    public int CachedChunks { get; init; }
+    public long StorageBytes { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset LastAccessedAt { get; init; }
+    public DateTimeOffset PurgeAt { get; init; }
+}
+
+/// <summary>One event in the cross-front-end streaming history.</summary>
+public sealed record StreamingHistoryResponse
+{
+    public long Id { get; init; }
+    public required string ReleaseId { get; init; }
+    public required string WorkId { get; init; }
+    public required string Event { get; init; }
+    public long PositionTicks { get; init; }
+    public required string Source { get; init; }
+    public string? PlaybackSessionId { get; init; }
+    public string? ExternalUserId { get; init; }
+    public string? ExternalUserName { get; init; }
+    public string? DeviceName { get; init; }
+    public DateTimeOffset ReceivedAt { get; init; }
 }
 
 /// <summary>Typed error envelope rendered consistently by every endpoint.</summary>

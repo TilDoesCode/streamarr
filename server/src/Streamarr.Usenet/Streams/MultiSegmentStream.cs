@@ -24,6 +24,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     private readonly INntpClient _usenetClient;
     private readonly SegmentCache? _segmentCache;
     private readonly int _retryCount;
+    private readonly Action<string>? _onSegmentRequested;
     private readonly Channel<Task<Stream>> _streamTasks;
     private readonly CancellationTokenSource _cts;
     private Stream? _stream;
@@ -36,13 +37,14 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         int articleBufferSize,
         CancellationToken cancellationToken,
         SegmentCache? segmentCache = null,
-        int retryCount = 2
+        int retryCount = 2,
+        Action<string>? onSegmentRequested = null
     )
     {
         return articleBufferSize == 0
-            ? new UnbufferedMultiSegmentStream(segmentIds, usenetClient)
+            ? new UnbufferedMultiSegmentStream(segmentIds, usenetClient, onSegmentRequested)
             : new MultiSegmentStream(
-                segmentIds, usenetClient, articleBufferSize, cancellationToken, segmentCache, retryCount);
+                segmentIds, usenetClient, articleBufferSize, cancellationToken, segmentCache, retryCount, onSegmentRequested);
     }
 
     private MultiSegmentStream
@@ -52,7 +54,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         int articleBufferSize,
         CancellationToken cancellationToken,
         SegmentCache? segmentCache,
-        int retryCount
+        int retryCount,
+        Action<string>? onSegmentRequested
     )
     {
         _segmentIds = segmentIds;
@@ -61,6 +64,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         _retryCount = retryCount is >= 0 and <= 10
             ? retryCount
             : throw new ArgumentOutOfRangeException(nameof(retryCount));
+        _onSegmentRequested = onSegmentRequested;
         _streamTasks = Channel.CreateBounded<Task<Stream>>(articleBufferSize);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _ = DownloadSegments(_cts.Token);
@@ -105,6 +109,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         CancellationToken cancellationToken
     )
     {
+        _onSegmentRequested?.Invoke(SegmentId.Normalize(segmentId));
         var bytes = _segmentCache is null
             ? await DownloadSegmentBytes(segmentId, cancellationToken).ConfigureAwait(false)
             : await _segmentCache.GetOrAddAsync(
@@ -218,11 +223,16 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
     private Stream? _stream;
     private int _currentIndex;
     private bool _disposed;
+    private readonly Action<string>? _onSegmentRequested;
 
-    public UnbufferedMultiSegmentStream(Memory<string> segmentIds, INntpClient usenetClient)
+    public UnbufferedMultiSegmentStream(
+        Memory<string> segmentIds,
+        INntpClient usenetClient,
+        Action<string>? onSegmentRequested = null)
     {
         _segmentIds = segmentIds;
         _usenetClient = usenetClient;
+        _onSegmentRequested = onSegmentRequested;
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -236,6 +246,7 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
             if (_stream == null)
             {
                 if (_currentIndex >= _segmentIds.Length) return 0;
+                _onSegmentRequested?.Invoke(SegmentId.Normalize(_segmentIds.Span[_currentIndex]));
                 var body = await _usenetClient
                     .DecodedBodyAsync(_segmentIds.Span[_currentIndex++], cancellationToken)
                     .ConfigureAwait(false);

@@ -13,7 +13,8 @@ namespace Streamarr.Server.Config;
 public sealed class WatchEventService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     TimeProvider time,
-    IOptions<StreamarrOptions> options)
+    IOptions<StreamarrOptions> options,
+    Services.PushoverNotificationService? notifications = null)
 {
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
@@ -35,15 +36,20 @@ public sealed class WatchEventService(
                     .Where(e => e.Event == "progress" &&
                                 e.ReleaseId == write.ReleaseId &&
                                 e.WorkId == workId &&
-                                e.Source == source)
+                                e.Source == source &&
+                                e.PlaybackSessionId == (write.PlaybackSessionId ?? string.Empty) &&
+                                e.ExternalUserId == (write.ExternalUserId ?? string.Empty))
                     .OrderByDescending(e => e.Id)
                     .FirstOrDefaultAsync(ct);
                 if (existing is not null)
                 {
                     existing.PositionTicks = write.PositionTicks ?? 0;
                     existing.ReceivedAt = receivedAt;
+                    existing.ExternalUserName = write.ExternalUserName ?? string.Empty;
+                    existing.DeviceName = write.DeviceName ?? string.Empty;
                     await db.SaveChangesAsync(ct);
                     await PruneAsync(db, ct);
+                    Notify(write);
                     return existing;
                 }
             }
@@ -55,12 +61,17 @@ public sealed class WatchEventService(
                 Event = write.Event,
                 PositionTicks = write.PositionTicks ?? 0,
                 Source = source,
+                PlaybackSessionId = write.PlaybackSessionId ?? string.Empty,
+                ExternalUserId = write.ExternalUserId ?? string.Empty,
+                ExternalUserName = write.ExternalUserName ?? string.Empty,
+                DeviceName = write.DeviceName ?? string.Empty,
                 ReceivedAt = receivedAt,
             };
             db.WatchEvents.Add(entity);
             await db.SaveChangesAsync(ct);
 
             await PruneAsync(db, ct);
+            Notify(write);
 
             return entity;
         }
@@ -68,6 +79,30 @@ public sealed class WatchEventService(
         {
             _writeGate.Release();
         }
+    }
+
+    private void Notify(WatchEventWrite write)
+    {
+        if (notifications is null)
+            return;
+
+        (Services.NotificationEventKind Kind, string Title, string Verb)? details = write.Event switch
+        {
+            "start" => (Services.NotificationEventKind.PlaybackStarted, "Playback started", "Playback started"),
+            "progress" => (Services.NotificationEventKind.PlaybackProgress, "Playback in progress", "Playback is in progress"),
+            "stop" => (Services.NotificationEventKind.PlaybackStopped, "Playback stopped", "Playback stopped"),
+            _ => ((Services.NotificationEventKind Kind, string Title, string Verb)?)null,
+        };
+        if (details is not { } selected)
+            return;
+        notifications.Enqueue(new Services.NotificationEvent(
+            selected.Kind,
+            selected.Title,
+            $"{selected.Verb} from {write.Source ?? "an unknown client"}.",
+            write.PlaybackSessionId ?? write.ReleaseId,
+            write.ExternalUserName,
+            write.DeviceName,
+            write.ReleaseId));
     }
 
     private async Task PruneAsync(StreamarrDbContext db, CancellationToken ct)
@@ -109,4 +144,8 @@ public sealed record WatchEventWrite
     public required string Event { get; init; }
     public long? PositionTicks { get; init; }
     public string? Source { get; init; }
+    public string? PlaybackSessionId { get; init; }
+    public string? ExternalUserId { get; init; }
+    public string? ExternalUserName { get; init; }
+    public string? DeviceName { get; init; }
 }

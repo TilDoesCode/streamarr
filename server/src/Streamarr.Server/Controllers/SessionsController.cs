@@ -41,6 +41,8 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
         NntpConnectionsInFlight = active.NntpUsage.InFlight,
         NntpCommandsTotal = active.NntpUsage.TotalCommands,
         Client = active.Session.Client,
+        RequestedById = active.Session.RequestedById,
+        RequestedByName = active.Session.RequestedByName,
         CreatedAt = active.Session.CreatedAt,
         LastAccessedAt = active.Session.LastAccessedAt,
         ExpiresAt = active.ExpiresAt,

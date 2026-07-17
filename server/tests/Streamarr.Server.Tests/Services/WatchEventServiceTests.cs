@@ -51,5 +51,9 @@ public sealed class WatchEventServiceTests
         Event = kind,
         PositionTicks = position,
         Source = "test",
+        PlaybackSessionId = "play-session-1",
+        ExternalUserId = "jellyfin-user-1",
+        ExternalUserName = "Mara",
+        DeviceName = "Living Room TV",
     };
 }

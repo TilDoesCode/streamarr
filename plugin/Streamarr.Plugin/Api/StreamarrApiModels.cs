@@ -180,6 +180,8 @@ public sealed record ResolveRequest
     public required string ReleaseId { get; init; }
     public string? WorkId { get; init; }
     public string? Client { get; init; }
+    public string? RequestedById { get; init; }
+    public string? RequestedByName { get; init; }
 }
 
 /// <summary>Response of <c>POST /api/v1/resolve</c>.</summary>
@@ -230,6 +232,10 @@ public sealed record EventRequest
 
     public long? PositionTicks { get; init; }
     public string? Source { get; init; }
+    public string? PlaybackSessionId { get; init; }
+    public string? ExternalUserId { get; init; }
+    public string? ExternalUserName { get; init; }
+    public string? DeviceName { get; init; }
 }
 
 /// <summary>Typed error envelope returned by every Core Server endpoint.</summary>

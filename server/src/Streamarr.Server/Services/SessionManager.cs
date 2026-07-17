@@ -5,6 +5,7 @@ using Streamarr.Core.Sessions;
 using Streamarr.Server.Options;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nntp.Pooling;
+using Streamarr.Usenet.Streams;
 
 namespace Streamarr.Server.Services;
 
@@ -17,13 +18,17 @@ public sealed class ActiveSession
 {
     private long _bytesServed;
     private readonly StreamarrMetrics? _metrics;
+    private readonly SegmentCache? _segmentCache;
+    private readonly ConcurrentDictionary<string, byte> _queriedChunks = new(StringComparer.Ordinal);
 
     internal ActiveSession(
         StreamSession session,
         ResolvedMediaFile file,
         INntpClient nntpClient,
         CountingNntpGate nntpUsage,
-        StreamarrMetrics? metrics = null)
+        StreamarrMetrics? metrics = null,
+        SegmentCache? segmentCache = null,
+        string? title = null)
     {
         Session = session;
         File = file;
@@ -31,6 +36,8 @@ public sealed class ActiveSession
         NntpUsage = nntpUsage;
         ContentType = ContainerContentTypes.For(file.Container);
         _metrics = metrics;
+        _segmentCache = segmentCache;
+        Title = string.IsNullOrWhiteSpace(title) ? file.FileName : title;
     }
 
     public StreamSession Session { get; }
@@ -38,13 +45,21 @@ public sealed class ActiveSession
     public INntpClient NntpClient { get; }
     public CountingNntpGate NntpUsage { get; }
     public string ContentType { get; }
+    public string Title { get; }
 
     public string Token => Session.Token;
     public long BytesServed => Interlocked.Read(ref _bytesServed);
     public bool IsClosed => Session.State == SessionState.Closed;
     public DateTimeOffset ExpiresAt => Session.ExpiresAt;
+    public int ChunksQueried => _queriedChunks.Count;
+    public double EstimatedStreamedPercent => File.SegmentIds.Count == 0
+        ? 0
+        : Math.Min(100, ChunksQueried * 100d / File.SegmentIds.Count);
+    public (int Count, long Bytes) CachedStorage => _segmentCache?.GetStats(File.SegmentIds) ?? (0, 0);
 
     public void Touch() => Session.LastAccessedAt = DateTimeOffset.UtcNow;
+
+    internal void RecordChunkRequested(string segmentId) => _queriedChunks.TryAdd(segmentId, 0);
 
     internal void AddBytesServed(long count)
     {
@@ -66,7 +81,8 @@ public sealed class SessionManager(
     INntpClient nntpClient,
     IOptions<StreamarrOptions> options,
     ILogger<SessionManager> logger,
-    StreamarrMetrics? metrics = null) : BackgroundService
+    StreamarrMetrics? metrics = null,
+    SegmentCache? segmentCache = null) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
     private readonly object _createGate = new();
@@ -75,7 +91,14 @@ public sealed class SessionManager(
     /// <summary>Total NNTP commands in flight across all live sessions (connections in use).</summary>
     public int NntpConnectionsInUse => _sessions.Values.Sum(s => s.NntpUsage.InFlight);
 
-    public ActiveSession CreateSession(string releaseId, string workId, ResolvedMediaFile file, string? client)
+    public ActiveSession CreateSession(
+        string releaseId,
+        string workId,
+        ResolvedMediaFile file,
+        string? client,
+        string? requestedById = null,
+        string? requestedByName = null,
+        string? title = null)
     {
         lock (_createGate)
         {
@@ -101,10 +124,12 @@ public sealed class SessionManager(
                 Container = file.Container,
                 SizeBytes = file.SizeBytes,
                 Client = client,
+                RequestedById = requestedById,
+                RequestedByName = requestedByName,
                 State = SessionState.Ready,
             };
 
-            var active = new ActiveSession(session, file, sessionClient, usage, metrics);
+            var active = new ActiveSession(session, file, sessionClient, usage, metrics, segmentCache, title);
             _sessions[token] = active;
             metrics?.SessionOpened();
             logger.LogInformation(
@@ -137,7 +162,12 @@ public sealed class SessionManager(
         session.Touch();
         try
         {
-            return new SessionStream(session.File.OpenStream(session.NntpClient), session, () => _streamGate.Release());
+            return new SessionStream(
+                session.File.OpenObservedStream is { } observed
+                    ? observed(session.NntpClient, session.RecordChunkRequested)
+                    : session.File.OpenStream(session.NntpClient),
+                session,
+                () => _streamGate.Release());
         }
         catch
         {

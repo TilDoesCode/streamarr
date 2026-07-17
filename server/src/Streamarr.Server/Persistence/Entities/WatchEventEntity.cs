@@ -18,5 +18,16 @@ public sealed class WatchEventEntity
     /// <summary>Originating front-end ("jellyfin" | "web" | …).</summary>
     public string Source { get; set; } = string.Empty;
 
+    /// <summary>Playback identifier supplied by the external front-end.</summary>
+    public string PlaybackSessionId { get; set; } = string.Empty;
+
+    /// <summary>Stable external account id (for now, Jellyfin's user GUID).</summary>
+    public string ExternalUserId { get; set; } = string.Empty;
+
+    /// <summary>Display name of the external account at event time.</summary>
+    public string ExternalUserName { get; set; } = string.Empty;
+
+    public string DeviceName { get; set; } = string.Empty;
+
     public DateTimeOffset ReceivedAt { get; set; }
 }

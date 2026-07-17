@@ -119,6 +119,15 @@ public sealed class StreamarrOptions
     public int MaxNzbFiles { get; set; } = 10_000;
     public int MaxNzbSegments { get; set; } = 1_000_000;
 
+    /// <summary>Directory for persistent, parsed-on-read NZB cache files.</summary>
+    public string NzbCachePath { get; set; } = string.Empty;
+
+    /// <summary>Maximum total size of cached NZB source documents in mebibytes.</summary>
+    public int NzbCacheSizeMb { get; set; } = 1024;
+
+    /// <summary>Maximum number of releases retained in the persistent NZB cache.</summary>
+    public int NzbCacheMaxEntries { get; set; } = 2_000;
+
     /// <summary>Maximum decoded size of one materialized media file.</summary>
     public long MaxMediaBytes { get; set; } = 16L * 1024 * 1024 * 1024 * 1024;
 

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using MediaBrowser.Common.Api;
 using Microsoft.Extensions.Logging;
 using Streamarr.Plugin.Bootstrap;
+using Streamarr.Plugin.Library;
 
 namespace Streamarr.Plugin.Api;
 
@@ -20,11 +21,14 @@ namespace Streamarr.Plugin.Api;
 public sealed class StreamarrPluginController(
     StreamarrApiClient api,
     PinnedWorkBootstrapper bootstrapper,
+    EphemeralLibraryService library,
     ILogger<StreamarrPluginController> logger) : ControllerBase
 {
     public sealed record TestConnectionResult(bool Ok, string? Version, string? Status, string? Error);
 
     public sealed record BootstrapResult(bool Ok, string Message, string? ItemId, string? WorkId);
+
+    public sealed record EnsureLibraryResult(bool Ok, string? Error);
 
     /// <summary>
     /// Verifies the configured server URL and API key using shallow health followed by
@@ -58,5 +62,29 @@ public sealed class StreamarrPluginController(
         var query = Plugin.Instance?.Configuration.PinnedWorkQuery ?? string.Empty;
         var result = await bootstrapper.RunAsync(query, ct).ConfigureAwait(false);
         return Ok(new BootstrapResult(result.Success, result.Message, result.ItemId?.ToString(), result.WorkId));
+    }
+
+    /// <summary>
+    /// Applies the configured library placement immediately (the config page calls this after
+    /// saving so toggling the "Streamarr" library does not require a server restart).
+    /// </summary>
+    [HttpPost("EnsureLibrary")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<EnsureLibraryResult>> EnsureLibrary(CancellationToken ct)
+    {
+        try
+        {
+            await library.EnsureLibraryIntegrationAsync(ct).ConfigureAwait(false);
+            return Ok(new EnsureLibraryResult(true, null));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Streamarr library placement failed ({FailureType})", ex.GetType().Name);
+            return Ok(new EnsureLibraryResult(false, "ensure_failed"));
+        }
     }
 }

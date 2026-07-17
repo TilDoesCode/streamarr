@@ -63,7 +63,11 @@ public sealed class StreamarrMediaSourceProvider(
             throw new InvalidOperationException("The Streamarr media-source offer no longer matches a materialized work.");
         }
 
-        var resolve = await ResolveWithFallbackAsync(offer, cancellationToken).ConfigureAwait(false);
+        var resolve = await ResolveWithFallbackAsync(
+            offer,
+            user.Id.ToString("D"),
+            user.Username,
+            cancellationToken).ConfigureAwait(false);
         resolve = resolve with { StreamUrl = api.ResolveStreamUrl(resolve.StreamUrl) };
 
         var liveStreamId = Guid.NewGuid().ToString("N");
@@ -152,10 +156,19 @@ public sealed class StreamarrMediaSourceProvider(
     /// it dead, follows <c>suggestedFallbackReleaseId</c> once (BRIEF §8.4). The plugin
     /// never picks the fallback itself and rejects suggestions outside the offered work.
     /// </summary>
-    private async Task<ResolveResponse> ResolveWithFallbackAsync(MediaSourceOfferStore.Offer offer, CancellationToken ct)
+    private async Task<ResolveResponse> ResolveWithFallbackAsync(
+        MediaSourceOfferStore.Offer offer,
+        string requestedById,
+        string requestedByName,
+        CancellationToken ct)
     {
         var releaseId = offer.ReleaseId;
-        var resolve = await api.ResolveAsync(releaseId, offer.WorkId, ct).ConfigureAwait(false)
+        var resolve = await api.ResolveAsync(
+                releaseId,
+                offer.WorkId,
+                requestedById,
+                requestedByName,
+                ct).ConfigureAwait(false)
                       ?? throw new InvalidOperationException($"Empty resolve response for release {releaseId}.");
         EnsureResolveWithinOffer(resolve, releaseId, offer.AllowedReleaseIds);
 
@@ -169,7 +182,12 @@ public sealed class StreamarrMediaSourceProvider(
             throw new InvalidOperationException("Core suggested a fallback outside the offered work.");
 
         logger.LogInformation("Release {ReleaseId} dead; following server fallback {Fallback}", releaseId, fallback);
-        var second = await api.ResolveAsync(fallback, offer.WorkId, ct).ConfigureAwait(false)
+        var second = await api.ResolveAsync(
+                fallback,
+                offer.WorkId,
+                requestedById,
+                requestedByName,
+                ct).ConfigureAwait(false)
                      ?? throw new InvalidOperationException($"Empty resolve response for fallback {fallback}.");
         EnsureResolveWithinOffer(second, fallback, offer.AllowedReleaseIds);
 

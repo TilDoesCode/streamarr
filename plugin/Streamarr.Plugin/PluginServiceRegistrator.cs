@@ -66,6 +66,10 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // Playback-event bridge (subscribes to ISessionManager on startup).
         serviceCollection.AddHostedService<PlaybackEventEntryPoint>();
 
+        // Ensures the visible "Streamarr" library placement at startup (Continue Watching /
+        // Next Up / Favorites integration).
+        serviceCollection.AddHostedService<LibraryIntegrationEntryPoint>();
+
         // Search interception (BRIEF §8.2). Registering an IAsyncActionFilter into MvcOptions is
         // the plugin-side mechanism for augmenting Jellyfin's /Items + /Search/Hints responses
         // (the meilisearch reference plugs into search a different way — via ISearchProvider — but

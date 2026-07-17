@@ -35,5 +35,9 @@ public sealed record StreamSession
     /// <summary>Originating front-end ("jellyfin", "web", ...).</summary>
     public string? Client { get; init; }
 
+    /// <summary>Stable account id and display name supplied by the originating front-end.</summary>
+    public string? RequestedById { get; init; }
+    public string? RequestedByName { get; init; }
+
     public DateTimeOffset ExpiresAt => LastAccessedAt + TimeToLive;
 }

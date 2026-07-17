@@ -47,11 +47,18 @@ public class PluginSecurityTests
     }
 
     [Fact]
-    public void Ephemeral_folder_is_hidden_without_using_a_blanket_visibility_denial()
+    public void Ephemeral_folder_is_a_scan_safe_library_surface()
     {
         var folder = new StreamarrEphemeralFolder();
 
-        Assert.True(folder.IsHidden);
+        // The folder is a plugin library (top parent + user view), which is what integrates its
+        // children into Continue Watching / Next Up / Favorites when placed below the user root.
+        Assert.IsAssignableFrom<MediaBrowser.Controller.Entities.BasePluginFolder>(folder);
+        Assert.IsAssignableFrom<MediaBrowser.Controller.Entities.ICollectionFolder>(folder);
+        Assert.Null(folder.CollectionType);
+        Assert.False(folder.IsHidden);
+        // Library validation must never be able to remove the folder (its children are DB-only).
+        Assert.False(folder.CanDelete());
         Assert.Equal("Folder", folder.GetClientTypeName());
     }
 

@@ -22,6 +22,12 @@ public sealed record ResolvedMediaFile
 
     /// <summary>Opens a fresh stream using the given (per-session) NNTP client.</summary>
     public required Func<INntpClient, Stream> OpenStream { get; init; }
+
+    /// <summary>Telemetry-capable stream factory; old callers can keep using OpenStream.</summary>
+    public Func<INntpClient, Action<string>?, Stream>? OpenObservedStream { get; init; }
+
+    /// <summary>All article ids that may back this ephemeral media file.</summary>
+    public IReadOnlyList<string> SegmentIds { get; init; } = [];
 }
 
 /// <summary>
@@ -52,8 +58,11 @@ public class MediaFileMaterializer(
             FileName = candidate.DisplayName,
             Container = Extension(candidate.DisplayName),
             SizeBytes = size,
+            SegmentIds = segmentIds,
             OpenStream = client => new NzbFileStream(
                 segmentIds, size, client, readAhead, segmentCache, retryCount),
+            OpenObservedStream = (client, onSegmentRequested) => new NzbFileStream(
+                segmentIds, size, client, readAhead, segmentCache, retryCount, onSegmentRequested),
         };
     }
 
@@ -92,6 +101,7 @@ public class MediaFileMaterializer(
             FileName = media.PathWithinArchive,
             Container = Extension(media.PathWithinArchive),
             SizeBytes = media.Size,
+            SegmentIds = volumes.SelectMany(volume => volume.SegmentIds).ToArray(),
             OpenStream = client => new RarStoredFileStream(
                 media,
                 (partIndex, _) => new ValueTask<Stream>(
@@ -102,6 +112,17 @@ public class MediaFileMaterializer(
                         readAhead,
                         segmentCache,
                         retryCount))),
+            OpenObservedStream = (client, onSegmentRequested) => new RarStoredFileStream(
+                media,
+                (partIndex, _) => new ValueTask<Stream>(
+                    new NzbFileStream(
+                        volumes[partIndex].SegmentIds,
+                        volumes[partIndex].Size,
+                        client,
+                        readAhead,
+                        segmentCache,
+                        retryCount,
+                        onSegmentRequested))),
         };
     }
 

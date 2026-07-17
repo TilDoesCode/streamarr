@@ -405,6 +405,44 @@
         }
       }
     },
+    "/api/v1/ephemeral-files": {
+      "get": {
+        "tags": [
+          "EphemeralFiles"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EphemeralFileResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EphemeralFileResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EphemeralFileResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events": {
       "post": {
         "tags": [
@@ -449,6 +487,53 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamingHistoryResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamingHistoryResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamingHistoryResponse"
+                  }
                 }
               }
             }
@@ -1101,6 +1186,86 @@
         }
       }
     },
+    "/api/v1/library/releases": {
+      "get": {
+        "tags": [
+          "Library"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CachedReleaseResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CachedReleaseResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CachedReleaseResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/releases/{releaseId}": {
+      "delete": {
+        "tags": [
+          "Library"
+        ],
+        "parameters": [
+          {
+            "name": "releaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/metrics": {
       "get": {
         "tags": [
@@ -1123,6 +1288,150 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/config/notifications": {
+      "get": {
+        "tags": [
+          "NotificationConfig"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationConfigResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationConfigResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "NotificationConfig"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationConfigWrite"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationConfigWrite"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationConfigWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationConfigResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationConfigResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/config/notifications/test": {
+      "post": {
+        "tags": [
+          "NotificationConfig"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationTestResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationTestResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationTestResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -2744,6 +3053,63 @@
         },
         "additionalProperties": false
       },
+      "CachedReleaseResponse": {
+        "required": [
+          "indexer",
+          "releaseId",
+          "title",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "indexer": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseSizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "nzbSizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fileCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segmentCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cachedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAccessedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One release whose source NZB is available from Core's persistent cache."
+      },
       "CapsCategory": {
         "required": [
           "id",
@@ -3083,6 +3449,101 @@
         },
         "additionalProperties": false
       },
+      "EphemeralFileResponse": {
+        "required": [
+          "fileName",
+          "releaseId",
+          "state",
+          "title",
+          "token",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "container": {
+            "type": "string",
+            "nullable": true
+          },
+          "client": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "bytesServed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "chunksQueried": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalChunks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "estimatedStreamedPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "cachedChunks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "storageBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAccessedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purgeAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Operational view of a live ephemeral media file and its chunk footprint."
+      },
       "ErrorDetail": {
         "required": [
           "code",
@@ -3152,6 +3613,22 @@
           "source": {
             "type": "string",
             "description": "Originating front-end (\"jellyfin\" | \"web\" | …).",
+            "nullable": true
+          },
+          "playbackSessionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalUserName": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -3615,6 +4092,239 @@
         },
         "additionalProperties": false,
         "description": "Snapshot returned by GET /api/v1/metrics (BRIEF §10-M7 observability): live sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency."
+      },
+      "NotificationConfigResponse": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "appToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "hasAppToken": {
+            "type": "boolean"
+          },
+          "userKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "hasUserKey": {
+            "type": "boolean"
+          },
+          "device": {
+            "type": "string",
+            "nullable": true
+          },
+          "sound": {
+            "type": "string",
+            "nullable": true
+          },
+          "notifyApplicationStarted": {
+            "type": "boolean"
+          },
+          "notifyPlaybackStarted": {
+            "type": "boolean"
+          },
+          "notifyPlaybackProgress": {
+            "type": "boolean"
+          },
+          "notifyPlaybackStopped": {
+            "type": "boolean"
+          },
+          "notifyResolveSucceeded": {
+            "type": "boolean"
+          },
+          "notifyResolveFailed": {
+            "type": "boolean"
+          },
+          "notifyErrors": {
+            "type": "boolean"
+          },
+          "notifyOutages": {
+            "type": "boolean"
+          },
+          "notifyRecoveries": {
+            "type": "boolean"
+          },
+          "includeUserName": {
+            "type": "boolean"
+          },
+          "includeDeviceName": {
+            "type": "boolean"
+          },
+          "includeReleaseId": {
+            "type": "boolean"
+          },
+          "usagePriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorPriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outagePriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recoveryPriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "progressIntervalMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorCooldownSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "monitorIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outageFailureThreshold": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outageReminderMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "emergencyRetrySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "emergencyExpireSeconds": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NotificationConfigWrite": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "appToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "userKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "device": {
+            "type": "string",
+            "nullable": true
+          },
+          "sound": {
+            "type": "string",
+            "nullable": true
+          },
+          "notifyApplicationStarted": {
+            "type": "boolean"
+          },
+          "notifyPlaybackStarted": {
+            "type": "boolean"
+          },
+          "notifyPlaybackProgress": {
+            "type": "boolean"
+          },
+          "notifyPlaybackStopped": {
+            "type": "boolean"
+          },
+          "notifyResolveSucceeded": {
+            "type": "boolean"
+          },
+          "notifyResolveFailed": {
+            "type": "boolean"
+          },
+          "notifyErrors": {
+            "type": "boolean"
+          },
+          "notifyOutages": {
+            "type": "boolean"
+          },
+          "notifyRecoveries": {
+            "type": "boolean"
+          },
+          "includeUserName": {
+            "type": "boolean"
+          },
+          "includeDeviceName": {
+            "type": "boolean"
+          },
+          "includeReleaseId": {
+            "type": "boolean"
+          },
+          "usagePriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorPriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outagePriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recoveryPriority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "progressIntervalMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorCooldownSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "monitorIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outageFailureThreshold": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outageReminderMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "emergencyRetrySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "emergencyExpireSeconds": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NotificationTestResponse": {
+        "required": [
+          "message",
+          "success"
+        ],
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "ParsedFieldsDto": {
         "required": [
@@ -4340,6 +5050,16 @@
             "description": "Originating front-end (\"jellyfin\", \"web\", …) for session attribution.",
             "nullable": true
           },
+          "requestedById": {
+            "type": "string",
+            "description": "Stable account id in the originating front-end.",
+            "nullable": true
+          },
+          "requestedByName": {
+            "type": "string",
+            "description": "Display name in the originating front-end.",
+            "nullable": true
+          },
           "autoFallback": {
             "type": "boolean",
             "description": "When true (the default), a release that resolves dead transparently retries the\r\nnext-best release of the same work, bounded, and returns the first healthy one\r\n(BRIEF §10-M7). Set false to get the raw classification of exactly this release\r\nplus a Streamarr.Server.Contracts.ResolveResponse.SuggestedFallbackReleaseId for manual retry."
@@ -4543,6 +5263,14 @@
             "type": "string",
             "nullable": true
           },
+          "requestedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedByName": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -4576,6 +5304,63 @@
           }
         },
         "additionalProperties": false
+      },
+      "StreamingHistoryResponse": {
+        "required": [
+          "event",
+          "releaseId",
+          "source",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "event": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "playbackSessionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalUserName": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One event in the cross-front-end streaming history."
       },
       "TvEpisodeDto": {
         "required": [
@@ -4948,6 +5733,10 @@
     {
       "name": "Indexers",
       "description": "Indexer config CRUD + connectivity test (BRIEF §6.2). Secrets are write-only:\r\nGETs return a masked API key; PUT omits-to-keep. Admin session required (BRIEF §6.4)."
+    },
+    {
+      "name": "Library",
+      "description": "Admin library of releases backed by Core's persistent NZB cache."
     },
     {
       "name": "Metrics",

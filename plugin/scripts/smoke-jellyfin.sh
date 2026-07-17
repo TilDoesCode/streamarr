@@ -126,7 +126,8 @@ assert_item_absent() {
     def values: if type == "array" then . else (.[$collection] // []) end;
     [values[]? |
       select(((.Id // "") | normalized) == ($id | normalized)
-        or .Name == "Streamarr (Usenet)")] | length == 0
+        or .Name == "Streamarr (Usenet)"
+        or .Name == "Streamarr")] | length == 0
   ' "$file" >/dev/null
 }
 
@@ -614,6 +615,10 @@ resolve_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq
 [[ "$resolve_count" -eq 1 ]] \
   || fail "Forged, cross-user, or replayed offers reached Core resolve (count=$resolve_count)."
 
+# Library integration: a user with at least one compatible ordinary library (the long-standing
+# item-visibility rule) now sees ephemeral items in recursive root and Latest queries — that is
+# exactly what puts them into Continue Watching, Next Up and Favorites. A user with no media
+# access at all must still see nothing anywhere.
 curl -fsS --get "$base_url/Items" \
   -H "$allowed_header" \
   --data-urlencode "userId=$allowed_id" \
@@ -625,8 +630,82 @@ curl -fsS --get "$base_url/Items/Latest" \
   --data-urlencode "userId=$allowed_id" \
   --data-urlencode 'limit=100' \
   -o "$tmp_dir/latest-items.json"
-assert_item_absent "$tmp_dir/root-items.json" Items
-assert_item_absent "$tmp_dir/latest-items.json" Items
+assert_item_present "$tmp_dir/root-items.json" Items \
+  || fail "The ephemeral item is missing from a compatible user's recursive root query."
+assert_item_present "$tmp_dir/latest-items.json" Items \
+  || fail "The ephemeral item is missing from a compatible user's Latest query."
+curl -fsS --get "$base_url/Items" \
+  -H "$denied_header" \
+  --data-urlencode "userId=$denied_id" \
+  --data-urlencode 'recursive=true' \
+  --data-urlencode 'limit=100' \
+  -o "$tmp_dir/root-items-denied.json"
+curl -fsS --get "$base_url/Items/Latest" \
+  -H "$denied_header" \
+  --data-urlencode "userId=$denied_id" \
+  --data-urlencode 'limit=100' \
+  -o "$tmp_dir/latest-items-denied.json"
+assert_item_absent "$tmp_dir/root-items-denied.json" Items
+assert_item_absent "$tmp_dir/latest-items-denied.json" Items
+
+# Library integration (default LibraryEnabled=true): a user with full media-folder access must
+# see the "Streamarr" library view, find ephemeral items in recursive queries, get them into
+# Continue Watching after progress is recorded, and keep them in Favorites. Users restricted to
+# specific libraries (streamarr-allowed/denied above) must remain unaffected — the plugin folder
+# re-applies Jellyfin's native per-user media-folder policy despite being a BasePluginFolder.
+curl -fsS -X POST "$base_url/Users/New" \
+  -H "$admin_header" \
+  -H 'Content-Type: application/json' \
+  --data "{\"Name\":\"streamarr-integrated\",\"Password\":\"$user_password\"}" \
+  -o "$tmp_dir/streamarr-integrated.json"
+integrated_id="$(jq -er '.Id' "$tmp_dir/streamarr-integrated.json")"
+integrated_auth='MediaBrowser Client="ci-smoke", Device="integrated", DeviceId="ci-smoke-integrated", Version="1.0"'
+integrated_token="$(auth_token streamarr-integrated "$user_password" "$integrated_auth" "$tmp_dir/integrated-auth.json")"
+integrated_header="Authorization: $integrated_auth, Token=\"$integrated_token\""
+
+curl -fsS --get "$base_url/UserViews" \
+  -H "$integrated_header" \
+  --data-urlencode "userId=$integrated_id" \
+  -o "$tmp_dir/integrated-views.json"
+jq -e '[.Items[]? | select(.Name == "Streamarr")] | length == 1' "$tmp_dir/integrated-views.json" >/dev/null \
+  || fail "The Streamarr library view is missing for a fully-permitted user."
+
+curl -fsS --get "$base_url/Items" \
+  -H "$integrated_header" \
+  --data-urlencode "userId=$integrated_id" \
+  --data-urlencode 'recursive=true' \
+  --data-urlencode 'limit=100' \
+  -o "$tmp_dir/integrated-items.json"
+assert_item_present "$tmp_dir/integrated-items.json" Items \
+  || fail "The ephemeral item is missing from the integrated user's recursive query."
+
+code="$(curl -sS -o "$tmp_dir/integrated-userdata.json" -w '%{http_code}' \
+  -X POST "$base_url/UserItems/$item_id/UserData?userId=$integrated_id" \
+  -H "$integrated_header" \
+  -H 'Content-Type: application/json' \
+  --data '{"PlaybackPositionTicks":6000000000}')"
+expect_code 200 "$code" "Ephemeral resume-position update"
+curl -fsS --get "$base_url/UserItems/Resume" \
+  -H "$integrated_header" \
+  --data-urlencode "userId=$integrated_id" \
+  --data-urlencode 'limit=50' \
+  -o "$tmp_dir/integrated-resume.json"
+assert_item_present "$tmp_dir/integrated-resume.json" Items \
+  || fail "The in-progress ephemeral item is missing from Continue Watching."
+
+code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -X POST "$base_url/UserFavoriteItems/$item_id?userId=$integrated_id" \
+  -H "$integrated_header")"
+expect_code 200 "$code" "Ephemeral favorite toggle"
+curl -fsS --get "$base_url/Items" \
+  -H "$integrated_header" \
+  --data-urlencode "userId=$integrated_id" \
+  --data-urlencode 'recursive=true' \
+  --data-urlencode 'filters=IsFavorite' \
+  --data-urlencode 'limit=50' \
+  -o "$tmp_dir/integrated-favorites.json"
+assert_item_present "$tmp_dir/integrated-favorites.json" Items \
+  || fail "The favorited ephemeral item is missing from Favorites."
 
 # Disabled interception must be a pure native pass-through and must not contact Core.
 search_before="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.search')"
@@ -953,22 +1032,28 @@ explicit_live_stream_id="$(jq -er '.MediaSource.LiveStreamId' \
   "$tmp_dir/episode-explicit-open-result.json")"
 close_live_stream "$explicit_live_stream_id" "$tmp_dir/episode-explicit-close-result.json"
 
-# Non-virtual season/episode rows are required for Jellyfin's native TV queries, but the private
-# implementation hierarchy must still remain absent from ordinary root and Latest traversal.
+# With library integration the materialized TV hierarchy joins ordinary recursive traversal for
+# compatible users — that is what makes Next Up and per-type favorites sections work. A user
+# with no media access must still never see any part of it.
 curl -fsS --get "$base_url/Items" \
   -H "$allowed_header" \
   --data-urlencode "userId=$allowed_id" \
   --data-urlencode 'recursive=true' \
   --data-urlencode 'limit=100' \
   -o "$tmp_dir/root-items-after-hierarchy.json"
-curl -fsS --get "$base_url/Items/Latest" \
-  -H "$allowed_header" \
-  --data-urlencode "userId=$allowed_id" \
-  --data-urlencode 'limit=100' \
-  -o "$tmp_dir/latest-items-after-hierarchy.json"
 for expected_name in "$movie_name" "$series_name" "Season 1" "Available Episode" "Unavailable Episode"; do
-  assert_named_item_absent "$tmp_dir/root-items-after-hierarchy.json" Items "$expected_name"
-  assert_named_item_absent "$tmp_dir/latest-items-after-hierarchy.json" Items "$expected_name"
+  jq -e --arg name "$expected_name" '[.Items[]? | select(.Name == $name)] | length >= 1' \
+    "$tmp_dir/root-items-after-hierarchy.json" >/dev/null \
+    || fail "\"$expected_name\" is missing from a compatible user's recursive root query."
+done
+curl -fsS --get "$base_url/Items" \
+  -H "$denied_header" \
+  --data-urlencode "userId=$denied_id" \
+  --data-urlencode 'recursive=true' \
+  --data-urlencode 'limit=100' \
+  -o "$tmp_dir/root-items-after-hierarchy-denied.json"
+for expected_name in "$movie_name" "$series_name" "Season 1" "Available Episode" "Unavailable Episode"; do
+  assert_named_item_absent "$tmp_dir/root-items-after-hierarchy-denied.json" Items "$expected_name"
 done
 
 # Point interception at a closed loopback port inside the container. Native Jellyfin responses

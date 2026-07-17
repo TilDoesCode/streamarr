@@ -53,6 +53,11 @@
                         <span>Enable search interception — inject Usenet works into native search (off by default; falls through to native results on any error)</span>
                     </label>
 
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="LibraryEnabled" name="LibraryEnabled" />
+                        <span>Show the "Streamarr" library — presents ephemeral Usenet items as their own library and integrates them into Continue Watching, Next Up and Favorites (on by default)</span>
+                    </label>
+
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="PinnedWorkQuery">Pinned-work query (M5 bootstrap)</label>
                         <input is="emby-input" type="text" id="PinnedWorkQuery" name="PinnedWorkQuery" maxlength="256" />
@@ -95,6 +100,7 @@
                     page.querySelector('#EphemeralTtlMinutes').value = config.EphemeralTtlMinutes || 720;
                     page.querySelector('#ProfileId').value = config.ProfileId || '';
                     page.querySelector('#InterceptionEnabled').checked = !!config.InterceptionEnabled;
+                    page.querySelector('#LibraryEnabled').checked = config.LibraryEnabled !== false;
                     page.querySelector('#PinnedWorkQuery').value = config.PinnedWorkQuery || '';
                     Dashboard.hideLoadingMsg();
                 });
@@ -111,8 +117,16 @@
                     config.EphemeralTtlMinutes = parseInt(page.querySelector('#EphemeralTtlMinutes').value, 10) || 720;
                     config.ProfileId = page.querySelector('#ProfileId').value;
                     config.InterceptionEnabled = page.querySelector('#InterceptionEnabled').checked;
+                    config.LibraryEnabled = page.querySelector('#LibraryEnabled').checked;
                     config.PinnedWorkQuery = page.querySelector('#PinnedWorkQuery').value;
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        // Apply the library placement immediately so toggling the
+                        // "Streamarr" library never requires a server restart.
+                        ApiClient.ajax({
+                            type: 'POST',
+                            url: ApiClient.getUrl('Streamarr/EnsureLibrary'),
+                            dataType: 'json'
+                        }).catch(function () { /* re-ensured at next startup/materialization */ });
                         Dashboard.processPluginConfigurationUpdateResult(result);
                     });
                 });

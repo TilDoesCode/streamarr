@@ -249,6 +249,9 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `AdminSessionTtlSeconds` | `3600` | Lifetime of the admin session cookie/JWT from `POST /auth/login`. |
 | `LoginAttemptsPerMinute` | `5` | Fixed-window login-attempt limit per client IP. |
 | `DataProtectionKeysPath` | `""` | Directory the secret-encryption key ring persists to. Empty → a `keys` folder next to the app. |
+| `NzbCachePath` | `""` | Persistent NZB cache directory. Empty → `cache/nzb` below the Core content root. Container images default to `/app/data/nzb`. |
+| `NzbCacheSizeMb` | `1024` | Maximum total size of cached NZB source documents. Least-recently-used entries are pruned first. |
+| `NzbCacheMaxEntries` | `2000` | Maximum cached release count. |
 | `ConnectionBudget` | `20` | **Global** NNTP connection budget shared across all sessions (BODY/ARTICLE outrank STAT/HEAD). |
 | `SessionTtlSeconds` | `3600` | Session lifetime; a stream token maps to a session until this elapses (or it is closed). |
 | `SessionSweepIntervalSeconds` | `30` | How often the session manager sweeps for expired sessions. |
@@ -348,6 +351,30 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `SampleCount` | `24` | Max segments STAT'ed per release (evenly spread, incl. first/last). |
 | `Concurrency` | `8` | Concurrent STAT probes. |
 | `DeadMissingRatio` | `0.5` | Missing-sample ratio at/above which a release is `dead` (below → `degraded`). |
+
+---
+
+## Pushover notifications
+
+Open **Settings → Notifications** to connect Streamarr to the
+[Pushover Message API](https://pushover.net/api). Create a Pushover application, enter
+its application token and a user or delivery-group key, save, then use **Send test**.
+Both credentials are encrypted at rest and are never returned by the API.
+
+Notification routing is opt-in and can be tuned independently:
+
+- routine events: server startup, playback start/progress/stop, and successful resolves;
+- failures: resolve failures and otherwise-unhandled server errors;
+- availability: indexer/provider outages after a configurable number of failed probes,
+  reminders while an outage remains active, and a single recovery notification;
+- content: user name, playback device, and internal release ID can each be excluded;
+- delivery: routine, error, outage, and recovery priorities are independent. Emergency
+  priority uses the configured Pushover retry and expiry values.
+
+Playback progress and repeated errors have separate cooldowns. Pushover delivery uses a
+bounded background queue, so a slow or unavailable Pushover service does not delay
+search, resolve, playback, or event ingestion. Outage monitoring starts only after
+notifications are enabled.
 
 ---
 

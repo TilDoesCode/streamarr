@@ -105,6 +105,24 @@ const sessionsRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/sessions"), "SessionsPage"),
 });
 
+const libraryRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/library",
+  component: lazyRouteComponent(() => import("@/pages/library"), "LibraryPage"),
+});
+
+const ephemeralRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/ephemeral",
+  component: lazyRouteComponent(() => import("@/pages/ephemeral-files"), "EphemeralFilesPage"),
+});
+
+const historyRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/history",
+  component: lazyRouteComponent(() => import("@/pages/streaming-history"), "StreamingHistoryPage"),
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -116,6 +134,9 @@ const routeTree = rootRoute.addChildren([
     searchRoute,
     playbackRoute,
     sessionsRoute,
+    libraryRoute,
+    ephemeralRoute,
+    historyRoute,
   ]),
 ]);
 

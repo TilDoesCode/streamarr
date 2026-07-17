@@ -373,6 +373,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ephemeral-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["EphemeralFileResponse"][];
+                        "application/json": components["schemas"]["EphemeralFileResponse"][];
+                        "text/json": components["schemas"]["EphemeralFileResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -380,7 +417,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["StreamingHistoryResponse"][];
+                        "application/json": components["schemas"]["StreamingHistoryResponse"][];
+                        "text/json": components["schemas"]["StreamingHistoryResponse"][];
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {
@@ -900,6 +960,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CachedReleaseResponse"][];
+                        "application/json": components["schemas"]["CachedReleaseResponse"][];
+                        "text/json": components["schemas"]["CachedReleaseResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/releases/{releaseId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    releaseId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/metrics": {
         parameters: {
             query?: never;
@@ -931,6 +1074,129 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["NotificationConfigResponse"];
+                        "application/json": components["schemas"]["NotificationConfigResponse"];
+                        "text/json": components["schemas"]["NotificationConfigResponse"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["NotificationConfigWrite"];
+                    "text/json": components["schemas"]["NotificationConfigWrite"];
+                    "application/*+json": components["schemas"]["NotificationConfigWrite"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["NotificationConfigResponse"];
+                        "application/json": components["schemas"]["NotificationConfigResponse"];
+                        "text/json": components["schemas"]["NotificationConfigResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/notifications/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["NotificationTestResponse"];
+                        "application/json": components["schemas"]["NotificationTestResponse"];
+                        "text/json": components["schemas"]["NotificationTestResponse"];
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -2100,6 +2366,27 @@ export interface components {
             revokedAt?: string | null;
             revoked?: boolean;
         };
+        /** @description One release whose source NZB is available from Core's persistent cache. */
+        CachedReleaseResponse: {
+            releaseId: string | null;
+            workId: string | null;
+            title: string | null;
+            indexer: string | null;
+            /** Format: int64 */
+            releaseSizeBytes?: number;
+            /** Format: int64 */
+            nzbSizeBytes?: number;
+            /** Format: int32 */
+            fileCount?: number;
+            /** Format: int32 */
+            segmentCount?: number;
+            /** Format: int64 */
+            hitCount?: number;
+            /** Format: date-time */
+            cachedAt?: string;
+            /** Format: date-time */
+            lastAccessedAt?: string;
+        };
         CapsCategory: {
             /** Format: int32 */
             id: number;
@@ -2202,6 +2489,39 @@ export interface components {
             episode?: number | null;
             releases: components["schemas"]["DebugReleaseDto"][] | null;
         };
+        /** @description Operational view of a live ephemeral media file and its chunk footprint. */
+        EphemeralFileResponse: {
+            token: string | null;
+            releaseId: string | null;
+            workId: string | null;
+            title: string | null;
+            fileName: string | null;
+            state: string | null;
+            container?: string | null;
+            client?: string | null;
+            requestedById?: string | null;
+            requestedByName?: string | null;
+            /** Format: int64 */
+            sizeBytes?: number;
+            /** Format: int64 */
+            bytesServed?: number;
+            /** Format: int32 */
+            chunksQueried?: number;
+            /** Format: int32 */
+            totalChunks?: number;
+            /** Format: double */
+            estimatedStreamedPercent?: number;
+            /** Format: int32 */
+            cachedChunks?: number;
+            /** Format: int64 */
+            storageBytes?: number;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            lastAccessedAt?: string;
+            /** Format: date-time */
+            purgeAt?: string;
+        };
         ErrorDetail: {
             code: string | null;
             message: string | null;
@@ -2224,6 +2544,10 @@ export interface components {
             positionTicks?: number | null;
             /** @description Originating front-end ("jellyfin" | "web" | …). */
             source?: string | null;
+            playbackSessionId?: string | null;
+            externalUserId?: string | null;
+            externalUserName?: string | null;
+            deviceName?: string | null;
         };
         /** @description General config as returned by the config API — the TMDB key is masked. */
         GeneralConfigResponse: {
@@ -2371,6 +2695,94 @@ export interface components {
             /** Format: int64 */
             bytesServedTotal?: number;
             indexers?: components["schemas"]["IndexerLatencyMetric"][] | null;
+        };
+        NotificationConfigResponse: {
+            enabled?: boolean;
+            appToken?: string | null;
+            hasAppToken?: boolean;
+            userKey?: string | null;
+            hasUserKey?: boolean;
+            device?: string | null;
+            sound?: string | null;
+            notifyApplicationStarted?: boolean;
+            notifyPlaybackStarted?: boolean;
+            notifyPlaybackProgress?: boolean;
+            notifyPlaybackStopped?: boolean;
+            notifyResolveSucceeded?: boolean;
+            notifyResolveFailed?: boolean;
+            notifyErrors?: boolean;
+            notifyOutages?: boolean;
+            notifyRecoveries?: boolean;
+            includeUserName?: boolean;
+            includeDeviceName?: boolean;
+            includeReleaseId?: boolean;
+            /** Format: int32 */
+            usagePriority?: number;
+            /** Format: int32 */
+            errorPriority?: number;
+            /** Format: int32 */
+            outagePriority?: number;
+            /** Format: int32 */
+            recoveryPriority?: number;
+            /** Format: int32 */
+            progressIntervalMinutes?: number;
+            /** Format: int32 */
+            errorCooldownSeconds?: number;
+            /** Format: int32 */
+            monitorIntervalSeconds?: number;
+            /** Format: int32 */
+            outageFailureThreshold?: number;
+            /** Format: int32 */
+            outageReminderMinutes?: number;
+            /** Format: int32 */
+            emergencyRetrySeconds?: number;
+            /** Format: int32 */
+            emergencyExpireSeconds?: number;
+        };
+        NotificationConfigWrite: {
+            enabled?: boolean;
+            appToken?: string | null;
+            userKey?: string | null;
+            device?: string | null;
+            sound?: string | null;
+            notifyApplicationStarted?: boolean;
+            notifyPlaybackStarted?: boolean;
+            notifyPlaybackProgress?: boolean;
+            notifyPlaybackStopped?: boolean;
+            notifyResolveSucceeded?: boolean;
+            notifyResolveFailed?: boolean;
+            notifyErrors?: boolean;
+            notifyOutages?: boolean;
+            notifyRecoveries?: boolean;
+            includeUserName?: boolean;
+            includeDeviceName?: boolean;
+            includeReleaseId?: boolean;
+            /** Format: int32 */
+            usagePriority?: number;
+            /** Format: int32 */
+            errorPriority?: number;
+            /** Format: int32 */
+            outagePriority?: number;
+            /** Format: int32 */
+            recoveryPriority?: number;
+            /** Format: int32 */
+            progressIntervalMinutes?: number;
+            /** Format: int32 */
+            errorCooldownSeconds?: number;
+            /** Format: int32 */
+            monitorIntervalSeconds?: number;
+            /** Format: int32 */
+            outageFailureThreshold?: number;
+            /** Format: int32 */
+            outageReminderMinutes?: number;
+            /** Format: int32 */
+            emergencyRetrySeconds?: number;
+            /** Format: int32 */
+            emergencyExpireSeconds?: number;
+        };
+        NotificationTestResponse: {
+            success: boolean;
+            message: string | null;
         };
         /** @description The raw parser output for a release (BRIEF §7.1), surfaced for tuning. */
         ParsedFieldsDto: {
@@ -2620,6 +3032,10 @@ export interface components {
             workId?: string | null;
             /** @description Originating front-end ("jellyfin", "web", …) for session attribution. */
             client?: string | null;
+            /** @description Stable account id in the originating front-end. */
+            requestedById?: string | null;
+            /** @description Display name in the originating front-end. */
+            requestedByName?: string | null;
             /**
              * @description When true (the default), a release that resolves dead transparently retries the
              *     next-best release of the same work, bounded, and returns the first healthy one
@@ -2712,6 +3128,8 @@ export interface components {
             /** Format: int64 */
             nntpCommandsTotal?: number;
             client?: string | null;
+            requestedById?: string | null;
+            requestedByName?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -2724,6 +3142,23 @@ export interface components {
             minBytesPerMinute: number;
             /** Format: int64 */
             maxBytesPerMinute: number;
+        };
+        /** @description One event in the cross-front-end streaming history. */
+        StreamingHistoryResponse: {
+            /** Format: int64 */
+            id?: number;
+            releaseId: string | null;
+            workId: string | null;
+            event: string | null;
+            /** Format: int64 */
+            positionTicks?: number;
+            source: string | null;
+            playbackSessionId?: string | null;
+            externalUserId?: string | null;
+            externalUserName?: string | null;
+            deviceName?: string | null;
+            /** Format: date-time */
+            receivedAt?: string;
         };
         TvEpisodeDto: {
             workId: string | null;

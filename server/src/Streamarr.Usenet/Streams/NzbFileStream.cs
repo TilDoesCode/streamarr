@@ -20,7 +20,8 @@ public class NzbFileStream(
     INntpClient usenetClient,
     int articleBufferSize,
     SegmentCache? segmentCache = null,
-    int articleRetryCount = 2
+    int articleRetryCount = 2,
+    Action<string>? onSegmentRequested = null
 ) : FastReadOnlyStream
 {
     private readonly bool _validated = ValidateArguments(fileSegmentIds, fileSize, articleBufferSize);
@@ -129,7 +130,8 @@ public class NzbFileStream(
             articleBufferSize,
             cancellationToken,
             segmentCache,
-            articleRetryCount);
+            articleRetryCount,
+            onSegmentRequested);
     }
 
     protected override void Dispose(bool disposing)

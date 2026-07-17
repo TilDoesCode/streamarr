@@ -3,6 +3,7 @@ using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
@@ -136,6 +137,13 @@ public sealed class StreamarrSearchActionFilter(
             if (executed.Result is not ObjectResult obj || obj.Value is null)
                 return;
 
+            // Ephemeral rows are built-in pathless items, which Jellyfin reports as
+            // LocationType.Virtual — and official clients suppress playback for virtual items.
+            // Every owned DTO leaving the API (home rows, search, library views, detail pages)
+            // is corrected to Remote, matching how these items actually play (via the plugin
+            // media-source provider). Independent of the discovery toggle, like the projection.
+            ApplyOwnedItemPresentation(obj.Value);
+
             // Owned items must advertise their release sources on the item-detail routes even
             // while search interception is disabled: playback surfaces are independent of the
             // discovery toggle, exactly like the IMediaSourceProvider itself.
@@ -205,6 +213,10 @@ public sealed class StreamarrSearchActionFilter(
                     break;
                 }
             }
+
+            // Injection may have replaced the response value with freshly built DTOs; those
+            // carry the raw Virtual location again, so the presentation fix-up runs once more.
+            ApplyOwnedItemPresentation(obj.Value);
         }
         catch (Exception ex)
         {
@@ -306,7 +318,7 @@ public sealed class StreamarrSearchActionFilter(
 
     private bool TryResolveHierarchySeason(
         HierarchyRequest request,
-        out StreamarrSeason? season)
+        out Season? season)
     {
         season = null;
         if (library.TryGetOwnedSeason(
@@ -1104,6 +1116,56 @@ public sealed class StreamarrSearchActionFilter(
             dto.MediaSources = sources.ToArray();
             dto.MediaSourceCount = sources.Count;
         }
+    }
+
+    /// <summary>
+    /// Applies the owned-item presentation fix-up to any response shape carrying item DTOs.
+    /// Only DTOs whose LocationType is Virtual are candidates, so ordinary library items skip
+    /// the ownership lookup entirely.
+    /// </summary>
+    private void ApplyOwnedItemPresentation(object value)
+    {
+        switch (value)
+        {
+            case BaseItemDto dto:
+                FixUpOwnedDto(dto);
+                break;
+            case QueryResult<BaseItemDto> result:
+                foreach (var dto in result.Items)
+                    FixUpOwnedDto(dto);
+                break;
+            case IEnumerable<BaseItemDto> dtos:
+                foreach (var dto in dtos)
+                    FixUpOwnedDto(dto);
+                break;
+        }
+    }
+
+    private void FixUpOwnedDto(BaseItemDto? dto)
+    {
+        if (dto is null
+            || dto.Id == Guid.Empty
+            || dto.LocationType != LocationType.Virtual
+            || !IsOwnedItemId(dto.Id))
+        {
+            return;
+        }
+
+        dto.LocationType = LocationType.Remote;
+    }
+
+    /// <summary>
+    /// Ownership check for response fix-ups: the release store covers movies/episodes cheaply;
+    /// series/season shells fall back to the cached library item and its owner provider id.
+    /// </summary>
+    private bool IsOwnedItemId(Guid itemId)
+    {
+        if (projection.Owns(itemId))
+            return true;
+
+        return libraryManager.GetItemById(itemId) is { } item
+               && EphemeralLibraryService.IsOwnedFolder(item)
+               && item.ProviderIds.ContainsKey(EphemeralLibraryService.WorkIdProviderKey);
     }
 
     /// <summary>Reads the authenticated caller's id claim; one-use offers bind to this identity.</summary>

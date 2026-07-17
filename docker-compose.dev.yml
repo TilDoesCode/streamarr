@@ -113,6 +113,7 @@ services:
       Streamarr__Tmdb__Language: "${TMDB_LANGUAGE:-}"
       Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
       Streamarr__DataProtectionKeysPath: "/app/keys"
+      Streamarr__NzbCachePath: "/app/data/nzb"
       INDEXER_PROXY: "${INDEXER_PROXY:-}"
       # Under Codecraft each app gets its own forwarded, TLS-terminated public URL, so
       # cookie-authenticated POSTs carry an Origin that can never match what Kestrel

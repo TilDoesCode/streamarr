@@ -7,10 +7,19 @@ using JellyfinLocationType = MediaBrowser.Model.Entities.LocationType;
 
 namespace Streamarr.Plugin.Library;
 
+// ── LEGACY TYPE SHIMS ─────────────────────────────────────────────────────────────────────────
+// Ephemeral items are now materialized as Jellyfin's BUILT-IN Movie/Series/Season/Episode types:
+// the EF item repository matches type-filtered queries (Next Up, favorites sections,
+// includeItemTypes) against exact built-in CLR type names, so plugin subclasses can never appear
+// in those flows. These subclasses remain defined ONLY so rows written by plugin ≤0.5 still
+// hydrate (unknown types make the repository throw); EnsureLibraryIntegrationAsync re-saves such
+// rows under the built-in types at startup. Do not materialize these types for new items.
+// Authorization did not regress: direct-by-id access runs IsVisibleStandalone, which applies the
+// StreamarrEphemeralFolder media-folder policy to every ancestor chain.
+
 /// <summary>
-/// Plugin-owned movie whose direct-by-id visibility follows the same compatible-library policy
-/// as search injection. This check is on the item itself so Jellyfin's PlaybackInfo authorization
-/// cannot be bypassed by guessing a deterministic item id.
+/// Legacy shim for rows written by plugin ≤0.5 — see the note above. Kept so existing database
+/// rows hydrate; upgraded to a built-in <see cref="Movie"/> row at startup.
 /// </summary>
 public sealed class StreamarrMovie : Movie
 {
@@ -25,7 +34,7 @@ public sealed class StreamarrMovie : Movie
     public override string GetClientTypeName() => nameof(BaseItemKind.Movie);
 }
 
-/// <summary>TV counterpart to <see cref="StreamarrMovie"/>.</summary>
+/// <summary>Legacy shim — see <see cref="StreamarrMovie"/>.</summary>
 public sealed class StreamarrEpisode : Episode
 {
     public override JellyfinLocationType LocationType => JellyfinLocationType.Remote;
@@ -37,7 +46,7 @@ public sealed class StreamarrEpisode : Episode
     public override string GetClientTypeName() => nameof(BaseItemKind.Episode);
 }
 
-/// <summary>Series-level TV work used as the root of a lazily expanded hierarchy.</summary>
+/// <summary>Legacy shim — see <see cref="StreamarrMovie"/>.</summary>
 public sealed class StreamarrSeries : Series
 {
     public override JellyfinLocationType LocationType => JellyfinLocationType.Remote;
@@ -49,7 +58,7 @@ public sealed class StreamarrSeries : Series
     public override string GetClientTypeName() => nameof(BaseItemKind.Series);
 }
 
-/// <summary>Season directory below a <see cref="StreamarrSeries"/>.</summary>
+/// <summary>Legacy shim — see <see cref="StreamarrMovie"/>.</summary>
 public sealed class StreamarrSeason : Season
 {
     public override JellyfinLocationType LocationType => JellyfinLocationType.Remote;
@@ -66,16 +75,21 @@ internal static class StreamarrItemVisibility
     /// <summary>
     /// A synthetic item is visible only when the user can see at least one ordinary Jellyfin
     /// library compatible with that media kind. Enumerating unfiltered root children and invoking
-    /// each collection folder's own visibility policy preserves EnabledFolders/BlockedMediaFolders
-    /// without recursing through this private non-collection folder.
+    /// each collection folder's own visibility policy preserves EnabledFolders/BlockedMediaFolders.
+    /// <paramref name="excludeFolderId"/> lets the Streamarr folder itself run this rule without
+    /// recursing into its own <c>IsVisible</c> (it is a user-root child too).
     /// </summary>
-    internal static bool HasCompatibleLibrary(User user, bool episode)
+    internal static bool HasCompatibleLibrary(User user, bool episode, Guid excludeFolderId = default)
     {
         var root = BaseItem.LibraryManager.GetUserRootFolder();
         foreach (var child in root.Children)
         {
-            if (child is not ICollectionFolder collection || !child.IsVisible(user, true))
+            if (child.Id == excludeFolderId
+                || child is not ICollectionFolder collection
+                || !child.IsVisible(user, true))
+            {
                 continue;
+            }
 
             var compatible = collection.CollectionType switch
             {

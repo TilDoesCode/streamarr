@@ -2,8 +2,10 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Querying;
 using Jellyfin.Data.Enums;
 using Microsoft.Extensions.Logging;
@@ -13,19 +15,26 @@ using Streamarr.Plugin.Playback;
 namespace Streamarr.Plugin.Library;
 
 /// <summary>
-/// Materializes ephemeral works as real, isolated Jellyfin items (BRIEF §8.3). This is a
+/// Materializes ephemeral works as real Jellyfin items (BRIEF §8.3). This is a
 /// pure translation of a <see cref="WorkDto"/> into a <see cref="Movie"/> or
 /// <see cref="Episode"/> — it makes no domain decisions. GUIDs are derived deterministically
 /// from the workId so repeated materialization updates rather than duplicates. Items live under
-/// a dedicated hidden folder tagged <c>usenet-ephemeral</c> so Usenet results never pollute the
-/// real library. Cleanup requires the deterministic parent plus explicit ownership provider ids;
-/// the human-readable tag is never an authorization signal.
+/// a dedicated plugin folder tagged <c>usenet-ephemeral</c>. With library integration enabled
+/// (default) that folder sits below the user root and surfaces as its own "Streamarr" library,
+/// which integrates the items into Continue Watching, Next Up and Favorites; disabled, it sits
+/// below the hidden aggregate root and the items stay fully isolated. Cleanup requires the
+/// deterministic parent plus explicit ownership provider ids; the human-readable tag is never
+/// an authorization signal.
 /// </summary>
 public sealed class EphemeralLibraryService(
     ILibraryManager libraryManager,
     EphemeralReleaseStore store,
     PlaybackSessionTracker tracker,
     IApplicationPaths applicationPaths,
+    IUserManager userManager,
+    IUserDataManager userDataManager,
+    IProviderManager providerManager,
+    IFileSystem fileSystem,
     ILogger<EphemeralLibraryService> logger)
 {
     public const int MaxEphemeralItems = 500;
@@ -35,7 +44,8 @@ public sealed class EphemeralLibraryService(
     public const string OwnerProviderValue = "6f8d5c7a-9b2e-4a1f-8c3d-2e5a7b9c0d11";
     public const string ExpectedChildCountProviderKey = "StreamarrExpectedChildCount";
     public const string CatalogChildCountProviderKey = "StreamarrCatalogChildCount";
-    private const string FolderName = "Streamarr (Usenet)";
+    private const string FolderName = "Streamarr";
+    private const string LegacyFolderName = "Streamarr (Usenet)";
     private readonly SemaphoreSlim _materializeGate = new(1, 1);
     private readonly object _hierarchyProtectionSync = new();
     private readonly Dictionary<Guid, int> _seriesHierarchyReservations = new();
@@ -91,7 +101,7 @@ public sealed class EphemeralLibraryService(
         try
         {
             var seriesId = await MaterializeSeriesCoreAsync(details.Series, ct).ConfigureAwait(false);
-            if (libraryManager.GetItemById(seriesId) is not StreamarrSeries parent)
+            if (libraryManager.GetItemById(seriesId) is not Series parent)
                 throw new InvalidOperationException($"The Streamarr series parent {seriesId} is missing.");
             await ClearHierarchyCompletionAsync(parent, ct).ConfigureAwait(false);
 
@@ -109,14 +119,14 @@ public sealed class EphemeralLibraryService(
                 ids.Add(itemId);
                 var existing = libraryManager.GetItemById(itemId);
                 ValidateHierarchyOwnership(existing, parent.Id, season.WorkId, itemId);
-                if (existing is not null && existing is not StreamarrSeason)
+                if (existing is not null && existing is not Season)
                 {
                     DeleteForRetype(existing, removeReleaseState: false);
                     retiredStoreIds.Add(itemId);
                     existing = null;
                 }
 
-                var item = existing as StreamarrSeason ?? new StreamarrSeason { Id = itemId };
+                var item = existing as Season ?? new Season { Id = itemId };
                 PopulateSeason(item, season, parent);
                 (existing is null ? creates : updates).Add(item);
             }
@@ -154,9 +164,9 @@ public sealed class EphemeralLibraryService(
                     seriesId,
                     ct)
                 .ConfigureAwait(false);
-            if (libraryManager.GetItemById(seriesId) is not StreamarrSeries seriesParent)
+            if (libraryManager.GetItemById(seriesId) is not Series seriesParent)
                 throw new InvalidOperationException($"The Streamarr series parent {seriesId} is missing.");
-            if (libraryManager.GetItemById(seasonId) is not StreamarrSeason seasonParent)
+            if (libraryManager.GetItemById(seasonId) is not Season seasonParent)
                 throw new InvalidOperationException($"The Streamarr season parent {seasonId} is missing.");
             await ClearHierarchyCompletionAsync(seasonParent, ct).ConfigureAwait(false);
 
@@ -175,14 +185,14 @@ public sealed class EphemeralLibraryService(
                 ids.Add(itemId);
                 var existing = libraryManager.GetItemById(itemId);
                 ValidateHierarchyOwnership(existing, seasonParent.Id, episode.WorkId, itemId);
-                if (existing is not null && existing is not StreamarrEpisode)
+                if (existing is not null && existing is not Episode)
                 {
                     DeleteForRetype(existing, removeReleaseState: false);
                     retiredStoreIds.Add(itemId);
                     existing = null;
                 }
 
-                var item = existing as StreamarrEpisode ?? new StreamarrEpisode { Id = itemId };
+                var item = existing as Episode ?? new Episode { Id = itemId };
                 PopulateEpisode(item, episode, seriesParent, seasonParent, details.Series);
                 (existing is null ? creates : updates).Add(item);
                 works.Add(new KeyValuePair<Guid, WorkDto>(itemId, episode.ToWork()));
@@ -210,9 +220,9 @@ public sealed class EphemeralLibraryService(
         }
     }
 
-    public bool TryGetOwnedSeries(Guid itemId, out StreamarrSeries? series, out int tmdbId)
+    public bool TryGetOwnedSeries(Guid itemId, out Series? series, out int tmdbId)
     {
-        series = libraryManager.GetItemById(itemId) as StreamarrSeries;
+        series = libraryManager.GetItemById(itemId) as Series;
         tmdbId = 0;
         return series is not null
                && IsOwnedItem(series, FolderId)
@@ -221,12 +231,12 @@ public sealed class EphemeralLibraryService(
 
     public bool TryGetOwnedSeason(
         Guid itemId,
-        out StreamarrSeason? season,
-        out StreamarrSeries? series,
+        out Season? season,
+        out Series? series,
         out int tmdbId,
         out int seasonNumber)
     {
-        season = libraryManager.GetItemById(itemId) as StreamarrSeason;
+        season = libraryManager.GetItemById(itemId) as Season;
         series = null;
         tmdbId = 0;
         seasonNumber = -1;
@@ -244,33 +254,33 @@ public sealed class EphemeralLibraryService(
         return true;
     }
 
-    public bool TryFindOwnedSeason(Guid seriesId, int seasonNumber, out StreamarrSeason? season)
+    public bool TryFindOwnedSeason(Guid seriesId, int seasonNumber, out Season? season)
     {
         season = null;
         if (seasonNumber < 0 || !TryGetOwnedSeries(seriesId, out var series, out _) || series is null)
             return false;
 
         season = GetEphemeralItems()
-            .OfType<StreamarrSeason>()
+            .OfType<Season>()
             .FirstOrDefault(item => item.ParentId == seriesId
                                     && item.IndexNumber == seasonNumber
                                     && IsOwnedItem(item, seriesId));
         return season is not null;
     }
 
-    public IReadOnlyList<StreamarrSeason> GetOwnedSeasons(Guid seriesId)
+    public IReadOnlyList<Season> GetOwnedSeasons(Guid seriesId)
     {
         if (!TryGetOwnedSeries(seriesId, out var series, out _) || series is null)
             return [];
 
         return GetEphemeralItems()
-            .OfType<StreamarrSeason>()
+            .OfType<Season>()
             .Where(item => item.ParentId == seriesId && IsOwnedItem(item, seriesId))
             .OrderBy(item => item.IndexNumber)
             .ToList();
     }
 
-    public IReadOnlyList<StreamarrEpisode> GetOwnedEpisodes(Guid seasonId)
+    public IReadOnlyList<Episode> GetOwnedEpisodes(Guid seasonId)
     {
         if (!TryGetOwnedSeason(seasonId, out var season, out _, out _, out _)
             || season is null)
@@ -279,7 +289,7 @@ public sealed class EphemeralLibraryService(
         }
 
         return GetEphemeralItems()
-            .OfType<StreamarrEpisode>()
+            .OfType<Episode>()
             .Where(item => item.ParentId == seasonId
                            && item.SeasonId == seasonId
                            && item.SeriesId == season.SeriesId
@@ -365,7 +375,7 @@ public sealed class EphemeralLibraryService(
         var itemId = ItemIdFor(series.WorkId);
         var existing = libraryManager.GetItemById(itemId);
         ValidateHierarchyOwnership(existing, folder.Id, series.WorkId, itemId);
-        if (existing is not null && existing is not StreamarrSeries)
+        if (existing is not null && existing is not Series)
         {
             DeleteForRetype(existing, removeReleaseState: true);
             existing = null;
@@ -373,7 +383,7 @@ public sealed class EphemeralLibraryService(
 
         var isNew = existing is null;
         await EnsureCapacityAsync(new HashSet<Guid> { itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
-        var item = existing as StreamarrSeries ?? new StreamarrSeries { Id = itemId };
+        var item = existing as Series ?? new Series { Id = itemId };
         PopulateSeries(item, series, folder.Id);
         await SaveAsync(item, folder, isNew, ct).ConfigureAwait(false);
         return itemId;
@@ -384,13 +394,13 @@ public sealed class EphemeralLibraryService(
         Guid seriesId,
         CancellationToken ct)
     {
-        if (libraryManager.GetItemById(seriesId) is not StreamarrSeries parent)
+        if (libraryManager.GetItemById(seriesId) is not Series parent)
             throw new InvalidOperationException($"The Streamarr series parent {seriesId} is missing.");
 
         var itemId = ItemIdFor(season.WorkId);
         var existing = libraryManager.GetItemById(itemId);
         ValidateHierarchyOwnership(existing, parent.Id, season.WorkId, itemId);
-        if (existing is not null && existing is not StreamarrSeason)
+        if (existing is not null && existing is not Season)
         {
             DeleteForRetype(existing, removeReleaseState: true);
             existing = null;
@@ -398,17 +408,17 @@ public sealed class EphemeralLibraryService(
 
         var isNew = existing is null;
         await EnsureCapacityAsync(new HashSet<Guid> { seriesId, itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
-        var item = existing as StreamarrSeason ?? new StreamarrSeason { Id = itemId };
+        var item = existing as Season ?? new Season { Id = itemId };
         PopulateSeason(item, season, parent);
         await SaveAsync(item, parent, isNew, ct).ConfigureAwait(false);
         return itemId;
     }
 
     private void PopulateEpisode(
-        StreamarrEpisode item,
+        Episode item,
         TvEpisodeDto episode,
-        StreamarrSeries series,
-        StreamarrSeason season,
+        Series series,
+        Season season,
         TvSeriesDto seriesMetadata)
     {
         item.Name = episode.Title;
@@ -428,11 +438,13 @@ public sealed class EphemeralLibraryService(
         if (episode.RuntimeMinutes is { } minutes && minutes > 0)
             item.RunTimeTicks = TimeSpan.FromMinutes(minutes).Ticks;
         ApplyProviderIds(item, episode.WorkId, episode.TmdbId, seriesMetadata.ImdbId);
+        // NULL keys collapse into one group in Jellyfin's recursive de-duplication queries.
+        item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
         ApplyTags(item);
         TryApplyImage(item, episode.StillUrl, ImageType.Primary);
     }
 
-    private void PopulateSeason(StreamarrSeason item, TvSeasonDto season, StreamarrSeries series)
+    private void PopulateSeason(Season item, TvSeasonDto season, Series series)
     {
         item.Name = season.Title;
         item.Overview = season.Overview;
@@ -452,13 +464,15 @@ public sealed class EphemeralLibraryService(
         TryApplyImage(item, season.PosterUrl, ImageType.Primary);
     }
 
-    private void PopulateSeries(StreamarrSeries item, TvSeriesDto series, Guid folderId)
+    private void PopulateSeries(Series item, TvSeriesDto series, Guid folderId)
     {
         item.Name = series.Title;
         item.ProductionYear = series.Year;
         item.Overview = series.Overview;
         item.ParentId = folderId;
-        item.IsVirtualItem = true;
+        // Non-virtual so the series participates in Next Up's series queries and in library
+        // browsing (recursive folder queries default to IsVirtualItem=false).
+        item.IsVirtualItem = false;
         if (series.Year is { } year)
             item.PremiereDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         if (series.RuntimeMinutes is { } minutes && minutes > 0)
@@ -608,8 +622,8 @@ public sealed class EphemeralLibraryService(
         // Plugin-defined item subclasses carry the direct-by-id user/library authorization check.
         // Recreate legacy plain Movie/Episode rows so they cannot bypass that check after upgrade.
         if (existing is not null
-            && ((isEpisode && existing is not StreamarrEpisode)
-                || (!isEpisode && existing is not StreamarrMovie)))
+            && ((isEpisode && existing is not Episode)
+                || (!isEpisode && existing is not Movie)))
         {
             DeleteForRetype(existing, removeReleaseState: true);
             existing = null;
@@ -620,16 +634,18 @@ public sealed class EphemeralLibraryService(
 
         BaseItem item = existing
                         ?? (isEpisode
-                            ? new StreamarrEpisode { Id = itemId }
-                            : new StreamarrMovie { Id = itemId });
+                            ? new Episode { Id = itemId }
+                            : new Movie { Id = itemId });
 
         item.Name = work.Title;
         item.ProductionYear = work.Year;
         item.Overview = work.Overview;
         item.ParentId = folder.Id;
-        // Virtual items are intentionally excluded from Jellyfin's Latest/recommendation
-        // queries. They are surfaced only by the guarded search interceptor.
-        item.IsVirtualItem = true;
+        // These are real catalog entries backed by the plugin media-source provider. Jellyfin's
+        // resume ("Continue Watching") endpoint filters IsVirtualItem=false twice (controller and
+        // repository), so virtual items can never resume. Isolation from user views is achieved
+        // through folder placement, not through the virtual flag.
+        item.IsVirtualItem = false;
         if (work.Year is { } year)
             item.PremiereDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         if (work.RuntimeMinutes is { } minutes && minutes > 0)
@@ -641,6 +657,9 @@ public sealed class EphemeralLibraryService(
         }
 
         ApplyProviderIds(item, work);
+        // Jellyfin's recursive user queries de-duplicate by PresentationUniqueKey; rows with a
+        // NULL key all collapse into one group and vanish. Every materialized row needs one.
+        item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
         ApplyTags(item);
         TryApplyImage(item, work.PosterUrl, ImageType.Primary);
         TryApplyImage(item, work.BackdropUrl, ImageType.Backdrop);
@@ -774,26 +793,173 @@ public sealed class EphemeralLibraryService(
     public sealed record LifecycleItem(
         BaseItem Item,
         IReadOnlySet<Guid> SubtreeIds,
-        DateTime? EffectiveLastAccessUtc);
+        DateTime? EffectiveLastAccessUtc,
+        bool IsEngaged);
 
     /// <summary>
     /// Returns hierarchy-aware lifecycle units. An ancestor's effective access is the newest
     /// access in its complete subtree, so a recently played episode protects its season/series.
+    /// A subtree is "engaged" when any user holds meaningful playback state on any of its items
+    /// (resume position, favorite flag, or watched state); engaged subtrees never expire by TTL
+    /// and are evicted last under capacity pressure — deleting them would silently wipe the
+    /// user's Continue Watching entry, favorite, or Next Up progress.
     /// </summary>
     public IReadOnlyList<LifecycleItem> GetLifecycleItems()
     {
         var items = GetEphemeralItems();
         var byId = items.ToDictionary(item => item.Id);
-        return EphemeralLifecycle.Build(items.Select(item => new EphemeralLifecycle.Node(
-                item.Id,
-                item.ParentId,
-                ResolveOwnLastAccess(item))))
+        return EphemeralLifecycle.Build(items.Select(item =>
+            {
+                var (isEngaged, lastPlayedUtc) = ResolveEngagement(item);
+                return new EphemeralLifecycle.Node(
+                    item.Id,
+                    item.ParentId,
+                    ResolveOwnLastAccess(item, lastPlayedUtc),
+                    isEngaged);
+            }))
             .Where(candidate => byId.ContainsKey(candidate.ItemId))
             .Select(candidate => new LifecycleItem(
                 byId[candidate.ItemId],
                 candidate.SubtreeIds,
-                candidate.EffectiveLastAccessUtc))
+                candidate.EffectiveLastAccessUtc,
+                candidate.IsEngaged))
             .ToList();
+    }
+
+    /// <summary>
+    /// Aggregates per-user playback state for one item. Never throws: engagement is a
+    /// protection signal, and an unavailable user-data store must degrade to "not engaged"
+    /// rather than break materialization or cleanup.
+    /// </summary>
+    private (bool IsEngaged, DateTime? LastPlayedUtc) ResolveEngagement(BaseItem item)
+    {
+        var engaged = false;
+        DateTime? lastPlayed = null;
+        try
+        {
+            foreach (var user in userManager.GetUsers())
+            {
+                if (userDataManager.GetUserData(user, item) is not { } data)
+                    continue;
+
+                engaged |= data.PlaybackPositionTicks > 0 || data.IsFavorite || data.Played;
+                if (data.LastPlayedDate is { } played && (lastPlayed is null || played > lastPlayed))
+                    lastPlayed = played;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Could not resolve user engagement for ephemeral item {ItemId}", item.Id);
+        }
+
+        return (engaged, lastPlayed);
+    }
+
+    /// <summary>
+    /// Ensures the plugin folder exists, matches the configured placement (visible "Streamarr"
+    /// library below the user root, or isolated below the aggregate root), and upgrades items
+    /// written by earlier plugin versions. Two legacy states are repaired in place, preserving
+    /// user data: (a) rows persisted under plugin CLR subclasses, which Jellyfin's type-filtered
+    /// native queries (Next Up, favorites sections, includeItemTypes) can never match, are
+    /// re-saved as the built-in Movie/Series/Season/Episode types; (b) flat movies and series
+    /// shells that used <c>IsVirtualItem=true</c> (filtered out of resume) or lacked a
+    /// <c>PresentationUniqueKey</c> (collapsed away by de-duplicating queries) get both fixed.
+    /// Runs at server start and whenever the configuration changes.
+    /// </summary>
+    public async Task EnsureLibraryIntegrationAsync(CancellationToken ct)
+    {
+        await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var folder = await EnsureFolderAsync(ct).ConfigureAwait(false);
+            var upgraded = new List<BaseItem>();
+            foreach (var item in GetEphemeralItems())
+            {
+                var target = CreateNativeReplacement(item);
+                var changed = target is not null;
+                target ??= item;
+                if (target.IsVirtualItem && target is Movie or Series)
+                {
+                    target.IsVirtualItem = false;
+                    changed = true;
+                }
+
+                if (string.IsNullOrWhiteSpace(target.PresentationUniqueKey))
+                {
+                    target.PresentationUniqueKey = target.CreatePresentationUniqueKey();
+                    changed = true;
+                }
+
+                if (changed)
+                    upgraded.Add(target);
+            }
+
+            if (upgraded.Count == 0)
+                return;
+
+            await UpdateBatchAsync(upgraded, folder, ct).ConfigureAwait(false);
+            logger.LogInformation(
+                "Upgraded {Count} ephemeral item(s) from legacy type/virtual/presentation-key state",
+                upgraded.Count);
+        }
+        finally
+        {
+            _materializeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Builds the built-in-typed replacement for a row persisted under a legacy plugin CLR
+    /// subclass, copying every persisted field. Saving it under the same id rewrites the row's
+    /// type in place — user data (resume positions, favorites, watched state) is untouched.
+    /// Returns null when the item already uses a built-in type.
+    /// </summary>
+    private static BaseItem? CreateNativeReplacement(BaseItem legacy)
+    {
+        BaseItem? target = legacy switch
+        {
+            Movie movie when movie.GetType() != typeof(Movie) => new Movie(),
+            Episode episode when episode.GetType() != typeof(Episode) => new Episode(),
+            Season season when season.GetType() != typeof(Season) => new Season(),
+            Series series when series.GetType() != typeof(Series) => new Series(),
+            _ => null,
+        };
+        if (target is null)
+            return null;
+
+        target.Id = legacy.Id;
+        target.Name = legacy.Name;
+        target.Overview = legacy.Overview;
+        target.ParentId = legacy.ParentId;
+        target.ProviderIds = new Dictionary<string, string>(legacy.ProviderIds, StringComparer.OrdinalIgnoreCase);
+        target.Tags = legacy.Tags;
+        target.PremiereDate = legacy.PremiereDate;
+        target.ProductionYear = legacy.ProductionYear;
+        target.RunTimeTicks = legacy.RunTimeTicks;
+        target.IndexNumber = legacy.IndexNumber;
+        target.ParentIndexNumber = legacy.ParentIndexNumber;
+        target.IsVirtualItem = legacy.IsVirtualItem;
+        target.PresentationUniqueKey = legacy.PresentationUniqueKey;
+        target.DateCreated = legacy.DateCreated;
+        target.DateModified = legacy.DateModified;
+        target.ImageInfos = legacy.ImageInfos;
+        if (legacy is Episode legacyEpisode && target is Episode targetEpisode)
+        {
+            targetEpisode.SeriesId = legacyEpisode.SeriesId;
+            targetEpisode.SeasonId = legacyEpisode.SeasonId;
+            targetEpisode.SeriesName = legacyEpisode.SeriesName;
+            targetEpisode.SeasonName = legacyEpisode.SeasonName;
+            targetEpisode.SeriesPresentationUniqueKey = legacyEpisode.SeriesPresentationUniqueKey;
+        }
+
+        if (legacy is Season legacySeason && target is Season targetSeason)
+        {
+            targetSeason.SeriesId = legacySeason.SeriesId;
+            targetSeason.SeriesName = legacySeason.SeriesName;
+            targetSeason.SeriesPresentationUniqueKey = legacySeason.SeriesPresentationUniqueKey;
+        }
+
+        return target;
     }
 
     public async Task<int> PruneOrphanedReleaseStateAsync(CancellationToken ct)
@@ -825,8 +991,8 @@ public sealed class EphemeralLibraryService(
                 && IsOwnedItem(item, parentId)
                 && childKind switch
                 {
-                    BaseItemKind.Season => item is StreamarrSeason,
-                    BaseItemKind.Episode => item is StreamarrEpisode,
+                    BaseItemKind.Season => item is Season,
+                    BaseItemKind.Episode => item is Episode,
                     _ => false,
                 })
             .ToArray();
@@ -859,7 +1025,7 @@ public sealed class EphemeralLibraryService(
         return childKind switch
         {
             BaseItemKind.Season
-                when parent is StreamarrSeries series && child is StreamarrSeason season
+                when parent is Series series && child is Season season
                 => !season.IsVirtualItem
                    && season.SeriesId == series.Id
                    && !string.IsNullOrWhiteSpace(series.PresentationUniqueKey)
@@ -869,7 +1035,7 @@ public sealed class EphemeralLibraryService(
                        series.GetPresentationUniqueKey(),
                        StringComparison.Ordinal),
             BaseItemKind.Episode
-                when parent is StreamarrSeason season && child is StreamarrEpisode episode
+                when parent is Season season && child is Episode episode
                 => !episode.IsVirtualItem
                    && episode.ParentId == season.Id
                    && episode.SeasonId == season.Id
@@ -905,7 +1071,8 @@ public sealed class EphemeralLibraryService(
                     current.SubtreeIds,
                     current.EffectiveLastAccessUtc,
                     expirationCutoffUtc,
-                    lifecycle.Count > MaxEphemeralItems))
+                    lifecycle.Count > MaxEphemeralItems,
+                    current.IsEngaged))
             {
                 return [];
             }
@@ -920,7 +1087,8 @@ public sealed class EphemeralLibraryService(
                     current.SubtreeIds,
                     current.EffectiveLastAccessUtc,
                     expirationCutoffUtc,
-                    lifecycle.Count > MaxEphemeralItems))
+                    lifecycle.Count > MaxEphemeralItems,
+                    current.IsEngaged))
             {
                 return [];
             }
@@ -945,7 +1113,8 @@ public sealed class EphemeralLibraryService(
                         current.SubtreeIds,
                         current.EffectiveLastAccessUtc,
                         expirationCutoffUtc,
-                        lifecycle.Count > MaxEphemeralItems))
+                        lifecycle.Count > MaxEphemeralItems,
+                        current.IsEngaged))
                 {
                     return [];
                 }
@@ -964,11 +1133,13 @@ public sealed class EphemeralLibraryService(
         IReadOnlySet<Guid> currentSubtreeIds,
         DateTime? effectiveLastAccessUtc,
         DateTime expirationCutoffUtc,
-        bool capacityOverflow)
+        bool capacityOverflow,
+        bool isEngaged)
         => expectedSubtreeIds.SetEquals(currentSubtreeIds)
            && (capacityOverflow
-               || effectiveLastAccessUtc is null
-               || effectiveLastAccessUtc < expirationCutoffUtc);
+               || (!isEngaged
+                   && (effectiveLastAccessUtc is null
+                       || effectiveLastAccessUtc < expirationCutoffUtc)));
 
     internal static bool HasExpectedChildCount(BaseItem parent, int actualChildCount)
         => actualChildCount >= 0
@@ -1002,18 +1173,25 @@ public sealed class EphemeralLibraryService(
                            && !authoritativeIds.Contains(item.Id)
                            && childKind switch
                            {
-                               BaseItemKind.Season => item is StreamarrSeason,
-                               BaseItemKind.Episode => item is StreamarrEpisode,
+                               BaseItemKind.Season => item is Season,
+                               BaseItemKind.Episode => item is Episode,
                                _ => false,
                            })
             .ToList();
     }
 
-    private DateTime? ResolveOwnLastAccess(BaseItem item)
-        => store.Peek(item.Id)?.LastAccessedUtc
-           ?? (item.DateLastSaved != DateTime.MinValue
-               ? item.DateLastSaved
-               : item.DateCreated != DateTime.MinValue ? item.DateCreated : null);
+    private DateTime? ResolveOwnLastAccess(BaseItem item, DateTime? lastPlayedUtc)
+    {
+        var access = store.Peek(item.Id)?.LastAccessedUtc
+                     ?? (item.DateLastSaved != DateTime.MinValue
+                         ? item.DateLastSaved
+                         : item.DateCreated != DateTime.MinValue ? item.DateCreated : null);
+        // A finished watch clears the resume position, so the play timestamp itself must count
+        // as access — otherwise an item could expire minutes after the credits roll.
+        if (lastPlayedUtc is { } played && (access is null || played > access))
+            return played;
+        return access;
+    }
 
     /// <summary>
     /// All items owned by this plugin below its deterministic private folder. A tag alone is never
@@ -1079,51 +1257,117 @@ public sealed class EphemeralLibraryService(
         return subtreeIds.ToArray();
     }
 
+    private bool LibraryIntegrationEnabled
+        => Plugin.Instance?.Configuration.LibraryEnabled ?? true;
+
+    /// <summary>
+    /// The container the folder must live under: the user root (folder becomes a visible
+    /// "Streamarr" library and its children join every view-scoped query) when integration is
+    /// enabled, the hidden aggregate root (fully isolated legacy behavior) when disabled.
+    /// </summary>
+    private Folder DesiredFolderParent
+        => LibraryIntegrationEnabled
+            ? libraryManager.GetUserRootFolder()
+            : libraryManager.RootFolder;
+
     private async Task<Folder> EnsureFolderAsync(CancellationToken ct)
     {
         var folderId = FolderId;
         var existingItem = libraryManager.GetItemById(folderId);
+        var parent = DesiredFolderParent;
         StreamarrEphemeralFolder folder;
         if (existingItem is StreamarrEphemeralFolder existing && IsOwnedFolder(existing))
         {
             folder = existing;
+            var changed = false;
             if (string.IsNullOrWhiteSpace(folder.Path))
             {
                 folder.Path = EnsureFolderPath();
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(folder.PresentationUniqueKey))
+            {
+                folder.PresentationUniqueKey = folder.CreatePresentationUniqueKey();
+                changed = true;
+            }
+
+            // Upgrades from the isolated era rename the folder and move it below the user root.
+            if (!string.Equals(folder.Name, FolderName, StringComparison.Ordinal))
+            {
+                folder.Name = FolderName;
+                changed = true;
+            }
+
+            var reparented = folder.ParentId != parent.Id;
+            if (reparented)
+            {
+                folder.ParentId = parent.Id;
+                changed = true;
+            }
+
+            if (changed)
+            {
                 await libraryManager
-                    .UpdateItemAsync(folder, libraryManager.RootFolder, ItemUpdateType.MetadataEdit, ct)
+                    .UpdateItemAsync(folder, parent, ItemUpdateType.MetadataEdit, ct)
                     .ConfigureAwait(false);
             }
+
+            if (reparented)
+                InvalidateUserRootChildren();
         }
         else
         {
             if (existingItem is not null)
                 throw new InvalidOperationException($"Refusing to reuse non-Streamarr folder {folderId}.");
 
-            // Keep the implementation folder out of the user's normal media-root traversal.
-            // Direct item authorization is enforced by StreamarrMovie/StreamarrEpisode.
-            var root = libraryManager.RootFolder;
+            // Direct item authorization is enforced by Movie/Episode.
             folder = new StreamarrEphemeralFolder
             {
                 Id = folderId,
                 Name = FolderName,
-                ParentId = root.Id,
+                ParentId = parent.Id,
                 Path = EnsureFolderPath(),
                 IsVirtualItem = true,
             };
+            folder.PresentationUniqueKey = folder.CreatePresentationUniqueKey();
             ApplyOwnership(folder);
             ApplyTags(folder);
             ct.ThrowIfCancellationRequested();
-            libraryManager.CreateItems([folder], root, ct);
+            libraryManager.CreateItems([folder], parent, ct);
             ct.ThrowIfCancellationRequested();
             await libraryManager
-                .UpdateItemAsync(folder, root, ItemUpdateType.MetadataEdit, ct)
+                .UpdateItemAsync(folder, parent, ItemUpdateType.MetadataEdit, ct)
                 .ConfigureAwait(false);
-            logger.LogInformation("Created isolated ephemeral folder {FolderId}", folderId);
+            InvalidateUserRootChildren();
+            logger.LogInformation(
+                "Created ephemeral folder {FolderId} below {Parent}",
+                folderId,
+                LibraryIntegrationEnabled ? "the user root (library integration)" : "the aggregate root (isolated)");
         }
 
         await MigrateLegacyFolderAsync(folder, ct).ConfigureAwait(false);
         return folder;
+    }
+
+    /// <summary>
+    /// The user root folder caches its child-id list. Queue a lightweight metadata refresh so
+    /// <c>BeforeMetadataRefresh</c> clears that cache and the "Streamarr" library (dis)appears
+    /// without a server restart. Failure is non-fatal: the next library validation clears it too.
+    /// </summary>
+    private void InvalidateUserRootChildren()
+    {
+        try
+        {
+            providerManager.QueueRefresh(
+                libraryManager.GetUserRootFolder().Id,
+                new MetadataRefreshOptions(new DirectoryService(fileSystem)),
+                RefreshPriority.High);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Could not queue a user-root refresh after moving the Streamarr folder");
+        }
     }
 
     private string EnsureFolderPath()
@@ -1137,7 +1381,7 @@ public sealed class EphemeralLibraryService(
     {
         if (libraryManager.GetItemById(LegacyFolderId) is not Folder legacy
             || legacy.Id == destination.Id
-            || !string.Equals(legacy.Name, FolderName, StringComparison.Ordinal)
+            || !string.Equals(legacy.Name, LegacyFolderName, StringComparison.Ordinal)
             || !legacy.Tags.Contains(EphemeralTag, StringComparer.OrdinalIgnoreCase))
         {
             return;
@@ -1320,12 +1564,17 @@ public sealed class EphemeralLibraryService(
 /// <summary>Pure hierarchy lifecycle calculations shared by capacity and scheduled cleanup.</summary>
 internal static class EphemeralLifecycle
 {
-    internal sealed record Node(Guid ItemId, Guid ParentId, DateTime? LastAccessedUtc);
+    internal sealed record Node(
+        Guid ItemId,
+        Guid ParentId,
+        DateTime? LastAccessedUtc,
+        bool IsEngaged = false);
 
     internal sealed record Candidate(
         Guid ItemId,
         IReadOnlySet<Guid> SubtreeIds,
-        DateTime? EffectiveLastAccessUtc);
+        DateTime? EffectiveLastAccessUtc,
+        bool IsEngaged);
 
     internal static IReadOnlyList<Candidate> Build(IEnumerable<Node> source)
     {
@@ -1357,19 +1606,29 @@ internal static class EphemeralLifecycle
                 .Select(value => value!.Value)
                 .DefaultIfEmpty()
                 .Max();
+            // Engagement anywhere in the subtree protects every ancestor: deleting a season
+            // would take an engaged episode (and its Continue Watching entry) down with it.
+            var engaged = subtree.Any(itemId => nodes[itemId].IsEngaged);
             result.Add(new Candidate(
                 node.ItemId,
                 subtree,
-                access == default ? null : access));
+                access == default ? null : access,
+                engaged));
         }
 
         return result;
     }
 
+    /// <summary>
+    /// Deletion preference: non-engaged before engaged, then oldest access first. Engaged
+    /// subtrees can therefore only fall to capacity pressure after every disposable subtree
+    /// is gone, and TTL expiry skips them entirely.
+    /// </summary>
     internal static IOrderedEnumerable<EphemeralLibraryService.LifecycleItem> OrderForDeletion(
         IEnumerable<EphemeralLibraryService.LifecycleItem> candidates)
         => candidates
-            .OrderBy(candidate => candidate.EffectiveLastAccessUtc ?? DateTime.MinValue)
+            .OrderBy(candidate => candidate.IsEngaged ? 1 : 0)
+            .ThenBy(candidate => candidate.EffectiveLastAccessUtc ?? DateTime.MinValue)
             .ThenByDescending(candidate => candidate.SubtreeIds.Count)
             .ThenBy(candidate => candidate.Item.Id);
 }

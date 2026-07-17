@@ -498,6 +498,15 @@ masked on read as `hasTmdbApiKey`, omit-to-keep on write), plus `sessionTtlSecon
 `searchCacheTtlSeconds`, `segmentCacheSizeMb`, `connectionBudget`. Credential changes
 take effect immediately; other scalar changes take effect on restart.
 
+### Notifications — `/api/v1/config/notifications`
+
+`GET` / `PUT` configure Pushover credentials, event switches, message-content switches,
+priorities, cooldowns, and dependency-monitor thresholds. The application token and
+user/group key are encrypted, masked on reads, and omit-to-keep on writes.
+`POST /test` performs an immediate Pushover roundtrip using the saved credentials.
+Routine delivery uses a bounded background queue; the test endpoint is synchronous so
+configuration errors are returned to the operator.
+
 ### Profiles — `/api/v1/config/profiles`
 
 `GET` · `POST` · `GET/PUT/DELETE /{id}`. Quality preference profiles (the ranker

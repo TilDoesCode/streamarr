@@ -73,6 +73,10 @@ public sealed class PlaybackEventEntryPoint(
             Event = kind,
             PositionTicks = e.PlaybackPositionTicks,
             Source = "jellyfin",
+            PlaybackSessionId = e.PlaySessionId,
+            ExternalUserId = e.Session?.UserId == Guid.Empty ? null : e.Session?.UserId.ToString("D"),
+            ExternalUserName = e.Session?.UserName,
+            DeviceName = e.DeviceName,
         };
         var coalesceKey = attribution?.TrackingId.ToString("N") ?? $"{item.Id:N}:{releaseId}";
         if (!dispatcher.EnqueueEvent(request, coalesceKey))
