@@ -15,7 +15,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- 2. .NET publish ----------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:08f003ba31fca1aeed32d5a076f62dc3b592faa0a811b072aa245321dd09f0ab AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:ea8bde36c11b6e7eec2656d0e59101d4462f6bd630730f2c8201ed0572b295d5 AS build
 WORKDIR /src
 COPY server/ server/
 # Bring the freshly built SPA into the server's static web root (single-origin prod path).
