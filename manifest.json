@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.5.0.0",
+        "changelog": "Add resilient article retries and caching, provider speed tests, indexer-only proxying, client-reachable stream URLs, and improved Jellyfin discovery.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.5.0/streamarr-jellyfin-0.5.0.zip",
+        "checksum": "c8bfe42e1d0a40a99a124a426964c528",
+        "timestamp": "2026-07-17T13:29:59Z"
+      },
+      {
         "version": "0.4.3.0",
         "changelog": "Fix Jellyfin movie playback and TV season/episode navigation, with correct remote-item availability and hierarchy metadata.",
         "targetAbi": "10.11.11.0",
