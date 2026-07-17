@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Library;
+using Streamarr.Plugin.MediaSources;
 
 namespace Streamarr.Plugin.Search;
 
@@ -42,6 +43,7 @@ public sealed class StreamarrSearchActionFilter(
     StreamarrApiClient api,
     EphemeralLibraryService library,
     HierarchyLoadCoordinator hierarchyLoads,
+    StreamarrMediaSourceProjection projection,
     IDtoService dtoService,
     IImageProcessor imageProcessor,
     IUserManager userManager,
@@ -104,14 +106,60 @@ public sealed class StreamarrSearchActionFilter(
 
         try
         {
-            if (!interceptionEnabled)
+            var request = context.HttpContext.Request;
+            var ct = context.HttpContext.RequestAborted;
+
+            // Official clients resolve a selected version by fetching its media-source id as an
+            // item id (Jellyfin Web calls GET /Users/{uid}/Items/{mediaSourceId} before playing;
+            // Android TV parses the id as a UUID). Those guids identify releases rather than
+            // items, so Jellyfin answers 404 — substitute the owning item's DTO instead.
+            if (executed.Result is NotFoundResult
+                && TryGetDetailItemId(request.Path, out var missingItemId)
+                && projection.TryResolveReleaseSource(missingItemId, out var releaseOwnerId))
+            {
+                var releaseUser = ResolveUser(context.HttpContext);
+                if (releaseUser is not null
+                    && libraryManager.GetItemById(releaseOwnerId) is { } releaseOwner
+                    && releaseOwner.IsVisibleStandalone(releaseUser))
+                {
+                    var ownerDto = dtoService.GetBaseItemDto(
+                        releaseOwner,
+                        new DtoOptions(true) { EnableUserData = true },
+                        releaseUser,
+                        null!);
+                    ProjectOwnedSources([ownerDto], context.HttpContext);
+                    executed.Result = new OkObjectResult(ownerDto);
+                }
                 return;
+            }
 
             if (executed.Result is not ObjectResult obj || obj.Value is null)
                 return;
 
-            var request = context.HttpContext.Request;
-            var ct = context.HttpContext.RequestAborted;
+            // Owned items must advertise their release sources on the item-detail routes even
+            // while search interception is disabled: playback surfaces are independent of the
+            // discovery toggle, exactly like the IMediaSourceProvider itself.
+            if (obj.Value is BaseItemDto detail && IsSupportedDetailPath(request.Path))
+            {
+                ProjectOwnedSources([detail], context.HttpContext);
+                return;
+            }
+
+            // Streamyfin loads the detail page's selectable versions through
+            // GET /Items?ids={itemId}, not either single-item route above. Project that explicit
+            // lookup even when discovery interception is disabled; playback surfaces are not a
+            // search feature. Requests that excluded MediaSources remain untouched by the
+            // projection's null-field guard.
+            if (obj.Value is QueryResult<BaseItemDto> explicitItems
+                && IsSupportedSearchPath(request.Path, isHintRequest: false)
+                && HasExplicitItemIds(request.Query))
+            {
+                ProjectOwnedSources(explicitItems.Items, context.HttpContext);
+            }
+
+            if (!interceptionEnabled)
+                return;
+
             switch (obj.Value)
             {
                 case QueryResult<BaseItemDto> items:
@@ -119,14 +167,22 @@ public sealed class StreamarrSearchActionFilter(
                     if (hierarchyRequest is not null
                         && IsSupportedHierarchyPath(request.Path))
                     {
-                        obj.Value = InjectHierarchyItems(
+                        items = InjectHierarchyItems(
                             items,
                             hierarchyRequest,
                             context.HttpContext);
+                        obj.Value = items;
                         logger.LogDebug(
                             "Streamarr hierarchy response {Path} contains {Count} item(s)",
                             request.Path.Value,
-                            ((QueryResult<BaseItemDto>)obj.Value).Items.Count);
+                            items.Items.Count);
+                    }
+
+                    if (IsSupportedHierarchyPath(request.Path))
+                    {
+                        // Native and injected child DTOs both carry Jellyfin's pathless
+                        // placeholder; show-navigation responses must advertise real releases.
+                        ProjectOwnedSources(items.Items, context.HttpContext);
                         break;
                     }
 
@@ -187,6 +243,21 @@ public sealed class StreamarrSearchActionFilter(
                  && season is not null)
         {
             children = library.GetOwnedEpisodes(season.Id);
+        }
+        else if (request.ChildKind == BaseItemKind.Episode
+                 && request.SeasonNumber is null
+                 && request.ExpectedSeriesId == request.ParentId
+                 && library.TryGetOwnedSeries(request.ParentId, out var wholeSeries, out _)
+                 && wholeSeries is not null)
+        {
+            // Series-wide playback-queue reload: every owned episode in canonical order, so
+            // startItemId paging below lands on the exact episode whose card was clicked.
+            children = library.GetOwnedSeasons(request.ParentId)
+                .SelectMany(ownedSeason => library.GetOwnedEpisodes(ownedSeason.Id))
+                .OrderBy(episode => episode.ParentIndexNumber ?? int.MaxValue)
+                .ThenBy(episode => episode.IndexNumber ?? int.MaxValue)
+                .Cast<BaseItem>()
+                .ToList();
         }
         else
         {
@@ -643,6 +714,51 @@ public sealed class StreamarrSearchActionFilter(
             }
 
             await EnsureEpisodesAsync(request.ParentId, null, routeTmdbId, requestedSeason, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // A series-wide /Shows/{seriesId}/Episodes request (no seasonId/season constraint) is
+        // Jellyfin Web's playback-queue reload for an episode-card play click. Cover every
+        // canonical season; completed seasons are skipped without any Core round-trip.
+        if (request.ChildKind == BaseItemKind.Episode
+            && request.SeasonNumber is null
+            && request.ExpectedSeriesId == request.ParentId
+            && library.TryGetOwnedSeries(request.ParentId, out var wholeSeries, out var wholeTmdbId))
+        {
+            if (wholeSeries is null
+                || !CanExposeToUser(wholeSeries, isTv: true, user)
+                || !HierarchyAllowsKind(http.Request.Query, BaseItemKind.Episode))
+            {
+                return;
+            }
+
+            if (!library.IsHierarchyComplete(request.ParentId, BaseItemKind.Season))
+            {
+                using var hierarchyLoad = hierarchyLoads.Acquire(
+                        new HierarchyLoadCoordinator.Key(wholeTmdbId, null),
+                        HierarchyTimeout,
+                        loadToken => api.GetTvSeriesAsync(wholeTmdbId, loadToken));
+                if (!library.IsHierarchyComplete(request.ParentId, BaseItemKind.Season))
+                {
+                    var details = await hierarchyLoad.FetchAsync(ct).ConfigureAwait(false);
+                    if (details is not null
+                        && !library.IsHierarchyComplete(request.ParentId, BaseItemKind.Season))
+                    {
+                        await library.MaterializeSeasonsAsync(details, ct).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            using var seriesReservation = library.ReserveSeriesHierarchy(request.ParentId);
+            if (!library.CanExpandCompleteSeriesHierarchy(request.ParentId))
+            {
+                logger.LogDebug(
+                    "Skipping series-wide episode expansion for TMDB series {TmdbId}: the complete hierarchy cannot be represented within the ephemeral capacity",
+                    wholeTmdbId);
+                return;
+            }
+
+            await ExpandRecursiveEpisodesAsync(request.ParentId, wholeTmdbId, ct).ConfigureAwait(false);
         }
     }
 
@@ -885,8 +1001,17 @@ public sealed class StreamarrSearchActionFilter(
             return true;
         }
 
-        if (!query.TryGetValue("season", out var seasonValue)
-            || seasonValue.Count != 1
+        if (!query.TryGetValue("season", out var seasonValue))
+        {
+            // Jellyfin Web's episode-card play reloads its queue via /Shows/{seriesId}/Episodes
+            // with only startItemId/limit — no season constraint at all. Treat it as a
+            // series-wide episode request; without this the clicked plugin episode is missing
+            // from the queue and playback fails with an empty item list.
+            request = new HierarchyRequest(seriesId, BaseItemKind.Episode, null, seriesId, false);
+            return true;
+        }
+
+        if (seasonValue.Count != 1
             || !TryInt(seasonValue.ToString(), out var seasonNumber)
             || seasonNumber < 0)
         {
@@ -910,6 +1035,87 @@ public sealed class StreamarrSearchActionFilter(
     }
 
     /// <summary>
+    /// The two item-detail actions returning a single <see cref="BaseItemDto"/>:
+    /// <c>/Items/{itemId}</c> and the legacy <c>/Users/{userId}/Items/{itemId}</c> route.
+    /// Non-guid tails such as <c>/Items/Latest</c> or <c>/Items/Root</c> never match.
+    /// </summary>
+    internal static bool IsSupportedDetailPath(PathString path) => TryGetDetailItemId(path, out _);
+
+    /// <summary>Extracts the requested item id from a supported detail route.</summary>
+    internal static bool TryGetDetailItemId(PathString path, out Guid itemId)
+    {
+        itemId = Guid.Empty;
+        var parts = (path.Value ?? string.Empty)
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var candidate = parts switch
+        {
+            ["Items", var raw] => raw,
+            ["Users", var userId, "Items", var raw]
+                when TryGuid(userId, out var parsedUser) && parsedUser != Guid.Empty => raw,
+            _ => null,
+        };
+        return candidate is not null && TryGuid(candidate, out itemId) && itemId != Guid.Empty;
+    }
+
+    /// <summary>
+    /// Replaces Jellyfin's pathless placeholder source on plugin-owned DTOs with the same
+    /// user-bound release offers PlaybackInfo advertises, so detail pages and season listings
+    /// show real, selectable versions. Only responses that already carry the MediaSources field
+    /// are touched, and each token receives the host routing prefix that
+    /// <c>MediaSourceManager.SetKeyProperties</c> would have added on the provider path.
+    /// </summary>
+    private void ProjectOwnedSources(IReadOnlyList<BaseItemDto> dtos, HttpContext http)
+    {
+        User? user = null;
+        var offerOwnerId = Guid.Empty;
+        var resolved = false;
+        foreach (var dto in dtos)
+        {
+            if (dto is null
+                || dto.Id == Guid.Empty
+                || dto.MediaSources is null
+                || !projection.Owns(dto.Id))
+            {
+                continue;
+            }
+
+            if (!resolved)
+            {
+                resolved = true;
+                user = ResolveUser(http);
+                offerOwnerId = AuthenticatedUserId(http);
+            }
+
+            if (user is null || offerOwnerId == Guid.Empty)
+                return;
+
+            if (libraryManager.GetItemById(dto.Id) is not { } item
+                || !projection.TryProject(item, user, offerOwnerId, out var sources))
+            {
+                continue;
+            }
+
+            foreach (var source in sources)
+            {
+                if (!string.IsNullOrEmpty(source.OpenToken))
+                    source.OpenToken = StreamarrMediaSourceProjection.WithHostOpenTokenPrefix(source.OpenToken);
+            }
+
+            dto.MediaSources = sources.ToArray();
+            dto.MediaSourceCount = sources.Count;
+        }
+    }
+
+    /// <summary>Reads the authenticated caller's id claim; one-use offers bind to this identity.</summary>
+    private static Guid AuthenticatedUserId(HttpContext http)
+    {
+        const string userIdClaimType = "Jellyfin-UserId";
+        var claim = http.User?.Claims.FirstOrDefault(candidate =>
+            string.Equals(candidate.Type, userIdClaimType, StringComparison.Ordinal));
+        return claim is not null && Guid.TryParse(claim.Value, out var userId) ? userId : Guid.Empty;
+    }
+
+    /// <summary>
     /// Resolves the exact authenticated/target Jellyfin user. Never falls back to another account:
     /// doing so would apply the wrong library and parental-control policy to injected results.
     /// </summary>
@@ -917,10 +1123,8 @@ public sealed class StreamarrSearchActionFilter(
     {
         try
         {
-            const string userIdClaimType = "Jellyfin-UserId";
-            var claim = http.User?.Claims.FirstOrDefault(c =>
-                string.Equals(c.Type, userIdClaimType, StringComparison.Ordinal));
-            if (claim is null || !Guid.TryParse(claim.Value, out var authenticatedId) || authenticatedId == Guid.Empty)
+            var authenticatedId = AuthenticatedUserId(http);
+            if (authenticatedId == Guid.Empty)
                 return null;
 
             var targetId = authenticatedId;
@@ -1081,6 +1285,11 @@ public sealed class StreamarrSearchActionFilter(
             path.Value,
             isHintRequest ? "/Search/Hints" : "/Items",
             StringComparison.OrdinalIgnoreCase);
+
+    internal static bool HasExplicitItemIds(IQueryCollection query)
+        => query.FirstOrDefault(pair => string.Equals(pair.Key, "ids", StringComparison.OrdinalIgnoreCase))
+            is { Value.Count: > 0 } ids
+           && !string.IsNullOrWhiteSpace(ids.Value.ToString());
 
     private static bool TryParseEnums<TEnum>(
         IQueryCollection query,

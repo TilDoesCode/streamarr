@@ -14,6 +14,8 @@ import type {
   IndexerTestResult,
   IndexerWrite,
   ProviderResponse,
+  ProviderSpeedTestRequest,
+  ProviderSpeedTestResult,
   ProviderTestResult,
   ProviderWrite,
   QualityProfile,
@@ -403,6 +405,17 @@ export function useTestProvider() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<ProviderTestResult>(`/config/providers/${id}/test`, { method: "POST" }),
+  });
+}
+
+/** Download a bounded real NNTP payload sample and rate its video-streaming headroom. */
+export function useSpeedTestProvider() {
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ProviderSpeedTestRequest }) =>
+      apiFetch<ProviderSpeedTestResult>(`/config/providers/${id}/speedtest`, {
+        method: "POST",
+        body,
+      }),
   });
 }
 

@@ -1495,6 +1495,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config/providers/{id}/speedtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transfer real article bodies through the stored provider and report NNTP throughput
+         *     plus conservative video-streaming headroom. This consumes provider traffic.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProviderSpeedTestRequest"];
+                    "text/json": components["schemas"]["ProviderSpeedTestRequest"];
+                    "application/*+json": components["schemas"]["ProviderSpeedTestRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProviderSpeedTestResult"];
+                        "application/json": components["schemas"]["ProviderSpeedTestResult"];
+                        "text/json": components["schemas"]["ProviderSpeedTestResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resolve": {
         parameters: {
             query?: never;
@@ -2358,6 +2429,50 @@ export interface components {
             priority?: number;
             enabled?: boolean;
             isBackupOnly?: boolean;
+        };
+        /** @description Optional tuning for a real provider throughput test. */
+        ProviderSpeedTestRequest: {
+            /**
+             * @description Recent article message-id (with or without angle brackets). When omitted, Streamarr
+             *     discovers a suitable article through common binary test groups.
+             */
+            messageId?: string | null;
+            /**
+             * Format: int32
+             * @description Measurement window in seconds (1-15). Defaults to 8.
+             */
+            durationSeconds?: number | null;
+        };
+        /** @description Real NNTP payload-throughput result translated into video-streaming headroom. */
+        ProviderSpeedTestResult: {
+            success: boolean;
+            /** Format: double */
+            megabitsPerSecond: number;
+            /** Format: double */
+            megabytesPerSecond: number;
+            /** Format: int64 */
+            bytesDownloaded: number;
+            /** Format: int32 */
+            durationMilliseconds: number;
+            /** Format: int32 */
+            setupMilliseconds: number;
+            /** Format: int32 */
+            firstByteMilliseconds: number;
+            /** Format: int32 */
+            connectionsUsed: number;
+            /** Format: int32 */
+            requestedConnections: number;
+            /** Format: double */
+            recommendedVideoBitrateMbps: number;
+            /** Format: int32 */
+            estimated4KStreams: number;
+            /** Format: int32 */
+            estimated1080pStreams: number;
+            /** @description One of insufficient, sd, 720p, 1080p, or 4k. */
+            streamingTier: string | null;
+            /** @description Whether the article was found in a test group or supplied by the operator. */
+            articleSource: string | null;
+            error?: string | null;
         };
         /** @description Outcome of a provider connectivity test (BRIEF §6.2 /config/providers/{id}/test). */
         ProviderTestResult: {

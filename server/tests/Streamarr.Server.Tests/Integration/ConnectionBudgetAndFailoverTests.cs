@@ -152,6 +152,9 @@ public sealed class ConnectionBudgetAndFailoverTests : IAsyncLifetime
             ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_tempDir, $"{Guid.NewGuid():N}.db")}",
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_tempDir, $"keys-{Guid.NewGuid():N}"),
             ["Streamarr:ConnectionBudget"] = budget.ToString(),
+            // These tests exercise provider traffic directly. Cache behavior has its own
+            // coverage and would intentionally satisfy the second read without a provider.
+            ["Streamarr:SegmentCacheSizeMb"] = "0",
             ["Streamarr:SessionTtlSeconds"] = "300",
             ["Streamarr:AllowLocalNzbFiles"] = "true",
         };

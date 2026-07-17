@@ -26,6 +26,8 @@ export type ReorderRequest = S["ReorderRequest"];
 export type ProviderResponse = S["ProviderResponse"];
 export type ProviderWrite = S["ProviderWrite"];
 export type ProviderTestResult = S["ProviderTestResult"];
+export type ProviderSpeedTestRequest = S["ProviderSpeedTestRequest"];
+export type ProviderSpeedTestResult = S["ProviderSpeedTestResult"];
 
 export type QualityProfile = S["QualityProfile"];
 export type SizeBand = S["SizeBand"];

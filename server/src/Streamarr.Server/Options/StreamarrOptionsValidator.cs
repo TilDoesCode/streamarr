@@ -62,9 +62,16 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.MaxConcurrentStreams, 1, 1_000, nameof(o.MaxConcurrentStreams));
         Range(o.MaxConcurrentResolves, 1, 64, nameof(o.MaxConcurrentResolves));
         Range(o.MaxConcurrentSearches, 1, 64, nameof(o.MaxConcurrentSearches));
+        if (!IsHttpProxyUrl(o.IndexerProxy))
+        {
+            failures.Add(
+                "IndexerProxy must be empty or an absolute HTTP proxy URL without credentials, path, query, or fragment.");
+        }
         Range(o.MaxFallbackHops, 0, 20, nameof(o.MaxFallbackHops));
         Range(o.HealthCacheTtlSeconds, 0, 30 * 24 * 3600, nameof(o.HealthCacheTtlSeconds));
         Range(o.ArticleReadAheadCount, 1, 100, nameof(o.ArticleReadAheadCount));
+        Range(o.ArticleDownloadRetryCount, 0, 10, nameof(o.ArticleDownloadRetryCount));
+        Range(o.SegmentCacheSizeMb, 0, 1_048_576, nameof(o.SegmentCacheSizeMb));
         Range(o.FfprobeTimeoutSeconds, 1, 600, nameof(o.FfprobeTimeoutSeconds));
         Range(o.MaxConcurrentFfprobe, 1, 32, nameof(o.MaxConcurrentFfprobe));
         Range(o.MaxNzbBytes, 1024, 512 * 1024 * 1024, nameof(o.MaxNzbBytes));
@@ -161,6 +168,21 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
            string.IsNullOrEmpty(uri.UserInfo) &&
            !string.IsNullOrEmpty(uri.Host) &&
            value!.Length <= 2048;
+
+    internal static bool IsHttpProxyUrl(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return true;
+
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+               uri.Scheme == "http" &&
+               string.IsNullOrEmpty(uri.UserInfo) &&
+               !string.IsNullOrEmpty(uri.Host) &&
+               uri.AbsolutePath == "/" &&
+               string.IsNullOrEmpty(uri.Query) &&
+               string.IsNullOrEmpty(uri.Fragment) &&
+               value.Length <= 2048;
+    }
 
     internal static bool ContainsControl(string? value)
         => value?.Any(char.IsControl) ?? false;

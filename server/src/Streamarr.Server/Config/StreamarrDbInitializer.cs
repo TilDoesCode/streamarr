@@ -92,6 +92,7 @@ public sealed class StreamarrDbInitializer(
                 TmdbApiKeyEncrypted = protector.Protect(opts.Tmdb.ApiKey),
                 SessionTtlSeconds = opts.SessionTtlSeconds,
                 SearchCacheTtlSeconds = opts.Search.SearchCacheTtlSeconds,
+                SegmentCacheSizeMb = opts.SegmentCacheSizeMb,
                 ConnectionBudget = opts.ConnectionBudget,
             });
         }
@@ -113,6 +114,7 @@ public sealed class StreamarrDbInitializer(
             opts.ConnectionBudget = general.ConnectionBudget;
             opts.SessionTtlSeconds = general.SessionTtlSeconds;
             opts.Search.SearchCacheTtlSeconds = general.SearchCacheTtlSeconds;
+            opts.SegmentCacheSizeMb = general.SegmentCacheSizeMb;
 
             // Once the row exists it is authoritative, including an intentional clear.
             // Otherwise an old environment credential would silently reappear on restart.

@@ -13,6 +13,7 @@ namespace Streamarr.Server.Options;
 public sealed class StreamarrOptions
 {
     public const string SectionName = "Streamarr";
+    public const string IndexerProxyEnvironmentVariable = "INDEXER_PROXY";
 
     /// <summary>
     /// Bootstrap machine API key for bearer auth (BRIEF §6.4). Accepted alongside any
@@ -78,6 +79,12 @@ public sealed class StreamarrOptions
     public int MaxConcurrentSearches { get; set; } = 4;
 
     /// <summary>
+    /// Optional HTTP proxy used only for Newznab requests and NZB retrieval. The
+    /// top-level INDEXER_PROXY environment variable overrides this setting.
+    /// </summary>
+    public string IndexerProxy { get; set; } = string.Empty;
+
+    /// <summary>
     /// Maximum number of automatic fallback hops when a release resolves dead
     /// (BRIEF §10-M7). Bounded so a fully-dead work fails fast instead of walking
     /// an arbitrarily long release list.
@@ -92,6 +99,12 @@ public sealed class StreamarrOptions
 
     /// <summary>Segments to read ahead while streaming (nzbdav's articleBufferSize).</summary>
     public int ArticleReadAheadCount { get; set; } = 3;
+
+    /// <summary>Retries after a decoded article transfer or validation failure.</summary>
+    public int ArticleDownloadRetryCount { get; set; } = 2;
+
+    /// <summary>Maximum process-wide decoded article cache size in mebibytes.</summary>
+    public int SegmentCacheSizeMb { get; set; } = 512;
 
     public string FfprobePath { get; set; } = "ffprobe";
 

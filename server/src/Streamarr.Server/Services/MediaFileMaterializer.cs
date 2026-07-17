@@ -30,7 +30,10 @@ public sealed record ResolvedMediaFile
 /// to build the random-access slice map (seeking inside the RAR'd file is then
 /// pure offset arithmetic — no unpacking).
 /// </summary>
-public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOptions> options)
+public class MediaFileMaterializer(
+    INntpClient nntpClient,
+    IOptions<StreamarrOptions> options,
+    SegmentCache? segmentCache = null)
 {
     public Task<ResolvedMediaFile> MaterializeAsync(MediaFileCandidate candidate, CancellationToken ct)
         => candidate.IsRarWrapped ? MaterializeRarAsync(candidate, ct) : MaterializeDirectAsync(candidate, ct);
@@ -42,13 +45,15 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
         var size = await nntpClient.GetFileSizeAsync(file, ct);
         ValidateMediaSize(size);
         var readAhead = options.Value.ArticleReadAheadCount;
+        var retryCount = options.Value.ArticleDownloadRetryCount;
 
         return new ResolvedMediaFile
         {
             FileName = candidate.DisplayName,
             Container = Extension(candidate.DisplayName),
             SizeBytes = size,
-            OpenStream = client => new NzbFileStream(segmentIds, size, client, readAhead),
+            OpenStream = client => new NzbFileStream(
+                segmentIds, size, client, readAhead, segmentCache, retryCount),
         };
     }
 
@@ -58,6 +63,7 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
             throw new InvalidDataException($"RAR sets may contain at most {RarArchiveIndexer.MaxVolumes} volumes.");
 
         var readAhead = options.Value.ArticleReadAheadCount;
+        var retryCount = options.Value.ArticleDownloadRetryCount;
         var volumes = new (string[] SegmentIds, long Size)[candidate.Files.Count];
         var parsedVolumes = new List<RarVolume>(candidate.Files.Count);
 
@@ -89,7 +95,13 @@ public class MediaFileMaterializer(INntpClient nntpClient, IOptions<StreamarrOpt
             OpenStream = client => new RarStoredFileStream(
                 media,
                 (partIndex, _) => new ValueTask<Stream>(
-                    new NzbFileStream(volumes[partIndex].SegmentIds, volumes[partIndex].Size, client, readAhead))),
+                    new NzbFileStream(
+                        volumes[partIndex].SegmentIds,
+                        volumes[partIndex].Size,
+                        client,
+                        readAhead,
+                        segmentCache,
+                        retryCount))),
         };
     }
 

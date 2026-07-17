@@ -48,6 +48,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<PlaybackSessionTracker>();
         serviceCollection.AddSingleton<PlaybackEventDispatcher>();
         serviceCollection.AddSingleton<MediaSourceOfferStore>();
+        serviceCollection.AddSingleton<StreamarrMediaSourceProjection>();
         serviceCollection.AddSingleton<HierarchyLoadCoordinator>();
         serviceCollection.AddHttpContextAccessor();
 

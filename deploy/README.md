@@ -10,6 +10,11 @@ Management UI.
 3. Wait for `docker compose ps` to report Streamarr as healthy, then open the address
    configured by `STREAMARR_BIND_ADDRESS` and `STREAMARR_PORT`.
 
+To route only indexer traffic through an HTTP proxy, set
+`INDEXER_PROXY=http://gluetun:8888` in `.env` (using the hostname and port of a proxy on
+the same Docker network). This covers searches, capability tests, and NZB retrieval;
+TMDB and NNTP media traffic stay direct, with no direct fallback if the proxy fails.
+
 To start the included Jellyfin 10.11.11 container too, run
 `docker compose --profile jellyfin up -d`. If Jellyfin already exists, the easiest way to
 add the plugin is Jellyfin's plugin catalog: add

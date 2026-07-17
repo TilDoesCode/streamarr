@@ -8,8 +8,8 @@ namespace Streamarr.Tests.Shared;
 /// <summary>
 /// In-repo mock NNTP server (DECISIONS.md: all integration tests run against
 /// this until real provider credentials exist). Speaks the subset of NNTP that
-/// Streamarr uses: greeting, AUTHINFO USER/PASS, STAT, HEAD, BODY, ARTICLE,
-/// DATE, QUIT — including dot-stuffing of body lines.
+/// Streamarr uses: greeting, AUTHINFO USER/PASS, GROUP, OVER/XOVER, STAT, HEAD,
+/// BODY, ARTICLE, DATE, QUIT — including dot-stuffing of body lines.
 /// </summary>
 public sealed class MockNntpServer : IAsyncDisposable
 {
@@ -104,6 +104,7 @@ public sealed class MockNntpServer : IAsyncDisposable
 
             var authenticatedUser = (string?)null;
             var authenticated = false;
+            var selectedGroup = (string?)null;
 
             while (!_cts.IsCancellationRequested)
             {
@@ -136,6 +137,30 @@ public sealed class MockNntpServer : IAsyncDisposable
 
                     case "STAT":
                         await RespondStat(writer, parts);
+                        break;
+
+                    case "GROUP":
+                        if (parts.Length < 2)
+                        {
+                            await writer.WriteAsync("501 Group name required\r\n");
+                            break;
+                        }
+
+                        selectedGroup = parts[1];
+                        var articleCount = Articles.Count;
+                        var low = articleCount > 0 ? 1 : 0;
+                        await writer.WriteAsync($"211 {articleCount} {low} {articleCount} {selectedGroup}\r\n");
+                        break;
+
+                    case "OVER":
+                    case "XOVER":
+                        if (selectedGroup is null)
+                        {
+                            await writer.WriteAsync("412 No group selected\r\n");
+                            break;
+                        }
+
+                        await RespondOverview(writer);
                         break;
 
                     case "BODY":
@@ -181,6 +206,22 @@ public sealed class MockNntpServer : IAsyncDisposable
             await writer.WriteAsync($"223 0 <{id}>\r\n");
         else
             await writer.WriteAsync("430 No article with that message-id\r\n");
+    }
+
+    private async Task RespondOverview(StreamWriter writer)
+    {
+        await writer.WriteAsync("224 Overview information follows\r\n");
+        var articleNumber = 0;
+        foreach (var article in Articles.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+        {
+            articleNumber++;
+            var bytes = Encoding.Latin1.GetByteCount(article.Value);
+            await writer.WriteAsync(
+                $"{articleNumber}\tmock article\tmock@test\tFri, 17 Jul 2026 12:00:00 +0000\t" +
+                $"<{article.Key}>\t\t{bytes}\t1\r\n");
+        }
+
+        await writer.WriteAsync(".\r\n");
     }
 
     private async Task RespondHead(StreamWriter writer, string[] parts)

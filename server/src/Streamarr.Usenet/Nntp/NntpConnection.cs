@@ -28,6 +28,7 @@ public sealed class NntpConnection : IDisposable
     private const int MaxArticleHeaderCount = 256;
     private const int MaxArticleHeaderLineCount = 512;
     private const int MaxArticleHeaderChars = 256 * 1024;
+    private const int MaxOverviewRows = 2_000;
     private const long MaxEncodedArticleBytes = 64L * 1024 * 1024;
     private const int ReadBufferChars = 8 * 1024;
     private static readonly TimeSpan MaxArticleReadDuration = TimeSpan.FromMinutes(2);
@@ -181,6 +182,139 @@ public sealed class NntpConnection : IDisposable
                 ResponseCode = responseCode,
                 ResponseMessage = response!,
                 DateTime = dateTime,
+            };
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
+    }
+
+    /// <summary>Select a newsgroup so its recent article overview can be queried.</summary>
+    public async Task<NntpGroupResponse> GroupAsync(string group, CancellationToken cancellationToken)
+    {
+        ValidateGroupName(group);
+        await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfUnhealthy();
+            ThrowIfNotConnected();
+            using var commandCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+
+            await WriteLineAsync($"GROUP {group}".AsMemory(), commandCts.Token).ConfigureAwait(false);
+            var response = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
+            var responseCode = ParseResponseCode(response);
+            var count = 0L;
+            var low = 0L;
+            var high = 0L;
+            var selectedGroup = group;
+
+            if (responseCode == (int)NntpResponseType.GroupSelected)
+            {
+                var fields = response!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (fields.Length < 5 ||
+                    !long.TryParse(fields[1], out count) ||
+                    !long.TryParse(fields[2], out low) ||
+                    !long.TryParse(fields[3], out high))
+                {
+                    throw new UsenetProtocolException($"Invalid NNTP GROUP response: {response}");
+                }
+
+                selectedGroup = fields[4];
+            }
+
+            return new NntpGroupResponse
+            {
+                ResponseCode = responseCode,
+                ResponseMessage = response!,
+                Group = selectedGroup,
+                EstimatedArticleCount = count,
+                LowArticleNumber = low,
+                HighArticleNumber = high,
+            };
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
+    }
+
+    /// <summary>Read a bounded article overview range from the currently selected group.</summary>
+    public async Task<NntpOverviewResponse> OverviewAsync(
+        long firstArticleNumber,
+        long lastArticleNumber,
+        CancellationToken cancellationToken)
+    {
+        if (firstArticleNumber < 0 || lastArticleNumber < firstArticleNumber)
+            throw new ArgumentOutOfRangeException(nameof(firstArticleNumber), "The overview range is invalid.");
+        if (lastArticleNumber - firstArticleNumber + 1 > MaxOverviewRows)
+            throw new ArgumentOutOfRangeException(nameof(lastArticleNumber), $"At most {MaxOverviewRows} overview rows may be requested.");
+
+        await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfUnhealthy();
+            ThrowIfNotConnected();
+            using var commandCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            commandCts.CancelAfter(MaxHeaderReadDuration);
+
+            var range = $"{firstArticleNumber}-{lastArticleNumber}";
+            await WriteLineAsync($"OVER {range}".AsMemory(), commandCts.Token).ConfigureAwait(false);
+            var response = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
+            var responseCode = ParseResponseCode(response);
+
+            // XOVER is still common on older servers. A 5xx OVER response is complete,
+            // so it is safe to issue the legacy command on the same connection.
+            if (responseCode >= 500)
+            {
+                await WriteLineAsync($"XOVER {range}".AsMemory(), commandCts.Token).ConfigureAwait(false);
+                response = await ReadLineAsync(commandCts.Token).ConfigureAwait(false);
+                responseCode = ParseResponseCode(response);
+            }
+
+            var entries = new List<NntpOverviewEntry>();
+            if (responseCode == (int)NntpResponseType.OverviewInformationFollows)
+            {
+                while (true)
+                {
+                    var line = await ReadLineAsync(commandCts.Token, MaxControlLineChars).ConfigureAwait(false);
+                    if (line is null)
+                        throw new UsenetProtocolException("Invalid NNTP OVER response: terminator is missing.");
+                    if (line == ".")
+                        break;
+                    if (entries.Count >= MaxOverviewRows)
+                        throw new UsenetProtocolException($"Invalid NNTP OVER response: more than {MaxOverviewRows} rows.");
+
+                    var fields = line.Split('\t');
+                    if (fields.Length < 7 ||
+                        !long.TryParse(fields[0], out var number) ||
+                        !long.TryParse(fields[6], out var bytes))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        entries.Add(new NntpOverviewEntry
+                        {
+                            ArticleNumber = number,
+                            SegmentId = new SegmentId(fields[4]),
+                            Bytes = Math.Max(0, bytes),
+                        });
+                    }
+                    catch (ArgumentException)
+                    {
+                        // Ignore malformed third-party overview rows without allowing
+                        // their message-id to reach a later NNTP command.
+                    }
+                }
+            }
+
+            return new NntpOverviewResponse
+            {
+                ResponseCode = responseCode,
+                ResponseMessage = response!,
+                Entries = entries,
             };
         }
         finally
@@ -425,6 +559,13 @@ public sealed class NntpConnection : IDisposable
         ArgumentNullException.ThrowIfNull(value, paramName);
         if (value.Length > 4096 || value.Any(c => char.IsControl(c) || c is '\r' or '\n'))
             throw new ArgumentException("NNTP command values cannot contain control characters.", paramName);
+    }
+
+    private static void ValidateGroupName(string group)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(group);
+        if (group.Length > 512 || group.Any(c => c is < '!' or > '~' || char.IsWhiteSpace(c)))
+            throw new ArgumentException("The NNTP group name is invalid.", nameof(group));
     }
 
     private async Task ReadBodyToPipeAsync(

@@ -113,6 +113,7 @@ services:
       Streamarr__Tmdb__Language: "${TMDB_LANGUAGE:-}"
       Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
       Streamarr__DataProtectionKeysPath: "/app/keys"
+      INDEXER_PROXY: "${INDEXER_PROXY:-}"
       # Under Codecraft each app gets its own forwarded, TLS-terminated public URL, so
       # cookie-authenticated POSTs carry an Origin that can never match what Kestrel
       # reconstructs locally (http, internal host) — even for the SPA this container serves

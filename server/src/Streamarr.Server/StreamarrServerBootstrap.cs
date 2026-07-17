@@ -170,6 +170,15 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<IValidateOptions<StreamarrOptions>, StreamarrOptionsValidator>();
         services.AddOptions<StreamarrOptions>()
             .Bind(builder.Configuration.GetSection(StreamarrOptions.SectionName))
+            .Configure(options =>
+            {
+                // This deliberate alias is the public deployment contract. It is not
+                // one of HttpClient's ambient proxy variables and affects only the
+                // handlers wired to IndexerProxy below.
+                var indexerProxy = builder.Configuration[StreamarrOptions.IndexerProxyEnvironmentVariable];
+                if (indexerProxy is not null)
+                    options.IndexerProxy = indexerProxy;
+            })
             .ValidateOnStart();
 
         // --- persistence + secret protection (BRIEF §4, §6.3) ---------------------------
@@ -199,6 +208,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<IndexerCapsTester>();
         services.AddSingleton(_ => new ProviderConnectionTester());
+        services.AddSingleton(_ => new ProviderSpeedTester());
         services.AddSingleton<StreamarrDbInitializer>();
 
         // One pooled client per configured provider, fanned out in priority order …
@@ -247,13 +257,8 @@ public static class StreamarrServerBootstrap
         {
             client.Timeout = Timeout.InfiniteTimeSpan;
         })
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                AllowAutoRedirect = false,
-                UseCookies = false,
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-                ConnectTimeout = TimeSpan.FromSeconds(15),
-            })
+            .ConfigurePrimaryHttpMessageHandler(sp => OutboundHttpHandlerFactory.CreateIndexer(
+                sp.GetRequiredService<IOptions<StreamarrOptions>>().Value))
             .RemoveAllLoggers();
         services.AddSingleton<IndexerSearchService>();
         services.AddSingleton<SearchConcurrencyGate>();
@@ -263,13 +268,7 @@ public static class StreamarrServerBootstrap
         // search still works before the owner supplies a key.
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Tmdb);
         services.AddHttpClient<TmdbClient>()
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                AllowAutoRedirect = false,
-                UseCookies = false,
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-                ConnectTimeout = TimeSpan.FromSeconds(15),
-            })
+            .ConfigurePrimaryHttpMessageHandler(OutboundHttpHandlerFactory.CreateDirect)
             .RemoveAllLoggers();
         services.AddSingleton<ITmdbClient>(sp =>
         {
@@ -309,6 +308,11 @@ public static class StreamarrServerBootstrap
         services.AddHostedService(sp => sp.GetRequiredService<SessionManager>());
         services.AddSingleton<HealthChecker>();
         services.AddSingleton<Controllers.DeepHealthDiagnostics>();
+        services.AddSingleton(sp =>
+        {
+            var sizeMb = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.SegmentCacheSizeMb;
+            return new Streamarr.Usenet.Streams.SegmentCache(checked((long)sizeMb * 1024 * 1024));
+        });
         services.AddSingleton<MediaFileMaterializer>();
         services.AddSingleton<FfprobeClient>();
         services.AddSingleton<ResolveService>();
@@ -316,14 +320,9 @@ public static class StreamarrServerBootstrap
             {
                 client.Timeout = TimeSpan.FromSeconds(60);
             })
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                AllowAutoRedirect = false,
-                UseCookies = false,
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-                MaxConnectionsPerServer = 8,
-                ConnectTimeout = TimeSpan.FromSeconds(15),
-            })
+            .ConfigurePrimaryHttpMessageHandler(sp => OutboundHttpHandlerFactory.CreateIndexer(
+                sp.GetRequiredService<IOptions<StreamarrOptions>>().Value,
+                maxConnectionsPerServer: 8))
             .RemoveAllLoggers();
 
         return builder;

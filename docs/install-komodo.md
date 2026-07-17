@@ -43,6 +43,7 @@ Total time is a few minutes. Everything below is copy‑paste.
          Streamarr__Admin__Password: "${STREAMARR_ADMIN_PASSWORD:?Set STREAMARR_ADMIN_PASSWORD in the environment}"
          Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
          Streamarr__DataProtectionKeysPath: /app/keys
+         INDEXER_PROXY: "${INDEXER_PROXY:-}"
        volumes:
          - streamarr-data:/app/data
          - streamarr-keys:/app/keys
@@ -86,6 +87,7 @@ you set).
 | `STREAMARR_IMAGE` | `…/streamarr:latest` | Pin a specific version, e.g. `ghcr.io/tildoescode/streamarr:0.3.0` |
 | `STREAMARR_BIND_ADDRESS` | `0.0.0.0` | Lock the port to one LAN address, e.g. `192.168.1.20` |
 | `STREAMARR_PORT` | `8080` | Publish on a different host port |
+| `INDEXER_PROXY` | empty | Route Newznab searches/caps and NZB retrieval through an HTTP proxy such as `http://gluetun:8888`; TMDB and NNTP remain direct. |
 
 ---
 

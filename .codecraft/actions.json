@@ -111,6 +111,20 @@
       }
     },
     {
+      "id": "test-jellyfin",
+      "label": "Jellyfin Plugin E2E (isolated)",
+      "group": "test",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "dotnet build plugin/Streamarr.Plugin/Streamarr.Plugin.csproj -c Release && exec bash plugin/scripts/smoke-jellyfin.sh"
+      ],
+      "shell": false,
+      "env": {
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1"
+      }
+    },
+    {
       "id": "test-web",
       "label": "Web Unit Tests (Vitest)",
       "group": "test",

@@ -349,6 +349,20 @@ public class SearchInjectionTests
     }
 
     [Theory]
+    [InlineData("?ids=10000000-0000-0000-0000-000000000001", true)]
+    [InlineData("?Ids=10000000-0000-0000-0000-000000000001,20000000-0000-0000-0000-000000000002", true)]
+    [InlineData("?ids=", false)]
+    [InlineData("?searchTerm=movie", false)]
+    [InlineData("", false)]
+    public void Explicit_item_lookup_recognizes_streamyfin_media_source_request(string query, bool expected)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(query);
+
+        Assert.Equal(expected, StreamarrSearchActionFilter.HasExplicitItemIds(context.Request.Query));
+    }
+
+    [Theory]
     [InlineData("/Shows/10000000-0000-0000-0000-000000000001/Seasons", true)]
     [InlineData("/shows/10000000-0000-0000-0000-000000000001/episodes", true)]
     [InlineData("/Shows/not-a-guid/Seasons", false)]

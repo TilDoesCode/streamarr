@@ -126,6 +126,28 @@ public class MediaSourceMapperTests
     }
 
     [Fact]
+    public void Stream_capability_can_use_a_client_reachable_origin_distinct_from_core_control()
+    {
+        Assert.Equal(
+            "https://media.example/streamarr/api/v1/stream/tok-abc",
+            StreamarrApiClient.ResolveStreamUrl(
+                "http://streamarr:8080",
+                "https://media.example/streamarr",
+                "/api/v1/stream/tok-abc"));
+        Assert.Equal(
+            "https://media.example/api/v1/stream/tok-abc",
+            StreamarrApiClient.ResolveStreamUrl(
+                "http://streamarr:8080",
+                "https://media.example",
+                "http://streamarr:8080/api/v1/stream/tok-abc"));
+
+        Assert.Throws<InvalidOperationException>(() => StreamarrApiClient.ResolveStreamUrl(
+            "http://streamarr:8080",
+            "https://media.example",
+            "https://attacker.example/api/v1/stream/tok-abc"));
+    }
+
+    [Fact]
     public void Capability_session_is_redacted_from_transport_log_path()
     {
         Assert.Equal(

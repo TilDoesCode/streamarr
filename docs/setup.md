@@ -129,6 +129,8 @@ Config resolves from four overlapping places (later wins for a given key):
    indexer keys, and your TMDB key here for local runs.
 3. **Environment variables** — `Streamarr__ApiKey`, `Streamarr__Admin__Password`,
    `STREAMARR_ADMIN_PASSWORD`, etc. (ASP.NET's `__` maps to config nesting).
+   `INDEXER_PROXY` is an explicit alias for `Streamarr:IndexerProxy` and takes
+   precedence over the nested setting.
 4. **The Management UI / config API** — the SQLite-backed **source of truth** for
    indexers, providers, profiles, general config, and API keys. On startup the
    persisted config is overlaid onto the bound options, so once you have configured
@@ -145,6 +147,22 @@ minted via `POST /api/v1/config/apikeys`; when enabled, the static key must be 3
 characters without whitespace or control characters. Secrets are encrypted at rest
 (ASP.NET Data Protection key ring under
 `Streamarr:DataProtectionKeysPath`) and never returned in plaintext by the API.
+
+### Route indexer traffic through Gluetun
+
+Set `INDEXER_PROXY` to the origin of an HTTP proxy reachable from the Streamarr
+container. For Gluetun's built-in proxy on the same Compose network:
+
+```dotenv
+INDEXER_PROXY=http://gluetun:8888
+```
+
+Enable `HTTPPROXY=on` on the Gluetun service. Streamarr then explicitly sends Newznab
+searches, capability tests, and NZB-file retrieval through that proxy. TMDB requests
+and NNTP article/media connections remain direct. There is no direct fallback when a
+configured proxy is unavailable, and generic `HTTP_PROXY` / `HTTPS_PROXY` variables do
+not change this routing policy. The proxy value must be an `http://` origin without
+credentials, a path, query, or fragment.
 
 ---
 
@@ -193,11 +211,14 @@ failure, not a UI bug.
    output DLL into Jellyfin's plugin dir; otherwise drop
    `Streamarr.Plugin.dll` (+ `meta.json`) into `/config/plugins/Streamarr` (read-write).
 2. In Jellyfin → **Dashboard → Plugins**, confirm **Streamarr** is listed and Active.
-3. Open its (deliberately minimal) config page: set **Core Server URL**
-   (`http://streamarr:8080` in compose) and the **machine API key**, hit **Test
-   connection**. This calls anonymous shallow `GET /api/v1/health?deep=false` and then
-   authenticated `GET /api/v1/caps`; both must succeed, so the test validates the URL
-   and the key rather than liveness alone.
+3. Open its (deliberately minimal) config page. Set **Core Server URL** to the private
+   control URL Jellyfin can reach (`http://streamarr:8080` in compose), set **Public
+   stream URL** to an HTTPS reverse-proxy or private-LAN base URL reachable by every
+   playback device, and enter the **machine API key**. The public URL is required when
+   the control URL uses a container-only hostname; leave it blank only when the control
+   URL itself is client-reachable. Hit **Test connection**. This calls anonymous shallow
+   `GET /api/v1/health?deep=false` and then authenticated `GET /api/v1/caps`; both must
+   succeed, so the test validates the control URL and key rather than liveness alone.
 4. Turn on **Enable search interception**.
 
 Usenet results now appear alongside your local library and play through Jellyfin's
@@ -235,9 +256,12 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `MaxConcurrentStreams` | `128` | Hard cap on concurrently open HTTP stream bodies. |
 | `MaxConcurrentResolves` | `4` | Hard cap on full NZB/health/materialization resolve pipelines in flight. |
 | `MaxConcurrentSearches` | `4` | Hard cap on concurrent indexer fan-out searches. |
+| `IndexerProxy` | `""` | HTTP proxy used only for Newznab searches/caps and NZB retrieval. `INDEXER_PROXY` is the preferred deployment alias and takes precedence. Empty means explicitly direct. |
 | `MaxFallbackHops` | `3` | **(M7)** Max automatic fallback hops when a release resolves dead, so a fully-dead work fails fast. |
 | `HealthCacheTtlSeconds` | `1800` | **(M7)** How long a dead classification is remembered and fed back into ranking + fallback selection. `0` disables the health cache. |
-| `ArticleReadAheadCount` | `3` | Segments read ahead while streaming (nzbdav's article buffer size). |
+| `ArticleReadAheadCount` | `3` | Maximum adjacent articles downloaded concurrently and delivered in order. |
+| `ArticleDownloadRetryCount` | `2` | Whole-article retries after an interrupted transfer or yEnc validation failure. |
+| `SegmentCacheSizeMb` | `512` | Process-wide decoded-article LRU size. `0` disables caching and in-flight request deduplication. |
 | `FfprobePath` | `ffprobe` | Path to the `ffprobe` binary used to pre-probe the stream at resolve. |
 | `FfprobeTimeoutSeconds` | `60` | Timeout for the server-side `ffprobe` run. |
 | `MaxConcurrentFfprobe` | `2` | Hard cap on concurrent `ffprobe` child processes. |

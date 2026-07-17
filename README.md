@@ -87,6 +87,12 @@ source IP, set `STREAMARR_TRUSTED_ORIGIN` to the browser-visible origin (such as
 `https://streamarr.home.example`), and uncomment the `COMPOSE_FILE` line in `.env` to
 enable the supplied proxy overlay. Never configure a whole subnet as a trusted proxy.
 
+To route only indexer-originated traffic through Gluetun, enable Gluetun's HTTP proxy
+and set `INDEXER_PROXY=http://gluetun:8888` in `.env` (both services must share a Docker
+network). Newznab searches, capability tests, and NZB retrieval use it explicitly;
+TMDB metadata and NNTP media traffic stay direct. A configured proxy fails closed—
+Streamarr does not silently retry those requests outside the VPN.
+
 ### 4. Add Jellyfin
 
 You can start a clean, matching Jellyfin 10.11.11 container from the same bundle:
@@ -116,6 +122,10 @@ In the plugin settings, use:
 - Core URL `http://streamarr:8080` for the bundled Jellyfin container.
 - Core URL `http://127.0.0.1:8080` for a native Jellyfin process on the same host.
 - The home server's private URL for Jellyfin on another host/container network.
+- **Public stream URL:** the HTTPS reverse-proxy or private-LAN base URL that phones,
+  TVs, and browsers can reach (for example `https://streamarr.home.example`). This is
+  required when the Core URL is a container-only hostname such as `streamarr`; leave it
+  blank only when the Core URL itself is reachable from every playback device.
 - The exact `STREAMARR_API_KEY` from `.env`, then **Test connection** and enable search
   interception.
 

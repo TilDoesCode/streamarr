@@ -98,7 +98,10 @@ however, enforce the boundary around its machine-authenticated Core client:
   `suggestedFallbackReleaseId` is followed at most once and under the same checks.
 - **Media auth is session-scoped.** The opened source carries only Core's short-lived
   stream capability in its `Path`; `RequiredHttpHeaders` contains no machine key or
-  admin credential.
+  admin credential. Direct remote-source clients such as Streamyfin use this `Path`
+  verbatim when `IsRemote = true` and `Protocol = Http`, so the plugin rebases the
+  capability onto its separately configured client-reachable public stream URL instead
+  of leaking a container-only Core control hostname.
 - **The connection budget is global.** Concurrent Jellyfin streams share the same
   `Streamarr:ConnectionBudget` gate as every other client; the plugin does no
   connection accounting of its own. Per-provider/​budget state is observable at

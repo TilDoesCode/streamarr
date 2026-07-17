@@ -13,10 +13,12 @@ public enum NntpResponseType
     DateAndTime = 111,
     ServerReadyPostingAllowed = 200,
     ServerReadyNoPostingAllowed = 201,
+    GroupSelected = 211,
     ArticleRetrievedHeadAndBodyFollow = 220,
     ArticleRetrievedHeadFollows = 221,
     ArticleRetrievedBodyFollows = 222,
     ArticleExists = 223,
+    OverviewInformationFollows = 224,
     AuthenticationAccepted = 281,
     PasswordRequired = 381,
     NoGroupSelected = 412,
@@ -27,6 +29,29 @@ public enum NntpResponseType
     AuthenticationRejected = 481,
     AuthenticationOutOfSequence = 482,
     AccessPermanentlyForbidden = 502,
+}
+
+/// <summary>Result of selecting a newsgroup with GROUP.</summary>
+public record NntpGroupResponse : NntpResponse
+{
+    public required string Group { get; init; }
+    public required long EstimatedArticleCount { get; init; }
+    public required long LowArticleNumber { get; init; }
+    public required long HighArticleNumber { get; init; }
+}
+
+/// <summary>One RFC 3977 OVER row, reduced to the fields needed for article discovery.</summary>
+public record NntpOverviewEntry
+{
+    public required long ArticleNumber { get; init; }
+    public required SegmentId SegmentId { get; init; }
+    public required long Bytes { get; init; }
+}
+
+/// <summary>Overview rows returned by OVER or its legacy XOVER equivalent.</summary>
+public record NntpOverviewResponse : NntpResponse
+{
+    public required IReadOnlyList<NntpOverviewEntry> Entries { get; init; }
 }
 
 /// <summary>Signals whether an article body was fully retrieved once a pooled connection frees up.</summary>

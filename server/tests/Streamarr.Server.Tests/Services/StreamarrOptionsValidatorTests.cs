@@ -110,6 +110,33 @@ public sealed class StreamarrOptionsValidatorTests
             failure => failure.Contains("duplicate", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("http://gluetun:8888")]
+    [InlineData("http://127.0.0.1:8888/")]
+    public void IndexerProxyAcceptsEmptyOrHttpProxyOrigins(string value)
+    {
+        var options = new StreamarrOptions { IndexerProxy = value };
+
+        Assert.True(new StreamarrOptionsValidator().Validate(null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("https://gluetun:8888")]
+    [InlineData("http://user:password@gluetun:8888")]
+    [InlineData("http://gluetun:8888/path")]
+    [InlineData("not-a-url")]
+    [InlineData(" ")]
+    public void IndexerProxyRejectsUnsupportedOrAmbiguousUrls(string value)
+    {
+        var options = new StreamarrOptions { IndexerProxy = value };
+
+        var result = new StreamarrOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.Contains("IndexerProxy", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void AggregateMemoryBudgetsRejectIndividuallyValidButUnsafeConcurrency()
     {

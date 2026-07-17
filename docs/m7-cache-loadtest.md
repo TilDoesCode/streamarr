@@ -5,13 +5,13 @@ reads, record findings).*
 
 ## What is under test
 
-Streamarr does **not** keep a persistent, cross-request segment cache. Each
-`GET /stream/{token}` opens a fresh view over the resolved media file and streams it
-with bounded **read-ahead** (`Streamarr:ArticleReadAheadCount`, default 3 segments) via
-`MultiSegmentStream`. The "cache" being stressed is therefore the concurrent read-ahead
-streaming path plus the global NNTP connection budget that meters it — the machinery a
-seeking player hammers when it issues many overlapping `Range` requests against one
-session.
+Each `GET /stream/{token}` opens a fresh view over the resolved media file and streams it
+with bounded parallel **read-ahead** (`Streamarr:ArticleReadAheadCount`, default 3 segments)
+via `MultiSegmentStream`. Articles are fully downloaded and yEnc-validated before delivery,
+with bounded whole-article retries after interrupted transfers. A process-wide,
+size-bounded decoded-article LRU (`SegmentCacheSizeMb`, default 512 MiB) deduplicates
+overlapping requests for the same message-id and serves later seeks without another NNTP
+transfer. The global NNTP connection budget still meters every cache miss.
 
 The stress test lives in
 `server/tests/Streamarr.Server.Tests/Integration/SegmentCacheLoadTests.cs` and is part of
@@ -53,12 +53,8 @@ Observations:
    round-trips and the release's RAR layering — measure per deployment (see
    `docs/m1-latency.md`).
 
-## If a persistent segment cache is added later
+## Cache scope
 
-The streaming layer is the natural insertion point: a bounded LRU of decoded segment
-bodies keyed by message-id would let overlapping range reads (and re-seeks to the same
-region) skip the NNTP round-trip entirely. It must stay **downstream of the connection
-budget** so cache misses still respect the global cap, and be size-bounded
-(`Streamarr:` segment-cache-size config already reserved in BRIEF §6.3). The load test
-above is the regression harness for that work: hit rate would become the headline metric,
-surfaced through `/api/v1/metrics`.
+The cache is in-memory and process-local: a restart drops it. It sits downstream of the
+connection budget, so misses still respect the global cap. Entries are evicted by decoded
+byte size, while concurrent misses for one message-id share one in-flight transfer.

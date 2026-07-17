@@ -35,9 +35,11 @@ const providers = [
 ];
 
 let orderBodies: Array<Record<string, unknown>> = [];
+let speedBodies: Array<Record<string, unknown>> = [];
 
 function installFetch() {
   orderBodies = [];
+  speedBodies = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -49,6 +51,25 @@ function installFetch() {
       if (url.endsWith("/config/providers/order") && method === "PUT") {
         orderBodies.push(init?.body ? JSON.parse(init.body as string) : {});
         return jsonResponse(204, {});
+      }
+      if (url.endsWith("/config/providers/provider-1/speedtest") && method === "POST") {
+        speedBodies.push(init?.body ? JSON.parse(init.body as string) : {});
+        return jsonResponse(200, {
+          success: true,
+          megabitsPerSecond: 420.5,
+          megabytesPerSecond: 52.56,
+          bytesDownloaded: 440_926_208,
+          durationMilliseconds: 8_000,
+          setupMilliseconds: 640,
+          firstByteMilliseconds: 42,
+          connectionsUsed: 12,
+          requestedConnections: 12,
+          recommendedVideoBitrateMbps: 294.35,
+          estimated4KStreams: 5,
+          estimated1080pStreams: 19,
+          streamingTier: "4k",
+          articleSource: "automatic",
+        });
       }
       return jsonResponse(404, { error: { code: "not_found", message: "no" } });
     }),
@@ -88,5 +109,20 @@ describe("ProvidersPage", () => {
     await waitFor(() =>
       expect(orderBodies).toEqual([{ ids: ["provider-2", "provider-1"] }]),
     );
+  });
+
+  it("runs a real-throughput speed test and presents streaming headroom", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProvidersPage />);
+    await screen.findByText("Primary");
+
+    await user.click(screen.getByRole("button", { name: "Speed test Primary" }));
+    expect(screen.getByRole("dialog", { name: "Streaming speed test" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Run 8-second test" }));
+
+    expect(await screen.findByText("420.5")).toBeInTheDocument();
+    expect(screen.getByText("4K ready")).toBeInTheDocument();
+    expect(screen.getByText(/5 4K or 19 1080p/)).toBeInTheDocument();
+    expect(speedBodies).toEqual([{ durationSeconds: 8 }]);
   });
 });

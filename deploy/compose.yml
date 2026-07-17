@@ -18,6 +18,7 @@ services:
       Streamarr__Admin__Password: "${STREAMARR_ADMIN_PASSWORD:?Set STREAMARR_ADMIN_PASSWORD in .env}"
       Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
       Streamarr__DataProtectionKeysPath: /app/keys
+      INDEXER_PROXY: "${INDEXER_PROXY:-}"
     volumes:
       - streamarr-data:/app/data
       - streamarr-keys:/app/keys

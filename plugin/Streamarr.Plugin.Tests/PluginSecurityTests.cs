@@ -68,6 +68,8 @@ public class PluginSecurityTests
         Assert.Equal(PluginConfiguration.MaxPinnedQueryLength, config.PinnedWorkQuery.Length);
         Assert.Throws<ArgumentException>(() => config.ServerUrl = "ftp://core.example");
         Assert.Throws<ArgumentException>(() => config.ServerUrl = "https://user:password@core.example");
+        Assert.Throws<ArgumentException>(() => config.PublicStreamUrl = "ftp://media.example");
+        Assert.Throws<ArgumentException>(() => config.PublicStreamUrl = "https://user:password@media.example");
         Assert.Throws<ArgumentException>(() => config.ApiKey = new string('k', PluginConfiguration.MaxApiKeyLength + 1));
         Assert.Throws<ArgumentException>(() => config.ProfileId = new string('p', PluginConfiguration.MaxProfileIdLength + 1));
         Assert.Throws<ArgumentException>(() => config.PinnedWorkQuery = "movie\nforged-log-line");

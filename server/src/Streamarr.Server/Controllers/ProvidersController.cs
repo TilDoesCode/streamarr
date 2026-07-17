@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
+using Streamarr.Usenet.Models;
 
 namespace Streamarr.Server.Controllers;
 
@@ -14,7 +15,10 @@ namespace Streamarr.Server.Controllers;
 [ApiController]
 [Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/providers")]
-public class ProvidersController(ProviderConfigService providers, ProviderConnectionTester tester) : ControllerBase
+public class ProvidersController(
+    ProviderConfigService providers,
+    ProviderConnectionTester tester,
+    ProviderSpeedTester speedTester) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<ProviderResponse>), StatusCodes.Status200OK)]
@@ -115,6 +119,51 @@ public class ProvidersController(ProviderConfigService providers, ProviderConnec
             return NotFound(ErrorResponse.Of("not_found", $"No provider with id '{id}'."));
 
         return Ok(await tester.TestAsync(providers.ToProvider(entity), ct));
+    }
+
+    /// <summary>
+    /// Transfer real article bodies through the stored provider and report NNTP throughput
+    /// plus conservative video-streaming headroom. This consumes provider traffic.
+    /// </summary>
+    [HttpPost("{id}/speedtest")]
+    [ProducesResponseType(typeof(ProviderSpeedTestResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProviderSpeedTestResult>> SpeedTest(
+        string id,
+        [FromBody] ProviderSpeedTestRequest? request,
+        CancellationToken ct)
+    {
+        if (InvalidId(id))
+            return BadRequest(ErrorResponse.Of("invalid_provider_id", "The provider id is invalid."));
+        if (request?.DurationSeconds is < 1 or > 15)
+            return BadRequest(ErrorResponse.Of("invalid_speedtest", "'durationSeconds' must be between 1 and 15."));
+        if (request?.MessageId?.Length > 1_000 ||
+            Options.StreamarrOptionsValidator.ContainsControl(request?.MessageId))
+        {
+            return BadRequest(ErrorResponse.Of("invalid_speedtest", "The article message-id is invalid."));
+        }
+        if (!string.IsNullOrWhiteSpace(request?.MessageId))
+        {
+            try
+            {
+                _ = new SegmentId(request.MessageId);
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(ErrorResponse.Of("invalid_speedtest", "The article message-id is invalid."));
+            }
+        }
+
+        var entity = await providers.GetAsync(id, ct);
+        if (entity is null)
+            return NotFound(ErrorResponse.Of("not_found", $"No provider with id '{id}'."));
+
+        return Ok(await speedTester.TestAsync(
+            providers.ToProvider(entity),
+            request?.MessageId,
+            request?.DurationSeconds ?? 8,
+            ct));
     }
 
     private static ErrorResponse? Validate(ProviderWrite write)

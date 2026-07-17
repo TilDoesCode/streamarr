@@ -20,6 +20,7 @@ public class PluginConfiguration : BasePluginConfiguration
     private int _ephemeralTtlMinutes = 720;
     private string _pinnedWorkQuery = "Big Buck Bunny";
     private string _serverUrl = "http://streamarr:8080";
+    private string _publicStreamUrl = string.Empty;
     private string _apiKey = string.Empty;
     private string _profileId = string.Empty;
 
@@ -33,6 +34,29 @@ public class PluginConfiguration : BasePluginConfiguration
             if (!IsValidServerUrl(candidate))
                 throw new ArgumentException("Core Server URL must be a bounded absolute HTTP(S) URL without credentials.", nameof(value));
             _serverUrl = candidate;
+        }
+    }
+
+    /// <summary>
+    /// Client-reachable base URL used only for the capability URL placed in opened media
+    /// sources. This may differ from <see cref="ServerUrl"/> when Jellyfin talks to Core over a
+    /// private container network but mobile/TV players reach it through a LAN address or HTTPS
+    /// reverse proxy. Empty preserves the legacy behavior of using <see cref="ServerUrl"/>.
+    /// </summary>
+    public string PublicStreamUrl
+    {
+        get => _publicStreamUrl;
+        set
+        {
+            var candidate = (value ?? string.Empty).Trim().TrimEnd('/');
+            if (candidate.Length > 0 && !IsValidServerUrl(candidate))
+            {
+                throw new ArgumentException(
+                    "Public stream URL must be empty or a bounded absolute HTTP(S) URL without credentials.",
+                    nameof(value));
+            }
+
+            _publicStreamUrl = candidate;
         }
     }
 

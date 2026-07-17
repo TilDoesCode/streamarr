@@ -24,6 +24,32 @@ admin_password="ci-smoke-admin-password"
 user_password="ci-smoke-user-password"
 movie_name="Streamarr CI Smoke Movie"
 series_name="Streamarr CI Smoke Series"
+movie_release_id="ci-smoke-release"
+movie_release_name="1080p WEB-DL x264 · EN · 1 MiB"
+movie_alt_release_id="ci-smoke-release-alt"
+movie_alt_release_name="2160p WEB-DL x265 HDR10 · DDP5.1 · DE/EN · 3 MiB"
+episode_release_id="ci-smoke-tv-release"
+episode_release_name="1080p WEB-DL x264 · EN · 2 MiB"
+episode_alt_release_id="ci-smoke-tv-release-alt"
+episode_alt_release_name="720p WEB-DL x264 · DE · 1 MiB"
+
+# Official clients treat multi-version media-source ids as item ids (Jellyfin Web fetches them
+# via /Users/{uid}/Items/{id}; Android TV parses them as UUIDs), so the plugin exposes
+# GUID-shaped source ids derived from (workId, releaseId). Mirror that derivation here.
+release_source_id() {
+  python3 - "$1" "$2" <<'PY'
+import hashlib
+import sys
+import uuid
+
+digest = hashlib.md5(f"streamarr-release:{sys.argv[1]}:{sys.argv[2]}".encode("utf-16-le")).digest()
+print(uuid.UUID(bytes_le=digest).hex)
+PY
+}
+movie_source_id="$(release_source_id ci-smoke-work "$movie_release_id")"
+movie_alt_source_id="$(release_source_id ci-smoke-work "$movie_alt_release_id")"
+episode_source_id="$(release_source_id ci-smoke-series-s01e01 "$episode_release_id")"
+episode_alt_source_id="$(release_source_id ci-smoke-series-s01e01 "$episode_alt_release_id")"
 
 redact_diagnostics() {
   sed -E \
@@ -157,6 +183,80 @@ named_item_id() {
 core_count() {
   local key="$1"
   curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er --arg key "$key" '.[$key]'
+}
+
+assert_release_sources() {
+  local file="$1"
+  local expected_count="$2"
+  local first_id="${3:-}"
+  local first_name="${4:-}"
+  local second_id="${5:-}"
+  local second_name="${6:-}"
+  jq -e \
+    --argjson expectedCount "$expected_count" \
+    --arg firstId "$first_id" \
+    --arg firstName "$first_name" \
+    --arg secondId "$second_id" \
+    --arg secondName "$second_name" '
+      (.MediaSourceCount == $expectedCount)
+        and ((.MediaSources // []) | length) == $expectedCount
+        and if $expectedCount == 0 then
+          true
+        else
+          .MediaSources[0].Id == $firstId
+            and .MediaSources[0].Name == $firstName
+            and .MediaSources[0].RequiresOpening == true
+            and (.MediaSources[0].OpenToken | type == "string" and length > 0)
+            and .MediaSources[0].OpenToken != .MediaSources[0].Id
+            and .MediaSources[1].Id == $secondId
+            and .MediaSources[1].Name == $secondName
+            and .MediaSources[1].RequiresOpening == true
+            and (.MediaSources[1].OpenToken | type == "string" and length > 0)
+            and .MediaSources[1].OpenToken != .MediaSources[1].Id
+            and .MediaSources[0].OpenToken != .MediaSources[1].OpenToken
+        end
+    ' "$file" >/dev/null
+}
+
+assert_last_resolve() {
+  local expected_release="$1"
+  local expected_work="$2"
+  curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" \
+    | jq -e --arg release "$expected_release" --arg work "$expected_work" '
+        .lastResolve == {releaseId:$release, workId:$work, client:"jellyfin"}
+      ' >/dev/null
+}
+
+close_live_stream() {
+  local live_stream_id="$1"
+  local output="$2"
+  local code
+  code="$(curl -sS -o "$output" -w '%{http_code}' \
+    -X POST --get "$base_url/LiveStreams/Close" \
+    -H "$allowed_header" \
+    --data-urlencode "liveStreamId=$live_stream_id")"
+  expect_code 204 "$code" "Live stream close"
+}
+
+assert_streamyfin_opened_source() {
+  local file="$1"
+  local expected_path="$2"
+  jq -e --arg path "$expected_path" '
+    (.PlaySessionId | type == "string" and length > 0)
+      and (.MediaSources | length) == 1
+      and (.MediaSources[0] as $source
+        | $source.IsRemote == true
+          and $source.Protocol == "Http"
+          and $source.Path == $path
+          and $source.TranscodingUrl == null
+          and $source.RequiresOpening == false
+          and ($source.LiveStreamId | type == "string" and length > 0)
+          and (($source.RequiredHttpHeaders // {}) | length) == 0)
+  ' "$file" >/dev/null
+
+  # Streamyfin hands this Path directly to MPV and deliberately adds no Jellyfin auth header for
+  # an HTTP remote source. Prove the advertised capability is reachable on exactly that basis.
+  curl -fsS "$expected_path" >/dev/null
 }
 
 command -v curl >/dev/null || fail "curl is required."
@@ -302,13 +402,18 @@ plugin_id="6f8d5c7a-9b2e-4a1f-8c3d-2e5a7b9c0d11"
 curl -fsS "$base_url/Plugins/$plugin_id/Configuration" \
   -H "$admin_header" \
   -o "$tmp_dir/plugin-config-original.json"
-jq --arg server "http://host.docker.internal:$fake_core_port" --arg key "$machine_key" '
+jq \
+  --arg server "http://host.docker.internal:$fake_core_port" \
+  --arg publicStream "http://127.0.0.1:$fake_core_port" \
+  --arg key "$machine_key" '
   .ServerUrl = $server
+  | .PublicStreamUrl = $publicStream
   | .ApiKey = $key
   | .PinnedWorkQuery = "CI Smoke Movie"
   | .InterceptionEnabled = false
 ' "$tmp_dir/plugin-config-original.json" >"$tmp_dir/plugin-config-valid.json"
 post_plugin_config "$tmp_dir/plugin-config-valid.json"
+public_stream_base="http://127.0.0.1:$fake_core_port"
 
 code="$(curl -sS -o "$tmp_dir/connection-valid.json" -w '%{http_code}' \
   "$base_url/Streamarr/TestConnection" -H "$admin_header")"
@@ -428,9 +533,33 @@ denied_code="$(curl -sS -o "$tmp_dir/denied-playback.json" -w '%{http_code}' \
   "$base_url/Items/$item_id/PlaybackInfo" -H "$denied_header")"
 expect_code 200 "$allowed_code" "Compatible-user PlaybackInfo"
 expect_code 404 "$denied_code" "Restricted-user PlaybackInfo"
-jq -e '.MediaSources | length == 1' "$tmp_dir/allowed-playback.json" >/dev/null
-open_token="$(jq -er '.MediaSources[0].OpenToken' "$tmp_dir/allowed-playback.json")"
-release_id="$(jq -er '.MediaSources[0].Id' "$tmp_dir/allowed-playback.json")"
+jq -e --arg first "$movie_source_id" --arg second "$movie_alt_source_id" '
+  (.MediaSources | length) == 2
+    and .MediaSources[0].Id == $first
+    and .MediaSources[1].Id == $second
+' "$tmp_dir/allowed-playback.json" >/dev/null
+
+# Streamyfin's item page lazily requests full sources through /Items?ids=... rather than either
+# single-item detail route. This must work independently of the discovery toggle (still off here).
+curl -fsS --get "$base_url/Items" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode "ids=$item_id" \
+  --data-urlencode 'fields=MediaSources,MediaSourceCount,MediaStreams' \
+  -o "$tmp_dir/streamyfin-item-with-sources.json"
+jq -e --arg id "${item_id//-/}" '
+  (.Items | length) == 1 and .Items[0].Id == $id
+' "$tmp_dir/streamyfin-item-with-sources.json" >/dev/null
+jq -e '.Items[0]' "$tmp_dir/streamyfin-item-with-sources.json" \
+  >"$tmp_dir/streamyfin-item-source.json"
+assert_release_sources \
+  "$tmp_dir/streamyfin-item-source.json" 2 \
+  "$movie_source_id" "$movie_release_name" \
+  "$movie_alt_source_id" "$movie_alt_release_name"
+
+open_token="$(jq -er --arg id "$movie_source_id" '.MediaSources[] | select(.Id == $id) | .OpenToken' \
+  "$tmp_dir/allowed-playback.json")"
+release_id="$movie_source_id"
 [[ "$open_token" != "$release_id" ]] || fail "Jellyfin exposed the raw release id as OpenToken."
 
 provider_prefix="${open_token%%_*}"
@@ -473,11 +602,7 @@ code="$(curl -sS -o "$tmp_dir/replayed-open-result.json" -w '%{http_code}' \
 expect_code 403 "$code" "Replayed OpenToken"
 
 live_stream_id="$(jq -er '.MediaSource.LiveStreamId' "$tmp_dir/allowed-open-result.json")"
-code="$(curl -sS -o "$tmp_dir/close-result.json" -w '%{http_code}' \
-  -X POST --get "$base_url/LiveStreams/Close" \
-  -H "$allowed_header" \
-  --data-urlencode "liveStreamId=$live_stream_id")"
-expect_code 204 "$code" "Live stream close"
+close_live_stream "$live_stream_id" "$tmp_dir/close-result.json"
 
 for _ in $(seq 1 50); do
   close_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.close')"
@@ -561,17 +686,54 @@ curl -fsS --get "$base_url/Items/$movie_id" \
   -H "$allowed_header" \
   --data-urlencode "userId=$allowed_id" \
   -o "$tmp_dir/movie-detail.json"
+curl -fsS "$base_url/Users/$allowed_id/Items/$movie_id" \
+  -H "$allowed_header" \
+  -o "$tmp_dir/movie-detail-legacy.json"
 jq -e --arg id "$movie_id" '
   .Id == $id
     and .Type == "Movie"
     and .LocationType == "Remote"
 ' "$tmp_dir/movie-detail.json" >/dev/null
+assert_release_sources \
+  "$tmp_dir/movie-detail.json" 2 \
+  "$movie_source_id" "$movie_release_name" \
+  "$movie_alt_source_id" "$movie_alt_release_name"
+jq -e --arg id "$movie_id" '
+  .Id == $id
+    and .Type == "Movie"
+    and .LocationType == "Remote"
+' "$tmp_dir/movie-detail-legacy.json" >/dev/null
+assert_release_sources \
+  "$tmp_dir/movie-detail-legacy.json" 2 \
+  "$movie_source_id" "$movie_release_name" \
+  "$movie_alt_source_id" "$movie_alt_release_name"
+
+# Jellyfin Web resolves a selected version by fetching its media-source id as an item id (and
+# Android TV parses it as a UUID). The plugin must answer with the owning item's DTO, while a
+# restricted user keeps getting Jellyfin's native 404.
+curl -fsS "$base_url/Users/$allowed_id/Items/$movie_alt_source_id" \
+  -H "$allowed_header" \
+  -o "$tmp_dir/movie-release-item.json"
+jq -e --arg id "$movie_id" '
+  .Id == $id and .Type == "Movie" and (.MediaSources | length) == 2
+' "$tmp_dir/movie-release-item.json" >/dev/null
+denied_lookup_code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  "$base_url/Users/$denied_id/Items/$movie_alt_source_id" -H "$denied_header")"
+expect_code 404 "$denied_lookup_code" "Restricted-user release-item lookup"
+
 curl -fsS "$base_url/Items/$movie_id/PlaybackInfo" \
   -H "$allowed_header" \
   -o "$tmp_dir/search-movie-playback.json"
-jq -e '
-  (.MediaSources | length) == 1
-    and .MediaSources[0].Id == "ci-smoke-release"
+jq -e \
+  --arg firstId "$movie_source_id" \
+  --arg firstName "$movie_release_name" \
+  --arg secondId "$movie_alt_source_id" \
+  --arg secondName "$movie_alt_release_name" '
+  (.MediaSources | length) == 2
+    and .MediaSources[0].Id == $firstId
+    and .MediaSources[0].Name == $firstName
+    and .MediaSources[1].Id == $secondId
+    and .MediaSources[1].Name == $secondName
 ' "$tmp_dir/search-movie-playback.json" >/dev/null
 
 curl -fsS --get "$base_url/Items/$series_id" \
@@ -608,7 +770,7 @@ curl -fsS --get "$base_url/Shows/$series_id/Episodes" \
   -H "$allowed_header" \
   --data-urlencode "userId=$allowed_id" \
   --data-urlencode "seasonId=$season_id" \
-  --data-urlencode 'fields=PrimaryImageAspectRatio,CanDelete,MediaSourceCount' \
+  --data-urlencode 'fields=PrimaryImageAspectRatio,CanDelete,MediaSourceCount,MediaSources' \
   --data-urlencode 'isMissing=false' \
   --data-urlencode 'enableUserData=true' \
   --data-urlencode 'imageTypeLimit=1' \
@@ -621,14 +783,175 @@ jq -e '
 ' "$tmp_dir/season-episodes.json" >/dev/null
 available_episode_id="$(jq -er '.Items[] | select(.IndexNumber == 1) | .Id' "$tmp_dir/season-episodes.json")"
 unavailable_episode_id="$(jq -er '.Items[] | select(.IndexNumber == 2) | .Id' "$tmp_dir/season-episodes.json")"
+jq -e --arg id "$available_episode_id" '.Items[] | select(.Id == $id)' \
+  "$tmp_dir/season-episodes.json" >"$tmp_dir/available-episode-summary.json"
+jq -e --arg id "$unavailable_episode_id" '.Items[] | select(.Id == $id)' \
+  "$tmp_dir/season-episodes.json" >"$tmp_dir/unavailable-episode-summary.json"
+assert_release_sources \
+  "$tmp_dir/available-episode-summary.json" 2 \
+  "$episode_source_id" "$episode_release_name" \
+  "$episode_alt_source_id" "$episode_alt_release_name"
+assert_release_sources "$tmp_dir/unavailable-episode-summary.json" 0
+
+for detail_route in current legacy; do
+  if [[ "$detail_route" == "current" ]]; then
+    available_url="$base_url/Items/$available_episode_id?userId=$allowed_id"
+    unavailable_url="$base_url/Items/$unavailable_episode_id?userId=$allowed_id"
+  else
+    available_url="$base_url/Users/$allowed_id/Items/$available_episode_id"
+    unavailable_url="$base_url/Users/$allowed_id/Items/$unavailable_episode_id"
+  fi
+
+  curl -fsS "$available_url" -H "$allowed_header" \
+    -o "$tmp_dir/available-episode-detail-$detail_route.json"
+  curl -fsS "$unavailable_url" -H "$allowed_header" \
+    -o "$tmp_dir/unavailable-episode-detail-$detail_route.json"
+  jq -e --arg id "$available_episode_id" '
+    .Id == $id and .Type == "Episode" and .LocationType == "Remote"
+  ' "$tmp_dir/available-episode-detail-$detail_route.json" >/dev/null
+  jq -e --arg id "$unavailable_episode_id" '
+    .Id == $id and .Type == "Episode" and .LocationType == "Remote"
+  ' "$tmp_dir/unavailable-episode-detail-$detail_route.json" >/dev/null
+  assert_release_sources \
+    "$tmp_dir/available-episode-detail-$detail_route.json" 2 \
+    "$episode_source_id" "$episode_release_name" \
+    "$episode_alt_source_id" "$episode_alt_release_name"
+  assert_release_sources "$tmp_dir/unavailable-episode-detail-$detail_route.json" 0
+done
+
+# The same version-as-item lookup must work for episode releases.
+curl -fsS "$base_url/Users/$allowed_id/Items/$episode_alt_source_id" \
+  -H "$allowed_header" \
+  -o "$tmp_dir/episode-release-item.json"
+jq -e --arg id "$available_episode_id" '
+  .Id == $id and .Type == "Episode" and (.MediaSources | length) == 2
+' "$tmp_dir/episode-release-item.json" >/dev/null
+
+# Jellyfin Web's episode-card play path first reloads the queue without a season filter. This
+# exact request must return the clicked plugin episode before Web proceeds to PlaybackInfo.
+tv_season_before_card_play="$(core_count tv_season)"
+curl -fsS --get "$base_url/Shows/$series_id/Episodes" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode 'isMissing=false' \
+  --data-urlencode 'limit=100' \
+  --data-urlencode "startItemId=$available_episode_id" \
+  --data-urlencode 'fields=Chapters,Trickplay' \
+  -o "$tmp_dir/episode-card-play-queue.json"
+[[ "$(core_count tv_season)" -eq "$tv_season_before_card_play" ]] \
+  || fail "Episode-card queue reload fetched an already materialized season again."
+jq -e --arg id "$available_episode_id" '
+  (.Items | length) >= 1
+    and .Items[0].Id == $id
+    and .Items[0].Type == "Episode"
+    and .Items[0].LocationType == "Remote"
+' "$tmp_dir/episode-card-play-queue.json" >/dev/null
+
 curl -fsS "$base_url/Items/$available_episode_id/PlaybackInfo" \
   -H "$allowed_header" \
   -o "$tmp_dir/available-episode-playback.json"
 curl -fsS "$base_url/Items/$unavailable_episode_id/PlaybackInfo" \
   -H "$allowed_header" \
   -o "$tmp_dir/unavailable-episode-playback.json"
-jq -e '(.MediaSources | length) == 1' "$tmp_dir/available-episode-playback.json" >/dev/null
+jq -e \
+  --arg firstId "$episode_source_id" \
+  --arg firstName "$episode_release_name" \
+  --arg secondId "$episode_alt_source_id" \
+  --arg secondName "$episode_alt_release_name" '
+    (.MediaSources | length) == 2
+      and .MediaSources[0].Id == $firstId
+      and .MediaSources[0].Name == $firstName
+      and .MediaSources[1].Id == $secondId
+      and .MediaSources[1].Name == $secondName
+  ' "$tmp_dir/available-episode-playback.json" >/dev/null
 jq -e '(.MediaSources | length) == 0' "$tmp_dir/unavailable-episode-playback.json" >/dev/null
+
+# Reproduce individual-card play: no MediaSourceId means Jellyfin must open the first ranked
+# release instead of filtering against the synthetic item's old placeholder id.
+jq -n --arg uid "$allowed_id" '{UserId:$uid, AutoOpenLiveStream:true}' \
+  >"$tmp_dir/episode-card-playback-request.json"
+code="$(curl -sS -o "$tmp_dir/episode-card-playback-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$allowed_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/episode-card-playback-request.json")"
+expect_code 200 "$code" "Episode-card PlaybackInfo"
+jq -e '
+  .ErrorCode == null
+    and (.MediaSources | length) == 1
+    and (.MediaSources[0] as $opened
+      | ($opened.LiveStreamId | type == "string" and length > 0)
+        and ($opened.LiveStreamId | endswith("_" + $opened.Id))
+        and $opened.RequiresOpening == false)
+' "$tmp_dir/episode-card-playback-result.json" >/dev/null
+assert_streamyfin_opened_source \
+  "$tmp_dir/episode-card-playback-result.json" \
+  "$public_stream_base/api/v1/stream/ci-smoke-session-$episode_release_id"
+assert_last_resolve "$episode_release_id" "ci-smoke-series-s01e01"
+card_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/episode-card-playback-result.json")"
+close_live_stream "$card_live_stream_id" "$tmp_dir/episode-card-close-result.json"
+
+# Reproduce Jellyfin Web's release selector: posting the second release id must auto-open that
+# exact source, with Core receiving the episode work rather than silently taking rank 1.
+jq -n \
+  --arg uid "$allowed_id" \
+  --arg source "$episode_alt_source_id" \
+  '{UserId:$uid, MediaSourceId:$source, AutoOpenLiveStream:true}' \
+  >"$tmp_dir/episode-selected-playback-request.json"
+code="$(curl -sS -o "$tmp_dir/episode-selected-playback-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$allowed_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/episode-selected-playback-request.json")"
+expect_code 200 "$code" "Selected episode-release PlaybackInfo"
+jq -e '
+  .ErrorCode == null
+    and (.MediaSources | length) == 1
+    and (.MediaSources[0] as $opened
+      | ($opened.LiveStreamId | type == "string" and length > 0)
+        and ($opened.LiveStreamId | endswith("_" + $opened.Id))
+        and $opened.RequiresOpening == false)
+' "$tmp_dir/episode-selected-playback-result.json" >/dev/null
+assert_streamyfin_opened_source \
+  "$tmp_dir/episode-selected-playback-result.json" \
+  "$public_stream_base/api/v1/stream/ci-smoke-session-$episode_alt_release_id"
+assert_last_resolve "$episode_alt_release_id" "ci-smoke-series-s01e01"
+selected_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/episode-selected-playback-result.json")"
+close_live_stream "$selected_live_stream_id" "$tmp_dir/episode-selected-close-result.json"
+
+# Exercise Jellyfin's explicit two-step client flow with an offer taken from the projected item
+# DTO rather than from PlaybackInfo: detail-route tokens bypass the host's provider-prefixing,
+# so this open fails if the DTO projection ever stops emitting host-routable OpenTokens.
+curl -fsS "$base_url/Items/$available_episode_id?userId=$allowed_id" \
+  -H "$allowed_header" \
+  -o "$tmp_dir/episode-explicit-detail.json"
+explicit_open_token="$(jq -er --arg id "$episode_alt_source_id" '
+  .MediaSources[] | select(.Id == $id) | .OpenToken
+' "$tmp_dir/episode-explicit-detail.json")"
+jq -n \
+  --arg token "$explicit_open_token" \
+  --arg uid "$allowed_id" \
+  --arg item "$available_episode_id" '
+  {OpenToken:$token, UserId:$uid, ItemId:$item, PlaySessionId:"episode-explicit-ci"}
+' >"$tmp_dir/episode-explicit-open-request.json"
+code="$(curl -sS -o "$tmp_dir/episode-explicit-open-result.json" -w '%{http_code}' \
+  -X POST "$base_url/LiveStreams/Open" \
+  -H "$allowed_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/episode-explicit-open-request.json")"
+expect_code 200 "$code" "Explicit selected episode release open"
+jq -e '
+  (.MediaSource as $opened
+    | ($opened.LiveStreamId | type == "string" and length > 0)
+      and ($opened.LiveStreamId | endswith("_" + $opened.Id))
+      and $opened.RequiresOpening == false)
+' "$tmp_dir/episode-explicit-open-result.json" >/dev/null
+assert_last_resolve "$episode_alt_release_id" "ci-smoke-series-s01e01"
+explicit_live_stream_id="$(jq -er '.MediaSource.LiveStreamId' \
+  "$tmp_dir/episode-explicit-open-result.json")"
+close_live_stream "$explicit_live_stream_id" "$tmp_dir/episode-explicit-close-result.json"
 
 # Non-virtual season/episode rows are required for Jellyfin's native TV queries, but the private
 # implementation hierarchy must still remain absent from ordinary root and Latest traversal.
@@ -643,9 +966,9 @@ curl -fsS --get "$base_url/Items/Latest" \
   --data-urlencode "userId=$allowed_id" \
   --data-urlencode 'limit=100' \
   -o "$tmp_dir/latest-items-after-hierarchy.json"
-for name in "$movie_name" "$series_name" "Season 1" "Available Episode" "Unavailable Episode"; do
-  assert_named_item_absent "$tmp_dir/root-items-after-hierarchy.json" Items "$name"
-  assert_named_item_absent "$tmp_dir/latest-items-after-hierarchy.json" Items "$name"
+for expected_name in "$movie_name" "$series_name" "Season 1" "Available Episode" "Unavailable Episode"; do
+  assert_named_item_absent "$tmp_dir/root-items-after-hierarchy.json" Items "$expected_name"
+  assert_named_item_absent "$tmp_dir/latest-items-after-hierarchy.json" Items "$expected_name"
 done
 
 # Point interception at a closed loopback port inside the container. Native Jellyfin responses

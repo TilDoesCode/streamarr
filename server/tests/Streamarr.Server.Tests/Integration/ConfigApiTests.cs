@@ -308,6 +308,44 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         await client.DeleteAsync($"/api/v1/config/providers/{id}");
     }
 
+    [Fact]
+    public async Task Provider_SpeedTest_TransfersArticleBytesAndRatesStreamingHeadroom()
+    {
+        await using var nntp = new MockNntpServer { RequireAuth = true };
+        nntp.Articles["speed@test"] = YencTestEncoder.Encode(
+            YencTestEncoder.LcgBytes(92, 128 * 1024),
+            "speed.bin");
+        using var client = Client();
+
+        var create = await client.PostAsJsonAsync("/api/v1/config/providers", new
+        {
+            name = "speed-mock",
+            host = nntp.Host,
+            port = nntp.Port,
+            useSsl = false,
+            username = nntp.Username,
+            password = nntp.Password,
+            maxConnections = 2,
+        });
+        var id = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+
+        var response = await client.PostAsJsonAsync($"/api/v1/config/providers/{id}/speedtest", new
+        {
+            messageId = "speed@test",
+            durationSeconds = 1,
+        });
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.True(result.GetProperty("success").GetBoolean());
+        Assert.True(result.GetProperty("bytesDownloaded").GetInt64() > 0);
+        Assert.True(result.GetProperty("megabitsPerSecond").GetDouble() > 0);
+        Assert.Equal(2, result.GetProperty("connectionsUsed").GetInt32());
+        Assert.Equal("manual", result.GetProperty("articleSource").GetString());
+
+        await client.DeleteAsync($"/api/v1/config/providers/{id}");
+    }
+
     // ---- general config --------------------------------------------------------------
 
     [Fact]

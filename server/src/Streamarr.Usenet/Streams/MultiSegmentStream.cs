@@ -7,6 +7,8 @@
 // as each article body has fully arrived (onConnectionReadyAgain).
 
 using System.Threading.Channels;
+using Streamarr.Usenet.Exceptions;
+using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
 
 namespace Streamarr.Usenet.Streams;
@@ -20,6 +22,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
 {
     private readonly Memory<string> _segmentIds;
     private readonly INntpClient _usenetClient;
+    private readonly SegmentCache? _segmentCache;
+    private readonly int _retryCount;
     private readonly Channel<Task<Stream>> _streamTasks;
     private readonly CancellationTokenSource _cts;
     private Stream? _stream;
@@ -30,12 +34,15 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         Memory<string> segmentIds,
         INntpClient usenetClient,
         int articleBufferSize,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        SegmentCache? segmentCache = null,
+        int retryCount = 2
     )
     {
         return articleBufferSize == 0
             ? new UnbufferedMultiSegmentStream(segmentIds, usenetClient)
-            : new MultiSegmentStream(segmentIds, usenetClient, articleBufferSize, cancellationToken);
+            : new MultiSegmentStream(
+                segmentIds, usenetClient, articleBufferSize, cancellationToken, segmentCache, retryCount);
     }
 
     private MultiSegmentStream
@@ -43,11 +50,17 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         Memory<string> segmentIds,
         INntpClient usenetClient,
         int articleBufferSize,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        SegmentCache? segmentCache,
+        int retryCount
     )
     {
         _segmentIds = segmentIds;
         _usenetClient = usenetClient;
+        _segmentCache = segmentCache;
+        _retryCount = retryCount is >= 0 and <= 10
+            ? retryCount
+            : throw new ArgumentOutOfRangeException(nameof(retryCount));
         _streamTasks = Channel.CreateBounded<Task<Stream>>(articleBufferSize);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _ = DownloadSegments(_cts.Token);
@@ -63,10 +76,9 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
 
                 await _streamTasks.Writer.WaitToWriteAsync(cancellationToken).ConfigureAwait(false);
 
-                // Wait until the previous article's body fully arrived before grabbing
-                // the next pooled connection, so read-ahead never exceeds the buffer.
-                var readyAgain = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                var streamTask = DownloadSegment(segmentId, readyAgain, cancellationToken);
+                // Queue in NZB order, but start every task in the bounded window now.
+                // The reader awaits the tasks in channel order, so delivery remains ordered.
+                var streamTask = DownloadSegment(segmentId, cancellationToken);
                 if (!_streamTasks.Writer.TryWrite(streamTask))
                 {
                     // if we never get a chance to write the stream to the writer
@@ -75,8 +87,6 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                         .DisposeAsync().ConfigureAwait(false), CancellationToken.None);
                     break;
                 }
-
-                await readyAgain.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
         }
         catch
@@ -92,22 +102,49 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     private async Task<Stream> DownloadSegment
     (
         string segmentId,
-        TaskCompletionSource readyAgain,
         CancellationToken cancellationToken
     )
     {
-        try
+        var bytes = _segmentCache is null
+            ? await DownloadSegmentBytes(segmentId, cancellationToken).ConfigureAwait(false)
+            : await _segmentCache.GetOrAddAsync(
+                segmentId,
+                ct => DownloadSegmentBytes(segmentId, ct),
+                cancellationToken).ConfigureAwait(false);
+        return new MemoryStream(bytes, writable: false);
+    }
+
+    private async Task<byte[]> DownloadSegmentBytes(string segmentId, CancellationToken cancellationToken)
+    {
+        Exception? lastFailure = null;
+        for (var attempt = 0; attempt <= _retryCount; attempt++)
         {
-            var bodyResponse = await _usenetClient
-                .DecodedBodyAsync(segmentId, _ => readyAgain.TrySetResult(), cancellationToken)
-                .ConfigureAwait(false);
-            return bodyResponse.Stream;
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var bodyResponse = await _usenetClient
+                    .DecodedBodyAsync(segmentId, cancellationToken)
+                    .ConfigureAwait(false);
+                await using var body = bodyResponse.Stream;
+                var headers = await body.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false);
+                var capacity = headers?.PartSize is > 0 and <= int.MaxValue
+                    ? checked((int)headers.PartSize)
+                    : 0;
+                using var output = capacity > 0 ? new MemoryStream(capacity) : new MemoryStream();
+                await body.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                if (output.TryGetBuffer(out var buffer) && output.Length == buffer.Count)
+                    return buffer.Array!;
+                return output.ToArray();
+            }
+            catch (Exception e) when (e is not OperationCanceledException and not UsenetArticleNotFoundException)
+            {
+                lastFailure = e;
+            }
         }
-        catch (Exception e)
-        {
-            readyAgain.TrySetException(e);
-            throw;
-        }
+
+        throw new IOException(
+            $"NNTP article <{SegmentId.Normalize(segmentId)}> failed after {_retryCount + 1} attempts.",
+            lastFailure);
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)

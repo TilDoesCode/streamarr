@@ -49,6 +49,15 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   expect(adminCookie).toMatchObject({ httpOnly: true, sameSite: "Strict" });
   const sessionsBefore = await liveSessionCount(page);
 
+  // --- inspect the real provider throughput flow without consuming the sample yet ------
+  await page.getByRole("link", { name: "Usenet Providers" }).click();
+  await expect(page.getByRole("heading", { name: "Usenet Providers", level: 2 })).toBeVisible();
+  await page.getByRole("button", { name: "Speed test mock" }).click();
+  const speedDialog = page.getByRole("dialog", { name: "Streaming speed test" });
+  await expect(speedDialog).toContainText("real NNTP article traffic");
+  await expect(speedDialog.getByLabel("Article message-ID (optional)")).toBeVisible();
+  await speedDialog.getByRole("button", { name: "Cancel" }).click();
+
   // --- add an indexer through the UI (BRIEF §9.1) --------------------------------------
   await page.getByRole("link", { name: "Indexers" }).click();
   // Two "Indexers" headings exist (the app-bar title h1 and the page h2) — target the page one.

@@ -136,6 +136,30 @@ public class NntpClientTests
     }
 
     [Fact]
+    public async Task GroupAndOverview_DiscoverRecentArticles()
+    {
+        await using var server = new MockNntpServer();
+        server.Articles["small@test"] = YencTestEncoder.Encode([1, 2, 3], "small.bin");
+        server.Articles["large@test"] = YencTestEncoder.Encode(
+            YencTestEncoder.LcgBytes(91, 128 * 1024),
+            "large.bin");
+        using var connection = new NntpConnection();
+        await connection.ConnectAsync(server.Host, server.Port, useSsl: false, CancellationToken.None);
+
+        var group = await connection.GroupAsync("alt.binaries.test", CancellationToken.None);
+        var overview = await connection.OverviewAsync(
+            group.LowArticleNumber,
+            group.HighArticleNumber,
+            CancellationToken.None);
+
+        Assert.Equal(NntpResponseType.GroupSelected, group.ResponseType);
+        Assert.Equal(2, group.EstimatedArticleCount);
+        Assert.Equal(NntpResponseType.OverviewInformationFollows, overview.ResponseType);
+        Assert.Contains(overview.Entries, entry =>
+            entry.SegmentId.ToString() == "large@test" && entry.Bytes >= 128 * 1024);
+    }
+
+    [Fact]
     public async Task Head_ReturnsHeaders()
     {
         await using var server = new MockNntpServer();

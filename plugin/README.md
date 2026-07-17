@@ -13,7 +13,7 @@ Target: **Jellyfin 10.11.11** (`net9.0`). See [`../docs/jellyfin-compatibility.m
 
 | Piece | File | Role |
 |---|---|---|
-| `Plugin` + config page | `Plugin.cs`, `Configuration/` | Server URL, API key, TTL, interception toggle, profile id, pinned query; "Test connection" + "Materialize pinned work" buttons |
+| `Plugin` + config page | `Plugin.cs`, `Configuration/` | Private Core control URL, optional client-reachable stream URL, API key, TTL, interception toggle, profile id, pinned query; "Test connection" + "Materialize pinned work" buttons |
 | Typed HTTP client | `Api/StreamarrApiClient.cs` | Bounded transport over shallow `/health`, authenticated `/caps`, `/search`, `/resolve`, `/sessions/{token}/close`, and `/events` |
 | Service wiring | `PluginServiceRegistrator.cs` | Registers the typed `HttpClient`, media-source provider, event bridge, scheduled tasks, and the search action filter (`Configure<MvcOptions>`) |
 | Ephemeral materialization | `Library/` | One private virtual `Movie`/`Episode` per work, stable GUID from `workId`, explicit ownership ids, persisted bounded release cache, and ownership-safe TTL cleanup |

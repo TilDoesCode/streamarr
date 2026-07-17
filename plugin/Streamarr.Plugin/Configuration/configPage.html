@@ -22,7 +22,13 @@
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="ServerUrl">Core Server URL</label>
                         <input is="emby-input" type="url" id="ServerUrl" name="ServerUrl" required maxlength="2048" autocomplete="off" />
-                        <div class="fieldDescription">e.g. http://streamarr:8080</div>
+                        <div class="fieldDescription">Private/control URL Jellyfin uses for Core API calls, e.g. http://streamarr:8080.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="PublicStreamUrl">Public stream URL (optional)</label>
+                        <input is="emby-input" type="url" id="PublicStreamUrl" name="PublicStreamUrl" maxlength="2048" autocomplete="off" />
+                        <div class="fieldDescription">HTTPS reverse-proxy or LAN base URL reachable by player devices, e.g. https://streamarr.example. Required when the Core Server URL is a private container hostname. Leave blank only when that URL is already reachable by clients.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -84,6 +90,7 @@
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     var page = document.querySelector('#StreamarrConfigPage');
                     page.querySelector('#ServerUrl').value = config.ServerUrl || '';
+                    page.querySelector('#PublicStreamUrl').value = config.PublicStreamUrl || '';
                     page.querySelector('#ApiKey').value = config.ApiKey || '';
                     page.querySelector('#EphemeralTtlMinutes').value = config.EphemeralTtlMinutes || 720;
                     page.querySelector('#ProfileId').value = config.ProfileId || '';
@@ -99,6 +106,7 @@
                 var page = document.querySelector('#StreamarrConfigPage');
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     config.ServerUrl = page.querySelector('#ServerUrl').value;
+                    config.PublicStreamUrl = page.querySelector('#PublicStreamUrl').value;
                     config.ApiKey = page.querySelector('#ApiKey').value;
                     config.EphemeralTtlMinutes = parseInt(page.querySelector('#EphemeralTtlMinutes').value, 10) || 720;
                     config.ProfileId = page.querySelector('#ProfileId').value;

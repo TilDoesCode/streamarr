@@ -10,6 +10,19 @@ public sealed record ReorderRequest
     public required IReadOnlyList<string> Ids { get; init; }
 }
 
+/// <summary>Optional tuning for a real provider throughput test.</summary>
+public sealed record ProviderSpeedTestRequest
+{
+    /// <summary>
+    /// Recent article message-id (with or without angle brackets). When omitted, Streamarr
+    /// discovers a suitable article through common binary test groups.
+    /// </summary>
+    public string? MessageId { get; init; }
+
+    /// <summary>Measurement window in seconds (1-15). Defaults to 8.</summary>
+    public int? DurationSeconds { get; init; }
+}
+
 // ---- Indexers -----------------------------------------------------------------------
 
 /// <summary>Indexer as returned by the config API — the API key is masked, never plaintext.</summary>

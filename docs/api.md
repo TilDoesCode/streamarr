@@ -468,8 +468,9 @@ Reads return `IndexerResponse` with `apiKey` masked and `hasApiKey: true`. `POST
 
 ### Providers — `/api/v1/config/providers`
 
-`GET` · `POST` · `GET/PUT/DELETE /{id}` · `POST /{id}/test`. Multiple priority-ordered
-providers are supported (DECISIONS.md #6): primary + block-account backup.
+`GET` · `POST` · `GET/PUT/DELETE /{id}` · `POST /{id}/test` · `POST /{id}/speedtest`.
+Multiple priority-ordered providers are supported (DECISIONS.md #6): primary +
+block-account backup.
 
 ```json
 // ProviderWrite (POST/PUT)
@@ -480,6 +481,15 @@ providers are supported (DECISIONS.md #6): primary + block-account backup.
 Reads return `ProviderResponse` with `password` masked and `hasPassword: true`. `POST
 /{id}/test` connects + `AUTHINFO` and reports `success`, `achievableConnections`
 (≤ `maxConnections`), and `requestedConnections`.
+
+`POST /{id}/speedtest` opens the provider's configured NNTP connections and transfers
+real article bodies for 8 seconds or 512 MiB, whichever comes first. Streamarr discovers
+a recent article through common binary test groups; providers that disable `OVER` can be
+tested with `{ "messageId": "segment@example", "durationSeconds": 8 }`. The response
+includes Mbps/MB/s, setup and first-byte timing, connections used, a conservative maximum
+video bitrate with 30% headroom, estimated simultaneous 4K/1080p streams, and a
+`streamingTier` (`insufficient`, `sd`, `720p`, `1080p`, or `4k`). The endpoint is
+admin-only and consumes provider traffic.
 
 ### General — `/api/v1/config/general`
 

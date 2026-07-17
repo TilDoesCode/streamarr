@@ -28,6 +28,7 @@ COUNTS = {
     "auth_failures": 0,
 }
 COUNTS_LOCK = threading.Lock()
+LAST_RESOLVE_REQUEST: Optional[dict[str, object]] = None
 
 MOVIE = {
     "workId": "ci-smoke-work",
@@ -49,7 +50,22 @@ MOVIE = {
             },
             "languages": ["en"],
             "health": "healthy",
-        }
+        },
+        {
+            "releaseId": "ci-smoke-release-alt",
+            "title": "CI.Smoke.Movie.2160p",
+            "indexer": "ci-fixture-alt",
+            "sizeBytes": 3145728,
+            "quality": {
+                "resolution": "2160p",
+                "source": "WEB-DL",
+                "codec": "x265",
+                "hdr": "HDR10",
+                "audio": "DDP5.1",
+            },
+            "languages": ["de", "en"],
+            "health": "healthy",
+        },
     ],
 }
 
@@ -102,7 +118,20 @@ EPISODES = [
                 },
                 "languages": ["en"],
                 "health": "healthy",
-            }
+            },
+            {
+                "releaseId": "ci-smoke-tv-release-alt",
+                "title": "CI.Smoke.Series.S01E01.720p",
+                "indexer": "ci-fixture-alt",
+                "sizeBytes": 1048576,
+                "quality": {
+                    "resolution": "720p",
+                    "source": "WEB-DL",
+                    "codec": "x264",
+                },
+                "languages": ["de"],
+                "health": "healthy",
+            },
         ],
     },
     {
@@ -119,6 +148,16 @@ EPISODES = [
         "releases": [],
     },
 ]
+
+RESOLVABLE_RELEASES = {
+    release["releaseId"]: {
+        "workId": work["workId"],
+        "sizeBytes": release["sizeBytes"],
+        "runTimeTicks": work["runtimeMinutes"] * 60 * 10_000_000,
+    }
+    for work in [MOVIE, EPISODES[0]]
+    for release in work["releases"]
+}
 
 
 def increment(name: str) -> None:
@@ -210,7 +249,20 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/__smoke/state":
             with COUNTS_LOCK:
                 snapshot = dict(COUNTS)
+                snapshot["lastResolve"] = (
+                    dict(LAST_RESOLVE_REQUEST) if LAST_RESOLVE_REQUEST is not None else None
+                )
             self.send_json(200, snapshot)
+            return
+        if path.startswith("/api/v1/stream/ci-smoke-session-"):
+            # The stream URL is the capability: direct remote-source players intentionally send
+            # no Core machine key or Jellyfin credential when fetching it.
+            payload = b"streamarr-smoke-media"
+            self.send_response(200)
+            self.send_header("Content-Type", "video/x-matroska")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
             return
         if not self.authorized():
             return
@@ -244,24 +296,44 @@ class Handler(BaseHTTPRequestHandler):
         if body is None or not self.authorized():
             return
         if path == "/api/v1/resolve":
+            global LAST_RESOLVE_REQUEST
             try:
                 request = json.loads(body or b"{}")
             except json.JSONDecodeError:
                 self.send_json(400, {"error": {"code": "bad_request", "message": "Invalid JSON"}})
                 return
-            if request.get("releaseId") != "ci-smoke-release":
+            if not isinstance(request, dict):
+                self.send_json(400, {"error": {"code": "bad_request", "message": "Invalid request"}})
+                return
+
+            release_id = request.get("releaseId")
+            release = RESOLVABLE_RELEASES.get(release_id) if isinstance(release_id, str) else None
+            if release is None:
                 self.send_json(404, {"error": {"code": "not_found", "message": "Release not found"}})
                 return
-            increment("resolve")
+            if request.get("workId") != release["workId"]:
+                self.send_json(400, {"error": {"code": "work_mismatch", "message": "Release does not belong to work"}})
+                return
+
+            # Expose only the bounded, non-secret attribution fields needed by the smoke. Never
+            # retain arbitrary request properties even though the transport body is already capped.
+            last_resolve = {
+                "releaseId": release_id,
+                "workId": request.get("workId"),
+                "client": request.get("client"),
+            }
+            with COUNTS_LOCK:
+                COUNTS["resolve"] += 1
+                LAST_RESOLVE_REQUEST = last_resolve
             self.send_json(
                 200,
                 {
-                    "releaseId": "ci-smoke-release",
+                    "releaseId": release_id,
                     "status": "ready",
-                    "streamUrl": "/api/v1/stream/ci-smoke-session",
+                    "streamUrl": f"/api/v1/stream/ci-smoke-session-{release_id}",
                     "container": "mkv",
-                    "sizeBytes": 1048576,
-                    "runTimeTicks": 54000000000,
+                    "sizeBytes": release["sizeBytes"],
+                    "runTimeTicks": release["runTimeTicks"],
                     "mediaStreams": [{"type": "Video", "codec": "h264", "width": 1920, "height": 1080}],
                     "sessionTtlSeconds": 3600,
                 },

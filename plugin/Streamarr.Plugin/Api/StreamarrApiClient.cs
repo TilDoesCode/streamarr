@@ -45,6 +45,10 @@ public sealed class StreamarrApiClient
 
     private string BaseUrl => Config.ServerUrl.TrimEnd('/');
 
+    private string PublicStreamUrl => string.IsNullOrWhiteSpace(Config.PublicStreamUrl)
+        ? BaseUrl
+        : Config.PublicStreamUrl.TrimEnd('/');
+
     public async Task<HealthResponse?> GetHealthAsync(CancellationToken ct)
     {
         var response = await SendAsync<HealthResponse>(HttpMethod.Get, "/api/v1/health?deep=false", null, ct)
@@ -146,12 +150,21 @@ public sealed class StreamarrApiClient
         => await SendAsync<object>(HttpMethod.Post, "/api/v1/events", ev, ct).ConfigureAwait(false);
 
     /// <summary>
-    /// Resolves Core's session-capability path against the configured server origin. Absolute URLs
-    /// are accepted only for backward compatibility and must remain on that exact origin.
+    /// Resolves Core's session-capability path against the client-reachable stream base URL.
+    /// Core API traffic may use a private origin while the returned media path uses an HTTPS/LAN
+    /// origin reachable by Streamyfin and other direct remote-source clients. Absolute URLs from
+    /// Core are accepted only for backward compatibility and must remain on a configured origin.
     /// </summary>
-    public string ResolveStreamUrl(string? streamUrl) => ResolveStreamUrl(BaseUrl, streamUrl);
+    public string ResolveStreamUrl(string? streamUrl)
+        => ResolveStreamUrl(BaseUrl, PublicStreamUrl, streamUrl);
 
     internal static string ResolveStreamUrl(string configuredBaseUrl, string? streamUrl)
+        => ResolveStreamUrl(configuredBaseUrl, configuredBaseUrl, streamUrl);
+
+    internal static string ResolveStreamUrl(
+        string configuredBaseUrl,
+        string configuredPublicStreamUrl,
+        string? streamUrl)
     {
         if (!Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var baseUri)
             || !IsHttpScheme(baseUri.Scheme)
@@ -160,22 +173,44 @@ public sealed class StreamarrApiClient
             throw new InvalidOperationException("The configured Streamarr Core Server URL is invalid.");
         }
 
+        if (!Uri.TryCreate(configuredPublicStreamUrl, UriKind.Absolute, out var publicUri)
+            || !IsHttpScheme(publicUri.Scheme)
+            || !string.IsNullOrEmpty(publicUri.UserInfo)
+            || !string.IsNullOrEmpty(publicUri.Query)
+            || !string.IsNullOrEmpty(publicUri.Fragment))
+        {
+            throw new InvalidOperationException("The configured public Streamarr stream URL is invalid.");
+        }
+
         if (string.IsNullOrWhiteSpace(streamUrl)
-            || !Uri.TryCreate(baseUri, streamUrl, out var resolved)
-            || !IsHttpScheme(resolved.Scheme)
-            || !string.IsNullOrEmpty(resolved.UserInfo)
-            || !string.IsNullOrEmpty(resolved.Fragment)
-            || !string.IsNullOrEmpty(resolved.Query)
-            || !string.Equals(resolved.Scheme, baseUri.Scheme, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(resolved.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase)
-            || resolved.Port != baseUri.Port
-            || !IsCapabilityPath(resolved.AbsolutePath))
+            || !Uri.TryCreate(baseUri, streamUrl, out var returnedUri)
+            || !IsHttpScheme(returnedUri.Scheme)
+            || !string.IsNullOrEmpty(returnedUri.UserInfo)
+            || !string.IsNullOrEmpty(returnedUri.Fragment)
+            || !string.IsNullOrEmpty(returnedUri.Query)
+            || !IsConfiguredOrigin(returnedUri, baseUri, publicUri)
+            || !IsCapabilityPath(returnedUri.AbsolutePath))
         {
             throw new InvalidOperationException("Core returned an invalid or cross-origin stream capability URL.");
         }
 
+        var publicBase = configuredPublicStreamUrl.TrimEnd('/');
+        if (!Uri.TryCreate(publicBase + returnedUri.AbsolutePath, UriKind.Absolute, out var resolved)
+            || !SameOrigin(resolved, publicUri))
+        {
+            throw new InvalidOperationException("The public Streamarr capability URL could not be constructed.");
+        }
+
         return resolved.AbsoluteUri;
     }
+
+    private static bool IsConfiguredOrigin(Uri candidate, Uri baseUri, Uri publicUri)
+        => SameOrigin(candidate, baseUri) || SameOrigin(candidate, publicUri);
+
+    private static bool SameOrigin(Uri left, Uri right)
+        => string.Equals(left.Scheme, right.Scheme, StringComparison.OrdinalIgnoreCase)
+           && string.Equals(left.Host, right.Host, StringComparison.OrdinalIgnoreCase)
+           && left.Port == right.Port;
 
     private static bool IsHttpScheme(string scheme)
         => string.Equals(scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
