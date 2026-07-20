@@ -18,11 +18,14 @@ public sealed class StreamarrLiveStream(
     string? streamToken,
     PlaybackEventDispatcher dispatcher,
     PlaybackSessionTracker tracker,
-    ILogger logger) : ILiveStream
+    ILogger logger,
+    Action? releaseOffer = null) : ILiveStream
 {
     private int _closeQueued;
 
-    public int ConsumerCount { get; set; }
+    // MediaSourceManager decrements this on CloseLiveStream and closes at zero. This provider
+    // creates exclusive streams, so every newly opened instance starts with one consumer.
+    public int ConsumerCount { get; set; } = 1;
 
     public string? OriginalStreamId { get; set; }
 
@@ -54,6 +57,10 @@ public sealed class StreamarrLiveStream(
     {
         if (Interlocked.CompareExchange(ref _closeQueued, 1, 0) != 0)
             return;
+
+        // The OpenToken replay window begins when this live use ends, not when PlaybackInfo was
+        // first fetched. This also reference-counts concurrent opens of the same cached token.
+        releaseOffer?.Invoke();
 
         // A playback-stop callback may already have queued and forgotten this attribution.
         // Jellyfin prefixes MediaSource.LiveStreamId after the provider returns. UniqueId captures

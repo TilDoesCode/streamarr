@@ -105,6 +105,12 @@ const sessionsRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/sessions"), "SessionsPage"),
 });
 
+const streamStatsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/sessions/$sessionToken",
+  component: lazyRouteComponent(() => import("@/pages/stream-stats"), "StreamStatsPage"),
+});
+
 const libraryRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/library",
@@ -134,6 +140,7 @@ const routeTree = rootRoute.addChildren([
     searchRoute,
     playbackRoute,
     sessionsRoute,
+    streamStatsRoute,
     libraryRoute,
     ephemeralRoute,
     historyRoute,

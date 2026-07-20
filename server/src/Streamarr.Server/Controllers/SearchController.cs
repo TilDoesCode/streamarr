@@ -6,6 +6,7 @@ using Streamarr.Core.Parser;
 using Streamarr.Core.Ranking;
 using Streamarr.Core.Search;
 using Streamarr.Server.Auth;
+using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Services;
 
@@ -19,7 +20,10 @@ namespace Streamarr.Server.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1")]
-public class SearchController(SearchService searchService, SearchConcurrencyGate searchGate) : ControllerBase
+public class SearchController(
+    SearchService searchService,
+    SearchConcurrencyGate searchGate,
+    GeneralConfigService generalConfig) : ControllerBase
 {
     [HttpGet("search")]
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
@@ -57,13 +61,16 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
         try
         {
             var aggregation = await searchService.SearchAsync(query, cancellationToken);
+            var config = await generalConfig.GetAsync(cancellationToken);
+            var addStreamarrBadge = config.AddStreamarrBadge;
+            var addReleaseScoreToName = config.AddReleaseScoreToName;
             return Ok(new SearchResponse
             {
                 // Public discovery is an availability promise: expose only works with at least
                 // one release accepted by the selected quality profile, and never offer rejected
                 // versions for playback. /debug/search retains the complete assessment.
                 Results = aggregation.Works
-                    .Select(ToSearchWorkDto)
+                    .Select(work => ToSearchWorkDto(work, addStreamarrBadge, addReleaseScoreToName))
                     .Where(work => work is not null)
                     .Cast<WorkDto>()
                     .ToArray(),
@@ -129,7 +136,10 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
 
     // ---- /search mapping -----------------------------------------------------------
 
-    private static WorkDto? ToSearchWorkDto(Work work)
+    private static WorkDto? ToSearchWorkDto(
+        Work work,
+        bool addStreamarrBadge,
+        bool addReleaseScoreToName)
     {
         // Public discovery is semantic: unidentified parser buckets belong only in the
         // admin debug response. This prevents raw substring hits from appearing as fake
@@ -137,10 +147,16 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
         if (work.TmdbId is null)
             return null;
         var accepted = work.Releases.Where(release => !release.Rejected).ToArray();
-        return accepted.Length == 0 ? null : ToWorkDto(work, accepted);
+        return accepted.Length == 0
+            ? null
+            : ToWorkDto(work, accepted, addStreamarrBadge, addReleaseScoreToName);
     }
 
-    private static WorkDto ToWorkDto(Work work, IReadOnlyList<Release> releases) => new()
+    private static WorkDto ToWorkDto(
+        Work work,
+        IReadOnlyList<Release> releases,
+        bool addStreamarrBadge,
+        bool addReleaseScoreToName) => new()
     {
         WorkId = work.WorkId,
         MediaType = MediaTypeSlug(work.MediaType),
@@ -152,12 +168,22 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
         PosterUrl = work.PosterUrl,
         BackdropUrl = work.BackdropUrl,
         RuntimeMinutes = work.RuntimeMinutes,
+        OriginalTitle = work.OriginalTitle,
+        Tagline = work.Tagline,
+        OfficialRating = work.OfficialRating,
+        CommunityRating = work.CommunityRating,
+        Genres = work.Genres,
+        Studios = work.Studios,
+        ProductionLocations = work.ProductionLocations,
+        People = work.People,
+        TrailerUrl = work.TrailerUrl,
+        AddStreamarrBadge = addStreamarrBadge,
         Season = work.Season,
         Episode = work.Episode,
-        Releases = releases.Select(ToReleaseDto).ToArray(),
+        Releases = releases.Select(release => ToReleaseDto(release, addReleaseScoreToName)).ToArray(),
     };
 
-    private static ReleaseDto ToReleaseDto(Release release) => new()
+    private static ReleaseDto ToReleaseDto(Release release, bool addScoreToName) => new()
     {
         ReleaseId = release.ReleaseId,
         Title = release.Title,
@@ -169,6 +195,7 @@ public class SearchController(SearchService searchService, SearchConcurrencyGate
         AgeDays = release.AgeDays,
         Grabs = release.Grabs,
         Score = release.Score,
+        AddScoreToName = addScoreToName,
         Rejected = release.Rejected,
         RejectionReasons = release.RejectionReasons,
         Health = release.Health.ToString().ToLowerInvariant(),

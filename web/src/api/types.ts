@@ -34,6 +34,11 @@ export type ProviderSpeedTestResult = S["ProviderSpeedTestResult"];
 
 export type QualityProfile = S["QualityProfile"];
 export type SizeBand = S["SizeBand"];
+export type CustomFormatScore = S["CustomFormatScore"];
+export type ProfileImportPreviewRequest = S["ProfileImportPreviewRequest"];
+export type ProfileImportPreviewResponse = S["ProfileImportPreviewResponse"];
+export type ProfileImportRequest = S["ProfileImportRequest"];
+export type ProfileImportCandidate = S["ProfileImportCandidate"];
 
 export type DebugSearchRequest = S["DebugSearchRequest"];
 export type DebugSearchResponse = S["DebugSearchResponse"];
@@ -59,6 +64,7 @@ export type ResolveResponse = S["ResolveResponse"];
 export type MediaStreamInfo = S["MediaStreamInfo"];
 
 export type SessionResponse = S["SessionResponse"];
+export type MetricsResponse = S["MetricsResponse"];
 export type CachedReleaseResponse = S["CachedReleaseResponse"];
 export type EphemeralFileResponse = S["EphemeralFileResponse"];
 export type StreamingHistoryResponse = S["StreamingHistoryResponse"];

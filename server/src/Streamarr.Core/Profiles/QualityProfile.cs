@@ -1,4 +1,27 @@
+using Streamarr.Core.Media;
+
 namespace Streamarr.Core.Profiles;
+
+/// <summary>A single condition inside an imported Sonarr/Radarr custom format.</summary>
+public sealed record CustomFormatCondition
+{
+    public string Name { get; init; } = string.Empty;
+    public string Implementation { get; init; } = string.Empty;
+    public bool Negate { get; init; }
+    public bool Required { get; init; }
+    public string? Value { get; init; }
+    public double? Min { get; init; }
+    public double? Max { get; init; }
+    public bool ExceptLanguage { get; init; }
+}
+
+/// <summary>An imported custom format and the score assigned by its quality profile.</summary>
+public sealed record CustomFormatScore
+{
+    public string Name { get; init; } = string.Empty;
+    public int Score { get; init; }
+    public IReadOnlyList<CustomFormatCondition> Conditions { get; init; } = [];
+}
 
 /// <summary>
 /// A sane bytes-per-minute band for the fake / size-sanity rejection rule
@@ -22,6 +45,17 @@ public sealed record QualityProfile
     // JSON where a client legitimately omits it. Controller validation enforces a name.
     public string Id { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
+
+    /// <summary><c>both</c>, <c>movies</c>, or <c>shows</c>.</summary>
+    public string AppliesTo { get; init; } = "both";
+
+    /// <summary>Source application for an imported profile; null for native profiles.</summary>
+    public string? ImportedFrom { get; init; }
+
+    /// <summary>Source-side quality-profile id, retained for operator traceability.</summary>
+    public int? ImportedProfileId { get; init; }
+
+    public DateTimeOffset? ImportedAtUtc { get; init; }
 
     /// <summary>Preferred resolutions, best first (e.g. ["1080p", "2160p", "720p"]).</summary>
     public IReadOnlyList<string> PreferredResolutions { get; init; } = [];
@@ -59,6 +93,15 @@ public sealed record QualityProfile
     /// </summary>
     public int GroupDenyPenalty { get; init; } = 100_000;
 
+    /// <summary>
+    /// Sonarr/Radarr custom-format scores. Matching formats contribute their exact source
+    /// score in addition to Streamarr's native weighted terms.
+    /// </summary>
+    public IReadOnlyList<CustomFormatScore> CustomFormats { get; init; } = [];
+
+    /// <summary>Reject a release when its summed custom-format score falls below this value.</summary>
+    public int MinimumCustomFormatScore { get; init; }
+
     /// <summary>Global fallback bytes-per-minute band for size sanity (BRIEF §7.2).</summary>
     public long MinBytesPerMinute { get; init; } = 3_000_000;
     public long MaxBytesPerMinute { get; init; } = 1_500_000_000;
@@ -71,6 +114,12 @@ public sealed record QualityProfile
         = new Dictionary<string, SizeBand>(StringComparer.OrdinalIgnoreCase);
 
     public bool IsDefault { get; init; }
+
+    /// <summary>Whether this profile may be used for the requested media type.</summary>
+    public bool AppliesToMediaType(MediaType? mediaType) =>
+        AppliesTo.Equals("both", StringComparison.OrdinalIgnoreCase) ||
+        mediaType == MediaType.Movie && AppliesTo.Equals("movies", StringComparison.OrdinalIgnoreCase) ||
+        mediaType == MediaType.Tv && AppliesTo.Equals("shows", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Resolve the sane bytes-per-minute band for a claimed resolution.</summary>
     public SizeBand BandFor(string? resolution)

@@ -18,11 +18,15 @@ import type {
   IndexerResponse,
   IndexerTestResult,
   IndexerWrite,
+  MetricsResponse,
   ProviderResponse,
   ProviderSpeedTestRequest,
   ProviderSpeedTestResult,
   ProviderTestResult,
   ProviderWrite,
+  ProfileImportPreviewRequest,
+  ProfileImportPreviewResponse,
+  ProfileImportRequest,
   QualityProfile,
   ReorderRequest,
   ResolveRequest,
@@ -45,6 +49,7 @@ export const queryKeys = {
   providers: ["config", "providers"] as const,
   profiles: ["config", "profiles"] as const,
   sessions: ["sessions"] as const,
+  metrics: ["metrics"] as const,
   cachedReleases: ["library", "cached-releases"] as const,
   ephemeralFiles: ["ephemeral-files"] as const,
   streamingHistory: ["streaming-history"] as const,
@@ -167,6 +172,16 @@ export function useSessions({ enabled = true, refetchInterval = 3_000 } = {}) {
   return useQuery({
     queryKey: queryKeys.sessions,
     queryFn: ({ signal }) => apiFetch<SessionResponse[]>("/sessions", { signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+/** Global transport pressure used to put a single stream's NNTP usage in context. */
+export function useMetrics({ enabled = true, refetchInterval = 3_000 } = {}) {
+  return useQuery({
+    queryKey: queryKeys.metrics,
+    queryFn: ({ signal }) => apiFetch<MetricsResponse>("/metrics", { signal }),
     enabled,
     refetchInterval,
   });
@@ -519,6 +534,25 @@ export function useDeleteProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch<void>(`/config/profiles/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
+  });
+}
+
+export function usePreviewProfileImport() {
+  return useMutation({
+    mutationFn: (body: ProfileImportPreviewRequest) =>
+      apiFetch<ProfileImportPreviewResponse>("/config/profiles/import/preview", {
+        method: "POST",
+        body,
+      }),
+  });
+}
+
+export function useImportProfiles() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProfileImportRequest) =>
+      apiFetch<QualityProfile[]>("/config/profiles/import", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
   });
 }

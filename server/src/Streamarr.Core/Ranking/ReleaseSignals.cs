@@ -51,9 +51,13 @@ public sealed record ReleaseSignals
     public string? VideoCodec { get; init; }
     public string? AudioCodec { get; init; }
     public string? ReleaseGroup { get; init; }
+    public string? Edition { get; init; }
+    public int? Year { get; init; }
     public IReadOnlyList<string> Languages { get; init; } = [];
     public bool Proper { get; init; }
     public bool Repack { get; init; }
+    public bool SeasonPack { get; init; }
+    public int EpisodeCount { get; init; }
 
     /// <summary>Health-check outcome; <see cref="ReleaseHealth.Dead"/> is a rejection.</summary>
     public ReleaseHealth Health { get; init; } = ReleaseHealth.Unknown;
@@ -85,9 +89,13 @@ public sealed record ReleaseSignals
             VideoCodec = parsed.VideoCodec,
             AudioCodec = parsed.AudioCodec,
             ReleaseGroup = parsed.ReleaseGroup,
+            Edition = parsed.Edition,
+            Year = parsed.Year,
             Languages = parsed.Languages,
             Proper = parsed.Proper,
             Repack = parsed.Repack,
+            SeasonPack = parsed.SeasonPack,
+            EpisodeCount = parsed.Episodes.Count,
             Health = health,
             Nzb = nzb,
         };

@@ -15,7 +15,7 @@ namespace Streamarr.Server.Controllers;
 [ApiController]
 [Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/profiles")]
-public class ProfilesController(ProfileConfigService profiles) : ControllerBase
+public class ProfilesController(ProfileConfigService profiles, ProfileImportService importer) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<QualityProfile>), StatusCodes.Status200OK)]
@@ -86,10 +86,58 @@ public class ProfilesController(ProfileConfigService profiles) : ControllerBase
             : NotFound(ErrorResponse.Of("not_found", $"No profile with id '{id}'."));
     }
 
+    [HttpPost("import/preview")]
+    [ProducesResponseType(typeof(ProfileImportPreviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status502BadGateway)]
+    public async Task<ActionResult<ProfileImportPreviewResponse>> PreviewImport(
+        [FromBody] ProfileImportPreviewRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await importer.PreviewAsync(request, ct));
+        }
+        catch (ProfileImportException exception)
+        {
+            var error = ErrorResponse.Of("profile_import_failed", exception.Message);
+            return exception.RequestError ? BadRequest(error) : StatusCode(StatusCodes.Status502BadGateway, error);
+        }
+    }
+
+    [HttpPost("import")]
+    [ProducesResponseType(typeof(IReadOnlyList<QualityProfile>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status502BadGateway)]
+    public async Task<ActionResult<IReadOnlyList<QualityProfile>>> Import(
+        [FromBody] ProfileImportRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var drafts = await importer.BuildImportsAsync(request, ct);
+            foreach (var draft in drafts)
+            {
+                if (ValidateProfile(draft) is { } validation)
+                    return BadRequest(validation);
+            }
+
+            var created = await profiles.CreateManyAsync(drafts, ct);
+            return StatusCode(StatusCodes.Status201Created, created);
+        }
+        catch (ProfileImportException exception)
+        {
+            var error = ErrorResponse.Of("profile_import_failed", exception.Message);
+            return exception.RequestError ? BadRequest(error) : StatusCode(StatusCodes.Status502BadGateway, error);
+        }
+    }
+
     internal static ErrorResponse? ValidateProfile(QualityProfile? profile)
     {
         if (profile is null || string.IsNullOrWhiteSpace(profile.Name))
             return ErrorResponse.Of("invalid_profile", "A non-empty 'name' is required.");
+        if (profile.AppliesTo is null || profile.AppliesTo is not ("both" or "movies" or "shows"))
+            return ErrorResponse.Of("invalid_profile", "'appliesTo' must be 'movies', 'shows', or 'both'.");
         if (profile.Name.Length > 128 || profile.Id is null || profile.Id.Length > 128 ||
             ContainsControl(profile.Name) || ContainsControl(profile.Id))
             return ErrorResponse.Of("invalid_profile", "Profile id/name values are too long or contain control characters.");
@@ -120,6 +168,29 @@ public class ProfilesController(ProfileConfigService profiles) : ControllerBase
         };
         if (weights.Any(w => w is < 0 or > 1_000_000))
             return ErrorResponse.Of("invalid_profile", "Profile weights and bonuses must be between 0 and 1000000.");
+        if (profile.MinimumCustomFormatScore is < -10_000_000 or > 10_000_000 ||
+            profile.CustomFormats is null || profile.CustomFormats.Count > 256)
+            return ErrorResponse.Of("invalid_profile", "The custom-format score threshold or format count is invalid.");
+        foreach (var format in profile.CustomFormats)
+        {
+            if (format is null || string.IsNullOrWhiteSpace(format.Name) || format.Name.Length > 256 ||
+                ContainsControl(format.Name) || format.Score is < -10_000_000 or > 10_000_000 ||
+                format.Conditions is null || format.Conditions.Count > 64)
+                return ErrorResponse.Of("invalid_profile", "One or more custom formats are invalid.");
+            foreach (var condition in format.Conditions)
+            {
+                if (condition is null || string.IsNullOrWhiteSpace(condition.Implementation) ||
+                    condition.Name is null || condition.Implementation.Length > 128 || condition.Name.Length > 256 ||
+                    condition.Value?.Length > 4096 || ContainsControl(condition.Implementation) ||
+                    ContainsControl(condition.Name) || condition.Value is { } value && ContainsControl(value) ||
+                    condition.Min is < 0 || condition.Max is < 0 ||
+                    condition.Min is { } min && condition.Max is { } max && min > max)
+                    return ErrorResponse.Of("invalid_profile", "One or more custom-format conditions are invalid.");
+            }
+        }
+
+        if (profile.ImportedFrom is { } importedFrom && importedFrom is not ("sonarr" or "radarr"))
+            return ErrorResponse.Of("invalid_profile", "'importedFrom' must be Sonarr or Radarr.");
 
         const long maxBand = 16L * 1024 * 1024 * 1024 * 1024;
         if (!ValidBand(profile.MinBytesPerMinute, profile.MaxBytesPerMinute) ||

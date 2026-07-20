@@ -55,6 +55,7 @@ export function AppShell() {
     useRouterState({
       select: (s) => {
         const path = s.location.pathname;
+        if (path.startsWith("/sessions/")) return "Stream telemetry";
         return NAV_ITEMS.find((i) => (i.to === "/" ? path === "/" : path.startsWith(i.to)))?.label;
       },
     }) ?? "Streamarr";
@@ -64,7 +65,7 @@ export function AppShell() {
     select: (s) =>
       ["/search", "/library", "/ephemeral", "/history"].some((path) =>
         s.location.pathname.startsWith(path),
-      ),
+      ) || s.location.pathname.startsWith("/sessions/"),
   });
 
   return (

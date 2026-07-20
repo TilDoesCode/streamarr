@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -30,7 +29,7 @@ public sealed class NzbCacheService(
     TimeProvider time,
     ILogger<NzbCacheService> logger)
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _releaseGates = new(StringComparer.Ordinal);
+    private readonly KeyedAsyncLock _releaseGates = new();
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
 
     private string CacheDirectory
@@ -49,23 +48,15 @@ public sealed class NzbCacheService(
         Func<CancellationToken, Task<byte[]>> fetch,
         CancellationToken ct)
     {
-        var gate = _releaseGates.GetOrAdd(descriptor.ReleaseId, static _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
-        try
-        {
-            var cached = await TryReadAsync(descriptor, ct);
-            if (cached is not null)
-                return new CachedNzb(cached, true);
+        using var lease = await _releaseGates.AcquireAsync(descriptor.ReleaseId, ct);
+        var cached = await TryReadAsync(descriptor, ct);
+        if (cached is not null)
+            return new CachedNzb(cached, true);
 
-            var bytes = await fetch(ct);
-            var document = await ParseAsync(bytes, ct);
-            await StoreAsync(descriptor, bytes, document, ct);
-            return new CachedNzb(document, false);
-        }
-        finally
-        {
-            gate.Release();
-        }
+        var bytes = await fetch(ct);
+        var document = await ParseAsync(bytes, ct);
+        await StoreAsync(descriptor, bytes, document, ct);
+        return new CachedNzb(document, false);
     }
 
     public async Task<IReadOnlyList<CachedReleaseEntity>> ListAsync(CancellationToken ct)

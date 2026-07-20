@@ -75,13 +75,19 @@ public class PlaybackEventDispatcherTests
             NullLogger.Instance);
         dispatcher.Start();
         var tracker = new PlaybackSessionTracker();
+        var offerReleases = 0;
         tracker.TrackSession(Guid.NewGuid(), "live-1", "release-1", "work-1", "capability-1");
         var liveStream = new StreamarrLiveStream(
             new MediaSourceInfo { LiveStreamId = "live-1" },
             "capability-1",
             dispatcher,
             tracker,
-            NullLogger.Instance);
+            NullLogger.Instance,
+            () => offerReleases++);
+
+        // MediaSourceManager decrements this value on every CloseLiveStream call and closes at
+        // zero. A newly opened exclusive stream therefore starts with exactly one consumer.
+        Assert.Equal(1, liveStream.ConsumerCount);
 
         // Jellyfin rewrites this value to a provider-prefixed composite id after open.
         liveStream.MediaSource.LiveStreamId = "provider_live-1";
@@ -91,7 +97,61 @@ public class PlaybackEventDispatcherTests
         await dispatcher.StopAsync(CancellationToken.None);
 
         Assert.Equal(["capability-1"], closed);
+        Assert.Equal(1, offerReleases);
         Assert.Empty(tracker.All());
+    }
+
+    [Fact]
+    public async Task CriticalClose_SurvivesTelemetryQueueSaturation()
+    {
+        var sendEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closed = new List<string>();
+        async Task Send(EventRequest _, CancellationToken ct)
+        {
+            sendEntered.TrySetResult();
+            await releaseSend.Task.WaitAsync(ct);
+        }
+
+        var dispatcher = new PlaybackEventDispatcher(
+            Send,
+            (token, _) =>
+            {
+                closed.Add(token);
+                return Task.CompletedTask;
+            },
+            NullLogger.Instance);
+        dispatcher.Start();
+        Assert.True(dispatcher.EnqueueEvent(Event("start", 0), "first"));
+        await sendEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // Fill the bounded telemetry channel while its only reader is blocked.
+        for (var index = 0; index < 128; index++)
+            Assert.True(dispatcher.EnqueueEvent(Event("start", index), $"queued-{index}"));
+
+        Assert.True(dispatcher.EnqueueClose("critical-session"));
+        releaseSend.TrySetResult();
+        await dispatcher.StopAsync(CancellationToken.None);
+
+        Assert.Equal(["critical-session"], closed);
+    }
+
+    [Fact]
+    public async Task CriticalClose_RetriesTransientDeliveryFailures()
+    {
+        var attempts = 0;
+        var dispatcher = new PlaybackEventDispatcher(
+            (_, _) => Task.CompletedTask,
+            (_, _) => ++attempts < 3
+                ? Task.FromException(new HttpRequestException("transient"))
+                : Task.CompletedTask,
+            NullLogger.Instance);
+        dispatcher.Start();
+
+        Assert.True(dispatcher.EnqueueClose("session-1"));
+        await dispatcher.StopAsync(CancellationToken.None);
+
+        Assert.Equal(3, attempts);
     }
 
     private static EventRequest Event(string kind, long position) => new()

@@ -1420,6 +1420,136 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config/profiles/import/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProfileImportPreviewRequest"];
+                    "text/json": components["schemas"]["ProfileImportPreviewRequest"];
+                    "application/*+json": components["schemas"]["ProfileImportPreviewRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProfileImportPreviewResponse"];
+                        "application/json": components["schemas"]["ProfileImportPreviewResponse"];
+                        "text/json": components["schemas"]["ProfileImportPreviewResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/profiles/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProfileImportRequest"];
+                    "text/json": components["schemas"]["ProfileImportRequest"];
+                    "application/*+json": components["schemas"]["ProfileImportRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["QualityProfile"][];
+                        "application/json": components["schemas"]["QualityProfile"][];
+                        "text/json": components["schemas"]["QualityProfile"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config/providers": {
         parameters: {
             query?: never;
@@ -2431,6 +2561,24 @@ export interface components {
             name: string | null;
             token: string | null;
         };
+        CustomFormatCondition: {
+            name?: string | null;
+            implementation?: string | null;
+            negate?: boolean;
+            required?: boolean;
+            value?: string | null;
+            /** Format: double */
+            min?: number | null;
+            /** Format: double */
+            max?: number | null;
+            exceptLanguage?: boolean;
+        };
+        CustomFormatScore: {
+            name?: string | null;
+            /** Format: int32 */
+            score?: number;
+            conditions?: components["schemas"]["CustomFormatCondition"][] | null;
+        };
         DebugReleaseDto: {
             releaseId: string | null;
             title: string | null;
@@ -2561,6 +2709,8 @@ export interface components {
             segmentCacheSizeMb?: number;
             /** Format: int32 */
             connectionBudget?: number;
+            addStreamarrBadge?: boolean;
+            addReleaseScoreToName?: boolean;
         };
         /** @description Write model for general config. Secret Streamarr.Server.Config.GeneralConfigWrite.TmdbApiKey is write-only. */
         GeneralConfigWrite: {
@@ -2573,6 +2723,8 @@ export interface components {
             segmentCacheSizeMb?: number | null;
             /** Format: int32 */
             connectionBudget?: number | null;
+            addStreamarrBadge?: boolean | null;
+            addReleaseScoreToName?: boolean | null;
         };
         HealthResponse: {
             status: string | null;
@@ -2809,6 +2961,43 @@ export interface components {
             seasonPack?: boolean;
             airDate?: string | null;
         };
+        ProfileImportCandidate: {
+            /** Format: int32 */
+            externalId?: number;
+            name: string | null;
+            suggestedAppliesTo: string | null;
+            /** Format: int32 */
+            qualityCount?: number;
+            /** Format: int32 */
+            scoredFormatCount?: number;
+            /** Format: int32 */
+            supportedConditionCount?: number;
+            /** Format: int32 */
+            unsupportedConditionCount?: number;
+            profile: components["schemas"]["QualityProfile"];
+        };
+        ProfileImportPreviewRequest: {
+            source: string | null;
+            baseUrl: string | null;
+            apiKey: string | null;
+        };
+        ProfileImportPreviewResponse: {
+            source: string | null;
+            instanceName: string | null;
+            version?: string | null;
+            profiles: components["schemas"]["ProfileImportCandidate"][] | null;
+        };
+        ProfileImportRequest: {
+            source: string | null;
+            baseUrl: string | null;
+            apiKey: string | null;
+            profiles: components["schemas"]["ProfileImportSelection"][] | null;
+        };
+        ProfileImportSelection: {
+            /** Format: int32 */
+            externalId?: number;
+            appliesTo: string | null;
+        };
         ProviderConnectionMetric: {
             name: string | null;
             /** Format: int32 */
@@ -2930,6 +3119,12 @@ export interface components {
         QualityProfile: {
             id?: string | null;
             name?: string | null;
+            appliesTo?: string | null;
+            importedFrom?: string | null;
+            /** Format: int32 */
+            importedProfileId?: number | null;
+            /** Format: date-time */
+            importedAtUtc?: string | null;
             preferredResolutions?: string[] | null;
             preferredSources?: string[] | null;
             preferredCodecs?: string[] | null;
@@ -2958,6 +3153,9 @@ export interface components {
             groupAllowBonus?: number;
             /** Format: int32 */
             groupDenyPenalty?: number;
+            customFormats?: components["schemas"]["CustomFormatScore"][] | null;
+            /** Format: int32 */
+            minimumCustomFormatScore?: number;
             /** Format: int64 */
             minBytesPerMinute?: number;
             /** Format: int64 */
@@ -2998,6 +3196,7 @@ export interface components {
             grabs?: number;
             /** Format: int32 */
             score?: number;
+            addScoreToName?: boolean;
             rejected?: boolean;
             rejectionReasons?: string[] | null;
             /** @description "unknown" | "ready" | "degraded" | "dead" (known only after a resolve). */
@@ -3160,6 +3359,16 @@ export interface components {
             /** Format: date-time */
             receivedAt?: string;
         };
+        TmdbPerson: {
+            name: string | null;
+            type: string | null;
+            role?: string | null;
+            /** Format: int32 */
+            sortOrder?: number | null;
+            /** Format: int32 */
+            tmdbId?: number | null;
+            profileUrl?: string | null;
+        };
         TvEpisodeDto: {
             workId: string | null;
             mediaType: string | null;
@@ -3176,6 +3385,10 @@ export interface components {
             /** Format: int32 */
             runtimeMinutes?: number | null;
             stillUrl?: string | null;
+            /** Format: float */
+            communityRating?: number | null;
+            people?: components["schemas"]["TmdbPerson"][] | null;
+            addStreamarrBadge?: boolean;
             releases: components["schemas"]["ReleaseDto"][] | null;
         };
         /**
@@ -3226,6 +3439,17 @@ export interface components {
             seasonCount?: number | null;
             /** Format: int32 */
             episodeCount?: number | null;
+            originalTitle?: string | null;
+            tagline?: string | null;
+            officialRating?: string | null;
+            /** Format: float */
+            communityRating?: number | null;
+            genres?: string[] | null;
+            studios?: string[] | null;
+            productionLocations?: string[] | null;
+            people?: components["schemas"]["TmdbPerson"][] | null;
+            trailerUrl?: string | null;
+            addStreamarrBadge?: boolean;
         };
         /** @description TMDB-ranked TV series candidates. The endpoint is intentionally capped at three. */
         TvSeriesSearchResponse: {
@@ -3247,6 +3471,17 @@ export interface components {
             backdropUrl?: string | null;
             /** Format: int32 */
             runtimeMinutes?: number | null;
+            originalTitle?: string | null;
+            tagline?: string | null;
+            officialRating?: string | null;
+            /** Format: float */
+            communityRating?: number | null;
+            genres?: string[] | null;
+            studios?: string[] | null;
+            productionLocations?: string[] | null;
+            people?: components["schemas"]["TmdbPerson"][] | null;
+            trailerUrl?: string | null;
+            addStreamarrBadge?: boolean;
             /**
              * Format: int32
              * @description Set for TV works.

@@ -176,9 +176,9 @@ The same three calls, wrapped by the plugin's translation to Jellyfin's data mod
    to the unmodified native response** (BRIEF §11).
 4. Play → Jellyfin requests `PlaybackInfo`. The plugin's `IMediaSourceProvider`
    returns one `MediaSourceInfo` per release (`RequiresOpening = true`,
-   opaque, bounded, short-lived, one-use `OpenToken` tied to that authenticated user,
+   opaque, bounded, replay-safe `OpenToken` tied to that authenticated user,
    item, work, and offered release). **No Usenet contact yet.**
-5. `OpenMediaSource(openToken)` consumes and validates the offer, then calls
+5. `OpenMediaSource(openToken)` validates the offer, then calls
    `POST /api/v1/resolve`. It accepts only a server-attributed release from the same
    offered work. On `ready` it returns
    `MediaSourceInfo { Path = streamUrl, Protocol = Http, IsRemote = true,

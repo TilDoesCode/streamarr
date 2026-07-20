@@ -127,4 +127,98 @@ public class WeightedSumRankerTests
         var reasons = new RejectionEngine().Evaluate(Signals(group: "BADGRP"), profile);
         Assert.Empty(reasons);
     }
+
+    [Fact]
+    public void ImportedCustomFormats_ContributeTheirExactScores()
+    {
+        var profile = Profile with
+        {
+            CustomFormats =
+            [
+                new CustomFormatScore
+                {
+                    Name = "Prefer x265",
+                    Score = 425,
+                    Conditions =
+                    [
+                        new CustomFormatCondition
+                        {
+                            Implementation = "ReleaseTitleSpecification",
+                            Value = @"\bx265\b",
+                        },
+                    ],
+                },
+            ],
+        };
+
+        var matched = Ranker.Score(Signals() with { ReleaseName = "Movie.2026.1080p.WEB-DL.x265-GROUP" }, profile);
+        var unmatched = Ranker.Score(Signals() with { ReleaseName = "Movie.2026.1080p.WEB-DL.x264-GROUP" }, profile);
+
+        Assert.Equal(425, matched.Total - unmatched.Total);
+        Assert.Contains(matched.Breakdown, line => line.Rule == "custom-format:Prefer x265" && line.Points == 425);
+    }
+
+    [Fact]
+    public void CustomFormat_RequiresEveryImplementationGroup_AndRequiredConditions()
+    {
+        var format = new CustomFormatScore
+        {
+            Name = "WEB x265",
+            Score = 1000,
+            Conditions =
+            [
+                new CustomFormatCondition { Implementation = "ReleaseTitleSpecification", Value = "x264" },
+                new CustomFormatCondition { Implementation = "ReleaseTitleSpecification", Value = "x265" },
+                new CustomFormatCondition { Implementation = "SourceSpecification", Value = "WEB-DL", Required = true },
+            ],
+        };
+        var profile = Profile with { CustomFormats = [format] };
+
+        Assert.Single(CustomFormatMatcher.MatchingFormats(
+            Signals(source: "WEB-DL") with { ReleaseName = "Movie.x265" },
+            profile));
+        Assert.Empty(CustomFormatMatcher.MatchingFormats(
+            Signals(source: "BluRay") with { ReleaseName = "Movie.x265" },
+            profile));
+    }
+
+    [Theory]
+    [InlineData("movies", Streamarr.Core.Media.MediaType.Movie, true)]
+    [InlineData("movies", Streamarr.Core.Media.MediaType.Tv, false)]
+    [InlineData("shows", Streamarr.Core.Media.MediaType.Tv, true)]
+    [InlineData("shows", Streamarr.Core.Media.MediaType.Movie, false)]
+    [InlineData("both", Streamarr.Core.Media.MediaType.Movie, true)]
+    [InlineData("both", Streamarr.Core.Media.MediaType.Tv, true)]
+    [InlineData("movies", null, false)]
+    public void ProfileScope_RestrictsMediaType(string appliesTo, Streamarr.Core.Media.MediaType? type, bool expected)
+    {
+        Assert.Equal(expected, (Profile with { AppliesTo = appliesTo }).AppliesToMediaType(type));
+    }
+
+    [Fact]
+    public void NegatedUnsupportedArrCondition_NeverCreatesAFalsePositive()
+    {
+        var profile = Profile with
+        {
+            CustomFormats =
+            [
+                new CustomFormatScore
+                {
+                    Name = "Indexer-only rule",
+                    Score = 1000,
+                    Conditions =
+                    [
+                        new CustomFormatCondition
+                        {
+                            Implementation = "IndexerFlagSpecification",
+                            Value = "8",
+                            Negate = true,
+                        },
+                    ],
+                },
+            ],
+        };
+
+        Assert.Empty(CustomFormatMatcher.MatchingFormats(Signals(), profile));
+    }
 }

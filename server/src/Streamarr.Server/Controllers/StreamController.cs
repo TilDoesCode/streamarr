@@ -41,6 +41,11 @@ public class StreamController(SessionManager sessionManager) : ControllerBase
             return StatusCode(StatusCodes.Status429TooManyRequests, ErrorResponse.Of(
                 "stream_capacity", "The stream concurrency limit is currently reached; retry shortly."));
         }
+        catch (SessionUnavailableException)
+        {
+            return NotFound(ErrorResponse.Of(
+                "unknown_stream", "The live session closed or expired before the stream could be opened."));
+        }
     }
 
     private void SetCapabilityResponseHeaders()

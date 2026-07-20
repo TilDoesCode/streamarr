@@ -1,3 +1,5 @@
+using Streamarr.Core.Tmdb;
+
 namespace Streamarr.Server.Contracts;
 
 /// <summary>TMDB-ranked TV series candidates. The endpoint is intentionally capped at three.</summary>
@@ -21,6 +23,16 @@ public sealed record TvSeriesDto
     public int? RuntimeMinutes { get; init; }
     public int? SeasonCount { get; init; }
     public int? EpisodeCount { get; init; }
+    public string? OriginalTitle { get; init; }
+    public string? Tagline { get; init; }
+    public string? OfficialRating { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<string> Genres { get; init; } = [];
+    public IReadOnlyList<string> Studios { get; init; } = [];
+    public IReadOnlyList<string> ProductionLocations { get; init; } = [];
+    public IReadOnlyList<TmdbPerson> People { get; init; } = [];
+    public string? TrailerUrl { get; init; }
+    public bool AddStreamarrBadge { get; init; } = true;
 }
 
 /// <summary>A series plus its lazily discoverable season directory.</summary>
@@ -68,5 +80,8 @@ public sealed record TvEpisodeDto
     public string? AirDate { get; init; }
     public int? RuntimeMinutes { get; init; }
     public string? StillUrl { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<TmdbPerson> People { get; init; } = [];
+    public bool AddStreamarrBadge { get; init; } = true;
     public required IReadOnlyList<ReleaseDto> Releases { get; init; }
 }

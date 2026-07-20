@@ -35,10 +35,12 @@ public sealed class EphemeralLibraryService(
     IUserDataManager userDataManager,
     IProviderManager providerManager,
     IFileSystem fileSystem,
+    ArtworkBadgeService artworkBadge,
     ILogger<EphemeralLibraryService> logger)
 {
     public const int MaxEphemeralItems = 500;
     public const string EphemeralTag = "usenet-ephemeral";
+    public const string StreamarrTag = "streamarr";
     public const string WorkIdProviderKey = "UsenetWorkId";
     public const string OwnerProviderKey = "StreamarrOwner";
     public const string OwnerProviderValue = "6f8d5c7a-9b2e-4a1f-8c3d-2e5a7b9c0d11";
@@ -109,6 +111,14 @@ public sealed class EphemeralLibraryService(
             var creates = new List<BaseItem>();
             var updates = new List<BaseItem>();
             var retiredStoreIds = new List<Guid>();
+            var artworkTasks = details.Seasons.ToDictionary(
+                season => season.WorkId,
+                season => artworkBadge.GetPosterAsync(
+                    season.PosterUrl,
+                    season.WorkId,
+                    details.Series.AddStreamarrBadge,
+                    ct));
+            await Task.WhenAll(artworkTasks.Values).ConfigureAwait(false);
             foreach (var season in details.Seasons)
             {
                 ct.ThrowIfCancellationRequested();
@@ -127,7 +137,7 @@ public sealed class EphemeralLibraryService(
                 }
 
                 var item = existing as Season ?? new Season { Id = itemId };
-                PopulateSeason(item, season, parent);
+                PopulateSeason(item, season, parent, await artworkTasks[season.WorkId].ConfigureAwait(false));
                 (existing is null ? creates : updates).Add(item);
             }
 
@@ -162,6 +172,7 @@ public sealed class EphemeralLibraryService(
             var seasonId = await MaterializeSeasonCoreAsync(
                     details.Season,
                     seriesId,
+                    details.Series.AddStreamarrBadge,
                     ct)
                 .ConfigureAwait(false);
             if (libraryManager.GetItemById(seriesId) is not Series seriesParent)
@@ -175,6 +186,15 @@ public sealed class EphemeralLibraryService(
             var updates = new List<BaseItem>();
             var retiredStoreIds = new List<Guid>();
             var works = new List<KeyValuePair<Guid, WorkDto>>(details.Episodes.Count);
+            var episodePeople = new List<(BaseItem Item, IReadOnlyList<PersonDto> People)>(details.Episodes.Count);
+            var artworkTasks = details.Episodes.ToDictionary(
+                episode => episode.WorkId,
+                episode => artworkBadge.GetPosterAsync(
+                    episode.StillUrl,
+                    episode.WorkId,
+                    episode.AddStreamarrBadge,
+                    ct));
+            await Task.WhenAll(artworkTasks.Values).ConfigureAwait(false);
             foreach (var episode in details.Episodes)
             {
                 ct.ThrowIfCancellationRequested();
@@ -193,9 +213,16 @@ public sealed class EphemeralLibraryService(
                 }
 
                 var item = existing as Episode ?? new Episode { Id = itemId };
-                PopulateEpisode(item, episode, seriesParent, seasonParent, details.Series);
+                PopulateEpisode(
+                    item,
+                    episode,
+                    seriesParent,
+                    seasonParent,
+                    details.Series,
+                    await artworkTasks[episode.WorkId].ConfigureAwait(false));
                 (existing is null ? creates : updates).Add(item);
                 works.Add(new KeyValuePair<Guid, WorkDto>(itemId, episode.ToWork()));
+                episodePeople.Add((item, episode.People));
             }
 
             await RemoveStaleDirectChildrenAsync(seasonParent.Id, BaseItemKind.Episode, ids.ToHashSet(), ct)
@@ -209,6 +236,8 @@ public sealed class EphemeralLibraryService(
                 .ConfigureAwait(false);
             SaveBatch(creates, seasonParent, ct);
             await UpdateBatchAsync(updates, seasonParent, ct).ConfigureAwait(false);
+            foreach (var (item, people) in episodePeople)
+                await ApplyPeopleAsync(item, people, ct).ConfigureAwait(false);
             if (!await store.PutRangeAsync(works, ct).ConfigureAwait(false))
                 throw new IOException("Could not persist the Streamarr episode release cache.");
             await MarkHierarchyCompleteAsync(seasonParent, ids.Count, ct).ConfigureAwait(false);
@@ -384,14 +413,21 @@ public sealed class EphemeralLibraryService(
         var isNew = existing is null;
         await EnsureCapacityAsync(new HashSet<Guid> { itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
         var item = existing as Series ?? new Series { Id = itemId };
-        PopulateSeries(item, series, folder.Id);
+        var primaryImage = await artworkBadge.GetPosterAsync(
+            series.PosterUrl,
+            series.WorkId,
+            series.AddStreamarrBadge,
+            ct).ConfigureAwait(false);
+        PopulateSeries(item, series, folder.Id, primaryImage);
         await SaveAsync(item, folder, isNew, ct).ConfigureAwait(false);
+        await ApplyPeopleAsync(item, series.People, ct).ConfigureAwait(false);
         return itemId;
     }
 
     private async Task<Guid> MaterializeSeasonCoreAsync(
         TvSeasonDto season,
         Guid seriesId,
+        bool addStreamarrBadge,
         CancellationToken ct)
     {
         if (libraryManager.GetItemById(seriesId) is not Series parent)
@@ -409,7 +445,12 @@ public sealed class EphemeralLibraryService(
         var isNew = existing is null;
         await EnsureCapacityAsync(new HashSet<Guid> { seriesId, itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
         var item = existing as Season ?? new Season { Id = itemId };
-        PopulateSeason(item, season, parent);
+        var primaryImage = await artworkBadge.GetPosterAsync(
+            season.PosterUrl,
+            season.WorkId,
+            addStreamarrBadge,
+            ct).ConfigureAwait(false);
+        PopulateSeason(item, season, parent, primaryImage);
         await SaveAsync(item, parent, isNew, ct).ConfigureAwait(false);
         return itemId;
     }
@@ -419,7 +460,8 @@ public sealed class EphemeralLibraryService(
         TvEpisodeDto episode,
         Series series,
         Season season,
-        TvSeriesDto seriesMetadata)
+        TvSeriesDto seriesMetadata,
+        string? primaryImage)
     {
         item.Name = episode.Title;
         item.Overview = episode.Overview;
@@ -434,6 +476,8 @@ public sealed class EphemeralLibraryService(
         // These are real catalog entries backed by the plugin media-source provider. Marking them
         // virtual makes Jellyfin's native isMissing=false episode queries remove them.
         item.IsVirtualItem = false;
+        ApplyMetadata(item, episode.CommunityRating, originalTitle: null, tagline: null,
+            officialRating: null, genres: [], studios: [], productionLocations: [], trailerUrl: null);
         ApplyAirDate(item, episode.AirDate);
         if (episode.RuntimeMinutes is { } minutes && minutes > 0)
             item.RunTimeTicks = TimeSpan.FromMinutes(minutes).Ticks;
@@ -441,10 +485,14 @@ public sealed class EphemeralLibraryService(
         // NULL keys collapse into one group in Jellyfin's recursive de-duplication queries.
         item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
         ApplyTags(item);
-        TryApplyImage(item, episode.StillUrl, ImageType.Primary);
+        TryApplyImage(item, primaryImage, ImageType.Primary);
     }
 
-    private void PopulateSeason(Season item, TvSeasonDto season, Series series)
+    private void PopulateSeason(
+        Season item,
+        TvSeasonDto season,
+        Series series,
+        string? primaryImage)
     {
         item.Name = season.Title;
         item.Overview = season.Overview;
@@ -461,10 +509,14 @@ public sealed class EphemeralLibraryService(
         item.ProviderIds[CatalogChildCountProviderKey] = season.EpisodeCount.ToString(
             System.Globalization.CultureInfo.InvariantCulture);
         ApplyTags(item);
-        TryApplyImage(item, season.PosterUrl, ImageType.Primary);
+        TryApplyImage(item, primaryImage, ImageType.Primary);
     }
 
-    private void PopulateSeries(Series item, TvSeriesDto series, Guid folderId)
+    private void PopulateSeries(
+        Series item,
+        TvSeriesDto series,
+        Guid folderId,
+        string? primaryImage)
     {
         item.Name = series.Title;
         item.ProductionYear = series.Year;
@@ -473,6 +525,16 @@ public sealed class EphemeralLibraryService(
         // Non-virtual so the series participates in Next Up's series queries and in library
         // browsing (recursive folder queries default to IsVirtualItem=false).
         item.IsVirtualItem = false;
+        ApplyMetadata(
+            item,
+            series.CommunityRating,
+            series.OriginalTitle,
+            series.Tagline,
+            series.OfficialRating,
+            series.Genres,
+            series.Studios,
+            series.ProductionLocations,
+            series.TrailerUrl);
         if (series.Year is { } year)
             item.PremiereDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         if (series.RuntimeMinutes is { } minutes && minutes > 0)
@@ -481,7 +543,7 @@ public sealed class EphemeralLibraryService(
         // Native season/episode queries are keyed through the persisted presentation key.
         item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
         ApplyTags(item);
-        TryApplyImage(item, series.PosterUrl, ImageType.Primary);
+        TryApplyImage(item, primaryImage, ImageType.Primary);
         TryApplyImage(item, series.BackdropUrl, ImageType.Backdrop);
     }
 
@@ -636,6 +698,11 @@ public sealed class EphemeralLibraryService(
                         ?? (isEpisode
                             ? new Episode { Id = itemId }
                             : new Movie { Id = itemId });
+        var primaryImage = await artworkBadge.GetPosterAsync(
+            work.PosterUrl,
+            work.WorkId,
+            work.AddStreamarrBadge,
+            ct).ConfigureAwait(false);
 
         item.Name = work.Title;
         item.ProductionYear = work.Year;
@@ -646,6 +713,16 @@ public sealed class EphemeralLibraryService(
         // repository), so virtual items can never resume. Isolation from user views is achieved
         // through folder placement, not through the virtual flag.
         item.IsVirtualItem = false;
+        ApplyMetadata(
+            item,
+            work.CommunityRating,
+            work.OriginalTitle,
+            work.Tagline,
+            work.OfficialRating,
+            work.Genres,
+            work.Studios,
+            work.ProductionLocations,
+            work.TrailerUrl);
         if (work.Year is { } year)
             item.PremiereDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         if (work.RuntimeMinutes is { } minutes && minutes > 0)
@@ -661,7 +738,7 @@ public sealed class EphemeralLibraryService(
         // NULL key all collapse into one group and vanish. Every materialized row needs one.
         item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
         ApplyTags(item);
-        TryApplyImage(item, work.PosterUrl, ImageType.Primary);
+        TryApplyImage(item, primaryImage, ImageType.Primary);
         TryApplyImage(item, work.BackdropUrl, ImageType.Backdrop);
 
         if (isNew)
@@ -677,6 +754,7 @@ public sealed class EphemeralLibraryService(
             logger.LogDebug("Refreshed ephemeral work {WorkId} (item {ItemId})", work.WorkId, itemId);
         }
 
+        await ApplyPeopleAsync(item, work.People, ct).ConfigureAwait(false);
         store.Put(itemId, work);
         return itemId;
     }
@@ -1531,7 +1609,77 @@ public sealed class EphemeralLibraryService(
         var tags = item.Tags?.ToList() ?? [];
         if (!tags.Contains(EphemeralTag, StringComparer.OrdinalIgnoreCase))
             tags.Add(EphemeralTag);
+        if (!tags.Contains(StreamarrTag, StringComparer.OrdinalIgnoreCase))
+            tags.Add(StreamarrTag);
         item.Tags = tags.ToArray();
+    }
+
+    private static void ApplyMetadata(
+        BaseItem item,
+        float? communityRating,
+        string? originalTitle,
+        string? tagline,
+        string? officialRating,
+        IReadOnlyList<string> genres,
+        IReadOnlyList<string> studios,
+        IReadOnlyList<string> productionLocations,
+        string? trailerUrl)
+    {
+        item.CommunityRating = communityRating;
+        item.OriginalTitle = originalTitle;
+        item.Tagline = tagline;
+        item.OfficialRating = officialRating;
+        item.Genres = genres.ToArray();
+        item.SetStudios(studios);
+        item.ProductionLocations = productionLocations.ToArray();
+        item.RemoteTrailers = string.IsNullOrWhiteSpace(trailerUrl)
+            ? []
+            : [new MediaUrl { Name = "Trailer", Url = trailerUrl }];
+    }
+
+    private async Task ApplyPeopleAsync(
+        BaseItem item,
+        IReadOnlyList<PersonDto> people,
+        CancellationToken ct)
+    {
+        var mapped = people
+            .Take(100)
+            .Select(ToPersonInfo)
+            .Where(person => person is not null)
+            .Cast<PersonInfo>()
+            .ToArray();
+        await libraryManager.UpdatePeopleAsync(item, mapped, ct).ConfigureAwait(false);
+    }
+
+    private static PersonInfo? ToPersonInfo(PersonDto person)
+    {
+        var kind = person.Type switch
+        {
+            "Actor" => PersonKind.Actor,
+            "Director" => PersonKind.Director,
+            "Writer" => PersonKind.Writer,
+            "Producer" => PersonKind.Producer,
+            "Composer" => PersonKind.Composer,
+            _ => (PersonKind?)null,
+        };
+        if (kind is null || string.IsNullOrWhiteSpace(person.Name))
+            return null;
+
+        var result = new PersonInfo
+        {
+            Name = person.Name,
+            Type = kind.Value,
+            Role = person.Role,
+            SortOrder = person.SortOrder,
+            ImageUrl = person.ProfileUrl,
+        };
+        if (person.TmdbId is > 0)
+        {
+            result.ProviderIds[MetadataProvider.Tmdb.ToString()] =
+                person.TmdbId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return result;
     }
 
     private void TryApplyImage(BaseItem item, string? imageUrl, ImageType imageType)

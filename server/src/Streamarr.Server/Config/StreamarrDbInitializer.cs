@@ -94,6 +94,8 @@ public sealed class StreamarrDbInitializer(
                 SearchCacheTtlSeconds = opts.Search.SearchCacheTtlSeconds,
                 SegmentCacheSizeMb = opts.SegmentCacheSizeMb,
                 ConnectionBudget = opts.ConnectionBudget,
+                AddStreamarrBadge = true,
+                AddReleaseScoreToName = true,
             });
         }
 

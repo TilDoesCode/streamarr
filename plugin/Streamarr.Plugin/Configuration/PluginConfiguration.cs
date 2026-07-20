@@ -98,6 +98,16 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool LibraryEnabled { get; set; } = true;
 
     /// <summary>
+    /// Compatibility shim for Swiftfin (iOS/tvOS). Swiftfin cannot play remote
+    /// <c>RequiresOpening</c> media sources on movies/episodes — it requests a static file
+    /// stream instead of opening the live stream — so its PlaybackInfo requests for
+    /// Streamarr items are rewritten to auto-open the stream server-side and answer with a
+    /// remux (stream-copy) transcoding URL. Scoped to Swiftfin clients and Streamarr items
+    /// only; every other client keeps its native direct-play behavior. On by default.
+    /// </summary>
+    public bool SwiftfinCompatibilityEnabled { get; set; } = true;
+
+    /// <summary>
     /// Optional Core Server quality-profile id to pass through on searches. Empty = use
     /// the server's default profile.
     /// </summary>

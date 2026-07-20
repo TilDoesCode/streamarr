@@ -98,7 +98,9 @@ public sealed class SearchService(
 
         var indexerResult = await indexerSearch.SearchAsync(newznabQuery, cancellationToken);
         // A draft profile (live preview) overrides the stored/default selection.
-        var profile = query.DraftProfile ?? profiles.Get(query.ProfileId);
+        var effectiveMediaType = context.RequestedType ??
+            (semanticCandidates.Count == 1 ? semanticCandidates[0].MediaType : null);
+        var profile = query.DraftProfile ?? profiles.Get(query.ProfileId, effectiveMediaType);
 
         var aggregation = await aggregator.AggregateAsync(
             indexerResult.Releases,

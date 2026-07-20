@@ -50,9 +50,13 @@ const debugResponse = {
 };
 
 let debugBodies: Array<Record<string, unknown>> = [];
+let importPreviewBodies: Array<Record<string, unknown>> = [];
+let importBodies: Array<Record<string, unknown>> = [];
 
 function installFetch() {
   debugBodies = [];
+  importPreviewBodies = [];
+  importBodies = [];
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -62,6 +66,55 @@ function installFetch() {
     if (url.includes("/debug/search") && method === "POST") {
       debugBodies.push(init?.body ? JSON.parse(init.body as string) : {});
       return jsonResponse(200, debugResponse);
+    }
+    if (url.includes("/config/profiles/import/preview") && method === "POST") {
+      importPreviewBodies.push(init?.body ? JSON.parse(init.body as string) : {});
+      return jsonResponse(200, {
+        source: "radarr",
+        instanceName: "Cinema Radarr",
+        version: "5.2.0",
+        profiles: [
+          {
+            externalId: 7,
+            name: "Remux + WEB",
+            suggestedAppliesTo: "movies",
+            qualityCount: 8,
+            scoredFormatCount: 3,
+            supportedConditionCount: 5,
+            unsupportedConditionCount: 0,
+            profile: {
+              ...defaultProfile,
+              id: undefined,
+              name: "Remux + WEB",
+              isDefault: false,
+              appliesTo: "movies",
+              importedFrom: "radarr",
+              importedProfileId: 7,
+              minimumCustomFormatScore: 0,
+              customFormats: [
+                { name: "HDR10+ Boost", score: 500, conditions: [] },
+                { name: "Avoid LQ", score: -10000, conditions: [] },
+                { name: "TrueHD Atmos", score: 1500, conditions: [] },
+              ],
+            },
+          },
+        ],
+      });
+    }
+    if (url.endsWith("/config/profiles/import") && method === "POST") {
+      importBodies.push(init?.body ? JSON.parse(init.body as string) : {});
+      return jsonResponse(201, [
+        {
+          ...defaultProfile,
+          id: "imported-7",
+          name: "Remux + WEB",
+          isDefault: false,
+          appliesTo: "both",
+          importedFrom: "radarr",
+          importedProfileId: 7,
+          customFormats: [],
+        },
+      ]);
     }
     return jsonResponse(404, { error: { code: "not_found", message: "no" } });
   });
@@ -147,6 +200,33 @@ describe("ProfilesPage live preview", () => {
     expect(within(items[0]).getByText(/2160p\.BluRay/)).toBeInTheDocument();
     expect(within(items[1]).getByText(/1080p\.WEB-DL/)).toBeInTheDocument();
     expect(within(items[0]).getByText(/score 900/)).toBeInTheDocument();
+  });
+
+  it("previews Arr profiles and imports them with the selected media scope", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProfilesPage />);
+
+    await user.click(await screen.findByRole("button", { name: /import from arr/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/api key/i), "radarr-secret");
+    await user.click(within(dialog).getByRole("button", { name: /connect & inspect/i }));
+
+    expect(await within(dialog).findByText("Cinema Radarr")).toBeInTheDocument();
+    expect(within(dialog).getByText("Remux + WEB")).toBeInTheDocument();
+    expect(within(dialog).getByText("3 scored formats")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Both" }));
+    await user.click(within(dialog).getByRole("button", { name: "Import 1" }));
+
+    await waitFor(() => expect(importBodies).toHaveLength(1));
+    expect(importPreviewBodies[0]).toMatchObject({
+      source: "radarr",
+      apiKey: "radarr-secret",
+    });
+    expect(importBodies[0]).toMatchObject({
+      source: "radarr",
+      profiles: [{ externalId: 7, appliesTo: "both" }],
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
 

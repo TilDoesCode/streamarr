@@ -93,6 +93,37 @@ _All values in milliseconds (time to first byte)._
   direct-MKV comparison does not claim a numeric RAR gain; parallel RAR volume probing
   is covered separately by byte-identity and observed-concurrency tests.
 
+### Playback-stability hardening non-regression
+
+Measured `2026-07-20` before and after the playback replay/session/cache-race hardening,
+using isolated persistence and 30 iterations of the same mock harness. The harness now
+creates a fresh database, key ring, and NZB cache for each mock run so stale provider ports
+or persisted probe rows cannot contaminate cold measurements.
+
+| Build | Metric | n | min | median | p95 | max | mean |
+|---|---|---:|---:|---:|---:|---:|---:|
+| pre-hardening (`c49b254`) | cold-start | 30 | 1.6 | 1.8 | 3.6 | 166.7 | 7.5 |
+| hardened | cold-start | 30 | 1.6 | 1.8 | 3.6 | 163.2 | 7.3 |
+| pre-hardening (`c49b254`) | seek@70% | 30 | 0.3 | 0.4 | 0.5 | 0.5 | 0.4 |
+| hardened | seek@70% | 30 | 0.3 | 0.4 | 0.5 | 0.5 | 0.4 |
+
+The same isolated fixture was also measured through an actual decoder: the timer starts
+before `POST /resolve` and stops only after ffmpeg has decoded the first video frame.
+
+| Build | n | min | median | max | mean |
+|---|---:|---:|---:|---:|---:|
+| pre-hardening (`c49b254`) | 5 | 190.4 | 204.6 | 206.0 | 200.6 |
+| hardened | 5 | 190.2 | 191.1 | 208.6 | 196.7 |
+
+_All values in milliseconds (resolve to decoded first frame). The hardened median is
+13.5 ms / 6.6% faster; no time-to-first-frame regression was observed._
+
+The Core resolve-to-first-byte path is unchanged within measurement resolution. Jellyfin's
+offer-store work is outside this harness, so it was measured separately at the hard
+2,048-offer capacity: an equivalent `PlaybackInfo` projection took **2.3 µs median** and
+offer acquire + final-close bookkeeping took **1.6 µs median** across five 100,000-operation
+runs. Replay lookup and expiry are indexed; neither scans the pending-offer population.
+
 ## Real-provider Jellyfin TTFF (recorded)
 
 Measured `2026-07-19` through the **Full Testing Stack (Jellyfin + Core Server + Web)**

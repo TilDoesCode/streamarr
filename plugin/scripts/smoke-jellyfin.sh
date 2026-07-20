@@ -600,20 +600,22 @@ code="$(curl -sS -o "$tmp_dir/replayed-open-result.json" -w '%{http_code}' \
   -H "$allowed_header" \
   -H 'Content-Type: application/json' \
   --data-binary "@$tmp_dir/allowed-open.json")"
-expect_code 403 "$code" "Replayed OpenToken"
+expect_code 200 "$code" "Repeated user-bound OpenToken"
 
 live_stream_id="$(jq -er '.MediaSource.LiveStreamId' "$tmp_dir/allowed-open-result.json")"
+replayed_live_stream_id="$(jq -er '.MediaSource.LiveStreamId' "$tmp_dir/replayed-open-result.json")"
 close_live_stream "$live_stream_id" "$tmp_dir/close-result.json"
+close_live_stream "$replayed_live_stream_id" "$tmp_dir/replayed-close-result.json"
 
 for _ in $(seq 1 50); do
   close_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.close')"
-  [[ "$close_count" -ge 1 ]] && break
+  [[ "$close_count" -ge 2 ]] && break
   sleep 0.1
 done
-[[ "${close_count:-0}" -ge 1 ]] || fail "The queued Core session close was not delivered."
+[[ "${close_count:-0}" -ge 2 ]] || fail "The queued Core session closes were not delivered."
 resolve_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.resolve')"
-[[ "$resolve_count" -eq 1 ]] \
-  || fail "Forged, cross-user, or replayed offers reached Core resolve (count=$resolve_count)."
+[[ "$resolve_count" -eq 2 ]] \
+  || fail "Forged or cross-user offers reached Core resolve (count=$resolve_count)."
 
 # Library integration: a user with at least one compatible ordinary library (the long-standing
 # item-visibility rule) now sees ephemeral items in recursive root and Latest queries — that is
@@ -955,12 +957,15 @@ code="$(curl -sS -o "$tmp_dir/episode-card-playback-result.json" -w '%{http_code
   -H 'Content-Type: application/json' \
   --data-binary "@$tmp_dir/episode-card-playback-request.json")"
 expect_code 200 "$code" "Episode-card PlaybackInfo"
-jq -e '
+# The opened source keeps the stable release-source id of the redeemed offer: clients
+# (Swiftfin, Jellyfin Web's version picker) correlate the response with the id they selected,
+# so a per-open id here breaks their matching.
+jq -e --arg sourceId "$episode_source_id" '
   .ErrorCode == null
     and (.MediaSources | length) == 1
     and (.MediaSources[0] as $opened
       | ($opened.LiveStreamId | type == "string" and length > 0)
-        and ($opened.LiveStreamId | endswith("_" + $opened.Id))
+        and $opened.Id == $sourceId
         and $opened.RequiresOpening == false)
 ' "$tmp_dir/episode-card-playback-result.json" >/dev/null
 assert_streamyfin_opened_source \
@@ -984,12 +989,12 @@ code="$(curl -sS -o "$tmp_dir/episode-selected-playback-result.json" -w '%{http_
   -H 'Content-Type: application/json' \
   --data-binary "@$tmp_dir/episode-selected-playback-request.json")"
 expect_code 200 "$code" "Selected episode-release PlaybackInfo"
-jq -e '
+jq -e --arg sourceId "$episode_alt_source_id" '
   .ErrorCode == null
     and (.MediaSources | length) == 1
     and (.MediaSources[0] as $opened
       | ($opened.LiveStreamId | type == "string" and length > 0)
-        and ($opened.LiveStreamId | endswith("_" + $opened.Id))
+        and $opened.Id == $sourceId
         and $opened.RequiresOpening == false)
 ' "$tmp_dir/episode-selected-playback-result.json" >/dev/null
 assert_streamyfin_opened_source \
@@ -999,6 +1004,70 @@ assert_last_resolve "$episode_alt_release_id" "ci-smoke-series-s01e01"
 selected_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
   "$tmp_dir/episode-selected-playback-result.json")"
 close_live_stream "$selected_live_stream_id" "$tmp_dir/episode-selected-close-result.json"
+
+# Reproduce Swiftfin (App Store 1.x): it neither auto-opens the live stream nor disables
+# direct play, and its VLC-based profile direct-plays every container — so without the plugin's
+# compatibility filter Jellyfin answers with a direct-play offer whose static stream URL cannot
+# be satisfied for a RequiresOpening source ("Unable to load this item"). The filter must
+# rewrite the request so the response advertises the opened stream's remux TranscodingUrl
+# (carrying the LiveStreamId) under the stable release-source id Swiftfin matches against.
+swiftfin_auth='MediaBrowser Client="Swiftfin iOS", Device="CI", DeviceId="streamarr-swiftfin-ci", Version="1.0"'
+swiftfin_token="$(auth_token streamarr-allowed "$user_password" "$swiftfin_auth" "$tmp_dir/swiftfin-auth.json")"
+swiftfin_header="Authorization: $swiftfin_auth, Token=\"$swiftfin_token\""
+jq -n --arg uid "$allowed_id" --arg source "$episode_source_id" '
+  {
+    UserId: $uid,
+    MediaSourceId: $source,
+    DeviceProfile: {
+      Name: "SwiftfinCI",
+      MaxStreamingBitrate: 120000000,
+      DirectPlayProfiles: [{Type: "Video"}],
+      TranscodingProfiles: [{
+        Type: "Video", Container: "ts", Protocol: "hls",
+        VideoCodec: "hevc,h264", AudioCodec: "aac,eac3,ac3", Context: "Streaming"
+      }]
+    }
+  }
+' >"$tmp_dir/swiftfin-playback-request.json"
+code="$(curl -sS -o "$tmp_dir/swiftfin-playback-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$swiftfin_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/swiftfin-playback-request.json")"
+expect_code 200 "$code" "Swiftfin-shaped PlaybackInfo"
+jq -e --arg sourceId "$episode_source_id" '
+  .ErrorCode == null
+    and (.MediaSources | length) == 1
+    and (.MediaSources[0] as $opened
+      | $opened.Id == $sourceId
+        and $opened.RequiresOpening == false
+        and ($opened.LiveStreamId | type == "string" and length > 0)
+        and $opened.SupportsDirectPlay == false
+        and ($opened.TranscodingUrl | type == "string" and contains("LiveStreamId=")))
+' "$tmp_dir/swiftfin-playback-result.json" >/dev/null
+assert_last_resolve "$episode_release_id" "ci-smoke-series-s01e01"
+swiftfin_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/swiftfin-playback-result.json")"
+close_live_stream "$swiftfin_live_stream_id" "$tmp_dir/swiftfin-close-result.json"
+
+# The same request from a fully protocol-compliant client (Streamyfin-style, no Swiftfin
+# client name) must remain untouched by the filter: direct play stays offered and no
+# transcoding URL is forced.
+jq -n --arg uid "$allowed_id" --arg source "$episode_source_id" '
+  {UserId:$uid, MediaSourceId:$source, AutoOpenLiveStream:true}
+' >"$tmp_dir/compliant-playback-request.json"
+code="$(curl -sS -o "$tmp_dir/compliant-playback-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$allowed_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/compliant-playback-request.json")"
+expect_code 200 "$code" "Protocol-compliant PlaybackInfo remains untouched"
+assert_streamyfin_opened_source \
+  "$tmp_dir/compliant-playback-result.json" \
+  "$public_stream_base/api/v1/stream/ci-smoke-session-$episode_release_id"
+compliant_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/compliant-playback-result.json")"
+close_live_stream "$compliant_live_stream_id" "$tmp_dir/compliant-close-result.json"
 
 # Exercise Jellyfin's explicit two-step client flow with an offer taken from the projected item
 # DTO rather than from PlaybackInfo: detail-route tokens bypass the host's provider-prefixing,
@@ -1021,16 +1090,36 @@ code="$(curl -sS -o "$tmp_dir/episode-explicit-open-result.json" -w '%{http_code
   -H 'Content-Type: application/json' \
   --data-binary "@$tmp_dir/episode-explicit-open-request.json")"
 expect_code 200 "$code" "Explicit selected episode release open"
-jq -e '
+jq -e --arg sourceId "$episode_alt_source_id" '
   (.MediaSource as $opened
     | ($opened.LiveStreamId | type == "string" and length > 0)
-      and ($opened.LiveStreamId | endswith("_" + $opened.Id))
+      and $opened.Id == $sourceId
       and $opened.RequiresOpening == false)
 ' "$tmp_dir/episode-explicit-open-result.json" >/dev/null
 assert_last_resolve "$episode_alt_release_id" "ci-smoke-series-s01e01"
 explicit_live_stream_id="$(jq -er '.MediaSource.LiveStreamId' \
   "$tmp_dir/episode-explicit-open-result.json")"
 close_live_stream "$explicit_live_stream_id" "$tmp_dir/episode-explicit-close-result.json"
+
+# Jellyfin Web retains item/media-source metadata briefly. Stopping and immediately replaying
+# therefore opens the same short-lived token again instead of necessarily fetching PlaybackInfo.
+# This used to consume the token on first open and surface a Jellyfin HTTP 500 on replay.
+code="$(curl -sS -o "$tmp_dir/episode-replay-open-result.json" -w '%{http_code}' \
+  -X POST "$base_url/LiveStreams/Open" \
+  -H "$allowed_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/episode-explicit-open-request.json")"
+expect_code 200 "$code" "Immediate episode replay with cached OpenToken"
+jq -e --arg sourceId "$episode_alt_source_id" '
+  (.MediaSource as $opened
+    | ($opened.LiveStreamId | type == "string" and length > 0)
+      and $opened.Id == $sourceId
+      and $opened.RequiresOpening == false)
+' "$tmp_dir/episode-replay-open-result.json" >/dev/null
+assert_last_resolve "$episode_alt_release_id" "ci-smoke-series-s01e01"
+replay_live_stream_id="$(jq -er '.MediaSource.LiveStreamId' \
+  "$tmp_dir/episode-replay-open-result.json")"
+close_live_stream "$replay_live_stream_id" "$tmp_dir/episode-replay-close-result.json"
 
 # With library integration the materialized TV hierarchy joins ordinary recursive traversal for
 # compatible users — that is what makes Next Up and per-type favorites sections work. A user
@@ -1074,5 +1163,10 @@ expect_code 200 "$items_code" "Native /Items fall-through"
 expect_code 200 "$hints_code" "Native /Search/Hints fall-through"
 assert_item_absent "$tmp_dir/items-unreachable.json" Items
 assert_item_absent "$tmp_dir/hints-unreachable.json" SearchHints
+
+docker logs "$name" >"$log_file" 2>&1 || true
+if grep -Eq 'consumer count is now -[0-9]+' "$log_file"; then
+  fail "Jellyfin observed a negative live-stream consumer count."
+fi
 
 echo "Jellyfin 10.11.11 plugin integration smoke passed."

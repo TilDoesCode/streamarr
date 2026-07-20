@@ -46,4 +46,6 @@ public sealed record TmdbEpisode
     public string? AirDate { get; init; }
     public int? RuntimeMinutes { get; init; }
     public string? StillUrl { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<TmdbPerson> People { get; init; } = [];
 }

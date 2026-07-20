@@ -78,7 +78,7 @@ public sealed class StreamarrMediaSourceProjection(
     /// Tries to project a plugin-owned work. A successful projection may contain zero sources
     /// when Core returned no releases; <see langword="false"/> means the item is not backed by
     /// Streamarr release state and its native Jellyfin sources must remain untouched.
-    /// Visibility follows <paramref name="user"/> (the request's target user) while the one-use
+    /// Visibility follows <paramref name="user"/> (the request's target user) while the short-lived
     /// offers stay bound to <paramref name="offerOwnerId"/> (the authenticated caller), so an
     /// admin viewing another user's page never mints tokens it cannot redeem.
     /// </summary>

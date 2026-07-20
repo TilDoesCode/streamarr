@@ -360,9 +360,10 @@ client, timestamps:
 
 ### `POST /api/v1/sessions/{token}/close`
 
-Tears a session down (`204`; `404` if unknown). Sessions are also closed on their TTL
-(`Streamarr:SessionTtlSeconds`, swept every `SessionSweepIntervalSeconds`) and by the
-plugin on Jellyfin's `CloseLiveStream`.
+Tears a session down (`204`; `404` if unknown). Idle sessions are also closed on their TTL
+(`Streamarr:SessionTtlSeconds`, swept every `SessionSweepIntervalSeconds`); an open HTTP
+stream body is retained while paused. The plugin closes sessions explicitly on Jellyfin's
+`CloseLiveStream`.
 
 ---
 

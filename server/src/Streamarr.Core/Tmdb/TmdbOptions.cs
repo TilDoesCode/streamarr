@@ -62,7 +62,7 @@ public sealed class TmdbOptions
 
     public string ImageBaseUrl { get; set; } = "https://image.tmdb.org/t/p";
 
-    public string PosterSize { get; set; } = "w500";
+    public string PosterSize { get; set; } = "w780";
 
     public string BackdropSize { get; set; } = "w1280";
 

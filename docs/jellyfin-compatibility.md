@@ -87,8 +87,9 @@ The plugin remains a pure adapter: it never selects or ranks a fallback. It does
 however, enforce the boundary around its machine-authenticated Core client:
 
 - **Playback offers are capabilities, not release ids.** `GetMediaSources` creates an
-  opaque, bounded, short-lived, one-use `OpenToken` tied to the authenticated Jellyfin
-  user, item, work, and offered release. `OpenMediaSource` consumes that token before
+  opaque, bounded, replay-safe `OpenToken` tied to the authenticated Jellyfin user, item,
+  work, and offered release. Idle offers expire after ten minutes; active playback holds
+  the lease and final close starts the replay window. `OpenMediaSource` validates the token before
   any call to Core; arbitrary caller-controlled release ids never reach `/resolve`.
 - **Server fallback is constrained and attributed.** `POST /api/v1/resolve` may walk
   next-best releases of the same work (bounded by `Streamarr:MaxFallbackHops`) and
@@ -138,6 +139,48 @@ Server with real indexer/provider credentials and a real client — that is the 
 dedup and TTL-expiry logic themselves are unit-tested (`SearchInjectionTests`,
 `EphemeralCleanupTests`).
 
+## ⚠️ Known-fragile: Swiftfin playback compatibility
+
+Swiftfin (iOS/tvOS, both the shipped 1.x app and the rewritten player) only implements
+remote/live media sources for **Live TV channels** (`isLiveStream` is literally
+`channelType == .tv`). For a movie/episode backed by a Streamarr `RequiresOpening` source it
+requests `/Videos/{itemId}/stream?static=true` — which the server cannot satisfy, because the
+bytes exist only behind an opened live stream. The result is the generic "Unable to load this
+item" alert, while Jellyfin Web (always transcodes → `TranscodingUrl` carries the
+`LiveStreamId`) and Streamyfin (plays `MediaSource.Path` verbatim) work.
+
+The shim is isolated in a **single file**, `Playback/StreamarrPlaybackCompatibilityFilter.cs`,
+and rewrites only `POST /Items/{itemId}/PlaybackInfo` requests that pass **all** guards —
+`SwiftfinCompatibilityEnabled` (on by default), a `Jellyfin-Client` auth claim starting with
+`Swiftfin`, and a Streamarr-owned item — to `AutoOpenLiveStream = true` +
+`EnableDirectPlay = false`. Jellyfin then opens the Core session itself and answers with a
+`TranscodingUrl` that carries the `LiveStreamId` — an HLS **remux** (ffmpeg stream-copy from
+the Core capability URL; no re-encode while the codecs fit the client profile), so plugin
+open/close session accounting is unchanged. Clients that implement the protocol fully are
+never touched.
+
+The filter binds to these 10.11.x contracts (verified against Jellyfin 10.11.11 source):
+
+- the `POST /Items/{itemId}/PlaybackInfo` route shape
+  (`MediaInfoController.GetPostedPlaybackInfo`);
+- that controller's parameter merge order: the **query-bound** `autoOpenLiveStream` /
+  `enableDirectPlay` arguments take precedence over the posted `PlaybackInfoDto` body, which
+  is what lets the filter override them without referencing `Jellyfin.Api` types;
+- the `Jellyfin-Client` authorization claim (`InternalClaimTypes.Client`);
+- `MediaInfoHelper.SetDeviceSpecificData` disabling HTTP direct-stream and building the
+  transcoding URL via `StreamInfo.ToUrl`, which appends `&LiveStreamId=`.
+
+Related: the opened `MediaSourceInfo` keeps the **stable release-source id** of the redeemed
+offer (`StreamarrMediaSourceProjection.ReleaseSourceId`) instead of the per-open live-stream
+id — Swiftfin matches the PlaybackInfo response against the media-source id it selected and
+rejects the response on a mismatch. Attribution stays keyed on `LiveStreamId` via the
+session tracker.
+
+**Fail-safe contract:** every path is try/catch-wrapped and every guard fails open — any
+error, missing claim, or renamed controller parameter leaves the request untouched (native
+behavior), never a broken one. Unchecking the plugin's "Swiftfin compatibility" toggle makes
+the filter inert.
+
 ## Automated host-load verification
 
 [`plugin/scripts/smoke-jellyfin.sh`](../plugin/scripts/smoke-jellyfin.sh) starts
@@ -154,7 +197,7 @@ Emby.Server.Implementations.ApplicationHost: Core startup complete
 ```
 
 The script then completes the Jellyfin wizard and checks connection authorization,
-materialization/restart persistence, user isolation, one-use playback offers, Core
+materialization/restart persistence, user isolation, replay-safe playback offers, Core
 open/close delivery, root/Latest isolation, reachable injection, movie release discovery,
 cold season/episode expansion, and unreachable-Core fall-through. Run it with the
 **Jellyfin Plugin E2E (isolated)** Codecraft action, or directly:
@@ -236,7 +279,7 @@ every Jellyfin release** (BRIEF §11, §13). To move to a new patch/minor:
 
    and update the **Pinned versions** table above.
 2. **Rebuild** the plugin (`dotnet build -c Release`, warnings-as-errors) and run
-   `dotnet test plugin/Streamarr.Plugin.sln` — the mapper, one-use offer, bounded
+   `dotnet test plugin/Streamarr.Plugin.sln` — the mapper, replay-safe offer, bounded
    store/dispatcher, transport-security, search-injection, visibility, and cleanup
    tests must stay green.
 3. **Re-run the headless load + fall-through check** (the tables above): load the plugin
@@ -246,7 +289,9 @@ every Jellyfin release** (BRIEF §11, §13). To move to a new patch/minor:
    Run `bash plugin/scripts/smoke-jellyfin.sh` for the automated host-load portion.
 4. **Re-check the bound interfaces** against the new `Jellyfin.Controller` (the two
    lists above). If a signature moved, the fix is confined to `MediaSources/`,
-   `Playback/`, or the single `Search/StreamarrSearchActionFilter.cs` file.
+   `Playback/` (including `Playback/StreamarrPlaybackCompatibilityFilter.cs` and its
+   PlaybackInfo parameter names), or the single `Search/StreamarrSearchActionFilter.cs`
+   file.
 5. **Run the manual acceptance** in [`m5-acceptance.md`](./m5-acceptance.md) once with a
    real client + real credentials (Direct Play, forced transcode, session teardown,
    events, and search injection).

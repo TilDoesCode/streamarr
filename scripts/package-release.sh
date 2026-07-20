@@ -43,7 +43,7 @@ dotnet publish "$repo_root/plugin/Streamarr.Plugin/Streamarr.Plugin.csproj" \
   -p:ContinuousIntegrationBuild=true \
   -p:Version="$version.0"
 
-for file in Streamarr.Plugin.dll Streamarr.Plugin.deps.json Streamarr.Plugin.pdb meta.json; do
+for file in Streamarr.Plugin.dll Streamarr.Plugin.deps.json Streamarr.Plugin.pdb SixLabors.ImageSharp.dll meta.json; do
   [[ -f "$tmp_dir/publish/$file" ]] && cp "$tmp_dir/publish/$file" "$tmp_dir/plugin/$file"
 done
 [[ -f "$tmp_dir/plugin/Streamarr.Plugin.dll" && -f "$tmp_dir/plugin/meta.json" ]] || {

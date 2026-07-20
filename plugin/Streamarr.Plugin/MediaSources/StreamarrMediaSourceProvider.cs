@@ -47,102 +47,145 @@ public sealed class StreamarrMediaSourceProvider(
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
-        if (!offers.TryTake(openToken, userId, out var offer) || offer is null)
+        if (!offers.TryAcquire(openToken, userId, out var offerLease) || offerLease is null)
             throw new SecurityException("The Streamarr media-source offer is unknown, expired, or belongs to another user.");
+        var offer = offerLease.Offer;
+        var offerLeaseTransferred = false;
 
-        var user = userManager.GetUserById(userId);
-        var item = libraryManager.GetItemById(offer.ItemId);
-        if (user is null || item is null || !item.IsVisibleStandalone(user))
-            throw new SecurityException("The current user can no longer access the offered Streamarr item.");
-
-        var entry = store.Peek(offer.ItemId);
-        if (entry is null
-            || !string.Equals(entry.Work.WorkId, offer.WorkId, StringComparison.Ordinal)
-            || !entry.Work.Releases.Any(release => string.Equals(release.ReleaseId, offer.ReleaseId, StringComparison.Ordinal)))
+        try
         {
-            throw new InvalidOperationException("The Streamarr media-source offer no longer matches a materialized work.");
-        }
+            var user = userManager.GetUserById(userId);
+            var item = libraryManager.GetItemById(offer.ItemId);
+            if (user is null || item is null || !item.IsVisibleStandalone(user))
+                throw new SecurityException("The current user can no longer access the offered Streamarr item.");
 
-        var resolve = await ResolveWithFallbackAsync(
-            offer,
-            entry.Work,
-            user.Id.ToString("D"),
-            user.Username,
-            cancellationToken).ConfigureAwait(false);
-        resolve = resolve with { StreamUrl = api.ResolveStreamUrl(resolve.StreamUrl) };
+            var entry = store.Peek(offer.ItemId);
+            if (entry is null
+                || !string.Equals(entry.Work.WorkId, offer.WorkId, StringComparison.Ordinal)
+                || !entry.Work.Releases.Any(release => string.Equals(release.ReleaseId, offer.ReleaseId, StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException("The Streamarr media-source offer no longer matches a materialized work.");
+            }
 
-        var liveStreamId = Guid.NewGuid().ToString("N");
-        var token = StreamarrApiClient.TokenFromStreamUrl(resolve.StreamUrl);
-        bool OfferStillValid()
-        {
+            var resolve = await ResolveWithFallbackAsync(
+                offer,
+                entry.Work,
+                user.Id.ToString("D"),
+                user.Username,
+                cancellationToken).ConfigureAwait(false);
+            var liveStreamId = Guid.NewGuid().ToString("N");
+            var token = StreamarrApiClient.TokenFromStreamUrl(resolve.StreamUrl);
+            if (string.IsNullOrWhiteSpace(token))
+                throw new InvalidOperationException("Core returned a ready response without a closeable stream capability.");
+
+            var tracked = false;
             try
             {
-                var currentUser = userManager.GetUserById(userId);
-                var currentItem = libraryManager.GetItemById(offer.ItemId);
-                var currentEntry = store.Peek(offer.ItemId);
-                return currentUser is not null
-                       && currentItem is not null
-                       && currentItem.IsVisibleStandalone(currentUser)
-                       && currentEntry is not null
-                       && string.Equals(currentEntry.Work.WorkId, offer.WorkId, StringComparison.Ordinal)
-                       && currentEntry.Work.Releases.Any(release => string.Equals(
-                           release.ReleaseId,
-                           resolve.ReleaseId,
-                           StringComparison.Ordinal));
+                resolve = resolve with { StreamUrl = api.ResolveStreamUrl(resolve.StreamUrl) };
+
+                bool OfferStillValid()
+                {
+                    try
+                    {
+                        var currentUser = userManager.GetUserById(userId);
+                        var currentItem = libraryManager.GetItemById(offer.ItemId);
+                        var currentEntry = store.Peek(offer.ItemId);
+                        return currentUser is not null
+                               && currentItem is not null
+                               && currentItem.IsVisibleStandalone(currentUser)
+                               && currentEntry is not null
+                               && string.Equals(currentEntry.Work.WorkId, offer.WorkId, StringComparison.Ordinal)
+                               && currentEntry.Work.Releases.Any(release => string.Equals(
+                                   release.ReleaseId,
+                                   resolve.ReleaseId,
+                                   StringComparison.Ordinal));
+                    }
+                    catch (Exception ex)
+                    {
+                        // Admission validation must fail closed without escaping past session cleanup.
+                        logger.LogDebug(
+                            "Could not revalidate resolved Streamarr item {ItemId} ({FailureType})",
+                            offer.ItemId,
+                            ex.GetType().Name);
+                        return false;
+                    }
+                }
+
+                // Resolve may take seconds. Cleanup/reconciliation can retire the offered item in
+                // that time, so validate again before admitting the newly opened Core session.
+                if (!OfferStillValid())
+                    throw new InvalidOperationException("The resolved Streamarr work was retired before playback could start.");
+
+                // The opened source keeps the id of the offer the client redeemed: clients
+                // (Swiftfin's version matching, Jellyfin Web's version picker) correlate the
+                // PlaybackInfo response with the media-source id they requested, and a per-open
+                // id broke that correlation. Server fallback may stream a different release of
+                // the same work; event attribution still reports the resolved release because
+                // every alias below maps to the same tracked session.
+                var stableSourceId = StreamarrMediaSourceProjection.ReleaseSourceId(offer.WorkId, offer.ReleaseId);
+
+                // Remember which release this opened source represents so playback events can be
+                // attributed to it. Keyed aliases: the live-stream id (raw and host-prefixed,
+                // as Jellyfin rewrites MediaSource.LiveStreamId after the provider returns), the
+                // resolved release id, and the stable source id clients report as MediaSourceId
+                // in their playback start/progress/stop callbacks.
+                if (!tracker.TryTrackSession(
+                        offer.ItemId,
+                        liveStreamId,
+                        resolve.ReleaseId,
+                        offer.WorkId,
+                        token,
+                        OfferStillValid,
+                        out _,
+                        stableSourceId,
+                        StreamarrMediaSourceProjection.WithHostOpenTokenPrefix(liveStreamId)))
+                {
+                    throw new InvalidOperationException(
+                        "The Streamarr item was retired or the active playback-session limit was reached.");
+                }
+                tracked = true;
+
+                var source = MediaSourceMapper.ToOpenedSource(resolve, liveStreamId, stableSourceId);
+                var stream = new StreamarrLiveStream(
+                    source,
+                    token,
+                    dispatcher,
+                    tracker,
+                    logger,
+                    offerLease.Dispose);
+                currentLiveStreams.Add(stream);
+                logger.LogInformation(
+                    "Opened Streamarr release {ReleaseId} (status={Status}) as live stream {LiveStreamId}",
+                    resolve.ReleaseId, resolve.Status, liveStreamId);
+                offerLeaseTransferred = true;
+                return stream;
             }
-            catch (Exception ex)
+            catch
             {
-                // Admission validation must fail closed without escaping past session cleanup.
-                logger.LogDebug(
-                    "Could not revalidate resolved Streamarr item {ItemId} ({FailureType})",
-                    offer.ItemId,
-                    ex.GetType().Name);
-                return false;
+                if (tracked)
+                    tracker.Forget(liveStreamId);
+                await CloseRejectedSessionAsync(token).ConfigureAwait(false);
+                throw;
             }
         }
-
-        // Resolve may take seconds. Cleanup/reconciliation can retire the offered item in
-        // that time, so validate again before admitting the newly opened Core session.
-        if (!OfferStillValid())
+        finally
         {
-            await CloseRejectedSessionAsync(token, cancellationToken).ConfigureAwait(false);
-            throw new InvalidOperationException("The resolved Streamarr work was retired before playback could start.");
+            if (!offerLeaseTransferred)
+                offerLease.Dispose();
         }
-
-        // Remember which release this opened source represents so playback events can be
-        // attributed to it. Both the live-stream id and the resolved release id are keyed.
-        if (!tracker.TryTrackSession(
-                offer.ItemId,
-                liveStreamId,
-                resolve.ReleaseId,
-                offer.WorkId,
-                token,
-                OfferStillValid,
-                out _))
-        {
-            await CloseRejectedSessionAsync(token, cancellationToken).ConfigureAwait(false);
-
-            throw new InvalidOperationException(
-                "The Streamarr item was retired or the active playback-session limit was reached.");
-        }
-
-        var source = MediaSourceMapper.ToOpenedSource(resolve, liveStreamId);
-        var stream = new StreamarrLiveStream(source, token, dispatcher, tracker, logger);
-        currentLiveStreams.Add(stream);
-        logger.LogInformation(
-            "Opened Streamarr release {ReleaseId} (status={Status}) as live stream {LiveStreamId}",
-            resolve.ReleaseId, resolve.Status, liveStreamId);
-        return stream;
     }
 
-    private async Task CloseRejectedSessionAsync(string? token, CancellationToken cancellationToken)
+    private async Task CloseRejectedSessionAsync(string? token)
     {
         if (token is null || dispatcher.EnqueueClose(token))
             return;
 
         try
         {
-            await api.CloseSessionAsync(token, cancellationToken).ConfigureAwait(false);
+            // RequestAborted commonly triggers the cleanup path. Session teardown therefore has
+            // its own bounded lifetime instead of inheriting an already-cancelled open request.
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await api.CloseSessionAsync(token, timeout.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -173,10 +216,12 @@ public sealed class StreamarrMediaSourceProvider(
                 requestedByName,
                 ct).ConfigureAwait(false)
                       ?? throw new InvalidOperationException($"Empty resolve response for release {releaseId}.");
-        EnsureResolveWithinOffer(resolve, releaseId, offer.AllowedReleaseIds);
+        await EnsureResolveWithinOfferAsync(resolve, releaseId, offer.AllowedReleaseIds).ConfigureAwait(false);
 
         if (!IsDead(resolve))
             return resolve;
+
+        await CloseRejectedSessionAsync(StreamarrApiClient.TokenFromStreamUrl(resolve.StreamUrl)).ConfigureAwait(false);
 
         var fallback = resolve.SuggestedFallbackReleaseId;
         if (string.IsNullOrWhiteSpace(fallback))
@@ -193,10 +238,13 @@ public sealed class StreamarrMediaSourceProvider(
                 requestedByName,
                 ct).ConfigureAwait(false)
                      ?? throw new InvalidOperationException($"Empty resolve response for fallback {fallback}.");
-        EnsureResolveWithinOffer(second, fallback, offer.AllowedReleaseIds);
+        await EnsureResolveWithinOfferAsync(second, fallback, offer.AllowedReleaseIds).ConfigureAwait(false);
 
         if (IsDead(second))
+        {
+            await CloseRejectedSessionAsync(StreamarrApiClient.TokenFromStreamUrl(second.StreamUrl)).ConfigureAwait(false);
             throw new InvalidOperationException($"Release {releaseId} and its fallback {fallback} are both dead.");
+        }
 
         return second;
     }
@@ -250,6 +298,25 @@ public sealed class StreamarrMediaSourceProvider(
     private static bool IsDead(ResolveResponse resolve)
         => string.Equals(resolve.Status, "dead", StringComparison.OrdinalIgnoreCase)
            || string.IsNullOrWhiteSpace(resolve.StreamUrl);
+
+    private async Task EnsureResolveWithinOfferAsync(
+        ResolveResponse response,
+        string requestedReleaseId,
+        IReadOnlySet<string> allowedReleaseIds)
+    {
+        try
+        {
+            EnsureResolveWithinOffer(response, requestedReleaseId, allowedReleaseIds);
+        }
+        catch
+        {
+            // A malformed or out-of-scope ready response may already own a Core session. Reject
+            // it, but do not leave that capability consuming the live-session budget until TTL.
+            await CloseRejectedSessionAsync(StreamarrApiClient.TokenFromStreamUrl(response.StreamUrl))
+                .ConfigureAwait(false);
+            throw;
+        }
+    }
 
     internal static void EnsureResolveWithinOffer(
         ResolveResponse response,

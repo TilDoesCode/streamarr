@@ -139,7 +139,10 @@ public sealed class SegmentCache : IDisposable
             if (_inFlight.TryGetValue(key, out var current) && ReferenceEquals(current, task))
                 _inFlight.Remove(key);
 
-            if (bytes is null || bytes.LongLength > _capacityBytes || _entries.ContainsKey(key))
+            if (_disposed
+                || bytes is null
+                || bytes.LongLength > _capacityBytes
+                || _entries.ContainsKey(key))
                 return;
 
             while (_sizeBytes > _capacityBytes - bytes.LongLength && _lru.First is { } oldest)
@@ -171,6 +174,7 @@ public sealed class SegmentCache : IDisposable
             if (_disposed) return;
             _disposed = true;
             _entries.Clear();
+            _inFlight.Clear();
             _lru.Clear();
             _sizeBytes = 0;
         }

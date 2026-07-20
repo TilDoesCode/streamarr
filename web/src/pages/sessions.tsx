@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { AlertTriangle, Loader2, Radio, XCircle } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, ArrowUpRight, Loader2, Radio, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -109,7 +110,7 @@ function SessionRow({ session }: { session: SessionResponse }) {
       : null;
 
   return (
-    <tr className="border-t">
+    <tr className="group border-t transition-colors hover:bg-muted/35">
       <td className="sticky left-0 bg-card px-3 py-2 text-right shadow-[8px_0_12px_-12px_hsl(var(--foreground))]">
         {confirming ? (
           <div className="flex items-center justify-end gap-1">
@@ -135,9 +136,16 @@ function SessionRow({ session }: { session: SessionResponse }) {
       </td>
       <td className="px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          <span className="truncate font-mono text-xs" title={session.releaseId ?? ""}>
-            {session.releaseId}
-          </span>
+          <Link
+            to="/sessions/$sessionToken"
+            params={{ sessionToken: session.token ?? "" }}
+            className="flex max-w-[22rem] items-center gap-1.5 truncate font-mono text-xs font-medium underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={session.releaseId ?? ""}
+            aria-label={`Inspect stream ${session.releaseId ?? ""}`}
+          >
+            <span className="truncate">{session.releaseId}</span>
+            <ArrowUpRight className="size-3 shrink-0 opacity-40 transition-opacity group-hover:opacity-100" />
+          </Link>
           {session.container && (
             <span className="text-xs text-muted-foreground">{session.container}</span>
           )}

@@ -18,8 +18,7 @@ public sealed class MediaMaterializationCache(IOptions<StreamarrOptions> options
 
     private readonly ConcurrentDictionary<string, CacheEntry> _entries =
         new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates =
-        new(StringComparer.Ordinal);
+    private readonly KeyedAsyncLock _gates = new();
     private readonly Queue<string> _insertionOrder = new();
     private readonly object _cacheGate = new();
     private long _totalWeightBytes;
@@ -41,26 +40,16 @@ public sealed class MediaMaterializationCache(IOptions<StreamarrOptions> options
         if (_entries.TryGetValue(key, out var cached))
             return cached.File;
 
-        var gate = _gates.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
-        try
-        {
-            if (_entries.TryGetValue(key, out cached))
-                return cached.File;
+        using var lease = await _gates.AcquireAsync(key, ct);
+        if (_entries.TryGetValue(key, out cached))
+            return cached.File;
 
-            var resolved = await materialize(ct);
-            var weightBytes = EstimateEntryWeightBytes(key, resolved);
-            if (weightBytes <= maxWeightBytes)
-                AddAndTrim(key, resolved, weightBytes, maxEntries, maxWeightBytes);
+        var resolved = await materialize(ct);
+        var weightBytes = EstimateEntryWeightBytes(key, resolved);
+        if (weightBytes <= maxWeightBytes)
+            AddAndTrim(key, resolved, weightBytes, maxEntries, maxWeightBytes);
 
-            return resolved;
-        }
-        finally
-        {
-            gate.Release();
-            if (gate.CurrentCount == 1)
-                _gates.TryRemove(new KeyValuePair<string, SemaphoreSlim>(key, gate));
-        }
+        return resolved;
     }
 
     private void AddAndTrim(

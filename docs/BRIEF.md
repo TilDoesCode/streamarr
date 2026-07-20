@@ -167,9 +167,10 @@ into Jellyfin's plugin dir, Vite dev server optional alongside.
 5. User hits play → Jellyfin requests `PlaybackInfo`.
 6. Plugin's `IMediaSourceProvider.GetMediaSources` returns one `MediaSourceInfo` per
    release (selectable "versions"), each `RequiresOpening = true` with an opaque,
-   bounded, short-lived, one-use `OpenToken` tied to that authenticated Jellyfin user,
-   item, work, and offered release. **No Usenet contact yet.**
-7. `OpenMediaSource(openToken)` consumes and validates that offer, then calls
+   bounded, replay-safe `OpenToken` tied to that authenticated Jellyfin user, item, work,
+   and offered release. Idle offers expire after ten minutes; active playback holds the
+   lease and final close starts the replay window. **No Usenet contact yet.**
+7. `OpenMediaSource(openToken)` validates that offer, then calls
    `POST /api/v1/resolve` → server health-checks, opens a session, ffprobes, returns a
    stream-capability URL + media streams.
 8. Plugin returns `MediaSourceInfo { Path = streamUrl, Protocol = Http,
@@ -431,11 +432,11 @@ to native behavior. A broken filter must never break normal library search.**
 ### 8.4 Lazy media-source resolution — `IMediaSourceProvider`
 
 - `GetMediaSources(item)` → one `MediaSourceInfo` per ranked release:
-  `RequiresOpening = true`, an opaque, bounded, short-lived, one-use `OpenToken` tied
+  `RequiresOpening = true`, an opaque, bounded, replay-safe `OpenToken` tied
   to the authenticated Jellyfin user/item/work/offered release, `IsRemote = true`,
   `Protocol = Http`, `Name = "1080p WEB-DL x265 · DDP5.1 · GER"`. **No Usenet
   contact.**
-- `OpenMediaSource(openToken)` → consume and validate the offer →
+- `OpenMediaSource(openToken)` → validate the offer →
   `POST /api/v1/resolve` → on `ready`, return
   `MediaSourceInfo { Path = streamUrl, Protocol = Http, RequiresClosing = true,
   LiveStreamId, RunTimeTicks, MediaStreams }` with

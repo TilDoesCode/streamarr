@@ -19,6 +19,8 @@ public class MediaSourceMapperTests
         Indexer = "demo",
         SizeBytes = 5_368_709_120,
         Languages = ["de", "en"],
+        Score = 142,
+        AddScoreToName = true,
         Quality = new QualityDto
         {
             Resolution = "1080p",
@@ -51,6 +53,15 @@ public class MediaSourceMapperTests
         Assert.Contains("DDP5.1", name);
         Assert.Contains("DE/EN", name);
         Assert.Contains("GiB", name);
+        Assert.Contains("Score 142", name);
+    }
+
+    [Fact]
+    public void VersionName_omits_score_when_disabled()
+    {
+        var name = MediaSourceMapper.FormatVersionName(SampleRelease() with { AddScoreToName = false });
+
+        Assert.DoesNotContain("Score", name, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -73,13 +84,16 @@ public class MediaSourceMapperTests
             ],
         };
 
-        var source = MediaSourceMapper.ToOpenedSource(resolve, "live-1");
+        var source = MediaSourceMapper.ToOpenedSource(resolve, "live-1", "stable-source-id");
 
         Assert.Equal("https://host/api/v1/stream/tok-abc", source.Path);
         Assert.Equal(MediaProtocol.Http, source.Protocol);
         Assert.True(source.RequiresClosing);
         Assert.False(source.RequiresOpening);
         Assert.Equal("live-1", source.LiveStreamId);
+        // Swiftfin matches the PlaybackInfo response against the media-source id it selected;
+        // the opened source must keep the offer's stable id, not the per-open live-stream id.
+        Assert.Equal("stable-source-id", source.Id);
         Assert.Equal("mkv", source.Container);
         Assert.Equal(78_000_000_000, source.RunTimeTicks);
         Assert.Equal(1000, source.AnalyzeDurationMs);
@@ -89,6 +103,22 @@ public class MediaSourceMapperTests
         Assert.Equal(MediaStreamType.Video, source.MediaStreams[0].Type);
         Assert.Equal(MediaStreamType.Audio, source.MediaStreams[1].Type);
         Assert.Equal(MediaStreamType.Subtitle, source.MediaStreams[2].Type);
+    }
+
+    [Fact]
+    public void OpenedSource_without_stable_id_falls_back_to_live_stream_id()
+    {
+        var resolve = new ResolveResponse
+        {
+            ReleaseId = "rel-123",
+            Status = "ready",
+            StreamUrl = "https://host/api/v1/stream/tok-abc",
+        };
+
+        var source = MediaSourceMapper.ToOpenedSource(resolve, "live-1");
+
+        Assert.Equal("live-1", source.Id);
+        Assert.Equal("live-1", source.LiveStreamId);
     }
 
     [Theory]

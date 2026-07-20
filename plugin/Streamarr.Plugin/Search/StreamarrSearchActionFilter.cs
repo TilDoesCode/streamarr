@@ -1168,7 +1168,7 @@ public sealed class StreamarrSearchActionFilter(
                && item.ProviderIds.ContainsKey(EphemeralLibraryService.WorkIdProviderKey);
     }
 
-    /// <summary>Reads the authenticated caller's id claim; one-use offers bind to this identity.</summary>
+    /// <summary>Reads the authenticated caller's id claim; playback offers bind to this identity.</summary>
     private static Guid AuthenticatedUserId(HttpContext http)
     {
         const string userIdClaimType = "Jellyfin-UserId";

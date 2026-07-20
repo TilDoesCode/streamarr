@@ -17,7 +17,7 @@ public static class MediaSourceMapper
 {
     /// <summary>
     /// The pre-open "version" for a release: <c>RequiresOpening = true</c>,
-    /// an opaque one-use offer capability in <c>OpenToken</c>, and no Usenet contact yet
+    /// an opaque short-lived offer capability in <c>OpenToken</c>, and no Usenet contact yet
     /// (BRIEF §8.4).
     /// </summary>
     public static MediaSourceInfo ToUnopenedSource(ReleaseDto release, string openCapability) => new()
@@ -43,13 +43,23 @@ public static class MediaSourceMapper
     /// session-capability URL returned by Core; no machine credential is exposed to clients
     /// (BRIEF §8.4, §11 "pre-probe media info server-side").
     /// </summary>
+    /// <param name="resolve">The Core Server's ready resolve response.</param>
+    /// <param name="liveStreamId">The per-open live-stream id Jellyfin uses to route close/streaming calls.</param>
+    /// <param name="sourceId">
+    /// Stable client-facing id for the opened source. Clients correlate the PlaybackInfo
+    /// response with the version they selected by media-source id (Swiftfin rejects the
+    /// response outright on a mismatch), so the opened source must keep the id of the
+    /// redeemed offer rather than adopting the per-open live-stream id. Falls back to
+    /// <paramref name="liveStreamId"/> when omitted.
+    /// </param>
     public static MediaSourceInfo ToOpenedSource(
         ResolveResponse resolve,
-        string liveStreamId)
+        string liveStreamId,
+        string? sourceId = null)
     {
         return new MediaSourceInfo
         {
-            Id = liveStreamId,
+            Id = sourceId ?? liveStreamId,
             LiveStreamId = liveStreamId,
             Path = resolve.StreamUrl,
             Protocol = MediaProtocol.Http,
@@ -113,6 +123,8 @@ public static class MediaSourceMapper
             segments.Add(string.Join('/', release.Languages.Select(l => l.ToUpperInvariant())));
         if (release.SizeBytes > 0)
             segments.Add(FormatSize(release.SizeBytes));
+        if (release.AddScoreToName)
+            segments.Add($"Score {release.Score.ToString(CultureInfo.InvariantCulture)}");
 
         var name = string.Join(" · ", segments.Where(s => !string.IsNullOrWhiteSpace(s)));
         return string.IsNullOrWhiteSpace(name) ? release.Title : name;

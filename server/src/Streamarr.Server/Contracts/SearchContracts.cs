@@ -1,4 +1,5 @@
 using Streamarr.Core.Profiles;
+using Streamarr.Core.Tmdb;
 
 namespace Streamarr.Server.Contracts;
 
@@ -27,6 +28,16 @@ public sealed record WorkDto
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
     public int? RuntimeMinutes { get; init; }
+    public string? OriginalTitle { get; init; }
+    public string? Tagline { get; init; }
+    public string? OfficialRating { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<string> Genres { get; init; } = [];
+    public IReadOnlyList<string> Studios { get; init; } = [];
+    public IReadOnlyList<string> ProductionLocations { get; init; } = [];
+    public IReadOnlyList<TmdbPerson> People { get; init; } = [];
+    public string? TrailerUrl { get; init; }
+    public bool AddStreamarrBadge { get; init; } = true;
 
     /// <summary>Set for TV works.</summary>
     public int? Season { get; init; }
@@ -51,6 +62,7 @@ public sealed record ReleaseDto
     public int AgeDays { get; init; }
     public int Grabs { get; init; }
     public int Score { get; init; }
+    public bool AddScoreToName { get; init; }
     public bool Rejected { get; init; }
     public IReadOnlyList<string> RejectionReasons { get; init; } = [];
 

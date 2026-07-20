@@ -2,6 +2,7 @@ using Streamarr.Core.Media;
 using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Contracts;
+using Streamarr.Server.Config;
 
 namespace Streamarr.Server.Services;
 
@@ -10,7 +11,10 @@ namespace Streamarr.Server.Services;
 /// loads season summaries; opening one season performs exactly one cached season-scoped
 /// indexer fan-out and distributes its results over the canonical TMDB episode directory.
 /// </summary>
-public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchService)
+public sealed class TvCatalogService(
+    ITmdbClient tmdb,
+    SearchService searchService,
+    GeneralConfigService generalConfig)
 {
     public const int MaxSeriesCandidates = 3;
 
@@ -20,6 +24,7 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
         CancellationToken cancellationToken)
     {
         var candidates = await tmdb.SearchCandidatesAsync(query, MediaType.Tv, cancellationToken);
+        var addStreamarrBadge = (await generalConfig.GetAsync(cancellationToken)).AddStreamarrBadge;
         return new TvSeriesSearchResponse
         {
             Results = candidates
@@ -27,7 +32,7 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
                 .GroupBy(candidate => candidate.TmdbId)
                 .Select(group => group.First())
                 .Take(Math.Clamp(limit, 1, MaxSeriesCandidates))
-                .Select(candidate => ToSeriesDto(candidate, seasons: null))
+                .Select(candidate => ToSeriesDto(candidate, seasons: null, addStreamarrBadge))
                 .ToArray(),
         };
     }
@@ -37,7 +42,10 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
         CancellationToken cancellationToken)
     {
         var catalog = await tmdb.GetTvSeriesCatalogAsync(tmdbId, cancellationToken);
-        return catalog is null ? null : ToSeriesDetails(catalog);
+        if (catalog is null)
+            return null;
+        var addStreamarrBadge = (await generalConfig.GetAsync(cancellationToken)).AddStreamarrBadge;
+        return ToSeriesDetails(catalog, addStreamarrBadge);
     }
 
     public async Task<TvSeasonDetailsResponse?> GetSeasonAsync(
@@ -54,6 +62,9 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
         var seasonCatalog = await seasonTask;
         if (seriesCatalog is null || seasonCatalog is null)
             return null;
+        var config = await generalConfig.GetAsync(cancellationToken);
+        var addStreamarrBadge = config.AddStreamarrBadge;
+        var addReleaseScoreToName = config.AddReleaseScoreToName;
 
         var aggregation = await searchService.SearchAsync(
             new SearchQuery
@@ -98,7 +109,7 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
 
         return new TvSeasonDetailsResponse
         {
-            Series = ToSeriesDto(seriesCatalog.Series, seriesCatalog.Seasons),
+            Series = ToSeriesDto(seriesCatalog.Series, seriesCatalog.Seasons, addStreamarrBadge),
             Season = ToSeasonDto(tmdbId, seasonSummary),
             Episodes = seasonCatalog.Episodes.Select(episode => new TvEpisodeDto
             {
@@ -113,24 +124,30 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
                 AirDate = episode.AirDate,
                 RuntimeMinutes = episode.RuntimeMinutes ?? seriesCatalog.Series.RuntimeMinutes,
                 StillUrl = episode.StillUrl,
+                CommunityRating = episode.CommunityRating,
+                People = episode.People,
+                AddStreamarrBadge = addStreamarrBadge,
                 Releases = availableByEpisode
                     .GetValueOrDefault(episode.EpisodeNumber, [])
-                    .Select(ToReleaseDto)
+                    .Select(release => ToReleaseDto(release, addReleaseScoreToName))
                     .ToArray(),
             }).ToArray(),
             Indexers = aggregation.Outcomes.Select(ToDiagnosticDto).ToArray(),
         };
     }
 
-    private static TvSeriesDetailsResponse ToSeriesDetails(TmdbTvSeriesCatalog catalog) => new()
+    private static TvSeriesDetailsResponse ToSeriesDetails(
+        TmdbTvSeriesCatalog catalog,
+        bool addStreamarrBadge) => new()
     {
-        Series = ToSeriesDto(catalog.Series, catalog.Seasons),
+        Series = ToSeriesDto(catalog.Series, catalog.Seasons, addStreamarrBadge),
         Seasons = catalog.Seasons.Select(season => ToSeasonDto(catalog.Series.TmdbId, season)).ToArray(),
     };
 
     private static TvSeriesDto ToSeriesDto(
         TmdbMatch series,
-        IReadOnlyList<TmdbSeasonSummary>? seasons) => new()
+        IReadOnlyList<TmdbSeasonSummary>? seasons,
+        bool addStreamarrBadge) => new()
     {
         WorkId = SeriesWorkId(series.TmdbId),
         MediaType = "series",
@@ -144,6 +161,16 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
         RuntimeMinutes = series.RuntimeMinutes,
         SeasonCount = seasons?.Count(season => season.SeasonNumber > 0),
         EpisodeCount = seasons?.Sum(season => season.EpisodeCount),
+        OriginalTitle = series.OriginalTitle,
+        Tagline = series.Tagline,
+        OfficialRating = series.OfficialRating,
+        CommunityRating = series.CommunityRating,
+        Genres = series.Genres,
+        Studios = series.Studios,
+        ProductionLocations = series.ProductionLocations,
+        People = series.People,
+        TrailerUrl = series.TrailerUrl,
+        AddStreamarrBadge = addStreamarrBadge,
     };
 
     private static TvSeasonDto ToSeasonDto(int tmdbId, TmdbSeasonSummary season) => new()
@@ -159,7 +186,7 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
         EpisodeCount = season.EpisodeCount,
     };
 
-    private static ReleaseDto ToReleaseDto(Release release) => new()
+    private static ReleaseDto ToReleaseDto(Release release, bool addScoreToName) => new()
     {
         ReleaseId = release.ReleaseId,
         Title = release.Title,
@@ -181,6 +208,7 @@ public sealed class TvCatalogService(ITmdbClient tmdb, SearchService searchServi
         AgeDays = release.AgeDays,
         Grabs = release.Grabs,
         Score = release.Score,
+        AddScoreToName = addScoreToName,
         Rejected = release.Rejected,
         RejectionReasons = release.RejectionReasons,
         Health = release.Health.ToString().ToLowerInvariant(),

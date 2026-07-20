@@ -47,6 +47,15 @@ internal static class StreamarrPayloadBounds
             PosterUrl = BoundedHttpUrl(work.PosterUrl),
             BackdropUrl = BoundedHttpUrl(work.BackdropUrl),
             RuntimeMinutes = work.RuntimeMinutes is > 0 and <= 1440 ? work.RuntimeMinutes : null,
+            OriginalTitle = BoundedText(work.OriginalTitle, 512),
+            Tagline = BoundedText(work.Tagline, 2_048),
+            OfficialRating = BoundedText(work.OfficialRating, 32),
+            CommunityRating = Rating(work.CommunityRating),
+            Genres = TextList(work.Genres, 64, 256),
+            Studios = TextList(work.Studios, 64, 256),
+            ProductionLocations = TextList(work.ProductionLocations, 64, 256),
+            People = NormalizePeople(work.People),
+            TrailerUrl = BoundedHttpUrl(work.TrailerUrl),
             Season = work.Season is >= 0 and <= 100_000 ? work.Season : null,
             Episode = work.Episode is >= 0 and <= 100_000 ? work.Episode : null,
             Releases = (work.Releases ?? [])
@@ -234,6 +243,38 @@ internal static class StreamarrPayloadBounds
         };
     }
 
+    private static IReadOnlyList<string> TextList(
+        IReadOnlyList<string>? values,
+        int take,
+        int maxChars)
+        => (values ?? [])
+            .Take(take)
+            .Select(value => BoundedText(value, maxChars))
+            .Where(value => value is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static IReadOnlyList<PersonDto> NormalizePeople(IReadOnlyList<PersonDto>? people)
+        => (people ?? [])
+            .Take(100)
+            .Where(person => person is not null)
+            .Select(person => person with
+            {
+                Name = BoundedText(person.Name, 256) ?? string.Empty,
+                Type = BoundedText(person.Type, 32) ?? string.Empty,
+                Role = BoundedText(person.Role, 256),
+                SortOrder = person.SortOrder is >= 0 and <= 10_000 ? person.SortOrder : null,
+                TmdbId = person.TmdbId is > 0 ? person.TmdbId : null,
+                ProfileUrl = BoundedHttpUrl(person.ProfileUrl),
+            })
+            .Where(person => person.Name.Length > 0
+                             && person.Type is "Actor" or "Director" or "Writer" or "Producer" or "Composer")
+            .ToArray();
+
+    private static float? Rating(float? value)
+        => value is >= 0 and <= 10 ? value : null;
+
     private static TvSeriesDto? Normalize(TvSeriesDto? series)
     {
         if (series is null
@@ -257,6 +298,15 @@ internal static class StreamarrPayloadBounds
             RuntimeMinutes = series.RuntimeMinutes is > 0 and <= 1440 ? series.RuntimeMinutes : null,
             SeasonCount = series.SeasonCount is >= 0 and <= MaxSeasonsPerSeries ? series.SeasonCount : null,
             EpisodeCount = series.EpisodeCount is >= 0 and <= 100_000 ? series.EpisodeCount : null,
+            OriginalTitle = BoundedText(series.OriginalTitle, 512),
+            Tagline = BoundedText(series.Tagline, 2_048),
+            OfficialRating = BoundedText(series.OfficialRating, 32),
+            CommunityRating = Rating(series.CommunityRating),
+            Genres = TextList(series.Genres, 64, 256),
+            Studios = TextList(series.Studios, 64, 256),
+            ProductionLocations = TextList(series.ProductionLocations, 64, 256),
+            People = NormalizePeople(series.People),
+            TrailerUrl = BoundedHttpUrl(series.TrailerUrl),
         };
     }
 
@@ -306,6 +356,8 @@ internal static class StreamarrPayloadBounds
             AirDate = BoundedText(episode.AirDate, 32),
             RuntimeMinutes = episode.RuntimeMinutes is > 0 and <= 1440 ? episode.RuntimeMinutes : null,
             StillUrl = BoundedHttpUrl(episode.StillUrl),
+            CommunityRating = Rating(episode.CommunityRating),
+            People = NormalizePeople(episode.People),
             Releases = (episode.Releases ?? [])
                 .Take(MaxReleasesPerWork)
                 .Select(Normalize)

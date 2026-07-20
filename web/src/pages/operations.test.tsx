@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/render";
@@ -5,6 +6,10 @@ import { setSession } from "@/api/token";
 import { LibraryPage } from "./library";
 import { EphemeralFilesPage } from "./ephemeral-files";
 import { StreamingHistoryPage } from "./streaming-history";
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
+}));
 
 const now = "2026-07-17T12:00:00.000Z";
 
@@ -26,13 +31,13 @@ describe("operations views", () => {
     renderWithProviders(<LibraryPage />);
     expect(await screen.findByText(cachedRelease.title)).toBeInTheDocument();
     expect(screen.getByText("7 cache hits")).toBeInTheDocument();
-    expect(screen.getByText("1,284 chunks")).toBeInTheDocument();
+    expect(screen.getByText(/1[,.]284 chunks/)).toBeInTheDocument();
   });
 
   it("shows requester, queried chunks, storage and purge clock", async () => {
     renderWithProviders(<EphemeralFilesPage />);
     expect((await screen.findAllByText("Mara")).length).toBeGreaterThan(0);
-    expect(screen.getByText(/496 \/ 1,284 chunks queried/)).toBeInTheDocument();
+    expect(screen.getByText(/496 \/ 1[,.]284 chunks queried/)).toBeInTheDocument();
     expect(screen.getByText("496 chunks resident")).toBeInTheDocument();
     expect(screen.getAllByText(/in 45m/).length).toBeGreaterThan(0);
   });

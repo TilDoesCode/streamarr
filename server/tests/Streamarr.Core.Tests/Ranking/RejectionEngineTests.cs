@@ -177,4 +177,32 @@ public class RejectionEngineTests
             Assert.False(string.IsNullOrWhiteSpace(r.CodeSlug));
         });
     }
+
+    [Fact]
+    public void CustomFormatScoreBelowImportedMinimum_IsRejected()
+    {
+        var profile = Profile with
+        {
+            MinimumCustomFormatScore = 0,
+            CustomFormats =
+            [
+                new CustomFormatScore
+                {
+                    Name = "Reject low quality source",
+                    Score = -10_000,
+                    Conditions =
+                    [
+                        new CustomFormatCondition
+                        {
+                            Implementation = "SourceSpecification",
+                            Value = "CAM,TS",
+                        },
+                    ],
+                },
+            ],
+        };
+
+        var reasons = Engine.Evaluate(Signals() with { Source = "CAM" }, profile);
+        Assert.True(Has(reasons, RejectionCode.CustomFormatScore));
+    }
 }

@@ -85,13 +85,20 @@ public sealed class LatencyHarness : IAsyncDisposable
         await BootAsync();
 
         using var client = NewClient();
+        var canDecodeFirstFrame = await ToolExistsAsync("ffmpeg");
+        var ttff = Stopwatch.StartNew();
         var resolved = await ResolveAsync(client);
         var streamUrl = new Uri(new Uri(_baseUrl), resolved.StreamUrl!).AbsoluteUri;
+        var firstFrameOk = !canDecodeFirstFrame || await DecodeFirstFrameAsync(streamUrl);
+        ttff.Stop();
 
         Console.WriteLine($"Target        : {_targetDescription}");
         Console.WriteLine($"Server        : {_baseUrl}");
         Console.WriteLine($"Resolved      : {resolved.Status}, {resolved.SizeBytes} bytes");
         Console.WriteLine($"Stream URL    : {streamUrl}");
+        Console.WriteLine(canDecodeFirstFrame
+            ? $"First frame   : {(firstFrameOk ? "PASS" : "FAIL")} in {ttff.Elapsed.TotalMilliseconds:0.0} ms (resolve → decoded frame)"
+            : "First frame   : SKIP (ffmpeg not installed)");
         Console.WriteLine();
 
         var ffprobeOk = await SmokeFfprobeAsync(streamUrl);
@@ -102,7 +109,29 @@ public sealed class LatencyHarness : IAsyncDisposable
         Console.WriteLine($"  ffprobe     : {(ffprobeOk ? "PASS" : "FAIL")}");
         Console.WriteLine($"  play + seek : {playOk}");
 
-        return ffprobeOk && playOk.StartsWith("PASS", StringComparison.Ordinal) ? 0 : 1;
+        return firstFrameOk && ffprobeOk && playOk.StartsWith("PASS", StringComparison.Ordinal) ? 0 : 1;
+    }
+
+    private async Task<bool> DecodeFirstFrameAsync(string streamUrl)
+    {
+        var result = await RunProcessAsync(
+            "ffmpeg",
+            [
+                "-v", "error",
+                "-headers", $"Authorization: Bearer {_apiKey}\r\n",
+                "-i", streamUrl,
+                "-map", "0:v:0",
+                "-frames:v", "1",
+                "-an",
+                "-f", "null", "-",
+            ],
+            TimeSpan.FromSeconds(60));
+        if (result.ExitCode == 0)
+            return true;
+
+        Console.WriteLine($"first frame   : FAIL (ffmpeg exit {result.ExitCode})");
+        Console.WriteLine(Indent(result.StdErr));
+        return false;
     }
 
     private async Task<bool> SmokeFfprobeAsync(string streamUrl)
@@ -289,9 +318,18 @@ public sealed class LatencyHarness : IAsyncDisposable
         var nzbPath = Path.Combine(_tempDir, "latency.nzb");
         await File.WriteAllTextAsync(nzbPath, NzbTestFixtures.BuildNzbXml(direct));
 
-        _releaseId = _config["Latency:ReleaseId"] ?? "latency-mock";
+        _releaseId = "latency-mock";
         _config["Latency:NzbUrl"] = nzbPath;
 
+        // Every mock run must begin with isolated persistence. Reusing the tool output's default
+        // database/cache can silently turn a cold sample warm, while a persisted mock-provider
+        // port points at a listener that no longer exists. These overrides also make the command
+        // documented in m1-latency.md self-contained in Production mode.
+        overrides["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_tempDir, "latency.db")}";
+        overrides["Streamarr:DataProtectionKeysPath"] = Path.Combine(_tempDir, "keys");
+        overrides["Streamarr:NzbCachePath"] = Path.Combine(_tempDir, "nzb-cache");
+        overrides["Streamarr:AllowLocalNzbFiles"] = "true";
+        overrides["Streamarr:Admin:Password"] = "latency-harness-admin-password";
         overrides["Streamarr:Providers:0:Name"] = "mock";
         overrides["Streamarr:Providers:0:Host"] = _mock.Host;
         overrides["Streamarr:Providers:0:Port"] = _mock.Port.ToString();

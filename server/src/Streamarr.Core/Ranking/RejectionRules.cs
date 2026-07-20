@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Streamarr.Core.Media;
 using Streamarr.Core.Profiles;
@@ -12,6 +13,24 @@ namespace Streamarr.Core.Ranking;
 public interface IRejectionRule
 {
     RejectionReason? Evaluate(ReleaseSignals signals, QualityProfile profile);
+}
+
+/// <summary>Sonarr/Radarr minimum custom-format score threshold.</summary>
+public sealed class CustomFormatScoreRejectionRule : IRejectionRule
+{
+    public RejectionReason? Evaluate(ReleaseSignals signals, QualityProfile profile)
+    {
+        if (profile.CustomFormats.Count == 0)
+            return null;
+
+        var score = CustomFormatMatcher.TotalScore(signals, profile);
+        return score < profile.MinimumCustomFormatScore
+            ? new RejectionReason(
+                RejectionCode.CustomFormatScore,
+                $"Custom-format score {score.ToString(CultureInfo.InvariantCulture)} is below " +
+                $"the profile minimum {profile.MinimumCustomFormatScore.ToString(CultureInfo.InvariantCulture)}.")
+            : null;
+    }
 }
 
 /// <summary>Sample clip: a "sample" name marker, or a size far too small for the runtime.</summary>

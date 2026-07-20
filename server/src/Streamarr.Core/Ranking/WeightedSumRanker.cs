@@ -39,6 +39,10 @@ public sealed class WeightedSumRanker : IReleaseRanker
         Add(lines, "grabs", GrabsScore(profile, signals));
         Add(lines, "group-allow", GroupAllowScore(profile, signals));
         Add(lines, "group-deny", GroupDenyScore(profile, signals));
+        foreach (var format in CustomFormatMatcher.MatchingFormats(signals, profile))
+        {
+            Add(lines, $"custom-format:{format.Name}", format.Score);
+        }
 
         var total = lines.Sum(l => l.Points);
         return new ReleaseScore(total, lines);

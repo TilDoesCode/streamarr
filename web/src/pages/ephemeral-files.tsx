@@ -1,4 +1,5 @@
-import { AlertTriangle, Box, Clock3, HardDrive, Radio, UserRound } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, ArrowUpRight, Box, Clock3, HardDrive, Radio, UserRound } from "lucide-react";
 import { useEphemeralFiles } from "@/api/queries";
 import type { EphemeralFileResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
@@ -61,7 +62,13 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
   const requester = file.requestedByName || file.requestedById || "Unknown requester";
 
   return (
-    <article className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+    <article className="group relative overflow-hidden rounded-2xl border bg-card shadow-sm transition-colors hover:border-cyan-500/40">
+      <Link
+        to="/sessions/$sessionToken"
+        params={{ sessionToken: file.token ?? "" }}
+        className="absolute inset-0 z-[1] rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+        aria-label={`Inspect stream ${file.title ?? file.releaseId ?? ""}`}
+      />
       <div className="grid lg:grid-cols-[minmax(0,1.3fr)_minmax(25rem,1fr)]">
         <div className="p-5 sm:p-6">
           <div className="flex items-start gap-4">
@@ -74,6 +81,7 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
                 <h3 className="truncate text-base font-semibold tracking-tight" title={file.title ?? undefined}>{file.title ?? "Untitled release"}</h3>
                 <Badge variant="success" className="uppercase">{file.state ?? "ready"}</Badge>
                 {file.container && <Badge variant="outline" className="font-mono uppercase">{file.container}</Badge>}
+                <ArrowUpRight className="size-4 text-muted-foreground opacity-40 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-cyan-500 group-hover:opacity-100" />
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground" title={file.fileName ?? undefined}>{file.fileName}</p>
             </div>

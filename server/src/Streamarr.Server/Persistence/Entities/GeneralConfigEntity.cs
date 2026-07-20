@@ -28,4 +28,10 @@ public sealed class GeneralConfigEntity
     public int SegmentCacheSizeMb { get; set; } = 512;
 
     public int ConnectionBudget { get; set; } = 20;
+
+    /// <summary>Whether work posters should carry the adaptive Streamarr source badge.</summary>
+    public bool AddStreamarrBadge { get; set; } = true;
+
+    /// <summary>Whether Jellyfin version names should include the Core ranking score.</summary>
+    public bool AddReleaseScoreToName { get; set; } = true;
 }

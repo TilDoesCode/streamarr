@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Streamarr.Core.Profiles;
+using Streamarr.Core.Media;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
 
@@ -28,12 +29,14 @@ public sealed class ProfileConfigService : IProfileProvider
 
     // ---- IProfileProvider (ranker path) ----------------------------------------------
 
-    public QualityProfile Get(string? profileId)
+    public QualityProfile Get(string? profileId, MediaType? mediaType = null)
     {
         if (string.IsNullOrWhiteSpace(profileId) || profileId == DefaultProfiles.Standard.Id)
             return DefaultProfiles.Standard;
 
-        return _cache.TryGetValue(profileId, out var profile) ? profile : DefaultProfiles.Standard;
+        return _cache.TryGetValue(profileId, out var profile) && profile.AppliesToMediaType(mediaType)
+            ? profile
+            : DefaultProfiles.Standard;
     }
 
     public void Reload()
@@ -72,6 +75,28 @@ public sealed class ProfileConfigService : IProfileProvider
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         db.Profiles.Add(new ProfileEntity { Id = id, Name = stored.Name, PayloadJson = Serialize(stored) });
+        await db.SaveChangesAsync(ct);
+        Reload();
+        return stored;
+    }
+
+    public async Task<IReadOnlyList<QualityProfile>> CreateManyAsync(
+        IReadOnlyList<QualityProfile> profiles,
+        CancellationToken ct)
+    {
+        var stored = profiles.Select(profile => profile with
+        {
+            Id = Guid.NewGuid().ToString("n"),
+            IsDefault = false,
+        }).ToArray();
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        db.Profiles.AddRange(stored.Select(profile => new ProfileEntity
+        {
+            Id = profile.Id,
+            Name = profile.Name,
+            PayloadJson = Serialize(profile),
+        }));
         await db.SaveChangesAsync(ct);
         Reload();
         return stored;
@@ -120,6 +145,9 @@ public sealed class ProfileConfigService : IProfileProvider
                 profile.GroupAllowList is null ||
                 profile.GroupDenyList is null ||
                 profile.SizeBands is null)
+                return null;
+
+            if (profile.CustomFormats is null || profile.CustomFormats.Any(format => format?.Conditions is null))
                 return null;
 
             // Preserve the case-insensitive size-band lookup the defaults ship with.

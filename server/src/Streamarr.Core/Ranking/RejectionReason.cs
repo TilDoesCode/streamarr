@@ -27,6 +27,9 @@ public enum RejectionCode
 
     /// <summary>Dead on Usenet — articles missing per the health check.</summary>
     DeadOnUsenet,
+
+    /// <summary>Summed imported custom-format score is below the profile minimum.</summary>
+    CustomFormatScore,
 }
 
 /// <summary>
@@ -46,6 +49,7 @@ public sealed record RejectionReason(RejectionCode Code, string Message)
         RejectionCode.NonMediaPayload => "non-media-payload",
         RejectionCode.IncompleteUpload => "incomplete-upload",
         RejectionCode.DeadOnUsenet => "dead-on-usenet",
+        RejectionCode.CustomFormatScore => "custom-format-score",
         _ => Code.ToString().ToLowerInvariant(),
     };
 

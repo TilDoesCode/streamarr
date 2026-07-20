@@ -70,6 +70,59 @@ public sealed class MediaProbeCacheTests
         }
     }
 
+    [Fact]
+    public async Task EmptyProbeResult_IsNotCached_AndAReplayCanRecover()
+    {
+        var directory = Directory.CreateTempSubdirectory("streamarr-empty-probe-").FullName;
+        try
+        {
+            var dbOptions = new DbContextOptionsBuilder<StreamarrDbContext>()
+                .UseSqlite($"Data Source={Path.Combine(directory, "cache.db")}")
+                .Options;
+            var factory = new TestDbFactory(dbOptions);
+            await using (var db = await factory.CreateDbContextAsync())
+            {
+                await db.Database.EnsureCreatedAsync();
+                db.CachedReleases.Add(new CachedReleaseEntity
+                {
+                    ReleaseId = "release-1",
+                    WorkId = "work-1",
+                    Title = "Movie",
+                    Indexer = "indexer",
+                    CacheFileName = "cache.nzb",
+                    CachedAt = DateTimeOffset.UtcNow,
+                    LastAccessedAt = DateTimeOffset.UtcNow,
+                });
+                await db.SaveChangesAsync();
+            }
+
+            var useful = new FfprobeResult
+            {
+                RunTimeTicks = TimeSpan.FromMinutes(90).Ticks,
+                MediaStreams = [new MediaStreamInfo { Type = "Video", Codec = "h264" }],
+            };
+            var probes = 0;
+            Task<FfprobeResult?> Probe(CancellationToken _)
+                => Task.FromResult<FfprobeResult?>(++probes == 1
+                    ? new FfprobeResult { MediaStreams = [] }
+                    : useful);
+
+            var service = Service(factory);
+            var empty = await service.GetOrCreateAsync("release-1", Media(["one@test"]), Probe, default);
+            var recovered = await service.GetOrCreateAsync("release-1", Media(["one@test"]), Probe, default);
+            var cached = await service.GetOrCreateAsync("release-1", Media(["one@test"]), Probe, default);
+
+            Assert.Empty(empty!.MediaStreams);
+            Assert.Same(useful, recovered);
+            Assert.Equal(useful.RunTimeTicks, cached!.RunTimeTicks);
+            Assert.Equal(2, probes);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static MediaProbeCache Service(IDbContextFactory<StreamarrDbContext> factory)
         => new(factory, TimeProvider.System, NullLogger<MediaProbeCache>.Instance);
 

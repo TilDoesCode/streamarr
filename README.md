@@ -443,9 +443,10 @@ with **Test connection** (anonymous shallow `/api/v1/health` plus authenticated
 hidden implementation folder; tag `usenet-ephemeral`; stable GUID from `workId`; TMDB
 metadata passed through) via a "sync one pinned work" scheduled task / config button; an
 **`IMediaSourceProvider`** exposing one `MediaSourceInfo` **per release** (`RequiresOpening`,
-an opaque, bounded, short-lived, one-use `OpenToken` tied to the authenticated Jellyfin
-user, item, work, and offered release; no Usenet contact) whose `OpenMediaSource`
-consumes that offer and calls `POST /resolve` → capability HTTP `Path` + pre-probed
+an opaque, bounded, replay-safe `OpenToken` tied to the authenticated Jellyfin user, item,
+work, and offered release; idle offers expire after ten minutes, while active playback holds
+the lease and starts that replay window on final close; no Usenet contact) whose `OpenMediaSource`
+validates that offer and calls `POST /resolve` → capability HTTP `Path` + pre-probed
 `MediaStreams`/`RunTimeTicks` + low `AnalyzeDurationMs`, accepting only a server fallback
 within the same offered work; no reusable credential or `RequiredHttpHeaders` is added
 to the media source. `ILiveStream.Close` → `POST /sessions/{token}/close`; playback

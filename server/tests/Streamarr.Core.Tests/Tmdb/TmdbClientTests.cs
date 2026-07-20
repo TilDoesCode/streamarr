@@ -62,7 +62,7 @@ public class TmdbClientTests
         Assert.Equal("Dune: Part Two", match.Title);
         Assert.Equal(2024, match.Year);
         Assert.Equal(167, match.RuntimeMinutes);
-        Assert.Equal("https://image.tmdb.org/t/p/w500/dune.jpg", match.PosterUrl);
+        Assert.Equal("https://image.tmdb.org/t/p/w780/dune.jpg", match.PosterUrl);
         Assert.Equal("https://image.tmdb.org/t/p/w1280/dune-bg.jpg", match.BackdropUrl);
     }
 
@@ -95,7 +95,7 @@ public class TmdbClientTests
                 Assert.Equal(693134, movie.TmdbId);
                 Assert.Equal("Dune: Part Two", movie.Title);
                 Assert.Equal(2024, movie.Year);
-                Assert.Equal("https://image.tmdb.org/t/p/w500/dune.jpg", movie.PosterUrl);
+                Assert.Equal("https://image.tmdb.org/t/p/w780/dune.jpg", movie.PosterUrl);
                 Assert.Equal("https://image.tmdb.org/t/p/w1280/dune-bg.jpg", movie.BackdropUrl);
             },
             show =>
@@ -103,7 +103,7 @@ public class TmdbClientTests
                 Assert.Equal(MediaType.Tv, show.MediaType);
                 Assert.Equal(90228, show.TmdbId);
                 Assert.Equal("Dune: Prophecy", show.Title);
-                Assert.Equal("https://image.tmdb.org/t/p/w500/prophecy.jpg", show.PosterUrl);
+                Assert.Equal("https://image.tmdb.org/t/p/w780/prophecy.jpg", show.PosterUrl);
             });
         Assert.Single(handler.Requests);
     }
@@ -120,7 +120,18 @@ public class TmdbClientTests
                 return Json("""
                     {"id":12345,"title":"Example Movie","release_date":"2021-05-01",
                      "overview":"An example.","poster_path":"/poster.jpg","backdrop_path":"/back.jpg",
-                     "runtime":130,"imdb_id":"tt1234567"}
+                     "runtime":130,"imdb_id":"tt1234567","original_title":"Original Example",
+                     "tagline":"Everything is metadata.","vote_average":8.2,
+                     "genres":[{"name":"Drama"},{"name":"Mystery"}],
+                     "production_companies":[{"name":"Example Pictures"}],
+                     "production_countries":[{"name":"Germany"}],
+                     "credits":{"cast":[
+                       {"id":10,"name":"Ada Actor","character":"The Lead","order":0,"profile_path":"/ada.jpg"}
+                     ],"crew":[
+                       {"id":11,"name":"Drew Director","job":"Director"}
+                     ]},
+                     "release_dates":{"results":[{"iso_3166_1":"US","release_dates":[{"certification":"PG-13"}]}]},
+                     "videos":{"results":[{"site":"YouTube","type":"Trailer","official":true,"key":"Abc_123"}]}}
                     """);
             return StubHttpMessageHandler.Status(HttpStatusCode.NotFound);
         });
@@ -134,8 +145,30 @@ public class TmdbClientTests
         Assert.Equal(2021, match.Year);
         Assert.Equal(130, match.RuntimeMinutes);
         Assert.Equal("tt1234567", match.ImdbId);
-        Assert.Equal("https://image.tmdb.org/t/p/w500/poster.jpg", match.PosterUrl);
+        Assert.Equal("https://image.tmdb.org/t/p/w780/poster.jpg", match.PosterUrl);
         Assert.Equal("https://image.tmdb.org/t/p/w1280/back.jpg", match.BackdropUrl);
+        Assert.Equal("Original Example", match.OriginalTitle);
+        Assert.Equal("Everything is metadata.", match.Tagline);
+        Assert.Equal("PG-13", match.OfficialRating);
+        Assert.Equal(8.2F, match.CommunityRating);
+        Assert.Equal(["Drama", "Mystery"], match.Genres);
+        Assert.Equal(["Example Pictures"], match.Studios);
+        Assert.Equal(["Germany"], match.ProductionLocations);
+        Assert.Collection(
+            match.People,
+            actor =>
+            {
+                Assert.Equal("Ada Actor", actor.Name);
+                Assert.Equal("Actor", actor.Type);
+                Assert.Equal("The Lead", actor.Role);
+                Assert.Equal("https://image.tmdb.org/t/p/w500/ada.jpg", actor.ProfileUrl);
+            },
+            director =>
+            {
+                Assert.Equal("Drew Director", director.Name);
+                Assert.Equal("Director", director.Type);
+            });
+        Assert.Equal("https://www.youtube.com/watch?v=Abc_123", match.TrailerUrl);
         Assert.Contains("primary_release_year=2021", handler.Requests[0].Query, StringComparison.Ordinal);
     }
 
@@ -192,7 +225,7 @@ public class TmdbClientTests
         Assert.Equal("tt1632701", catalog.Series.ImdbId);
         Assert.Equal([0, 1, 2], catalog.Seasons.Select(season => season.SeasonNumber));
         Assert.Equal(12, catalog.Seasons[1].EpisodeCount);
-        Assert.Equal("https://image.tmdb.org/t/p/w500/s1.jpg", catalog.Seasons[1].PosterUrl);
+        Assert.Equal("https://image.tmdb.org/t/p/w780/s1.jpg", catalog.Seasons[1].PosterUrl);
     }
 
     [Fact]

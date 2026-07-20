@@ -17,6 +17,9 @@ namespace Streamarr.Server.Services;
 public sealed class ActiveSession
 {
     private long _bytesServed;
+    private int _openStreamCount;
+    private int _closed;
+    private readonly object _lifecycleGate = new();
     private readonly StreamarrMetrics? _metrics;
     private readonly SegmentCache? _segmentCache;
     private readonly ConcurrentDictionary<string, byte> _queriedChunks = new(StringComparer.Ordinal);
@@ -49,15 +52,64 @@ public sealed class ActiveSession
 
     public string Token => Session.Token;
     public long BytesServed => Interlocked.Read(ref _bytesServed);
-    public bool IsClosed => Session.State == SessionState.Closed;
-    public DateTimeOffset ExpiresAt => Session.ExpiresAt;
+    // SessionStream checks this for every body read. Keep the playback hot path lock-free; the
+    // lifecycle gate is still used where open/close admission must be serialized.
+    public bool IsClosed => Volatile.Read(ref _closed) != 0;
+
+    public DateTimeOffset ExpiresAt
+    {
+        get
+        {
+            lock (_lifecycleGate)
+                return Session.ExpiresAt;
+        }
+    }
     public int ChunksQueried => _queriedChunks.Count;
     public double EstimatedStreamedPercent => File.SegmentIds.Count == 0
         ? 0
         : Math.Min(100, ChunksQueried * 100d / File.SegmentIds.Count);
     public (int Count, long Bytes) CachedStorage => _segmentCache?.GetStats(File.SegmentIds) ?? (0, 0);
 
+    // Deliberately lock-free: this runs after every body read. A concurrent close may leave a
+    // newer diagnostic timestamp on a closed session, which is harmless; admission stays gated.
     public void Touch() => Session.LastAccessedAt = DateTimeOffset.UtcNow;
+
+    internal bool TryOpenStream(Func<Stream> openStream, out Stream? stream)
+    {
+        ArgumentNullException.ThrowIfNull(openStream);
+        lock (_lifecycleGate)
+        {
+            if (_closed != 0
+                || (_openStreamCount == 0 && Session.ExpiresAt <= DateTimeOffset.UtcNow))
+            {
+                stream = null;
+                return false;
+            }
+
+            Session.LastAccessedAt = DateTimeOffset.UtcNow;
+            stream = openStream();
+            _openStreamCount++;
+            return true;
+        }
+    }
+
+    internal void EndStream()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_openStreamCount > 0)
+                _openStreamCount--;
+            if (_closed == 0)
+                Session.LastAccessedAt = DateTimeOffset.UtcNow;
+        }
+    }
+
+    internal bool IsExpired(DateTimeOffset now)
+    {
+        lock (_lifecycleGate)
+            return _closed != 0
+                   || (_openStreamCount == 0 && Session.ExpiresAt <= now);
+    }
 
     internal void RecordChunkRequested(string segmentId) => _queriedChunks.TryAdd(segmentId, 0);
 
@@ -67,7 +119,14 @@ public sealed class ActiveSession
         _metrics?.AddBytesServed(count);
     }
 
-    internal void MarkClosed() => Session.State = SessionState.Closed;
+    internal void MarkClosed()
+    {
+        lock (_lifecycleGate)
+        {
+            Volatile.Write(ref _closed, 1);
+            Session.State = SessionState.Closed;
+        }
+    }
 }
 
 /// <summary>
@@ -107,43 +166,44 @@ public sealed class SessionManager(
                 throw new ResourceCapacityException("The live session limit has been reached.");
 
             // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
-            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
             var now = DateTimeOffset.UtcNow;
 
             var usage = new CountingNntpGate();
             var sessionClient = new GatedNntpClient(nntpClient, usage);
 
-            var session = new StreamSession
+            ActiveSession active;
+            do
             {
-                Token = token,
-                ReleaseId = releaseId,
-                WorkId = workId,
-                CreatedAt = now,
-                LastAccessedAt = now,
-                TimeToLive = TimeSpan.FromSeconds(options.Value.SessionTtlSeconds),
-                Container = file.Container,
-                SizeBytes = file.SizeBytes,
-                Client = client,
-                RequestedById = requestedById,
-                RequestedByName = requestedByName,
-                State = SessionState.Ready,
-            };
+                var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+                var session = new StreamSession
+                {
+                    Token = token,
+                    ReleaseId = releaseId,
+                    WorkId = workId,
+                    CreatedAt = now,
+                    LastAccessedAt = now,
+                    TimeToLive = TimeSpan.FromSeconds(options.Value.SessionTtlSeconds),
+                    Container = file.Container,
+                    SizeBytes = file.SizeBytes,
+                    Client = client,
+                    RequestedById = requestedById,
+                    RequestedByName = requestedByName,
+                    State = SessionState.Ready,
+                };
+                active = new ActiveSession(session, file, sessionClient, usage, metrics, segmentCache, title);
+            } while (!_sessions.TryAdd(active.Token, active));
 
-            var active = new ActiveSession(session, file, sessionClient, usage, metrics, segmentCache, title);
-            _sessions[token] = active;
             metrics?.SessionOpened();
             logger.LogInformation(
                 "Opened capability session for release {ReleaseId} ({FileName}, {SizeBytes} bytes, ttl {Ttl})",
-                releaseId, file.FileName, file.SizeBytes, session.TimeToLive);
+                releaseId, file.FileName, file.SizeBytes, active.Session.TimeToLive);
             return active;
         }
     }
 
     public bool TryGetSession(string token, out ActiveSession session)
     {
-        if (_sessions.TryGetValue(token, out var found) &&
-            !found.IsClosed &&
-            found.ExpiresAt > DateTimeOffset.UtcNow)
+        if (_sessions.TryGetValue(token, out var found) && !found.IsExpired(DateTimeOffset.UtcNow))
         {
             session = found;
             return true;
@@ -159,18 +219,39 @@ public sealed class SessionManager(
         if (!_streamGate.Wait(0))
             throw new ResourceCapacityException("The concurrent stream limit has been reached.");
 
-        session.Touch();
+        var admitted = false;
         try
         {
+            if (!session.TryOpenStream(
+                    () => session.File.OpenObservedStream is { } observed
+                        ? observed(session.NntpClient, session.RecordChunkRequested)
+                        : session.File.OpenStream(session.NntpClient),
+                    out var inner)
+                || inner is null)
+            {
+                throw new SessionUnavailableException("The capability session was closed or expired before streaming began.");
+            }
+            admitted = true;
+
             return new SessionStream(
-                session.File.OpenObservedStream is { } observed
-                    ? observed(session.NntpClient, session.RecordChunkRequested)
-                    : session.File.OpenStream(session.NntpClient),
+                inner,
                 session,
-                () => _streamGate.Release());
+                () =>
+                {
+                    try
+                    {
+                        session.EndStream();
+                    }
+                    finally
+                    {
+                        _streamGate.Release();
+                    }
+                });
         }
         catch
         {
+            if (admitted)
+                session.EndStream();
             _streamGate.Release();
             throw;
         }
@@ -199,7 +280,7 @@ public sealed class SessionManager(
         var removed = 0;
         foreach (var (token, session) in _sessions)
         {
-            if (session.ExpiresAt > now)
+            if (!session.IsExpired(now))
                 continue;
             if (!_sessions.TryRemove(token, out var expired))
                 continue;
@@ -314,6 +395,9 @@ internal sealed class SessionStream(Stream inner, ActiveSession session, Action?
 
 /// <summary>A configured, retryable process/session/stream capacity was reached.</summary>
 public sealed class ResourceCapacityException(string message) : Exception(message);
+
+/// <summary>A previously resolved capability was closed or expired during stream admission.</summary>
+public sealed class SessionUnavailableException(string message) : Exception(message);
 
 /// <summary>Content-Type by container so players negotiate correctly (BRIEF §6.2).</summary>
 public static class ContainerContentTypes

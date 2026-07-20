@@ -115,6 +115,12 @@ namespace Streamarr.Server.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("AddReleaseScoreToName")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AddStreamarrBadge")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("ConnectionBudget")
                         .HasColumnType("INTEGER");
 

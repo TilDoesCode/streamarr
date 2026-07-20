@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useGeneralConfig, useUpdateGeneralConfig } from "@/api/queries";
 import type { GeneralConfigWrite } from "@/api/types";
@@ -20,6 +21,8 @@ const schema = z.object({
   searchCacheTtlSeconds: z.coerce.number().int("Must be a whole number").min(0, "Cannot be negative"),
   segmentCacheSizeMb: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   connectionBudget: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
+  addStreamarrBadge: z.boolean(),
+  addReleaseScoreToName: z.boolean(),
 });
 type FormValues = z.input<typeof schema>;
 
@@ -31,6 +34,7 @@ export function GeneralSettings() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isDirty },
@@ -42,6 +46,8 @@ export function GeneralSettings() {
       searchCacheTtlSeconds: 60,
       segmentCacheSizeMb: 512,
       connectionBudget: 20,
+      addStreamarrBadge: true,
+      addReleaseScoreToName: true,
     },
   });
 
@@ -53,6 +59,8 @@ export function GeneralSettings() {
         searchCacheTtlSeconds: data.searchCacheTtlSeconds,
         segmentCacheSizeMb: data.segmentCacheSizeMb,
         connectionBudget: data.connectionBudget,
+        addStreamarrBadge: data.addStreamarrBadge !== false,
+        addReleaseScoreToName: data.addReleaseScoreToName !== false,
       });
     }
   }, [data, reset]);
@@ -66,6 +74,8 @@ export function GeneralSettings() {
       searchCacheTtlSeconds: parsed.searchCacheTtlSeconds,
       segmentCacheSizeMb: parsed.segmentCacheSizeMb,
       connectionBudget: parsed.connectionBudget,
+      addStreamarrBadge: parsed.addStreamarrBadge,
+      addReleaseScoreToName: parsed.addReleaseScoreToName,
     };
     const typedKey = parsed.tmdbApiKey?.trim();
     if (typedKey) body.tmdbApiKey = typedKey;
@@ -93,8 +103,8 @@ export function GeneralSettings() {
         <CardTitle>General</CardTitle>
         <CardDescription>
           TMDB credential, session &amp; cache TTLs, and the global NNTP connection budget
-          (BRIEF §6.3). A new TMDB credential takes effect immediately; other scalar changes
-          apply on restart.
+          (BRIEF §6.3). TMDB credentials and artwork marking take effect immediately; resource
+          limits apply on restart.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -149,6 +159,50 @@ export function GeneralSettings() {
             >
               <Input id="connectionBudget" type="number" min={1} aria-invalid={!!errors.connectionBudget} {...register("connectionBudget")} />
             </Field>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="flex items-start justify-between gap-6 rounded-lg border bg-muted/25 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="addStreamarrBadge">Mark Streamarr artwork</Label>
+                <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  Add a crisp adaptive Streamarr icon to the top-left of work covers in Jellyfin.
+                </p>
+              </div>
+              <Controller
+                name="addStreamarrBadge"
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    id="addStreamarrBadge"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    aria-label="Mark Streamarr artwork"
+                  />
+                )}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-6 rounded-lg border bg-muted/25 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="addReleaseScoreToName">Show release scores</Label>
+                <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  Append the Core ranking score to each Jellyfin version name.
+                </p>
+              </div>
+              <Controller
+                name="addReleaseScoreToName"
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    id="addReleaseScoreToName"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    aria-label="Show release scores"
+                  />
+                )}
+              />
+            </div>
           </div>
 
           <div className="flex justify-end">

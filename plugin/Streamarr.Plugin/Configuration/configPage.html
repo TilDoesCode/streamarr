@@ -4,8 +4,7 @@
     <title>Streamarr</title>
 </head>
 <body>
-<div id="StreamarrConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
-     data-controller="__plugin/StreamarrConfigPage.js">
+<div id="StreamarrConfigPage" data-role="page" class="page type-interior pluginConfigurationPage">
     <div data-role="content">
         <div class="content-primary">
             <form id="StreamarrConfigForm">
@@ -58,6 +57,11 @@
                         <span>Show the "Streamarr" library — presents ephemeral Usenet items as their own library and integrates them into Continue Watching, Next Up and Favorites (on by default)</span>
                     </label>
 
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="SwiftfinCompatibilityEnabled" name="SwiftfinCompatibilityEnabled" />
+                        <span>Swiftfin compatibility — serve Streamarr items to Swiftfin via a server-side remux stream, since Swiftfin cannot open remote on-demand sources itself (on by default; other clients are never affected)</span>
+                    </label>
+
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="PinnedWorkQuery">Pinned-work query (M5 bootstrap)</label>
                         <input is="emby-input" type="text" id="PinnedWorkQuery" name="PinnedWorkQuery" maxlength="256" />
@@ -101,6 +105,7 @@
                     page.querySelector('#ProfileId').value = config.ProfileId || '';
                     page.querySelector('#InterceptionEnabled').checked = !!config.InterceptionEnabled;
                     page.querySelector('#LibraryEnabled').checked = config.LibraryEnabled !== false;
+                    page.querySelector('#SwiftfinCompatibilityEnabled').checked = config.SwiftfinCompatibilityEnabled !== false;
                     page.querySelector('#PinnedWorkQuery').value = config.PinnedWorkQuery || '';
                     Dashboard.hideLoadingMsg();
                 });
@@ -118,6 +123,7 @@
                     config.ProfileId = page.querySelector('#ProfileId').value;
                     config.InterceptionEnabled = page.querySelector('#InterceptionEnabled').checked;
                     config.LibraryEnabled = page.querySelector('#LibraryEnabled').checked;
+                    config.SwiftfinCompatibilityEnabled = page.querySelector('#SwiftfinCompatibilityEnabled').checked;
                     config.PinnedWorkQuery = page.querySelector('#PinnedWorkQuery').value;
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                         // Apply the library placement immediately so toggling the

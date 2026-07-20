@@ -1,3 +1,5 @@
+using Streamarr.Core.Tmdb;
+
 namespace Streamarr.Core.Media;
 
 public enum MediaType
@@ -27,6 +29,15 @@ public sealed record Work
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
     public int? RuntimeMinutes { get; init; }
+    public string? OriginalTitle { get; init; }
+    public string? Tagline { get; init; }
+    public string? OfficialRating { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<string> Genres { get; init; } = [];
+    public IReadOnlyList<string> Studios { get; init; } = [];
+    public IReadOnlyList<string> ProductionLocations { get; init; } = [];
+    public IReadOnlyList<TmdbPerson> People { get; init; } = [];
+    public string? TrailerUrl { get; init; }
 
     /// <summary>For TV works.</summary>
     public int? Season { get; init; }

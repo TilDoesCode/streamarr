@@ -28,7 +28,12 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // from the live PluginConfiguration, so a short handler lifetime is fine.
         serviceCollection.AddHttpClient<StreamarrApiClient>(client =>
             {
-                client.Timeout = TimeSpan.FromSeconds(30);
+                // Core permits configurable ffprobe runs up to ten minutes, in addition to NZB
+                // fetch, health checks, and RAR materialization. A fixed transport timeout made
+                // cold playback fail while the same release succeeded once caches were warm.
+                // Every caller already supplies a lifecycle/request deadline; keep that as the
+                // single source of cancellation instead of imposing a contradictory 30s cap.
+                client.Timeout = Timeout.InfiniteTimeSpan;
                 client.MaxResponseContentBufferSize = StreamarrApiClient.MaxApiResponseBytes;
             })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
@@ -43,8 +48,24 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
             // transport performs its own redacted failure logging, so factory URI logs are off.
             .RemoveAllLoggers();
 
+        serviceCollection.AddHttpClient("StreamarrArtwork", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(15);
+                client.MaxResponseContentBufferSize = 20 * 1024 * 1024;
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                MaxConnectionsPerServer = 4,
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+            })
+            .RemoveAllLoggers();
+
         // Shared singleton caches / lookup tables.
         serviceCollection.AddSingleton<EphemeralReleaseStore>();
+        serviceCollection.AddSingleton<ArtworkBadgeService>();
         serviceCollection.AddSingleton<PlaybackSessionTracker>();
         serviceCollection.AddSingleton<PlaybackEventDispatcher>();
         serviceCollection.AddSingleton<MediaSourceOfferStore>();
@@ -78,5 +99,13 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // is inert until InterceptionEnabled is set. Its ctor deps resolve from DI per request.
         serviceCollection.Configure<MvcOptions>(options =>
             options.Filters.Add<StreamarrSearchActionFilter>());
+
+        // Swiftfin playback compatibility (docs/jellyfin-compatibility.md): rewrites only
+        // Swiftfin's PlaybackInfo requests for Streamarr-owned items so the host opens the
+        // Core-backed live stream itself and answers with a remux TranscodingUrl — the one
+        // playback path Swiftfin implements for remote non-channel sources. Fail-open and
+        // scoped by client + item; every other client keeps its native behavior.
+        serviceCollection.Configure<MvcOptions>(options =>
+            options.Filters.Add<StreamarrPlaybackCompatibilityFilter>());
     }
 }

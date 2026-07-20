@@ -1,3 +1,5 @@
+using Streamarr.Core.Media;
+
 namespace Streamarr.Core.Profiles;
 
 /// <summary>
@@ -8,11 +10,11 @@ namespace Streamarr.Core.Profiles;
 public interface IProfileProvider
 {
     /// <summary>The profile to rank with; <paramref name="profileId"/> null selects the default.</summary>
-    QualityProfile Get(string? profileId);
+    QualityProfile Get(string? profileId, MediaType? mediaType = null);
 }
 
 /// <summary>Trivial provider returning the built-in <see cref="DefaultProfiles.Standard"/> profile.</summary>
 public sealed class DefaultProfileProvider : IProfileProvider
 {
-    public QualityProfile Get(string? profileId) => DefaultProfiles.Standard;
+    public QualityProfile Get(string? profileId, MediaType? mediaType = null) => DefaultProfiles.Standard;
 }

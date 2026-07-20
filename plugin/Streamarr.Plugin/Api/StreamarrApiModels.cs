@@ -63,6 +63,16 @@ public sealed record WorkDto
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
     public int? RuntimeMinutes { get; init; }
+    public string? OriginalTitle { get; init; }
+    public string? Tagline { get; init; }
+    public string? OfficialRating { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<string> Genres { get; init; } = [];
+    public IReadOnlyList<string> Studios { get; init; } = [];
+    public IReadOnlyList<string> ProductionLocations { get; init; } = [];
+    public IReadOnlyList<PersonDto> People { get; init; } = [];
+    public string? TrailerUrl { get; init; }
+    public bool AddStreamarrBadge { get; init; } = true;
     public int? Season { get; init; }
     public int? Episode { get; init; }
     public IReadOnlyList<ReleaseDto> Releases { get; init; } = [];
@@ -87,6 +97,16 @@ public sealed record TvSeriesDto
     public int? RuntimeMinutes { get; init; }
     public int? SeasonCount { get; init; }
     public int? EpisodeCount { get; init; }
+    public string? OriginalTitle { get; init; }
+    public string? Tagline { get; init; }
+    public string? OfficialRating { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<string> Genres { get; init; } = [];
+    public IReadOnlyList<string> Studios { get; init; } = [];
+    public IReadOnlyList<string> ProductionLocations { get; init; } = [];
+    public IReadOnlyList<PersonDto> People { get; init; } = [];
+    public string? TrailerUrl { get; init; }
+    public bool AddStreamarrBadge { get; init; } = true;
 }
 
 public sealed record TvSeriesDetailsResponse
@@ -128,6 +148,9 @@ public sealed record TvEpisodeDto
     public string? AirDate { get; init; }
     public int? RuntimeMinutes { get; init; }
     public string? StillUrl { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<PersonDto> People { get; init; } = [];
+    public bool AddStreamarrBadge { get; init; } = true;
     public IReadOnlyList<ReleaseDto> Releases { get; init; } = [];
 
     public WorkDto ToWork() => new()
@@ -139,10 +162,23 @@ public sealed record TvEpisodeDto
         Overview = Overview,
         PosterUrl = StillUrl,
         RuntimeMinutes = RuntimeMinutes,
+        CommunityRating = CommunityRating,
+        People = People,
+        AddStreamarrBadge = AddStreamarrBadge,
         Season = SeasonNumber,
         Episode = EpisodeNumber,
         Releases = Releases,
     };
+}
+
+public sealed record PersonDto
+{
+    public string Name { get; init; } = string.Empty;
+    public string Type { get; init; } = string.Empty;
+    public string? Role { get; init; }
+    public int? SortOrder { get; init; }
+    public int? TmdbId { get; init; }
+    public string? ProfileUrl { get; init; }
 }
 
 public sealed record ReleaseDto
@@ -157,6 +193,7 @@ public sealed record ReleaseDto
     public int AgeDays { get; init; }
     public int Grabs { get; init; }
     public int Score { get; init; }
+    public bool AddScoreToName { get; init; }
     public bool Rejected { get; init; }
     public IReadOnlyList<string> RejectionReasons { get; init; } = [];
     public string Health { get; init; } = "unknown";

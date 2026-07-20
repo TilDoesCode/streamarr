@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.7.0.0",
+    "version": "0.8.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Cut cold-start playback latency with NNTP connection warmup, startup read-ahead, cached media probes and RAR materialization, release-registration hydration, and escalated ffprobe analysis."
+    "changelog": "Import Sonarr/Radarr quality profiles and custom-format scores, rank releases against a portable custom-format subset, brand library artwork with cached Streamarr badges, add a per-stream diagnostics page, and add a Swiftfin playback-compatibility shim."
 }

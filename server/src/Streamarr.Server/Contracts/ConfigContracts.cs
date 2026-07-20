@@ -101,6 +101,8 @@ public sealed record GeneralConfigResponse
     public int SearchCacheTtlSeconds { get; init; }
     public int SegmentCacheSizeMb { get; init; }
     public int ConnectionBudget { get; init; }
+    public bool AddStreamarrBadge { get; init; }
+    public bool AddReleaseScoreToName { get; init; }
 
     public static GeneralConfigResponse From(GeneralConfigEntity e) => new()
     {
@@ -110,6 +112,8 @@ public sealed record GeneralConfigResponse
         SearchCacheTtlSeconds = e.SearchCacheTtlSeconds,
         SegmentCacheSizeMb = e.SegmentCacheSizeMb,
         ConnectionBudget = e.ConnectionBudget,
+        AddStreamarrBadge = e.AddStreamarrBadge,
+        AddReleaseScoreToName = e.AddReleaseScoreToName,
     };
 }
 

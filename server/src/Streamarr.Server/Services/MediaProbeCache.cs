@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -19,7 +18,7 @@ public sealed class MediaProbeCache(
     ILogger<MediaProbeCache> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new(StringComparer.Ordinal);
+    private readonly KeyedAsyncLock _gates = new();
 
     public async Task<FfprobeResult?> GetOrCreateAsync(
         string releaseId,
@@ -29,26 +28,19 @@ public sealed class MediaProbeCache(
     {
         var probeKey = ComputeKey(releaseId, media);
         var gateKey = string.Concat(releaseId, ":", probeKey);
-        var gate = _gates.GetOrAdd(gateKey, static _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
-        try
-        {
-            var cached = await TryReadAsync(releaseId, probeKey, ct);
-            if (cached is not null)
-                return cached;
+        using var lease = await _gates.AcquireAsync(gateKey, ct);
+        var cached = await TryReadAsync(releaseId, probeKey, ct);
+        if (cached is not null)
+            return cached;
 
-            var result = await probe(ct);
-            if (result is not null)
-                await StoreAsync(releaseId, probeKey, result, ct);
-            return result;
-        }
-        finally
-        {
-            gate.Release();
-            if (gate.CurrentCount == 1)
-                _gates.TryRemove(new KeyValuePair<string, SemaphoreSlim>(gateKey, gate));
-        }
+        var result = await probe(ct);
+        if (result is not null && IsCacheable(result))
+            await StoreAsync(releaseId, probeKey, result, ct);
+        return result;
     }
+
+    internal static bool IsCacheable(FfprobeResult result)
+        => result.RunTimeTicks is > 0 || result.MediaStreams.Count > 0;
 
     internal async Task<FfprobeResult?> TryReadAsync(
         string releaseId,

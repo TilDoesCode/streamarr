@@ -12,6 +12,8 @@ const config = {
   searchCacheTtlSeconds: 60,
   segmentCacheSizeMb: 512,
   connectionBudget: 20,
+  addStreamarrBadge: true,
+  addReleaseScoreToName: true,
 };
 
 let putBodies: unknown[] = [];
@@ -60,6 +62,32 @@ describe("GeneralSettings", () => {
     const tmdb = screen.getByLabelText(/TMDB credential/i) as HTMLInputElement;
     expect(tmdb.value).toBe("");
     expect(tmdb.placeholder).toBe("••••••••");
+    expect(screen.getByRole("switch", { name: /mark streamarr artwork/i })).toBeChecked();
+    expect(screen.getByRole("switch", { name: /show release scores/i })).toBeChecked();
+  });
+
+  it("saves the default-on release score name toggle", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<GeneralSettings />);
+    const toggle = await screen.findByRole("switch", { name: /show release scores/i });
+
+    await user.click(toggle);
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(putBodies).toHaveLength(1));
+    expect((putBodies[0] as Record<string, unknown>).addReleaseScoreToName).toBe(false);
+  });
+
+  it("saves the default-on Streamarr artwork badge toggle", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<GeneralSettings />);
+    const toggle = await screen.findByRole("switch", { name: /mark streamarr artwork/i });
+
+    await user.click(toggle);
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(putBodies).toHaveLength(1));
+    expect((putBodies[0] as Record<string, unknown>).addStreamarrBadge).toBe(false);
   });
 
   it("blocks save with a validation error when the budget is below 1 (mirrors server)", async () => {

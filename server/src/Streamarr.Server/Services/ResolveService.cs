@@ -313,17 +313,27 @@ public sealed class ResolveService(
                 releaseId);
         }
 
-        return new SingleResolve(registered.WorkId, new ResolveResponse
+        try
         {
-            ReleaseId = releaseId,
-            Status = health.StatusLabel,
-            StreamUrl = streamUrlForToken(session.Token),
-            Container = media.Container,
-            SizeBytes = media.SizeBytes,
-            RunTimeTicks = probe?.RunTimeTicks,
-            MediaStreams = probe?.MediaStreams ?? [],
-            SessionTtlSeconds = ttlSeconds,
-        });
+            return new SingleResolve(registered.WorkId, new ResolveResponse
+            {
+                ReleaseId = releaseId,
+                Status = health.StatusLabel,
+                StreamUrl = streamUrlForToken(session.Token),
+                Container = media.Container,
+                SizeBytes = media.SizeBytes,
+                RunTimeTicks = probe?.RunTimeTicks,
+                MediaStreams = probe?.MediaStreams ?? [],
+                SessionTtlSeconds = ttlSeconds,
+            });
+        }
+        catch
+        {
+            // URL projection and response construction happen after the capability is admitted.
+            // Any failure here must obey the same cleanup rule as ffprobe failures.
+            sessionManager.CloseSession(session.Token);
+            throw;
+        }
     }
 
     private sealed record SingleResolve(string WorkId, ResolveResponse Response);

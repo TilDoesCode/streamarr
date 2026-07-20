@@ -210,6 +210,13 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<MediaProbeCache>();
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<IndexerCapsTester>();
+        services.AddHttpClient<ProfileImportService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+            client.MaxResponseContentBufferSize = 4 * 1024 * 1024;
+        })
+            .ConfigurePrimaryHttpMessageHandler(OutboundHttpHandlerFactory.CreateDirect)
+            .RemoveAllLoggers();
         services.AddSingleton(_ => new ProviderConnectionTester());
         services.AddSingleton(_ => new ProviderSpeedTester());
         services.AddSingleton<StreamarrDbInitializer>();
@@ -399,6 +406,14 @@ public static class StreamarrServerBootstrap
             try
             {
                 await next();
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                // Jellyfin cancels speculative search/playback requests when navigation or
+                // playback state changes. That is normal client lifecycle, not a server 500 and
+                // must not enqueue an operator outage notification.
+                if (!context.Response.HasStarted)
+                    context.Response.StatusCode = 499; // Client Closed Request (nginx convention).
             }
             catch (Exception exception)
             {

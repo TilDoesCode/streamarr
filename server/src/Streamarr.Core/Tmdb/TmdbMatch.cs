@@ -18,7 +18,27 @@ public sealed record TmdbMatch
     public string? Overview { get; init; }
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
+    public string? OriginalTitle { get; init; }
+    public string? Tagline { get; init; }
+    public string? OfficialRating { get; init; }
+    public float? CommunityRating { get; init; }
+    public IReadOnlyList<string> Genres { get; init; } = [];
+    public IReadOnlyList<string> Studios { get; init; } = [];
+    public IReadOnlyList<string> ProductionLocations { get; init; } = [];
+    public IReadOnlyList<TmdbPerson> People { get; init; } = [];
+    public string? TrailerUrl { get; init; }
 
     /// <summary>Movie runtime, or a series' typical episode runtime, in minutes.</summary>
     public int? RuntimeMinutes { get; init; }
+}
+
+/// <summary>A bounded person credit that maps directly onto common media-library fields.</summary>
+public sealed record TmdbPerson
+{
+    public required string Name { get; init; }
+    public required string Type { get; init; }
+    public string? Role { get; init; }
+    public int? SortOrder { get; init; }
+    public int? TmdbId { get; init; }
+    public string? ProfileUrl { get; init; }
 }

@@ -36,6 +36,8 @@ public sealed class GeneralConfigService(
             if (write.SearchCacheTtlSeconds is { } sc) entity.SearchCacheTtlSeconds = sc;
             if (write.SegmentCacheSizeMb is { } sz) entity.SegmentCacheSizeMb = sz;
             if (write.ConnectionBudget is { } budget) entity.ConnectionBudget = budget;
+            if (write.AddStreamarrBadge is { } badge) entity.AddStreamarrBadge = badge;
+            if (write.AddReleaseScoreToName is { } score) entity.AddReleaseScoreToName = score;
 
             // Omit-to-keep for the secret TMDB key.
             string? replacementCredential = null;
@@ -83,4 +85,6 @@ public sealed record GeneralConfigWrite
     public int? SearchCacheTtlSeconds { get; init; }
     public int? SegmentCacheSizeMb { get; init; }
     public int? ConnectionBudget { get; init; }
+    public bool? AddStreamarrBadge { get; init; }
+    public bool? AddReleaseScoreToName { get; init; }
 }

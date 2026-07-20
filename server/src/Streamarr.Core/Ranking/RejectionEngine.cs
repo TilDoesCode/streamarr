@@ -34,6 +34,7 @@ public sealed class RejectionEngine : IRejectionEngine
     [
         new SampleRejectionRule(),
         new SizeSanityRejectionRule(),
+        new CustomFormatScoreRejectionRule(),
         new PasswordProtectedRejectionRule(),
         new NonMediaPayloadRejectionRule(),
         new IncompleteUploadRejectionRule(),

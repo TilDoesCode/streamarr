@@ -53,8 +53,9 @@ provider. The owner must run this once on a real Jellyfin client (web, mobile, o
       (or direct API access to the returned item id during this bootstrap test).
 - [ ] Opening the eligible item shows a **version picker** listing multiple releases
       (one `MediaSourceInfo` per ranked release, named e.g. `1080p WEB-DL x265 · DDP5.1 · GER`).
-- [ ] Each unopened source carries an opaque, short-lived, one-use `OpenToken`; it is
-      not a release id and cannot be replayed or used by a different Jellyfin user.
+- [ ] Each unopened source carries an opaque, bounded, replay-safe `OpenToken`; it is
+      not a release id, can be replayed only within its active/idle lease, and cannot be
+      used by a different Jellyfin user.
 - [ ] Selecting a version and pressing play **opens** the source: the Core Server logs a
       `/resolve` and a new session appears in admin-authenticated
       `GET /api/v1/sessions`.
@@ -95,7 +96,7 @@ items past their TTL (BRIEF §8.2–8.5, Milestone 6).
 - ✅ `dotnet test plugin/Streamarr.Plugin.sln` — the merge/dedup + hint-shaping
   (`SearchInjectionTests`) and TTL-expiry (`EphemeralCleanupTests`) logic, plus the M5
   mapper/offer/store/tracker and security tests. Stable-GUID de-duplication, bounded
-  state, one-use offers, and TTL decisions are pinned by these.
+  state, replay-safe offers, and TTL decisions are pinned by these.
 - ✅ Jellyfin 10.11.11 (docker) **loads the plugin with zero errors** with the search action
   filter registered into `MvcOptions` — no exceptions from `Streamarr.Plugin.Search` at startup.
 - ✅ **Real-host fall-through** (BRIEF §11): the hardened Jellyfin smoke verifies that

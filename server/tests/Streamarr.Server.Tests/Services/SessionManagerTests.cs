@@ -75,6 +75,29 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public async Task ClosedSession_CannotBeReopened_AndDoesNotConsumeStreamCapacity()
+    {
+        var manager = new SessionManager(
+            new FakeNntpClient(),
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
+            {
+                SessionTtlSeconds = 300,
+                MaxSessions = 2,
+                MaxConcurrentStreams = 1,
+            }),
+            NullLogger<SessionManager>.Instance);
+        var closed = manager.CreateSession("closed", "work", MediaFile(), null);
+        var live = manager.CreateSession("live", "work", MediaFile(), null);
+
+        Assert.True(manager.CloseSession(closed.Token));
+        Assert.Throws<SessionUnavailableException>(() => manager.OpenStream(closed));
+
+        // A rejected reopen must release the sole process-wide stream permit.
+        await using var stream = manager.OpenStream(live);
+        Assert.Equal(Payload[0], stream.ReadByte());
+    }
+
+    [Fact]
     public async Task SweepExpired_RemovesSessionsPastTheirSlidingTtl()
     {
         var manager = Manager(ttlSeconds: 0); // expires as soon as it is idle
@@ -94,6 +117,25 @@ public class SessionManagerTests
 
         Assert.Equal(0, manager.SweepExpired());
         Assert.Single(manager.ListSessions());
+    }
+
+    [Fact]
+    public async Task SweepExpired_DoesNotKillAnOpenPausedStream()
+    {
+        var manager = Manager(ttlSeconds: 1);
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null);
+        var stream = manager.OpenStream(session);
+
+        await Task.Delay(1_100);
+        Assert.Equal(0, manager.SweepExpired());
+        Assert.True(manager.TryGetSession(session.Token, out _));
+        var resumedRange = manager.OpenStream(session);
+
+        await resumedRange.DisposeAsync();
+        await stream.DisposeAsync();
+        await Task.Delay(1_100);
+        Assert.Equal(1, manager.SweepExpired());
+        Assert.False(manager.TryGetSession(session.Token, out _));
     }
 
     [Fact]

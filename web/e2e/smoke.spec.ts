@@ -154,6 +154,15 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   await peer.setViewportSize({ width: 375, height: 800 });
   await peer.goto("/sessions");
   await expect(peer.getByRole("heading", { name: "Sessions", level: 2 })).toBeVisible();
+
+  // Every live stream drills into a real observability view backed by the same session,
+  // ephemeral-file, metrics and playback-event APIs.
+  await peer.getByRole("link", { name: /inspect stream/i }).last().click();
+  await expect(peer).toHaveURL(/\/sessions\/[^/]+$/);
+  await expect(peer.getByText("Live signal")).toBeVisible();
+  await expect(peer.getByRole("heading", { name: "Identity & lifecycle" })).toBeVisible();
+  await peer.getByRole("link", { name: /all streams/i }).click();
+
   const closeSession = peer.getByRole("button", { name: /force-close/i }).last();
   const closeBox = await closeSession.boundingBox();
   expect(closeBox).not.toBeNull();
