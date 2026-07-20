@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.7.0.0",
+        "changelog": "Cut cold-start playback latency with NNTP connection warmup, startup read-ahead, cached media probes and RAR materialization, release-registration hydration, and escalated ffprobe analysis.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.7.0/streamarr-jellyfin-0.7.0.zip",
+        "checksum": "d52f5ad58eb29845629351267a7a5996",
+        "timestamp": "2026-07-20T10:27:50Z"
+      },
+      {
         "version": "0.6.0.0",
         "changelog": "Add streaming history, ephemeral library management, cache-backed playback, operational monitoring, and optional Pushover notifications.",
         "targetAbi": "10.11.11.0",
