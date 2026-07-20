@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.8.0.0",
+        "changelog": "Import Sonarr/Radarr quality profiles and custom-format scores, rank releases against a portable custom-format subset, brand library artwork with cached Streamarr badges, add a per-stream diagnostics page, and add a Swiftfin playback-compatibility shim.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.8.0/streamarr-jellyfin-0.8.0.zip",
+        "checksum": "b5c4a0188d1fabc2a7065cd88c8ec130",
+        "timestamp": "2026-07-20T20:41:12Z"
+      },
+      {
         "version": "0.7.0.0",
         "changelog": "Cut cold-start playback latency with NNTP connection warmup, startup read-ahead, cached media probes and RAR materialization, release-registration hydration, and escalated ffprobe analysis.",
         "targetAbi": "10.11.11.0",
