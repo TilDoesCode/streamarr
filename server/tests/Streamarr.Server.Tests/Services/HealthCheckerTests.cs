@@ -8,7 +8,12 @@ namespace Streamarr.Server.Tests.Services;
 
 public class HealthCheckerTests
 {
-    private static HealthChecker Checker(FakeNntpClient client, int sampleCount = 24, double deadRatio = 0.5)
+    private static HealthChecker Checker(
+        FakeNntpClient client,
+        int sampleCount = 24,
+        double deadRatio = 0.5,
+        int concurrency = 4,
+        int connectionBudget = 20)
         => new(
             client,
             Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
@@ -16,9 +21,10 @@ public class HealthCheckerTests
                 HealthCheck = new HealthCheckOptions
                 {
                     SampleCount = sampleCount,
-                    Concurrency = 4,
+                    Concurrency = concurrency,
                     DeadMissingRatio = deadRatio,
                 },
+                ConnectionBudget = connectionBudget,
             }),
             NullLogger<HealthChecker>.Instance);
 
@@ -109,5 +115,30 @@ public class HealthCheckerTests
     {
         Assert.Equal(["s0"], HealthChecker.SampleEvenly(["s0", "s1", "s2"], 1));
         Assert.Empty(HealthChecker.SampleEvenly(["s0", "s1"], 0));
+    }
+
+    [Fact]
+    public async Task Concurrency_UsesConfiguredProviderBudgetWithoutChangingSampleSet()
+    {
+        var segments = Segments(24);
+        var client = new FakeNntpClient(segments) { StatDelay = TimeSpan.FromMilliseconds(20) };
+
+        var result = await Checker(
+            client,
+            concurrency: 100,
+            connectionBudget: 12).CheckAsync(segments, CancellationToken.None);
+
+        Assert.Equal(24, result.SampledCount);
+        Assert.Equal(12, client.MaxConcurrentStats);
+    }
+
+    [Fact]
+    public void StartupDefaults_FillTheConnectionBudget()
+    {
+        var options = new StreamarrOptions();
+        Assert.Equal(20, options.ConnectionWarmupCount);
+        Assert.Equal(20, options.RarMaterializationConcurrency);
+        Assert.Equal(20, options.HealthCheck.Concurrency);
+        Assert.Equal(20, NntpConnectionWarmupService.EffectiveWarmupCount(options));
     }
 }

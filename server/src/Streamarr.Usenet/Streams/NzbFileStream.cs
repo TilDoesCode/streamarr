@@ -21,13 +21,22 @@ public class NzbFileStream(
     int articleBufferSize,
     SegmentCache? segmentCache = null,
     int articleRetryCount = 2,
-    Action<string>? onSegmentRequested = null
+    Action<string>? onSegmentRequested = null,
+    int startupArticleBufferSize = 0,
+    int startupReadAheadSegments = 0,
+    Stream? openedFirstSegment = null
 ) : FastReadOnlyStream
 {
-    private readonly bool _validated = ValidateArguments(fileSegmentIds, fileSize, articleBufferSize);
+    private readonly bool _validated = ValidateArguments(
+        fileSegmentIds,
+        fileSize,
+        articleBufferSize,
+        startupArticleBufferSize,
+        startupReadAheadSegments);
     private long _position;
     private bool _disposed;
     private Stream? _innerStream;
+    private Stream? _openedFirstSegment = openedFirstSegment;
 
     public override bool CanSeek
     {
@@ -91,39 +100,103 @@ public class NzbFileStream(
             throw new IOException("Cannot seek outside the decoded file.");
         if (_position == absoluteOffset) return _position;
         _position = absoluteOffset;
+        var unopened = Interlocked.Exchange(ref _openedFirstSegment, null);
+        unopened?.Dispose();
         _innerStream?.Dispose();
         _innerStream = null;
         return _position;
     }
 
-    private async Task<InterpolationSearch.Result> SeekSegment(long byteOffset, CancellationToken ct)
+    private async Task<(InterpolationSearch.Result Result, Stream Stream)> SeekSegment(
+        long byteOffset,
+        CancellationToken ct)
     {
-        return await InterpolationSearch.Find(
-            byteOffset,
-            new LongRange(0, fileSegmentIds.Length),
-            new LongRange(0, fileSize),
-            async (guess) =>
-            {
-                var header = await usenetClient.GetYencHeadersAsync(fileSegmentIds[guess], ct).ConfigureAwait(false);
-                return new LongRange(header.PartOffset, checked(header.PartOffset + header.PartSize));
-            },
-            ct
-        ).ConfigureAwait(false);
+        Stream? foundStream = null;
+        try
+        {
+            var result = await InterpolationSearch.Find(
+                byteOffset,
+                new LongRange(0, fileSegmentIds.Length),
+                new LongRange(0, fileSize),
+                async (guess) =>
+                {
+                    var response = await usenetClient.DecodedBodyAsync(fileSegmentIds[guess], ct).ConfigureAwait(false);
+                    var stream = response.Stream;
+                    try
+                    {
+                        var header = await stream.GetYencHeadersAsync(ct).ConfigureAwait(false)
+                                     ?? throw new InvalidDataException("The NNTP article carried no yEnc headers.");
+                        var range = new LongRange(header.PartOffset, checked(header.PartOffset + header.PartSize));
+                        if (range.Contains(byteOffset))
+                            foundStream = stream;
+                        else
+                            await stream.DisposeAsync().ConfigureAwait(false);
+                        return range;
+                    }
+                    catch
+                    {
+                        await stream.DisposeAsync().ConfigureAwait(false);
+                        throw;
+                    }
+                },
+                ct
+            ).ConfigureAwait(false);
+            var matchedStream = foundStream
+                                ?? throw new InvalidDataException("Interpolation search lost its matched article.");
+            foundStream = null;
+            return (result, matchedStream);
+        }
+        catch
+        {
+            if (foundStream is not null)
+                await foundStream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     private async Task<Stream> GetFileStream(long rangeStart, CancellationToken cancellationToken)
     {
-        if (rangeStart == 0) return GetMultiSegmentStream(0, cancellationToken);
-        var foundSegment = await SeekSegment(rangeStart, cancellationToken).ConfigureAwait(false);
-        var stream = GetMultiSegmentStream(foundSegment.FoundIndex, cancellationToken);
-        await stream.DiscardBytesAsync(rangeStart - foundSegment.FoundByteRange.StartInclusive, cancellationToken)
-            .ConfigureAwait(false);
-        return stream;
+        if (rangeStart == 0)
+        {
+            var opened = Interlocked.Exchange(ref _openedFirstSegment, null);
+            try
+            {
+                return GetMultiSegmentStream(0, cancellationToken, opened);
+            }
+            catch
+            {
+                if (opened is not null)
+                    await opened.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+
+        var found = await SeekSegment(rangeStart, cancellationToken).ConfigureAwait(false);
+        Stream? stream = null;
+        try
+        {
+            stream = GetMultiSegmentStream(found.Result.FoundIndex, cancellationToken, found.Stream);
+            await stream.DiscardBytesAsync(rangeStart - found.Result.FoundByteRange.StartInclusive, cancellationToken)
+                .ConfigureAwait(false);
+            return stream;
+        }
+        catch
+        {
+            if (stream is not null)
+                await stream.DisposeAsync().ConfigureAwait(false);
+            else
+                await found.Stream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
-    private Stream GetMultiSegmentStream(int firstSegmentIndex, CancellationToken cancellationToken)
+    private Stream GetMultiSegmentStream(
+        int firstSegmentIndex,
+        CancellationToken cancellationToken,
+        Stream? openedFirstSegment = null)
     {
         var segmentIds = fileSegmentIds.AsMemory()[firstSegmentIndex..];
+        var nearEnd = firstSegmentIndex >= fileSegmentIds.Length - 2;
         return MultiSegmentStream.Create(
             segmentIds,
             usenetClient,
@@ -131,13 +204,20 @@ public class NzbFileStream(
             cancellationToken,
             segmentCache,
             articleRetryCount,
-            onSegmentRequested);
+            onSegmentRequested,
+            startupArticleBufferSize,
+            startupReadAheadSegments,
+            openedFirstSegment,
+            progressiveFirstSegment: false,
+            disableReadAhead: nearEnd && articleBufferSize > 0);
     }
 
     protected override void Dispose(bool disposing)
     {
         if (_disposed) return;
         _innerStream?.Dispose();
+        _openedFirstSegment?.Dispose();
+        _openedFirstSegment = null;
         _disposed = true;
     }
 
@@ -145,11 +225,18 @@ public class NzbFileStream(
     {
         if (_disposed) return;
         if (_innerStream != null) await _innerStream.DisposeAsync().ConfigureAwait(false);
+        if (_openedFirstSegment != null) await _openedFirstSegment.DisposeAsync().ConfigureAwait(false);
+        _openedFirstSegment = null;
         _disposed = true;
         GC.SuppressFinalize(this);
     }
 
-    private static bool ValidateArguments(string[] segmentIds, long length, int readAhead)
+    private static bool ValidateArguments(
+        string[] segmentIds,
+        long length,
+        int readAhead,
+        int startupReadAhead,
+        int startupSegments)
     {
         ArgumentNullException.ThrowIfNull(segmentIds);
         if (segmentIds.Length == 0 || segmentIds.Length > 1_000_000)
@@ -158,6 +245,10 @@ public class NzbFileStream(
             throw new ArgumentOutOfRangeException(nameof(length));
         if (readAhead is < 0 or > 100)
             throw new ArgumentOutOfRangeException(nameof(readAhead));
+        if (startupReadAhead is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(startupReadAhead));
+        if (startupSegments is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(startupSegments));
         foreach (var id in segmentIds)
             _ = SegmentId.Normalize(id);
         return true;

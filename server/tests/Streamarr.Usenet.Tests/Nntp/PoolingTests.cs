@@ -65,6 +65,57 @@ public class PoolingTests
     }
 
     [Fact]
+    public async Task PooledClient_Warmup_CreatesRequestedIdleConnections()
+    {
+        await using var server = new MockNntpServer();
+        using var client = UsenetStreamingClient.CreateProviderClient(
+            ProviderFor(server, maxConnections: 5),
+            connectionIdleTimeout: TimeSpan.FromMinutes(5));
+
+        await client.WarmAsync(3);
+
+        Assert.Equal(3, client.LiveConnections);
+        Assert.Equal(3, client.IdleConnections);
+        Assert.Equal(3, server.MaxObservedConnections);
+    }
+
+    [Fact]
+    public async Task ConnectionPool_Warmup_DoesNotWaitWhileHoldingCapacityNeededByAnActiveLease()
+    {
+        await using var pool = new ConnectionPool<object>(
+            maxConnections: 2,
+            _ => ValueTask.FromResult<object>(new object()),
+            idleTimeout: TimeSpan.FromMinutes(5));
+        using var active = await pool.GetConnectionLockAsync(SemaphorePriority.High);
+
+        await pool.WarmAsync(2).WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(2, pool.LiveConnections);
+        Assert.Equal(1, pool.ActiveConnections);
+        Assert.Equal(1, pool.IdleConnections);
+    }
+
+    [Fact]
+    public async Task ConnectionPool_ConcurrentWarmups_AreSerializedAndReuseTheWarmedSet()
+    {
+        var factoryCalls = 0;
+        await using var pool = new ConnectionPool<object>(
+            maxConnections: 3,
+            _ =>
+            {
+                Interlocked.Increment(ref factoryCalls);
+                return ValueTask.FromResult<object>(new object());
+            },
+            idleTimeout: TimeSpan.FromMinutes(5));
+
+        await Task.WhenAll(pool.WarmAsync(3), pool.WarmAsync(3))
+            .WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(3, factoryCalls);
+        Assert.Equal(3, pool.IdleConnections);
+    }
+
+    [Fact]
     public async Task MultiProvider_FallsBackToBackupProvider_OnMissingArticle()
     {
         var data = YencTestEncoder.LcgBytes(3, 5_000);

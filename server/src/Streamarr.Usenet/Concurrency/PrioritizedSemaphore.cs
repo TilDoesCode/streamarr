@@ -96,6 +96,25 @@ public class PrioritizedSemaphore : IDisposable
         }
     }
 
+    /// <summary>
+    /// Attempts to enter without queueing. This is used by best-effort background
+    /// work that must never hold some permits while waiting for the rest.
+    /// </summary>
+    public bool TryWait()
+    {
+        lock (_lock)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(PrioritizedSemaphore));
+
+            if (_enteredCount >= _maxAllowed)
+                return false;
+
+            _enteredCount++;
+            return true;
+        }
+    }
+
     public void Release()
     {
         TaskCompletionSource<bool>? toRelease;

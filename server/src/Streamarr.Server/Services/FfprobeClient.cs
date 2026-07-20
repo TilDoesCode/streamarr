@@ -29,9 +29,31 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
     public async Task<FfprobeResult?> ProbeAsync(string url, CancellationToken ct)
     {
         await _processGate.WaitAsync(ct);
+        var o = options.Value;
         try
         {
-            return await ProbeCoreAsync(url, ct);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(o.FfprobeTimeoutSeconds));
+
+            var fast = await ProbeCoreAsync(
+                url,
+                o.FfprobeProbeSizeBytes,
+                o.FfprobeAnalyzeDurationMs,
+                timeout.Token);
+            if (IsCompleteFastResult(fast))
+                return fast;
+
+            logger.LogInformation("ffprobe fast-path budget was insufficient; retrying with the escalated budget");
+            return await ProbeCoreAsync(
+                url,
+                o.FfprobeEscalatedProbeSizeBytes,
+                o.FfprobeEscalatedAnalyzeDurationMs,
+                timeout.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning("ffprobe timed out probing a stream capability");
+            return null;
         }
         finally
         {
@@ -39,29 +61,22 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
         }
     }
 
-    private async Task<FfprobeResult?> ProbeCoreAsync(string url, CancellationToken ct)
+    internal static bool IsCompleteFastResult(FfprobeResult? result)
+        => result is { RunTimeTicks: not null, MediaStreams.Count: > 0 };
+
+    protected virtual async Task<FfprobeResult?> ProbeCoreAsync(
+        string url,
+        int probeSizeBytes,
+        int analyzeDurationMs,
+        CancellationToken ct)
     {
         var o = options.Value;
-        var psi = new ProcessStartInfo(o.FfprobePath)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        psi.ArgumentList.Add("-v");
-        psi.ArgumentList.Add("error");
-        psi.ArgumentList.Add("-print_format");
-        psi.ArgumentList.Add("json");
-        psi.ArgumentList.Add("-show_entries");
-        psi.ArgumentList.Add("format=duration:stream=codec_type,codec_name,width,height,channels:stream_tags=language");
-        psi.ArgumentList.Add(url);
+        var psi = CreateStartInfo(o.FfprobePath, url, probeSizeBytes, analyzeDurationMs);
 
         try
         {
             using var process = Process.Start(psi)
                 ?? throw new InvalidOperationException("Could not start ffprobe.");
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(o.FfprobeTimeoutSeconds));
 
             void KillProcess()
             {
@@ -78,16 +93,16 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
             var stdoutTask = ReadBoundedTextAsync(
                 process.StandardOutput.BaseStream,
                 MaxStandardOutputBytes,
-                timeout.Token,
+                ct,
                 KillProcess);
             var stderrTask = ReadBoundedTextAsync(
                 process.StandardError.BaseStream,
                 MaxStandardErrorBytes,
-                timeout.Token,
+                ct,
                 KillProcess);
             try
             {
-                await process.WaitForExitAsync(timeout.Token);
+                await process.WaitForExitAsync(ct);
             }
             catch (OperationCanceledException)
             {
@@ -107,16 +122,37 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
 
             return Parse(stdout);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            logger.LogWarning("ffprobe timed out probing a stream capability");
-            return null;
-        }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             logger.LogWarning(e, "ffprobe failed while probing a stream capability");
             return null;
         }
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(
+        string path,
+        string url,
+        int probeSizeBytes,
+        int analyzeDurationMs)
+    {
+        var psi = new ProcessStartInfo(path)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        psi.ArgumentList.Add("-v");
+        psi.ArgumentList.Add("error");
+        psi.ArgumentList.Add("-probesize");
+        psi.ArgumentList.Add(probeSizeBytes.ToString(CultureInfo.InvariantCulture));
+        psi.ArgumentList.Add("-analyzeduration");
+        psi.ArgumentList.Add(checked((long)analyzeDurationMs * 1000).ToString(CultureInfo.InvariantCulture));
+        psi.ArgumentList.Add("-print_format");
+        psi.ArgumentList.Add("json");
+        psi.ArgumentList.Add("-show_entries");
+        psi.ArgumentList.Add("format=duration:stream=codec_type,codec_name,width,height,channels:stream_tags=language");
+        psi.ArgumentList.Add(url);
+        return psi;
     }
 
     internal static async Task<string> ReadBoundedTextAsync(

@@ -58,7 +58,13 @@
         "down",
         "--remove-orphans"
       ],
-      "shell": true
+      "shell": true,
+      "env": {
+        "PLUGIN_TFM": "net9.0",
+        "STREAMARR_ADMIN_USERNAME": "admin",
+        "STREAMARR_ADMIN_PASSWORD": "streamarr-dev",
+        "STREAMARR_API_KEY": "dev-streamarr-api-key-change-me-0123456789"
+      }
     },
     {
       "id": "server",
@@ -70,7 +76,7 @@
         "mkdir -p /tmp/streamarr-dev/keys && exec env Streamarr__TrustedOrigins__0=\"${CODECRAFT_URL_WEB_DEV:-}\" dotnet run --no-launch-profile --project src/Streamarr.Server/Streamarr.Server.csproj"
       ],
       "cwd": "./server",
-      "shell": true,
+      "shell": false,
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_CLI_TELEMETRY_OPTOUT": "1",

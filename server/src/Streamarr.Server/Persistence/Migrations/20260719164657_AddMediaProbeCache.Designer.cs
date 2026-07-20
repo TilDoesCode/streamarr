@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Streamarr.Server.Persistence;
 
@@ -10,9 +11,11 @@ using Streamarr.Server.Persistence;
 namespace Streamarr.Server.Persistence.Migrations
 {
     [DbContext(typeof(StreamarrDbContext))]
-    partial class StreamarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719164657_AddMediaProbeCache")]
+    partial class AddMediaProbeCache
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.28");
@@ -84,9 +87,6 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.Property<long>("NzbSizeBytes")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("ReleaseRegistrationJson")
-                        .HasColumnType("TEXT");
 
                     b.Property<long>("ReleaseSizeBytes")
                         .HasColumnType("INTEGER");

@@ -207,6 +207,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<NotificationConfigService>();
         services.AddSingleton<WatchEventService>();
         services.AddSingleton<NzbCacheService>();
+        services.AddSingleton<MediaProbeCache>();
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<IndexerCapsTester>();
         services.AddSingleton(_ => new ProviderConnectionTester());
@@ -227,8 +228,10 @@ public static class StreamarrServerBootstrap
             var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<StreamarrOptions>>().Value;
             return UsenetStreamingClient.Create(
                 options.Providers.Select(p => p.ToProvider()),
-                sp.GetRequiredService<ILoggerFactory>());
+                sp.GetRequiredService<ILoggerFactory>(),
+                TimeSpan.FromSeconds(options.ConnectionIdleTimeoutSeconds));
         });
+        services.AddHostedService<NntpConnectionWarmupService>();
 
         // … wrapped in the global NNTP connection budget shared across all sessions.
         services.AddSingleton<INntpClient>(sp =>
@@ -314,6 +317,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<IReleaseStore>(sp => new InMemoryReleaseStore(
             sp.GetRequiredService<IReleaseHealthCache>(),
             sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.ReleaseStoreMaxEntries));
+        services.AddHostedService<ReleaseRegistrationHydrationService>();
         services.AddSingleton<SessionManager>();
         services.AddHostedService(sp => sp.GetRequiredService<SessionManager>());
         services.AddSingleton<HealthChecker>();
@@ -324,6 +328,7 @@ public static class StreamarrServerBootstrap
             return new Streamarr.Usenet.Streams.SegmentCache(checked((long)sizeMb * 1024 * 1024));
         });
         services.AddSingleton<MediaFileMaterializer>();
+        services.AddSingleton<MediaMaterializationCache>();
         services.AddSingleton<FfprobeClient>();
         services.AddSingleton<ResolveService>();
         services.AddHttpClient<NzbFetcher>(client =>

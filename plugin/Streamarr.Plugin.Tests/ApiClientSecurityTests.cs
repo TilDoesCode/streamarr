@@ -73,6 +73,47 @@ public class ApiClientSecurityTests
         Assert.Equal("movie", System.Web.HttpUtility.ParseQueryString(requested.Query)["type"]);
     }
 
+    [Theory]
+    [InlineData("episode")]
+    [InlineData("tv")]
+    public async Task Persisted_tv_refresh_uses_stable_series_and_episode_coordinates(string mediaType)
+    {
+        Uri? requested = null;
+        var handler = new CallbackHandler(request =>
+        {
+            requested = request.RequestUri;
+            return Json(HttpStatusCode.OK, "{\"results\":[]}");
+        });
+        var config = new PluginConfiguration
+        {
+            ServerUrl = "https://core.example",
+            ProfileId = "german hd",
+        };
+        var api = new StreamarrApiClient(
+            new HttpClient(handler),
+            NullLogger<StreamarrApiClient>.Instance,
+            () => config);
+
+        _ = await api.RefreshWorkAsync(new WorkDto
+        {
+            WorkId = "tmdb-tv-37680-s01e02",
+            MediaType = mediaType,
+            Title = "Suits",
+            TmdbId = 37680,
+            Season = 1,
+            Episode = 2,
+        }, CancellationToken.None);
+
+        Assert.NotNull(requested);
+        var query = System.Web.HttpUtility.ParseQueryString(requested!.Query);
+        Assert.Null(query["q"]);
+        Assert.Equal("37680", query["tmdbId"]);
+        Assert.Equal("tv", query["type"]);
+        Assert.Equal("1", query["season"]);
+        Assert.Equal("2", query["episode"]);
+        Assert.Equal("german hd", query["profileId"]);
+    }
+
     [Fact]
     public async Task Tv_hierarchy_uses_bounded_discovery_and_profiled_season_routes()
     {

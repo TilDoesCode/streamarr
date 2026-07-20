@@ -91,6 +91,47 @@ public sealed class StreamarrApiClient
         return response is null ? null : StreamarrPayloadBounds.Normalize(response);
     }
 
+    /// <summary>
+    /// Replays discovery for a previously materialized work after Core has restarted and
+    /// lost its in-memory release registry. Stable TMDB/episode coordinates are preferred
+    /// over title text so a persisted Jellyfin source cannot refresh the wrong work.
+    /// </summary>
+    public async Task<SearchResponse?> RefreshWorkAsync(WorkDto work, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        var parameters = new List<string>();
+        if (work.TmdbId is > 0)
+            parameters.Add($"tmdbId={work.TmdbId.Value}");
+        else if (!string.IsNullOrWhiteSpace(work.Title))
+            parameters.Add($"q={Uri.EscapeDataString(work.Title)}");
+        else
+            throw new InvalidOperationException("A persisted Streamarr work has no stable discovery identifier.");
+
+        var isTv = work.MediaType is "tv" or "episode";
+        var mediaType = isTv
+            ? "tv"
+            : work.MediaType == "movie"
+                ? "movie"
+                : null;
+        if (mediaType is not null)
+            parameters.Add($"type={mediaType}");
+        if (isTv && work.Season is >= 0)
+            parameters.Add($"season={work.Season.Value}");
+        if (isTv && work.Episode is > 0)
+            parameters.Add($"episode={work.Episode.Value}");
+        if (!string.IsNullOrWhiteSpace(Config.ProfileId))
+            parameters.Add($"profileId={Uri.EscapeDataString(Config.ProfileId)}");
+
+        var response = await SendAsync<SearchResponse>(
+                HttpMethod.Get,
+                "/api/v1/search?" + string.Join('&', parameters),
+                null,
+                ct)
+            .ConfigureAwait(false);
+        return response is null ? null : StreamarrPayloadBounds.Normalize(response);
+    }
+
     public async Task<TvSeriesSearchResponse?> SearchTvSeriesAsync(string query, CancellationToken ct)
     {
         var response = await SendAsync<TvSeriesSearchResponse>(

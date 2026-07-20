@@ -1,9 +1,11 @@
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
 using Streamarr.Tests.Shared;
+using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nntp.Pooling;
 using Streamarr.Usenet.Nzb;
+using Streamarr.Usenet.Yenc;
 
 namespace Streamarr.Server.Tests.Services;
 
@@ -16,7 +18,7 @@ public class MediaFileMaterializerTests
         return await NzbDocument.LoadAsync(ms);
     }
 
-    private static MultiConnectionNntpClient ClientFor(MockNntpServer server) =>
+    private static MultiConnectionNntpClient ClientFor(MockNntpServer server, int maxConnections = 4) =>
         UsenetStreamingClient.CreateProviderClient(new()
         {
             Name = "mock",
@@ -25,7 +27,7 @@ public class MediaFileMaterializerTests
             UseSsl = false,
             Username = server.Username,
             Password = server.Password,
-            MaxConnections = 4,
+            MaxConnections = maxConnections,
         });
 
     [Fact]
@@ -44,7 +46,7 @@ public class MediaFileMaterializerTests
         Assert.True(candidate!.IsRarWrapped);
         Assert.Equal(3, candidate.Files.Count);
 
-        using var client = ClientFor(server);
+        using var client = ClientFor(server, maxConnections: 8);
         var materializer = new MediaFileMaterializer(
             client, Microsoft.Extensions.Options.Options.Create(new StreamarrOptions()));
         var media = await materializer.MaterializeAsync(candidate, CancellationToken.None);
@@ -52,6 +54,8 @@ public class MediaFileMaterializerTests
         Assert.Equal("video.mkv", media.FileName);
         Assert.Equal("mkv", media.Container);
         Assert.Equal(video.Length, media.SizeBytes);
+        // Volume probes must overlap, but the exact peak is scheduler-dependent.
+        Assert.InRange(server.MaxObservedConnections, 2, 8);
 
         await using var stream = media.OpenStream(client);
         using var output = new MemoryStream();
@@ -90,5 +94,111 @@ public class MediaFileMaterializerTests
             NzbTestFixtures.PublishFile(server, "video.par2", junk, "par2"));
 
         Assert.Null(MediaFileSelector.SelectPrimary(nzb));
+    }
+
+    [Fact]
+    public async Task RarMaterialization_DisposesOpenedFirstBody_WhenSizeValidationFails()
+    {
+        var file = new NzbFile { Subject = "\"video.part01.rar\" yEnc" };
+        file.Segments.Add(new NzbSegment
+        {
+            Number = 1,
+            Bytes = 100,
+            MessageId = "first@test",
+        });
+        var candidate = new MediaFileCandidate
+        {
+            DisplayName = "video.part01.rar",
+            IsRarWrapped = true,
+            Files = [file],
+        };
+        var openedBody = new TrackingYencStream();
+        using var client = new OversizedRarNntpClient(openedBody, size: 101);
+        var materializer = new MediaFileMaterializer(
+            client,
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
+            {
+                MaxMediaBytes = 100,
+            }));
+
+        await Assert.ThrowsAsync<InvalidDataException>(
+            () => materializer.MaterializeAsync(candidate, CancellationToken.None));
+
+        Assert.True(openedBody.IsDisposed);
+    }
+
+    private sealed class OversizedRarNntpClient(TrackingYencStream stream, long size) : NntpClientBase
+    {
+        public override Task<long> GetFileSizeAsync(NzbFile file, CancellationToken ct)
+            => Task.FromResult(size);
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new NntpDecodedBodyResponse
+            {
+                ResponseCode = 222,
+                ResponseMessage = "222 body follows",
+                SegmentId = segmentId,
+                Stream = stream,
+            });
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            Action<ArticleBodyResult>? onConnectionReadyAgain,
+            CancellationToken cancellationToken)
+            => DecodedBodyAsync(segmentId, cancellationToken);
+
+        public override Task ConnectAsync(
+            string host,
+            int port,
+            bool useSsl,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public override Task<NntpResponse> AuthenticateAsync(
+            string user,
+            string pass,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public override Task<NntpStatResponse> StatAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public override Task<NntpHeadResponse> HeadAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(
+            SegmentId segmentId,
+            Action<ArticleBodyResult>? onConnectionReadyAgain,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public override Task<NntpDateResponse> DateAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public override void Dispose()
+        {
+        }
+    }
+
+    private sealed class TrackingYencStream() : YencStream(Stream.Null)
+    {
+        public bool IsDisposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            IsDisposed = true;
+            base.Dispose(disposing);
+        }
+
+        public override ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            return base.DisposeAsync();
+        }
     }
 }

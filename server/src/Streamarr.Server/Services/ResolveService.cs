@@ -20,8 +20,10 @@ public sealed class ResolveService(
     NzbFetcher nzbFetcher,
     HealthChecker healthChecker,
     MediaFileMaterializer materializer,
+    MediaMaterializationCache materializationCache,
     SessionManager sessionManager,
     FfprobeClient ffprobe,
+    MediaProbeCache mediaProbeCache,
     IOptions<StreamarrOptions> options,
     ILogger<ResolveService> logger)
 {
@@ -225,7 +227,8 @@ public sealed class ResolveService(
                 registered.WorkId,
                 registered.Release.Title,
                 registered.Release.Indexer,
-                registered.Release.SizeBytes),
+                registered.Release.SizeBytes,
+                ReleaseRegistrationSerializer.Serialize(registered)),
             nzbUrl,
             registered.Release.IndexerId ?? registered.Release.Indexer,
             ct);
@@ -233,7 +236,27 @@ public sealed class ResolveService(
         var candidate = MediaFileSelector.SelectPrimary(nzb)
             ?? throw new NoPlayableFileException("The NZB contains no playable media file.");
 
-        var health = await healthChecker.CheckAsync(candidate.HealthSegmentIds, ct);
+        using var startupCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // Preserve the exact ready/degraded/dead contract: all configured samples are
+        // still checked, but their NNTP round trips overlap media materialization.
+        var healthTask = healthChecker.CheckAsync(candidate.HealthSegmentIds, startupCts.Token);
+        var mediaTask = materializationCache.GetOrCreateAsync(
+            releaseId,
+            candidate,
+            token => materializer.MaterializeAsync(candidate, token),
+            startupCts.Token);
+
+        HealthCheckResult health;
+        try
+        {
+            health = await healthTask;
+        }
+        catch
+        {
+            startupCts.Cancel();
+            _ = ObserveMaterializationAsync(mediaTask);
+            throw;
+        }
         logger.LogInformation(
             "Health check for release {ReleaseId}: {Status} ({Missing}/{Sampled} sampled segments missing)",
             releaseId, health.StatusLabel, health.MissingCount, health.SampledCount);
@@ -242,6 +265,8 @@ public sealed class ResolveService(
 
         if (health.Health == ReleaseHealth.Dead)
         {
+            startupCts.Cancel();
+            _ = ObserveMaterializationAsync(mediaTask);
             return new SingleResolve(registered.WorkId, new ResolveResponse
             {
                 ReleaseId = releaseId,
@@ -253,7 +278,7 @@ public sealed class ResolveService(
         // Cache a healthy classification too, so search can prefer proven-good releases.
         healthCache.Record(releaseId, health.Health);
 
-        var media = await materializer.MaterializeAsync(candidate, ct);
+        var media = await mediaTask;
         var session = sessionManager.CreateSession(
             releaseId,
             registered.WorkId,
@@ -268,7 +293,11 @@ public sealed class ResolveService(
         {
             // The loopback URL itself is a narrowly-scoped capability; never put an
             // admin JWT or machine key in ffprobe's command line or HTTP headers.
-            probe = await ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), ct);
+            probe = await mediaProbeCache.GetOrCreateAsync(
+                releaseId,
+                media,
+                token => ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), token),
+                ct);
         }
         catch
         {
@@ -298,4 +327,15 @@ public sealed class ResolveService(
     }
 
     private sealed record SingleResolve(string WorkId, ResolveResponse Response);
+
+    internal static Task ObserveMaterializationAsync(Task<ResolvedMediaFile> task)
+        => task.ContinueWith(
+            static completed =>
+            {
+                if (completed.IsFaulted)
+                    _ = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 }

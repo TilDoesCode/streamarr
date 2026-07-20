@@ -1,5 +1,8 @@
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nzb;
+using Streamarr.Usenet.Models;
+using Streamarr.Usenet.Streams;
+using Streamarr.Usenet.Yenc;
 using Streamarr.Tests.Shared;
 
 namespace Streamarr.Usenet.Tests.Streams;
@@ -192,5 +195,230 @@ public class NzbFileStreamTests
         await using var stream = client.GetFileStream(segmentIds, FileBytes.Length, articleBufferSize: 0);
         Assert.Equal(0, await stream.ReadAsync(Memory<byte>.Empty));
         Assert.Equal(before, server.CommandsServed);
+    }
+
+    [Fact]
+    public async Task Seek_ReusesMatchedBodyInsteadOfDownloadingItTwice()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+        await using var stream = client.GetFileStream(segmentIds, FileBytes.Length, articleBufferSize: 0);
+        var before = server.BodiesServed;
+
+        stream.Seek(157_003, SeekOrigin.Begin);
+        var buffer = new byte[100];
+        await stream.ReadExactlyAsync(buffer);
+
+        Assert.Equal(FileBytes[157_003..157_103], buffer);
+        Assert.Equal(1, server.BodiesServed - before);
+    }
+
+    [Fact]
+    public async Task NearEndSeek_DisablesReadAheadForShortTailRanges()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = UsenetStreamingClient.CreateProviderClient(new()
+        {
+            Name = "mock",
+            Host = server.Host,
+            Port = server.Port,
+            UseSsl = false,
+            Username = server.Username,
+            Password = server.Password,
+            MaxConnections = 6,
+        });
+        await using var stream = new Streamarr.Usenet.Streams.NzbFileStream(
+            segmentIds,
+            FileBytes.Length,
+            client,
+            articleBufferSize: 3,
+            startupArticleBufferSize: 6,
+            startupReadAheadSegments: 6);
+        var before = server.BodiesServed;
+
+        stream.Seek(200_000, SeekOrigin.Begin); // second-last article
+        var oneByte = new byte[1];
+        await stream.ReadExactlyAsync(oneByte);
+        await Task.Delay(50);
+
+        Assert.Equal(FileBytes[200_000], oneByte[0]);
+        Assert.Equal(1, server.BodiesServed - before);
+    }
+
+    [Fact]
+    public async Task BufferedNzb_DefaultPathCachesAndValidatesFirstArticleBeforeDelivery()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+        using var cache = new SegmentCache(1024 * 1024);
+        await using var stream = new NzbFileStream(
+            segmentIds,
+            FileBytes.Length,
+            client,
+            articleBufferSize: 3,
+            segmentCache: cache);
+
+        var oneByte = new byte[1];
+        await stream.ReadExactlyAsync(oneByte);
+
+        Assert.Equal(FileBytes[0], oneByte[0]);
+        Assert.Equal(1, cache.GetStats([segmentIds[0]]).Count);
+    }
+
+    [Fact]
+    public async Task NearEndOnDemandPath_RetainsCachePolicyForEveryTailArticle()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+        using var cache = new SegmentCache(1024 * 1024);
+        await using var stream = new NzbFileStream(
+            segmentIds,
+            FileBytes.Length,
+            client,
+            articleBufferSize: 3,
+            segmentCache: cache);
+
+        stream.Seek(200_000, SeekOrigin.Begin);
+        using var output = new MemoryStream();
+        await stream.CopyToAsync(output);
+
+        Assert.Equal(FileBytes[200_000..], output.ToArray());
+        Assert.Equal(2, cache.GetStats(segmentIds[^2..]).Count);
+    }
+
+    [Fact]
+    public async Task StartupWindowSmallerThanSteadyWindow_IsClampedInsteadOfRejected()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+        await using var stream = new NzbFileStream(
+            segmentIds,
+            FileBytes.Length,
+            client,
+            articleBufferSize: 3,
+            startupArticleBufferSize: 1,
+            startupReadAheadSegments: 1);
+
+        var oneByte = new byte[1];
+        await stream.ReadExactlyAsync(oneByte);
+
+        Assert.Equal(FileBytes[0], oneByte[0]);
+    }
+
+    [Fact]
+    public async Task SeekDiscardCancellation_DisposesTheMatchedBody()
+    {
+        var client = new BlockingSeekNntpClient();
+        await using var stream = new NzbFileStream(
+            ["blocking@test"],
+            fileSize: 10,
+            usenetClient: client,
+            articleBufferSize: 0);
+        stream.Seek(1, SeekOrigin.Begin);
+        using var cancellation = new CancellationTokenSource();
+
+        var read = stream.ReadAsync(new byte[1], cancellation.Token).AsTask();
+        await client.Body.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => read.WaitAsync(TimeSpan.FromSeconds(1)));
+        Assert.True(client.Body.IsDisposed);
+    }
+
+    private sealed class BlockingSeekNntpClient : NntpClientBase
+    {
+        public BlockingDecodedStream Body { get; } = new();
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new NntpDecodedBodyResponse
+            {
+                ResponseCode = 222,
+                ResponseMessage = "222 body follows",
+                SegmentId = segmentId,
+                Stream = Body,
+            });
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            Action<ArticleBodyResult>? onConnectionReadyAgain,
+            CancellationToken cancellationToken)
+            => DecodedBodyAsync(segmentId, cancellationToken);
+
+        public override Task ConnectAsync(
+            string host,
+            int port,
+            bool useSsl,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpResponse> AuthenticateAsync(
+            string user,
+            string pass,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpStatResponse> StatAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpHeadResponse> HeadAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(
+            SegmentId segmentId,
+            Action<ArticleBodyResult>? onConnectionReadyAgain,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpDateResponse> DateAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public override void Dispose() { }
+    }
+
+    private sealed class BlockingDecodedStream : YencStream
+    {
+        public BlockingDecodedStream() : base(Stream.Null) { }
+
+        public TaskCompletionSource ReadStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool IsDisposed { get; private set; }
+
+        public override ValueTask<YencHeader?> GetYencHeadersAsync(
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<YencHeader?>(new YencHeader
+            {
+                FileName = "blocking.bin",
+                FileSize = 10,
+                PartOffset = 0,
+                PartSize = 10,
+                LineLength = 128,
+                PartNumber = 1,
+                TotalParts = 1,
+            });
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            ReadStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            IsDisposed = true;
+            base.Dispose(disposing);
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            await base.DisposeAsync();
+        }
     }
 }

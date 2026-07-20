@@ -86,7 +86,7 @@ public sealed class LatencyHarness : IAsyncDisposable
 
         using var client = NewClient();
         var resolved = await ResolveAsync(client);
-        var streamUrl = resolved.StreamUrl!;
+        var streamUrl = new Uri(new Uri(_baseUrl), resolved.StreamUrl!).AbsoluteUri;
 
         Console.WriteLine($"Target        : {_targetDescription}");
         Console.WriteLine($"Server        : {_baseUrl}");
@@ -102,7 +102,7 @@ public sealed class LatencyHarness : IAsyncDisposable
         Console.WriteLine($"  ffprobe     : {(ffprobeOk ? "PASS" : "FAIL")}");
         Console.WriteLine($"  play + seek : {playOk}");
 
-        return ffprobeOk ? 0 : 1;
+        return ffprobeOk && playOk.StartsWith("PASS", StringComparison.Ordinal) ? 0 : 1;
     }
 
     private async Task<bool> SmokeFfprobeAsync(string streamUrl)

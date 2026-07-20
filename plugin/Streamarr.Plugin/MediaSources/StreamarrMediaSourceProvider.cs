@@ -65,6 +65,7 @@ public sealed class StreamarrMediaSourceProvider(
 
         var resolve = await ResolveWithFallbackAsync(
             offer,
+            entry.Work,
             user.Id.ToString("D"),
             user.Username,
             cancellationToken).ConfigureAwait(false);
@@ -158,14 +159,16 @@ public sealed class StreamarrMediaSourceProvider(
     /// </summary>
     private async Task<ResolveResponse> ResolveWithFallbackAsync(
         MediaSourceOfferStore.Offer offer,
+        WorkDto work,
         string requestedById,
         string requestedByName,
         CancellationToken ct)
     {
         var releaseId = offer.ReleaseId;
-        var resolve = await api.ResolveAsync(
+        var resolve = await ResolveRegisteredAsync(
                 releaseId,
-                offer.WorkId,
+                offer,
+                work,
                 requestedById,
                 requestedByName,
                 ct).ConfigureAwait(false)
@@ -182,9 +185,10 @@ public sealed class StreamarrMediaSourceProvider(
             throw new InvalidOperationException("Core suggested a fallback outside the offered work.");
 
         logger.LogInformation("Release {ReleaseId} dead; following server fallback {Fallback}", releaseId, fallback);
-        var second = await api.ResolveAsync(
+        var second = await ResolveRegisteredAsync(
                 fallback,
-                offer.WorkId,
+                offer,
+                work,
                 requestedById,
                 requestedByName,
                 ct).ConfigureAwait(false)
@@ -195,6 +199,52 @@ public sealed class StreamarrMediaSourceProvider(
             throw new InvalidOperationException($"Release {releaseId} and its fallback {fallback} are both dead.");
 
         return second;
+    }
+
+    private async Task<ResolveResponse?> ResolveRegisteredAsync(
+        string releaseId,
+        MediaSourceOfferStore.Offer offer,
+        WorkDto work,
+        string requestedById,
+        string requestedByName,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await api.ResolveAsync(
+                    releaseId,
+                    offer.WorkId,
+                    requestedById,
+                    requestedByName,
+                    ct)
+                .ConfigureAwait(false);
+        }
+        catch (StreamarrApiException exception)
+            when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            logger.LogInformation(
+                "Core no longer knows release {ReleaseId}; refreshing persisted work {WorkId} before retry",
+                releaseId,
+                offer.WorkId);
+
+            var refreshed = await api.RefreshWorkAsync(work, ct).ConfigureAwait(false);
+            var releaseRestored = refreshed?.Results.Any(result =>
+                string.Equals(result.WorkId, offer.WorkId, StringComparison.Ordinal)
+                && result.Releases.Any(release =>
+                    string.Equals(release.ReleaseId, releaseId, StringComparison.Ordinal))) == true;
+            if (!releaseRestored)
+                throw new InvalidOperationException(
+                    $"Release {releaseId} is no longer available for persisted work {offer.WorkId}.",
+                    exception);
+
+            return await api.ResolveAsync(
+                    releaseId,
+                    offer.WorkId,
+                    requestedById,
+                    requestedByName,
+                    ct)
+                .ConfigureAwait(false);
+        }
     }
 
     private static bool IsDead(ResolveResponse resolve)

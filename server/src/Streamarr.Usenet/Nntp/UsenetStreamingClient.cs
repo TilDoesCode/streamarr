@@ -19,11 +19,12 @@ public static class UsenetStreamingClient
 {
     public static MultiProviderNntpClient Create(
         IEnumerable<UsenetProvider> providerList,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        TimeSpan? connectionIdleTimeout = null)
     {
         var providers = providerList
             .Where(p => p.Type != UsenetProviderType.Disabled)
-            .Select(p => CreateProviderClient(p, loggerFactory))
+            .Select(p => CreateProviderClient(p, loggerFactory, connectionIdleTimeout))
             .ToList();
 
         var logger = loggerFactory?.CreateLogger<MultiProviderNntpClient>();
@@ -32,11 +33,13 @@ public static class UsenetStreamingClient
 
     public static MultiConnectionNntpClient CreateProviderClient(
         UsenetProvider provider,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        TimeSpan? connectionIdleTimeout = null)
     {
         var connectionPool = new ConnectionPool<INntpClient>(
             maxConnections: provider.MaxConnections,
-            connectionFactory: ct => CreateNewConnection(provider, ct));
+            connectionFactory: ct => CreateNewConnection(provider, ct),
+            idleTimeout: connectionIdleTimeout);
 
         var circuitBreaker = new ProviderCircuitBreaker(
             provider.Name,

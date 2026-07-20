@@ -60,49 +60,56 @@ public sealed class PushoverNotificationService(
             "Streamarr started",
             "The Streamarr server is online."));
 
-        await foreach (var notification in _queue.Reader.ReadAllAsync(stoppingToken))
+        try
         {
-            try
+            await foreach (var notification in _queue.Reader.ReadAllAsync(stoppingToken))
             {
-                var config = await configService.GetAsync(stoppingToken);
-                if (!config.Enabled || !IsEnabled(config, notification.Kind))
-                    continue;
-
-                var (token, user) = configService.Credentials(config);
-                if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(user))
-                    continue;
-
-                var cooldown = Cooldown(config, notification.Kind);
-                var throttleKey = notification.ThrottleKey;
-                var now = time.GetUtcNow();
-                if (cooldown > TimeSpan.Zero && !string.IsNullOrEmpty(throttleKey) &&
-                    _lastSent.TryGetValue($"{notification.Kind}:{throttleKey}", out var last) &&
-                    now - last < cooldown)
+                try
                 {
-                    continue;
-                }
+                    var config = await configService.GetAsync(stoppingToken);
+                    if (!config.Enabled || !IsEnabled(config, notification.Kind))
+                        continue;
 
-                var message = BuildMessage(config, notification);
-                await client.SendAsync(
-                    config,
-                    token,
-                    user,
-                    notification.Title,
-                    message,
-                    Priority(config, notification.Kind),
-                    stoppingToken);
-                if (!string.IsNullOrEmpty(throttleKey))
-                    _lastSent[$"{notification.Kind}:{throttleKey}"] = now;
+                    var (token, user) = configService.Credentials(config);
+                    if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(user))
+                        continue;
+
+                    var cooldown = Cooldown(config, notification.Kind);
+                    var throttleKey = notification.ThrottleKey;
+                    var now = time.GetUtcNow();
+                    if (cooldown > TimeSpan.Zero && !string.IsNullOrEmpty(throttleKey) &&
+                        _lastSent.TryGetValue($"{notification.Kind}:{throttleKey}", out var last) &&
+                        now - last < cooldown)
+                    {
+                        continue;
+                    }
+
+                    var message = BuildMessage(config, notification);
+                    await client.SendAsync(
+                        config,
+                        token,
+                        user,
+                        notification.Title,
+                        message,
+                        Priority(config, notification.Kind),
+                        stoppingToken);
+                    if (!string.IsNullOrEmpty(throttleKey))
+                        _lastSent[$"{notification.Kind}:{throttleKey}"] = now;
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    // Do not feed delivery failures back into this notification channel.
+                    logger.LogWarning(exception, "Pushover notification delivery failed");
+                }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                // Do not feed delivery failures back into this notification channel.
-                logger.LogWarning(exception, "Pushover notification delivery failed");
-            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // ReadAllAsync observes host shutdown before a queued item reaches the loop body.
         }
     }
 

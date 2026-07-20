@@ -279,7 +279,10 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
         Assert.Equal(StreamarrServerFixture.DirectReleaseId, session.ReleaseId);
         Assert.Equal("tests", session.Client);
         Assert.Equal(fixture.Video.Length, session.SizeBytes);
-        Assert.True(session.BytesServed > 0); // the resolve-time ffprobe read through the session
+        // A persistent media-probe cache can make this zero; the opened source must
+        // still carry the same pre-probed metadata either way.
+        Assert.NotEmpty(resolved.MediaStreams);
+        Assert.InRange(session.BytesServed, 0, session.SizeBytes);
 
         using var close = await client.PostAsync($"/api/v1/sessions/{token}/close", null);
         Assert.Equal(HttpStatusCode.NoContent, close.StatusCode);

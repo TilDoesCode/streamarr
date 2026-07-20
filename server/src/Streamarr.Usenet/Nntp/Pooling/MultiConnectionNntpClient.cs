@@ -42,6 +42,9 @@ public class MultiConnectionNntpClient(
     public int ActiveConnections => connectionPool.ActiveConnections;
     public int AvailableConnections => connectionPool.AvailableConnections;
 
+    public Task WarmAsync(int count, CancellationToken ct = default)
+        => connectionPool.WarmAsync(count, ct);
+
     public override Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
     {
         throw new NotSupportedException("Please connect within the connectionFactory");

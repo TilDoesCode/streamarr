@@ -160,6 +160,19 @@ public sealed class StreamarrOptionsValidatorTests
     }
 
     [Fact]
+    public void LegacyReadAheadAboveNewStartupDefault_RemainsValid()
+    {
+        var options = new StreamarrOptions
+        {
+            ArticleReadAheadCount = 100,
+        };
+
+        var result = new StreamarrOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
     public void NullNestedConfigurationFailsValidationWithoutThrowing()
     {
         var options = new StreamarrOptions { Search = null! };

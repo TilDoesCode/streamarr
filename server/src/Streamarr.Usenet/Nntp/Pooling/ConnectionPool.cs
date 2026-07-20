@@ -49,6 +49,7 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
 
     private readonly ConcurrentStack<Pooled> _idleConnections = new();
     private readonly PrioritizedSemaphore _gate;
+    private readonly SemaphoreSlim _warmupGate = new(1, 1);
     private readonly CancellationTokenSource _sweepCts = new();
     private readonly Task _sweeperTask; // keeps timer alive
 
@@ -90,7 +91,11 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
             cancellationToken, _sweepCts.Token);
 
         await _gate.WaitAsync(priority, linked.Token).ConfigureAwait(false);
+        return await BuildLockAfterPermitAsync(linked.Token).ConfigureAwait(false);
+    }
 
+    private async Task<ConnectionLock<T>> BuildLockAfterPermitAsync(CancellationToken cancellationToken)
+    {
         // Pool might have been disposed after wait returned:
         if (Volatile.Read(ref _disposed) == 1)
         {
@@ -117,7 +122,7 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
         T conn;
         try
         {
-            conn = await _factory(linked.Token).ConfigureAwait(false);
+            conn = await _factory(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -134,6 +139,90 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
 
         static void ThrowDisposed()
             => throw new ObjectDisposedException(nameof(ConnectionPool<T>));
+    }
+
+    private Task<ConnectionLock<T>>? TryStartConnectionLock(CancellationToken cancellationToken)
+    {
+        CancellationTokenSource? linked = null;
+        try
+        {
+            linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _sweepCts.Token);
+            if (!_gate.TryWait())
+            {
+                linked.Dispose();
+                return null;
+            }
+        }
+        catch (Exception exception)
+        {
+            linked?.Dispose();
+            return Task.FromException<ConnectionLock<T>>(exception);
+        }
+
+        return CompleteAsync(linked);
+
+        async Task<ConnectionLock<T>> CompleteAsync(CancellationTokenSource ownedToken)
+        {
+            using (ownedToken)
+                return await BuildLockAfterPermitAsync(ownedToken.Token).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Proactively creates and authenticates up to <paramref name="count"/> idle
+    /// connections. Leases are held until every factory call completes, preventing
+    /// the warmup workers from repeatedly borrowing the same connection.
+    /// </summary>
+    public async Task WarmAsync(int count, CancellationToken cancellationToken = default)
+    {
+        var target = Math.Min(Math.Max(0, count), _maxConnections);
+        if (target == 0)
+            return;
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _sweepCts.Token);
+        await _warmupGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            if (IdleConnections >= target)
+                return;
+
+            // Existing active leases cannot become idle until their owners finish.
+            // Warmup is best-effort, so reserve only permits available right now and
+            // never queue while holding a partial batch.
+            var leaseLimit = Math.Min(target, Math.Max(0, AvailableConnections));
+            var leases = new ConnectionLock<T>?[leaseLimit];
+            try
+            {
+                var acquisitions = new List<Task>(leaseLimit);
+                for (var index = 0; index < leaseLimit; index++)
+                {
+                    var acquisition = TryStartConnectionLock(linked.Token);
+                    if (acquisition is null)
+                        break;
+
+                    var capturedIndex = index;
+                    acquisitions.Add(StoreLease(acquisition, capturedIndex));
+                }
+
+                await Task.WhenAll(acquisitions).ConfigureAwait(false);
+            }
+            finally
+            {
+                foreach (var lease in leases)
+                    lease?.Dispose();
+            }
+
+            async Task StoreLease(Task<ConnectionLock<T>> acquisition, int index)
+            {
+                leases[index] = await acquisition.ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _warmupGate.Release();
+        }
     }
 
     /* ========================== core helpers ====================================== */

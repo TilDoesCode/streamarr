@@ -56,6 +56,8 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
             failures.Add("TrustedOrigins must not contain duplicate values.");
         }
         Range(o.ConnectionBudget, 1, 1_000, nameof(o.ConnectionBudget));
+        Range(o.ConnectionWarmupCount, 0, 100, nameof(o.ConnectionWarmupCount));
+        Range(o.ConnectionIdleTimeoutSeconds, 30, 24 * 3600, nameof(o.ConnectionIdleTimeoutSeconds));
         Range(o.SessionTtlSeconds, 1, 30 * 24 * 3600, nameof(o.SessionTtlSeconds));
         Range(o.SessionSweepIntervalSeconds, 1, 3600, nameof(o.SessionSweepIntervalSeconds));
         Range(o.MaxSessions, 1, 10_000, nameof(o.MaxSessions));
@@ -70,9 +72,23 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.MaxFallbackHops, 0, 20, nameof(o.MaxFallbackHops));
         Range(o.HealthCacheTtlSeconds, 0, 30 * 24 * 3600, nameof(o.HealthCacheTtlSeconds));
         Range(o.ArticleReadAheadCount, 1, 100, nameof(o.ArticleReadAheadCount));
+        Range(o.ArticleStartupReadAheadCount, 1, 100, nameof(o.ArticleStartupReadAheadCount));
+        Range(o.ArticleStartupReadAheadSegments, 1, 100, nameof(o.ArticleStartupReadAheadSegments));
         Range(o.ArticleDownloadRetryCount, 0, 10, nameof(o.ArticleDownloadRetryCount));
+        Range(o.RarMaterializationConcurrency, 1, 32, nameof(o.RarMaterializationConcurrency));
+        Range(o.MediaMaterializationCacheMaxEntries, 0, 512, nameof(o.MediaMaterializationCacheMaxEntries));
+        Range(o.MediaMaterializationCacheSizeMb, 0, 1_048_576, nameof(o.MediaMaterializationCacheSizeMb));
         Range(o.SegmentCacheSizeMb, 0, 1_048_576, nameof(o.SegmentCacheSizeMb));
         Range(o.FfprobeTimeoutSeconds, 1, 600, nameof(o.FfprobeTimeoutSeconds));
+        Range(o.FfprobeProbeSizeBytes, 32 * 1024, 64 * 1024 * 1024, nameof(o.FfprobeProbeSizeBytes));
+        Range(o.FfprobeAnalyzeDurationMs, 100, 60_000, nameof(o.FfprobeAnalyzeDurationMs));
+        Range(o.FfprobeEscalatedProbeSizeBytes, 32 * 1024, 64 * 1024 * 1024, nameof(o.FfprobeEscalatedProbeSizeBytes));
+        Range(o.FfprobeEscalatedAnalyzeDurationMs, 100, 60_000, nameof(o.FfprobeEscalatedAnalyzeDurationMs));
+        if (o.FfprobeEscalatedProbeSizeBytes < o.FfprobeProbeSizeBytes ||
+            o.FfprobeEscalatedAnalyzeDurationMs < o.FfprobeAnalyzeDurationMs)
+        {
+            failures.Add("Escalated ffprobe budgets must be at least their fast-path budgets.");
+        }
         Range(o.MaxConcurrentFfprobe, 1, 32, nameof(o.MaxConcurrentFfprobe));
         Range(o.MaxNzbBytes, 1024, 512 * 1024 * 1024, nameof(o.MaxNzbBytes));
         Range(o.MaxNzbFiles, 1, 100_000, nameof(o.MaxNzbFiles));

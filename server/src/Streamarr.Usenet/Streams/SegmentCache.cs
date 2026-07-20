@@ -26,6 +26,45 @@ public sealed class SegmentCache : IDisposable
     }
 
     public long CapacityBytes => _capacityBytes;
+    internal CancellationToken LifetimeToken => _disposeCts.Token;
+
+    public bool TryGet(string segmentId, out byte[] bytes)
+    {
+        var key = SegmentId.Normalize(segmentId);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_entries.TryGetValue(key, out var cached))
+            {
+                Touch(cached);
+                bytes = cached.Bytes;
+                return true;
+            }
+        }
+
+        bytes = [];
+        return false;
+    }
+
+    public void Store(string segmentId, byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        var key = SegmentId.Normalize(segmentId);
+        if (_capacityBytes == 0 || bytes.LongLength > _capacityBytes)
+            return;
+
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_entries.ContainsKey(key))
+                return;
+            while (_sizeBytes > _capacityBytes - bytes.LongLength && _lru.First is { } oldest)
+                Remove(oldest.Value);
+            var node = _lru.AddLast(key);
+            _entries.Add(key, new Entry(bytes, node));
+            _sizeBytes += bytes.LongLength;
+        }
+    }
 
     public (int Count, long Bytes) GetStats(IEnumerable<string> segmentIds)
     {

@@ -10,6 +10,7 @@ using System.Threading.Channels;
 using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
+using Streamarr.Usenet.Yenc;
 
 namespace Streamarr.Usenet.Streams;
 
@@ -26,7 +27,14 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     private readonly int _retryCount;
     private readonly Action<string>? _onSegmentRequested;
     private readonly Channel<Task<Stream>> _streamTasks;
+    private readonly SemaphoreSlim _queueAdvanced = new(0);
     private readonly CancellationTokenSource _cts;
+    private readonly int _steadyReadAhead;
+    private readonly int _startupReadAhead;
+    private readonly int _startupReadAheadSegments;
+    private readonly bool _onDemand;
+    private int _queuedTasks;
+    private int _nextSegmentIndex;
     private Stream? _stream;
     private bool _disposed;
 
@@ -38,13 +46,35 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         CancellationToken cancellationToken,
         SegmentCache? segmentCache = null,
         int retryCount = 2,
-        Action<string>? onSegmentRequested = null
+        Action<string>? onSegmentRequested = null,
+        int startupArticleBufferSize = 0,
+        int startupReadAheadSegments = 0,
+        Stream? openedFirstSegment = null,
+        bool progressiveFirstSegment = false,
+        bool disableReadAhead = false
     )
     {
         return articleBufferSize == 0
-            ? new UnbufferedMultiSegmentStream(segmentIds, usenetClient, onSegmentRequested)
+            ? new UnbufferedMultiSegmentStream(
+                segmentIds,
+                usenetClient,
+                onSegmentRequested,
+                openedFirstSegment,
+                segmentCache,
+                progressiveFirstSegment)
             : new MultiSegmentStream(
-                segmentIds, usenetClient, articleBufferSize, cancellationToken, segmentCache, retryCount, onSegmentRequested);
+                segmentIds,
+                usenetClient,
+                articleBufferSize,
+                startupArticleBufferSize,
+                startupReadAheadSegments,
+                cancellationToken,
+                segmentCache,
+                retryCount,
+                onSegmentRequested,
+                openedFirstSegment,
+                progressiveFirstSegment,
+                disableReadAhead);
     }
 
     private MultiSegmentStream
@@ -52,10 +82,15 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         Memory<string> segmentIds,
         INntpClient usenetClient,
         int articleBufferSize,
+        int startupArticleBufferSize,
+        int startupReadAheadSegments,
         CancellationToken cancellationToken,
         SegmentCache? segmentCache,
         int retryCount,
-        Action<string>? onSegmentRequested
+        Action<string>? onSegmentRequested,
+        Stream? openedFirstSegment,
+        bool progressiveFirstSegment,
+        bool disableReadAhead
     )
     {
         _segmentIds = segmentIds;
@@ -65,10 +100,25 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
             ? retryCount
             : throw new ArgumentOutOfRangeException(nameof(retryCount));
         _onSegmentRequested = onSegmentRequested;
-        _streamTasks = Channel.CreateBounded<Task<Stream>>(articleBufferSize);
+        _steadyReadAhead = articleBufferSize;
+        var startupWindow = startupArticleBufferSize > 0
+            ? Math.Max(articleBufferSize, startupArticleBufferSize)
+            : articleBufferSize;
+        _startupReadAhead = startupWindow;
+        _startupReadAheadSegments = startupReadAheadSegments > 0
+            ? startupReadAheadSegments
+            : startupWindow;
+        _streamTasks = Channel.CreateBounded<Task<Stream>>(startupWindow);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _ = DownloadSegments(_cts.Token);
+        _openedFirstSegment = openedFirstSegment;
+        _progressiveFirstSegment = progressiveFirstSegment;
+        _onDemand = disableReadAhead;
+        if (!_onDemand)
+            _ = DownloadSegments(_cts.Token);
     }
+
+    private Stream? _openedFirstSegment;
+    private readonly bool _progressiveFirstSegment;
 
     private async Task DownloadSegments(CancellationToken cancellationToken)
     {
@@ -77,14 +127,27 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
             for (var i = 0; i < _segmentIds.Length; i++)
             {
                 var segmentId = _segmentIds.Span[i];
+                var targetDepth = i < _startupReadAheadSegments
+                    ? _startupReadAhead
+                    : _steadyReadAhead;
+
+                while (Volatile.Read(ref _queuedTasks) >= targetDepth)
+                    await _queueAdvanced.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 await _streamTasks.Writer.WaitToWriteAsync(cancellationToken).ConfigureAwait(false);
 
                 // Queue in NZB order, but start every task in the bounded window now.
                 // The reader awaits the tasks in channel order, so delivery remains ordered.
-                var streamTask = DownloadSegment(segmentId, cancellationToken);
+                var openedStream = i == 0
+                    ? Interlocked.Exchange(ref _openedFirstSegment, null)
+                    : null;
+                var streamTask = i == 0 && _progressiveFirstSegment
+                    ? OpenProgressiveSegment(segmentId, openedStream, cancellationToken)
+                    : DownloadSegment(segmentId, openedStream, cancellationToken);
+                Interlocked.Increment(ref _queuedTasks);
                 if (!_streamTasks.Writer.TryWrite(streamTask))
                 {
+                    Interlocked.Decrement(ref _queuedTasks);
                     // if we never get a chance to write the stream to the writer
                     // then make sure the stream gets disposed.
                     _ = Task.Run(async () => await (await streamTask.ConfigureAwait(false))
@@ -103,53 +166,174 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         }
     }
 
+    private async Task<Stream> OpenProgressiveSegment(
+        string segmentId,
+        Stream? openedStream,
+        CancellationToken cancellationToken)
+    {
+        Stream? stream = openedStream;
+        try
+        {
+            _onSegmentRequested?.Invoke(SegmentId.Normalize(segmentId));
+            var cache = _segmentCache is { CapacityBytes: > 0 } ? _segmentCache : null;
+            if (cache?.TryGet(segmentId, out var cached) == true)
+            {
+                if (stream is not null)
+                    await stream.DisposeAsync().ConfigureAwait(false);
+                stream = null;
+                return new MemoryStream(cached, writable: false);
+            }
+
+            YencHeader? headers = null;
+            if (stream is null)
+            {
+                var response = await _usenetClient
+                    .DecodedBodyAsync(segmentId, cancellationToken)
+                    .ConfigureAwait(false);
+                stream = response.Stream;
+                headers = await response.Stream.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false)
+                          ?? throw new InvalidDataException(
+                              $"Article <{SegmentId.Normalize(segmentId)}> carried no yEnc headers.");
+            }
+            else if (stream is YencStream yencStream)
+            {
+                headers = await yencStream.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false)
+                          ?? throw new InvalidDataException(
+                              $"Article <{SegmentId.Normalize(segmentId)}> carried no yEnc headers.");
+            }
+
+            if (cache is not null && headers is { PartSize: var partSize } && partSize > cache.CapacityBytes)
+                cache = null;
+
+            var result = stream
+                         ?? throw new InvalidDataException(
+                             $"Article <{SegmentId.Normalize(segmentId)}> returned no decoded stream.");
+            stream = null;
+            return cache is null
+                ? result
+                : new ProgressiveSegmentCacheStream(result, segmentId, cache);
+        }
+        catch
+        {
+            if (stream is not null)
+                await stream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private async Task<Stream> DownloadSegment
     (
         string segmentId,
+        Stream? openedStream,
         CancellationToken cancellationToken
     )
     {
-        _onSegmentRequested?.Invoke(SegmentId.Normalize(segmentId));
-        var bytes = _segmentCache is null
-            ? await DownloadSegmentBytes(segmentId, cancellationToken).ConfigureAwait(false)
-            : await _segmentCache.GetOrAddAsync(
-                segmentId,
-                ct => DownloadSegmentBytes(segmentId, ct),
-                cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _onSegmentRequested?.Invoke(SegmentId.Normalize(segmentId));
+        }
+        catch
+        {
+            if (openedStream is not null)
+                await openedStream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        var bytes = await GetSegmentBytes(segmentId, openedStream, cancellationToken).ConfigureAwait(false);
         return new MemoryStream(bytes, writable: false);
     }
 
-    private async Task<byte[]> DownloadSegmentBytes(string segmentId, CancellationToken cancellationToken)
+    private async Task<byte[]> GetSegmentBytes(
+        string segmentId,
+        Stream? openedStream,
+        CancellationToken cancellationToken)
     {
-        Exception? lastFailure = null;
-        for (var attempt = 0; attempt <= _retryCount; attempt++)
+        if (_segmentCache is not { CapacityBytes: > 0 } cache)
+            return await DownloadSegmentBytes(segmentId, openedStream, cancellationToken).ConfigureAwait(false);
+
+        // GetOrAdd invokes a newly selected factory synchronously. Transfer ownership
+        // of the already-open BODY only to that factory; a cache hit or an existing
+        // in-flight transfer disposes the redundant probe immediately.
+        Stream? candidate = openedStream;
+        Task<byte[]> task;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                var bodyResponse = await _usenetClient
-                    .DecodedBodyAsync(segmentId, cancellationToken)
-                    .ConfigureAwait(false);
-                await using var body = bodyResponse.Stream;
-                var headers = await body.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false);
-                var capacity = headers?.PartSize is > 0 and <= int.MaxValue
-                    ? checked((int)headers.PartSize)
-                    : 0;
-                using var output = capacity > 0 ? new MemoryStream(capacity) : new MemoryStream();
-                await body.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-                if (output.TryGetBuffer(out var buffer) && output.Length == buffer.Count)
-                    return buffer.Array!;
-                return output.ToArray();
-            }
-            catch (Exception e) when (e is not OperationCanceledException and not UsenetArticleNotFoundException)
-            {
-                lastFailure = e;
-            }
+            task = cache.GetOrAddAsync(
+                segmentId,
+                ct => DownloadSegmentBytes(
+                    segmentId,
+                    Interlocked.Exchange(ref candidate, null),
+                    ct),
+                cancellationToken);
+        }
+        finally
+        {
+            var unused = Interlocked.Exchange(ref candidate, null);
+            if (unused is not null)
+                await unused.DisposeAsync().ConfigureAwait(false);
         }
 
-        throw new IOException(
-            $"NNTP article <{SegmentId.Normalize(segmentId)}> failed after {_retryCount + 1} attempts.",
-            lastFailure);
+        return await task.ConfigureAwait(false);
+    }
+
+    private async Task<byte[]> DownloadSegmentBytes(
+        string segmentId,
+        Stream? openedStream,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastFailure = null;
+        var initialStream = openedStream;
+        try
+        {
+            for (var attempt = 0; attempt <= _retryCount; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    Stream body;
+                    if (initialStream is not null)
+                    {
+                        body = initialStream;
+                        initialStream = null;
+                    }
+                    else
+                    {
+                        var bodyResponse = await _usenetClient
+                            .DecodedBodyAsync(segmentId, cancellationToken)
+                            .ConfigureAwait(false);
+                        body = bodyResponse.Stream;
+                    }
+
+                    await using (body.ConfigureAwait(false))
+                    {
+                        var headers = body is YencStream yencStream
+                            ? await yencStream.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false)
+                            : null;
+                        var capacity = headers?.PartSize is > 0 and <= int.MaxValue
+                            ? checked((int)headers.PartSize)
+                            : 0;
+                        using var output = capacity > 0 ? new MemoryStream(capacity) : new MemoryStream();
+                        await body.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                        if (output.TryGetBuffer(out var buffer) && output.Length == buffer.Count)
+                            return buffer.Array!;
+                        return output.ToArray();
+                    }
+                }
+                catch (Exception e) when (e is not OperationCanceledException and not UsenetArticleNotFoundException)
+                {
+                    lastFailure = e;
+                }
+            }
+
+            throw new IOException(
+                $"NNTP article <{SegmentId.Normalize(segmentId)}> failed after {_retryCount + 1} attempts.",
+                lastFailure);
+        }
+        finally
+        {
+            if (initialStream is not null)
+                await initialStream.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -162,9 +346,31 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
             // if the stream is null, get the next stream.
             if (_stream == null)
             {
-                if (!await _streamTasks.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false)) return 0;
-                if (!_streamTasks.Reader.TryRead(out var streamTask)) return 0;
-                _stream = await streamTask.ConfigureAwait(false);
+                if (_onDemand)
+                {
+                    if (_nextSegmentIndex >= _segmentIds.Length)
+                        return 0;
+
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken, _cts.Token);
+                    var index = _nextSegmentIndex;
+                    var openedStream = index == 0
+                        ? Interlocked.Exchange(ref _openedFirstSegment, null)
+                        : null;
+                    _stream = await DownloadSegment(
+                        _segmentIds.Span[index],
+                        openedStream,
+                        linked.Token).ConfigureAwait(false);
+                    _nextSegmentIndex++;
+                }
+                else
+                {
+                    if (!await _streamTasks.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false)) return 0;
+                    if (!_streamTasks.Reader.TryRead(out var streamTask)) return 0;
+                    Interlocked.Decrement(ref _queuedTasks);
+                    _queueAdvanced.Release();
+                    _stream = await streamTask.ConfigureAwait(false);
+                }
             }
 
             // read from the stream
@@ -193,6 +399,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         _cts.Dispose();
         _stream?.Dispose();
         _streamTasks.Writer.TryComplete();
+        _openedFirstSegment?.Dispose();
+        _openedFirstSegment = null;
 
         // ensure that streams that were never read from the channel get disposed
         while (_streamTasks.Reader.TryRead(out var streamTask))
@@ -228,11 +436,37 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
     public UnbufferedMultiSegmentStream(
         Memory<string> segmentIds,
         INntpClient usenetClient,
-        Action<string>? onSegmentRequested = null)
+        Action<string>? onSegmentRequested = null,
+        Stream? openedFirstSegment = null,
+        SegmentCache? segmentCache = null,
+        bool progressiveFirstSegment = false)
     {
         _segmentIds = segmentIds;
         _usenetClient = usenetClient;
         _onSegmentRequested = onSegmentRequested;
+        if (openedFirstSegment is not null
+            && progressiveFirstSegment
+            && segmentCache is { CapacityBytes: > 0 }
+            && !_segmentIds.IsEmpty)
+        {
+            var firstId = _segmentIds.Span[0];
+            if (segmentCache.TryGet(firstId, out var cached))
+            {
+                openedFirstSegment.Dispose();
+                _stream = new MemoryStream(cached, writable: false);
+            }
+            else
+            {
+                _stream = new ProgressiveSegmentCacheStream(openedFirstSegment, firstId, segmentCache);
+            }
+        }
+        else
+        {
+            _stream = openedFirstSegment;
+        }
+        _currentIndex = openedFirstSegment is null ? 0 : 1;
+        if (openedFirstSegment is not null && !_segmentIds.IsEmpty)
+            _onSegmentRequested?.Invoke(SegmentId.Normalize(_segmentIds.Span[0]));
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -277,5 +511,84 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
         _disposed = true;
         _stream?.Dispose();
         base.Dispose(disposing);
+    }
+}
+
+internal sealed class ProgressiveSegmentCacheStream(
+    Stream inner,
+    string segmentId,
+    SegmentCache cache) : FastReadOnlyNonSeekableStream
+{
+    private readonly MemoryStream _copy = new();
+    private bool _complete;
+    private int _draining;
+
+    public override async ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default)
+    {
+        var read = await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+        if (read > 0)
+        {
+            await _copy.WriteAsync(buffer[..read], cancellationToken).ConfigureAwait(false);
+            return read;
+        }
+
+        if (!_complete)
+        {
+            _complete = true;
+            cache.Store(segmentId, _copy.ToArray());
+        }
+        return 0;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_complete && Interlocked.Exchange(ref _draining, 1) == 0)
+            _ = DrainAndCacheAsync();
+        else if (disposing && Volatile.Read(ref _draining) == 0)
+            DisposeResources();
+        base.Dispose(disposing);
+    }
+
+    public override ValueTask DisposeAsync()
+    {
+        if (!_complete && Interlocked.Exchange(ref _draining, 1) == 0)
+            _ = DrainAndCacheAsync();
+        else if (Volatile.Read(ref _draining) == 0)
+            DisposeResources();
+        GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
+    }
+
+    private async Task DrainAndCacheAsync()
+    {
+        try
+        {
+            var buffer = new byte[81920];
+            while (true)
+            {
+                var read = await inner.ReadAsync(buffer, CancellationToken.None).ConfigureAwait(false);
+                if (read == 0)
+                    break;
+                await _copy.WriteAsync(buffer.AsMemory(0, read), CancellationToken.None).ConfigureAwait(false);
+            }
+            _complete = true;
+            cache.Store(segmentId, _copy.ToArray());
+        }
+        catch
+        {
+            // A failed/invalid article is never committed; a later request retries it.
+        }
+        finally
+        {
+            DisposeResources();
+        }
+    }
+
+    private void DisposeResources()
+    {
+        inner.Dispose();
+        _copy.Dispose();
     }
 }

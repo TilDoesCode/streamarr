@@ -15,4 +15,8 @@ public sealed class CachedReleaseEntity
     public long HitCount { get; set; }
     public DateTimeOffset CachedAt { get; set; }
     public DateTimeOffset LastAccessedAt { get; set; }
+    public string? MediaProbeKey { get; set; }
+    public string? MediaProbeJson { get; set; }
+    public DateTimeOffset? MediaProbeCachedAt { get; set; }
+    public string? ReleaseRegistrationJson { get; set; }
 }

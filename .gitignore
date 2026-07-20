@@ -35,6 +35,7 @@ secrets.json
 # Data Protection key ring (secret encryption at rest)
 server/src/Streamarr.Server/keys/
 server/src/Streamarr.Server/cache/
+server/tests/Streamarr.E2E.Harness/cache/
 keys/
 
 # OS

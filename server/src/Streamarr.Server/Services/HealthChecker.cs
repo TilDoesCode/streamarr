@@ -33,7 +33,9 @@ public class HealthChecker(INntpClient nntpClient, IOptions<StreamarrOptions> op
         var missing = 0;
         var parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Math.Max(1, o.Concurrency),
+            MaxDegreeOfParallelism = Math.Min(
+                Math.Max(1, o.Concurrency),
+                Math.Max(1, options.Value.ConnectionBudget)),
             CancellationToken = ct,
         };
 

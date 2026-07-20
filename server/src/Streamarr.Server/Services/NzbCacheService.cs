@@ -14,7 +14,8 @@ public sealed record NzbCacheDescriptor(
     string WorkId,
     string Title,
     string Indexer,
-    long ReleaseSizeBytes);
+    long ReleaseSizeBytes,
+    string? ReleaseRegistrationJson = null);
 
 public sealed record CachedNzb(NzbDocument Document, bool CacheHit);
 
@@ -52,7 +53,7 @@ public sealed class NzbCacheService(
         await gate.WaitAsync(ct);
         try
         {
-            var cached = await TryReadAsync(descriptor.ReleaseId, ct);
+            var cached = await TryReadAsync(descriptor, ct);
             if (cached is not null)
                 return new CachedNzb(cached, true);
 
@@ -94,10 +95,12 @@ public sealed class NzbCacheService(
         }
     }
 
-    private async Task<NzbDocument?> TryReadAsync(string releaseId, CancellationToken ct)
+    private async Task<NzbDocument?> TryReadAsync(NzbCacheDescriptor descriptor, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var entity = await db.CachedReleases.SingleOrDefaultAsync(entry => entry.ReleaseId == releaseId, ct);
+        var entity = await db.CachedReleases.SingleOrDefaultAsync(
+            entry => entry.ReleaseId == descriptor.ReleaseId,
+            ct);
         if (entity is null)
             return null;
 
@@ -112,12 +115,18 @@ public sealed class NzbCacheService(
             var document = await ParseAsync(bytes, ct);
             entity.HitCount++;
             entity.LastAccessedAt = time.GetUtcNow();
+            if (!string.IsNullOrWhiteSpace(descriptor.ReleaseRegistrationJson))
+            {
+                entity.ReleaseRegistrationJson = ReleaseRegistrationSerializer.Merge(
+                    entity.ReleaseRegistrationJson,
+                    descriptor.ReleaseRegistrationJson);
+            }
             await db.SaveChangesAsync(ct);
             return document;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            logger.LogWarning(exception, "Discarding unreadable NZB cache entry {ReleaseId}", releaseId);
+            logger.LogWarning(exception, "Discarding unreadable NZB cache entry {ReleaseId}", descriptor.ReleaseId);
             db.CachedReleases.Remove(entity);
             await db.SaveChangesAsync(ct);
             DeleteFile(entity.CacheFileName);
@@ -173,6 +182,12 @@ public sealed class NzbCacheService(
             entity.FileCount = document.Files.Count;
             entity.SegmentCount = document.Files.Sum(file => file.Segments.Count);
             entity.LastAccessedAt = now;
+            if (!string.IsNullOrWhiteSpace(descriptor.ReleaseRegistrationJson))
+            {
+                entity.ReleaseRegistrationJson = ReleaseRegistrationSerializer.Merge(
+                    entity.ReleaseRegistrationJson,
+                    descriptor.ReleaseRegistrationJson);
+            }
             if (existing is null)
                 db.CachedReleases.Add(entity);
             await db.SaveChangesAsync(ct);

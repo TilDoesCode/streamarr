@@ -62,6 +62,12 @@ public sealed class StreamarrOptions
     /// <summary>Global NNTP connection budget shared across all sessions.</summary>
     public int ConnectionBudget { get; set; } = 20;
 
+    /// <summary>Connections proactively opened for each pooled provider after startup.</summary>
+    public int ConnectionWarmupCount { get; set; } = 20;
+
+    /// <summary>How long an authenticated NNTP connection may remain idle before reaping.</summary>
+    public int ConnectionIdleTimeoutSeconds { get; set; } = 300;
+
     public int SessionTtlSeconds { get; set; } = 3600;
 
     public int SessionSweepIntervalSeconds { get; set; } = 30;
@@ -100,8 +106,23 @@ public sealed class StreamarrOptions
     /// <summary>Segments to read ahead while streaming (nzbdav's articleBufferSize).</summary>
     public int ArticleReadAheadCount { get; set; } = 3;
 
+    /// <summary>Temporary read-ahead window used for the first articles of a stream.</summary>
+    public int ArticleStartupReadAheadCount { get; set; } = 8;
+
+    /// <summary>Number of leading articles that use the larger startup window.</summary>
+    public int ArticleStartupReadAheadSegments { get; set; } = 8;
+
     /// <summary>Retries after a decoded article transfer or validation failure.</summary>
     public int ArticleDownloadRetryCount { get; set; } = 2;
+
+    /// <summary>Maximum RAR volumes whose size/header probes may run concurrently.</summary>
+    public int RarMaterializationConcurrency { get; set; } = 20;
+
+    /// <summary>Maximum immutable media/RAR materializations retained in process.</summary>
+    public int MediaMaterializationCacheMaxEntries { get; set; } = 32;
+
+    /// <summary>Maximum estimated memory retained by immutable media/RAR materializations, in mebibytes.</summary>
+    public int MediaMaterializationCacheSizeMb { get; set; } = 64;
 
     /// <summary>Maximum process-wide decoded article cache size in mebibytes.</summary>
     public int SegmentCacheSizeMb { get; set; } = 512;
@@ -109,6 +130,18 @@ public sealed class StreamarrOptions
     public string FfprobePath { get; set; } = "ffprobe";
 
     public int FfprobeTimeoutSeconds { get; set; } = 60;
+
+    /// <summary>Fast-path ffprobe input byte budget before one bounded escalation.</summary>
+    public int FfprobeProbeSizeBytes { get; set; } = 1024 * 1024;
+
+    /// <summary>Fast-path ffprobe analysis time budget, in milliseconds.</summary>
+    public int FfprobeAnalyzeDurationMs { get; set; } = 2_000;
+
+    /// <summary>Second and final ffprobe input byte budget after a fast-path miss.</summary>
+    public int FfprobeEscalatedProbeSizeBytes { get; set; } = 5 * 1024 * 1024;
+
+    /// <summary>Second and final ffprobe analysis time budget, in milliseconds.</summary>
+    public int FfprobeEscalatedAnalyzeDurationMs { get; set; } = 5_000;
 
     /// <summary>Maximum number of ffprobe child processes running at once.</summary>
     public int MaxConcurrentFfprobe { get; set; } = 2;
@@ -228,7 +261,7 @@ public sealed class HealthCheckOptions
     /// <summary>Maximum segments STAT'ed per release (evenly spread, incl. first/last).</summary>
     public int SampleCount { get; set; } = 24;
 
-    public int Concurrency { get; set; } = 8;
+    public int Concurrency { get; set; } = 20;
 
     /// <summary>Missing-sample ratio at or above which a release is dead (below: degraded).</summary>
     public double DeadMissingRatio { get; set; } = 0.5;

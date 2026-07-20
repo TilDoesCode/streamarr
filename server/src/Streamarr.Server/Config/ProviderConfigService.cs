@@ -3,6 +3,8 @@ using Streamarr.Core.Providers;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
 using Streamarr.Server.Security;
+using Streamarr.Server.Options;
+using Microsoft.Extensions.Options;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nntp.Pooling;
@@ -19,7 +21,8 @@ public sealed class ProviderConfigService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     ISecretProtector protector,
     MultiProviderNntpClient livePool,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory,
+    IOptions<StreamarrOptions> options)
 {
     public async Task<IReadOnlyList<ProviderEntity>> ListAsync(CancellationToken ct)
     {
@@ -139,7 +142,10 @@ public sealed class ProviderConfigService(
             .ToListAsync(ct);
         var clients = rows
             .Select(ToProvider)
-            .Select(p => UsenetStreamingClient.CreateProviderClient(p, loggerFactory))
+            .Select(p => UsenetStreamingClient.CreateProviderClient(
+                p,
+                loggerFactory,
+                TimeSpan.FromSeconds(options.Value.ConnectionIdleTimeoutSeconds)))
             .ToList();
         livePool.ReplaceProviders(clients);
     }
