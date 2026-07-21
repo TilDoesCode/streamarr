@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.9.0.0",
+        "changelog": "Fix the resume and seek playback-latency regression with header-only seek probes, a read pacer, and fairer NNTP connection-pool sharing; bound the ephemeral cache with a configurable budget; surface per-stream time-to-first-frame diagnostics; and harden escalated ffprobe analysis and cached artwork badges.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.9.0/streamarr-jellyfin-0.9.0.zip",
+        "checksum": "a4ac132ace2cf4301fbb3b9649aecc3e",
+        "timestamp": "2026-07-21T13:02:26Z"
+      },
+      {
         "version": "0.8.0.0",
         "changelog": "Import Sonarr/Radarr quality profiles and custom-format scores, rank releases against a portable custom-format subset, brand library artwork with cached Streamarr badges, add a per-stream diagnostics page, and add a Swiftfin playback-compatibility shim.",
         "targetAbi": "10.11.11.0",
