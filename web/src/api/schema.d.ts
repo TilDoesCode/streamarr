@@ -2106,6 +2106,17 @@ export interface paths {
                         "text/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
             };
         };
         put?: never;
@@ -2164,6 +2175,17 @@ export interface paths {
                 };
                 /** @description Too Many Requests */
                 429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2521,6 +2543,17 @@ export interface paths {
                 };
                 /** @description Too Many Requests */
                 429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
