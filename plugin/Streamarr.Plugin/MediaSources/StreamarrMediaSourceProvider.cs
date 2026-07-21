@@ -67,16 +67,30 @@ public sealed class StreamarrMediaSourceProvider(
                 throw new InvalidOperationException("The Streamarr media-source offer no longer matches a materialized work.");
             }
 
+            var openStopwatch = System.Diagnostics.Stopwatch.StartNew();
             var resolve = await ResolveWithFallbackAsync(
                 offer,
                 entry.Work,
                 user.Id.ToString("D"),
                 user.Username,
                 cancellationToken).ConfigureAwait(false);
+            openStopwatch.Stop();
+            var openMs = openStopwatch.Elapsed.TotalMilliseconds;
+            // Jellyfin-console TTFF breadcrumb (BRIEF §11): how long the server-side open+resolve
+            // (NZB fetch, health STAT, RAR materialize, ffprobe pre-probe) took as observed here.
+            logger.LogInformation(
+                "[Streamarr TTFF] resolve for item {ItemId} took {OpenMs:F0} ms (release {ReleaseId}, status {Status})",
+                offer.ItemId, openMs, resolve.ReleaseId, resolve.Status);
             var liveStreamId = Guid.NewGuid().ToString("N");
             var token = StreamarrApiClient.TokenFromStreamUrl(resolve.StreamUrl);
             if (string.IsNullOrWhiteSpace(token))
                 throw new InvalidOperationException("Core returned a ready response without a closeable stream capability.");
+
+            // Report the plugin-observed open latency back onto the session's flamegraph. This bar
+            // wraps the server resolve stages (it also includes plugin overhead + network), so it
+            // reads as the parent of the nested nzb/health/materialize/probe spans. Fire-and-forget
+            // and fully swallowed — diagnostics must never delay or break playback.
+            _ = ReportOpenTimingAsync(token!, openMs, resolve.Status);
 
             var tracked = false;
             try
@@ -148,8 +162,6 @@ public sealed class StreamarrMediaSourceProvider(
                 var source = MediaSourceMapper.ToOpenedSource(resolve, liveStreamId, stableSourceId);
                 var stream = new StreamarrLiveStream(
                     source,
-                    token,
-                    dispatcher,
                     tracker,
                     logger,
                     offerLease.Dispose);
@@ -342,6 +354,35 @@ public sealed class StreamarrMediaSourceProvider(
 
         if (response.Attempts.Any(attempt => !allowedReleaseIds.Contains(attempt.ReleaseId)))
             throw new InvalidOperationException("Core reported a fallback attempt outside the offered work.");
+    }
+
+    private async Task ReportOpenTimingAsync(string token, double openMs, string? status)
+    {
+        try
+        {
+            await api.ReportTimelineAsync(
+                token,
+                new ClientTimelineRequest
+                {
+                    Spans =
+                    [
+                        new ClientSpan
+                        {
+                            Name = "jellyfin-open",
+                            Category = "client",
+                            StartMs = 0,
+                            DurationMs = openMs,
+                            Detail = status,
+                        },
+                    ],
+                },
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Never let a diagnostics post surface as a playback failure.
+            logger.LogDebug("Could not report Streamarr open timing ({FailureType})", ex.GetType().Name);
+        }
     }
 
     private Guid CurrentUserId()

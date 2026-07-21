@@ -20,7 +20,10 @@ public sealed class GeneralConfigEntity
     /// </summary>
     public string? JwtSigningKeyEncrypted { get; set; }
 
-    public int SessionTtlSeconds { get; set; } = 3600;
+    public int SessionTtlSeconds { get; set; } = 86_400;
+
+    /// <summary>Logical ephemeral-file cache size in mebibytes.</summary>
+    public int EphemeralCacheSizeMb { get; set; } = 102_400;
 
     public int SearchCacheTtlSeconds { get; set; } = 60;
 

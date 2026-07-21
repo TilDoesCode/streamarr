@@ -1050,6 +1050,42 @@ swiftfin_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
   "$tmp_dir/swiftfin-playback-result.json")"
 close_live_stream "$swiftfin_live_stream_id" "$tmp_dir/swiftfin-close-result.json"
 
+# Reproduce Swiftfin's rewritten-player track rebuild. It stops the current transcoded item,
+# then posts PlaybackInfo again with the selected source, new audio index, and the previous
+# LiveStreamId. That id is stale after the stop; the compatibility shim must force Jellyfin to
+# discover and open a fresh source instead of trying to reuse the closed live stream.
+jq \
+  --arg liveStreamId "$swiftfin_live_stream_id" \
+  '. + {LiveStreamId:$liveStreamId, AudioStreamIndex:2, AutoOpenLiveStream:true}' \
+  "$tmp_dir/swiftfin-playback-request.json" \
+  >"$tmp_dir/swiftfin-audio-switch-request.json"
+code="$(curl -sS -o "$tmp_dir/swiftfin-audio-switch-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$swiftfin_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/swiftfin-audio-switch-request.json")"
+expect_code 200 "$code" "Swiftfin audio-switch PlaybackInfo"
+jq -e \
+  --arg sourceId "$episode_source_id" \
+  --arg staleLiveStreamId "$swiftfin_live_stream_id" '
+    .ErrorCode == null
+      and (.MediaSources | length) == 1
+      and (.MediaSources[0] as $opened
+        | $opened.Id == $sourceId
+          and $opened.LiveStreamId != $staleLiveStreamId
+          and $opened.DefaultAudioStreamIndex == 2
+          and $opened.SupportsDirectPlay == false
+          and ($opened.TranscodingUrl | type == "string"
+            and contains("AudioStreamIndex=2")
+            and contains("LiveStreamId=")))
+' "$tmp_dir/swiftfin-audio-switch-result.json" >/dev/null
+assert_last_resolve "$episode_release_id" "ci-smoke-series-s01e01"
+swiftfin_switched_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/swiftfin-audio-switch-result.json")"
+close_live_stream \
+  "$swiftfin_switched_live_stream_id" \
+  "$tmp_dir/swiftfin-audio-switch-close-result.json"
+
 # The same request from a fully protocol-compliant client (Streamyfin-style, no Swiftfin
 # client name) must remain untouched by the filter: direct play stays offered and no
 # transcoding URL is forced.

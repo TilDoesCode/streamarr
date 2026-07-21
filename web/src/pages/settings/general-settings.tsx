@@ -14,10 +14,11 @@ import type { GeneralConfigWrite } from "@/api/types";
 import { errorMessage } from "@/api/client";
 
 // Mirrors the server's GeneralConfigController validation (BRIEF §9.2: "validation mirrors
-// server-side validation"): connectionBudget/sessionTtlSeconds >= 1, all values integers.
+// server-side validation"): cache/connection/TTL values >= 1, all values integers.
 const schema = z.object({
   tmdbApiKey: z.string().optional(),
   sessionTtlSeconds: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
+  ephemeralCacheSizeMb: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   searchCacheTtlSeconds: z.coerce.number().int("Must be a whole number").min(0, "Cannot be negative"),
   segmentCacheSizeMb: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   connectionBudget: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
@@ -42,7 +43,8 @@ export function GeneralSettings() {
     resolver: zodResolver(schema),
     defaultValues: {
       tmdbApiKey: "",
-      sessionTtlSeconds: 3600,
+      sessionTtlSeconds: 86_400,
+      ephemeralCacheSizeMb: 102_400,
       searchCacheTtlSeconds: 60,
       segmentCacheSizeMb: 512,
       connectionBudget: 20,
@@ -56,6 +58,7 @@ export function GeneralSettings() {
       reset({
         tmdbApiKey: "",
         sessionTtlSeconds: data.sessionTtlSeconds,
+        ephemeralCacheSizeMb: data.ephemeralCacheSizeMb,
         searchCacheTtlSeconds: data.searchCacheTtlSeconds,
         segmentCacheSizeMb: data.segmentCacheSizeMb,
         connectionBudget: data.connectionBudget,
@@ -71,6 +74,7 @@ export function GeneralSettings() {
     // otherwise omit so the stored secret is left unchanged (server omit-to-keep).
     const body: GeneralConfigWrite = {
       sessionTtlSeconds: parsed.sessionTtlSeconds,
+      ephemeralCacheSizeMb: parsed.ephemeralCacheSizeMb,
       searchCacheTtlSeconds: parsed.searchCacheTtlSeconds,
       segmentCacheSizeMb: parsed.segmentCacheSizeMb,
       connectionBudget: parsed.connectionBudget,
@@ -102,9 +106,9 @@ export function GeneralSettings() {
       <CardHeader>
         <CardTitle>General</CardTitle>
         <CardDescription>
-          TMDB credential, session &amp; cache TTLs, and the global NNTP connection budget
-          (BRIEF §6.3). TMDB credentials and artwork marking take effect immediately; resource
-          limits apply on restart.
+          TMDB credential, ephemeral-file retention, search/segment caches, and the global NNTP
+          connection budget (BRIEF §6.3). TMDB credentials and artwork marking take effect
+          immediately; resource limits apply on restart.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -132,10 +136,19 @@ export function GeneralSettings() {
           <div className="grid gap-5 sm:grid-cols-2">
             <Field
               id="sessionTtlSeconds"
-              label="Session TTL (seconds)"
+              label="Ephemeral file expiry (seconds)"
+              hint="Hard maximum age from creation. File access does not extend it."
               error={errors.sessionTtlSeconds?.message}
             >
               <Input id="sessionTtlSeconds" type="number" min={1} aria-invalid={!!errors.sessionTtlSeconds} {...register("sessionTtlSeconds")} />
+            </Field>
+            <Field
+              id="ephemeralCacheSizeMb"
+              label="Ephemeral file cache (MB)"
+              hint="Full decoded file sizes count toward this budget. The least recently accessed file is evicted first; one oversized file may exceed it."
+              error={errors.ephemeralCacheSizeMb?.message}
+            >
+              <Input id="ephemeralCacheSizeMb" type="number" min={1} aria-invalid={!!errors.ephemeralCacheSizeMb} {...register("ephemeralCacheSizeMb")} />
             </Field>
             <Field
               id="searchCacheTtlSeconds"

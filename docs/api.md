@@ -254,7 +254,7 @@ A healthy (`ready` or `degraded`) response:
     { "type": "Audio", "codec": "eac3", "channels": 6, "language": "deu" },
     { "type": "Subtitle", "codec": "subrip", "language": "eng" }
   ],
-  "sessionTtlSeconds": 3600,
+  "sessionTtlSeconds": 86400,
   "suggestedFallbackReleaseId": null,
   "fallbackFromReleaseId": null,
   "attempts": [ { "releaseId": "sha256-of-guid", "status": "ready" } ]
@@ -284,7 +284,7 @@ A dead-and-exhausted response (e.g. `autoFallback: false` on a dead release):
   "releaseId": "sha256-of-guid",
   "status": "dead",
   "streamUrl": null,
-  "sessionTtlSeconds": 3600,
+  "sessionTtlSeconds": 86400,
   "suggestedFallbackReleaseId": "sha256-of-next-best",
   "fallbackFromReleaseId": null,
   "attempts": [ { "releaseId": "sha256-of-guid", "status": "dead" } ]
@@ -360,10 +360,16 @@ client, timestamps:
 
 ### `POST /api/v1/sessions/{token}/close`
 
-Tears a session down (`204`; `404` if unknown). Idle sessions are also closed on their TTL
-(`Streamarr:SessionTtlSeconds`, swept every `SessionSweepIntervalSeconds`); an open HTTP
-stream body is retained while paused. The plugin closes sessions explicitly on Jellyfin's
-`CloseLiveStream`.
+Immediately tears a capability down (`204`; `404` if unknown). This is reserved for rejected or
+administratively cancelled opens; ordinary Jellyfin/Swiftfin stop and `CloseLiveStream` callbacks
+are telemetry only because those callbacks can be transient.
+
+Core owns normal lifecycle deterministically. Full decoded file sizes count against
+`Streamarr:EphemeralCacheSizeMb`; admitting a new file evicts whole entries by oldest actual byte
+access until it fits, while one oversized file may stand alone. Every entry also expires at
+`createdAt + SessionTtlSeconds` regardless of access. The sweep may therefore revoke an open
+stream only at that configured hard deadline, not because a client briefly reported playback as
+stopped.
 
 ---
 

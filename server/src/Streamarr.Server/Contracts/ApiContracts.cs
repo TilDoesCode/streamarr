@@ -109,6 +109,41 @@ public sealed record SessionResponse
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset LastAccessedAt { get; init; }
     public DateTimeOffset ExpiresAt { get; init; }
+
+    /// <summary>Wall-clock instant of timeline t0 (resolve start), for aligning client spans.</summary>
+    public DateTimeOffset? TimelineStartedAt { get; init; }
+
+    /// <summary>Request→first-frame spans for the flamegraph on the stream page (may be empty).</summary>
+    public IReadOnlyList<TtffSpanResponse> Timeline { get; init; } = [];
+}
+
+/// <summary>One measured stage on the request→first-frame timeline (flamegraph on the stream page).</summary>
+public sealed record TtffSpanResponse
+{
+    public required string Name { get; init; }
+    public required string Category { get; init; }
+    public required double StartMs { get; init; }
+    public required double DurationMs { get; init; }
+    public string? Detail { get; init; }
+    public string Source { get; init; } = "server";
+}
+
+/// <summary>
+/// Client-observed spans (e.g. Jellyfin's PlaybackInfo→first delivered frame) POSTed back to
+/// Core so the flamegraph spans both processes. Offsets are ms from the session's timeline t0.
+/// </summary>
+public sealed record ClientTimelineRequest
+{
+    public IReadOnlyList<ClientSpan> Spans { get; init; } = [];
+}
+
+public sealed record ClientSpan
+{
+    public required string Name { get; init; }
+    public string? Category { get; init; }
+    public required double StartMs { get; init; }
+    public required double DurationMs { get; init; }
+    public string? Detail { get; init; }
 }
 
 /// <summary>One release whose source NZB is available from Core's persistent cache.</summary>
@@ -127,7 +162,10 @@ public sealed record CachedReleaseResponse
     public DateTimeOffset LastAccessedAt { get; init; }
 }
 
-/// <summary>Operational view of a live ephemeral media file and its chunk footprint.</summary>
+/// <summary>
+/// Operational view of one server-managed ephemeral file. SizeBytes counts toward the logical
+/// LRU budget, while StorageBytes reports the currently resident decoded-article footprint.
+/// </summary>
 public sealed record EphemeralFileResponse
 {
     public required string Token { get; init; }

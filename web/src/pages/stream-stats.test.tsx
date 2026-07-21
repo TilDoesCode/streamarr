@@ -113,4 +113,33 @@ describe("StreamStatsPage", () => {
     expect(await screen.findByRole("heading", { name: "This stream has left the wire" })).toBeInTheDocument();
     expect(screen.getByText(/live-only/i)).toBeInTheDocument();
   });
+
+  it("renders the request→first-frame flamegraph when the session carries a timeline", async () => {
+    installFetch([{
+      ...liveSession,
+      timelineStartedAt: new Date(now - 17 * 60_000).toISOString(),
+      timeline: [
+        { name: "nzb-fetch", category: "nzb", startMs: 0, durationMs: 42, detail: "cache", source: "server" },
+        { name: "health-check", category: "health", startMs: 44, durationMs: 210, detail: "0/24 missing", source: "server" },
+        { name: "materialize", category: "materialize", startMs: 44, durationMs: 690, detail: "580 segments", source: "server" },
+        { name: "ffprobe", category: "probe", startMs: 736, durationMs: 122, detail: null, source: "server" },
+        { name: "stream-first-byte", category: "stream", startMs: 1_240, durationMs: 480, detail: "pos=0", source: "server" },
+        { name: "jellyfin-open", category: "client", startMs: 0, durationMs: 1_180, detail: "ready", source: "client" },
+      ],
+    }]);
+    renderWithProviders(<StreamStatsPage sessionToken={token} />);
+
+    await screen.findByRole("heading", { name: "Asterion Station — The Quiet Array" });
+    expect(screen.getByText("nzb-fetch")).toBeInTheDocument();
+    expect(screen.getByText("stream-first-byte")).toBeInTheDocument();
+    expect(screen.getByText("jellyfin-open")).toBeInTheDocument();
+  });
+
+  it("omits the flamegraph entirely when the session has no timeline spans", async () => {
+    installFetch([{ ...liveSession, timeline: [] }]);
+    renderWithProviders(<StreamStatsPage sessionToken={token} />);
+
+    await screen.findByRole("heading", { name: "Asterion Station — The Quiet Array" });
+    expect(screen.queryByText("nzb-fetch")).not.toBeInTheDocument();
+  });
 });

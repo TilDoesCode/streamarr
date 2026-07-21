@@ -4,10 +4,18 @@ namespace Streamarr.Core.Tmdb;
 
 /// <summary>
 /// Indicates that TMDB did not produce an authoritative hit or miss because the
-/// upstream request failed transiently. Cache decorators must not retain the fallback
-/// produced for this failure.
+/// upstream request failed transiently. The client retries a bounded number of times
+/// before surfacing this; when it does surface, cache decorators must not retain the
+/// fallback produced for this failure.
 /// </summary>
-public sealed class TmdbTransientException(string message) : Exception(message);
+public sealed class TmdbTransientException(string message, TimeSpan? retryAfter = null) : Exception(message)
+{
+    /// <summary>
+    /// A server-advertised cooldown (<c>Retry-After</c>) when the upstream returned one,
+    /// so the retry loop can honour it instead of its own backoff schedule.
+    /// </summary>
+    public TimeSpan? RetryAfter { get; } = retryAfter;
+}
 
 /// <summary>
 /// TMDB metadata lookups (BRIEF §6.1 module 3): search a movie by title+year, a TV

@@ -29,6 +29,7 @@ public class SearchController(
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<SearchResponse>> Search(
         [FromQuery] string? q,
         [FromQuery] string? type,
@@ -61,6 +62,8 @@ public class SearchController(
         try
         {
             var aggregation = await searchService.SearchAsync(query, cancellationToken);
+            if (AllIndexersUnavailable(aggregation.Outcomes))
+                return SearchDependenciesUnavailable();
             var config = await generalConfig.GetAsync(cancellationToken);
             var addStreamarrBadge = config.AddStreamarrBadge;
             var addReleaseScoreToName = config.AddReleaseScoreToName;
@@ -89,6 +92,7 @@ public class SearchController(
     [ProducesResponseType(typeof(DebugSearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<DebugSearchResponse>> DebugSearch([FromBody] DebugSearchRequest request, CancellationToken cancellationToken)
     {
         if (request is null || (string.IsNullOrWhiteSpace(request.Q) && string.IsNullOrWhiteSpace(request.ImdbId) && request.TmdbId is null))
@@ -118,6 +122,8 @@ public class SearchController(
         try
         {
             var aggregation = await searchService.SearchAsync(query, cancellationToken);
+            if (AllIndexersUnavailable(aggregation.Outcomes))
+                return SearchDependenciesUnavailable();
             return Ok(ToDebugResponse(aggregation));
         }
         finally
@@ -133,6 +139,17 @@ public class SearchController(
             StatusCodes.Status429TooManyRequests,
             ErrorResponse.Of("capacity_reached", "Search capacity is currently reached; retry shortly."));
     }
+
+    private ObjectResult SearchDependenciesUnavailable()
+    {
+        Response.Headers.RetryAfter = "1";
+        return StatusCode(
+            StatusCodes.Status503ServiceUnavailable,
+            ErrorResponse.Of("search_temporarily_unavailable", "Every configured indexer is temporarily unavailable; retry shortly."));
+    }
+
+    internal static bool AllIndexersUnavailable(IReadOnlyList<IndexerOutcome> outcomes)
+        => outcomes.Count > 0 && outcomes.All(outcome => !outcome.Succeeded);
 
     // ---- /search mapping -----------------------------------------------------------
 

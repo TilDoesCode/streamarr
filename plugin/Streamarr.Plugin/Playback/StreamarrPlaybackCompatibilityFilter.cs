@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using Streamarr.Plugin.MediaSources;
@@ -17,10 +18,14 @@ namespace Streamarr.Plugin.Playback;
 /// Swiftfin version passes the live-stream id on the static route). Jellyfin Web works because
 /// it cannot direct-play these containers and therefore receives a <c>TranscodingUrl</c> built
 /// on the opened stream; this filter forces Swiftfin onto that same, working path by rewriting
-/// its <c>POST /Items/{itemId}/PlaybackInfo</c> request to <c>AutoOpenLiveStream = true</c> and
-/// <c>EnableDirectPlay = false</c>. The result is an HLS <b>remux</b> (ffmpeg stream-copy from
-/// the Core capability URL — no re-encode while the codecs fit the client profile), so session
-/// open/close accounting continues to flow through the provider unchanged.
+/// its <c>POST /Items/{itemId}/PlaybackInfo</c> request to <c>AutoOpenLiveStream = true</c>,
+/// <c>EnableDirectPlay = false</c>, and an empty <c>LiveStreamId</c>. The last override matters
+/// when the rewritten Swiftfin player changes an audio/subtitle track: it stops the old item and
+/// then sends that now-closed live-stream id while rebuilding playback. Ignoring the stale id
+/// lets Jellyfin discover and open a fresh source with the requested track index. The result is
+/// an HLS <b>remux</b> (ffmpeg stream-copy from the Core capability URL — no re-encode while the
+/// codecs fit the client profile), so session open/close accounting continues to flow through
+/// the provider unchanged.
 /// </para>
 /// <para>
 /// Scope guards — every one must hold before the request is touched, so clients that implement
@@ -36,9 +41,10 @@ namespace Streamarr.Plugin.Playback;
 /// <para>
 /// Version-sensitive contracts this file binds (verified against Jellyfin 10.11.11): the
 /// PlaybackInfo POST route shape; <c>MediaInfoController.GetPostedPlaybackInfo</c> binding the
-/// query parameters <c>autoOpenLiveStream</c> / <c>enableDirectPlay</c> with precedence over
-/// the posted body dto; and the <c>Jellyfin-Client</c> auth claim. Any error or ABI drift falls
-/// through to the untouched native action (BRIEF §11).
+/// query parameters <c>liveStreamId</c> / <c>autoOpenLiveStream</c> /
+/// <c>enableDirectPlay</c> with precedence over the posted body dto; and the
+/// <c>Jellyfin-Client</c> auth claim. Any error or ABI drift falls through to the untouched
+/// native action (BRIEF §11).
 /// </para>
 /// </summary>
 public sealed class StreamarrPlaybackCompatibilityFilter(
@@ -46,6 +52,7 @@ public sealed class StreamarrPlaybackCompatibilityFilter(
     ILogger<StreamarrPlaybackCompatibilityFilter> logger) : IAsyncActionFilter
 {
     internal const string ClientClaimType = "Jellyfin-Client";
+    internal const string LiveStreamArgument = "liveStreamId";
     internal const string AutoOpenArgument = "autoOpenLiveStream";
     internal const string EnableDirectPlayArgument = "enableDirectPlay";
 
@@ -90,27 +97,38 @@ public sealed class StreamarrPlaybackCompatibilityFilter(
         // MediaInfoController reads these query-bound arguments with precedence over the posted
         // PlaybackInfoDto body ("Query having higher precedence"), so overriding them rewrites
         // the effective request without referencing Jellyfin.Api types the plugin does not
-        // compile against. Drift guard: the action must still *declare* both parameters — the
-        // bound-argument dictionary cannot be used for this, because MVC omits optional query
-        // parameters the client did not send, and Swiftfin sends neither.
+        // compile against. Drift guard: the action must still *declare* all three parameters —
+        // the bound-argument dictionary cannot be used for this, because MVC may omit optional
+        // query parameters the client did not send.
         var parameters = context.ActionDescriptor?.Parameters;
         if (parameters is null
-            || !parameters.Any(parameter => string.Equals(parameter.Name, AutoOpenArgument, StringComparison.OrdinalIgnoreCase))
-            || !parameters.Any(parameter => string.Equals(parameter.Name, EnableDirectPlayArgument, StringComparison.OrdinalIgnoreCase)))
+            || !DeclaresParameter(parameters, LiveStreamArgument)
+            || !DeclaresParameter(parameters, AutoOpenArgument)
+            || !DeclaresParameter(parameters, EnableDirectPlayArgument))
         {
             logger.LogWarning(
-                "PlaybackInfo no longer declares '{AutoOpen}'/'{DirectPlay}'; skipping the Swiftfin compatibility shim (see docs/jellyfin-compatibility.md)",
+                "PlaybackInfo no longer declares '{LiveStream}'/'{AutoOpen}'/'{DirectPlay}'; skipping the Swiftfin compatibility shim (see docs/jellyfin-compatibility.md)",
+                LiveStreamArgument,
                 AutoOpenArgument,
                 EnableDirectPlayArgument);
             return;
         }
 
+        // Swiftfin's track-change rebuild stops its current HLS item before posting PlaybackInfo
+        // with that item's LiveStreamId. Jellyfin has already removed the stream, so honoring the
+        // body value makes GetPlaybackInfo look up a dead id and fail with a 500. Empty (rather
+        // than null) deliberately wins the controller's `liveStreamId ??= dto.LiveStreamId`
+        // merge, taking the normal projection + AutoOpen path and preserving AudioStreamIndex.
+        context.ActionArguments[LiveStreamArgument] = string.Empty;
         context.ActionArguments[AutoOpenArgument] = (bool?)true;
         context.ActionArguments[EnableDirectPlayArgument] = (bool?)false;
         logger.LogDebug(
-            "Rewrote a Swiftfin PlaybackInfo request for Streamarr item {ItemId}: auto-opening the live stream and forcing a remux transcoding offer",
+            "Rewrote a Swiftfin PlaybackInfo request for Streamarr item {ItemId}: opening a fresh live stream and forcing a remux transcoding offer",
             itemId);
     }
+
+    private static bool DeclaresParameter(IEnumerable<ParameterDescriptor> parameters, string name)
+        => parameters.Any(parameter => string.Equals(parameter.Name, name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Matches exactly <c>/Items/{itemId}/PlaybackInfo</c> — the only action this shim rewrites.</summary>
     internal static bool TryGetPlaybackInfoItemId(PathString path, out Guid itemId)

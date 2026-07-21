@@ -64,13 +64,18 @@ public class PlaybackCompatibilityFilterTests
                 [new Claim(StreamarrPlaybackCompatibilityFilter.ClientClaimType, client)]));
         }
 
-        // Mirrors the real MediaInfoController action: both parameters are declared, but MVC
-        // omits optional query parameters the client did not send from the bound-argument
-        // dictionary — Swiftfin sends neither, so the dictionary starts empty.
+        // Mirrors the real MediaInfoController action: all compatibility parameters are
+        // declared, while the bound-argument dictionary starts empty. The filter intentionally
+        // avoids a Jellyfin.Api DTO dependency and overrides these query-bound arguments.
         descriptor ??= new ActionDescriptor
         {
             Parameters =
             [
+                new ParameterDescriptor
+                {
+                    Name = StreamarrPlaybackCompatibilityFilter.LiveStreamArgument,
+                    ParameterType = typeof(string),
+                },
                 new ParameterDescriptor
                 {
                     Name = StreamarrPlaybackCompatibilityFilter.AutoOpenArgument,
@@ -107,8 +112,21 @@ public class PlaybackCompatibilityFilterTests
 
         await RunAsync(filter, context);
 
+        Assert.Equal(string.Empty, context.ActionArguments[StreamarrPlaybackCompatibilityFilter.LiveStreamArgument]);
         Assert.Equal(true, context.ActionArguments[StreamarrPlaybackCompatibilityFilter.AutoOpenArgument]);
         Assert.Equal(false, context.ActionArguments[StreamarrPlaybackCompatibilityFilter.EnableDirectPlayArgument]);
+    }
+
+    [Fact]
+    public async Task Swiftfin_track_rebuild_discards_the_previous_live_stream_id()
+    {
+        var (filter, itemId) = await CreateFilterAsync();
+        var context = PlaybackInfoContext(itemId, "Swiftfin iOS");
+        context.ActionArguments[StreamarrPlaybackCompatibilityFilter.LiveStreamArgument] = "closed-live-stream";
+
+        await RunAsync(filter, context);
+
+        Assert.Equal(string.Empty, context.ActionArguments[StreamarrPlaybackCompatibilityFilter.LiveStreamArgument]);
     }
 
     [Theory]

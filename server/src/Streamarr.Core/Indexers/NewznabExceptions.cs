@@ -11,8 +11,27 @@ public class NewznabException : Exception
 /// <summary>The indexer returned a non-success HTTP status or a Newznab &lt;error&gt;.</summary>
 public sealed class NewznabRequestException : NewznabException
 {
-    public NewznabRequestException(string message) : base(message) { }
-    public NewznabRequestException(string message, Exception inner) : base(message, inner) { }
+    public NewznabRequestException(
+        string message,
+        bool isTransient = true,
+        TimeSpan? retryAfter = null) : base(message)
+    {
+        IsTransient = isTransient;
+        RetryAfter = retryAfter;
+    }
+
+    public NewznabRequestException(
+        string message,
+        Exception inner,
+        bool isTransient = true,
+        TimeSpan? retryAfter = null) : base(message, inner)
+    {
+        IsTransient = isTransient;
+        RetryAfter = retryAfter;
+    }
+
+    public bool IsTransient { get; }
+    public TimeSpan? RetryAfter { get; }
 }
 
 /// <summary>The response body could not be parsed as Newznab XML.</summary>

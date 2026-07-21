@@ -81,7 +81,28 @@ public sealed class TmdbOptions
     /// <summary>Maximum number of TMDB requests in flight across all callers.</summary>
     public int MaxConcurrentRequests { get; set; } = 4;
 
+    /// <summary>
+    /// Extra attempts made after a transient TMDB failure (HTTP 408/429/5xx or a
+    /// network/parse error) before the lookup surfaces as a miss. A poster URL is only
+    /// as good as the metadata request that carries it, so a single dropped request must
+    /// not leave a work permanently art-less while its neighbours load.
+    /// </summary>
+    public int MaxTransientRetries { get; set; } = 3;
+
+    /// <summary>Base delay for the first retry; subsequent retries back off exponentially with jitter.</summary>
+    public int RetryBaseDelayMilliseconds { get; set; } = 200;
+
+    /// <summary>Upper bound on any single backoff wait, so a large <c>Retry-After</c> cannot stall a lookup.</summary>
+    public int RetryMaxDelayMilliseconds { get; set; } = 5_000;
+
     public TimeSpan CacheTtl => TimeSpan.FromHours(Math.Max(0, CacheTtlHours));
+
+    public int TransientRetryCount => Math.Clamp(MaxTransientRetries, 0, 10);
+
+    public TimeSpan RetryBaseDelay => TimeSpan.FromMilliseconds(Math.Clamp(RetryBaseDelayMilliseconds, 0, 60_000));
+
+    public TimeSpan RetryMaxDelay =>
+        TimeSpan.FromMilliseconds(Math.Clamp(RetryMaxDelayMilliseconds, RetryBaseDelayMilliseconds, 120_000));
 
     public TimeSpan RequestTimeout => TimeSpan.FromSeconds(Math.Max(1, RequestTimeoutSeconds));
 

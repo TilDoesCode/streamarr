@@ -7,6 +7,21 @@ namespace Streamarr.Plugin.Api;
 // JSON is camelCase over the wire; property names here are matched case-insensitively.
 
 /// <summary>Response of <c>GET /api/v1/health</c>.</summary>
+/// <summary>Client-observed TTFF spans POSTed to Core so the stream-page flamegraph spans both processes.</summary>
+public sealed record ClientTimelineRequest
+{
+    public IReadOnlyList<ClientSpan> Spans { get; init; } = [];
+}
+
+public sealed record ClientSpan
+{
+    public string Name { get; init; } = string.Empty;
+    public string? Category { get; init; }
+    public double StartMs { get; init; }
+    public double DurationMs { get; init; }
+    public string? Detail { get; init; }
+}
+
 public sealed record HealthResponse
 {
     public string? Status { get; init; }

@@ -98,6 +98,7 @@ public sealed record GeneralConfigResponse
     public string? TmdbApiKey { get; init; }
     public bool HasTmdbApiKey { get; init; }
     public int SessionTtlSeconds { get; init; }
+    public int EphemeralCacheSizeMb { get; init; }
     public int SearchCacheTtlSeconds { get; init; }
     public int SegmentCacheSizeMb { get; init; }
     public int ConnectionBudget { get; init; }
@@ -109,6 +110,7 @@ public sealed record GeneralConfigResponse
         TmdbApiKey = SecretMasking.Masked(e.TmdbApiKeyEncrypted),
         HasTmdbApiKey = !string.IsNullOrEmpty(e.TmdbApiKeyEncrypted),
         SessionTtlSeconds = e.SessionTtlSeconds,
+        EphemeralCacheSizeMb = e.EphemeralCacheSizeMb,
         SearchCacheTtlSeconds = e.SearchCacheTtlSeconds,
         SegmentCacheSizeMb = e.SegmentCacheSizeMb,
         ConnectionBudget = e.ConnectionBudget,

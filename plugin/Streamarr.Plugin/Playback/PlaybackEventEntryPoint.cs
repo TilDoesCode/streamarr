@@ -10,6 +10,10 @@ namespace Streamarr.Plugin.Playback;
 /// <summary>
 /// Bridges Jellyfin playback callbacks to a bounded, drained Core delivery queue. Only events for
 /// plugin-owned ephemeral items are accepted, and callback threads never perform network I/O.
+/// Playback callbacks are telemetry only. Some clients, notably Swiftfin, briefly report a stop
+/// while playback is still alive; using that transient state as a Core deletion signal drains the
+/// client's buffer and then terminates an otherwise healthy stream. Core exclusively owns the
+/// deterministic ephemeral-file LRU and hard-expiry lifecycle.
 /// </summary>
 public sealed class PlaybackEventEntryPoint(
     ISessionManager sessionManager,
@@ -41,11 +45,7 @@ public sealed class PlaybackEventEntryPoint(
     private void OnPlaybackProgress(object? sender, PlaybackProgressEventArgs e) => Report("progress", e);
 
     private void OnPlaybackStopped(object? sender, PlaybackStopEventArgs e)
-    {
-        var attribution = Report("stop", e);
-        if (attribution?.SessionToken is { } token && dispatcher.EnqueueClose(token))
-            tracker.Forget(e.MediaSourceId);
-    }
+        => Report("stop", e);
 
     private PlaybackSessionTracker.Attribution? Report(string kind, PlaybackProgressEventArgs e)
     {

@@ -33,6 +33,7 @@ public sealed class GeneralConfigService(
             var entity = await LoadAsync(db, ct);
 
             if (write.SessionTtlSeconds is { } ttl) entity.SessionTtlSeconds = ttl;
+            if (write.EphemeralCacheSizeMb is { } ephemeralSize) entity.EphemeralCacheSizeMb = ephemeralSize;
             if (write.SearchCacheTtlSeconds is { } sc) entity.SearchCacheTtlSeconds = sc;
             if (write.SegmentCacheSizeMb is { } sz) entity.SegmentCacheSizeMb = sz;
             if (write.ConnectionBudget is { } budget) entity.ConnectionBudget = budget;
@@ -82,6 +83,7 @@ public sealed record GeneralConfigWrite
 {
     public string? TmdbApiKey { get; init; }
     public int? SessionTtlSeconds { get; init; }
+    public int? EphemeralCacheSizeMb { get; init; }
     public int? SearchCacheTtlSeconds { get; init; }
     public int? SegmentCacheSizeMb { get; init; }
     public int? ConnectionBudget { get; init; }

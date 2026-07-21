@@ -21,11 +21,14 @@ public sealed class IndexerSearchService(
     IndexerSearchOptions options,
     TimeProvider? timeProvider = null,
     ILogger<IndexerSearchService>? logger = null,
-    IIndexerLatencyRecorder? latencyRecorder = null)
+    IIndexerLatencyRecorder? latencyRecorder = null,
+    Func<TimeSpan, CancellationToken, Task>? retryDelay = null)
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ILogger _logger = logger ?? NullLogger<IndexerSearchService>.Instance;
     private readonly SemaphoreSlim _requestGate = new(Math.Max(1, options.MaxConcurrentIndexerRequests));
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay =
+        retryDelay ?? ((delay, ct) => Task.Delay(delay, ct));
 
     public async Task<IndexerSearchResult> SearchAsync(NewznabQuery query, CancellationToken cancellationToken)
     {
@@ -70,63 +73,108 @@ public sealed class IndexerSearchService(
             Outcomes = perIndexer.Select(r => r.Outcome).ToArray(),
         };
 
-        cache.Set(cacheKey, result);
+        // A partial fan-out is useful to this caller, but caching it would turn a transient
+        // outage into a deterministic miss for the full cache TTL. Only cache complete runs.
+        if (result.Outcomes.All(outcome => outcome.Succeeded))
+            cache.Set(cacheKey, result);
         return result;
     }
 
     private async Task<IndexerResult> QueryOneAsync(IndexerConfig indexer, NewznabQuery query, CancellationToken cancellationToken)
     {
         var started = _time.GetTimestamp();
-
-        try
+        var maxAttempts = 1 + options.TransientRetryCount;
+        for (var attempt = 1; ; attempt++)
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(options.PerIndexerTimeout);
-            await rateLimiter.WaitAsync(indexer.Id, timeoutCts.Token);
-            await _requestGate.WaitAsync(timeoutCts.Token);
-
-            IReadOnlyList<Release> releases;
             try
             {
-                var response = await client.SearchAsync(indexer, query, timeoutCts.Token);
-                releases = response.Items
-                    .Select(item => ToRelease(indexer, item))
-                    .ToArray();
-            }
-            finally
-            {
-                _requestGate.Release();
-            }
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(options.PerIndexerTimeout);
+                await rateLimiter.WaitAsync(indexer.Id, timeoutCts.Token);
+                await _requestGate.WaitAsync(timeoutCts.Token);
 
-            return new IndexerResult(indexer, releases, new IndexerOutcome
+                IReadOnlyList<Release> releases;
+                try
+                {
+                    var response = await client.SearchAsync(indexer, query, timeoutCts.Token);
+                    releases = response.Items
+                        .Select(item => ToRelease(indexer, item))
+                        .ToArray();
+                }
+                finally
+                {
+                    _requestGate.Release();
+                }
+
+                return new IndexerResult(indexer, releases, new IndexerOutcome
+                {
+                    IndexerId = indexer.Id,
+                    IndexerName = indexer.Name,
+                    Status = IndexerOutcomeStatus.Succeeded,
+                    ItemCount = releases.Count,
+                    Elapsed = _time.GetElapsedTime(started),
+                });
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                IndexerId = indexer.Id,
-                IndexerName = indexer.Name,
-                Status = IndexerOutcomeStatus.Succeeded,
-                ItemCount = releases.Count,
-                Elapsed = _time.GetElapsedTime(started),
-            });
+                throw;
+            }
+            catch (OperationCanceledException) when (attempt < maxAttempts)
+            {
+                await WaitToRetryAsync(indexer, attempt, maxAttempts, "timeout", null, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Indexer {Indexer} timed out after {Attempts} attempt(s)", indexer.Name, attempt);
+                return Failure(indexer, IndexerOutcomeStatus.TimedOut, "Timed out", started);
+            }
+            catch (NewznabRequestException e) when (e.IsTransient && attempt < maxAttempts)
+            {
+                await WaitToRetryAsync(
+                    indexer,
+                    attempt,
+                    maxAttempts,
+                    e.GetType().Name,
+                    e.RetryAfter,
+                    cancellationToken);
+            }
+            catch (Exception e)
+            {
+                // Transport exception messages can contain the full Newznab URL, including
+                // its API-key query parameter. Retain only the non-sensitive failure type.
+                _logger.LogWarning(
+                    "Indexer {Indexer} failed after {Attempts} attempt(s) with {FailureType}",
+                    indexer.Name,
+                    attempt,
+                    e.GetType().Name);
+                return Failure(indexer, IndexerOutcomeStatus.Failed, "Indexer request failed", started);
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // the whole search was cancelled by the caller — propagate.
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.LogWarning("Indexer {Indexer} timed out after {Timeout}s", indexer.Name, options.PerIndexerTimeoutSeconds);
-            return Failure(indexer, IndexerOutcomeStatus.TimedOut, "Timed out", started);
-        }
-        catch (Exception e)
-        {
-            // Transport exception messages can contain the full Newznab URL, including
-            // its API-key query parameter. Retain only the non-sensitive failure type.
-            _logger.LogWarning(
-                "Indexer {Indexer} failed with {FailureType}",
-                indexer.Name,
-                e.GetType().Name);
-            return Failure(indexer, IndexerOutcomeStatus.Failed, "Indexer request failed", started);
-        }
+    }
+
+    private async Task WaitToRetryAsync(
+        IndexerConfig indexer,
+        int attempt,
+        int maxAttempts,
+        string failureType,
+        TimeSpan? retryAfter,
+        CancellationToken cancellationToken)
+    {
+        var capMs = options.RetryMaxDelay.TotalMilliseconds;
+        var exponentialMs = options.RetryBaseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1);
+        var jitteredMs = exponentialMs * (0.8 + Random.Shared.NextDouble() * 0.4);
+        var requestedMs = retryAfter is { } advertised && advertised > TimeSpan.Zero
+            ? advertised.TotalMilliseconds
+            : jitteredMs;
+        var delay = TimeSpan.FromMilliseconds(Math.Min(requestedMs, capMs));
+        _logger.LogDebug(
+            "Indexer {Indexer} transient {FailureType}; retrying (attempt {Attempt}/{Max}) after {DelayMs} ms",
+            indexer.Name,
+            failureType,
+            attempt,
+            maxAttempts,
+            (int)delay.TotalMilliseconds);
+        await _delay(delay, cancellationToken);
     }
 
     private IndexerResult Failure(IndexerConfig indexer, IndexerOutcomeStatus status, string error, long started)

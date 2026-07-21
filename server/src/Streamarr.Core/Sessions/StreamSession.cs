@@ -8,9 +8,10 @@ public enum SessionState
 }
 
 /// <summary>
-/// A live streaming session: created by /resolve, addressed by an opaque
-/// unguessable token via /stream/{token}, torn down on close or TTL expiry.
-/// Holds the segment index and (indirectly) pooled NNTP resources.
+/// A cached ephemeral file capability: created by /resolve, addressed by an opaque
+/// unguessable token via /stream/{token}, and retained until explicit rejection,
+/// size-based LRU eviction, or its hard TTL. Holds the segment index and (indirectly)
+/// pooled NNTP resources.
 /// </summary>
 public sealed record StreamSession
 {
@@ -39,5 +40,9 @@ public sealed record StreamSession
     public string? RequestedById { get; init; }
     public string? RequestedByName { get; init; }
 
-    public DateTimeOffset ExpiresAt => LastAccessedAt + TimeToLive;
+    /// <summary>
+    /// Hard expiry is based on creation rather than last access. Access only affects LRU
+    /// ordering; it can never keep an ephemeral file alive beyond its configured maximum age.
+    /// </summary>
+    public DateTimeOffset ExpiresAt => CreatedAt + TimeToLive;
 }

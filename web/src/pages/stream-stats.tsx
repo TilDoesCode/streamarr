@@ -33,7 +33,7 @@ import {
 } from "recharts";
 import { errorMessage } from "@/api/client";
 import { useEphemeralFiles, useMetrics, useSessions, useStreamingHistory } from "@/api/queries";
-import type { SessionResponse, StreamingHistoryResponse } from "@/api/types";
+import type { SessionResponse, StreamingHistoryResponse, TtffSpanResponse } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { cn, formatBytes, formatTicks, timeAgo } from "@/lib/utils";
 
@@ -83,7 +83,7 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
         icon={<Radio />}
         eyebrow="Session no longer live"
         title="This stream has left the wire"
-        description="Stream stats are live-only. The session may have been closed or expired after its sliding TTL elapsed."
+        description="Stream stats are live-only. The capability may have been evicted by the ephemeral-file LRU budget or reached its hard expiry."
       />
     );
   }
@@ -194,6 +194,8 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
             </div>
           </div>
         </section>
+
+        <TtffFlamegraph spans={session.timeline ?? []} />
 
         <section className="grid grid-cols-2 border-b md:grid-cols-4">
           <MetricCell icon={<Radio />} label="Bytes on wire" value={formatBytes(served)} detail={`${payloadPercent.toFixed(1)}% of payload`} />
@@ -521,6 +523,123 @@ function StreamStatsMessage({ icon, eyebrow, title, description }: { icon: React
         <Link to="/sessions"><ArrowLeft />Return to live streams</Link>
       </Button>
     </div>
+  );
+}
+
+const TTFF_CATEGORY: Record<string, { bar: string; dot: string; label: string }> = {
+  nzb: { bar: "bg-amber-500/80", dot: "bg-amber-500", label: "NZB fetch" },
+  health: { bar: "bg-sky-500/80", dot: "bg-sky-500", label: "Health STAT" },
+  materialize: { bar: "bg-violet-500/80", dot: "bg-violet-500", label: "Materialize" },
+  probe: { bar: "bg-emerald-500/80", dot: "bg-emerald-500", label: "ffprobe" },
+  session: { bar: "bg-slate-400/80", dot: "bg-slate-400", label: "Session" },
+  stream: { bar: "bg-primary/80", dot: "bg-primary", label: "Stream" },
+  transcode: { bar: "bg-rose-500/80", dot: "bg-rose-500", label: "Transcode" },
+  client: { bar: "bg-pink-500/80", dot: "bg-pink-500", label: "Client" },
+};
+
+function ttffCategory(category: string) {
+  return TTFF_CATEGORY[category] ?? { bar: "bg-zinc-400/80", dot: "bg-zinc-400", label: category };
+}
+
+function formatMs(ms: number) {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(ms < 10000 ? 2 : 1)}s`;
+}
+
+/**
+ * Request → first-delivered-frame waterfall. Renders the server-side resolve stages
+ * (NZB fetch, health STAT, materialize, ffprobe, session, stream first byte) plus any
+ * client-reported spans (Jellyfin PlaybackInfo → first frame) as a single flamegraph so a
+ * multi-minute TTFF can be attributed at a glance — in dev and in prod (BRIEF §11).
+ */
+function TtffFlamegraph({ spans }: { spans: TtffSpanResponse[] }) {
+  if (!spans || spans.length === 0) return null;
+  const ordered = [...spans].sort((a, b) => a.startMs - b.startMs || a.durationMs - b.durationMs);
+  const firstFrame = ordered.reduce((max, s) => Math.max(max, s.startMs + s.durationMs), 0);
+  const totalMs = Math.max(1, firstFrame);
+  const categories = Array.from(new Set(ordered.map((s) => s.category ?? "other")));
+
+  return (
+    <section className="border-b px-4 py-7 sm:px-6 lg:px-8">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            <Gauge className="size-3.5 text-primary" /> Time to first frame
+          </p>
+          <p className="mt-2 font-mono text-3xl font-medium tabular-nums text-foreground">
+            {formatMs(firstFrame)}
+            <span className="ml-2 text-xs text-muted-foreground">request → first frame</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+          {categories.map((category) => {
+            const meta = ttffCategory(category);
+            return (
+              <span key={category} className="flex items-center gap-1.5">
+                <span className={cn("size-1.5 rounded-full", meta.dot)} /> {meta.label}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        {ordered.map((span, index) => {
+          const meta = ttffCategory(span.category ?? "other");
+          const leftPct = Math.min(100, (span.startMs / totalMs) * 100);
+          const widthPct = Math.max(0.6, Math.min(100 - leftPct, (span.durationMs / totalMs) * 100));
+          const labelRight = leftPct > 55;
+          return (
+            <div
+              key={`${span.name}-${index}`}
+              className="group grid grid-cols-[9.5rem_minmax(0,1fr)] items-center gap-3"
+              title={`${span.name} · ${formatMs(span.durationMs)}${span.detail ? ` · ${span.detail}` : ""}${span.source === "client" ? " · client" : ""}`}
+            >
+              <div className="flex items-center gap-1.5 truncate font-mono text-[11px] text-muted-foreground">
+                {span.source === "client" ? (
+                  <MonitorPlay className="size-3 shrink-0 text-pink-500" />
+                ) : (
+                  <span className={cn("size-1.5 shrink-0 rounded-full", meta.dot)} />
+                )}
+                <span className="truncate">{span.name}</span>
+              </div>
+              <div className="relative h-5 rounded bg-muted/40">
+                <div
+                  className={cn(
+                    "absolute inset-y-0 flex items-center rounded px-1.5 transition-[filter] group-hover:brightness-110",
+                    meta.bar,
+                  )}
+                  style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                >
+                  {!labelRight && (
+                    <span className="truncate font-mono text-[10px] font-medium text-white/95">
+                      {formatMs(span.durationMs)}
+                    </span>
+                  )}
+                </div>
+                {labelRight && (
+                  <span
+                    className="absolute inset-y-0 flex items-center pr-1 font-mono text-[10px] tabular-nums text-muted-foreground"
+                    style={{ right: `${Math.max(0, 100 - leftPct)}%` }}
+                  >
+                    {formatMs(span.durationMs)}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-2 grid grid-cols-[9.5rem_minmax(0,1fr)] gap-3">
+        <span />
+        <div className="flex justify-between font-mono text-[9px] uppercase tracking-wider text-muted-foreground/60">
+          <span>0</span>
+          <span>{formatMs(totalMs / 2)}</span>
+          <span>{formatMs(totalMs)}</span>
+        </div>
+      </div>
+    </section>
   );
 }
 

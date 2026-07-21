@@ -179,8 +179,9 @@ into Jellyfin's plugin dir, Vite dev server optional alongside.
    `RequiredHttpHeaders`.
 9. Jellyfin streams via ffmpeg (Direct Play or transcode). Plugin reports playback
    events to `POST /api/v1/events`.
-10. `CloseLiveStream` → `POST /api/v1/sessions/{token}/close`. `IScheduledTask`
-    deletes ephemeral items past TTL.
+10. `CloseLiveStream` releases plugin attribution only. Core retains the capability under a
+    configurable decoded-file-size LRU budget and hard creation-based TTL. `IScheduledTask`
+    deletes idle Jellyfin metadata without revoking Core playback.
 
 ---
 
@@ -272,7 +273,7 @@ does not have to probe a slow remote source.
     { "type": "Audio", "codec": "eac3", "channels": 6, "language": "deu" },
     { "type": "Subtitle", "codec": "subrip", "language": "eng" }
   ],
-  "sessionTtlSeconds": 3600,
+  "sessionTtlSeconds": 86400,
   "suggestedFallbackReleaseId": null
 }
 ```
@@ -310,8 +311,8 @@ is accepted or required. Player-agnostic by contract.
 - Indexers: `{ name, baseUrl, apiKey, categories, enabled, priority }`.
 - Usenet providers: `{ host, port, useSsl, username, password, maxConnections,
   priority }` — support multiple (primary + block-account fallback).
-- TMDB API key. Session TTL, search cache TTL, segment cache size, global NNTP
-  connection budget.
+- TMDB API key. Ephemeral file hard TTL and logical byte budget, search cache TTL,
+  segment cache size, global NNTP connection budget.
 - Quality preference profiles (Section 7.3).
 - Secrets encrypted at rest; never returned in plaintext by the config API (masked
   values; write-only fields).
@@ -444,14 +445,16 @@ to native behavior. A broken filter must never break normal library search.**
   reusable credential in `RequiredHttpHeaders`. Accept only server-attributed fallback
   releases within the originally offered work; on `dead`, follow
   `suggestedFallbackReleaseId` once before surfacing an error.
-- `CloseLiveStream(id)` → `POST /api/v1/sessions/{token}/close`.
+- `CloseLiveStream(id)` releases plugin-side attribution only; client playback state is never a
+  Core purge signal. Failed/rejected opens may still explicitly close their capability.
 - Report `start` / `progress` / `stop` to `POST /api/v1/events` (hook Jellyfin's
   playback session events) — this is how watch state escapes Jellyfin's DB.
 
 ### 8.5 TTL cleanup — `IScheduledTask`
 
 Delete `usenet-ephemeral` items whose `lastAccessedUtc` exceeds the TTL via
-`ILibraryManager`; close lingering sessions.
+`ILibraryManager`, but skip actively tracked subtrees and never close Core sessions. Core owns
+its separate size-bounded LRU and hard-expiry lifecycle.
 
 ---
 

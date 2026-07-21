@@ -17,14 +17,14 @@ export function EphemeralFilesPage() {
   return (
     <div className="space-y-5">
       <OpsHero
-        eyebrow="Active stream sessions"
+        eyebrow="Server-managed cache"
         title="Ephemeral files"
-        description="Shows the requesting client and user for each active file, unique NZB chunks requested, chunks still held in the segment cache, bytes served, and expiry calculated from the sliding session TTL."
+        description="Server-owned ephemeral file cache. Full decoded sizes count toward the configured budget, least-recently-accessed files are evicted first, and the hard expiry is never extended by playback activity."
         accent="cyan"
       >
         <OpsMetrics>
-          <OpsMetric label="Active files" value={String(files.length)} detail="live sessions" />
-          <OpsMetric label="Cached bytes" value={formatBytes(files.reduce((n, f) => n + (f.storageBytes ?? 0), 0))} detail="resident segment data" />
+          <OpsMetric label="Retained files" value={String(files.length)} detail="stream capabilities" />
+          <OpsMetric label="Cache allocation" value={formatBytes(files.reduce((n, f) => n + (f.sizeBytes ?? 0), 0))} detail="decoded file sizes" />
           <OpsMetric label="Chunks requested" value={queriedChunks.toLocaleString()} detail={`of ${totalChunks.toLocaleString()} total`} />
           <OpsMetric label="Next expiry" value={nextPurge?.purgeAt ? timeUntil(nextPurge.purgeAt) : "—"} detail={nextPurge?.title ?? "no active sessions"} />
         </OpsMetrics>
@@ -45,8 +45,8 @@ export function EphemeralFilesPage() {
       ) : files.length === 0 ? (
         <EmptyOpsState
           icon={<Radio className="size-5" />}
-          title="No ephemeral files are active"
-          description="Open a release in Jellyfin or Playback Preview. Its requester, chunk counts, segment-cache usage, and session expiry will be shown here while the capability session remains active."
+          title="The ephemeral cache is empty"
+          description="Open a release in Jellyfin or Playback Preview. Its requester, decoded-size allocation, chunk footprint, LRU access, and hard expiry will remain visible until Core evicts it."
         />
       ) : (
         <div className="space-y-3">
@@ -108,7 +108,7 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
           <Cell icon={<UserRound />} label="Requested by" value={requester} detail={file.client ?? "unknown client"} />
           <Cell icon={<HardDrive />} label="Storage" value={formatBytes(file.storageBytes)} detail={`${(file.cachedChunks ?? 0).toLocaleString()} chunks resident`} />
           <Cell icon={<Radio />} label="Bytes served" value={formatBytes(file.bytesServed)} detail={`of ${formatBytes(file.sizeBytes)}`} />
-          <Cell icon={<Clock3 />} label="Purge clock" value={file.purgeAt ? timeUntil(file.purgeAt) : "—"} detail={`last touched ${timeAgo(file.lastAccessedAt)}`} />
+          <Cell icon={<Clock3 />} label="Hard expiry" value={file.purgeAt ? timeUntil(file.purgeAt) : "—"} detail={`LRU touch ${timeAgo(file.lastAccessedAt)}`} />
         </div>
       </div>
       <div className="flex flex-col gap-1 border-t bg-muted/25 px-5 py-2.5 font-mono text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">

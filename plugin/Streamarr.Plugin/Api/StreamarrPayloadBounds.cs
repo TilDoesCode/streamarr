@@ -145,7 +145,7 @@ internal static class StreamarrPayloadBounds
                     Language = BoundedText(stream.Language, 32),
                 })
                 .ToArray(),
-            SessionTtlSeconds = Math.Clamp(response.SessionTtlSeconds, 0, 86_400),
+            SessionTtlSeconds = Math.Clamp(response.SessionTtlSeconds, 0, 2_592_000),
             SuggestedFallbackReleaseId = TryIdentifier(response.SuggestedFallbackReleaseId, 256, out var fallback)
                 ? fallback
                 : null,

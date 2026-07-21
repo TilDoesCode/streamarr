@@ -73,6 +73,46 @@ public class ApiClientSecurityTests
         Assert.Equal("movie", System.Web.HttpUtility.ParseQueryString(requested.Query)["type"]);
     }
 
+    [Fact]
+    public async Task Search_retries_transient_core_failure_before_returning_results()
+    {
+        var calls = 0;
+        var handler = new CallbackHandler(_ => Interlocked.Increment(ref calls) == 1
+            ? Json(HttpStatusCode.ServiceUnavailable, "{\"error\":{\"code\":\"temporary\",\"message\":\"retry\"}}")
+            : Json(HttpStatusCode.OK, "{\"results\":[]}"));
+        var api = new StreamarrApiClient(
+            new HttpClient(handler),
+            NullLogger<StreamarrApiClient>.Instance,
+            () => new PluginConfiguration { ServerUrl = "https://core.example" },
+            (_, _) => Task.CompletedTask);
+
+        var result = await api.SearchAsync("Dune", "movie", CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task Search_does_not_retry_permanent_core_failure()
+    {
+        var calls = 0;
+        var handler = new CallbackHandler(_ =>
+        {
+            Interlocked.Increment(ref calls);
+            return Json(HttpStatusCode.BadRequest, "{\"error\":{\"code\":\"bad\",\"message\":\"bad\"}}");
+        });
+        var api = new StreamarrApiClient(
+            new HttpClient(handler),
+            NullLogger<StreamarrApiClient>.Instance,
+            () => new PluginConfiguration { ServerUrl = "https://core.example" },
+            (_, _) => Task.CompletedTask);
+
+        await Assert.ThrowsAsync<StreamarrApiException>(
+            () => api.SearchAsync("Dune", "movie", CancellationToken.None));
+
+        Assert.Equal(1, calls);
+    }
+
     [Theory]
     [InlineData("episode")]
     [InlineData("tv")]

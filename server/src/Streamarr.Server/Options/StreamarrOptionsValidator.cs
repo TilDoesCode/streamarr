@@ -59,6 +59,7 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.ConnectionWarmupCount, 0, 100, nameof(o.ConnectionWarmupCount));
         Range(o.ConnectionIdleTimeoutSeconds, 30, 24 * 3600, nameof(o.ConnectionIdleTimeoutSeconds));
         Range(o.SessionTtlSeconds, 1, 30 * 24 * 3600, nameof(o.SessionTtlSeconds));
+        Range(o.EphemeralCacheSizeMb, 1, 67_108_864, nameof(o.EphemeralCacheSizeMb));
         Range(o.SessionSweepIntervalSeconds, 1, 3600, nameof(o.SessionSweepIntervalSeconds));
         Range(o.MaxSessions, 1, 10_000, nameof(o.MaxSessions));
         Range(o.MaxConcurrentStreams, 1, 1_000, nameof(o.MaxConcurrentStreams));
@@ -79,7 +80,11 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.MediaMaterializationCacheMaxEntries, 0, 512, nameof(o.MediaMaterializationCacheMaxEntries));
         Range(o.MediaMaterializationCacheSizeMb, 0, 1_048_576, nameof(o.MediaMaterializationCacheSizeMb));
         Range(o.SegmentCacheSizeMb, 0, 1_048_576, nameof(o.SegmentCacheSizeMb));
+        if (o.StreamPacingBurstBytes is < 1024 * 1024 or > 4L * 1024 * 1024 * 1024)
+            failures.Add("StreamPacingBurstBytes must be between 1 MiB and 4 GiB.");
+        Range(o.StreamPacingSustainBytesPerSecond, 256 * 1024, 512 * 1024 * 1024, nameof(o.StreamPacingSustainBytesPerSecond));
         Range(o.FfprobeTimeoutSeconds, 1, 600, nameof(o.FfprobeTimeoutSeconds));
+        Range(o.FfprobeEscalatedTimeoutSeconds, 1, 600, nameof(o.FfprobeEscalatedTimeoutSeconds));
         Range(o.FfprobeProbeSizeBytes, 32 * 1024, 64 * 1024 * 1024, nameof(o.FfprobeProbeSizeBytes));
         Range(o.FfprobeAnalyzeDurationMs, 100, 60_000, nameof(o.FfprobeAnalyzeDurationMs));
         Range(o.FfprobeEscalatedProbeSizeBytes, 32 * 1024, 64 * 1024 * 1024, nameof(o.FfprobeEscalatedProbeSizeBytes));
@@ -115,6 +120,9 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.Search.MaxResponseBytes, 1024, 128 * 1024 * 1024, "Search.MaxResponseBytes");
         Range(o.Search.MaxIndexersPerSearch, 1, 256, "Search.MaxIndexersPerSearch");
         Range(o.Search.MaxConcurrentIndexerRequests, 1, 64, "Search.MaxConcurrentIndexerRequests");
+        Range(o.Search.MaxTransientRetries, 0, 10, "Search.MaxTransientRetries");
+        Range(o.Search.RetryBaseDelayMilliseconds, 0, 60_000, "Search.RetryBaseDelayMilliseconds");
+        Range(o.Search.RetryMaxDelayMilliseconds, 0, 120_000, "Search.RetryMaxDelayMilliseconds");
         if ((long)o.Search.MaxResponseBytes * o.Search.MaxConcurrentIndexerRequests > 512L * 1024 * 1024)
             failures.Add("Search response size multiplied by concurrent indexer requests must not exceed 512 MiB.");
 

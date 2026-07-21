@@ -221,17 +221,23 @@ public sealed class ResolveService(
         var nzbUrl = registered.Release.NzbUrl
             ?? throw new NoPlayableFileException("The release has no NZB location on record.");
 
-        var cachedNzb = await nzbFetcher.FetchAsync(
-            new NzbCacheDescriptor(
-                registered.Release.ReleaseId,
-                registered.WorkId,
-                registered.Release.Title,
-                registered.Release.Indexer,
-                registered.Release.SizeBytes,
-                ReleaseRegistrationSerializer.Serialize(registered)),
-            nzbUrl,
-            registered.Release.IndexerId ?? registered.Release.Indexer,
-            ct);
+        // Request→first-frame timeline (BRIEF §11 diagnostics). t0 is the moment resolve begins;
+        // every stage below records itself and is emitted as a [TTFF] debug log line.
+        var timeline = TtffTimeline.Start(releaseId.Length >= 8 ? releaseId[..8] : releaseId, logger);
+
+        CachedNzb cachedNzb;
+        using (timeline.Measure("nzb-fetch", "nzb"))
+            cachedNzb = await nzbFetcher.FetchAsync(
+                new NzbCacheDescriptor(
+                    registered.Release.ReleaseId,
+                    registered.WorkId,
+                    registered.Release.Title,
+                    registered.Release.Indexer,
+                    registered.Release.SizeBytes,
+                    ReleaseRegistrationSerializer.Serialize(registered)),
+                nzbUrl,
+                registered.Release.IndexerId ?? registered.Release.Indexer,
+                ct);
         var nzb = cachedNzb.Document;
         var candidate = MediaFileSelector.SelectPrimary(nzb)
             ?? throw new NoPlayableFileException("The NZB contains no playable media file.");
@@ -239,7 +245,9 @@ public sealed class ResolveService(
         using var startupCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         // Preserve the exact ready/degraded/dead contract: all configured samples are
         // still checked, but their NNTP round trips overlap media materialization.
+        var healthStartMs = timeline.ElapsedMs;
         var healthTask = healthChecker.CheckAsync(candidate.HealthSegmentIds, startupCts.Token);
+        var materializeStartMs = timeline.ElapsedMs;
         var mediaTask = materializationCache.GetOrCreateAsync(
             releaseId,
             candidate,
@@ -257,6 +265,8 @@ public sealed class ResolveService(
             _ = ObserveMaterializationAsync(mediaTask);
             throw;
         }
+        timeline.Add("health-check", "health", healthStartMs, timeline.ElapsedMs - healthStartMs,
+            detail: $"{health.MissingCount}/{health.SampledCount} missing");
         logger.LogInformation(
             "Health check for release {ReleaseId}: {Status} ({Missing}/{Sampled} sampled segments missing)",
             releaseId, health.StatusLabel, health.MissingCount, health.SampledCount);
@@ -279,6 +289,8 @@ public sealed class ResolveService(
         healthCache.Record(releaseId, health.Health);
 
         var media = await mediaTask;
+        timeline.Add("materialize", "materialize", materializeStartMs, timeline.ElapsedMs - materializeStartMs,
+            detail: $"{media.SegmentIds.Count} segments");
         var session = sessionManager.CreateSession(
             releaseId,
             registered.WorkId,
@@ -286,18 +298,20 @@ public sealed class ResolveService(
             client,
             requestedById,
             requestedByName,
-            registered.Release.Title);
+            registered.Release.Title,
+            timeline);
 
         FfprobeResult? probe;
         try
         {
             // The loopback URL itself is a narrowly-scoped capability; never put an
             // admin JWT or machine key in ffprobe's command line or HTTP headers.
-            probe = await mediaProbeCache.GetOrCreateAsync(
-                releaseId,
-                media,
-                token => ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), token),
-                ct);
+            using (timeline.Measure("ffprobe", "probe"))
+                probe = await mediaProbeCache.GetOrCreateAsync(
+                    releaseId,
+                    media,
+                    token => ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), token),
+                    ct);
         }
         catch
         {
@@ -312,6 +326,9 @@ public sealed class ResolveService(
                 "ffprobe could not read the stream for release {ReleaseId}; returning without media info",
                 releaseId);
         }
+
+        // Always-visible TTFF breakdown for the server console (per-span detail is at Debug).
+        logger.LogInformation("[TTFF] resolve {ReleaseId} {Summary}", releaseId, timeline.Summarize());
 
         try
         {

@@ -68,7 +68,18 @@ public sealed class StreamarrOptions
     /// <summary>How long an authenticated NNTP connection may remain idle before reaping.</summary>
     public int ConnectionIdleTimeoutSeconds { get; set; } = 300;
 
-    public int SessionTtlSeconds { get; set; } = 3600;
+    /// <summary>
+    /// Hard maximum age of an ephemeral file capability. Unlike the old sliding session TTL,
+    /// reads affect LRU ordering but never extend this deadline.
+    /// </summary>
+    public int SessionTtlSeconds { get; set; } = 86_400;
+
+    /// <summary>
+    /// Logical decoded-file budget for ephemeral capabilities, in mebibytes. Admission evicts
+    /// whole least-recently-accessed files until the new file fits. One file larger than the
+    /// budget is still admitted after older files are removed.
+    /// </summary>
+    public int EphemeralCacheSizeMb { get; set; } = 102_400;
 
     public int SessionSweepIntervalSeconds { get; set; } = 30;
 
@@ -127,9 +138,33 @@ public sealed class StreamarrOptions
     /// <summary>Maximum process-wide decoded article cache size in mebibytes.</summary>
     public int SegmentCacheSizeMb { get; set; } = 512;
 
+    /// <summary>
+    /// Paces each open stream after its startup burst so a single consumer — typically an
+    /// unthrottled ffmpeg stream-copy racing the whole file — cannot monopolize CPU, NNTP
+    /// connections and provider bandwidth. Jellyfin's own transcode throttler never engages
+    /// for HTTP inputs (TranscodeManager.EnableThrottling requires MediaProtocol.File), so
+    /// the server must pace delivery instead (measured: unpaced transcodes pull the entire
+    /// release at wire speed and starve concurrent playback into minutes of TTFF).
+    /// </summary>
+    public bool StreamPacingEnabled { get; set; } = true;
+
+    /// <summary>Bytes each stream request may read unpaced (keeps first frame, seeks and ffprobe instant).</summary>
+    public long StreamPacingBurstBytes { get; set; } = 96L * 1024 * 1024;
+
+    /// <summary>Sustained per-stream delivery ceiling after the burst, in bytes per second.</summary>
+    public int StreamPacingSustainBytesPerSecond { get; set; } = 6 * 1024 * 1024;
+
     public string FfprobePath { get; set; } = "ffprobe";
 
     public int FfprobeTimeoutSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Hard ceiling on the escalated ffprobe pass, kept well below <see cref="FfprobeTimeoutSeconds"/>.
+    /// Escalation only enriches the runtime/duration once the fast pass already has the codec streams
+    /// that drive the player's direct-play/remux decision, so it must never dominate time-to-first-frame
+    /// or, on timeout, discard the streams (which would force the player into a full re-encode).
+    /// </summary>
+    public int FfprobeEscalatedTimeoutSeconds { get; set; } = 8;
 
     /// <summary>Fast-path ffprobe input byte budget before one bounded escalation.</summary>
     public int FfprobeProbeSizeBytes { get; set; } = 1024 * 1024;

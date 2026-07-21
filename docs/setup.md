@@ -253,9 +253,10 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `NzbCacheSizeMb` | `1024` | Maximum total size of cached NZB source documents. Least-recently-used entries are pruned first. |
 | `NzbCacheMaxEntries` | `2000` | Maximum cached release count. |
 | `ConnectionBudget` | `20` | **Global** NNTP connection budget shared across all sessions (BODY/ARTICLE outrank STAT/HEAD). |
-| `SessionTtlSeconds` | `3600` | Sliding idle lifetime after stream activity; an open HTTP stream body (including a paused player) is not swept, and explicit close still ends it immediately. |
+| `SessionTtlSeconds` | `86400` | Hard maximum age of an ephemeral file from creation. Access updates LRU order but never extends this deadline. Existing installs on the former `3600` default migrate to 24 hours. |
+| `EphemeralCacheSizeMb` | `102400` | Logical decoded-file budget for ephemeral capabilities. A new admission evicts whole files by oldest last access until it fits; one file larger than the budget may stand alone. |
 | `SessionSweepIntervalSeconds` | `30` | How often the session manager sweeps for expired sessions. |
-| `MaxSessions` | `64` | Hard cap on simultaneously live capability sessions. |
+| `MaxSessions` | `64` | Safety cap on retained capability sessions; at the limit the least-recently-accessed entry is evicted so a new file is not rejected. |
 | `MaxConcurrentStreams` | `128` | Hard cap on concurrently open HTTP stream bodies. |
 | `MaxConcurrentResolves` | `4` | Hard cap on full NZB/health/materialization resolve pipelines in flight. |
 | `MaxConcurrentSearches` | `4` | Hard cap on concurrent indexer fan-out searches. |

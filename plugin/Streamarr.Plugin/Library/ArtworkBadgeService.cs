@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using MediaBrowser.Common.Configuration;
@@ -20,6 +21,14 @@ public sealed class ArtworkBadgeService(
     private const int MaxSourceBytes = 20 * 1024 * 1024;
     private const string BadgeVersion = "v3-high-resolution";
     private const int AntialiasSamplesPerAxis = 4;
+
+    // TMDB's image CDN occasionally drops or 5xx's a single request while serving neighbouring
+    // posters fine. Retry a few times with jittered backoff so intermittent failures do not
+    // permanently leave a work without branded artwork.
+    private const int MaxDownloadAttempts = 3;
+    private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan RetryMaxDelay = TimeSpan.FromSeconds(5);
+
     private readonly SemaphoreSlim _gate = new(4, 4);
 
     public async Task<string?> GetPosterAsync(
@@ -50,21 +59,12 @@ public sealed class ArtworkBadgeService(
                 return outputPath;
 
             Directory.CreateDirectory(directory);
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            using var response = await httpClientFactory.CreateClient("StreamarrArtwork")
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
-                .ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode
-                || response.Content.Headers.ContentLength is > MaxSourceBytes)
-            {
+
+            var payload = await DownloadWithRetryAsync(uri, workId, ct).ConfigureAwait(false);
+            if (payload is null)
                 return sourceUrl;
-            }
 
-            await using var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            await using var bounded = new MemoryStream();
-            await CopyBoundedAsync(source, bounded, ct).ConfigureAwait(false);
-            bounded.Position = 0;
-
+            using var bounded = new MemoryStream(payload, writable: false);
             using var image = await Image.LoadAsync<Rgba32>(bounded, ct).ConfigureAwait(false);
             DrawAdaptiveBadge(image);
             var temporaryPath = outputPath + ".tmp";
@@ -84,6 +84,108 @@ public sealed class ArtworkBadgeService(
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Downloads the source artwork bytes, retrying transient HTTP failures (408/429/5xx or a
+    /// dropped connection) with jittered backoff. Returns <c>null</c> when the artwork is
+    /// authoritatively unavailable (non-transient status, oversize) so the caller falls back to
+    /// the remote URL; rethrows the final transport failure for the caller's fail-open handler.
+    /// </summary>
+    private async Task<byte[]?> DownloadWithRetryAsync(Uri uri, string workId, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                using var response = await httpClientFactory.CreateClient("StreamarrArtwork")
+                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+                    .ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    if (IsTransientStatus(response.StatusCode) && attempt < MaxDownloadAttempts)
+                    {
+                        logger.LogDebug(
+                            "Artwork download for {WorkId} returned HTTP {Status}; retrying (attempt {Attempt}/{Max})",
+                            workId,
+                            (int)response.StatusCode,
+                            attempt,
+                            MaxDownloadAttempts);
+                        await DelayBeforeRetryAsync(attempt, RetryAfter(response), ct).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                if (response.Content.Headers.ContentLength is > MaxSourceBytes)
+                    return null;
+
+                await using var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                await using var bounded = new MemoryStream();
+                await CopyBoundedAsync(source, bounded, ct).ConfigureAwait(false);
+                return bounded.ToArray();
+            }
+            catch (ArtworkTooLargeException)
+            {
+                // Deterministic — the same source will always be too large, so never retry.
+                return null;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException)
+            {
+                if (attempt >= MaxDownloadAttempts)
+                    throw;
+
+                logger.LogDebug(
+                    ex,
+                    "Artwork download for {WorkId} failed transiently; retrying (attempt {Attempt}/{Max})",
+                    workId,
+                    attempt,
+                    MaxDownloadAttempts);
+                await DelayBeforeRetryAsync(attempt, retryAfter: null, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static bool IsTransientStatus(HttpStatusCode statusCode)
+        => statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests
+           || (int)statusCode >= 500;
+
+    private static async Task DelayBeforeRetryAsync(int attempt, TimeSpan? retryAfter, CancellationToken ct)
+    {
+        TimeSpan wait;
+        if (retryAfter is { } advertised && advertised > TimeSpan.Zero)
+        {
+            wait = advertised < RetryMaxDelay ? advertised : RetryMaxDelay;
+        }
+        else
+        {
+            var exponential = RetryBaseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1);
+            var jitter = exponential * 0.25 * (Random.Shared.NextDouble() * 2 - 1);
+            wait = TimeSpan.FromMilliseconds(
+                Math.Clamp(exponential + jitter, 0, RetryMaxDelay.TotalMilliseconds));
+        }
+
+        if (wait > TimeSpan.Zero)
+            await Task.Delay(wait, ct).ConfigureAwait(false);
+    }
+
+    private static TimeSpan? RetryAfter(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        if (header is null)
+            return null;
+        if (header.Delta is { } delta && delta > TimeSpan.Zero)
+            return delta;
+        if (header.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+                return wait;
+        }
+
+        return null;
     }
 
     internal static void DrawAdaptiveBadge(Image<Rgba32> image)
@@ -190,8 +292,15 @@ public sealed class ArtworkBadgeService(
                 return;
             total += read;
             if (total > MaxSourceBytes)
-                throw new IOException("Artwork source exceeded the size limit.");
+                throw new ArtworkTooLargeException();
             await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Raised when a source image exceeds <see cref="MaxSourceBytes"/>. Extends
+    /// <see cref="IOException"/> so the outer fail-open handler still treats it as a soft
+    /// failure, while the retry loop can recognise it as non-transient and skip retrying.
+    /// </summary>
+    private sealed class ArtworkTooLargeException() : IOException("Artwork source exceeded the size limit.");
 }

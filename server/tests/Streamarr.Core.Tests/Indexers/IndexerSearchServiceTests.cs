@@ -138,6 +138,75 @@ public class IndexerSearchServiceTests
     }
 
     [Fact]
+    public async Task TransientFailure_IsRetriedAndSuccessfulAttemptIsReturned()
+    {
+        var client = new FakeNewznabClient()
+            .FailsThenReturns(
+                "Alpha",
+                1,
+                new NewznabRequestException("temporary", isTransient: true),
+                FakeNewznabClient.Item("Alpha.Release-A", 1000, "a"));
+        var options = new IndexerSearchOptions
+        {
+            PerIndexerRateLimitMilliseconds = 0,
+            MaxTransientRetries = 2,
+            RetryBaseDelayMilliseconds = 0,
+            RetryMaxDelayMilliseconds = 0,
+        };
+
+        var result = await Service(client, [NewznabFixtures.Indexer("Alpha")], options)
+            .SearchAsync(Query, CancellationToken.None);
+
+        Assert.Single(result.Releases);
+        Assert.True(Assert.Single(result.Outcomes).Succeeded);
+        Assert.Equal(2, client.SearchCallCount);
+    }
+
+    [Fact]
+    public async Task PermanentFailure_IsNotRetried()
+    {
+        var client = new FakeNewznabClient()
+            .Throws("Alpha", new NewznabRequestException("unauthorized", isTransient: false));
+        var options = new IndexerSearchOptions
+        {
+            PerIndexerRateLimitMilliseconds = 0,
+            MaxTransientRetries = 2,
+            RetryBaseDelayMilliseconds = 0,
+        };
+
+        var result = await Service(client, [NewznabFixtures.Indexer("Alpha")], options)
+            .SearchAsync(Query, CancellationToken.None);
+
+        Assert.Empty(result.Releases);
+        Assert.Equal(IndexerOutcomeStatus.Failed, Assert.Single(result.Outcomes).Status);
+        Assert.Equal(1, client.SearchCallCount);
+    }
+
+    [Fact]
+    public async Task DegradedFanOut_IsNotCached()
+    {
+        var client = new FakeNewznabClient()
+            .Throws("Alpha", new NewznabRequestException("unauthorized", isTransient: false))
+            .Returns("Beta");
+        var options = new IndexerSearchOptions
+        {
+            PerIndexerRateLimitMilliseconds = 0,
+            MaxTransientRetries = 0,
+        };
+        var service = Service(
+            client,
+            [NewznabFixtures.Indexer("Alpha", 0), NewznabFixtures.Indexer("Beta", 1)],
+            options);
+
+        var first = await service.SearchAsync(Query, CancellationToken.None);
+        var second = await service.SearchAsync(Query, CancellationToken.None);
+
+        Assert.False(first.FromCache);
+        Assert.False(second.FromCache);
+        Assert.Equal(4, client.SearchCallCount);
+    }
+
+    [Fact]
     public async Task ErrorIsolation_SlowIndexerTimesOut_FastOneStillReturns()
     {
         var client = new FakeNewznabClient()

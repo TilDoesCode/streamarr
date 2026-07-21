@@ -2932,6 +2932,68 @@
         }
       }
     },
+    "/api/v1/sessions/{token}/timeline": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Appends client-observed spans (Jellyfin's PlaybackInfo→first delivered frame) to a live\r\nsession's request→first-frame timeline so the stream page flamegraph spans both processes.\r\nThe capability token is the authorization (same model as the anonymous close), so this\r\nstays player-agnostic and needs no machine credential in the player.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientTimelineRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientTimelineRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientTimelineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stream/{token}": {
       "get": {
         "tags": [
@@ -3378,6 +3440,51 @@
         "additionalProperties": false,
         "description": "Body of POST /api/v1/auth/password — admin self-service password change."
       },
+      "ClientSpan": {
+        "required": [
+          "durationMs",
+          "name",
+          "startMs"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "startMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "durationMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClientTimelineRequest": {
+        "type": "object",
+        "properties": {
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientSpan"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Client-observed spans (e.g. Jellyfin's PlaybackInfo→first delivered frame) POSTed back to\r\nCore so the flamegraph spans both processes. Offsets are ms from the session's timeline t0."
+      },
       "ConnectionMetrics": {
         "type": "object",
         "properties": {
@@ -3785,7 +3892,7 @@
           }
         },
         "additionalProperties": false,
-        "description": "Operational view of a live ephemeral media file and its chunk footprint."
+        "description": "Operational view of one server-managed ephemeral file. SizeBytes counts toward the logical\r\nLRU budget, while StorageBytes reports the currently resident decoded-article footprint."
       },
       "ErrorDetail": {
         "required": [
@@ -3892,6 +3999,10 @@
             "type": "integer",
             "format": "int32"
           },
+          "ephemeralCacheSizeMb": {
+            "type": "integer",
+            "format": "int32"
+          },
           "searchCacheTtlSeconds": {
             "type": "integer",
             "format": "int32"
@@ -3922,6 +4033,11 @@
             "nullable": true
           },
           "sessionTtlSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "ephemeralCacheSizeMb": {
             "type": "integer",
             "format": "int32",
             "nullable": true
@@ -5714,6 +5830,20 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "timelineStartedAt": {
+            "type": "string",
+            "description": "Wall-clock instant of timeline t0 (resolve start), for aligning client spans.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TtffSpanResponse"
+            },
+            "description": "Request→first-frame spans for the flamegraph on the stream page (may be empty).",
+            "nullable": true
           }
         },
         "additionalProperties": false,
@@ -5829,6 +5959,43 @@
           }
         },
         "additionalProperties": false
+      },
+      "TtffSpanResponse": {
+        "required": [
+          "category",
+          "durationMs",
+          "name",
+          "startMs"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "startMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "durationMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One measured stage on the request→first-frame timeline (flamegraph on the stream page)."
       },
       "TvEpisodeDto": {
         "required": [

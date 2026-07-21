@@ -43,12 +43,38 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
             if (IsCompleteFastResult(fast))
                 return fast;
 
-            logger.LogInformation("ffprobe fast-path budget was insufficient; retrying with the escalated budget");
-            return await ProbeCoreAsync(
-                url,
-                o.FfprobeEscalatedProbeSizeBytes,
-                o.FfprobeEscalatedAnalyzeDurationMs,
-                timeout.Token);
+            // Escalation only fills in what the fast pass missed — almost always just the runtime,
+            // since codecs live in the container header and the fast pass already read them. Reading
+            // more of the file over a slow provider can take many seconds, so it runs under its own
+            // tight budget and NEVER blocks time-to-first-frame for the full FfprobeTimeoutSeconds.
+            logger.LogInformation("ffprobe fast-path budget was insufficient; escalating under a bounded budget");
+            try
+            {
+                using var escalation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                escalation.CancelAfter(TimeSpan.FromSeconds(
+                    Math.Min(o.FfprobeTimeoutSeconds, o.FfprobeEscalatedTimeoutSeconds)));
+                var escalated = await ProbeCoreAsync(
+                    url,
+                    o.FfprobeEscalatedProbeSizeBytes,
+                    o.FfprobeEscalatedAnalyzeDurationMs,
+                    escalation.Token);
+
+                // Prefer the escalated result only when it actually adds the media streams (and
+                // ideally the runtime). A stream-less escalation result must never replace fast-path
+                // streams, or the player would lose the codec info it needs to direct-play/remux and
+                // fall back to a full re-encode.
+                if (escalated is { MediaStreams.Count: > 0 })
+                    return escalated;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested && !timeout.IsCancellationRequested)
+            {
+                logger.LogWarning(
+                    "ffprobe escalation exceeded its {Budget}s budget; using the fast-path stream info",
+                    Math.Min(o.FfprobeTimeoutSeconds, o.FfprobeEscalatedTimeoutSeconds));
+            }
+
+            // Whatever the escalation did, keep any codec streams the fast pass already found.
+            return fast;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {

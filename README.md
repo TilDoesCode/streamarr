@@ -449,8 +449,9 @@ the lease and starts that replay window on final close; no Usenet contact) whose
 validates that offer and calls `POST /resolve` → capability HTTP `Path` + pre-probed
 `MediaStreams`/`RunTimeTicks` + low `AnalyzeDurationMs`, accepting only a server fallback
 within the same offered work; no reusable credential or `RequiredHttpHeaders` is added
-to the media source. `ILiveStream.Close` → `POST /sessions/{token}/close`; playback
-`start`/`progress`/`stop` reported to `POST /api/v1/events`. **Zero domain logic —
+to the media source. `ILiveStream.Close` releases plugin-side attribution while Core retains the
+file under its configurable decoded-size LRU budget and hard maximum age; playback
+`start`/`progress`/`stop` is reported to `POST /api/v1/events` as telemetry only. **Zero domain logic —
 translation only** (BRIEF §11), pinned by mapper/store/tracker unit tests. Jellyfin
 (docker) **loads the plugin with zero errors**. `docker-compose.dev.yml` (Jellyfin +
 Core Server + optional Vite) and `server/Dockerfile` (multi-stage SPA → .NET → ffmpeg

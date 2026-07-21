@@ -91,6 +91,7 @@ public sealed class StreamarrDbInitializer(
                 Id = 1,
                 TmdbApiKeyEncrypted = protector.Protect(opts.Tmdb.ApiKey),
                 SessionTtlSeconds = opts.SessionTtlSeconds,
+                EphemeralCacheSizeMb = opts.EphemeralCacheSizeMb,
                 SearchCacheTtlSeconds = opts.Search.SearchCacheTtlSeconds,
                 SegmentCacheSizeMb = opts.SegmentCacheSizeMb,
                 ConnectionBudget = opts.ConnectionBudget,
@@ -115,6 +116,7 @@ public sealed class StreamarrDbInitializer(
         {
             opts.ConnectionBudget = general.ConnectionBudget;
             opts.SessionTtlSeconds = general.SessionTtlSeconds;
+            opts.EphemeralCacheSizeMb = general.EphemeralCacheSizeMb;
             opts.Search.SearchCacheTtlSeconds = general.SearchCacheTtlSeconds;
             opts.SegmentCacheSizeMb = general.SegmentCacheSizeMb;
 

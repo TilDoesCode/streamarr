@@ -32,8 +32,9 @@ Compiled, tested, and host-loaded against `Jellyfin.Controller` 10.11.11:
 - `MediaBrowser.Controller.Library.IMediaSourceProvider`
   - `Task<IEnumerable<MediaSourceInfo>> GetMediaSources(BaseItem, CancellationToken)`
   - `Task<ILiveStream> OpenMediaSource(string openToken, List<ILiveStream> current, CancellationToken)`
-  - There is **no** `CloseLiveStream` on the provider — teardown is `ILiveStream.Close()`
-    (which the plugin maps to `POST /api/v1/sessions/{token}/close`).
+  - There is **no** `CloseLiveStream` on the provider — Jellyfin calls `ILiveStream.Close()`.
+    Streamarr releases only plugin attribution there; Core retention is independent of this
+    unreliable client lifecycle signal.
 - `MediaBrowser.Controller.Library.ILiveStream` — implemented by `StreamarrLiveStream`
   (note it also requires `IDisposable.Dispose()`).
 - `MediaBrowser.Controller.Plugins.IPluginServiceRegistrator.RegisterServices(IServiceCollection, IServerApplicationHost)`.
@@ -153,19 +154,25 @@ The shim is isolated in a **single file**, `Playback/StreamarrPlaybackCompatibil
 and rewrites only `POST /Items/{itemId}/PlaybackInfo` requests that pass **all** guards —
 `SwiftfinCompatibilityEnabled` (on by default), a `Jellyfin-Client` auth claim starting with
 `Swiftfin`, and a Streamarr-owned item — to `AutoOpenLiveStream = true` +
-`EnableDirectPlay = false`. Jellyfin then opens the Core session itself and answers with a
-`TranscodingUrl` that carries the `LiveStreamId` — an HLS **remux** (ffmpeg stream-copy from
-the Core capability URL; no re-encode while the codecs fit the client profile), so plugin
-open/close session accounting is unchanged. Clients that implement the protocol fully are
-never touched.
+`EnableDirectPlay = false` + an empty query-bound `LiveStreamId`. Jellyfin then opens the Core
+session itself and answers with a `TranscodingUrl` that carries the new `LiveStreamId` — an HLS
+**remux** (ffmpeg stream-copy from the Core capability URL; no re-encode while the codecs fit
+the client profile), so plugin-side open/close attribution is unchanged. Swiftfin's rewritten
+player stops the current HLS item before rebuilding
+`PlaybackInfo` for an audio/subtitle change, but carries the just-closed live-stream id into that
+request; forcing fresh source discovery prevents Jellyfin from looking up the stale id and opens
+a new stream with the requested track index. Those transient stop/close callbacks are never used
+to purge the Core capability: Core owns retention through its file-size LRU and hard TTL. Clients
+that implement the protocol fully are never touched.
 
 The filter binds to these 10.11.x contracts (verified against Jellyfin 10.11.11 source):
 
 - the `POST /Items/{itemId}/PlaybackInfo` route shape
   (`MediaInfoController.GetPostedPlaybackInfo`);
-- that controller's parameter merge order: the **query-bound** `autoOpenLiveStream` /
-  `enableDirectPlay` arguments take precedence over the posted `PlaybackInfoDto` body, which
-  is what lets the filter override them without referencing `Jellyfin.Api` types;
+- that controller's parameter merge order: the **query-bound** `liveStreamId` /
+  `autoOpenLiveStream` / `enableDirectPlay` arguments take precedence over the posted
+  `PlaybackInfoDto` body, which is what lets the filter override them without referencing
+  `Jellyfin.Api` types;
 - the `Jellyfin-Client` authorization claim (`InternalClaimTypes.Client`);
 - `MediaInfoHelper.SetDeviceSpecificData` disabling HTTP direct-stream and building the
   transcoding URL via `StreamInfo.ToUrl`, which appends `&LiveStreamId=`.

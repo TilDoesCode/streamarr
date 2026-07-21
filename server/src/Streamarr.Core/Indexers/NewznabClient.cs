@@ -64,12 +64,16 @@ public sealed class NewznabClient(
             if (!response.IsSuccessStatusCode)
             {
                 throw new NewznabRequestException(
-                    $"Indexer '{indexer.Name}' returned HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
+                    $"Indexer '{indexer.Name}' returned HTTP {(int)response.StatusCode} {response.ReasonPhrase}.",
+                    IsTransient(response.StatusCode),
+                    RetryAfter(response));
             }
 
             var maxBytes = Math.Max(1024, options?.MaxResponseBytes ?? 16 * 1024 * 1024);
             if (response.Content.Headers.ContentLength is { } length && length > maxBytes)
-                throw new NewznabRequestException($"Indexer '{indexer.Name}' returned an oversized response.");
+                throw new NewznabRequestException(
+                    $"Indexer '{indexer.Name}' returned an oversized response.",
+                    isTransient: false);
 
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var body = new MemoryStream(Math.Min(maxBytes, 1024 * 1024));
@@ -80,12 +84,34 @@ public sealed class NewznabClient(
                 if (read == 0)
                     break;
                 if (body.Length + read > maxBytes)
-                    throw new NewznabRequestException($"Indexer '{indexer.Name}' returned an oversized response.");
+                    throw new NewznabRequestException(
+                        $"Indexer '{indexer.Name}' returned an oversized response.",
+                        isTransient: false);
                 await body.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             }
 
             return Encoding.UTF8.GetString(body.GetBuffer(), 0, checked((int)body.Length));
         }
+    }
+
+    private static bool IsTransient(System.Net.HttpStatusCode statusCode)
+        => statusCode is System.Net.HttpStatusCode.RequestTimeout
+            or System.Net.HttpStatusCode.TooManyRequests
+           || (int)statusCode >= 500;
+
+    private static TimeSpan? RetryAfter(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        if (header?.Delta is { } delta && delta > TimeSpan.Zero)
+            return delta;
+        if (header?.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+                return wait;
+        }
+
+        return null;
     }
 
     /// <summary>

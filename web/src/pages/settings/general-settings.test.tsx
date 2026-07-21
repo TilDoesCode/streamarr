@@ -8,7 +8,8 @@ import { GeneralSettings } from "./general-settings";
 const config = {
   tmdbApiKey: "••••••••",
   hasTmdbApiKey: true,
-  sessionTtlSeconds: 3600,
+  sessionTtlSeconds: 86400,
+  ephemeralCacheSizeMb: 102400,
   searchCacheTtlSeconds: 60,
   segmentCacheSizeMb: 512,
   connectionBudget: 20,
@@ -58,6 +59,7 @@ describe("GeneralSettings", () => {
     renderWithProviders(<GeneralSettings />);
     const budget = await screen.findByLabelText(/NNTP connection budget/i);
     expect(budget).toHaveValue(20);
+    expect(screen.getByLabelText(/Ephemeral file cache/i)).toHaveValue(102400);
     // Write-only TMDB key: field is blank with the mask as placeholder.
     const tmdb = screen.getByLabelText(/TMDB credential/i) as HTMLInputElement;
     expect(tmdb.value).toBe("");
@@ -106,7 +108,7 @@ describe("GeneralSettings", () => {
   it("omits the TMDB key on save when left blank (omit-to-keep)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<GeneralSettings />);
-    const ttl = await screen.findByLabelText(/Session TTL/i);
+    const ttl = await screen.findByLabelText(/Ephemeral file expiry/i);
 
     await user.clear(ttl);
     await user.type(ttl, "7200");

@@ -25,6 +25,7 @@ public sealed class StreamarrApiClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<StreamarrApiClient> _logger;
     private readonly Func<PluginConfiguration> _configuration;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
     public StreamarrApiClient(HttpClient httpClient, ILogger<StreamarrApiClient> logger)
         : this(httpClient, logger, static () => Plugin.Instance?.Configuration ?? new PluginConfiguration())
@@ -34,11 +35,13 @@ public sealed class StreamarrApiClient
     internal StreamarrApiClient(
         HttpClient httpClient,
         ILogger<StreamarrApiClient> logger,
-        Func<PluginConfiguration> configuration)
+        Func<PluginConfiguration> configuration,
+        Func<TimeSpan, CancellationToken, Task>? retryDelay = null)
     {
         _httpClient = httpClient;
         _logger = logger;
         _configuration = configuration;
+        _delay = retryDelay ?? ((delay, ct) => Task.Delay(delay, ct));
     }
 
     private PluginConfiguration Config => _configuration();
@@ -87,7 +90,7 @@ public sealed class StreamarrApiClient
             url += $"&type={mediaType}";
         if (!string.IsNullOrWhiteSpace(profile))
             url += $"&profileId={Uri.EscapeDataString(profile)}";
-        var response = await SendAsync<SearchResponse>(HttpMethod.Get, url, null, ct).ConfigureAwait(false);
+        var response = await SendAsync<SearchResponse>(HttpMethod.Get, url, null, ct, retryTransient: true).ConfigureAwait(false);
         return response is null ? null : StreamarrPayloadBounds.Normalize(response);
     }
 
@@ -127,7 +130,8 @@ public sealed class StreamarrApiClient
                 HttpMethod.Get,
                 "/api/v1/search?" + string.Join('&', parameters),
                 null,
-                ct)
+                ct,
+                retryTransient: true)
             .ConfigureAwait(false);
         return response is null ? null : StreamarrPayloadBounds.Normalize(response);
     }
@@ -138,7 +142,8 @@ public sealed class StreamarrApiClient
                 HttpMethod.Get,
                 $"/api/v1/tv/search?q={Uri.EscapeDataString(query)}&limit=3",
                 null,
-                ct)
+                ct,
+                retryTransient: true)
             .ConfigureAwait(false);
         return response is null ? null : StreamarrPayloadBounds.Normalize(response);
     }
@@ -148,7 +153,8 @@ public sealed class StreamarrApiClient
                 HttpMethod.Get,
                 $"/api/v1/tv/{tmdbId}",
                 null,
-                ct)
+                ct,
+                retryTransient: true)
             .ConfigureAwait(false));
 
     public async Task<TvSeasonDetailsResponse?> GetTvSeasonAsync(
@@ -164,7 +170,8 @@ public sealed class StreamarrApiClient
                 HttpMethod.Get,
                 path,
                 null,
-                ct)
+                ct,
+                retryTransient: true)
             .ConfigureAwait(false));
     }
 
@@ -204,6 +211,20 @@ public sealed class StreamarrApiClient
 
     public async Task ReportEventAsync(EventRequest ev, CancellationToken ct)
         => await SendAsync<object>(HttpMethod.Post, "/api/v1/events", ev, ct).ConfigureAwait(false);
+
+    /// <summary>
+    /// Appends client-observed TTFF spans (Jellyfin PlaybackInfo→first frame) to a live Core
+    /// session's timeline so the stream-page flamegraph spans both processes. Best-effort: a
+    /// missing/closed session is treated as success and never disrupts playback.
+    /// </summary>
+    public async Task ReportTimelineAsync(string token, ClientTimelineRequest timeline, CancellationToken ct)
+        => await SendAsync<object>(
+                HttpMethod.Post,
+                $"/api/v1/sessions/{Uri.EscapeDataString(token)}/timeline",
+                timeline,
+                ct,
+                notFoundIsSuccess: true)
+            .ConfigureAwait(false);
 
     /// <summary>
     /// Resolves Core's session-capability path against the client-reachable stream base URL.
@@ -300,7 +321,37 @@ public sealed class StreamarrApiClient
         string path,
         object? body,
         CancellationToken ct,
-        bool notFoundIsSuccess = false)
+        bool notFoundIsSuccess = false,
+        bool retryTransient = false)
+        where T : class
+    {
+        const int maxAttempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await SendOnceAsync<T>(method, path, body, ct, notFoundIsSuccess).ConfigureAwait(false);
+            }
+            catch (StreamarrApiException ex) when (
+                retryTransient
+                && attempt < maxAttempts
+                && IsTransient(ex.StatusCode))
+            {
+                await WaitToRetryAsync(method, path, attempt, maxAttempts, ct).ConfigureAwait(false);
+            }
+            catch (HttpRequestException) when (retryTransient && attempt < maxAttempts)
+            {
+                await WaitToRetryAsync(method, path, attempt, maxAttempts, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<T?> SendOnceAsync<T>(
+        HttpMethod method,
+        string path,
+        object? body,
+        CancellationToken ct,
+        bool notFoundIsSuccess)
         where T : class
     {
         using var request = new HttpRequestMessage(method, BaseUrl + path);
@@ -336,6 +387,29 @@ public sealed class StreamarrApiClient
         var payload = await ReadBoundedAsync(response.Content, MaxApiResponseBytes, ct).ConfigureAwait(false);
         return JsonSerializer.Deserialize<T>(payload, JsonOptions);
     }
+
+    private async Task WaitToRetryAsync(
+        HttpMethod method,
+        string path,
+        int attempt,
+        int maxAttempts,
+        CancellationToken ct)
+    {
+        var delay = TimeSpan.FromMilliseconds(Math.Min(250 * Math.Pow(2, attempt - 1), 2_000));
+        _logger.LogDebug(
+            "Streamarr API {Method} {Path} transient failure; retrying (attempt {Attempt}/{Max}) after {DelayMs} ms",
+            method,
+            SafeLogPath(path),
+            attempt,
+            maxAttempts,
+            (int)delay.TotalMilliseconds);
+        await _delay(delay, ct).ConfigureAwait(false);
+    }
+
+    private static bool IsTransient(System.Net.HttpStatusCode statusCode)
+        => statusCode is System.Net.HttpStatusCode.RequestTimeout
+            or System.Net.HttpStatusCode.TooManyRequests
+           || (int)statusCode >= 500;
 
     internal static string SafeLogPath(string path)
     {

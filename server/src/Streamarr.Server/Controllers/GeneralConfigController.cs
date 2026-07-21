@@ -36,6 +36,10 @@ public class GeneralConfigController(GeneralConfigService general) : ControllerB
             return BadRequest(ErrorResponse.Of("invalid_config", "'connectionBudget' must not exceed 1000."));
         if (write.SessionTtlSeconds is > 2_592_000)
             return BadRequest(ErrorResponse.Of("invalid_config", "'sessionTtlSeconds' must not exceed 2592000."));
+        if (write.EphemeralCacheSizeMb is < 1 or > 67_108_864)
+            return BadRequest(ErrorResponse.Of(
+                "invalid_config",
+                "'ephemeralCacheSizeMb' must be between 1 and 67108864."));
         if (write.SearchCacheTtlSeconds is < 0 or > 3600)
             return BadRequest(ErrorResponse.Of("invalid_config", "'searchCacheTtlSeconds' must be between 0 and 3600."));
         if (write.SegmentCacheSizeMb is < 0 or > 1_048_576)

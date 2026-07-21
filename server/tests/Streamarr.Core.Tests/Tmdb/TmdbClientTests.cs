@@ -23,8 +23,13 @@ public class TmdbClientTests
     private static HttpResponseMessage Json(string body)
         => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
+    // Inject a no-op retry delay so transient-retry paths exercise real backoff logic
+    // without spending wall-clock time in tests.
     private static TmdbClient Client(StubHttpMessageHandler handler, string apiKey = "test-key")
-        => new(new HttpClient(handler), new TmdbOptions { ApiKey = apiKey });
+        => new(
+            new HttpClient(handler),
+            new TmdbOptions { ApiKey = apiKey },
+            retryDelay: static (_, _) => Task.CompletedTask);
 
     [Fact]
     public async Task SearchAny_UsesMultiSearchOrderingAndSkipsPeople()
@@ -282,8 +287,10 @@ public class TmdbClientTests
     }
 
     [Fact]
-    public async Task Cache_RetriesImmediatelyAfterTransientTmdbFailure()
+    public async Task RetriesTransientTmdbFailureWithinASingleLookup()
     {
+        // A single 503 must no longer leave the work art-less: the client retries in place
+        // and the very first caller sees the recovered match.
         var attempts = 0;
         var handler = new StubHttpMessageHandler(_ =>
             Interlocked.Increment(ref attempts) == 1
@@ -291,11 +298,67 @@ public class TmdbClientTests
                 : Json("""{"results":[{"id":693134,"media_type":"movie","title":"Dune: Part Two"}]}"""));
         var caching = new CachingTmdbClient(Client(handler), TimeSpan.FromHours(24));
 
-        Assert.Empty(await caching.SearchCandidatesAsync("Dune 2", null, default));
         var match = Assert.Single(await caching.SearchCandidatesAsync("Dune 2", null, default));
 
         Assert.Equal(693134, match.TmdbId);
         Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task RetriesTransientStatusUntilTheRequestSucceeds()
+    {
+        var searchAttempts = 0;
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/search/movie", StringComparison.Ordinal))
+            {
+                return Interlocked.Increment(ref searchAttempts) <= 2
+                    ? StubHttpMessageHandler.Status(HttpStatusCode.ServiceUnavailable)
+                    : Json("""{"results":[{"id":12345,"title":"Example"}]}""");
+            }
+
+            return Json("""{"id":12345,"title":"Example","runtime":90}""");
+        });
+
+        var match = await Client(handler).SearchMovieAsync("Example", null, default);
+
+        Assert.NotNull(match);
+        Assert.Equal(12345, match!.TmdbId);
+        Assert.Equal(3, searchAttempts); // two transient failures, then success
+    }
+
+    [Fact]
+    public async Task StopsRetryingAfterExhaustingTheConfiguredAttempts()
+    {
+        var attempts = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            Interlocked.Increment(ref attempts);
+            return StubHttpMessageHandler.Status(HttpStatusCode.ServiceUnavailable);
+        });
+        var client = new TmdbClient(
+            new HttpClient(handler),
+            new TmdbOptions { ApiKey = "test-key", MaxTransientRetries = 2 },
+            retryDelay: static (_, _) => Task.CompletedTask);
+
+        await Assert.ThrowsAsync<TmdbTransientException>(
+            () => client.SearchMovieAsync("Example", null, default));
+        Assert.Equal(3, attempts); // one initial attempt plus two retries
+    }
+
+    [Fact]
+    public async Task DoesNotRetryAuthoritativeMiss()
+    {
+        var attempts = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            Interlocked.Increment(ref attempts);
+            return StubHttpMessageHandler.Status(HttpStatusCode.NotFound);
+        });
+
+        Assert.Null(await Client(handler).SearchMovieAsync("Example", null, default));
+        Assert.Equal(1, attempts); // 404 is authoritative, never retried
     }
 
     [Theory]

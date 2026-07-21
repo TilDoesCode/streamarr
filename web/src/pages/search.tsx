@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HealthBadge, ResolveOutcome } from "@/components/resolve-outcome";
+import { PosterImage } from "@/components/poster-image";
 import {
   useAllowIndexerDownloadHost,
   useDebugSearch,
@@ -284,19 +285,11 @@ function MovieDiscoveryCard({ work }: { work: WorkDto }) {
       <div className="relative">
         <div className="grid min-h-56 grid-cols-[8rem_1fr]">
           <div className="relative overflow-hidden bg-muted">
-            {work.posterUrl ? (
-              <img
-                src={work.posterUrl}
-                alt={`${title} poster`}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                className="h-full min-h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
-              />
-            ) : (
-              <div className="flex h-full min-h-56 items-center justify-center text-muted-foreground">
-                <ImageOff className="size-7" />
-              </div>
-            )}
+            <PosterImage
+              src={work.posterUrl}
+              alt={`${title} poster`}
+              className="h-full min-h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
+            />
             <Badge className="absolute bottom-2 left-2 bg-background/90 text-foreground shadow-sm">
               {releases.length} {releases.length === 1 ? "release" : "releases"}
             </Badge>
@@ -439,19 +432,11 @@ function TvSeriesCard({ series }: { series: TvSeriesDto }) {
       <div className="relative">
         <div className="grid min-h-56 grid-cols-[8rem_1fr]">
           <div className="relative overflow-hidden bg-muted">
-            {resolved.posterUrl ? (
-              <img
-                src={resolved.posterUrl}
-                alt={`${title} poster`}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                className="h-full min-h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
-              />
-            ) : (
-              <div className="flex h-full min-h-56 items-center justify-center text-muted-foreground">
-                <ImageOff className="size-7" />
-              </div>
-            )}
+            <PosterImage
+              src={resolved.posterUrl}
+              alt={`${title} poster`}
+              className="h-full min-h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
+            />
             <Badge className="absolute bottom-2 left-2 bg-background/90 text-foreground shadow-sm">
               Series
             </Badge>

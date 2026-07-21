@@ -16,10 +16,18 @@ namespace Streamarr.Core.Tmdb;
 /// <see cref="CachingTmdbClient"/> for aggressive caching. With no configured API key
 /// every method returns <c>null</c> so the search pipeline still functions.
 /// </summary>
-public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogger<TmdbClient>? logger = null) : ITmdbClient
+public sealed class TmdbClient(
+    HttpClient httpClient,
+    TmdbOptions options,
+    ILogger<TmdbClient>? logger = null,
+    Func<TimeSpan, CancellationToken, Task>? retryDelay = null) : ITmdbClient
 {
     private const int MaxDiscoveryCandidates = 20;
     private readonly ILogger _logger = logger ?? NullLogger<TmdbClient>.Instance;
+
+    // Injectable so tests can retry without real wall-clock waits.
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay =
+        retryDelay ?? ((delay, ct) => Task.Delay(delay, ct));
 
     private bool HasCredential => !string.IsNullOrWhiteSpace(options.ApiKey);
 
@@ -257,6 +265,39 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
         var bearer = TmdbOptions.IsBearerCredential(credential);
         var url = BuildUrl(relativeUrl, credential, bearer);
         var route = relativeUrl.Split('?', 2)[0];
+
+        // A transient failure on a single metadata request is the difference between a work
+        // showing its poster and showing nothing, so retry a bounded number of times with
+        // jittered backoff before giving up. All attempts share the caller's deadline
+        // (the caching decorator's per-lookup timeout), so this never runs unbounded.
+        var maxAttempts = 1 + options.TransientRetryCount;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await AttemptGetAsync(url, route, credential, bearer, cancellationToken);
+            }
+            catch (TmdbTransientException transient) when (attempt < maxAttempts)
+            {
+                var wait = BackoffDelay(attempt, transient.RetryAfter);
+                _logger.LogDebug(
+                    "TMDB {Route} transient failure; retrying (attempt {Attempt}/{Max}) after {DelayMs} ms",
+                    route,
+                    attempt,
+                    maxAttempts,
+                    (int)wait.TotalMilliseconds);
+                await _delay(wait, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<JsonDocument?> AttemptGetAsync(
+        Uri url,
+        string route,
+        string credential,
+        bool bearer,
+        CancellationToken cancellationToken)
+    {
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -271,7 +312,8 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
                 _logger.LogDebug("TMDB {Route} returned HTTP {Status}", route, (int)response.StatusCode);
                 if (IsTransient(response.StatusCode))
                     throw new TmdbTransientException(
-                        $"TMDB {route} temporarily returned HTTP {(int)response.StatusCode}.");
+                        $"TMDB {route} temporarily returned HTTP {(int)response.StatusCode}.",
+                        RetryAfter(response));
                 return null;
             }
 
@@ -321,6 +363,44 @@ public sealed class TmdbClient(HttpClient httpClient, TmdbOptions options, ILogg
     private static bool IsTransient(HttpStatusCode statusCode)
         => statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests
            || (int)statusCode >= 500;
+
+    /// <summary>
+    /// Backoff for retry <paramref name="attempt"/> (1-based). Honours a server-advertised
+    /// <paramref name="retryAfter"/> when present, otherwise grows exponentially from the
+    /// configured base with up to ±25% jitter, always capped by the configured maximum.
+    /// </summary>
+    private TimeSpan BackoffDelay(int attempt, TimeSpan? retryAfter)
+    {
+        var cap = options.RetryMaxDelay;
+        if (retryAfter is { } advertised && advertised > TimeSpan.Zero)
+            return advertised < cap ? advertised : cap;
+
+        var baseMs = options.RetryBaseDelay.TotalMilliseconds;
+        if (baseMs <= 0)
+            return TimeSpan.Zero;
+
+        var exponential = baseMs * Math.Pow(2, attempt - 1);
+        var jitter = exponential * 0.25 * (Random.Shared.NextDouble() * 2 - 1);
+        var total = Math.Clamp(exponential + jitter, 0, cap.TotalMilliseconds);
+        return TimeSpan.FromMilliseconds(total);
+    }
+
+    private static TimeSpan? RetryAfter(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        if (header is null)
+            return null;
+        if (header.Delta is { } delta && delta > TimeSpan.Zero)
+            return delta;
+        if (header.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+                return wait;
+        }
+
+        return null;
+    }
 
     private Uri BuildUrl(string relativeUrl, string credential, bool bearer)
     {

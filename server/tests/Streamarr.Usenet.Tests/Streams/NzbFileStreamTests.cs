@@ -248,6 +248,57 @@ public class NzbFileStreamTests
     }
 
     [Fact]
+    public async Task MidFileSeek_DoesNotRearmTheStartupReadAheadBurst()
+    {
+        // Regression guard for the resume-TTFF bug: every mid-file open (transcode restart,
+        // resume, ffprobe cue probing) used to fire the enlarged startup read-ahead window,
+        // downloading ~startup-window articles for a 1-byte ranged read. A seek-opened
+        // stream must pay only the interpolation probe(s) plus the steady pipeline.
+        const int parts = 24;
+        await using var server = new MockNntpServer();
+        var fileBytes = YencTestEncoder.LcgBytes(4321, PartSize * parts);
+        var segmentIds = new string[parts];
+        for (var i = 0; i < parts; i++)
+        {
+            var begin = (long)i * PartSize + 1;
+            var id = $"mid{i + 1}@test";
+            server.Articles[id] = YencTestEncoder.EncodePart(
+                fileBytes, "movie.mkv", i + 1, parts, begin, begin + PartSize - 1);
+            segmentIds[i] = id;
+        }
+
+        using var client = UsenetStreamingClient.CreateProviderClient(new()
+        {
+            Name = "mock",
+            Host = server.Host,
+            Port = server.Port,
+            UseSsl = false,
+            Username = server.Username,
+            Password = server.Password,
+            MaxConnections = 10,
+        });
+        await using var stream = new NzbFileStream(
+            segmentIds,
+            fileBytes.Length,
+            client,
+            articleBufferSize: 3,
+            startupArticleBufferSize: 8,
+            startupReadAheadSegments: 8);
+        var before = server.BodiesServed;
+
+        stream.Seek(12L * PartSize + 100, SeekOrigin.Begin); // middle of part 13 of 24
+        var oneByte = new byte[1];
+        await stream.ReadExactlyAsync(oneByte);
+        await Task.Delay(100); // let any in-flight read-ahead land on the counter
+
+        Assert.Equal(fileBytes[12 * PartSize + 100], oneByte[0]);
+        // Probe hits part 13 directly (uniform parts), the matched body is reused, and the
+        // steady window (3) pipelines a handful more. The pre-fix startup burst (8) made
+        // this >= 9 bodies for a single byte.
+        Assert.InRange(server.BodiesServed - before, 1, 5);
+    }
+
+    [Fact]
     public async Task BufferedNzb_DefaultPathCachesAndValidatesFirstArticleBeforeDelivery()
     {
         await using var server = new MockNntpServer();

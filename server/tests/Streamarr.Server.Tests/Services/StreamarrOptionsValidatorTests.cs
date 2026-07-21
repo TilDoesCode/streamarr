@@ -30,6 +30,7 @@ public sealed class StreamarrOptionsValidatorTests
             MaxConcurrentResolves = 0,
             MaxConcurrentSearches = 0,
             MaxWatchEvents = 0,
+            EphemeralCacheSizeMb = 0,
         };
         invalid.Tmdb.BaseUrl = "file:///tmp/tmdb";
         invalid.Tmdb.ImageBaseUrl = "https://user:pass@images.example";
@@ -47,6 +48,7 @@ public sealed class StreamarrOptionsValidatorTests
         Assert.Contains("ApiKey", errors);
         Assert.Contains("MaxConcurrentSearches", errors);
         Assert.Contains("MaxWatchEvents", errors);
+        Assert.Contains("EphemeralCacheSizeMb", errors);
         Assert.Contains("Tmdb.BaseUrl", errors);
         Assert.Contains("Tmdb.ImageBaseUrl", errors);
         Assert.Contains("Tmdb.ApiKey", errors);

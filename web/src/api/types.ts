@@ -64,6 +64,7 @@ export type ResolveResponse = S["ResolveResponse"];
 export type MediaStreamInfo = S["MediaStreamInfo"];
 
 export type SessionResponse = S["SessionResponse"];
+export type TtffSpanResponse = S["TtffSpanResponse"];
 export type MetricsResponse = S["MetricsResponse"];
 export type CachedReleaseResponse = S["CachedReleaseResponse"];
 export type EphemeralFileResponse = S["EphemeralFileResponse"];

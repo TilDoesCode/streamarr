@@ -2264,6 +2264,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{token}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Appends client-observed spans (Jellyfin's PlaybackInfo→first delivered frame) to a live
+         *     session's request→first-frame timeline so the stream page flamegraph spans both processes.
+         *     The capability token is the authorization (same model as the anonymous close), so this
+         *     stays player-agnostic and needs no machine credential in the player.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ClientTimelineRequest"];
+                    "text/json": components["schemas"]["ClientTimelineRequest"];
+                    "application/*+json": components["schemas"]["ClientTimelineRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stream/{token}": {
         parameters: {
             query?: never;
@@ -2539,6 +2597,22 @@ export interface components {
             currentPassword?: string | null;
             newPassword?: string | null;
         };
+        ClientSpan: {
+            name: string | null;
+            category?: string | null;
+            /** Format: double */
+            startMs: number;
+            /** Format: double */
+            durationMs: number;
+            detail?: string | null;
+        };
+        /**
+         * @description Client-observed spans (e.g. Jellyfin's PlaybackInfo→first delivered frame) POSTed back to
+         *     Core so the flamegraph spans both processes. Offsets are ms from the session's timeline t0.
+         */
+        ClientTimelineRequest: {
+            spans?: components["schemas"]["ClientSpan"][] | null;
+        };
         ConnectionMetrics: {
             /**
              * Format: int32
@@ -2637,7 +2711,10 @@ export interface components {
             episode?: number | null;
             releases: components["schemas"]["DebugReleaseDto"][] | null;
         };
-        /** @description Operational view of a live ephemeral media file and its chunk footprint. */
+        /**
+         * @description Operational view of one server-managed ephemeral file. SizeBytes counts toward the logical
+         *     LRU budget, while StorageBytes reports the currently resident decoded-article footprint.
+         */
         EphemeralFileResponse: {
             token: string | null;
             releaseId: string | null;
@@ -2704,6 +2781,8 @@ export interface components {
             /** Format: int32 */
             sessionTtlSeconds?: number;
             /** Format: int32 */
+            ephemeralCacheSizeMb?: number;
+            /** Format: int32 */
             searchCacheTtlSeconds?: number;
             /** Format: int32 */
             segmentCacheSizeMb?: number;
@@ -2717,6 +2796,8 @@ export interface components {
             tmdbApiKey?: string | null;
             /** Format: int32 */
             sessionTtlSeconds?: number | null;
+            /** Format: int32 */
+            ephemeralCacheSizeMb?: number | null;
             /** Format: int32 */
             searchCacheTtlSeconds?: number | null;
             /** Format: int32 */
@@ -3335,6 +3416,13 @@ export interface components {
             lastAccessedAt?: string;
             /** Format: date-time */
             expiresAt?: string;
+            /**
+             * Format: date-time
+             * @description Wall-clock instant of timeline t0 (resolve start), for aligning client spans.
+             */
+            timelineStartedAt?: string | null;
+            /** @description Request→first-frame spans for the flamegraph on the stream page (may be empty). */
+            timeline?: components["schemas"]["TtffSpanResponse"][] | null;
         };
         SizeBand: {
             /** Format: int64 */
@@ -3368,6 +3456,17 @@ export interface components {
             /** Format: int32 */
             tmdbId?: number | null;
             profileUrl?: string | null;
+        };
+        /** @description One measured stage on the request→first-frame timeline (flamegraph on the stream page). */
+        TtffSpanResponse: {
+            name: string | null;
+            category: string | null;
+            /** Format: double */
+            startMs: number;
+            /** Format: double */
+            durationMs: number;
+            detail?: string | null;
+            source?: string | null;
         };
         TvEpisodeDto: {
             workId: string | null;

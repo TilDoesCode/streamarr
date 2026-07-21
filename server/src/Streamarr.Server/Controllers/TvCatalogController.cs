@@ -49,6 +49,7 @@ public sealed class TvCatalogController(
     [ProducesResponseType(typeof(TvSeasonDetailsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<TvSeasonDetailsResponse>> Season(
         int tmdbId,
         int seasonNumber,
@@ -73,6 +74,15 @@ public sealed class TvCatalogController(
                 seasonNumber,
                 profileId,
                 cancellationToken);
+            if (result is not null
+                && result.Indexers.Count > 0
+                && result.Indexers.All(indexer => indexer.Status != "succeeded"))
+            {
+                Response.Headers.RetryAfter = "1";
+                return StatusCode(
+                    StatusCodes.Status503ServiceUnavailable,
+                    ErrorResponse.Of("search_temporarily_unavailable", "Every configured indexer is temporarily unavailable; retry shortly."));
+            }
             return result is null
                 ? NotFound(ErrorResponse.Of("season_not_found", "The TV season was not found."))
                 : Ok(result);

@@ -124,7 +124,7 @@ The modules (BRIEF §6.1):
 | **TMDB matcher** | `Core/Tmdb` | Resolves free-text intent to ordered movie/TV candidates, intersects those identities with parsed release groups, and enriches accepted works with poster, backdrop, overview, and runtime; caches aggressively. No key → public discovery is empty while the raw diagnostic search still works. |
 | **NZB streaming core** (embedded nzbdav) | `Usenet/Nntp`, `Usenet/Nzb`, `Usenet/Rar` | NNTP pool, yEnc, NZB parse, RAR/7z random access, seeking, bounded read-ahead. The SABnzbd API / queue / WebDAV parts of nzbdav are dropped — we expose HTTP+Range directly. |
 | **Health checker** | `Core/Media` (`HealthChecker`) | STAT-samples the *media file's* segments (223 present / 430 missing), classifies `ready`/`degraded`/`dead` per `HealthCheck.*` config. |
-| **Session manager** | `Server/Services` (`SessionManager`) | A resolve opens a session (segment index, TTL); a stream token maps to a session; close tears it down. Sweeps expired sessions. |
+| **Session manager** | `Server/Services` (`SessionManager`) | A resolve admits an ephemeral file capability (segment index, decoded size, access time). Whole entries are evicted by LRU against `EphemeralCacheSizeMb`, one oversized entry may stand alone, and a hard creation-based TTL bounds every entry regardless of access. |
 | **Health cache** (new in M7) | `Core/Media` (`ReleaseHealthCache`) | Remembers dead classifications for `HealthCacheTtlSeconds` so they demote/reject the release on later searches and are skipped in fallback. |
 | **Config store** | `Server/Config` | SQLite-backed CRUD of indexers, providers, profiles, general config, API keys. Secrets encrypted at rest via ASP.NET Data Protection. |
 | **Watch-event store** | `Server/Config` (`WatchEventService`) | Ingests playback events from any front-end into SQLite. Not user-facing in v1; future-proofing. |
@@ -155,8 +155,10 @@ Two paths run over the identical API. The only difference is who the client is.
    so the UI's `<video>` element needs no reusable bearer credential in its URL or
    headers. The endpoint does not accept `access_token` query auth, an admin JWT, or a
    machine key.
-4. **Events / close.** The client reports `start`/`progress`/`stop` to
-   `POST /api/v1/events`; `POST /api/v1/sessions/{token}/close` tears the session down.
+4. **Events / lifecycle.** The client reports `start`/`progress`/`stop` to
+   `POST /api/v1/events` as telemetry only. Core owns ordinary retention through its LRU byte
+   budget and hard TTL; `POST /api/v1/sessions/{token}/close` is reserved for rejected or
+   administratively cancelled opens.
 
 ### 4.2 Jellyfin path (BRIEF §5)
 
@@ -186,8 +188,9 @@ The same three calls, wrapped by the plugin's translation to Jellyfin's data mod
    low AnalyzeDurationMs }` with no reusable `RequiredHttpHeaders` credential.
 6. Jellyfin streams via ffmpeg (Direct Play or transcode). The plugin reports playback
    events to `POST /api/v1/events`.
-7. `ILiveStream.Close` → `POST /api/v1/sessions/{token}/close`. An `IScheduledTask`
-   deletes ephemeral items past their TTL.
+7. Jellyfin stop/close callbacks remain telemetry and release only plugin-side attribution.
+   Core retains the capability under its decoded-size LRU budget and hard creation-based TTL;
+   plugin metadata cleanup never revokes playback.
 
 The version-fragile coupling (steps 2–4) is isolated to single files and pinned to
 Jellyfin 10.11.11 — see [`jellyfin-compatibility.md`](./jellyfin-compatibility.md).

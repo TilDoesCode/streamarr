@@ -334,7 +334,11 @@ class Handler(BaseHTTPRequestHandler):
                     "container": "mkv",
                     "sizeBytes": release["sizeBytes"],
                     "runTimeTicks": release["runTimeTicks"],
-                    "mediaStreams": [{"type": "Video", "codec": "h264", "width": 1920, "height": 1080}],
+                    "mediaStreams": [
+                        {"type": "Video", "codec": "h264", "width": 1920, "height": 1080},
+                        {"type": "Audio", "codec": "aac", "channels": 2, "language": "eng"},
+                        {"type": "Audio", "codec": "aac", "channels": 2, "language": "deu"},
+                    ],
                     "sessionTtlSeconds": 3600,
                 },
             )

@@ -66,9 +66,9 @@ provider. The owner must run this once on a real Jellyfin client (web, mobile, o
       capability alone authorizes that stream.
 - [ ] Pre-probed media info is used: playback starts without a long ffmpeg analyze pause
       (resolve populated `MediaStreams` + `RunTimeTicks`, `AnalyzeDurationMs` is low).
-- [ ] Stopping playback tears down the session: `CloseLiveStream` →
-      `POST /api/v1/sessions/{token}/close`; it disappears from admin-authenticated
-      `GET /api/v1/sessions`.
+- [ ] Stopping playback reports telemetry but does **not** tear down the Core capability; it
+      remains in admin-authenticated `GET /api/v1/sessions` until LRU eviction or hard expiry.
+      Brief Swiftfin stop/resume reports must not interrupt the existing byte stream.
 - [ ] Playback events land server-side: `start` / `progress` / `stop` rows appear via the
       Core Server watch-event store (source = `jellyfin`) — confirm in the DB / logs.
 - [ ] (If a dead release is available) Core auto-fallback remains inside the same
@@ -140,8 +140,8 @@ provider credentials and a real client). Run this once end to end.
 
 ### Notes
 
-- Session teardown is authoritative on the Core Server (it owns session TTL, BRIEF §6.1); the
-  plugin also closes each session on Jellyfin's `CloseLiveStream` (`StreamarrLiveStream.Close`).
+- Ephemeral retention is authoritative on the Core Server (decoded-size LRU plus hard TTL,
+  BRIEF §6.1); Jellyfin `CloseLiveStream` releases plugin attribution only.
 - TV works materialize as a bare `Episode` (season/episode index set); movies as `Movie`. Both
   share the identical lazy-resolve/playback path.
 - The plugin still contains zero domain logic — the Core Server does all searching/ranking/

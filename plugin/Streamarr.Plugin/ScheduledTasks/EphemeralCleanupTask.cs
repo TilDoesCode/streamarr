@@ -1,6 +1,5 @@
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
-using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Library;
 using Streamarr.Plugin.Playback;
 
@@ -8,15 +7,15 @@ namespace Streamarr.Plugin.ScheduledTasks;
 
 /// <summary>
 /// TTL cleanup for plugin-owned ephemeral Usenet items (BRIEF §8.5). Deletes items whose
-/// <c>lastAccessedUtc</c> is older than the bounded configured TTL, closes tracked Core sessions,
-/// enforces the hard item limit, and prunes the persisted release cache. After restart, Jellyfin's
+/// <c>lastAccessedUtc</c> is older than the bounded configured TTL, enforces the hard item limit,
+/// and prunes the persisted release cache. Core capabilities have their own byte-bounded LRU and
+/// hard TTL, so Jellyfin metadata cleanup never tears down playback. After restart, Jellyfin's
 /// saved/created timestamp is a conservative fallback when no cache timestamp is available.
 /// Runs hourly by default. No domain logic: it is pure lifecycle bookkeeping (BRIEF §11).
 /// </summary>
 public sealed class EphemeralCleanupTask(
     EphemeralLibraryService library,
     PlaybackSessionTracker tracker,
-    StreamarrApiClient api,
     ILogger<EphemeralCleanupTask> logger) : IScheduledTask
 {
     public string Name => "Streamarr: clean up ephemeral items";
@@ -24,7 +23,7 @@ public sealed class EphemeralCleanupTask(
     public string Key => "StreamarrEphemeralCleanup";
 
     public string Description =>
-        "Delete Usenet ephemeral items whose TTL has expired and close their lingering sessions (BRIEF §8.5).";
+        "Delete idle Jellyfin metadata whose TTL has expired without controlling Core playback (BRIEF §8.5).";
 
     public string Category => "Streamarr";
 
@@ -66,8 +65,8 @@ public sealed class EphemeralCleanupTask(
             {
                 if (!tracker.TryClaimItemsForDeletion(
                         candidate.SubtreeIds,
-                        requireNoSessions: false,
-                        out var sessions))
+                        requireNoSessions: true,
+                        out _))
                 {
                     failedSubtrees.UnionWith(candidate.SubtreeIds);
                     continue;
@@ -87,27 +86,6 @@ public sealed class EphemeralCleanupTask(
                     }
 
                     deleted += deletedIds.Count;
-                    foreach (var session in sessions)
-                    {
-                        if (session.SessionToken is not { } token)
-                            continue;
-
-                        using var closeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        closeTimeout.CancelAfter(TimeSpan.FromSeconds(5));
-                        try
-                        {
-                            await api.CloseSessionAsync(token, closeTimeout.Token).ConfigureAwait(false);
-                        }
-                        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-                        {
-                            // Core also expires sessions by TTL; deletion must not be held hostage
-                            // by a temporarily unavailable server.
-                            logger.LogWarning(
-                                "Failed to close session for expired subtree {ItemId} ({FailureType})",
-                                candidate.Item.Id,
-                            ex.GetType().Name);
-                        }
-                    }
                 }
                 finally
                 {

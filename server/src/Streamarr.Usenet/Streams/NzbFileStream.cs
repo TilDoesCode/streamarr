@@ -197,6 +197,12 @@ public class NzbFileStream(
     {
         var segmentIds = fileSegmentIds.AsMemory()[firstSegmentIndex..];
         var nearEnd = firstSegmentIndex >= fileSegmentIds.Length - 2;
+        // The startup burst exists to hide cold-start latency at the head of the file. A
+        // mid-file open (every resume/seek — ffmpeg issues several probing opens per seek)
+        // must NOT re-arm it: each burst dumps a volley of concurrent High-priority reads
+        // into the shared connection pool exactly when a resume is already contended, and
+        // steady read-ahead is enough once playback is positioned.
+        var initialOpen = firstSegmentIndex == 0;
         return MultiSegmentStream.Create(
             segmentIds,
             usenetClient,
@@ -205,8 +211,8 @@ public class NzbFileStream(
             segmentCache,
             articleRetryCount,
             onSegmentRequested,
-            startupArticleBufferSize,
-            startupReadAheadSegments,
+            initialOpen ? startupArticleBufferSize : 0,
+            initialOpen ? startupReadAheadSegments : 0,
             openedFirstSegment,
             progressiveFirstSegment: false,
             disableReadAhead: nearEnd && articleBufferSize > 0);

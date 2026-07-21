@@ -8,20 +8,25 @@ public class SessionManagerTests
 {
     private static readonly byte[] Payload = Enumerable.Range(0, 4096).Select(i => (byte)i).ToArray();
 
-    private static SessionManager Manager(int ttlSeconds = 300) => new(
+    private static SessionManager Manager(
+        int ttlSeconds = 300,
+        int cacheSizeMb = 102_400,
+        TimeProvider? time = null) => new(
         new FakeNntpClient(),
         Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
         {
             SessionTtlSeconds = ttlSeconds,
+            EphemeralCacheSizeMb = cacheSizeMb,
             MaxSessions = 200,
         }),
-        NullLogger<SessionManager>.Instance);
+        NullLogger<SessionManager>.Instance,
+        time: time);
 
-    private static ResolvedMediaFile MediaFile() => new()
+    private static ResolvedMediaFile MediaFile(long? sizeBytes = null) => new()
     {
         FileName = "video.mkv",
         Container = "mkv",
-        SizeBytes = Payload.Length,
+        SizeBytes = sizeBytes ?? Payload.Length,
         OpenStream = _ => new MemoryStream(Payload),
     };
 
@@ -98,12 +103,13 @@ public class SessionManagerTests
     }
 
     [Fact]
-    public async Task SweepExpired_RemovesSessionsPastTheirSlidingTtl()
+    public void SweepExpired_RemovesSessionsPastTheirHardTtl()
     {
-        var manager = Manager(ttlSeconds: 0); // expires as soon as it is idle
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
         var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null);
 
-        await Task.Delay(20);
+        time.Advance(TimeSpan.FromSeconds(61));
         Assert.Equal(1, manager.SweepExpired());
         Assert.False(manager.TryGetSession(session.Token, out _));
         Assert.Empty(manager.ListSessions());
@@ -120,22 +126,23 @@ public class SessionManagerTests
     }
 
     [Fact]
-    public async Task SweepExpired_DoesNotKillAnOpenPausedStream()
+    public async Task AccessChangesLruButDoesNotExtendHardExpiry()
     {
-        var manager = Manager(ttlSeconds: 1);
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
         var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null);
         var stream = manager.OpenStream(session);
 
-        await Task.Delay(1_100);
-        Assert.Equal(0, manager.SweepExpired());
-        Assert.True(manager.TryGetSession(session.Token, out _));
-        var resumedRange = manager.OpenStream(session);
+        time.Advance(TimeSpan.FromSeconds(50));
+        Assert.Equal(Payload[0], stream.ReadByte());
+        Assert.Equal(time.GetUtcNow(), session.Session.LastAccessedAt);
 
-        await resumedRange.DisposeAsync();
-        await stream.DisposeAsync();
-        await Task.Delay(1_100);
+        time.Advance(TimeSpan.FromSeconds(11));
         Assert.Equal(1, manager.SweepExpired());
         Assert.False(manager.TryGetSession(session.Token, out _));
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => stream.ReadAsync(new byte[1]).AsTask());
+        await stream.DisposeAsync();
     }
 
     [Fact]
@@ -181,7 +188,41 @@ public class SessionManagerTests
     }
 
     [Fact]
-    public void SessionLimit_IsEnforced()
+    public void CacheBudget_EvictsTheLeastRecentlyAccessedWholeFile()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(cacheSizeMb: 2, time: time);
+        var size = 900L * 1024;
+        var first = manager.CreateSession("first", "work", MediaFile(size), null);
+        time.Advance(TimeSpan.FromSeconds(1));
+        var second = manager.CreateSession("second", "work", MediaFile(size), null);
+        time.Advance(TimeSpan.FromSeconds(1));
+
+        using (var firstRead = manager.OpenStream(first))
+            Assert.Equal(Payload[0], firstRead.ReadByte());
+        time.Advance(TimeSpan.FromSeconds(1));
+        var third = manager.CreateSession("third", "work", MediaFile(size), null);
+
+        Assert.True(manager.TryGetSession(first.Token, out _));
+        Assert.False(manager.TryGetSession(second.Token, out _));
+        Assert.True(manager.TryGetSession(third.Token, out _));
+        Assert.Equal(2, manager.ListSessions().Count);
+    }
+
+    [Fact]
+    public void CacheBudget_AllowsOneOversizedFileToStandAlone()
+    {
+        var manager = Manager(cacheSizeMb: 1);
+        var old = manager.CreateSession("old", "work", MediaFile(512 * 1024), null);
+        var oversized = manager.CreateSession("oversized", "work", MediaFile(2 * 1024 * 1024), null);
+
+        Assert.False(manager.TryGetSession(old.Token, out _));
+        Assert.True(manager.TryGetSession(oversized.Token, out _));
+        Assert.Single(manager.ListSessions());
+    }
+
+    [Fact]
+    public void SessionLimit_EvictsLruInsteadOfRejectingNewFile()
     {
         var manager = new SessionManager(
             new FakeNntpClient(),
@@ -192,13 +233,24 @@ public class SessionManagerTests
             }),
             NullLogger<SessionManager>.Instance);
         manager.CreateSession("one", "work", MediaFile(), null);
-        Assert.Throws<ResourceCapacityException>(() =>
-            manager.CreateSession("two", "work", MediaFile(), null));
+        var second = manager.CreateSession("two", "work", MediaFile(), null);
+
+        Assert.Single(manager.ListSessions());
+        Assert.True(manager.TryGetSession(second.Token, out _));
     }
 
     private sealed class ThrowingDisposeStream(byte[] bytes) : MemoryStream(bytes)
     {
         public override ValueTask DisposeAsync()
             => ValueTask.FromException(new IOException("simulated dispose failure"));
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.Parse("2026-07-21T12:00:00Z");
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan duration) => _now += duration;
     }
 }

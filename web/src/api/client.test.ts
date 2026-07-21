@@ -8,6 +8,7 @@ import {
   streamUrlForPlayback,
 } from "./client";
 import { clearSession, getSession, setSession } from "./token";
+import { retrySearchRequest, searchRetryDelay } from "./queries";
 
 interface MockResponseInit {
   status: number;
@@ -142,6 +143,21 @@ describe("streamUrlForPlayback", () => {
     expect(streamUrlForPlayback("/api/v1/stream/abc?x=1")).toBe(
       "/api/v1/stream/abc?x=1",
     );
+  });
+});
+
+describe("search retry policy", () => {
+  it("retries transient failures with bounded backoff", () => {
+    expect(retrySearchRequest(0, new ApiError(503, "temporary", "retry", null))).toBe(true);
+    expect(retrySearchRequest(1, new TypeError("network failed"))).toBe(true);
+    expect(searchRetryDelay(0)).toBe(250);
+    expect(searchRetryDelay(20)).toBe(2_000);
+  });
+
+  it("does not retry permanent responses, cancellation, or past the attempt limit", () => {
+    expect(retrySearchRequest(0, new ApiError(400, "bad", "bad", null))).toBe(false);
+    expect(retrySearchRequest(0, new DOMException("aborted", "AbortError"))).toBe(false);
+    expect(retrySearchRequest(2, new ApiError(503, "temporary", "retry", null))).toBe(false);
   });
 });
 

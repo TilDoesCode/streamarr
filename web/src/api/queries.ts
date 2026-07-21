@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "./client";
+import { ApiError, apiFetch } from "./client";
 import type {
   ApiKeyResponse,
   ChangePasswordRequest,
@@ -59,6 +59,20 @@ export const queryKeys = {
   tvSeason: (tmdbId: number, seasonNumber: number) => ["tv", tmdbId, "season", seasonNumber] as const,
 };
 
+// Search is read-only (including debug ranking preview), so transient failures are safe to
+// replay. Keep retries local to search instead of teaching the generic API client to repeat
+// writes, and never retry validation/auth/not-found responses.
+export function retrySearchRequest(failureCount: number, error: Error): boolean {
+  if (failureCount >= 2) return false;
+  if (error instanceof DOMException && error.name === "AbortError") return false;
+  if (!(error instanceof ApiError)) return true;
+  return error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+export function searchRetryDelay(attempt: number): number {
+  return Math.min(250 * 2 ** attempt, 2_000);
+}
+
 /**
  * Service health (BRIEF §9.1 dashboard). `deep` runs the per-indexer/per-provider
  * reachability probes; pass `false` for a cheap liveness ping.
@@ -102,6 +116,8 @@ export function useSemanticSearch() {
           profileId: query.profileId,
         },
       }),
+    retry: retrySearchRequest,
+    retryDelay: searchRetryDelay,
   });
 }
 
@@ -110,6 +126,8 @@ export function useTvSeriesSearch() {
   return useMutation({
     mutationFn: ({ q, limit = 3 }: { q: string; limit?: number }) =>
       apiFetch<TvSeriesSearchResponse>("/tv/search", { query: { q, limit } }),
+    retry: retrySearchRequest,
+    retryDelay: searchRetryDelay,
   });
 }
 
@@ -120,6 +138,8 @@ export function useTvSeriesDetails(tmdbId: number, enabled: boolean) {
     queryFn: ({ signal }) => apiFetch<TvSeriesDetailsResponse>(`/tv/${tmdbId}`, { signal }),
     enabled: enabled && tmdbId > 0,
     staleTime: 5 * 60_000,
+    retry: retrySearchRequest,
+    retryDelay: searchRetryDelay,
   });
 }
 
@@ -139,6 +159,8 @@ export function useTvSeasonDetails(tmdbId: number, seasonNumber: number, enabled
     // the query explicitly when the operator asks for fresh availability.
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    retry: retrySearchRequest,
+    retryDelay: searchRetryDelay,
   });
 }
 
@@ -566,5 +588,7 @@ export function useDebugSearch() {
   return useMutation({
     mutationFn: (body: DebugSearchRequest) =>
       apiFetch<DebugSearchResponse>("/debug/search", { method: "POST", body }),
+    retry: retrySearchRequest,
+    retryDelay: searchRetryDelay,
   });
 }

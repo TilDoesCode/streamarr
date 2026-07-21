@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Streamarr.Core.Sessions;
@@ -12,7 +13,7 @@ namespace Streamarr.Server.Services;
 /// <summary>
 /// One live streaming session (BRIEF §6.1 module 6): the resolved media file,
 /// a per-session NNTP client metering usage against the shared global budget,
-/// and the sliding-TTL bookkeeping.
+/// and deterministic ephemeral-cache bookkeeping.
 /// </summary>
 public sealed class ActiveSession
 {
@@ -22,6 +23,7 @@ public sealed class ActiveSession
     private readonly object _lifecycleGate = new();
     private readonly StreamarrMetrics? _metrics;
     private readonly SegmentCache? _segmentCache;
+    private readonly TimeProvider _time;
     private readonly ConcurrentDictionary<string, byte> _queriedChunks = new(StringComparer.Ordinal);
 
     internal ActiveSession(
@@ -31,7 +33,8 @@ public sealed class ActiveSession
         CountingNntpGate nntpUsage,
         StreamarrMetrics? metrics = null,
         SegmentCache? segmentCache = null,
-        string? title = null)
+        string? title = null,
+        TimeProvider? time = null)
     {
         Session = session;
         File = file;
@@ -40,6 +43,7 @@ public sealed class ActiveSession
         ContentType = ContainerContentTypes.For(file.Container);
         _metrics = metrics;
         _segmentCache = segmentCache;
+        _time = time ?? TimeProvider.System;
         Title = string.IsNullOrWhiteSpace(title) ? file.FileName : title;
     }
 
@@ -49,6 +53,13 @@ public sealed class ActiveSession
     public CountingNntpGate NntpUsage { get; }
     public string ContentType { get; }
     public string Title { get; }
+
+    /// <summary>
+    /// Request→first-frame timing for this playback attempt (BRIEF §11 diagnostics). Populated
+    /// during resolve, extended by the stream first-byte and by client-reported spans, and
+    /// rendered as a flamegraph on the stream page. Null when diagnostics are unavailable.
+    /// </summary>
+    public TtffTimeline? Timeline { get; internal set; }
 
     public string Token => Session.Token;
     public long BytesServed => Interlocked.Read(ref _bytesServed);
@@ -72,21 +83,20 @@ public sealed class ActiveSession
 
     // Deliberately lock-free: this runs after every body read. A concurrent close may leave a
     // newer diagnostic timestamp on a closed session, which is harmless; admission stays gated.
-    public void Touch() => Session.LastAccessedAt = DateTimeOffset.UtcNow;
+    public void Touch() => Session.LastAccessedAt = _time.GetUtcNow();
 
     internal bool TryOpenStream(Func<Stream> openStream, out Stream? stream)
     {
         ArgumentNullException.ThrowIfNull(openStream);
         lock (_lifecycleGate)
         {
-            if (_closed != 0
-                || (_openStreamCount == 0 && Session.ExpiresAt <= DateTimeOffset.UtcNow))
+            if (_closed != 0 || Session.ExpiresAt <= _time.GetUtcNow())
             {
                 stream = null;
                 return false;
             }
 
-            Session.LastAccessedAt = DateTimeOffset.UtcNow;
+            Session.LastAccessedAt = _time.GetUtcNow();
             stream = openStream();
             _openStreamCount++;
             return true;
@@ -100,15 +110,14 @@ public sealed class ActiveSession
             if (_openStreamCount > 0)
                 _openStreamCount--;
             if (_closed == 0)
-                Session.LastAccessedAt = DateTimeOffset.UtcNow;
+                Session.LastAccessedAt = _time.GetUtcNow();
         }
     }
 
     internal bool IsExpired(DateTimeOffset now)
     {
         lock (_lifecycleGate)
-            return _closed != 0
-                   || (_openStreamCount == 0 && Session.ExpiresAt <= now);
+            return _closed != 0 || Session.ExpiresAt <= now;
     }
 
     internal void RecordChunkRequested(string segmentId) => _queriedChunks.TryAdd(segmentId, 0);
@@ -131,8 +140,10 @@ public sealed class ActiveSession
 
 /// <summary>
 /// Owns the resolve → stream → close lifecycle: issues opaque unguessable stream
-/// tokens, opens per-request streams over a session's media file, tears sessions
-/// down on close, and expires them past their sliding TTL via a background sweep.
+/// tokens, opens per-request streams over a session's media file, and owns the
+/// deterministic ephemeral-file cache. Files are evicted whole in LRU order when a
+/// new admission would exceed the logical byte budget, while one oversized file may
+/// stand alone. A hard creation-based TTL expires files regardless of later access.
 /// All sessions share one budgeted NNTP client, so the global connection budget
 /// holds across concurrent sessions.
 /// </summary>
@@ -141,11 +152,13 @@ public sealed class SessionManager(
     IOptions<StreamarrOptions> options,
     ILogger<SessionManager> logger,
     StreamarrMetrics? metrics = null,
-    SegmentCache? segmentCache = null) : BackgroundService
+    SegmentCache? segmentCache = null,
+    TimeProvider? time = null) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
     private readonly object _createGate = new();
     private readonly SemaphoreSlim _streamGate = new(Math.Max(1, options.Value.MaxConcurrentStreams));
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
 
     /// <summary>Total NNTP commands in flight across all live sessions (connections in use).</summary>
     public int NntpConnectionsInUse => _sessions.Values.Sum(s => s.NntpUsage.InFlight);
@@ -157,17 +170,21 @@ public sealed class SessionManager(
         string? client,
         string? requestedById = null,
         string? requestedByName = null,
-        string? title = null)
+        string? title = null,
+        TtffTimeline? timeline = null)
     {
         lock (_createGate)
         {
-            SweepExpired();
-            if (_sessions.Count >= options.Value.MaxSessions)
-                throw new ResourceCapacityException("The live session limit has been reached.");
+            var now = _time.GetUtcNow();
+            SweepExpiredLocked(now);
+            MakeRoomFor(file.SizeBytes);
+            while (_sessions.Count >= options.Value.MaxSessions)
+            {
+                if (!EvictLeastRecentlyUsed("session-count limit"))
+                    throw new ResourceCapacityException("The live session limit has been reached.");
+            }
 
             // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
-            var now = DateTimeOffset.UtcNow;
-
             var usage = new CountingNntpGate();
             var sessionClient = new GatedNntpClient(nntpClient, usage);
 
@@ -190,7 +207,10 @@ public sealed class SessionManager(
                     RequestedByName = requestedByName,
                     State = SessionState.Ready,
                 };
-                active = new ActiveSession(session, file, sessionClient, usage, metrics, segmentCache, title);
+                active = new ActiveSession(session, file, sessionClient, usage, metrics, segmentCache, title, _time)
+                {
+                    Timeline = timeline,
+                };
             } while (!_sessions.TryAdd(active.Token, active));
 
             metrics?.SessionOpened();
@@ -203,7 +223,7 @@ public sealed class SessionManager(
 
     public bool TryGetSession(string token, out ActiveSession session)
     {
-        if (_sessions.TryGetValue(token, out var found) && !found.IsExpired(DateTimeOffset.UtcNow))
+        if (_sessions.TryGetValue(token, out var found) && !found.IsExpired(_time.GetUtcNow()))
         {
             session = found;
             return true;
@@ -233,9 +253,30 @@ public sealed class SessionManager(
             }
             admitted = true;
 
+            // Offset (from resolve t0) at which this HTTP stream request opened its stream, so the
+            // first-byte span lands in the right place on the request→first-frame flamegraph.
+            var openMs = session.Timeline?.ElapsedMs;
+
+            var o = options.Value;
+            var pacer = o.StreamPacingEnabled
+                ? new StreamPacer(
+                    o.StreamPacingBurstBytes,
+                    o.StreamPacingSustainBytesPerSecond,
+                    onEngaged: () =>
+                    {
+                        logger.LogDebug(
+                            "[TTFF] {Token} stream pacing engaged after {BurstBytes} bytes (sustain {SustainBytesPerSecond} B/s)",
+                            session.Token[..8], o.StreamPacingBurstBytes, o.StreamPacingSustainBytesPerSecond);
+                        session.Timeline?.Add(
+                            "pacing-engaged", "stream", session.Timeline.ElapsedMs, 0,
+                            detail: $"sustain={o.StreamPacingSustainBytesPerSecond}B/s");
+                    })
+                : null;
+
             return new SessionStream(
                 inner,
                 session,
+                openMs,
                 () =>
                 {
                     try
@@ -246,7 +287,8 @@ public sealed class SessionManager(
                     {
                         _streamGate.Release();
                     }
-                });
+                },
+                pacer);
         }
         catch
         {
@@ -273,10 +315,15 @@ public sealed class SessionManager(
     public IReadOnlyList<ActiveSession> ListSessions()
         => _sessions.Values.OrderBy(s => s.Session.CreatedAt).ToList();
 
-    /// <summary>Removes sessions whose sliding TTL has lapsed. Returns the count removed.</summary>
+    /// <summary>Removes sessions whose hard creation-based TTL has lapsed.</summary>
     public int SweepExpired()
     {
-        var now = DateTimeOffset.UtcNow;
+        lock (_createGate)
+            return SweepExpiredLocked(_time.GetUtcNow());
+    }
+
+    private int SweepExpiredLocked(DateTimeOffset now)
+    {
         var removed = 0;
         foreach (var (token, session) in _sessions)
         {
@@ -289,11 +336,54 @@ public sealed class SessionManager(
             metrics?.SessionClosed();
             removed++;
             logger.LogInformation(
-                "Expired capability session for release {ReleaseId} (idle past ttl)",
+                "Expired ephemeral file for release {ReleaseId} (hard ttl reached)",
                 expired.Session.ReleaseId);
         }
 
         return removed;
+    }
+
+    private void MakeRoomFor(long incomingSizeBytes)
+    {
+        var capacityBytes = checked((long)options.Value.EphemeralCacheSizeMb * 1024 * 1024);
+        while (!_sessions.IsEmpty
+               && CacheSizeBytes() > capacityBytes - Math.Min(incomingSizeBytes, capacityBytes))
+        {
+            if (!EvictLeastRecentlyUsed("ephemeral-cache byte budget"))
+                break;
+        }
+    }
+
+    private long CacheSizeBytes()
+    {
+        long total = 0;
+        foreach (var session in _sessions.Values)
+            total = checked(total + session.Session.SizeBytes);
+        return total;
+    }
+
+    private bool EvictLeastRecentlyUsed(string reason)
+    {
+        foreach (var candidate in _sessions.Values
+                     .OrderBy(session => session.Session.LastAccessedAt)
+                     .ThenBy(session => session.Session.CreatedAt)
+                     .ThenBy(session => session.Token, StringComparer.Ordinal))
+        {
+            if (!_sessions.TryRemove(candidate.Token, out var evicted))
+                continue;
+
+            evicted.MarkClosed();
+            metrics?.SessionClosed();
+            logger.LogInformation(
+                "Evicted ephemeral file for release {ReleaseId} ({SizeBytes} bytes, last access {LastAccessedAt}) because of {Reason}",
+                evicted.Session.ReleaseId,
+                evicted.Session.SizeBytes,
+                evicted.Session.LastAccessedAt,
+                reason);
+            return true;
+        }
+
+        return false;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -314,12 +404,18 @@ public sealed class SessionManager(
 
 /// <summary>
 /// Read-only forwarding stream handed to the HTTP layer: meters bytes served,
-/// refreshes the session's sliding TTL on activity, and refuses further reads
-/// once the session is closed (teardown cuts off in-flight requests).
+/// refreshes the session's LRU timestamp on activity, and refuses further reads
+/// once the entry is evicted or reaches its hard expiry.
 /// </summary>
-internal sealed class SessionStream(Stream inner, ActiveSession session, Action? onDispose = null) : Stream
+internal sealed class SessionStream(
+    Stream inner,
+    ActiveSession session,
+    double? openMs = null,
+    Action? onDispose = null,
+    StreamPacer? pacer = null) : Stream
 {
     private int _disposed;
+    private int _firstByteRecorded;
     public override bool CanRead => true;
     public override bool CanSeek => inner.CanSeek;
     public override bool CanWrite => false;
@@ -339,8 +435,21 @@ internal sealed class SessionStream(Stream inner, ActiveSession session, Action?
         var read = await inner.ReadAsync(buffer, cancellationToken);
         if (read > 0)
         {
+            if (openMs is { } start
+                && session.Timeline is { } timeline
+                && Interlocked.Exchange(ref _firstByteRecorded, 1) == 0)
+            {
+                // Gap between this stream HTTP request opening and its first delivered byte
+                // (NNTP article fetch + yEnc decode, or a seek's interpolation search).
+                timeline.Add("stream-first-byte", "stream", start, timeline.ElapsedMs - start,
+                    detail: $"pos={inner.Position - read}");
+            }
+
             session.AddBytesServed(read);
             session.Touch();
+
+            if (pacer is not null)
+                await pacer.PaceAsync(read, cancellationToken);
         }
 
         return read;
@@ -390,6 +499,43 @@ internal sealed class SessionStream(Stream inner, ActiveSession session, Action?
             }
         }
         await base.DisposeAsync();
+    }
+}
+
+/// <summary>
+/// Per-request output pacing: a generous unpaced startup burst (fast first frame, fast
+/// seeks — every new Range request gets a fresh burst — and an unaffected ffprobe), then a
+/// sustained byte-rate ceiling still far above realtime playback. This is the server-side
+/// stand-in for Jellyfin's transcode throttler, which never engages for HTTP inputs
+/// (TranscodeManager.EnableThrottling requires MediaProtocol.File): without pacing, one
+/// ffmpeg stream-copy races the entire release at wire speed, and abandoned transcodes keep
+/// racing, starving concurrent playback into minutes of TTFF (measured 52–134 s).
+/// </summary>
+internal sealed class StreamPacer(long burstBytes, double sustainBytesPerSecond, Action? onEngaged = null)
+{
+    private long _total;
+    private long _paceStartTimestamp;
+
+    /// <summary>Delays after a read once the burst is spent, holding the stream to the sustain rate.</summary>
+    public async ValueTask PaceAsync(int justRead, CancellationToken ct)
+    {
+        // One pacer per HTTP request stream; reads are sequential, so plain fields suffice.
+        _total += justRead;
+        var beyondBurst = _total - burstBytes;
+        if (beyondBurst <= 0)
+            return;
+
+        if (_paceStartTimestamp == 0)
+        {
+            _paceStartTimestamp = Stopwatch.GetTimestamp();
+            onEngaged?.Invoke();
+            return;
+        }
+
+        var expectedSeconds = beyondBurst / sustainBytesPerSecond;
+        var aheadSeconds = expectedSeconds - Stopwatch.GetElapsedTime(_paceStartTimestamp).TotalSeconds;
+        if (aheadSeconds > 0.002)
+            await Task.Delay(TimeSpan.FromSeconds(Math.Min(aheadSeconds, 0.5)), ct);
     }
 }
 

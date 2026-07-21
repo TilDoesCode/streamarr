@@ -84,6 +84,19 @@ internal sealed class FakeNewznabClient : INewznabClient
         return this;
     }
 
+    public FakeNewznabClient FailsThenReturns(
+        string indexerName,
+        int failureCount,
+        Exception exception,
+        params NewznabItem[] items)
+    {
+        var remaining = failureCount;
+        _behaviours[indexerName] = _ => Interlocked.Decrement(ref remaining) >= 0
+            ? Task.FromException<NewznabSearchResponse>(exception)
+            : Task.FromResult(new NewznabSearchResponse { Items = items });
+        return this;
+    }
+
     public FakeNewznabClient Delays(string indexerName, TimeSpan delay, params NewznabItem[] items)
     {
         _behaviours[indexerName] = async ct =>

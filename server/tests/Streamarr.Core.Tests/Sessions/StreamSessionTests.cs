@@ -15,7 +15,7 @@ public class StreamSessionTests
     };
 
     [Fact]
-    public void ExpiresAt_ExtendsWithLastAccess()
+    public void ExpiresAt_IsHardDeadlineUnaffectedByLastAccess()
     {
         var created = new DateTimeOffset(2026, 7, 12, 12, 0, 0, TimeSpan.Zero);
         var session = Session(created, TimeSpan.FromHours(1));
@@ -23,7 +23,7 @@ public class StreamSessionTests
         Assert.Equal(created.AddHours(1), session.ExpiresAt);
 
         session.LastAccessedAt = created.AddMinutes(30);
-        Assert.Equal(created.AddMinutes(90), session.ExpiresAt);
+        Assert.Equal(created.AddHours(1), session.ExpiresAt);
     }
 
     [Fact]

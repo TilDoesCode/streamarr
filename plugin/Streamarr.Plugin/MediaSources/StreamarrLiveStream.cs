@@ -7,16 +7,14 @@ namespace Streamarr.Plugin.MediaSources;
 
 /// <summary>
 /// A live stream backed by a Core Server session. The heavy lifting (open/probe) already
-/// happened in <c>/resolve</c>, so <see cref="Open"/> is a no-op; <see cref="Close"/> is
-/// the <c>CloseLiveStream</c> hook that tears the session down via
-/// <c>POST /api/v1/sessions/{token}/close</c> (BRIEF §8.4). Playback bytes flow directly
-/// from the HTTP <c>Path</c> on the <see cref="MediaSource"/>, so <see cref="GetStream"/>
-/// is never used.
+/// happened in <c>/resolve</c>, so <see cref="Open"/> is a no-op. Jellyfin close callbacks only
+/// release plugin-side attribution: clients can briefly close/reopen a source while playback is
+/// still buffered, so Core owns capability eviction through its LRU byte budget and hard TTL.
+/// Playback bytes flow directly from the HTTP <c>Path</c> on the <see cref="MediaSource"/>, so
+/// <see cref="GetStream"/> is never used.
 /// </summary>
 public sealed class StreamarrLiveStream(
     MediaSourceInfo mediaSource,
-    string? streamToken,
-    PlaybackEventDispatcher dispatcher,
     PlaybackSessionTracker tracker,
     ILogger logger,
     Action? releaseOffer = null) : ILiveStream
@@ -62,22 +60,9 @@ public sealed class StreamarrLiveStream(
         // first fetched. This also reference-counts concurrent opens of the same cached token.
         releaseOffer?.Invoke();
 
-        // A playback-stop callback may already have queued and forgotten this attribution.
         // Jellyfin prefixes MediaSource.LiveStreamId after the provider returns. UniqueId captures
         // the provider-issued id at construction time and remains stable for tracker lookup.
-        if (tracker.Resolve(UniqueId) is null)
-            return;
-
-        if (string.IsNullOrWhiteSpace(streamToken) || dispatcher.EnqueueClose(streamToken))
-        {
-            tracker.Forget(UniqueId);
-            logger.LogDebug("Queued a Streamarr capability session for closure");
-            return;
-        }
-
-        // Keep attribution so scheduled cleanup can retry instead of silently stranding a Core
-        // session when the bounded close queue is momentarily saturated.
-        Volatile.Write(ref _closeQueued, 0);
-        logger.LogWarning("Could not queue a Streamarr capability session for closure; cleanup will retry");
+        tracker.Forget(UniqueId);
+        logger.LogDebug("Released Streamarr playback attribution; Core retained the ephemeral file");
     }
 }

@@ -24,7 +24,20 @@ public sealed class IndexerSearchOptions
     /// <summary>Process-wide maximum number of in-flight Newznab requests.</summary>
     public int MaxConcurrentIndexerRequests { get; set; } = 8;
 
+    /// <summary>Extra attempts after a transient indexer transport failure or timeout.</summary>
+    public int MaxTransientRetries { get; set; } = 2;
+
+    /// <summary>Base delay for exponential retry backoff.</summary>
+    public int RetryBaseDelayMilliseconds { get; set; } = 250;
+
+    /// <summary>Maximum delay between indexer attempts.</summary>
+    public int RetryMaxDelayMilliseconds { get; set; } = 2_000;
+
     public TimeSpan CacheTtl => TimeSpan.FromSeconds(Math.Max(0, SearchCacheTtlSeconds));
     public TimeSpan PerIndexerTimeout => TimeSpan.FromSeconds(Math.Max(1, PerIndexerTimeoutSeconds));
     public TimeSpan RateLimitInterval => TimeSpan.FromMilliseconds(Math.Max(0, PerIndexerRateLimitMilliseconds));
+    public int TransientRetryCount => Math.Clamp(MaxTransientRetries, 0, 10);
+    public TimeSpan RetryBaseDelay => TimeSpan.FromMilliseconds(Math.Clamp(RetryBaseDelayMilliseconds, 0, 60_000));
+    public TimeSpan RetryMaxDelay => TimeSpan.FromMilliseconds(
+        Math.Max(RetryBaseDelay.TotalMilliseconds, Math.Clamp(RetryMaxDelayMilliseconds, 0, 120_000)));
 }

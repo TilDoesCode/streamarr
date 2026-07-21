@@ -62,7 +62,7 @@ public class PlaybackEventDispatcherTests
     }
 
     [Fact]
-    public async Task Live_stream_dispose_uses_bounded_close_dispatcher_once_and_cleans_aliases()
+    public async Task Live_stream_dispose_retains_core_file_and_cleans_plugin_aliases_once()
     {
         var closed = new List<string>();
         var dispatcher = new PlaybackEventDispatcher(
@@ -79,8 +79,6 @@ public class PlaybackEventDispatcherTests
         tracker.TrackSession(Guid.NewGuid(), "live-1", "release-1", "work-1", "capability-1");
         var liveStream = new StreamarrLiveStream(
             new MediaSourceInfo { LiveStreamId = "live-1" },
-            "capability-1",
-            dispatcher,
             tracker,
             NullLogger.Instance,
             () => offerReleases++);
@@ -96,7 +94,7 @@ public class PlaybackEventDispatcherTests
         await liveStream.Close();
         await dispatcher.StopAsync(CancellationToken.None);
 
-        Assert.Equal(["capability-1"], closed);
+        Assert.Empty(closed);
         Assert.Equal(1, offerReleases);
         Assert.Empty(tracker.All());
     }
