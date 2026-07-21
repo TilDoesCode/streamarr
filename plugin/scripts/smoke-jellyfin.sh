@@ -607,12 +607,15 @@ replayed_live_stream_id="$(jq -er '.MediaSource.LiveStreamId' "$tmp_dir/replayed
 close_live_stream "$live_stream_id" "$tmp_dir/close-result.json"
 close_live_stream "$replayed_live_stream_id" "$tmp_dir/replayed-close-result.json"
 
-for _ in $(seq 1 50); do
-  close_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.close')"
-  [[ "$close_count" -ge 2 ]] && break
-  sleep 0.1
-done
-[[ "${close_count:-0}" -ge 2 ]] || fail "The queued Core session closes were not delivered."
+# Jellyfin CloseLiveStream must only release plugin-side attribution now: Core owns ephemeral
+# eviction through its LRU byte budget and hard TTL (BRIEF §8.4), so a client that briefly
+# closes/reopens a source while playback is still buffered must NOT tear the Core session down.
+# Prove the plugin forwards zero session-closes to Core. Settle first so any stray async close
+# would still be observed before we assert.
+sleep 1
+close_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.close')"
+[[ "${close_count:-0}" -eq 0 ]] \
+  || fail "Jellyfin close callbacks forwarded a Core session-close; Core owns eviction now (count=$close_count)."
 resolve_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.resolve')"
 [[ "$resolve_count" -eq 2 ]] \
   || fail "Forged or cross-user offers reached Core resolve (count=$resolve_count)."
