@@ -51,4 +51,48 @@ public sealed class StreamPacerTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             async () => await pacer.PaceAsync(1024 * 1024, cts.Token));
     }
+
+    [Fact]
+    public void HighBitrateMedia_RaisesSustainRateAboveRealtime()
+    {
+        const long sizeBytes = 12L * 1024 * 1024 * 1024;
+        const long startupBurstBytes = 96L * 1024 * 1024;
+        var runTimeTicks = TimeSpan.FromMinutes(10).Ticks;
+        const double configuredFloor = 6d * 1024 * 1024;
+
+        var selected = StreamPacer.SelectSustainBytesPerSecond(
+            sizeBytes,
+            runTimeTicks,
+            configuredFloor);
+        var averageMediaRate = sizeBytes / TimeSpan.FromMinutes(10).TotalSeconds;
+
+        Assert.Equal(
+            averageMediaRate * StreamPacer.RealtimeHeadroomMultiplier,
+            selected,
+            precision: 3);
+        Assert.True(selected > configuredFloor);
+
+        // This reproduces the reported freeze: with the old fixed ceiling, a remux consuming
+        // at the media's average rate exhausts Core's startup lead after only a few seconds.
+        var oldCeilingLeadSeconds = startupBurstBytes / (averageMediaRate - configuredFloor);
+        Assert.InRange(oldCeilingLeadSeconds, 6, 7);
+    }
+
+    [Fact]
+    public void LowBitrateOrUnknownDuration_KeepsConfiguredFloor()
+    {
+        const double configuredFloor = 6d * 1024 * 1024;
+
+        var lowBitrate = StreamPacer.SelectSustainBytesPerSecond(
+            sizeBytes: 600L * 1024 * 1024,
+            runTimeTicks: TimeSpan.FromHours(1).Ticks,
+            configuredFloor);
+        var unknownDuration = StreamPacer.SelectSustainBytesPerSecond(
+            sizeBytes: 12L * 1024 * 1024 * 1024,
+            runTimeTicks: 0,
+            configuredFloor);
+
+        Assert.Equal(configuredFloor, lowBitrate);
+        Assert.Equal(configuredFloor, unknownDuration);
+    }
 }

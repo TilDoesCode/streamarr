@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.9.0.0",
+    "version": "0.9.1.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Fix the resume and seek playback-latency regression with header-only seek probes, a read pacer, and fairer NNTP connection-pool sharing; bound the ephemeral cache with a configurable budget; surface per-stream time-to-first-frame diagnostics; and harden escalated ffprobe analysis and cached artwork badges."
+    "changelog": "Reuse a retained capability on pause/resume and Jellyfin source reopens instead of repeating NZB, health, materialization, and ffprobe work, and deduplicate concurrent resolves of the same release; add an admin-only manual purge for idle ephemeral files that refuses to interrupt active streams; raise per-stream pacing to keep high-bitrate remuxes ahead of realtime; and key retained sessions to the authenticated console user."
 }

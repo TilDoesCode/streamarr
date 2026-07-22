@@ -43,6 +43,84 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public async Task GetOrCreateOpeningSession_ReusesSameReleaseForSameRequester()
+    {
+        var manager = Manager();
+        var first = manager.GetOrCreateOpeningSession(
+            "rel-1",
+            "work-1",
+            MediaFile(),
+            "ready",
+            "jellyfin",
+            "user-1",
+            "First User");
+        var resumed = manager.GetOrCreateOpeningSession(
+            "rel-1",
+            "work-1",
+            MediaFile(),
+            "ready",
+            "jellyfin",
+            "user-1",
+            "Renamed User");
+
+        Assert.True(first.Created);
+        Assert.False(resumed.Created);
+        Assert.Same(first.Session, resumed.Session);
+        Assert.Single(manager.ListSessions());
+
+        Assert.True(first.Session.CompleteOpening(null));
+        Assert.True(await resumed.Session.WaitUntilReadyAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public void GetOrCreateOpeningSession_DoesNotShareAcrossRequesterClientOrWork()
+    {
+        var manager = Manager();
+        var first = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", "user-1");
+        var otherUser = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", "user-2");
+        var otherClient = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "web", "user-1");
+        var otherWork = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-2", MediaFile(), "ready", "jellyfin", "user-1");
+
+        Assert.All(new[] { first, otherUser, otherClient, otherWork }, admission =>
+            Assert.True(admission.Created));
+        Assert.Equal(4, manager.ListSessions().Count);
+    }
+
+    [Fact]
+    public void GetOrCreateOpeningSession_DoesNotReuseWithoutStableRequesterId()
+    {
+        var manager = Manager();
+        var first = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", requestedByName: "Same Name");
+        var second = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", requestedByName: "Same Name");
+
+        Assert.True(first.Created);
+        Assert.True(second.Created);
+        Assert.NotEqual(first.Session.Token, second.Session.Token);
+    }
+
+    [Fact]
+    public void GetOrCreateOpeningSession_ReplacesClosedCapability()
+    {
+        var manager = Manager();
+        var first = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", "user-1");
+
+        Assert.True(manager.CloseSession(first.Session.Token));
+        var replacement = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", "user-1");
+
+        Assert.True(replacement.Created);
+        Assert.NotEqual(first.Session.Token, replacement.Session.Token);
+        Assert.Single(manager.ListSessions());
+    }
+
+    [Fact]
     public async Task OpenStream_ServesBytes_AndMetersThem()
     {
         var manager = Manager();
@@ -103,6 +181,44 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public void PurgeSession_RemovesAnIdleFile()
+    {
+        var manager = Manager();
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null);
+
+        Assert.False(session.IsStreaming);
+        Assert.Equal(PurgeOutcome.Purged, manager.PurgeSession(session.Token));
+        Assert.False(manager.TryGetSession(session.Token, out _));
+        Assert.Empty(manager.ListSessions());
+    }
+
+    [Fact]
+    public async Task PurgeSession_RefusesWhileActivelyStreaming()
+    {
+        var manager = Manager();
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null);
+
+        await using (var stream = manager.OpenStream(session))
+        {
+            Assert.True(session.IsStreaming);
+            Assert.Equal(PurgeOutcome.Streaming, manager.PurgeSession(session.Token));
+            Assert.True(manager.TryGetSession(session.Token, out _));
+
+            // The open stream keeps serving bytes — the refused purge left it untouched.
+            Assert.Equal(Payload[0], stream.ReadByte());
+        }
+
+        // Once the stream is closed the file is idle again and can be purged.
+        Assert.False(session.IsStreaming);
+        Assert.Equal(PurgeOutcome.Purged, manager.PurgeSession(session.Token));
+        Assert.Empty(manager.ListSessions());
+    }
+
+    [Fact]
+    public void PurgeSession_UnknownToken_ReportsNotFound()
+        => Assert.Equal(PurgeOutcome.NotFound, Manager().PurgeSession("nope"));
+
+    [Fact]
     public void SweepExpired_RemovesSessionsPastTheirHardTtl()
     {
         var time = new ManualTimeProvider();
@@ -155,6 +271,23 @@ public class SessionManagerTests
         Assert.Equal(session.Token, listed.Token);
         Assert.Equal("jellyfin", listed.Session.Client);
         Assert.Equal(0, listed.NntpUsage.InFlight);
+    }
+
+    [Fact]
+    public void ProbedHighBitrateSession_RaisesItsPacingRate()
+    {
+        const long sizeBytes = 12L * 1024 * 1024 * 1024;
+        const double configuredFloor = 6d * 1024 * 1024;
+        var manager = Manager();
+        var session = manager.CreateSession(
+            "high-bitrate",
+            "work-1",
+            MediaFile(sizeBytes),
+            "jellyfin");
+
+        session.SetRunTimeTicks(TimeSpan.FromMinutes(10).Ticks);
+
+        Assert.True(session.GetPacingSustainBytesPerSecond(configuredFloor) > configuredFloor);
     }
 
     [Fact]

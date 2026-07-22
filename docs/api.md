@@ -371,6 +371,20 @@ access until it fits, while one oversized file may stand alone. Every entry also
 stream only at that configured hard deadline, not because a client briefly reported playback as
 stopped.
 
+### `GET /api/v1/ephemeral-files` (admin only)
+
+Operational view of the server-owned ephemeral file cache — one row per live file with its
+requester, decoded-size allocation, chunk footprint, resident storage, LRU access, hard expiry,
+and an `isStreaming` flag marking files with at least one open HTTP stream.
+
+### `POST /api/v1/ephemeral-files/{token}/purge` (admin only)
+
+Manually reclaims one **idle** cached file (`204`). Refuses with `409 stream_active` while the
+file is being actively streamed (`isStreaming: true`) so operator cleanup never interrupts live
+playback, and `404 unknown_ephemeral_file` if no live file exists for the token. Unlike the
+hard-TTL sweep and LRU eviction, this guard protects in-flight streams; use
+`POST /sessions/{token}/close` when a stream must be torn down regardless.
+
 ---
 
 ## 7. Events

@@ -18,12 +18,35 @@ async function login(page: Page) {
   await expect(page.getByRole("link", { name: "Indexers" })).toBeVisible();
 }
 
-async function liveSessionCount(page: Page): Promise<number> {
+interface LiveSessionSnapshot {
+  token?: string;
+  releaseId?: string;
+  workId?: string;
+  client?: string | null;
+  requestedById?: string | null;
+  requestedByName?: string | null;
+}
+
+async function liveSessions(page: Page): Promise<LiveSessionSnapshot[]> {
   return page.evaluate(async () => {
     const response = await fetch("/api/v1/sessions", {
       credentials: "same-origin",
     });
     if (!response.ok) throw new Error(`Could not list sessions (${response.status})`);
+    return (await response.json()) as LiveSessionSnapshot[];
+  });
+}
+
+async function liveSessionCount(page: Page): Promise<number> {
+  return (await liveSessions(page)).length;
+}
+
+async function ephemeralFileCount(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/v1/ephemeral-files", {
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error(`Could not list ephemeral files (${response.status})`);
     return ((await response.json()) as unknown[]).length;
   });
 }
@@ -31,7 +54,7 @@ async function liveSessionCount(page: Page): Promise<number> {
 test("login → add indexer → search → resolve → preview-play, with Jellyfin absent", async ({
   page,
   context,
-}) => {
+}, testInfo) => {
   await login(page);
   const browserSession = await page.evaluate(() => ({
     local: JSON.parse(window.localStorage.getItem("streamarr.session") ?? "null") as Record<
@@ -109,7 +132,9 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   await resolveButton.click();
 
   // The resolve outcome shows "ready" and a Play preview link into the playback route.
-  await expect(page.getByText("ready", { exact: true })).toBeVisible();
+  await expect(
+    page.getByLabel("Search results").getByText("ready", { exact: true }),
+  ).toBeVisible();
   const playLink = page.getByRole("link", { name: /play preview/i });
   await expect(playLink).toBeVisible();
   await playLink.click();
@@ -148,6 +173,54 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   // Search already opened the session. Playback must reuse it instead of resolving again.
   await expect.poll(() => liveSessionCount(page)).toBe(sessionsBefore + 1);
 
+  // Pause and explicitly resolve the same release again, mirroring a client that rebuilds its
+  // media source before continuing. Core must return the retained capability and file, and a
+  // ranged continuation must advance from the requested position on that same stream URL.
+  const originalStreamUrl = await video.getAttribute("src");
+  const sessionsAtPause = await liveSessionCount(page);
+  const filesAtPause = await ephemeralFileCount(page);
+  const retainedAtPause = (await liveSessions(page)).find(
+    (session) => `/api/v1/stream/${session.token}` === originalStreamUrl,
+  );
+  expect(retainedAtPause).toBeDefined();
+  await video.evaluate((el: HTMLVideoElement) => el.pause());
+
+  const resumedResolveRequest = page.waitForRequest(
+    (request) => request.url().includes("/api/v1/resolve") && request.method() === "POST",
+  );
+  const resumedResolve = page.waitForResponse(
+    (response) => response.url().includes("/api/v1/resolve") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: /resolve & load/i }).click();
+  const resumedRequest = await resumedResolveRequest;
+  const resumedResolveResponse = await resumedResolve;
+  expect(resumedResolveResponse.ok()).toBe(true);
+  expect(resumedRequest.postDataJSON()).toMatchObject({
+    releaseId: retainedAtPause!.releaseId,
+    workId: retainedAtPause!.workId,
+    client: retainedAtPause!.client,
+  });
+  const resumedResolveBody = (await resumedResolveResponse.json()) as { streamUrl?: string };
+  expect(resumedResolveBody.streamUrl).toBe(originalStreamUrl);
+  await expect(video).toHaveAttribute("src", originalStreamUrl!);
+  await expect.poll(() => liveSessionCount(page)).toBe(sessionsAtPause);
+  await expect.poll(() => ephemeralFileCount(page)).toBe(filesAtPause);
+
+  const duration = await video.evaluate((el: HTMLVideoElement) => el.duration);
+  expect(Number.isFinite(duration)).toBe(true);
+  expect(duration).toBeGreaterThan(2);
+  const resumeAt = duration / 2;
+  await video.evaluate(async (el: HTMLVideoElement, seconds: number) => {
+    el.currentTime = seconds;
+    await el.play();
+  }, resumeAt);
+  await expect
+    .poll(async () => video.evaluate((el: HTMLVideoElement) => el.currentTime), {
+      timeout: 30_000,
+      message: "continued playback did not advance after the retained-session range seek",
+    })
+    .toBeGreaterThan(resumeAt);
+
   // Validate the accessible mobile drawer and sticky Sessions action in a second, synchronized
   // tab while the first tab keeps playing.
   const peer = await context.newPage();
@@ -175,6 +248,28 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   await peer.keyboard.press("Escape");
   await expect(peer.getByRole("dialog")).toBeHidden();
   await expect(menuTrigger).toBeFocused();
+
+  // Keep visual proof from the real browser run: both operational views must show exactly one
+  // retained capability/file after the explicit pause → resolve → ranged continuation cycle.
+  await peer.setViewportSize({ width: 1440, height: 1000 });
+  await expect(peer.getByText(/^1 live ·/)).toBeVisible();
+  const sessionsScreenshot = testInfo.outputPath("resume-reuses-session.png");
+  await peer.screenshot({ path: sessionsScreenshot, fullPage: true });
+  await testInfo.attach("resume reuses one Core session", {
+    path: sessionsScreenshot,
+    contentType: "image/png",
+  });
+
+  await peer.getByRole("link", { name: "Ephemeral Files" }).click();
+  await expect(peer.getByRole("heading", { name: "Ephemeral files", level: 2 })).toBeVisible();
+  await expect(peer.getByText("Retained files")).toBeVisible();
+  await expect(peer.getByText("1", { exact: true }).first()).toBeVisible();
+  const filesScreenshot = testInfo.outputPath("resume-reuses-ephemeral-file.png");
+  await peer.screenshot({ path: filesScreenshot, fullPage: true });
+  await testInfo.attach("resume reuses one ephemeral file", {
+    path: filesScreenshot,
+    contentType: "image/png",
+  });
 
   // Signing out while media is active clears this tab's admin state, stops playback, and logs
   // out every other open console tab through the browser storage event.

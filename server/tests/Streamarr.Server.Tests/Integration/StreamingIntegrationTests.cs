@@ -266,6 +266,61 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
     // ---------------------------------------------------------------- sessions
 
     [Fact]
+    public async Task Resolve_SameReleaseForSameRequester_ReusesSessionAndContinuesRanges()
+    {
+        using var client = fixture.CreateClient();
+        using var admin = fixture.CreateClient(authenticated: false);
+        await admin.AuthenticateAsAdminAsync();
+        var request = new ResolveRequest
+        {
+            ReleaseId = StreamarrServerFixture.DirectReleaseId,
+            Client = "jellyfin",
+            RequestedById = "resume-user",
+            RequestedByName = "Resume User",
+        };
+
+        var firstResponse = await client.PostAsJsonAsync("/api/v1/resolve", request);
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        var first = (await firstResponse.Content.ReadFromJsonAsync<ResolveResponse>())!;
+
+        using (var initialRange = new HttpRequestMessage(HttpMethod.Get, first.StreamUrl))
+        {
+            initialRange.Headers.Range = new RangeHeaderValue(0, 1023);
+            using var response = await client.SendAsync(initialRange);
+            Assert.Equal(HttpStatusCode.PartialContent, response.StatusCode);
+            Assert.Equal(fixture.Video[..1024], await response.Content.ReadAsByteArrayAsync());
+        }
+
+        var sessionsAfterPause = await admin.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
+        Assert.NotNull(sessionsAfterPause);
+        var retained = Assert.Single(sessionsAfterPause, session =>
+            session.ReleaseId == StreamarrServerFixture.DirectReleaseId
+            && session.RequestedById == request.RequestedById);
+
+        var resumedResponse = await client.PostAsJsonAsync("/api/v1/resolve", request);
+        Assert.Equal(HttpStatusCode.OK, resumedResponse.StatusCode);
+        var resumed = (await resumedResponse.Content.ReadFromJsonAsync<ResolveResponse>())!;
+
+        Assert.Equal(first.StreamUrl, resumed.StreamUrl);
+        var sessionsAfterResume = await admin.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
+        Assert.NotNull(sessionsAfterResume);
+        var resumedSession = Assert.Single(sessionsAfterResume, session =>
+            session.ReleaseId == StreamarrServerFixture.DirectReleaseId
+            && session.RequestedById == request.RequestedById);
+        Assert.Equal(retained.Token, resumedSession.Token);
+        Assert.Equal(sessionsAfterPause.Count, sessionsAfterResume.Count);
+
+        const int resumeAt = 100_000;
+        using var resumedRange = new HttpRequestMessage(HttpMethod.Get, resumed.StreamUrl);
+        resumedRange.Headers.Range = new RangeHeaderValue(resumeAt, resumeAt + 2047);
+        using var resumedStream = await client.SendAsync(resumedRange);
+        Assert.Equal(HttpStatusCode.PartialContent, resumedStream.StatusCode);
+        Assert.Equal(
+            fixture.Video[resumeAt..(resumeAt + 2048)],
+            await resumedStream.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
     public async Task Sessions_ListAndClose_LifecycleWorks()
     {
         using var client = fixture.CreateClient();

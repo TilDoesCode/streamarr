@@ -245,6 +245,19 @@ export function useEphemeralFiles({ refetchInterval = 3_000 } = {}) {
   });
 }
 
+/**
+ * Manually purge one idle ephemeral file from the server-owned cache. The server refuses with
+ * 409 while the file is being actively streamed, so the caller never interrupts live playback.
+ */
+export function usePurgeEphemeralFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) =>
+      apiFetch<void>(`/ephemeral-files/${encodeURIComponent(token)}/purge`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.ephemeralFiles }),
+  });
+}
+
 /** Playback events with the external Jellyfin account attached. */
 export function useStreamingHistory(limit = 200) {
   return useQuery({

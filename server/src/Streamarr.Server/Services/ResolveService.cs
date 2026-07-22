@@ -221,6 +221,20 @@ public sealed class ResolveService(
         var nzbUrl = registered.Release.NzbUrl
             ?? throw new NoPlayableFileException("The release has no NZB location on record.");
 
+        // Pause/resume and Jellyfin source reopens resolve the same release again. A retained
+        // capability already owns the immutable materialized file and can open a fresh ranged
+        // stream, so reuse it before repeating NZB, health, materialization, or ffprobe work.
+        if (sessionManager.FindReusableSession(
+                releaseId,
+                registered.WorkId,
+                client,
+                requestedById) is { } retained)
+        {
+            var reused = await TryBuildReuseResponseAsync(retained, streamUrlForToken, ct);
+            if (reused is not null)
+                return new SingleResolve(registered.WorkId, reused);
+        }
+
         // Request→first-frame timeline (BRIEF §11 diagnostics). t0 is the moment resolve begins;
         // every stage below records itself and is emitted as a [TTFF] debug log line.
         var timeline = TtffTimeline.Start(releaseId.Length >= 8 ? releaseId[..8] : releaseId, logger);
@@ -291,15 +305,29 @@ public sealed class ResolveService(
         var media = await mediaTask;
         timeline.Add("materialize", "materialize", materializeStartMs, timeline.ElapsedMs - materializeStartMs,
             detail: $"{media.SegmentIds.Count} segments");
-        var session = sessionManager.CreateSession(
-            releaseId,
-            registered.WorkId,
-            media,
-            client,
-            requestedById,
-            requestedByName,
-            registered.Release.Title,
-            timeline);
+        ActiveSession session;
+        while (true)
+        {
+            var admission = sessionManager.GetOrCreateOpeningSession(
+                releaseId,
+                registered.WorkId,
+                media,
+                health.StatusLabel,
+                client,
+                requestedById,
+                requestedByName,
+                registered.Release.Title,
+                timeline);
+            session = admission.Session;
+            if (admission.Created)
+                break;
+
+            // Another resolve admitted this release while our health/materialization work was in
+            // flight. Await its single ffprobe rather than minting a second capability/file row.
+            var reused = await TryBuildReuseResponseAsync(session, streamUrlForToken, ct);
+            if (reused is not null)
+                return new SingleResolve(registered.WorkId, reused);
+        }
 
         FfprobeResult? probe;
         try
@@ -327,12 +355,17 @@ public sealed class ResolveService(
                 releaseId);
         }
 
+        // The capability must exist before ffprobe can read its loopback URL. Once probing has
+        // supplied duration, raise this session's pacing ceiling when necessary so Jellyfin's
+        // HLS remux can always produce segments ahead of realtime for high-bitrate media.
+        session.SetRunTimeTicks(probe?.RunTimeTicks);
+
         // Always-visible TTFF breakdown for the server console (per-span detail is at Debug).
         logger.LogInformation("[TTFF] resolve {ReleaseId} {Summary}", releaseId, timeline.Summarize());
 
         try
         {
-            return new SingleResolve(registered.WorkId, new ResolveResponse
+            var response = new ResolveResponse
             {
                 ReleaseId = releaseId,
                 Status = health.StatusLabel,
@@ -342,7 +375,11 @@ public sealed class ResolveService(
                 RunTimeTicks = probe?.RunTimeTicks,
                 MediaStreams = probe?.MediaStreams ?? [],
                 SessionTtlSeconds = ttlSeconds,
-            });
+            };
+            if (!session.CompleteOpening(probe))
+                throw new SessionUnavailableException(
+                    "The capability session closed or expired while the release was opening.");
+            return new SingleResolve(registered.WorkId, response);
         }
         catch
         {
@@ -354,6 +391,38 @@ public sealed class ResolveService(
     }
 
     private sealed record SingleResolve(string WorkId, ResolveResponse Response);
+
+    private async Task<ResolveResponse?> TryBuildReuseResponseAsync(
+        ActiveSession session,
+        Func<string, string> streamUrlForToken,
+        CancellationToken ct)
+    {
+        if (!await session.WaitUntilReadyAsync(ct))
+            return null;
+        if (!sessionManager.TryGetSession(session.Token, out var retained)
+            || !ReferenceEquals(session, retained))
+        {
+            return null;
+        }
+
+        retained.Touch();
+        var probe = retained.Probe;
+        logger.LogInformation(
+            "Resolve reused retained capability {Token} for release {ReleaseId}",
+            retained.Token[..8],
+            retained.Session.ReleaseId);
+        return new ResolveResponse
+        {
+            ReleaseId = retained.Session.ReleaseId,
+            Status = retained.Status,
+            StreamUrl = streamUrlForToken(retained.Token),
+            Container = retained.File.Container,
+            SizeBytes = retained.File.SizeBytes,
+            RunTimeTicks = probe?.RunTimeTicks,
+            MediaStreams = probe?.MediaStreams ?? [],
+            SessionTtlSeconds = options.Value.SessionTtlSeconds,
+        };
+    }
 
     internal static Task ObserveMaterializationAsync(Task<ResolvedMediaFile> task)
         => task.ContinueWith(

@@ -116,8 +116,8 @@ services:
       Streamarr__NzbCachePath: "/app/data/nzb"
       # Surface the [TTFF] request→first-frame span lines in the dev console (BRIEF §11).
       Serilog__MinimumLevel__Override__Streamarr: "Debug"
-      # Stream-pacing knobs (BRIEF §11 TTFF fix): overridable so TTFF experiments can scale
-      # the burst/sustain to the test content's bitrate without rebuilding the image.
+      # Stream-pacing knobs (BRIEF §11 TTFF fix): sustain is a floor; probed high-bitrate media
+      # is raised automatically so HLS segment production remains ahead of realtime playback.
       Streamarr__StreamPacingEnabled: "${STREAMARR_PACING_ENABLED:-true}"
       Streamarr__StreamPacingBurstBytes: "${STREAMARR_PACING_BURST_BYTES:-100663296}"
       Streamarr__StreamPacingSustainBytesPerSecond: "${STREAMARR_PACING_SUSTAIN_BPS:-6291456}"

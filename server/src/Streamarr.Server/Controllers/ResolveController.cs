@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc;
+using Streamarr.Server.Auth;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Services;
 using Streamarr.Usenet.Exceptions;
@@ -36,6 +37,18 @@ public class ResolveController(
         }
 
         var localBase = LocalBaseUrl();
+        var requestedById = request.RequestedById;
+        var requestedByName = request.RequestedByName;
+        if (string.IsNullOrWhiteSpace(requestedById)
+            && User.IsInRole(AuthRoles.Admin)
+            && !string.IsNullOrWhiteSpace(User.Identity?.Name))
+        {
+            // The web console does not put identity data in its resolve body. Derive a stable,
+            // authenticated requester key for retained-session reuse instead of treating all
+            // omitted ids (including machine clients) as one anonymous capability owner.
+            requestedById = $"streamarr-admin:{User.Identity.Name}";
+            requestedByName ??= User.Identity.Name;
+        }
 
         try
         {
@@ -43,8 +56,8 @@ public class ResolveController(
                 request.ReleaseId,
                 request.WorkId,
                 request.Client,
-                request.RequestedById,
-                request.RequestedByName,
+                requestedById,
+                requestedByName,
                 request.AutoFallback,
                 token => $"/api/v1/stream/{token}",
                 token => $"{localBase}/api/v1/stream/{token}",

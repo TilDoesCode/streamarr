@@ -151,7 +151,10 @@ public sealed class StreamarrOptions
     /// <summary>Bytes each stream request may read unpaced (keeps first frame, seeks and ffprobe instant).</summary>
     public long StreamPacingBurstBytes { get; set; } = 96L * 1024 * 1024;
 
-    /// <summary>Sustained per-stream delivery ceiling after the burst, in bytes per second.</summary>
+    /// <summary>
+    /// Sustained per-stream delivery floor after the burst, in bytes per second. Sessions with
+    /// probed media above this bitrate are automatically raised to twice their average byte rate.
+    /// </summary>
     public int StreamPacingSustainBytesPerSecond { get; set; } = 6 * 1024 * 1024;
 
     public string FfprobePath { get; set; } = "ffprobe";

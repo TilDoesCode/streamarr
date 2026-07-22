@@ -1,10 +1,13 @@
+import { type MouseEvent, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUpRight, Box, Clock3, HardDrive, Radio, UserRound } from "lucide-react";
-import { useEphemeralFiles } from "@/api/queries";
+import { AlertTriangle, ArrowUpRight, Box, Clock3, HardDrive, Loader2, Radio, Trash2, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import { useEphemeralFiles, usePurgeEphemeralFile } from "@/api/queries";
 import type { EphemeralFileResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
 import { EmptyOpsState, OpsHero, OpsMetric, OpsMetrics } from "@/components/ops-page";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatBytes, timeAgo } from "@/lib/utils";
 
 export function EphemeralFilesPage() {
@@ -85,6 +88,7 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground" title={file.fileName ?? undefined}>{file.fileName}</p>
             </div>
+            <PurgeControl file={file} />
           </div>
 
           <div className="mt-6">
@@ -116,6 +120,82 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
         <span className="truncate">release / {file.releaseId}</span>
       </div>
     </article>
+  );
+}
+
+/**
+ * Manual cache reclaim for one ephemeral file. Sits above the card's inspect overlay (z-[2])
+ * and swallows the click so purging never navigates to the stream page. Actively streamed files
+ * render a disabled control — the server also refuses them, so this only mirrors that guard in the
+ * UI rather than enforcing it.
+ */
+function PurgeControl({ file }: { file: EphemeralFileResponse }) {
+  const purge = usePurgeEphemeralFile();
+  const [confirming, setConfirming] = useState(false);
+
+  const swallow = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  async function onPurge(event: MouseEvent) {
+    swallow(event);
+    if (!file.token) return;
+    try {
+      await purge.mutateAsync(file.token);
+      toast.success("Ephemeral file purged.");
+    } catch (err) {
+      toast.error(errorMessage(err));
+      setConfirming(false);
+    }
+  }
+
+  if (file.isStreaming) {
+    return (
+      <div className="relative z-[2] shrink-0">
+        <Button size="sm" variant="outline" disabled title="Actively streaming — cannot be purged">
+          <Radio className="size-4" />
+          Streaming
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative z-[2] flex shrink-0 items-center gap-1">
+      {confirming ? (
+        <>
+          <Button size="sm" variant="destructive" onClick={onPurge} disabled={purge.isPending}>
+            {purge.isPending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            Confirm
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(event) => {
+              swallow(event);
+              setConfirming(false);
+            }}
+            disabled={purge.isPending}
+          >
+            Cancel
+          </Button>
+        </>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(event) => {
+            swallow(event);
+            setConfirming(true);
+          }}
+          aria-label={`Purge ephemeral file ${file.title ?? file.releaseId ?? ""}`}
+        >
+          <Trash2 className="size-4" />
+          Purge
+        </Button>
+      )}
+    </div>
   );
 }
 

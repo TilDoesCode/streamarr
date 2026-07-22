@@ -185,6 +185,9 @@ public sealed record EphemeralFileResponse
     public double EstimatedStreamedPercent { get; init; }
     public int CachedChunks { get; init; }
     public long StorageBytes { get; init; }
+
+    /// <summary>True while at least one HTTP stream is open; such files cannot be manually purged.</summary>
+    public bool IsStreaming { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset LastAccessedAt { get; init; }
     public DateTimeOffset PurgeAt { get; init; }

@@ -443,6 +443,69 @@
         }
       }
     },
+    "/api/v1/ephemeral-files/{token}/purge": {
+      "post": {
+        "tags": [
+          "EphemeralFiles"
+        ],
+        "summary": "Manually purges one idle ephemeral file from the server-owned cache. Refuses with 409\r\nwhile the file is being actively streamed so operator cleanup never interrupts playback.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events": {
       "post": {
         "tags": [
@@ -3937,6 +4000,10 @@
           "storageBytes": {
             "type": "integer",
             "format": "int64"
+          },
+          "isStreaming": {
+            "type": "boolean",
+            "description": "True while at least one HTTP stream is open; such files cannot be manually purged."
           },
           "createdAt": {
             "type": "string",

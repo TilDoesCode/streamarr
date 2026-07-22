@@ -18,8 +18,11 @@ namespace Streamarr.Server.Services;
 public sealed class ActiveSession
 {
     private long _bytesServed;
+    private long _runTimeTicks;
     private int _openStreamCount;
     private int _closed;
+    private readonly TaskCompletionSource<bool> _openingCompleted = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _lifecycleGate = new();
     private readonly StreamarrMetrics? _metrics;
     private readonly SegmentCache? _segmentCache;
@@ -34,7 +37,9 @@ public sealed class ActiveSession
         StreamarrMetrics? metrics = null,
         SegmentCache? segmentCache = null,
         string? title = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        string status = "ready",
+        bool opening = false)
     {
         Session = session;
         File = file;
@@ -45,6 +50,9 @@ public sealed class ActiveSession
         _segmentCache = segmentCache;
         _time = time ?? TimeProvider.System;
         Title = string.IsNullOrWhiteSpace(title) ? file.FileName : title;
+        Status = status;
+        if (!opening)
+            _openingCompleted.TrySetResult(true);
     }
 
     public StreamSession Session { get; }
@@ -53,6 +61,8 @@ public sealed class ActiveSession
     public CountingNntpGate NntpUsage { get; }
     public string ContentType { get; }
     public string Title { get; }
+    public string Status { get; }
+    public FfprobeResult? Probe { get; private set; }
 
     /// <summary>
     /// Request→first-frame timing for this playback attempt (BRIEF §11 diagnostics). Populated
@@ -66,6 +76,20 @@ public sealed class ActiveSession
     // SessionStream checks this for every body read. Keep the playback hot path lock-free; the
     // lifecycle gate is still used where open/close admission must be serialized.
     public bool IsClosed => Volatile.Read(ref _closed) != 0;
+
+    /// <summary>
+    /// True while at least one HTTP stream is open over this file. A manual purge refuses to
+    /// evict an actively streamed file so in-flight playback is never torn out from under a
+    /// client; the hard-TTL sweep and LRU eviction are deliberately not subject to this guard.
+    /// </summary>
+    public bool IsStreaming
+    {
+        get
+        {
+            lock (_lifecycleGate)
+                return _openStreamCount > 0;
+        }
+    }
 
     public DateTimeOffset ExpiresAt
     {
@@ -128,6 +152,41 @@ public sealed class ActiveSession
         _metrics?.AddBytesServed(count);
     }
 
+    /// <summary>
+    /// Supplies the probed duration after resolve's loopback ffprobe has completed. The session
+    /// must exist before that probe can read it, so duration cannot be provided at construction.
+    /// External playback URLs are not returned until after this value has been set.
+    /// </summary>
+    internal void SetRunTimeTicks(long? runTimeTicks)
+        => Volatile.Write(ref _runTimeTicks, runTimeTicks is > 0 ? runTimeTicks.Value : 0);
+
+    internal double GetPacingSustainBytesPerSecond(double configuredFloor)
+        => StreamPacer.SelectSustainBytesPerSecond(
+            File.SizeBytes,
+            Volatile.Read(ref _runTimeTicks),
+            configuredFloor);
+
+    /// <summary>
+    /// Resolves can share an already-admitted release while its first ffprobe is still running.
+    /// Waiting callers receive the same capability only after its response metadata is complete.
+    /// </summary>
+    internal Task<bool> WaitUntilReadyAsync(CancellationToken ct)
+        => _openingCompleted.Task.WaitAsync(ct);
+
+    internal bool CompleteOpening(FfprobeResult? probe)
+    {
+        lock (_lifecycleGate)
+        {
+            if (_closed != 0)
+                return false;
+
+            Probe = probe;
+            Session.State = SessionState.Ready;
+            _openingCompleted.TrySetResult(true);
+            return true;
+        }
+    }
+
     internal void MarkClosed()
     {
         lock (_lifecycleGate)
@@ -135,7 +194,43 @@ public sealed class ActiveSession
             Volatile.Write(ref _closed, 1);
             Session.State = SessionState.Closed;
         }
+        _openingCompleted.TrySetResult(false);
     }
+
+    /// <summary>
+    /// Atomically closes the file only when no HTTP stream is open. Shares the lifecycle gate
+    /// with <see cref="TryOpenStream"/>, so a stream that opens concurrently is either admitted
+    /// before the purge (and observed here) or refused afterwards — the guard can never race a
+    /// stream open. Returns false when the file is being streamed or is already closed.
+    /// </summary>
+    internal bool TryPurgeIfIdle()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_closed != 0 || _openStreamCount > 0)
+                return false;
+
+            Volatile.Write(ref _closed, 1);
+            Session.State = SessionState.Closed;
+        }
+        _openingCompleted.TrySetResult(false);
+        return true;
+    }
+}
+
+public readonly record struct SessionAdmission(ActiveSession Session, bool Created);
+
+/// <summary>Result of a manual ephemeral-file purge request.</summary>
+public enum PurgeOutcome
+{
+    /// <summary>No live ephemeral file exists for the supplied token.</summary>
+    NotFound,
+
+    /// <summary>The file is being actively streamed and was left in place.</summary>
+    Streaming,
+
+    /// <summary>The idle file was purged from the cache.</summary>
+    Purged,
 }
 
 /// <summary>
@@ -175,50 +270,175 @@ public sealed class SessionManager(
     {
         lock (_createGate)
         {
+            return CreateSessionLocked(
+                releaseId,
+                workId,
+                file,
+                client,
+                requestedById,
+                requestedByName,
+                title,
+                timeline,
+                status: "ready",
+                opening: false);
+        }
+    }
+
+    /// <summary>
+    /// Reuses the live capability for the same release and originating requester, or atomically
+    /// admits one opening session. Matching the stable requester id prevents capability sharing
+    /// across users while allowing pause/resume and client source reopens to retain one file.
+    /// </summary>
+    public SessionAdmission GetOrCreateOpeningSession(
+        string releaseId,
+        string workId,
+        ResolvedMediaFile file,
+        string status,
+        string? client,
+        string? requestedById = null,
+        string? requestedByName = null,
+        string? title = null,
+        TtffTimeline? timeline = null)
+    {
+        lock (_createGate)
+        {
             var now = _time.GetUtcNow();
             SweepExpiredLocked(now);
-            MakeRoomFor(file.SizeBytes);
-            while (_sessions.Count >= options.Value.MaxSessions)
+            if (FindReusableLocked(releaseId, workId, client, requestedById) is { } reusable)
             {
-                if (!EvictLeastRecentlyUsed("session-count limit"))
-                    throw new ResourceCapacityException("The live session limit has been reached.");
+                reusable.Touch();
+                logger.LogInformation(
+                    "Reusing capability session {Token} for release {ReleaseId} and requester {RequestedById}",
+                    reusable.Token[..8],
+                    releaseId,
+                    requestedById ?? requestedByName ?? "unknown");
+                return new SessionAdmission(reusable, Created: false);
             }
 
-            // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
-            var usage = new CountingNntpGate();
-            var sessionClient = new GatedNntpClient(nntpClient, usage);
-
-            ActiveSession active;
-            do
-            {
-                var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
-                var session = new StreamSession
-                {
-                    Token = token,
-                    ReleaseId = releaseId,
-                    WorkId = workId,
-                    CreatedAt = now,
-                    LastAccessedAt = now,
-                    TimeToLive = TimeSpan.FromSeconds(options.Value.SessionTtlSeconds),
-                    Container = file.Container,
-                    SizeBytes = file.SizeBytes,
-                    Client = client,
-                    RequestedById = requestedById,
-                    RequestedByName = requestedByName,
-                    State = SessionState.Ready,
-                };
-                active = new ActiveSession(session, file, sessionClient, usage, metrics, segmentCache, title, _time)
-                {
-                    Timeline = timeline,
-                };
-            } while (!_sessions.TryAdd(active.Token, active));
-
-            metrics?.SessionOpened();
-            logger.LogInformation(
-                "Opened capability session for release {ReleaseId} ({FileName}, {SizeBytes} bytes, ttl {Ttl})",
-                releaseId, file.FileName, file.SizeBytes, active.Session.TimeToLive);
-            return active;
+            return new SessionAdmission(
+                CreateSessionLocked(
+                    releaseId,
+                    workId,
+                    file,
+                    client,
+                    requestedById,
+                    requestedByName,
+                    title,
+                    timeline,
+                    status,
+                    opening: true),
+                Created: true);
         }
+    }
+
+    public ActiveSession? FindReusableSession(
+        string releaseId,
+        string workId,
+        string? client,
+        string? requestedById = null)
+    {
+        lock (_createGate)
+        {
+            SweepExpiredLocked(_time.GetUtcNow());
+            var reusable = FindReusableLocked(releaseId, workId, client, requestedById);
+            reusable?.Touch();
+            return reusable;
+        }
+    }
+
+    private ActiveSession? FindReusableLocked(
+        string releaseId,
+        string workId,
+        string? client,
+        string? requestedById)
+    {
+        // A client label or display name is not an authorization boundary. Only reuse a
+        // capability when the caller supplies Jellyfin's stable requester id; otherwise two
+        // anonymous users playing the same release could receive the same stream token.
+        if (string.IsNullOrWhiteSpace(requestedById))
+            return null;
+
+        return _sessions.Values
+            .Where(session =>
+                !session.IsExpired(_time.GetUtcNow())
+                && string.Equals(session.Session.ReleaseId, releaseId, StringComparison.Ordinal)
+                && string.Equals(session.Session.WorkId, workId, StringComparison.Ordinal)
+                && string.Equals(session.Session.Client, client, StringComparison.Ordinal)
+                && string.Equals(session.Session.RequestedById, requestedById, StringComparison.Ordinal))
+            .OrderByDescending(session => session.Session.State == SessionState.Ready)
+            .ThenByDescending(session => session.Session.LastAccessedAt)
+            .ThenByDescending(session => session.Session.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    private ActiveSession CreateSessionLocked(
+        string releaseId,
+        string workId,
+        ResolvedMediaFile file,
+        string? client,
+        string? requestedById,
+        string? requestedByName,
+        string? title,
+        TtffTimeline? timeline,
+        string status,
+        bool opening)
+    {
+        var now = _time.GetUtcNow();
+        SweepExpiredLocked(now);
+        MakeRoomFor(file.SizeBytes);
+        while (_sessions.Count >= options.Value.MaxSessions)
+        {
+            if (!EvictLeastRecentlyUsed("session-count limit"))
+                throw new ResourceCapacityException("The live session limit has been reached.");
+        }
+
+        // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
+        var usage = new CountingNntpGate();
+        var sessionClient = new GatedNntpClient(nntpClient, usage);
+
+        ActiveSession active;
+        do
+        {
+            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+            var session = new StreamSession
+            {
+                Token = token,
+                ReleaseId = releaseId,
+                WorkId = workId,
+                CreatedAt = now,
+                LastAccessedAt = now,
+                TimeToLive = TimeSpan.FromSeconds(options.Value.SessionTtlSeconds),
+                Container = file.Container,
+                SizeBytes = file.SizeBytes,
+                Client = client,
+                RequestedById = requestedById,
+                RequestedByName = requestedByName,
+                State = opening ? SessionState.Opening : SessionState.Ready,
+            };
+            active = new ActiveSession(
+                session,
+                file,
+                sessionClient,
+                usage,
+                metrics,
+                segmentCache,
+                title,
+                _time,
+                status,
+                opening)
+            {
+                Timeline = timeline,
+            };
+        } while (!_sessions.TryAdd(active.Token, active));
+
+        metrics?.SessionOpened();
+        logger.LogInformation(
+            "Opened capability session for release {ReleaseId} ({FileName}, {SizeBytes} bytes, ttl {Ttl})",
+            releaseId,
+            file.FileName,
+            file.SizeBytes,
+            active.Session.TimeToLive);
+        return active;
     }
 
     public bool TryGetSession(string token, out ActiveSession session)
@@ -258,18 +478,20 @@ public sealed class SessionManager(
             var openMs = session.Timeline?.ElapsedMs;
 
             var o = options.Value;
+            var sustainBytesPerSecond = session.GetPacingSustainBytesPerSecond(
+                o.StreamPacingSustainBytesPerSecond);
             var pacer = o.StreamPacingEnabled
                 ? new StreamPacer(
                     o.StreamPacingBurstBytes,
-                    o.StreamPacingSustainBytesPerSecond,
+                    sustainBytesPerSecond,
                     onEngaged: () =>
                     {
                         logger.LogDebug(
                             "[TTFF] {Token} stream pacing engaged after {BurstBytes} bytes (sustain {SustainBytesPerSecond} B/s)",
-                            session.Token[..8], o.StreamPacingBurstBytes, o.StreamPacingSustainBytesPerSecond);
+                            session.Token[..8], o.StreamPacingBurstBytes, sustainBytesPerSecond);
                         session.Timeline?.Add(
                             "pacing-engaged", "stream", session.Timeline.ElapsedMs, 0,
-                            detail: $"sustain={o.StreamPacingSustainBytesPerSecond}B/s");
+                            detail: $"sustain={sustainBytesPerSecond:F0}B/s");
                     })
                 : null;
 
@@ -310,6 +532,28 @@ public sealed class SessionManager(
             "Closed capability session for release {ReleaseId} ({BytesServed} bytes served)",
             session.Session.ReleaseId, session.BytesServed);
         return true;
+    }
+
+    /// <summary>
+    /// Manually purges one ephemeral file, refusing to evict a file that is being actively
+    /// streamed so an operator cannot tear playback out from under a client. Unlike
+    /// <see cref="CloseSession"/> (which force-closes regardless of streaming), this is the
+    /// operator-facing "reclaim idle cache now" control.
+    /// </summary>
+    public PurgeOutcome PurgeSession(string token)
+    {
+        if (!TryGetSession(token, out var session))
+            return PurgeOutcome.NotFound;
+
+        if (!session.TryPurgeIfIdle())
+            return PurgeOutcome.Streaming;
+
+        _sessions.TryRemove(token, out _);
+        metrics?.SessionClosed();
+        logger.LogInformation(
+            "Purged ephemeral file for release {ReleaseId} ({BytesServed} bytes served) on operator request",
+            session.Session.ReleaseId, session.BytesServed);
+        return PurgeOutcome.Purged;
     }
 
     public IReadOnlyList<ActiveSession> ListSessions()
@@ -505,16 +749,43 @@ internal sealed class SessionStream(
 /// <summary>
 /// Per-request output pacing: a generous unpaced startup burst (fast first frame, fast
 /// seeks — every new Range request gets a fresh burst — and an unaffected ffprobe), then a
-/// sustained byte-rate ceiling still far above realtime playback. This is the server-side
-/// stand-in for Jellyfin's transcode throttler, which never engages for HTTP inputs
-/// (TranscodeManager.EnableThrottling requires MediaProtocol.File): without pacing, one
-/// ffmpeg stream-copy races the entire release at wire speed, and abandoned transcodes keep
-/// racing, starving concurrent playback into minutes of TTFF (measured 52–134 s).
+/// media-aware sustained byte rate at least twice the file's average bitrate. This is the
+/// server-side stand-in for Jellyfin's transcode throttler, which never engages for HTTP
+/// inputs (TranscodeManager.EnableThrottling requires MediaProtocol.File): without pacing,
+/// one ffmpeg stream-copy races the entire release at wire speed, and abandoned transcodes
+/// keep racing, starving concurrent playback into minutes of TTFF (measured 52–134 s).
 /// </summary>
 internal sealed class StreamPacer(long burstBytes, double sustainBytesPerSecond, Action? onEngaged = null)
 {
+    // HLS remuxing needs to produce segments ahead of the playhead, not merely match the
+    // file's average bitrate. Two times average leaves room for variable-bitrate peaks while
+    // still preventing ffmpeg from racing an entire release at provider wire speed.
+    internal const double RealtimeHeadroomMultiplier = 2;
+
     private long _total;
     private long _paceStartTimestamp;
+
+    /// <summary>
+    /// Selects a correctness-safe pacing rate. The configured value is a floor, while known
+    /// media must be allowed to arrive faster than real time. A fixed global ceiling made
+    /// high-bitrate Swiftfin HLS playback drain the startup burst and then permanently starve
+    /// Jellyfin's next segment even though Core kept downloading in the background.
+    /// </summary>
+    internal static double SelectSustainBytesPerSecond(
+        long sizeBytes,
+        long runTimeTicks,
+        double configuredFloor)
+    {
+        if (sizeBytes <= 0 || runTimeTicks <= 0)
+            return configuredFloor;
+
+        var durationSeconds = runTimeTicks / (double)TimeSpan.TicksPerSecond;
+        var mediaRate = sizeBytes / durationSeconds;
+        if (!double.IsFinite(mediaRate) || mediaRate <= 0)
+            return configuredFloor;
+
+        return Math.Max(configuredFloor, mediaRate * RealtimeHeadroomMultiplier);
+    }
 
     /// <summary>Delays after a read once the burst is spent, holding the stream to the sustain rate.</summary>
     public async ValueTask PaceAsync(int justRead, CancellationToken ct)
