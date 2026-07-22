@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.9.1.0",
+        "changelog": "Reuse a retained capability on pause/resume and Jellyfin source reopens instead of repeating NZB, health, materialization, and ffprobe work, and deduplicate concurrent resolves of the same release; add an admin-only manual purge for idle ephemeral files that refuses to interrupt active streams; raise per-stream pacing to keep high-bitrate remuxes ahead of realtime; and key retained sessions to the authenticated console user.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.9.1/streamarr-jellyfin-0.9.1.zip",
+        "checksum": "4079e8adb189bb4af0843140d82aba68",
+        "timestamp": "2026-07-22T16:35:42Z"
+      },
+      {
         "version": "0.9.0.0",
         "changelog": "Fix the resume and seek playback-latency regression with header-only seek probes, a read pacer, and fairer NNTP connection-pool sharing; bound the ephemeral cache with a configurable budget; surface per-stream time-to-first-frame diagnostics; and harden escalated ffprobe analysis and cached artwork badges.",
         "targetAbi": "10.11.11.0",
