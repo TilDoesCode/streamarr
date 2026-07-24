@@ -14,7 +14,10 @@ public sealed class ProfileImportException(string message, bool requestError = f
 }
 
 /// <summary>Reads and translates Sonarr/Radarr quality profiles and custom-format scores.</summary>
-public sealed class ProfileImportService(HttpClient http, TimeProvider timeProvider)
+public sealed class ProfileImportService(
+    HttpClient http,
+    TimeProvider timeProvider,
+    ILogger<ProfileImportService> logger)
 {
     private const int MaxResponseBytes = 4 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -121,7 +124,19 @@ public sealed class ProfileImportService(HttpClient http, TimeProvider timeProvi
             throw new ProfileImportException("The API response was larger than the import limit.");
 
         await response.Content.LoadIntoBufferAsync(MaxResponseBytes);
-        return await response.Content.ReadFromJsonAsync<T>(Json, ct);
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(Json, ct);
+        }
+        catch (JsonException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Profile import endpoint {Endpoint} returned unreadable JSON at path {JsonPath}",
+                endpoint,
+                exception.Path ?? "(unknown)");
+            throw;
+        }
     }
 
     private static ProfileImportPreviewResponse MapPreview(string source, LoadedArr loaded)
@@ -378,9 +393,13 @@ public sealed class ProfileImportService(HttpClient http, TimeProvider timeProvi
     }
 
     private static JsonElement? Field(ArrSpecification specification, string name)
-        => specification.Fields is not null && specification.Fields.TryGetValue(name, out var value)
-            ? value
+    {
+        var field = specification.Fields?.FirstOrDefault(
+            candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+        return field is not null && field.Value.ValueKind != JsonValueKind.Undefined
+            ? field.Value
             : null;
+    }
 
     private static double? NumberField(ArrSpecification specification, string name)
     {
@@ -498,6 +517,12 @@ public sealed class ProfileImportService(HttpClient http, TimeProvider timeProvi
         public string? Implementation { get; init; }
         public bool Negate { get; init; }
         public bool Required { get; init; }
-        public Dictionary<string, JsonElement>? Fields { get; init; }
+        public List<ArrField>? Fields { get; init; }
+    }
+
+    private sealed record ArrField
+    {
+        public string? Name { get; init; }
+        public JsonElement Value { get; init; }
     }
 }
