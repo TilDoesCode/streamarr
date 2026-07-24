@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.9.2.0",
+        "changelog": "Fix Sonarr/Radarr custom-format profile imports: specification fields are returned as an array of name/value objects, but were read as a map, so custom-format scoring silently produced no matches. Parse fields as a list (case-insensitively by name), and log the endpoint and JSON path when a profile-import response is unreadable without leaking the API key.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.9.2/streamarr-jellyfin-0.9.2.zip",
+        "checksum": "6a3af0e3f209f8f45850a86d361f85ab",
+        "timestamp": "2026-07-24T20:18:56Z"
+      },
+      {
         "version": "0.9.1.0",
         "changelog": "Reuse a retained capability on pause/resume and Jellyfin source reopens instead of repeating NZB, health, materialization, and ffprobe work, and deduplicate concurrent resolves of the same release; add an admin-only manual purge for idle ephemeral files that refuses to interrupt active streams; raise per-stream pacing to keep high-bitrate remuxes ahead of realtime; and key retained sessions to the authenticated console user.",
         "targetAbi": "10.11.11.0",
