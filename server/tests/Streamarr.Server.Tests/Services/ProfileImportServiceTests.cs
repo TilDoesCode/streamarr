@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 
@@ -12,7 +14,7 @@ public sealed class ProfileImportServiceTests
     {
         var handler = new ArrHandler();
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(2) };
-        var service = new ProfileImportService(http, TimeProvider.System);
+        var service = CreateService(http);
 
         var result = await service.PreviewAsync(new ProfileImportPreviewRequest
         {
@@ -38,7 +40,7 @@ public sealed class ProfileImportServiceTests
     public async Task Import_UsesOperatorScopeAndNeverReturnsTheApiKey()
     {
         using var http = new HttpClient(new ArrHandler());
-        var service = new ProfileImportService(http, TimeProvider.System);
+        var service = CreateService(http);
         var imported = await service.BuildImportsAsync(new ProfileImportRequest
         {
             Source = "radarr",
@@ -60,7 +62,7 @@ public sealed class ProfileImportServiceTests
     {
         var handler = new ArrHandler();
         using var http = new HttpClient(handler);
-        var service = new ProfileImportService(http, TimeProvider.System);
+        var service = CreateService(http);
 
         var exception = await Assert.ThrowsAsync<ProfileImportException>(() => service.PreviewAsync(
             new ProfileImportPreviewRequest
@@ -75,8 +77,43 @@ public sealed class ProfileImportServiceTests
         Assert.Empty(handler.Requests);
     }
 
+    [Fact]
+    public async Task Preview_UnreadableResponse_LogsEndpointAndJsonPathWithoutSecrets()
+    {
+        var logger = new CapturingLogger();
+        using var http = new HttpClient(new ArrHandler("""[{"specifications":[{"fields":{}}]}]"""));
+        var service = CreateService(http, logger);
+
+        var exception = await Assert.ThrowsAsync<ProfileImportException>(() => service.PreviewAsync(
+            new ProfileImportPreviewRequest
+            {
+                Source = "sonarr",
+                BaseUrl = "http://sonarr.test",
+                ApiKey = "never-log-this-key",
+            },
+            default));
+
+        Assert.Equal("Sonarr returned an unreadable API response.", exception.Message);
+        var log = Assert.Single(logger.Messages);
+        Assert.Contains("customformat", log);
+        Assert.Contains("$[0].specifications[0].fields", log);
+        Assert.DoesNotContain("never-log-this-key", log);
+    }
+
+    private static ProfileImportService CreateService(
+        HttpClient http,
+        ILogger<ProfileImportService>? logger = null) =>
+        new(http, TimeProvider.System, logger ?? NullLogger<ProfileImportService>.Instance);
+
     private sealed class ArrHandler : HttpMessageHandler
     {
+        private readonly string? _customFormats;
+
+        public ArrHandler(string? customFormats = null)
+        {
+            _customFormats = customFormats;
+        }
+
         public List<(string Path, string? ApiKey)> Requests { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -87,7 +124,8 @@ public sealed class ProfileImportServiceTests
                 var path when path.EndsWith("/system/status", StringComparison.Ordinal) =>
                     """{"instanceName":"Cinema","version":"5.2.0"}""",
                 var path when path.EndsWith("/qualityprofile", StringComparison.Ordinal) => QualityProfiles,
-                var path when path.EndsWith("/customformat", StringComparison.Ordinal) => CustomFormats,
+                var path when path.EndsWith("/customformat", StringComparison.Ordinal) =>
+                    _customFormats ?? CustomFormats,
                 _ => "{}",
             };
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -115,10 +153,27 @@ public sealed class ProfileImportServiceTests
               "id": 11,
               "name": "Avoid LQ",
               "specifications": [
-                { "name": "LQ title", "implementation": "ReleaseTitleSpecification", "required": false, "negate": false, "fields": { "value": "\\bLQ\\b" } },
-                { "name": "WEB", "implementation": "SourceSpecification", "required": true, "negate": false, "fields": { "value": 7 } }
+                { "name": "LQ title", "implementation": "ReleaseTitleSpecification", "required": false, "negate": false, "fields": [{ "name": "value", "value": "\\bLQ\\b", "type": "textbox" }] },
+                { "name": "WEB", "implementation": "SourceSpecification", "required": true, "negate": false, "fields": [{ "name": "value", "value": 7, "type": "select" }] }
               ]
             }]
             """;
+    }
+
+    private sealed class CapturingLogger : ILogger<ProfileImportService>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 }
