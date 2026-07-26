@@ -1329,6 +1329,49 @@
         }
       }
     },
+    "/api/v1/library/releases/{releaseId}/download": {
+      "get": {
+        "tags": [
+          "Library"
+        ],
+        "summary": "Downloads the raw cached .nzb file so an administrator can hand it to another tool.",
+        "parameters": [
+          {
+            "name": "releaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/metrics": {
       "get": {
         "tags": [

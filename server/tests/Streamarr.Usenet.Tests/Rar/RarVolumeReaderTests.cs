@@ -56,6 +56,21 @@ public class RarVolumeReaderTests
         await Assert.ThrowsAsync<UnsupportedRarCompressionMethodException>(() => ReadVolume(fixture));
     }
 
+    /// <summary>
+    /// Header-encrypted archives (RAR's -hp option) can't be enumerated by SharpCompress
+    /// at all without a password: it throws SharpCompress.Common.CryptographicException
+    /// mid-walk, before any header reaches our own per-file GetIsEncrypted() check. That
+    /// used to escape RarVolumeReader unhandled and crash /resolve with a 500 instead of
+    /// the same "unsupported, password-protected" contract as other rejected archives.
+    /// </summary>
+    [Fact]
+    public async Task HeaderEncryptedArchive_IsRejectedAsUnsupported_NotRawCryptographicException()
+    {
+        var ex = await Assert.ThrowsAsync<UnsupportedRarCompressionMethodException>(
+            () => ReadVolume("encrypted-header-rar4.rar"));
+        Assert.IsType<SharpCompress.Common.CryptographicException>(ex.InnerException);
+    }
+
     [Theory]
     [InlineData("movie.part1.rar", 1)]
     [InlineData("movie.part017.rar", 17)]

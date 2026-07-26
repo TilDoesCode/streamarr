@@ -26,6 +26,42 @@ for file in Streamarr.Plugin.dll meta.json; do
   test -s "$tmp_dir/plugin/$file"
 done
 
+# Guard against the exact incident this repo already shipped once: meta.json said
+# 0.9.2.0 but the compiled Streamarr.Plugin.dll's AssemblyVersion/FileVersion were
+# still 0.8.0.0, because those were hardcoded as separate literals in
+# Streamarr.Plugin.csproj and didn't track -p:Version passed by package-release.sh.
+# The csproj no longer hardcodes them (see the comment there), but this check makes
+# sure nobody reintroduces that drift without a release ever noticing.
+command -v dotnet >/dev/null || {
+  echo "dotnet is required to verify the compiled plugin's assembly version." >&2
+  exit 1
+}
+checker_dir="$tmp_dir/assembly-version-check"
+mkdir -p "$checker_dir"
+cat > "$checker_dir/checker.csproj" <<'CSPROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+</Project>
+CSPROJ
+cat > "$checker_dir/Program.cs" <<'CS'
+var path = args[0];
+var asm = System.Reflection.AssemblyName.GetAssemblyName(path);
+var fvi = System.Diagnostics.FileVersionInfo.GetVersionInfo(path);
+System.Console.WriteLine($"{asm.Version}|{fvi.FileVersion}");
+CS
+version_info="$(dotnet run --project "$checker_dir" --configuration Release -- "$tmp_dir/plugin/Streamarr.Plugin.dll")"
+assembly_version="${version_info%%|*}"
+file_version="${version_info##*|}"
+expected_assembly_version="$version.0"
+[[ "$assembly_version" == "$expected_assembly_version" && "$file_version" == "$expected_assembly_version" ]] || {
+  echo "Streamarr.Plugin.dll has AssemblyVersion=$assembly_version FileVersion=$file_version but the release version is $expected_assembly_version." >&2
+  echo "Check Streamarr.Plugin.csproj for a reintroduced hardcoded Version/AssemblyVersion/FileVersion." >&2
+  exit 1
+}
+
 # The Jellyfin plugin-repository manifest must be valid JSON and advertise this
 # release's plugin zip (matching sourceUrl and MD5 checksum) so an existing
 # Jellyfin server can install it from a URL.

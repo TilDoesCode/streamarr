@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Archive, Database, FileArchive, Loader2, Search, Trash2 } from "lucide-react";
+import { Archive, Database, Download, FileArchive, Loader2, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useCachedReleases, useRemoveCachedRelease } from "@/api/queries";
+import { cachedReleaseDownloadUrl, useCachedReleases, useRemoveCachedRelease } from "@/api/queries";
 import type { CachedReleaseResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
@@ -127,9 +127,16 @@ function ReleaseCard({ release }: { release: CachedReleaseResponse }) {
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>Cancel</Button>
           </div>
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => setConfirming(true)} className="text-muted-foreground hover:text-destructive">
-            <Trash2 /> Purge NZB
-          </Button>
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" asChild>
+              <a href={cachedReleaseDownloadUrl(release.releaseId ?? "")} download aria-label={`Download NZB for ${release.title ?? "release"}`}>
+                <Download /> Download
+              </a>
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(true)} className="text-muted-foreground hover:text-destructive">
+              <Trash2 /> Purge NZB
+            </Button>
+          </div>
         )}
       </div>
     </article>

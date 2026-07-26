@@ -126,7 +126,8 @@ public class MediaFileMaterializer(
                     articleBufferSize: 0,
                     openedFirstSegment: firstBody.Stream);
                 firstBodyTransferred = true;
-                parsedVolumes[i] = await RarVolumeReader.ReadAsync(headerStream, file.GetSubjectFileName(), token);
+                parsedVolumes[i] = await RarVolumeReader.ReadAsync(
+                    headerStream, file.GetSubjectFileName(), token, candidate.Password);
             }
             finally
             {
@@ -168,7 +169,8 @@ public class MediaFileMaterializer(
                         segmentCache,
                         retryCount,
                         startupArticleBufferSize: startupReadAhead,
-                        startupReadAheadSegments: startupSegments))),
+                        startupReadAheadSegments: startupSegments)),
+                candidate.Password),
             OpenObservedStream = (client, onSegmentRequested) => new RarStoredFileStream(
                 media,
                 (partIndex, _) => new ValueTask<Stream>(
@@ -181,7 +183,8 @@ public class MediaFileMaterializer(
                         retryCount,
                         onSegmentRequested,
                         startupReadAhead,
-                        startupSegments))),
+                        startupSegments)),
+                candidate.Password),
         };
     }
 

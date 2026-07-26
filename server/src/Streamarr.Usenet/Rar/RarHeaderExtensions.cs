@@ -27,6 +27,16 @@ public static class RarHeaderExtensions
         return property.GetValue(obj);
     }
 
+    private static object? GetReflectionField(object obj, string fieldName)
+    {
+        var field = obj.GetType().GetField(
+            fieldName,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (field == null)
+            throw new MissingMemberException(obj.GetType().FullName, fieldName);
+        return field.GetValue(obj);
+    }
+
     public static byte GetCompressionMethod(this IRarHeader header)
     {
         return (byte)header.GetReflectionProperty("CompressionMethod")!;
@@ -101,5 +111,27 @@ public static class RarHeaderExtensions
     public static bool GetIsRar5(this IRarHeader header)
     {
         return (bool)header.GetReflectionProperty("IsRar5")!;
+    }
+
+    /// <summary>
+    /// RAR5 per-file AES-256-CBC encryption parameters (salt/IV/KDF round count),
+    /// read from SharpCompress's internal <c>FileHeader.Rar5CryptoInfo</c>. Null when
+    /// the entry isn't encrypted, or uses legacy (RAR3/4) encryption instead.
+    /// </summary>
+    public static RarFileCrypto? GetRar5Crypto(this IRarHeader header)
+    {
+        var info = header.GetReflectionProperty("Rar5CryptoInfo");
+        if (info is null)
+            return null;
+
+        var salt = (byte[])GetReflectionField(info, "Salt")!;
+        var initV = (byte[])GetReflectionField(info, "InitV")!;
+        var lg2Count = (int)GetReflectionField(info, "LG2Count")!;
+        return new RarFileCrypto
+        {
+            Salt = salt,
+            InitV = initV,
+            Lg2Count = lg2Count,
+        };
     }
 }

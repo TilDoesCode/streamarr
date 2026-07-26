@@ -236,6 +236,16 @@ export function useRemoveCachedRelease() {
   });
 }
 
+/**
+ * Same-origin URL for downloading a cached release's raw .nzb file. Rendered as a plain
+ * `<a href download>` rather than fetched via `apiFetch` — normal browser navigation already
+ * carries the admin session's HttpOnly cookie, and a real anchor lets the browser drive the
+ * file save instead of buffering the response into a blob.
+ */
+export function cachedReleaseDownloadUrl(releaseId: string): string {
+  return `/api/v1/library/releases/${encodeURIComponent(releaseId)}/download`;
+}
+
 /** Live ephemeral media files, including chunk progress and active cache footprint. */
 export function useEphemeralFiles({ refetchInterval = 3_000 } = {}) {
   return useQuery({

@@ -26,6 +26,29 @@ public sealed class LibraryController(NzbCacheService cache) : ControllerBase
             ? NoContent()
             : NotFound(ErrorResponse.Of("cached_release_not_found", "The cached release does not exist."));
 
+    /// <summary>Downloads the raw cached .nzb file so an administrator can hand it to another tool.</summary>
+    [HttpGet("{releaseId}/download")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Download(string releaseId, CancellationToken ct)
+    {
+        var file = await cache.GetRawAsync(releaseId, ct);
+        if (file is null)
+            return NotFound(ErrorResponse.Of("cached_release_not_found", "The cached release does not exist."));
+
+        return File(file.Bytes, "application/x-nzb", ToDownloadFileName(file.Title));
+    }
+
+    private static string ToDownloadFileName(string title)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new string(title
+            .Select(c => invalid.Contains(c) || char.IsControl(c) ? '_' : c)
+            .ToArray())
+            .Trim();
+        return (string.IsNullOrWhiteSpace(sanitized) ? "release" : sanitized) + ".nzb";
+    }
+
     private static CachedReleaseResponse ToResponse(CachedReleaseEntity entry) => new()
     {
         ReleaseId = entry.ReleaseId,

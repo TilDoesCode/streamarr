@@ -18,6 +18,9 @@ public sealed record NzbCacheDescriptor(
 
 public sealed record CachedNzb(NzbDocument Document, bool CacheHit);
 
+/// <summary>Raw bytes of a cached NZB plus the release title, for a plain file download.</summary>
+public sealed record CachedNzbFile(string Title, byte[] Bytes);
+
 /// <summary>
 /// Persistent, bounded NZB cache owned by Core. Source URLs (which commonly contain API keys)
 /// are never persisted; cache files use a SHA-256 name and metadata lives in SQLite.
@@ -64,6 +67,27 @@ public sealed class NzbCacheService(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var entries = await db.CachedReleases.AsNoTracking().ToListAsync(ct);
         return entries.OrderByDescending(entry => entry.LastAccessedAt).ToList();
+    }
+
+    /// <summary>
+    /// Reads the raw cached NZB bytes for a download, without affecting cache-hit accounting
+    /// (an administrator downloading a copy is not the same as Core reusing it for a resolve).
+    /// </summary>
+    public async Task<CachedNzbFile?> GetRawAsync(string releaseId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var entity = await db.CachedReleases.AsNoTracking().SingleOrDefaultAsync(
+            entry => entry.ReleaseId == releaseId,
+            ct);
+        if (entity is null)
+            return null;
+
+        var path = CachePath(entity.CacheFileName);
+        if (!File.Exists(path))
+            return null;
+
+        var bytes = await File.ReadAllBytesAsync(path, ct);
+        return new CachedNzbFile(entity.Title, bytes);
     }
 
     public async Task<bool> RemoveAsync(string releaseId, CancellationToken ct)

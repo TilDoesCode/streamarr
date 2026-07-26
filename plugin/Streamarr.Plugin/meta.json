@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.9.2.0",
+    "version": "0.9.3.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Fix Sonarr/Radarr custom-format profile imports: specification fields are returned as an array of name/value objects, but were read as a map, so custom-format scoring silently produced no matches. Parse fields as a list (case-insensitively by name), and log the endpoint and JSON path when a profile-import response is unreadable without leaking the API key."
+    "changelog": "Fix password-protected RAR releases failing to stream: RAR5 AES-256-encrypted volumes (and header-encrypted RAR4 archives) are now decrypted using the password carried in the NZB's metadata instead of always being rejected as unsupported. Add an admin-only download button for a cached release's raw .nzb file. Also fix a packaging bug where the compiled plugin DLL's AssemblyVersion/FileVersion could drift from meta.json's version."
 }

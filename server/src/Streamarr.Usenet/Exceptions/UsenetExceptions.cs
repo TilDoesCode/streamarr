@@ -69,8 +69,9 @@ public class YencCrcMismatchException : UsenetException
     public YencCrcMismatchException(string message) : base(message) { }
 }
 
-/// <summary>The RAR archive uses a compression method other than store (m0).</summary>
+/// <summary>The RAR archive uses a compression method other than store (m0), or is encrypted.</summary>
 public class UnsupportedRarCompressionMethodException : UsenetException
 {
     public UnsupportedRarCompressionMethodException(string message) : base(message) { }
+    public UnsupportedRarCompressionMethodException(string message, Exception inner) : base(message, inner) { }
 }

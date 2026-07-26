@@ -8,10 +8,20 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <RootNamespace>Streamarr.Plugin</RootNamespace>
     <AssemblyName>Streamarr.Plugin</AssemblyName>
-    <!-- Keep the version in lockstep with build.yaml / the manifest. -->
-    <Version>0.8.0.0</Version>
-    <AssemblyVersion>0.8.0.0</AssemblyVersion>
-    <FileVersion>0.8.0.0</FileVersion>
+    <!--
+      Single source of truth for the plugin version is meta.json's "version" field.
+      Read it here instead of hardcoding Version/AssemblyVersion/FileVersion as separate
+      literals: that split was the root cause of a real incident where meta.json said
+      0.9.2.0 but the compiled assembly's AssemblyVersion/FileVersion were still 0.8.0.0,
+      because scripts/package-release.sh only overrides Version via -p:Version, and the
+      .NET SDK only derives AssemblyVersion/FileVersion from Version when they aren't
+      *also* set explicitly in the project file. Leaving them unset here means they
+      always inherit from Version and can never drift from it again. -p:Version=X still
+      wins when passed (e.g. by scripts/package-release.sh), since it's a command-line
+      property; this default only applies to ad-hoc/local builds.
+    -->
+    <StreamarrMetaJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)meta.json'))</StreamarrMetaJson>
+    <Version Condition="'$(Version)' == ''">$([System.Text.RegularExpressions.Regex]::Match($(StreamarrMetaJson), '&quot;version&quot;\s*:\s*&quot;([0-9.]+)&quot;').Groups[1].Value)</Version>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>

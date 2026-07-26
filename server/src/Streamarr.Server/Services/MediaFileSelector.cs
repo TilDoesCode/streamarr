@@ -18,6 +18,14 @@ public sealed record MediaFileCandidate
     /// <summary>Direct: a single file. RAR: volumes ordered by part number.</summary>
     public required IReadOnlyList<NzbFile> Files { get; init; }
 
+    /// <summary>
+    /// The release's password, if the NZB's <c>&lt;head&gt;</c> carried one (some
+    /// indexers/uploaders embed it as <c>&lt;meta type="password"&gt;</c> specifically so
+    /// downloaders can auto-extract password-protected RAR sets). Only meaningful for
+    /// RAR-wrapped candidates; a direct video file is never RAR-encrypted.
+    /// </summary>
+    public string? Password { get; init; }
+
     public string[] HealthSegmentIds => Files.SelectMany(f => f.GetSegmentIds()).ToArray();
 }
 
@@ -39,6 +47,7 @@ public static class MediaFileSelector
 
     public static MediaFileCandidate? SelectPrimary(NzbDocument document)
     {
+        var password = FindPassword(document);
         var named = document.Files
             .Where(f => f.Segments.Count > 0)
             .Select(f => (File: f, Name: f.GetSubjectFileName()))
@@ -57,6 +66,7 @@ public static class MediaFileSelector
                 DisplayName = direct.Name,
                 IsRarWrapped = false,
                 Files = [direct.File],
+                Password = password,
             };
         }
 
@@ -79,6 +89,22 @@ public static class MediaFileSelector
             DisplayName = volumes[0].Name,
             IsRarWrapped = true,
             Files = volumes.Select(x => x.File).ToList(),
+            Password = password,
         };
+    }
+
+    /// <summary>
+    /// NZB metadata keys are free-form and untrusted; match "password" case-insensitively
+    /// rather than assume any particular indexer's casing convention.
+    /// </summary>
+    private static string? FindPassword(NzbDocument document)
+    {
+        foreach (var (key, value) in document.Metadata)
+        {
+            if (string.Equals(key, "password", StringComparison.OrdinalIgnoreCase))
+                return string.IsNullOrEmpty(value) ? null : value;
+        }
+
+        return null;
     }
 }

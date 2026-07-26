@@ -14,11 +14,27 @@ public sealed record RarStoredFileSlice
     /// <summary>Index into the ordered volume list of the archive set.</summary>
     public required int PartIndex { get; init; }
 
-    /// <summary>Raw byte range of the slice within that volume file.</summary>
+    /// <summary>
+    /// Raw byte range of the slice within that volume file. For an encrypted slice,
+    /// this ciphertext range may extend up to 15 bytes past the slice's true
+    /// contribution to <see cref="ByteRangeWithinFile"/> (AES-CBC block padding —
+    /// RAR encrypts each volume's contribution to a file independently, so any
+    /// slice, not only the file's last, may pad its own tail).
+    /// </summary>
     public required LongRange ByteRangeWithinPart { get; init; }
 
-    /// <summary>Byte range this slice covers within the extracted file.</summary>
+    /// <summary>Plaintext byte range this slice covers within the extracted file.</summary>
     public required LongRange ByteRangeWithinFile { get; init; }
+
+    /// <summary>
+    /// Non-null when this slice's on-disk bytes are RAR5 AES-256-CBC ciphertext. Each
+    /// volume's contribution to a file is encrypted independently starting from its
+    /// own IV (confirmed against SharpCompress's own decompression of a multi-volume
+    /// fixture) — so this is per-*slice*, not per-file: crossing into the next volume
+    /// means restarting the CBC chain from that slice's own <see cref="RarFileCrypto.InitV"/>,
+    /// never continuing the previous slice's chain.
+    /// </summary>
+    public RarFileCrypto? Crypto { get; init; }
 }
 
 /// <summary>
@@ -30,6 +46,9 @@ public sealed record RarStoredFile
     public required string PathWithinArchive { get; init; }
     public required long Size { get; init; }
     public required IReadOnlyList<RarStoredFileSlice> Slices { get; init; }
+
+    /// <summary>True when any slice of this file is RAR5 AES-256-CBC encrypted.</summary>
+    public bool IsEncrypted => Slices.Any(s => s.Crypto is not null);
 }
 
 public static class RarArchiveIndexer
@@ -81,13 +100,26 @@ public static class RarArchiveIndexer
                 }
 
                 var fileOffset = slices.Count == 0 ? 0 : slices[^1].ByteRangeWithinFile.EndExclusive;
+                var declaredTotal = sizeByPath[slice.PathWithinArchive];
+
+                // Each volume's contribution to an encrypted file is its own independent
+                // CBC stream, so its ciphertext is padded up to the AES block size
+                // independently of any other slice. Clamp so the aggregate plaintext map
+                // always sums to exactly the declared size, regardless of trailing padding
+                // on any one slice (in practice only ever the file's true last slice, since
+                // archivers align non-final volume splits to the block size).
+                var plaintextCount = slice.Crypto is null
+                    ? slice.ByteRangeWithinPart.Count
+                    : Math.Min(slice.ByteRangeWithinPart.Count, Math.Max(0, declaredTotal - fileOffset));
+
                 try
                 {
                     slices.Add(new RarStoredFileSlice
                     {
                         PartIndex = partIndex,
                         ByteRangeWithinPart = slice.ByteRangeWithinPart,
-                        ByteRangeWithinFile = LongRange.FromStartAndSize(fileOffset, slice.ByteRangeWithinPart.Count),
+                        ByteRangeWithinFile = LongRange.FromStartAndSize(fileOffset, plaintextCount),
+                        Crypto = slice.Crypto,
                     });
                 }
                 catch (Exception exception) when (exception is OverflowException or ArgumentOutOfRangeException)

@@ -2,7 +2,8 @@
 // Source: backend/Utils/RarUtil.cs + backend/Queue/FileProcessors/RarProcessor.cs
 //         @ 794948be293eaade7e495cb9ea88045ae33d699b
 // See NOTICE at the repository root. Modified for Streamarr:
-// password/AES support dropped; header walk + part-number detection consolidated.
+// header walk + part-number detection consolidated; RAR5 AES-256 password support
+// (re)added on top of nzbdav's stored-only model — see RarAesCbcDecryptor.
 
 using System.Text.RegularExpressions;
 using SharpCompress.Common.Rar.Headers;
@@ -30,6 +31,28 @@ public sealed record RarStoredSlice
 
     /// <summary>True when this slice's file continues into the next volume.</summary>
     public required bool IsSplitAfter { get; init; }
+
+    /// <summary>
+    /// Non-null when this slice's on-disk bytes are RAR5 AES-256-CBC ciphertext (a
+    /// password was supplied and matched what the header requires). <see cref="ByteRangeWithinPart"/>
+    /// still spans the full ciphertext range, which may be up to 15 bytes longer than
+    /// this slice's true contribution to <see cref="FileUncompressedSize"/> due to
+    /// CBC block padding on the file's final slice.
+    /// </summary>
+    public RarFileCrypto? Crypto { get; init; }
+}
+
+/// <summary>RAR5 per-file AES-256-CBC encryption parameters captured from the file header.</summary>
+public sealed record RarFileCrypto
+{
+    /// <summary>16-byte PBKDF2 salt.</summary>
+    public required byte[] Salt { get; init; }
+
+    /// <summary>16-byte CBC initialization vector for the start of this file's ciphertext.</summary>
+    public required byte[] InitV { get; init; }
+
+    /// <summary>PBKDF2-HMAC-SHA256 round count is <c>1 &lt;&lt; Lg2Count</c>.</summary>
+    public required int Lg2Count { get; init; }
 }
 
 /// <summary>The parsed headers of a single RAR volume (.rar / .rNN / .partNN.rar).</summary>
@@ -65,16 +88,21 @@ public static partial class RarVolumeReader
     /// Walks the RAR headers of one volume (RAR4 or RAR5) on a seekable stream
     /// without reading file data, and maps every stored file's raw byte range.
     /// Throws <see cref="UnsupportedRarCompressionMethodException"/> when an entry
-    /// uses real compression — release RARs are stored (m0).
+    /// uses real compression — release RARs are stored (m0) — or is encrypted
+    /// without a usable password (see <paramref name="password"/>).
     /// </summary>
-    public static async Task<RarVolume> ReadAsync
-    (
+    /// <param name="password">
+    /// The release's password, if the NZB carried one. Required to read headers of
+    /// header-encrypted (<c>-hp</c>) archives at all, and to decrypt RAR5 AES-256
+    /// per-file data. Legacy RAR3/4 encryption is never supported, password or not.
+    /// </param>
+    public static async Task<RarVolume> ReadAsync(
         Stream stream,
         string fileName,
-        CancellationToken ct
-    )
+        CancellationToken ct,
+        string? password = null)
     {
-        var headers = await Task.Run(() => ReadHeaders(stream, ct), ct).ConfigureAwait(false);
+        var headers = await Task.Run(() => ReadHeaders(stream, password, ct), ct).ConfigureAwait(false);
 
         var slices = new List<RarStoredSlice>();
         foreach (var header in headers.Where(x => x.HeaderType == HeaderType.File))
@@ -94,6 +122,11 @@ public static partial class RarVolumeReader
                 throw new InvalidDataException("RAR volume contains an invalid stored-file byte range.");
             }
 
+            // ReadHeaders already rejected encrypted entries with no password or with
+            // legacy (non-RAR5) crypto, so GetRar5Crypto() is guaranteed non-null here
+            // whenever the entry is in fact encrypted.
+            var crypto = header.GetIsEncrypted() ? header.GetRar5Crypto() : null;
+
             slices.Add(new RarStoredSlice
             {
                 PathWithinArchive = path,
@@ -101,6 +134,7 @@ public static partial class RarVolumeReader
                 FileUncompressedSize = uncompressedSize,
                 IsSplitBefore = header.GetIsSplitBefore(),
                 IsSplitAfter = header.GetIsSplitAfter(),
+                Crypto = crypto,
             });
         }
 
@@ -115,59 +149,79 @@ public static partial class RarVolumeReader
         };
     }
 
-    private static List<IRarHeader> ReadHeaders(Stream stream, CancellationToken ct)
+    private static List<IRarHeader> ReadHeaders(Stream stream, string? password, CancellationToken ct)
     {
-        var readerOptions = new ReaderOptions();
+        var readerOptions = new ReaderOptions { Password = password };
         var headerFactory = new RarHeaderFactory(StreamingMode.Seekable, readerOptions);
         var headers = new List<IRarHeader>();
         var headerCount = 0;
-        foreach (var header in headerFactory.ReadHeaders(stream))
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            headerCount++;
-            if (headerCount > MaxHeadersPerVolume)
-                throw new InvalidDataException("RAR volume contains too many headers.");
-
-            // keep archive headers (they carry the volume number)
-            if (header.HeaderType is HeaderType.Archive or HeaderType.EndArchive)
+            foreach (var header in headerFactory.ReadHeaders(stream))
             {
-                headers.Add(header);
-                continue;
-            }
+                ct.ThrowIfCancellationRequested();
+                headerCount++;
+                if (headerCount > MaxHeadersPerVolume)
+                    throw new InvalidDataException("RAR volume contains too many headers.");
 
-            // skip comments
-            if (header.HeaderType == HeaderType.Service)
-            {
-                if (header.GetFileName() == "CMT")
+                // keep archive headers (they carry the volume number)
+                if (header.HeaderType is HeaderType.Archive or HeaderType.EndArchive)
                 {
-                    var size = header.GetCompressedSize();
-                    if (size < 0 || size > MaxServiceDataBytes || !stream.CanSeek ||
-                        stream.Position > stream.Length || size > stream.Length - stream.Position)
-                    {
-                        throw new InvalidDataException("RAR comment data has an invalid or excessive size.");
-                    }
-
-                    stream.Seek(size, SeekOrigin.Current);
+                    headers.Add(header);
+                    continue;
                 }
 
-                continue;
+                // skip comments
+                if (header.HeaderType == HeaderType.Service)
+                {
+                    if (header.GetFileName() == "CMT")
+                    {
+                        var size = header.GetCompressedSize();
+                        if (size < 0 || size > MaxServiceDataBytes || !stream.CanSeek ||
+                            stream.Position > stream.Length || size > stream.Length - stream.Position)
+                        {
+                            throw new InvalidDataException("RAR comment data has an invalid or excessive size.");
+                        }
+
+                        stream.Seek(size, SeekOrigin.Current);
+                    }
+
+                    continue;
+                }
+
+                // we only care about file headers
+                if (header.HeaderType != HeaderType.File || header.IsDirectory() ||
+                    header.GetFileName() == "QO") continue;
+
+                // we only support stored files (compression method m0).
+                if (header.GetCompressionMethod() != 0)
+                    throw new UnsupportedRarCompressionMethodException(
+                        "Only rar files with compression method m0 are supported.");
+
+                // Encrypted entries need a password to decrypt at all, and — beyond
+                // that — RAR5 AES-256 crypto params to actually stream them (legacy
+                // RAR3/4 encryption is out of scope; see RarAesCbcDecryptor).
+                if (header.GetIsEncrypted())
+                {
+                    if (password is null)
+                        throw new UnsupportedRarCompressionMethodException(
+                            "Encrypted rar entries are not supported.");
+                    if (header.GetRar5Crypto() is null)
+                        throw new UnsupportedRarCompressionMethodException(
+                            "Legacy RAR (v3/v4) encryption is not supported.");
+                }
+
+                headers.Add(header);
             }
-
-            // we only care about file headers
-            if (header.HeaderType != HeaderType.File || header.IsDirectory() ||
-                header.GetFileName() == "QO") continue;
-
-            // we only support stored files (compression method m0).
-            if (header.GetCompressionMethod() != 0)
-                throw new UnsupportedRarCompressionMethodException(
-                    "Only rar files with compression method m0 are supported.");
-
-            // password-protected archives are rejected during release selection.
-            if (header.GetIsEncrypted())
-                throw new UnsupportedRarCompressionMethodException(
-                    "Encrypted rar entries are not supported.");
-
-            headers.Add(header);
+        }
+        catch (SharpCompress.Common.CryptographicException e)
+        {
+            // Archives with header encryption (RAR's -hp option) can't even be enumerated
+            // without a password: SharpCompress throws mid-walk, before any header reaches
+            // the per-file GetIsEncrypted() check above. Fold it into the same "unsupported,
+            // password-protected" contract instead of letting it surface as a raw crash.
+            throw new UnsupportedRarCompressionMethodException(
+                "Encrypted rar entries are not supported.", e);
         }
 
         return headers;

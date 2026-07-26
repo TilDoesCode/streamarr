@@ -104,8 +104,17 @@ public sealed class NzbCacheServiceTests
             Assert.Equal(41, restoredSecondOwner.Release.Score);
             Assert.Equal("cache://release-1", restoredSecondOwner.Release.NzbUrl);
 
+            var download = await service.GetRawAsync(descriptor.ReleaseId, default);
+            Assert.NotNull(download);
+            Assert.Equal("Example.Movie.2026.1080p", download.Title);
+            Assert.Equal(TestNzb(), download.Bytes);
+            var afterDownload = Assert.Single(await service.ListAsync(default));
+            Assert.Equal(2, afterDownload.HitCount); // downloading a copy is not a resolve cache hit
+            Assert.Null(await service.GetRawAsync("missing-release", default));
+
             Assert.True(await service.RemoveAsync(descriptor.ReleaseId, default));
             Assert.Empty(await service.ListAsync(default));
+            Assert.Null(await service.GetRawAsync(descriptor.ReleaseId, default));
         }
         finally
         {
