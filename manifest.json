@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.9.3.0",
+        "changelog": "Fix password-protected RAR releases failing to stream: RAR5 AES-256-encrypted volumes (and header-encrypted RAR4 archives) are now decrypted using the password carried in the NZB's metadata instead of always being rejected as unsupported. Add an admin-only download button for a cached release's raw .nzb file. Also fix a packaging bug where the compiled plugin DLL's AssemblyVersion/FileVersion could drift from meta.json's version.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.9.3/streamarr-jellyfin-0.9.3.zip",
+        "checksum": "95b9f3d1198525b23a48b4aab33e2c81",
+        "timestamp": "2026-07-26T19:21:53Z"
+      },
+      {
         "version": "0.9.2.0",
         "changelog": "Fix Sonarr/Radarr custom-format profile imports: specification fields are returned as an array of name/value objects, but were read as a map, so custom-format scoring silently produced no matches. Parse fields as a list (case-insensitively by name), and log the endpoint and JSON path when a profile-import response is unreadable without leaking the API key.",
         "targetAbi": "10.11.11.0",
