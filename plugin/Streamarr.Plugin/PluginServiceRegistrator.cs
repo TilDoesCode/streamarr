@@ -91,6 +91,10 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // Next Up / Favorites integration).
         serviceCollection.AddHostedService<LibraryIntegrationEntryPoint>();
 
+        // Engagement-gated visibility: search hits stay in the hidden staging root until a user
+        // plays/favorites them, at which point the subtree is promoted into the visible library.
+        serviceCollection.AddHostedService<EngagementPromotionEntryPoint>();
+
         // Search interception (BRIEF §8.2). Registering an IAsyncActionFilter into MvcOptions is
         // the plugin-side mechanism for augmenting Jellyfin's /Items + /Search/Hints responses
         // (the meilisearch reference plugs into search a different way — via ISearchProvider — but

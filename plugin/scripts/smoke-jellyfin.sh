@@ -142,6 +142,68 @@ assert_item_present() {
   ' "$file" >/dev/null
 }
 
+# Id-only absence check for users who legitimately see the "Streamarr" library folder itself but
+# must not see a staged (never engaged) work inside any view-scoped query.
+assert_work_absent() {
+  local file="$1"
+  local collection="$2"
+  jq -e --arg id "$item_id" --arg collection "$collection" '
+    def normalized: ascii_downcase | gsub("-"; "");
+    def values: if type == "array" then . else (.[$collection] // []) end;
+    [values[]? |
+      select(((.Id // "") | normalized) == ($id | normalized))] | length == 0
+  ' "$file" >/dev/null
+}
+
+# Engagement promotion/demotion runs on a background drain after the triggering user-data save,
+# so view membership converges shortly after the event rather than within the HTTP response.
+wait_for_work_presence() {
+  local presence="$1"
+  local header="$2"
+  local user_id="$3"
+  local output="$4"
+  local attempts=0
+  while :; do
+    curl -fsS --get "$base_url/Items" \
+      -H "$header" \
+      --data-urlencode "userId=$user_id" \
+      --data-urlencode 'recursive=true' \
+      --data-urlencode 'limit=100' \
+      -o "$output" || true
+    if [[ "$presence" == present ]] && assert_item_present "$output" Items; then
+      return 0
+    fi
+    if [[ "$presence" == absent ]] && assert_work_absent "$output" Items; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    [[ "$attempts" -ge 30 ]] && return 1
+    sleep 1
+  done
+}
+
+wait_for_named_presence() {
+  local name="$1"
+  local header="$2"
+  local user_id="$3"
+  local output="$4"
+  local attempts=0
+  while :; do
+    curl -fsS --get "$base_url/Items" \
+      -H "$header" \
+      --data-urlencode "userId=$user_id" \
+      --data-urlencode 'recursive=true' \
+      --data-urlencode 'limit=100' \
+      -o "$output" || true
+    if jq -e --arg name "$name" '[.Items[]? | select(.Name == $name)] | length >= 1' "$output" >/dev/null; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    [[ "$attempts" -ge 30 ]] && return 1
+    sleep 1
+  done
+}
+
 assert_named_item() {
   local file="$1"
   local collection="$2"
@@ -620,10 +682,10 @@ resolve_count="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq
 [[ "$resolve_count" -eq 2 ]] \
   || fail "Forged or cross-user offers reached Core resolve (count=$resolve_count)."
 
-# Library integration: a user with at least one compatible ordinary library (the long-standing
-# item-visibility rule) now sees ephemeral items in recursive root and Latest queries — that is
-# exactly what puts them into Continue Watching, Next Up and Favorites. A user with no media
-# access at all must still see nothing anywhere.
+# Engagement-gated visibility (the library-spam fix): a freshly materialized work lives below
+# the HIDDEN staging root. No user — with or without media-folder access — sees it in recursive
+# root or Latest queries, so search results can no longer spam the library. Direct-by-id access
+# (the path every search-injection click uses) keeps working for compatible users.
 curl -fsS --get "$base_url/Items" \
   -H "$allowed_header" \
   --data-urlencode "userId=$allowed_id" \
@@ -635,10 +697,13 @@ curl -fsS --get "$base_url/Items/Latest" \
   --data-urlencode "userId=$allowed_id" \
   --data-urlencode 'limit=100' \
   -o "$tmp_dir/latest-items.json"
-assert_item_present "$tmp_dir/root-items.json" Items \
-  || fail "The ephemeral item is missing from a compatible user's recursive root query."
-assert_item_present "$tmp_dir/latest-items.json" Items \
-  || fail "The ephemeral item is missing from a compatible user's Latest query."
+assert_work_absent "$tmp_dir/root-items.json" Items \
+  || fail "A staged (never engaged) ephemeral item leaked into a compatible user's recursive root query."
+assert_work_absent "$tmp_dir/latest-items.json" Items \
+  || fail "A staged (never engaged) ephemeral item leaked into a compatible user's Latest query."
+code="$(curl -sS -o "$tmp_dir/staged-by-id.json" -w '%{http_code}' \
+  "$base_url/Users/$allowed_id/Items/$item_id" -H "$allowed_header")"
+expect_code 200 "$code" "Staged item by-id detail for a compatible user"
 curl -fsS --get "$base_url/Items" \
   -H "$denied_header" \
   --data-urlencode "userId=$denied_id" \
@@ -653,11 +718,12 @@ curl -fsS --get "$base_url/Items/Latest" \
 assert_item_absent "$tmp_dir/root-items-denied.json" Items
 assert_item_absent "$tmp_dir/latest-items-denied.json" Items
 
-# Library integration (default LibraryEnabled=true): a user with full media-folder access must
-# see the "Streamarr" library view, find ephemeral items in recursive queries, get them into
-# Continue Watching after progress is recorded, and keep them in Favorites. Users restricted to
-# specific libraries (streamarr-allowed/denied above) must remain unaffected — the plugin folder
-# re-applies Jellyfin's native per-user media-folder policy despite being a BasePluginFolder.
+# Library integration (default LibraryEnabled=true): a user with full media-folder access sees
+# the "Streamarr" library view, but the view stays EMPTY until the user deliberately engages.
+# Recording a resume position promotes the work into the visible library (identically on every
+# client, because the move is server-side), puts it into Continue Watching, and keeps it there
+# as a permanent history. Explicitly removing the engagement (unfavorite + reset watch state)
+# demotes it back out of the library while by-id search/playback access keeps working.
 curl -fsS -X POST "$base_url/Users/New" \
   -H "$admin_header" \
   -H 'Content-Type: application/json' \
@@ -681,15 +747,19 @@ curl -fsS --get "$base_url/Items" \
   --data-urlencode 'recursive=true' \
   --data-urlencode 'limit=100' \
   -o "$tmp_dir/integrated-items.json"
-assert_item_present "$tmp_dir/integrated-items.json" Items \
-  || fail "The ephemeral item is missing from the integrated user's recursive query."
+assert_work_absent "$tmp_dir/integrated-items.json" Items \
+  || fail "A staged (never engaged) ephemeral item leaked into the integrated user's recursive query."
 
+# Engagement trigger: the exact user-data write real clients issue when playback accumulates a
+# resume position. This must promote the work into the visible library within a few seconds.
 code="$(curl -sS -o "$tmp_dir/integrated-userdata.json" -w '%{http_code}' \
   -X POST "$base_url/UserItems/$item_id/UserData?userId=$integrated_id" \
   -H "$integrated_header" \
   -H 'Content-Type: application/json' \
   --data '{"PlaybackPositionTicks":6000000000}')"
 expect_code 200 "$code" "Ephemeral resume-position update"
+wait_for_work_presence present "$integrated_header" "$integrated_id" "$tmp_dir/integrated-items-promoted.json" \
+  || fail "The engaged ephemeral item was not promoted into the integrated user's recursive query."
 curl -fsS --get "$base_url/UserItems/Resume" \
   -H "$integrated_header" \
   --data-urlencode "userId=$integrated_id" \
@@ -711,6 +781,33 @@ curl -fsS --get "$base_url/Items" \
   -o "$tmp_dir/integrated-favorites.json"
 assert_item_present "$tmp_dir/integrated-favorites.json" Items \
   || fail "The favorited ephemeral item is missing from Favorites."
+
+# Explicit removal from the library history: unfavorite plus resetting the watch state is the
+# gesture available in every Jellyfin client. The subtree demotes back to hidden staging, while
+# by-id access (search/playback) keeps working and re-engaging restores the history entry.
+code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -X DELETE "$base_url/UserFavoriteItems/$item_id?userId=$integrated_id" \
+  -H "$integrated_header")"
+expect_code 200 "$code" "Ephemeral favorite removal"
+code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -X POST "$base_url/UserItems/$item_id/UserData?userId=$integrated_id" \
+  -H "$integrated_header" \
+  -H 'Content-Type: application/json' \
+  --data '{"PlaybackPositionTicks":0,"Played":false}')"
+expect_code 200 "$code" "Ephemeral watch-state reset"
+wait_for_work_presence absent "$integrated_header" "$integrated_id" "$tmp_dir/integrated-items-demoted.json" \
+  || fail "The un-engaged ephemeral item was not demoted out of the integrated user's library."
+code="$(curl -sS -o "$tmp_dir/demoted-by-id.json" -w '%{http_code}' \
+  "$base_url/Users/$integrated_id/Items/$item_id" -H "$integrated_header")"
+expect_code 200 "$code" "Demoted item by-id detail access"
+
+# Re-engaging (a favorite alone) restores the history entry — nothing was lost by the demotion.
+code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -X POST "$base_url/UserFavoriteItems/$item_id?userId=$integrated_id" \
+  -H "$integrated_header")"
+expect_code 200 "$code" "Ephemeral re-favorite"
+wait_for_work_presence present "$integrated_header" "$integrated_id" "$tmp_dir/integrated-items-repromoted.json" \
+  || fail "Re-favoriting did not promote the ephemeral item back into the library."
 
 # Disabled interception must be a pure native pass-through and must not contact Core.
 search_before="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.search')"
@@ -1160,15 +1257,33 @@ replay_live_stream_id="$(jq -er '.MediaSource.LiveStreamId' \
   "$tmp_dir/episode-replay-open-result.json")"
 close_live_stream "$replay_live_stream_id" "$tmp_dir/episode-replay-close-result.json"
 
-# With library integration the materialized TV hierarchy joins ordinary recursive traversal for
-# compatible users — that is what makes Next Up and per-type favorites sections work. A user
-# with no media access must still never see any part of it.
+# Engagement-gated hierarchies: the TV hierarchy materialized by search/browse stays below the
+# hidden staging root — even after the transient PlaybackInfo/LiveStream opens above — so
+# browsing seasons can no longer spam the library. A real client playback report
+# (Sessions/Playing) is the deliberate act: it must promote the ENTIRE series subtree into the
+# visible library for compatible users, which is what makes Next Up and per-type favorites
+# sections work. A user with no media access must still never see any part of it.
 curl -fsS --get "$base_url/Items" \
   -H "$allowed_header" \
   --data-urlencode "userId=$allowed_id" \
   --data-urlencode 'recursive=true' \
   --data-urlencode 'limit=100' \
-  -o "$tmp_dir/root-items-after-hierarchy.json"
+  -o "$tmp_dir/root-items-staged-hierarchy.json"
+for expected_name in "$series_name" "Season 1" "Available Episode" "Unavailable Episode"; do
+  assert_named_item_absent "$tmp_dir/root-items-staged-hierarchy.json" Items "$expected_name"
+done
+
+for report in Playing Playing/Progress Playing/Stopped; do
+  code="$(curl -sS -o /dev/null -w '%{http_code}' \
+    -X POST "$base_url/Sessions/$report" \
+    -H "$allowed_header" \
+    -H 'Content-Type: application/json' \
+    --data "{\"ItemId\":\"$available_episode_id\",\"MediaSourceId\":\"$episode_source_id\",\"PlaySessionId\":\"ci-engagement\",\"PositionTicks\":3000000000,\"CanSeek\":true}")"
+  expect_code 204 "$code" "Playback report Sessions/$report"
+done
+# Episodes are re-saved last during subtree promotion, so their appearance proves the move.
+wait_for_named_presence "Unavailable Episode" "$allowed_header" "$allowed_id" "$tmp_dir/root-items-after-hierarchy.json" \
+  || fail "Playing an episode did not promote its series subtree into the library."
 for expected_name in "$movie_name" "$series_name" "Season 1" "Available Episode" "Unavailable Episode"; do
   jq -e --arg name "$expected_name" '[.Items[]? | select(.Name == $name)] | length >= 1' \
     "$tmp_dir/root-items-after-hierarchy.json" >/dev/null \

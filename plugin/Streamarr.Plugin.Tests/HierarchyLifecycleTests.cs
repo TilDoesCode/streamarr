@@ -2,6 +2,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Entities;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Library;
+using Streamarr.Plugin.ScheduledTasks;
 using Streamarr.Plugin.Search;
 
 namespace Streamarr.Plugin.Tests;
@@ -84,16 +85,23 @@ public class HierarchyLifecycleTests
     public void Flat_owned_tv_item_can_move_to_hierarchy_but_unrelated_item_cannot()
     {
         var folderId = Guid.NewGuid();
+        var stagingFolderId = Guid.NewGuid();
         var seasonId = Guid.NewGuid();
         var workId = "tmdb-tv-37680-s01e01";
         var flat = OwnedItem(folderId, workId);
 
-        Assert.True(EphemeralLibraryService.CanAdoptHierarchyItem(flat, seasonId, folderId, workId));
+        Assert.True(EphemeralLibraryService.CanAdoptHierarchyItem(flat, seasonId, folderId, stagingFolderId, workId));
 
         flat.ParentId = seasonId;
-        Assert.True(EphemeralLibraryService.CanAdoptHierarchyItem(flat, seasonId, folderId, workId));
-        Assert.False(EphemeralLibraryService.CanAdoptHierarchyItem(flat, Guid.NewGuid(), folderId, workId));
-        Assert.False(EphemeralLibraryService.CanAdoptHierarchyItem(flat, seasonId, folderId, "another-work"));
+        Assert.True(EphemeralLibraryService.CanAdoptHierarchyItem(flat, seasonId, folderId, stagingFolderId, workId));
+        Assert.False(EphemeralLibraryService.CanAdoptHierarchyItem(flat, Guid.NewGuid(), folderId, stagingFolderId, workId));
+        Assert.False(EphemeralLibraryService.CanAdoptHierarchyItem(flat, seasonId, folderId, stagingFolderId, "another-work"));
+
+        // Items parented below the hidden staging root are equally adoptable; foreign parents stay rejected.
+        var staged = OwnedItem(stagingFolderId, workId);
+        Assert.True(EphemeralLibraryService.CanAdoptHierarchyItem(staged, seasonId, folderId, stagingFolderId, workId));
+        var foreign = OwnedItem(Guid.NewGuid(), workId);
+        Assert.False(EphemeralLibraryService.CanAdoptHierarchyItem(foreign, seasonId, folderId, stagingFolderId, workId));
     }
 
     [Fact]
@@ -160,6 +168,88 @@ public class HierarchyLifecycleTests
     }
 
     [Fact]
+    public void Bug_repro_next_up_episode_is_deleted_by_ttl_cleanup_even_though_series_is_being_watched()
+    {
+        // Reproduces the reported bug: the user finished episode 1 (engaged: Played=true), which
+        // is exactly what makes episode 2 Jellyfin's "Next Up" candidate for this series. Nobody
+        // has ever streamed episode 2, so its own last-access clock never moved past the moment
+        // it was materialized (e.g. when the season page was first opened) and it ages out on the
+        // default 12h TTL like any item nobody cares about — even though the series is actively
+        // being watched. This mirrors EphemeralCleanupTask.ExecuteAsync's real candidate loop.
+        var seriesId = Guid.NewGuid();
+        var seasonId = Guid.NewGuid();
+        var watchedEpisodeId = Guid.NewGuid();
+        var nextUpEpisodeId = Guid.NewGuid();
+        var ttl = TimeSpan.FromHours(12); // default EphemeralTtlMinutes = 720
+
+        var candidates = EphemeralLifecycle.Build(
+        [
+            new EphemeralLifecycle.Node(seriesId, Guid.NewGuid(), Now.AddDays(-2)),
+            new EphemeralLifecycle.Node(seasonId, seriesId, Now.AddDays(-2)),
+            new EphemeralLifecycle.Node(watchedEpisodeId, seasonId, Now.AddDays(-2), IsEngaged: true),
+            // Materialized 13 hours ago (season browsed, episode listed as Next Up) but never
+            // streamed since — just past the default 12h TTL.
+            new EphemeralLifecycle.Node(nextUpEpisodeId, seasonId, Now.AddHours(-13)),
+        ]);
+
+        var lifecycle = candidates
+            .Select(c => new EphemeralLibraryService.LifecycleItem(
+                new Folder { Id = c.ItemId }, c.SubtreeIds, c.EffectiveLastAccessUtc, c.IsEngaged, c.IsPromoted))
+            .ToList();
+
+        var selected = EphemeralLifecycle.OrderForDeletion(lifecycle)
+            .FirstOrDefault(item => !item.IsEngaged && EphemeralCleanup.IsExpired(item.EffectiveLastAccessUtc, Now, ttl));
+
+        Assert.NotNull(selected);
+        Assert.Equal(nextUpEpisodeId, selected!.Item.Id);
+    }
+
+    [Fact]
+    public void Fix_next_up_episode_is_protected_once_it_follows_an_engaged_episode_in_series_order()
+    {
+        // Same scenario as the bug repro above, but with the series/season/episode ordinal
+        // metadata that EphemeralLibraryService.GetLifecycleItems() now supplies. Episode 2
+        // immediately follows engaged episode 1, so it must be protected from TTL cleanup too.
+        var seriesId = Guid.NewGuid();
+        var seasonId = Guid.NewGuid();
+        var watchedEpisodeId = Guid.NewGuid();
+        var nextUpEpisodeId = Guid.NewGuid();
+        var untouchedFutureEpisodeId = Guid.NewGuid();
+        var ttl = TimeSpan.FromHours(12);
+
+        var candidates = EphemeralLifecycle.Build(
+        [
+            new EphemeralLifecycle.Node(seriesId, Guid.NewGuid(), Now.AddDays(-2)),
+            new EphemeralLifecycle.Node(seasonId, seriesId, Now.AddDays(-2)),
+            new EphemeralLifecycle.Node(
+                watchedEpisodeId, seasonId, Now.AddDays(-2),
+                IsEngaged: true, SeriesId: seriesId, SeasonNumber: 1, EpisodeNumber: 1),
+            new EphemeralLifecycle.Node(
+                nextUpEpisodeId, seasonId, Now.AddHours(-13),
+                SeriesId: seriesId, SeasonNumber: 1, EpisodeNumber: 2),
+            // A third, not-yet-adjacent episode must NOT be swept into protection — only the
+            // immediate Next Up candidate is exempt, not the rest of the season.
+            new EphemeralLifecycle.Node(
+                untouchedFutureEpisodeId, seasonId, Now.AddHours(-13),
+                SeriesId: seriesId, SeasonNumber: 1, EpisodeNumber: 3),
+        ]);
+
+        Assert.True(Assert.Single(candidates, c => c.ItemId == nextUpEpisodeId).IsEngaged);
+        Assert.False(Assert.Single(candidates, c => c.ItemId == untouchedFutureEpisodeId).IsEngaged);
+
+        var lifecycle = candidates
+            .Select(c => new EphemeralLibraryService.LifecycleItem(
+                new Folder { Id = c.ItemId }, c.SubtreeIds, c.EffectiveLastAccessUtc, c.IsEngaged, c.IsPromoted))
+            .ToList();
+
+        var selected = EphemeralLifecycle.OrderForDeletion(lifecycle)
+            .FirstOrDefault(item => !item.IsEngaged && EphemeralCleanup.IsExpired(item.EffectiveLastAccessUtc, Now, ttl));
+
+        Assert.NotNull(selected);
+        Assert.Equal(untouchedFutureEpisodeId, selected!.Item.Id);
+    }
+
+    [Fact]
     public void Cleanup_revalidation_rejects_recent_or_changed_subtree()
     {
         var root = Guid.NewGuid();
@@ -168,13 +258,13 @@ public class HierarchyLifecycleTests
         var cutoff = Now.AddHours(-12);
 
         Assert.True(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), cutoff.AddMinutes(-1), cutoff, capacityOverflow: false, isEngaged: false));
+            expected, new HashSet<Guid>(expected), cutoff.AddMinutes(-1), cutoff, capacityOverflow: false, isEngaged: false, isPromoted: false));
         Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: false, isEngaged: false));
+            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: false, isEngaged: false, isPromoted: false));
         Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid> { root, child, Guid.NewGuid() }, cutoff.AddMinutes(-1), cutoff, false, false));
+            expected, new HashSet<Guid> { root, child, Guid.NewGuid() }, cutoff.AddMinutes(-1), cutoff, false, false, false));
         Assert.True(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: true, isEngaged: false));
+            expected, new HashSet<Guid>(expected), Now, cutoff, capacityOverflow: true, isEngaged: false, isPromoted: false));
     }
 
     [Fact]
@@ -186,10 +276,46 @@ public class HierarchyLifecycleTests
 
         // Expired by TTL yet engaged (resume position / favorite / watched) → protected.
         Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), cutoff.AddDays(-7), cutoff, capacityOverflow: false, isEngaged: true));
+            expected, new HashSet<Guid>(expected), cutoff.AddDays(-7), cutoff, capacityOverflow: false, isEngaged: true, isPromoted: false));
         // The hard capacity bound still wins over engagement.
         Assert.True(EphemeralLibraryService.CanDeleteLifecycleCandidate(
-            expected, new HashSet<Guid>(expected), cutoff.AddDays(-7), cutoff, capacityOverflow: true, isEngaged: true));
+            expected, new HashSet<Guid>(expected), cutoff.AddDays(-7), cutoff, capacityOverflow: true, isEngaged: true, isPromoted: false));
+    }
+
+    [Fact]
+    public void Promoted_history_subtrees_are_never_deletable_even_under_capacity_overflow()
+    {
+        var root = Guid.NewGuid();
+        var expected = new HashSet<Guid> { root };
+        var cutoff = Now.AddHours(-12);
+
+        // The promoted library history survives TTL expiry AND the hard capacity bound; only an
+        // explicit un-engage (demotion back to staging) makes it reachable for cleanup again.
+        Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
+            expected, new HashSet<Guid>(expected), cutoff.AddDays(-30), cutoff, capacityOverflow: false, isEngaged: false, isPromoted: true));
+        Assert.False(EphemeralLibraryService.CanDeleteLifecycleCandidate(
+            expected, new HashSet<Guid>(expected), cutoff.AddDays(-30), cutoff, capacityOverflow: true, isEngaged: true, isPromoted: true));
+    }
+
+    [Fact]
+    public void Library_root_marks_its_whole_subtree_promoted_and_staging_stays_unpromoted()
+    {
+        var promotedSeriesId = Guid.NewGuid();
+        var promotedSeasonId = Guid.NewGuid();
+        var promotedEpisodeId = Guid.NewGuid();
+        var stagedMovieId = Guid.NewGuid();
+        var candidates = EphemeralLifecycle.Build(
+        [
+            new EphemeralLifecycle.Node(promotedSeriesId, Guid.NewGuid(), Now.AddDays(-30), IsLibraryRoot: true),
+            new EphemeralLifecycle.Node(promotedSeasonId, promotedSeriesId, Now.AddDays(-30)),
+            new EphemeralLifecycle.Node(promotedEpisodeId, promotedSeasonId, Now.AddDays(-30)),
+            new EphemeralLifecycle.Node(stagedMovieId, Guid.NewGuid(), Now.AddDays(-30)),
+        ]);
+
+        Assert.True(Assert.Single(candidates, c => c.ItemId == promotedSeriesId).IsPromoted);
+        Assert.True(Assert.Single(candidates, c => c.ItemId == promotedSeasonId).IsPromoted);
+        Assert.True(Assert.Single(candidates, c => c.ItemId == promotedEpisodeId).IsPromoted);
+        Assert.False(Assert.Single(candidates, c => c.ItemId == stagedMovieId).IsPromoted);
     }
 
     [Fact]
@@ -329,7 +455,7 @@ public class HierarchyLifecycleTests
         var results = await Task.WhenAll(first, second);
 
         Assert.Equal(1, calls);
-        Assert.Equal(["season", "season"], results);
+        Assert.Equal(new string?[] { "season", "season" }, results);
 
         // A caller arriving after Core returned but before marker commit reuses the retained result.
         var lateLease = coordinator.Acquire(key, TimeSpan.FromSeconds(2), Fetch);
@@ -493,7 +619,8 @@ public class HierarchyLifecycleTests
             new Folder { Id = itemId },
             subtreeIds.ToHashSet(),
             Now,
-            isEngaged);
+            isEngaged,
+            IsPromoted: false);
 
     private static WorkDto Work(string workId) => new()
     {

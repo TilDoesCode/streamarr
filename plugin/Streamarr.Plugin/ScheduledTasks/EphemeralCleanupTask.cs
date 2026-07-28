@@ -39,6 +39,11 @@ public sealed class EphemeralCleanupTask(
         var ttl = TimeSpan.FromMinutes(ttlMinutes);
         var now = DateTime.UtcNow;
 
+        // Backstop for engagement events missed while the server was down: promote engaged
+        // staging subtrees into the visible library, demote no-longer-engaged library subtrees
+        // back to staging. The promoted history itself is permanent and never cleaned below.
+        await library.ReconcileEngagementPlacementAsync(cancellationToken).ConfigureAwait(false);
+
         var prunedReleaseEntries = await library.PruneOrphanedReleaseStateAsync(cancellationToken)
             .ConfigureAwait(false);
         var initialCount = library.GetEphemeralItems().Count;
@@ -48,13 +53,17 @@ public sealed class EphemeralCleanupTask(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var lifecycle = library.GetLifecycleItems();
-            var overflow = Math.Max(0, lifecycle.Count - EphemeralLibraryService.MaxEphemeralItems);
+            var overflow = Math.Max(
+                0,
+                lifecycle.Count(item => !item.IsPromoted) - EphemeralLibraryService.MaxEphemeralItems);
             // Engaged subtrees (resume position, favorite, or watched state for any user) never
             // expire by TTL: deleting them would silently clear the user's Continue Watching,
-            // Favorites, or Next Up state. Capacity overflow may still evict them — last.
+            // Favorites, or Next Up state. Promoted subtrees (the visible library history) are
+            // exempt from both TTL and capacity — only an explicit un-engage removes them.
             var candidate = EphemeralLifecycle
                 .OrderForDeletion(lifecycle)
-                .FirstOrDefault(item => !item.SubtreeIds.Any(failedSubtrees.Contains)
+                .FirstOrDefault(item => !item.IsPromoted
+                                        && !item.SubtreeIds.Any(failedSubtrees.Contains)
                                         && (overflow > 0
                                             || (!item.IsEngaged
                                                 && EphemeralCleanup.IsExpired(item.EffectiveLastAccessUtc, now, ttl))));

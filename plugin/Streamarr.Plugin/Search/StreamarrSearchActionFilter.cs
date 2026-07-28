@@ -54,8 +54,15 @@ public sealed class StreamarrSearchActionFilter(
     /// <summary>Search must never stall a keystroke: a slow Core Server is treated as absent.</summary>
     private static readonly TimeSpan InterceptTimeout = TimeSpan.FromSeconds(4);
 
-    /// <summary>An opened season may perform one real indexer fan-out before its episodes exist.</summary>
-    private static readonly TimeSpan HierarchyTimeout = TimeSpan.FromSeconds(12);
+    /// <summary>
+    /// An opened season may perform one real indexer fan-out before its episodes exist, on top of
+    /// Core's TMDB lookups. This MUST stay comfortably above Core's own worst-case TMDB budget
+    /// (<c>TmdbOptions.RequestTimeoutSeconds</c>, default 20s — <c>CachingTmdbClient</c>'s shared
+    /// upstream ceiling) followed by the indexer fan-out (30s per-indexer ceiling by default).
+    /// Keep enough headroom for both sequential stages so a slow successful cold load is not
+    /// discarded just before Core returns it.
+    /// </summary>
+    internal static readonly TimeSpan HierarchyTimeout = TimeSpan.FromSeconds(55);
 
     /// <summary>Upper bound on works materialized per search, to bound request cost.</summary>
     private const int MaxWorks = 20;
