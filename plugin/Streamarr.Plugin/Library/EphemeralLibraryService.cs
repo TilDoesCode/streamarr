@@ -48,12 +48,32 @@ public sealed class EphemeralLibraryService(
     public const string CatalogChildCountProviderKey = "StreamarrCatalogChildCount";
     private const string FolderName = "Streamarr";
     private const string LegacyFolderName = "Streamarr (Usenet)";
+    private const string StagingFolderName = "Streamarr Search";
+
+    /// <summary>
+    /// Serializes every materialization plugin-wide (there is deliberately no per-work/per-user
+    /// scoping: capacity eviction reasons over every ephemeral item at once and needs a single
+    /// consistent view). Because it is global, code holding this gate must never await network
+    /// I/O (TMDB artwork downloads in particular) — every <c>Materialize*Async</c> entry point
+    /// resolves artwork <em>before</em> acquiring the gate for exactly this reason. Otherwise one
+    /// client's slow/retrying artwork fetch would stall every other client's unrelated
+    /// materialization for as long as that fetch takes.
+    /// </summary>
     private readonly SemaphoreSlim _materializeGate = new(1, 1);
     private readonly object _hierarchyProtectionSync = new();
     private readonly Dictionary<Guid, int> _seriesHierarchyReservations = new();
 
     public Guid FolderId
         => libraryManager.GetNewItemId("streamarr-ephemeral-folder", typeof(StreamarrEphemeralFolder));
+
+    /// <summary>
+    /// The hidden staging root below the aggregate root. Every search hit materializes here first
+    /// and stays out of all user views; a subtree only moves below <see cref="FolderId"/> (the
+    /// visible "Streamarr" library) once a user deliberately engages with it (playback start,
+    /// favorite, or watched state). See <see cref="TryPromoteToLibraryAsync"/>.
+    /// </summary>
+    public Guid StagingFolderId
+        => libraryManager.GetNewItemId("streamarr-ephemeral-staging-folder", typeof(StreamarrEphemeralFolder));
 
     private Guid LegacyFolderId
         => libraryManager.GetNewItemId("streamarr-ephemeral-folder", typeof(Folder));
@@ -69,10 +89,21 @@ public sealed class EphemeralLibraryService(
     /// </summary>
     public async Task<Guid> MaterializeAsync(WorkDto work, CancellationToken ct)
     {
+        // Resolve artwork before taking the plugin-wide materialize lock below: it is pure network
+        // I/O against TMDB/the local artwork cache (retried with its own backoff on a slow/flaky
+        // CDN) and touches no Jellyfin library state, so doing it while holding the single global
+        // lock would stall every other client's unrelated materialization for as long as this one
+        // download takes (see _materializeGate's remarks).
+        var primaryImage = await artworkBadge.GetPosterAsync(
+            work.PosterUrl,
+            work.WorkId,
+            work.AddStreamarrBadge,
+            ct).ConfigureAwait(false);
+
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return await MaterializeCoreAsync(work, ct).ConfigureAwait(false);
+            return await MaterializeCoreAsync(work, primaryImage, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -83,10 +114,17 @@ public sealed class EphemeralLibraryService(
     /// <summary>Materializes one series shell; no season or indexer request occurs here.</summary>
     public async Task<Guid> MaterializeSeriesAsync(TvSeriesDto series, CancellationToken ct)
     {
+        // See MaterializeAsync: resolve artwork before acquiring the lock.
+        var primaryImage = await artworkBadge.GetPosterAsync(
+            series.PosterUrl,
+            series.WorkId,
+            series.AddStreamarrBadge,
+            ct).ConfigureAwait(false);
+
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return await MaterializeSeriesCoreAsync(series, ct).ConfigureAwait(false);
+            return await MaterializeSeriesCoreAsync(series, primaryImage, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -99,10 +137,27 @@ public sealed class EphemeralLibraryService(
         TvSeriesDetailsResponse details,
         CancellationToken ct)
     {
+        // See MaterializeAsync: resolve every artwork download up front, outside the lock, so a
+        // slow poster fetch for one season never blocks an unrelated materialization elsewhere.
+        var seriesImageTask = artworkBadge.GetPosterAsync(
+            details.Series.PosterUrl,
+            details.Series.WorkId,
+            details.Series.AddStreamarrBadge,
+            ct);
+        var seasonImageTasks = details.Seasons.ToDictionary(
+            season => season.WorkId,
+            season => artworkBadge.GetPosterAsync(
+                season.PosterUrl,
+                season.WorkId,
+                details.Series.AddStreamarrBadge,
+                ct));
+        await Task.WhenAll(seasonImageTasks.Values.Append(seriesImageTask)).ConfigureAwait(false);
+        var seriesImage = await seriesImageTask.ConfigureAwait(false);
+
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var seriesId = await MaterializeSeriesCoreAsync(details.Series, ct).ConfigureAwait(false);
+            var seriesId = await MaterializeSeriesCoreAsync(details.Series, seriesImage, ct).ConfigureAwait(false);
             if (libraryManager.GetItemById(seriesId) is not Series parent)
                 throw new InvalidOperationException($"The Streamarr series parent {seriesId} is missing.");
             await ClearHierarchyCompletionAsync(parent, ct).ConfigureAwait(false);
@@ -111,14 +166,6 @@ public sealed class EphemeralLibraryService(
             var creates = new List<BaseItem>();
             var updates = new List<BaseItem>();
             var retiredStoreIds = new List<Guid>();
-            var artworkTasks = details.Seasons.ToDictionary(
-                season => season.WorkId,
-                season => artworkBadge.GetPosterAsync(
-                    season.PosterUrl,
-                    season.WorkId,
-                    details.Series.AddStreamarrBadge,
-                    ct));
-            await Task.WhenAll(artworkTasks.Values).ConfigureAwait(false);
             foreach (var season in details.Seasons)
             {
                 ct.ThrowIfCancellationRequested();
@@ -137,14 +184,17 @@ public sealed class EphemeralLibraryService(
                 }
 
                 var item = existing as Season ?? new Season { Id = itemId };
-                PopulateSeason(item, season, parent, await artworkTasks[season.WorkId].ConfigureAwait(false));
+                PopulateSeason(item, season, parent, await seasonImageTasks[season.WorkId].ConfigureAwait(false));
                 (existing is null ? creates : updates).Add(item);
             }
 
             await RemoveStaleDirectChildrenAsync(parent.Id, BaseItemKind.Season, ids.ToHashSet(), ct)
                 .ConfigureAwait(false);
             store.RemoveRange(retiredStoreIds);
-            await EnsureCapacityAsync(ids.Append(seriesId).ToHashSet(), creates.Count, ct).ConfigureAwait(false);
+            // Children created inside an already-promoted series belong to the history and do not
+            // consume ephemeral capacity.
+            var incomingSlots = parent.ParentId == FolderId ? 0 : creates.Count;
+            await EnsureCapacityAsync(ids.Append(seriesId).ToHashSet(), incomingSlots, ct).ConfigureAwait(false);
             SaveBatch(creates, parent, ct);
             await UpdateBatchAsync(updates, parent, ct).ConfigureAwait(false);
             await MarkHierarchyCompleteAsync(parent, ids.Count, ct).ConfigureAwait(false);
@@ -165,14 +215,38 @@ public sealed class EphemeralLibraryService(
         CancellationToken ct,
         bool protectSeriesHierarchy = false)
     {
+        // See MaterializeAsync: resolve every artwork download up front, outside the lock, so a
+        // slow episode still or poster fetch never blocks an unrelated materialization elsewhere.
+        var seriesImageTask = artworkBadge.GetPosterAsync(
+            details.Series.PosterUrl,
+            details.Series.WorkId,
+            details.Series.AddStreamarrBadge,
+            ct);
+        var seasonImageTask = artworkBadge.GetPosterAsync(
+            details.Season.PosterUrl,
+            details.Season.WorkId,
+            details.Series.AddStreamarrBadge,
+            ct);
+        var episodeImageTasks = details.Episodes.ToDictionary(
+            episode => episode.WorkId,
+            episode => artworkBadge.GetPosterAsync(
+                episode.StillUrl,
+                episode.WorkId,
+                episode.AddStreamarrBadge,
+                ct));
+        await Task.WhenAll(episodeImageTasks.Values.Append(seriesImageTask).Append(seasonImageTask))
+            .ConfigureAwait(false);
+        var seriesImage = await seriesImageTask.ConfigureAwait(false);
+        var seasonImage = await seasonImageTask.ConfigureAwait(false);
+
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var seriesId = await MaterializeSeriesCoreAsync(details.Series, ct).ConfigureAwait(false);
+            var seriesId = await MaterializeSeriesCoreAsync(details.Series, seriesImage, ct).ConfigureAwait(false);
             var seasonId = await MaterializeSeasonCoreAsync(
                     details.Season,
                     seriesId,
-                    details.Series.AddStreamarrBadge,
+                    seasonImage,
                     ct)
                 .ConfigureAwait(false);
             if (libraryManager.GetItemById(seriesId) is not Series seriesParent)
@@ -187,14 +261,6 @@ public sealed class EphemeralLibraryService(
             var retiredStoreIds = new List<Guid>();
             var works = new List<KeyValuePair<Guid, WorkDto>>(details.Episodes.Count);
             var episodePeople = new List<(BaseItem Item, IReadOnlyList<PersonDto> People)>(details.Episodes.Count);
-            var artworkTasks = details.Episodes.ToDictionary(
-                episode => episode.WorkId,
-                episode => artworkBadge.GetPosterAsync(
-                    episode.StillUrl,
-                    episode.WorkId,
-                    episode.AddStreamarrBadge,
-                    ct));
-            await Task.WhenAll(artworkTasks.Values).ConfigureAwait(false);
             foreach (var episode in details.Episodes)
             {
                 ct.ThrowIfCancellationRequested();
@@ -219,7 +285,7 @@ public sealed class EphemeralLibraryService(
                     seriesParent,
                     seasonParent,
                     details.Series,
-                    await artworkTasks[episode.WorkId].ConfigureAwait(false));
+                    await episodeImageTasks[episode.WorkId].ConfigureAwait(false));
                 (existing is null ? creates : updates).Add(item);
                 works.Add(new KeyValuePair<Guid, WorkDto>(itemId, episode.ToWork()));
                 episodePeople.Add((item, episode.People));
@@ -230,7 +296,7 @@ public sealed class EphemeralLibraryService(
             store.RemoveRange(retiredStoreIds);
             await EnsureCapacityAsync(
                     ids.Append(seriesId).Append(seasonId).ToHashSet(),
-                    creates.Count,
+                    seriesParent.ParentId == FolderId ? 0 : creates.Count,
                     ct,
                     protectDescendantsOfProtectedItems: protectSeriesHierarchy)
                 .ConfigureAwait(false);
@@ -254,7 +320,7 @@ public sealed class EphemeralLibraryService(
         series = libraryManager.GetItemById(itemId) as Series;
         tmdbId = 0;
         return series is not null
-               && IsOwnedItem(series, FolderId)
+               && (IsOwnedItem(series, FolderId) || IsOwnedItem(series, StagingFolderId))
                && TryTmdbId(series, out tmdbId);
     }
 
@@ -398,12 +464,16 @@ public sealed class EphemeralLibraryService(
         return 1 + seasons + episodes;
     }
 
-    private async Task<Guid> MaterializeSeriesCoreAsync(TvSeriesDto series, CancellationToken ct)
+    /// <summary>
+    /// Creates/updates the series shell. <paramref name="primaryImage"/> must already be resolved
+    /// (see MaterializeAsync's remarks on why artwork network I/O never happens under the lock).
+    /// </summary>
+    private async Task<Guid> MaterializeSeriesCoreAsync(TvSeriesDto series, string? primaryImage, CancellationToken ct)
     {
-        var folder = await EnsureFolderAsync(ct).ConfigureAwait(false);
+        var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
         var itemId = ItemIdFor(series.WorkId);
         var existing = libraryManager.GetItemById(itemId);
-        ValidateHierarchyOwnership(existing, folder.Id, series.WorkId, itemId);
+        ValidateHierarchyOwnership(existing, roots.Staging.Id, series.WorkId, itemId);
         if (existing is not null && existing is not Series)
         {
             DeleteForRetype(existing, removeReleaseState: true);
@@ -411,23 +481,26 @@ public sealed class EphemeralLibraryService(
         }
 
         var isNew = existing is null;
+        // See MaterializeCoreAsync: new series stage hidden, promoted ones stay in the library.
+        Folder folder = existing is not null && existing.ParentId == roots.Library.Id
+            ? roots.Library
+            : roots.Staging;
         await EnsureCapacityAsync(new HashSet<Guid> { itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
         var item = existing as Series ?? new Series { Id = itemId };
-        var primaryImage = await artworkBadge.GetPosterAsync(
-            series.PosterUrl,
-            series.WorkId,
-            series.AddStreamarrBadge,
-            ct).ConfigureAwait(false);
         PopulateSeries(item, series, folder.Id, primaryImage);
         await SaveAsync(item, folder, isNew, ct).ConfigureAwait(false);
         await ApplyPeopleAsync(item, series.People, ct).ConfigureAwait(false);
         return itemId;
     }
 
+    /// <summary>
+    /// Creates/updates one season. <paramref name="primaryImage"/> must already be resolved (see
+    /// MaterializeAsync's remarks on why artwork network I/O never happens under the lock).
+    /// </summary>
     private async Task<Guid> MaterializeSeasonCoreAsync(
         TvSeasonDto season,
         Guid seriesId,
-        bool addStreamarrBadge,
+        string? primaryImage,
         CancellationToken ct)
     {
         if (libraryManager.GetItemById(seriesId) is not Series parent)
@@ -443,13 +516,9 @@ public sealed class EphemeralLibraryService(
         }
 
         var isNew = existing is null;
-        await EnsureCapacityAsync(new HashSet<Guid> { seriesId, itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
+        var incomingSlots = isNew && parent.ParentId != FolderId ? 1 : 0;
+        await EnsureCapacityAsync(new HashSet<Guid> { seriesId, itemId }, incomingSlots, ct).ConfigureAwait(false);
         var item = existing as Season ?? new Season { Id = itemId };
-        var primaryImage = await artworkBadge.GetPosterAsync(
-            season.PosterUrl,
-            season.WorkId,
-            addStreamarrBadge,
-            ct).ConfigureAwait(false);
         PopulateSeason(item, season, parent, primaryImage);
         await SaveAsync(item, parent, isNew, ct).ConfigureAwait(false);
         return itemId;
@@ -666,9 +735,14 @@ public sealed class EphemeralLibraryService(
         }
     }
 
-    private async Task<Guid> MaterializeCoreAsync(WorkDto work, CancellationToken ct)
+    /// <summary>
+    /// Creates/updates one movie/episode work. <paramref name="primaryImage"/> must already be
+    /// resolved (see MaterializeAsync's remarks on why artwork network I/O never happens under the
+    /// lock).
+    /// </summary>
+    private async Task<Guid> MaterializeCoreAsync(WorkDto work, string? primaryImage, CancellationToken ct)
     {
-        var folder = await EnsureFolderAsync(ct).ConfigureAwait(false);
+        var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
         var itemId = ItemIdFor(work.WorkId);
         var isEpisode = IsEpisode(work);
 
@@ -676,7 +750,7 @@ public sealed class EphemeralLibraryService(
         // If a repeat search flipped the media type for this workId (should never happen), drop the
         // stale item so we never hand Jellyfin a mismatched entity for a stable GUID.
         if (existing is not null
-            && (!IsOwnedItem(existing, folder.Id) || !HasWorkId(existing, work.WorkId)))
+            && (!IsOwnedRootChild(existing, roots) || !HasWorkId(existing, work.WorkId)))
         {
             throw new InvalidOperationException($"Refusing to modify non-Streamarr item {itemId}.");
         }
@@ -692,17 +766,17 @@ public sealed class EphemeralLibraryService(
         }
 
         var isNew = existing is null;
+        // New search hits stage hidden below the aggregate root; an already-promoted item is
+        // refreshed in place so the engaged history never loses its placement to a repeat search.
+        Folder folder = existing is not null && existing.ParentId == roots.Library.Id
+            ? roots.Library
+            : roots.Staging;
         await EnsureCapacityAsync(new HashSet<Guid> { itemId }, isNew ? 1 : 0, ct).ConfigureAwait(false);
 
         BaseItem item = existing
                         ?? (isEpisode
                             ? new Episode { Id = itemId }
                             : new Movie { Id = itemId });
-        var primaryImage = await artworkBadge.GetPosterAsync(
-            work.PosterUrl,
-            work.WorkId,
-            work.AddStreamarrBadge,
-            ct).ConfigureAwait(false);
 
         item.Name = work.Title;
         item.ProductionYear = work.Year;
@@ -773,10 +847,14 @@ public sealed class EphemeralLibraryService(
         var evictedIds = new HashSet<Guid>();
         try
         {
-            while (GetEphemeralItems().Count > maximumExistingItems)
+            while (true)
             {
                 ct.ThrowIfCancellationRequested();
                 var lifecycle = GetLifecycleItems();
+                // Promoted subtrees are the user's deliberate history: they neither count against
+                // the ephemeral cap nor are ever eligible as capacity-eviction victims.
+                if (lifecycle.Count(candidate => !candidate.IsPromoted) <= maximumExistingItems)
+                    break;
                 IReadOnlySet<Guid> reservedSeriesIds;
                 lock (_hierarchyProtectionSync)
                     reservedSeriesIds = _seriesHierarchyReservations.Keys.ToHashSet();
@@ -787,7 +865,8 @@ public sealed class EphemeralLibraryService(
                     reservedSeriesIds);
                 var victim = EphemeralLifecycle
                     .OrderForDeletion(lifecycle)
-                    .FirstOrDefault(candidate => !blocked.Contains(candidate.Item.Id)
+                    .FirstOrDefault(candidate => !candidate.IsPromoted
+                                                 && !blocked.Contains(candidate.Item.Id)
                                                  && !protectedHierarchyIds.Contains(candidate.Item.Id)
                                                  && !candidate.SubtreeIds.Any(protectedItemIds.Contains));
                 if (victim is null)
@@ -818,7 +897,9 @@ public sealed class EphemeralLibraryService(
                             protectedItemIds,
                             protectDescendantsOfProtectedItems,
                             _seriesHierarchyReservations.Keys.ToHashSet());
-                        if (current is not null && !reservedProtection.Contains(current.Item.Id))
+                        if (current is not null
+                            && !current.IsPromoted
+                            && !reservedProtection.Contains(current.Item.Id))
                         {
                             evictedIds.UnionWith(DeleteTreeCore(current.Item, removeReleaseState: false));
                             deleted = true;
@@ -848,7 +929,7 @@ public sealed class EphemeralLibraryService(
             store.RemoveRange(evictedIds);
         }
 
-        if (GetEphemeralItems().Count > maximumExistingItems)
+        if (GetLifecycleItems().Count(candidate => !candidate.IsPromoted) > maximumExistingItems)
             throw new InvalidOperationException($"The limit of {MaxEphemeralItems} ephemeral Streamarr items was reached.");
     }
 
@@ -872,35 +953,48 @@ public sealed class EphemeralLibraryService(
         BaseItem Item,
         IReadOnlySet<Guid> SubtreeIds,
         DateTime? EffectiveLastAccessUtc,
-        bool IsEngaged);
+        bool IsEngaged,
+        bool IsPromoted);
 
     /// <summary>
     /// Returns hierarchy-aware lifecycle units. An ancestor's effective access is the newest
     /// access in its complete subtree, so a recently played episode protects its season/series.
     /// A subtree is "engaged" when any user holds meaningful playback state on any of its items
-    /// (resume position, favorite flag, or watched state); engaged subtrees never expire by TTL
-    /// and are evicted last under capacity pressure — deleting them would silently wipe the
-    /// user's Continue Watching entry, favorite, or Next Up progress.
+    /// (resume position, favorite flag, or watched state), or when the item is itself the Next Up
+    /// episode following an engaged one (<see cref="EphemeralLifecycle.ResolveNextUpProtectedIds"/>) —
+    /// nobody has to have touched that episode individually for Jellyfin to be showing it in Next
+    /// Up. Engaged subtrees never expire by TTL and are evicted last under capacity pressure —
+    /// deleting them would silently wipe the user's Continue Watching entry, favorite, or Next Up
+    /// row.
     /// </summary>
     public IReadOnlyList<LifecycleItem> GetLifecycleItems()
     {
         var items = GetEphemeralItems();
         var byId = items.ToDictionary(item => item.Id);
+        var libraryFolderId = FolderId;
         return EphemeralLifecycle.Build(items.Select(item =>
             {
                 var (isEngaged, lastPlayedUtc) = ResolveEngagement(item);
+                var (seriesId, seasonNumber, episodeNumber) = item is Episode episode
+                    ? (episode.SeriesId, episode.ParentIndexNumber, episode.IndexNumber)
+                    : ((Guid?)null, (int?)null, (int?)null);
                 return new EphemeralLifecycle.Node(
                     item.Id,
                     item.ParentId,
                     ResolveOwnLastAccess(item, lastPlayedUtc),
-                    isEngaged);
+                    isEngaged,
+                    seriesId,
+                    seasonNumber,
+                    episodeNumber,
+                    IsLibraryRoot: item.ParentId == libraryFolderId);
             }))
             .Where(candidate => byId.ContainsKey(candidate.ItemId))
             .Select(candidate => new LifecycleItem(
                 byId[candidate.ItemId],
                 candidate.SubtreeIds,
                 candidate.EffectiveLastAccessUtc,
-                candidate.IsEngaged))
+                candidate.IsEngaged,
+                candidate.IsPromoted))
             .ToList();
     }
 
@@ -949,7 +1043,7 @@ public sealed class EphemeralLibraryService(
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var folder = await EnsureFolderAsync(ct).ConfigureAwait(false);
+            var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
             var upgraded = new List<BaseItem>();
             foreach (var item in GetEphemeralItems())
             {
@@ -972,18 +1066,31 @@ public sealed class EphemeralLibraryService(
                     upgraded.Add(target);
             }
 
-            if (upgraded.Count == 0)
-                return;
+            if (upgraded.Count > 0)
+            {
+                foreach (var parentGroup in upgraded.GroupBy(item => item.ParentId))
+                {
+                    if (libraryManager.GetItemById(parentGroup.Key) is not { } parent)
+                    {
+                        throw new InvalidOperationException(
+                            $"The Streamarr hierarchy container {parentGroup.Key} is missing.");
+                    }
 
-            await UpdateBatchAsync(upgraded, folder, ct).ConfigureAwait(false);
-            logger.LogInformation(
-                "Upgraded {Count} ephemeral item(s) from legacy type/virtual/presentation-key state",
-                upgraded.Count);
+                    await UpdateBatchAsync(parentGroup.ToArray(), parent, ct).ConfigureAwait(false);
+                }
+                logger.LogInformation(
+                    "Upgraded {Count} ephemeral item(s) from legacy type/virtual/presentation-key state",
+                    upgraded.Count);
+            }
         }
         finally
         {
             _materializeGate.Release();
         }
+
+        // Placement follows engagement from here on. On the first run after upgrading this also
+        // clears a search-spammed library: everything never played/favorited moves to staging.
+        await ReconcileEngagementPlacementAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1149,8 +1256,9 @@ public sealed class EphemeralLibraryService(
                     current.SubtreeIds,
                     current.EffectiveLastAccessUtc,
                     expirationCutoffUtc,
-                    lifecycle.Count > MaxEphemeralItems,
-                    current.IsEngaged))
+                    lifecycle.Count(item => !item.IsPromoted) > MaxEphemeralItems,
+                    current.IsEngaged,
+                    current.IsPromoted))
             {
                 return [];
             }
@@ -1165,8 +1273,9 @@ public sealed class EphemeralLibraryService(
                     current.SubtreeIds,
                     current.EffectiveLastAccessUtc,
                     expirationCutoffUtc,
-                    lifecycle.Count > MaxEphemeralItems,
-                    current.IsEngaged))
+                    lifecycle.Count(item => !item.IsPromoted) > MaxEphemeralItems,
+                    current.IsEngaged,
+                    current.IsPromoted))
             {
                 return [];
             }
@@ -1191,8 +1300,9 @@ public sealed class EphemeralLibraryService(
                         current.SubtreeIds,
                         current.EffectiveLastAccessUtc,
                         expirationCutoffUtc,
-                        lifecycle.Count > MaxEphemeralItems,
-                        current.IsEngaged))
+                        lifecycle.Count(item => !item.IsPromoted) > MaxEphemeralItems,
+                        current.IsEngaged,
+                        current.IsPromoted))
                 {
                     return [];
                 }
@@ -1206,14 +1316,200 @@ public sealed class EphemeralLibraryService(
         }
     }
 
+    /// <summary>
+    /// Moves the subtree containing <paramref name="itemId"/> into the visible "Streamarr"
+    /// library after a user deliberately engaged with it (playback start, favorite, or watched
+    /// state). TopParentId and the ancestor rows are only recomputed for items that are re-saved,
+    /// so the whole subtree is re-saved — Jellyfin's view-scoped queries (Continue Watching,
+    /// Next Up, Latest) filter on exactly those persisted columns. Returns true when a move
+    /// happened, false when the item is unknown, not plugin-owned, or already promoted.
+    /// </summary>
+    public async Task<bool> TryPromoteToLibraryAsync(Guid itemId, CancellationToken ct)
+    {
+        await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
+            if (ResolveOwnedSubtreeRoot(itemId, roots) is not { } root
+                || root.ParentId == roots.Library.Id)
+            {
+                return false;
+            }
+
+            await ReparentSubtreeAsync(root, roots.Library, ct).ConfigureAwait(false);
+            logger.LogInformation(
+                "Promoted engaged ephemeral subtree {ItemId} ({Name}) into the Streamarr library",
+                root.Id,
+                root.Name);
+            return true;
+        }
+        finally
+        {
+            _materializeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Moves a no-longer-engaged subtree back into the hidden staging root. This is the explicit
+    /// "remove from my library" gesture — unfavorite plus mark-unwatched works from every client —
+    /// after which the item keeps working through search/playback and simply ages out by TTL again.
+    /// Active playback sessions block the move; engagement re-promotes moments later anyway.
+    /// </summary>
+    public async Task<bool> TryDemoteFromLibraryAsync(Guid itemId, CancellationToken ct)
+    {
+        await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
+            if (ResolveOwnedSubtreeRoot(itemId, roots) is not { } root
+                || root.ParentId != roots.Library.Id)
+            {
+                return false;
+            }
+
+            var candidate = GetLifecycleItems().FirstOrDefault(item => item.Item.Id == root.Id);
+            if (candidate is null
+                || candidate.IsEngaged
+                || candidate.SubtreeIds.Any(id => tracker.ForItem(id).Count > 0))
+            {
+                return false;
+            }
+
+            await ReparentSubtreeAsync(root, roots.Staging, ct).ConfigureAwait(false);
+            logger.LogInformation(
+                "Demoted unengaged ephemeral subtree {ItemId} ({Name}) back to staging",
+                root.Id,
+                root.Name);
+            return true;
+        }
+        finally
+        {
+            _materializeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Aligns subtree placement with actual engagement: engaged staging subtrees are promoted
+    /// into the visible library, no-longer-engaged library subtrees are demoted back to staging.
+    /// Runs at startup and on config save (which doubles as the one-time upgrade migration that
+    /// cleans a pre-engagement-gated, search-spammed library) and from scheduled cleanup as a
+    /// backstop for events missed while the server was down.
+    /// </summary>
+    public async Task<(int Promoted, int Demoted)> ReconcileEngagementPlacementAsync(CancellationToken ct)
+    {
+        await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
+            var promoted = 0;
+            var demoted = 0;
+            foreach (var candidate in GetLifecycleItems())
+            {
+                ct.ThrowIfCancellationRequested();
+                if (candidate.Item.ParentId == roots.Staging.Id && candidate.IsEngaged)
+                {
+                    await ReparentSubtreeAsync(candidate.Item, roots.Library, ct).ConfigureAwait(false);
+                    promoted++;
+                }
+                else if (candidate.Item.ParentId == roots.Library.Id
+                         && !candidate.IsEngaged
+                         && !candidate.SubtreeIds.Any(id => tracker.ForItem(id).Count > 0))
+                {
+                    await ReparentSubtreeAsync(candidate.Item, roots.Staging, ct).ConfigureAwait(false);
+                    demoted++;
+                }
+            }
+
+            if (promoted > 0 || demoted > 0)
+            {
+                logger.LogInformation(
+                    "Engagement placement reconciled: {Promoted} subtree(s) promoted, {Demoted} demoted",
+                    promoted,
+                    demoted);
+            }
+
+            return (promoted, demoted);
+        }
+        finally
+        {
+            _materializeGate.Release();
+        }
+    }
+
+    /// <summary>Walks the parent chain up to the direct child of either plugin root, requiring
+    /// plugin ownership at every hop so foreign items can never be reparented.</summary>
+    private BaseItem? ResolveOwnedSubtreeRoot(Guid itemId, EphemeralRoots roots)
+    {
+        var current = libraryManager.GetItemById(itemId);
+        for (var depth = 0; current is not null && depth < 8; depth++)
+        {
+            if (!IsOwnedFolder(current)
+                || !current.ProviderIds.TryGetValue(WorkIdProviderKey, out var workId)
+                || string.IsNullOrWhiteSpace(workId))
+            {
+                return null;
+            }
+
+            if (current.ParentId == roots.Library.Id || current.ParentId == roots.Staging.Id)
+                return current;
+            current = libraryManager.GetItemById(current.ParentId);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reparents a root-level subtree below <paramref name="destination"/>. The root is saved
+    /// first so its new parent is persisted before descendants recompute their ancestor chains,
+    /// then every descendant level is re-saved breadth-first (parents before children).
+    /// </summary>
+    private async Task ReparentSubtreeAsync(
+        BaseItem root,
+        StreamarrEphemeralFolder destination,
+        CancellationToken ct)
+    {
+        var sourceParentId = root.ParentId;
+        root.ParentId = destination.Id;
+        await libraryManager
+            .UpdateItemAsync(root, destination, ItemUpdateType.MetadataEdit, ct)
+            .ConfigureAwait(false);
+
+        var childrenByParent = GetEphemeralItems()
+            .GroupBy(item => item.ParentId)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        var pending = new Queue<BaseItem>();
+        pending.Enqueue(root);
+        while (pending.TryDequeue(out var parent))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!childrenByParent.TryGetValue(parent.Id, out var children))
+                continue;
+
+            await UpdateBatchAsync(children, parent, ct).ConfigureAwait(false);
+            foreach (var child in children)
+                pending.Enqueue(child);
+        }
+
+        // Folder instances lazily cache their loaded child list (Folder._children). The database
+        // is already correct here, but parent-scoped queries (the library's list view) would keep
+        // serving the cached list — drop it on both roots so the move is visible immediately.
+        foreach (var folderId in (Guid[])[sourceParentId, destination.Id])
+        {
+            if (libraryManager.GetItemById(folderId) is Folder folder)
+                folder.Children = null!;
+        }
+    }
+
     internal static bool CanDeleteLifecycleCandidate(
         IReadOnlySet<Guid> expectedSubtreeIds,
         IReadOnlySet<Guid> currentSubtreeIds,
         DateTime? effectiveLastAccessUtc,
         DateTime expirationCutoffUtc,
         bool capacityOverflow,
-        bool isEngaged)
-        => expectedSubtreeIds.SetEquals(currentSubtreeIds)
+        bool isEngaged,
+        bool isPromoted)
+        => !isPromoted
+           && expectedSubtreeIds.SetEquals(currentSubtreeIds)
            && (capacityOverflow
                || (!isEngaged
                    && (effectiveLastAccessUtc is null
@@ -1277,21 +1573,23 @@ public sealed class EphemeralLibraryService(
     /// </summary>
     public IReadOnlyList<BaseItem> GetEphemeralItems()
     {
-        if (libraryManager.GetItemById(FolderId) is not StreamarrEphemeralFolder folder
-            || !IsOwnedFolder(folder))
-        {
-            return [];
-        }
-
         // Jellyfin's recursive repository query recognizes folders by its built-in CLR type-name
         // map. Plugin Series/Season subclasses are persisted under their concrete names, so native
         // recursion stops before nested episodes. Walk direct ParentId edges instead, requiring
         // explicit ownership at every hop and de-duplicating ids to remain safe under corrupt data.
+        // Both plugin roots are walked: the visible library (engaged history) and hidden staging.
         var result = new List<BaseItem>();
         var discovered = new HashSet<Guid>();
         var expandedParents = new HashSet<Guid>();
         var pendingParents = new Stack<Guid>();
-        pendingParents.Push(folder.Id);
+        foreach (var folderId in (Guid[])[FolderId, StagingFolderId])
+        {
+            if (libraryManager.GetItemById(folderId) is StreamarrEphemeralFolder folder
+                && IsOwnedFolder(folder))
+            {
+                pendingParents.Push(folder.Id);
+            }
+        }
         while (pendingParents.TryPop(out var parentId))
         {
             if (!expandedParents.Add(parentId))
@@ -1348,11 +1646,33 @@ public sealed class EphemeralLibraryService(
             ? libraryManager.GetUserRootFolder()
             : libraryManager.RootFolder;
 
-    private async Task<Folder> EnsureFolderAsync(CancellationToken ct)
+    internal sealed record EphemeralRoots(StreamarrEphemeralFolder Library, StreamarrEphemeralFolder Staging);
+
+    /// <summary>
+    /// Ensures both plugin roots exist and match their placement: the visible "Streamarr" library
+    /// folder (user root, or aggregate root when integration is disabled) holding the engaged
+    /// history, and the always-hidden staging folder (aggregate root) holding raw search hits.
+    /// </summary>
+    private async Task<EphemeralRoots> EnsureFoldersAsync(CancellationToken ct)
     {
-        var folderId = FolderId;
+        var library = await EnsureFolderCoreAsync(
+                FolderId, FolderName, DesiredFolderParent, "ephemeral-library", ct)
+            .ConfigureAwait(false);
+        var staging = await EnsureFolderCoreAsync(
+                StagingFolderId, StagingFolderName, libraryManager.RootFolder, "ephemeral-staging", ct)
+            .ConfigureAwait(false);
+        await MigrateLegacyFolderAsync(library, ct).ConfigureAwait(false);
+        return new EphemeralRoots(library, staging);
+    }
+
+    private async Task<StreamarrEphemeralFolder> EnsureFolderCoreAsync(
+        Guid folderId,
+        string name,
+        Folder parent,
+        string pathSegment,
+        CancellationToken ct)
+    {
         var existingItem = libraryManager.GetItemById(folderId);
-        var parent = DesiredFolderParent;
         StreamarrEphemeralFolder folder;
         if (existingItem is StreamarrEphemeralFolder existing && IsOwnedFolder(existing))
         {
@@ -1360,7 +1680,7 @@ public sealed class EphemeralLibraryService(
             var changed = false;
             if (string.IsNullOrWhiteSpace(folder.Path))
             {
-                folder.Path = EnsureFolderPath();
+                folder.Path = EnsureFolderPath(pathSegment);
                 changed = true;
             }
 
@@ -1371,9 +1691,9 @@ public sealed class EphemeralLibraryService(
             }
 
             // Upgrades from the isolated era rename the folder and move it below the user root.
-            if (!string.Equals(folder.Name, FolderName, StringComparison.Ordinal))
+            if (!string.Equals(folder.Name, name, StringComparison.Ordinal))
             {
-                folder.Name = FolderName;
+                folder.Name = name;
                 changed = true;
             }
 
@@ -1403,9 +1723,9 @@ public sealed class EphemeralLibraryService(
             folder = new StreamarrEphemeralFolder
             {
                 Id = folderId,
-                Name = FolderName,
+                Name = name,
                 ParentId = parent.Id,
-                Path = EnsureFolderPath(),
+                Path = EnsureFolderPath(pathSegment),
                 IsVirtualItem = true,
             };
             folder.PresentationUniqueKey = folder.CreatePresentationUniqueKey();
@@ -1419,12 +1739,12 @@ public sealed class EphemeralLibraryService(
                 .ConfigureAwait(false);
             InvalidateUserRootChildren();
             logger.LogInformation(
-                "Created ephemeral folder {FolderId} below {Parent}",
+                "Created ephemeral folder {Name} ({FolderId}) below parent {ParentId}",
+                name,
                 folderId,
-                LibraryIntegrationEnabled ? "the user root (library integration)" : "the aggregate root (isolated)");
+                parent.Id);
         }
 
-        await MigrateLegacyFolderAsync(folder, ct).ConfigureAwait(false);
         return folder;
     }
 
@@ -1448,9 +1768,9 @@ public sealed class EphemeralLibraryService(
         }
     }
 
-    private string EnsureFolderPath()
+    private string EnsureFolderPath(string pathSegment)
     {
-        var path = Path.Combine(applicationPaths.DataPath, "streamarr", "ephemeral-library");
+        var path = Path.Combine(applicationPaths.DataPath, "streamarr", pathSegment);
         Directory.CreateDirectory(path);
         return path;
     }
@@ -1504,23 +1824,30 @@ public sealed class EphemeralLibraryService(
         Guid itemId)
     {
         if (existing is not null
-            && !CanAdoptHierarchyItem(existing, expectedParentId, FolderId, workId))
+            && !CanAdoptHierarchyItem(existing, expectedParentId, FolderId, StagingFolderId, workId))
         {
             throw new InvalidOperationException($"Refusing to modify non-Streamarr item {itemId}.");
         }
     }
 
+    private static bool IsOwnedRootChild(BaseItem item, EphemeralRoots roots)
+        => IsOwnedItem(item, roots.Staging.Id) || IsOwnedItem(item, roots.Library.Id);
+
     /// <summary>
-    /// Accepts the requested hierarchy parent or the deterministic private root. The latter is the
-    /// one-time upgrade path for flat TV rows created by plugin 0.3 and earlier.
+    /// Accepts the requested hierarchy parent or either deterministic private root (visible
+    /// library or hidden staging). The root fallback is the one-time upgrade path for flat TV
+    /// rows created by plugin 0.3 and earlier.
     /// </summary>
     internal static bool CanAdoptHierarchyItem(
         BaseItem item,
         Guid expectedParentId,
         Guid folderId,
+        Guid stagingFolderId,
         string workId)
         => HasWorkId(item, workId)
-           && (IsOwnedItem(item, expectedParentId) || IsOwnedItem(item, folderId));
+           && (IsOwnedItem(item, expectedParentId)
+               || IsOwnedItem(item, folderId)
+               || IsOwnedItem(item, stagingFolderId));
 
     private void DeleteForRetype(BaseItem item, bool removeReleaseState)
     {
@@ -1716,13 +2043,18 @@ internal static class EphemeralLifecycle
         Guid ItemId,
         Guid ParentId,
         DateTime? LastAccessedUtc,
-        bool IsEngaged = false);
+        bool IsEngaged = false,
+        Guid? SeriesId = null,
+        int? SeasonNumber = null,
+        int? EpisodeNumber = null,
+        bool IsLibraryRoot = false);
 
     internal sealed record Candidate(
         Guid ItemId,
         IReadOnlySet<Guid> SubtreeIds,
         DateTime? EffectiveLastAccessUtc,
-        bool IsEngaged);
+        bool IsEngaged,
+        bool IsPromoted = false);
 
     internal static IReadOnlyList<Candidate> Build(IEnumerable<Node> source)
     {
@@ -1734,6 +2066,23 @@ internal static class EphemeralLifecycle
         var children = nodes.Values
             .GroupBy(node => node.ParentId)
             .ToDictionary(group => group.Key, group => group.Select(node => node.ItemId).ToArray());
+        var nextUpProtectedIds = ResolveNextUpProtectedIds(nodes.Values);
+        // Everything below a library-root node is the user's promoted history: exempt from TTL
+        // expiry and capacity eviction, and excluded from the ephemeral item count.
+        var promotedIds = new HashSet<Guid>();
+        foreach (var root in nodes.Values.Where(node => node.IsLibraryRoot))
+        {
+            var pendingPromoted = new Stack<Guid>();
+            pendingPromoted.Push(root.ItemId);
+            while (pendingPromoted.TryPop(out var promotedId))
+            {
+                if (!promotedIds.Add(promotedId) || !children.TryGetValue(promotedId, out var promotedChildIds))
+                    continue;
+                foreach (var childId in promotedChildIds)
+                    pendingPromoted.Push(childId);
+            }
+        }
+
         var result = new List<Candidate>(nodes.Count);
         foreach (var node in nodes.Values)
         {
@@ -1755,16 +2104,52 @@ internal static class EphemeralLifecycle
                 .DefaultIfEmpty()
                 .Max();
             // Engagement anywhere in the subtree protects every ancestor: deleting a season
-            // would take an engaged episode (and its Continue Watching entry) down with it.
-            var engaged = subtree.Any(itemId => nodes[itemId].IsEngaged);
+            // would take an engaged episode (and its Continue Watching entry) down with it. An
+            // episode nobody has touched yet is also treated as engaged when it is the Next Up
+            // candidate (immediately follows an engaged episode in series order) — otherwise it
+            // ages out on the same clock as an item nobody cares about, and Jellyfin's Next Up
+            // row silently goes empty until the series page is reloaded and it re-materializes.
+            var engaged = subtree.Any(itemId => nodes[itemId].IsEngaged || nextUpProtectedIds.Contains(itemId));
             result.Add(new Candidate(
                 node.ItemId,
                 subtree,
                 access == default ? null : access,
-                engaged));
+                engaged,
+                promotedIds.Contains(node.ItemId)));
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Finds, for every series represented in <paramref name="nodes"/>, the episode immediately
+    /// following the last engaged (resumed, favorited, or watched) episode in season/episode
+    /// order. That episode is Jellyfin's Next Up candidate even though nobody has engaged with it
+    /// individually yet — only its predecessor. Only the single immediate successor is protected,
+    /// not the rest of the season, so idle future episodes still expire normally.
+    /// </summary>
+    private static IReadOnlySet<Guid> ResolveNextUpProtectedIds(IEnumerable<Node> nodes)
+    {
+        var protectedIds = new HashSet<Guid>();
+        var bySeries = nodes
+            .Where(node => node.SeriesId is { } seriesId && seriesId != Guid.Empty)
+            .GroupBy(node => node.SeriesId!.Value);
+
+        foreach (var series in bySeries)
+        {
+            var ordered = series
+                .OrderBy(node => node.SeasonNumber ?? int.MaxValue)
+                .ThenBy(node => node.EpisodeNumber ?? int.MaxValue)
+                .ToList();
+
+            for (var i = 0; i < ordered.Count - 1; i++)
+            {
+                if (ordered[i].IsEngaged && !ordered[i + 1].IsEngaged)
+                    protectedIds.Add(ordered[i + 1].ItemId);
+            }
+        }
+
+        return protectedIds;
     }
 
     /// <summary>

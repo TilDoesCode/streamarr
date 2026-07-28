@@ -337,11 +337,11 @@ public sealed class StreamarrApiClient
                 && attempt < maxAttempts
                 && IsTransient(ex.StatusCode))
             {
-                await WaitToRetryAsync(method, path, attempt, maxAttempts, ct).ConfigureAwait(false);
+                await WaitToRetryAsync(method, path, attempt, maxAttempts, ex.RetryAfter, ct).ConfigureAwait(false);
             }
             catch (HttpRequestException) when (retryTransient && attempt < maxAttempts)
             {
-                await WaitToRetryAsync(method, path, attempt, maxAttempts, ct).ConfigureAwait(false);
+                await WaitToRetryAsync(method, path, attempt, maxAttempts, retryAfter: null, ct).ConfigureAwait(false);
             }
         }
     }
@@ -378,7 +378,7 @@ public sealed class StreamarrApiClient
             _logger.LogWarning(
                 "Streamarr API {Method} {Path} failed: {Status} {Detail}",
                 method, SafeLogPath(path), (int)response.StatusCode, detail);
-            throw new StreamarrApiException(response.StatusCode, detail);
+            throw new StreamarrApiException(response.StatusCode, detail, RetryAfter(response));
         }
 
         if (typeof(T) == typeof(object))
@@ -388,14 +388,25 @@ public sealed class StreamarrApiClient
         return JsonSerializer.Deserialize<T>(payload, JsonOptions);
     }
 
+    /// <summary>Upper bound on any single retry wait, so a large Core-advertised Retry-After cannot stall a caller past reason.</summary>
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(5);
+
     private async Task WaitToRetryAsync(
         HttpMethod method,
         string path,
         int attempt,
         int maxAttempts,
+        TimeSpan? retryAfter,
         CancellationToken ct)
     {
-        var delay = TimeSpan.FromMilliseconds(Math.Min(250 * Math.Pow(2, attempt - 1), 2_000));
+        // Core's SearchConcurrencyGate rejects with an explicit Retry-After (e.g. 1s) when it is
+        // momentarily at capacity. Retrying on a fixed, much shorter backoff instead of honoring
+        // that hint just re-hits the same full gate and burns through the attempt budget for
+        // nothing — exactly the kind of transient failure that should have quietly succeeded on
+        // the next try. Only fall back to jittered exponential backoff when Core gave no hint.
+        var delay = retryAfter is { } advertised && advertised > TimeSpan.Zero
+            ? (advertised < MaxRetryDelay ? advertised : MaxRetryDelay)
+            : TimeSpan.FromMilliseconds(Math.Min(250 * Math.Pow(2, attempt - 1), 2_000));
         _logger.LogDebug(
             "Streamarr API {Method} {Path} transient failure; retrying (attempt {Attempt}/{Max}) after {DelayMs} ms",
             method,
@@ -410,6 +421,23 @@ public sealed class StreamarrApiClient
         => statusCode is System.Net.HttpStatusCode.RequestTimeout
             or System.Net.HttpStatusCode.TooManyRequests
            || (int)statusCode >= 500;
+
+    private static TimeSpan? RetryAfter(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        if (header is null)
+            return null;
+        if (header.Delta is { } delta && delta > TimeSpan.Zero)
+            return delta;
+        if (header.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+                return wait;
+        }
+
+        return null;
+    }
 
     internal static string SafeLogPath(string path)
     {
@@ -474,8 +502,14 @@ public sealed class StreamarrApiClient
 }
 
 /// <summary>Raised when the Core Server returns a non-success status.</summary>
-public sealed class StreamarrApiException(System.Net.HttpStatusCode statusCode, string detail)
+public sealed class StreamarrApiException(
+    System.Net.HttpStatusCode statusCode,
+    string detail,
+    TimeSpan? retryAfter = null)
     : Exception($"Streamarr Core Server returned {(int)statusCode}: {detail}")
 {
     public System.Net.HttpStatusCode StatusCode { get; } = statusCode;
+
+    /// <summary>Core's advertised Retry-After delay, when present on a transient (429/503) response.</summary>
+    public TimeSpan? RetryAfter { get; } = retryAfter;
 }
