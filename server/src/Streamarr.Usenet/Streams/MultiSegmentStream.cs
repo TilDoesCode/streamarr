@@ -24,6 +24,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     private readonly Memory<string> _segmentIds;
     private readonly INntpClient _usenetClient;
     private readonly SegmentCache? _segmentCache;
+    private readonly SegmentMetadataCache? _segmentMetadata;
     private readonly int _retryCount;
     private readonly Action<string>? _onSegmentRequested;
     private readonly Channel<Task<Stream>> _streamTasks;
@@ -51,7 +52,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         int startupReadAheadSegments = 0,
         Stream? openedFirstSegment = null,
         bool progressiveFirstSegment = false,
-        bool disableReadAhead = false
+        bool disableReadAhead = false,
+        SegmentMetadataCache? segmentMetadata = null
     )
     {
         return articleBufferSize == 0
@@ -74,7 +76,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 onSegmentRequested,
                 openedFirstSegment,
                 progressiveFirstSegment,
-                disableReadAhead);
+                disableReadAhead,
+                segmentMetadata);
     }
 
     private MultiSegmentStream
@@ -90,12 +93,14 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         Action<string>? onSegmentRequested,
         Stream? openedFirstSegment,
         bool progressiveFirstSegment,
-        bool disableReadAhead
+        bool disableReadAhead,
+        SegmentMetadataCache? segmentMetadata = null
     )
     {
         _segmentIds = segmentIds;
         _usenetClient = usenetClient;
         _segmentCache = segmentCache;
+        _segmentMetadata = segmentMetadata;
         _retryCount = retryCount is >= 0 and <= 10
             ? retryCount
             : throw new ArgumentOutOfRangeException(nameof(retryCount));
@@ -120,8 +125,14 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     private Stream? _openedFirstSegment;
     private readonly bool _progressiveFirstSegment;
 
+    private static readonly bool Trace = Environment.GetEnvironmentVariable("STREAMARR_NNTP_TRACE") == "1";
+    private static int _instanceCounter;
+    private readonly int _instanceId = Interlocked.Increment(ref _instanceCounter);
+
     private async Task DownloadSegments(CancellationToken cancellationToken)
     {
+        if (Trace)
+            Console.Error.WriteLine($"[nntp-trace] {DateTime.UtcNow:HH:mm:ss.fff} MSS#{_instanceId} START segs={_segmentIds.Length} startupWindow={_startupReadAhead}/{_startupReadAheadSegments} steady={_steadyReadAhead}");
         try
         {
             for (var i = 0; i < _segmentIds.Length; i++)
@@ -162,6 +173,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         }
         finally
         {
+            if (Trace)
+                Console.Error.WriteLine($"[nntp-trace] {DateTime.UtcNow:HH:mm:ss.fff} MSS#{_instanceId} DOWNLOADER-EXIT");
             _streamTasks.Writer.TryComplete();
         }
     }
@@ -202,6 +215,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                               $"Article <{SegmentId.Normalize(segmentId)}> carried no yEnc headers.");
             }
 
+            if (headers is not null)
+                _segmentMetadata?.Store(segmentId, headers.PartOffset, headers.PartSize);
             if (cache is not null && headers is { PartSize: var partSize } && partSize > cache.CapacityBytes)
                 cache = null;
 
@@ -309,6 +324,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                         var headers = body is YencStream yencStream
                             ? await yencStream.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false)
                             : null;
+                        if (headers is not null)
+                            _segmentMetadata?.Store(segmentId, headers.PartOffset, headers.PartSize);
                         var capacity = headers?.PartSize is > 0 and <= int.MaxValue
                             ? checked((int)headers.PartSize)
                             : 0;
@@ -394,6 +411,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     {
         if (_disposed) return;
         if (!disposing) return;
+        if (Trace)
+            Console.Error.WriteLine($"[nntp-trace] {DateTime.UtcNow:HH:mm:ss.fff} MSS#{_instanceId} DISPOSE nextIdx={_nextSegmentIndex} queued={_queuedTasks}");
         _disposed = true;
         _cts.Cancel();
         _cts.Dispose();

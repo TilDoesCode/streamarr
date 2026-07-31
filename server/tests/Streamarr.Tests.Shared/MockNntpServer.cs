@@ -43,6 +43,15 @@ public sealed class MockNntpServer : IAsyncDisposable
     /// </summary>
     public volatile bool RejectBodies;
 
+    /// <summary>Optional artificial latency applied before every command response (network RTT simulation).</summary>
+    public TimeSpan CommandLatency { get; init; } = TimeSpan.Zero;
+
+    /// <summary>Optional per-connection body throughput cap in bytes/second (0 = unlimited).</summary>
+    public int BodyBytesPerSecond { get; init; }
+
+    /// <summary>Invoked with the message-id for every served BODY/ARTICLE (duplicate tracking).</summary>
+    public Action<string>? OnBodyServed { get; init; }
+
     /// <summary>Additional synthetic headers emitted by HEAD, for parser-bound tests.</summary>
     public int ExtraHeadHeaders { get; init; }
 
@@ -114,6 +123,9 @@ public sealed class MockNntpServer : IAsyncDisposable
 
                 var parts = line.Split(' ', 3);
                 var command = parts[0].ToUpperInvariant();
+
+                if (CommandLatency > TimeSpan.Zero)
+                    await Task.Delay(CommandLatency, _cts.Token);
 
                 switch (command)
                 {
@@ -257,6 +269,7 @@ public sealed class MockNntpServer : IAsyncDisposable
         }
 
         Interlocked.Increment(ref _bodiesServed);
+        OnBodyServed?.Invoke(id);
 
         if (includeHeaders)
         {
@@ -280,11 +293,26 @@ public sealed class MockNntpServer : IAsyncDisposable
         var lines = article.Split("\r\n");
         // a trailing CRLF produces one empty trailing element — not a body line
         var lineCount = lines.Length > 0 && lines[^1].Length == 0 ? lines.Length - 1 : lines.Length;
+        var throttleBytes = 0;
+        var throttleStart = BodyBytesPerSecond > 0 ? System.Diagnostics.Stopwatch.StartNew() : null;
         foreach (var line in lines[..lineCount])
         {
             // NNTP dot-stuffing: a body line starting with '.' gets a '.' prepended
             var stuffed = line.StartsWith('.') ? "." + line : line;
             await writer.WriteAsync(stuffed + "\r\n");
+
+            if (throttleStart is not null)
+            {
+                throttleBytes += stuffed.Length + 2;
+                if (throttleBytes >= 32 * 1024)
+                {
+                    await writer.FlushAsync();
+                    var expected = TimeSpan.FromSeconds((double)throttleBytes / BodyBytesPerSecond);
+                    var ahead = expected - throttleStart.Elapsed;
+                    if (ahead > TimeSpan.Zero)
+                        await Task.Delay(ahead, _cts.Token);
+                }
+            }
         }
 
         await writer.WriteAsync(".\r\n");

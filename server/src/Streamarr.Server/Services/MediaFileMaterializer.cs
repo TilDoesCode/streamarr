@@ -45,7 +45,8 @@ public sealed record ResolvedMediaFile
 public class MediaFileMaterializer(
     INntpClient nntpClient,
     IOptions<StreamarrOptions> options,
-    SegmentCache? segmentCache = null)
+    SegmentCache? segmentCache = null,
+    SegmentMetadataCache? segmentMetadata = null)
 {
     public Task<ResolvedMediaFile> MaterializeAsync(MediaFileCandidate candidate, CancellationToken ct)
         => candidate.IsRarWrapped ? MaterializeRarAsync(candidate, ct) : MaterializeDirectAsync(candidate, ct);
@@ -77,11 +78,13 @@ public class MediaFileMaterializer(
             OpenStream = client => new NzbFileStream(
                 segmentIds, size, client, readAhead, segmentCache, retryCount,
                 startupArticleBufferSize: startupReadAhead,
-                startupReadAheadSegments: startupSegments),
+                startupReadAheadSegments: startupSegments,
+                segmentMetadata: segmentMetadata),
             OpenObservedStream = (client, onSegmentRequested) => new NzbFileStream(
                 segmentIds, size, client, readAhead, segmentCache, retryCount, onSegmentRequested,
                 startupReadAhead,
-                startupSegments),
+                startupSegments,
+                segmentMetadata: segmentMetadata),
         };
     }
 
@@ -169,7 +172,8 @@ public class MediaFileMaterializer(
                         segmentCache,
                         retryCount,
                         startupArticleBufferSize: startupReadAhead,
-                        startupReadAheadSegments: startupSegments)),
+                        startupReadAheadSegments: startupSegments,
+                        segmentMetadata: segmentMetadata)),
                 candidate.Password),
             OpenObservedStream = (client, onSegmentRequested) => new RarStoredFileStream(
                 media,
@@ -183,7 +187,8 @@ public class MediaFileMaterializer(
                         retryCount,
                         onSegmentRequested,
                         startupReadAhead,
-                        startupSegments)),
+                        startupSegments,
+                        segmentMetadata: segmentMetadata)),
                 candidate.Password),
         };
     }

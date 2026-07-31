@@ -202,4 +202,70 @@ public class RarEncryptedStreamTests
         await using var stream = File.OpenRead(RarFixtures.PathOf(fixture));
         return await RarVolumeReader.ReadAsync(stream, fixture, CancellationToken.None, password);
     }
+
+    /// <summary>
+    /// Sequential encrypted reads must keep all volume IO strictly forward. The CBC
+    /// previous-block used to be re-read with a backward seek per read; over an
+    /// NzbFileStream every such seek tears down the read-ahead pipeline and re-downloads
+    /// a full article, which starved live playback of encrypted releases (~20x wire waste).
+    /// </summary>
+    [Fact]
+    public async Task MultiVolume_SequentialRead_NeverSeeksVolumeStreamsBackward()
+    {
+        var (file, partNames) = await ReadMultiVolumeFile(Password);
+        var backwardSeeks = 0;
+        var opens = 0;
+
+        await using var stream = new RarStoredFileStream(
+            file,
+            (partIndex, _) =>
+            {
+                opens++;
+                return new ValueTask<Stream>(new SeekDirectionTrackingStream(
+                    File.OpenRead(RarFixtures.PathOf(partNames[partIndex])),
+                    onBackwardSeek: () => backwardSeeks++));
+            },
+            Password);
+        using var ms = new MemoryStream();
+        // Small copy buffer so many small unaligned reads exercise the block cache.
+        await stream.CopyToAsync(ms, 4096);
+
+        Assert.Equal(Payload, ms.ToArray());
+        Assert.Equal(0, backwardSeeks);
+        Assert.Equal(file.Slices.Select(s => s.PartIndex).Distinct().Count(), opens);
+    }
+
+    private sealed class SeekDirectionTrackingStream(FileStream inner, Action onBackwardSeek) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => true;
+        public override bool CanWrite => false;
+        public override long Length => inner.Length;
+        public override long Position { get => inner.Position; set => Seek(value, SeekOrigin.Begin); }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            var target = origin switch
+            {
+                SeekOrigin.Begin => offset,
+                SeekOrigin.Current => inner.Position + offset,
+                _ => inner.Length + offset,
+            };
+            if (target < inner.Position)
+                onBackwardSeek();
+            return inner.Seek(target, SeekOrigin.Begin);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+            => inner.ReadAsync(buffer, ct);
+        public override void Flush() { }
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
 }

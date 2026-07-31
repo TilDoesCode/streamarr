@@ -392,6 +392,8 @@ public sealed class NntpConnection : IDisposable
             articleCts.CancelAfter(MaxArticleReadDuration);
 
             // Send BODY command with message-id
+            if (Environment.GetEnvironmentVariable("STREAMARR_NNTP_TRACE") == "1")
+                Console.Error.WriteLine($"[nntp-trace] {DateTime.UtcNow:HH:mm:ss.fff} BODY <{segmentId}>");
             await WriteLineAsync($"BODY <{segmentId}>".AsMemory(), articleCts.Token).ConfigureAwait(false);
             var response = await ReadLineAsync(articleCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);

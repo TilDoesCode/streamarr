@@ -24,6 +24,14 @@ public sealed class RarStoredFileStream : FastReadOnlyStream
     private Stream? _currentPartStream;
     private bool _disposed;
 
+    // Last raw ciphertext run read from the current slice (previous block + cipher blocks).
+    // Sequential encrypted reads take their CBC previous-block from here instead of seeking
+    // the underlying NzbFileStream backwards — a backward seek tears down its entire
+    // read-ahead pipeline and re-probes the article, which starved live playback.
+    private int _cipherCachePartIndex = -1;
+    private long _cipherCacheStartInSlice = -1;
+    private byte[] _cipherCache = [];
+
     /// <param name="file">The slice map of the stored file.</param>
     /// <param name="openPart">
     /// Opens the volume with the given part index as a seekable stream. The stream
@@ -147,13 +155,25 @@ public sealed class RarStoredFileStream : FastReadOnlyStream
         var alignedEndInSlice = (blockEndInSlice + blockSize - 1) / blockSize * blockSize;
         var cipherLength = checked((int)(alignedEndInSlice - blockStartInSlice));
 
+        // Resolve the CBC previous block BEFORE the main ciphertext read so all volume IO
+        // stays strictly forward: IV at slice start, the cached tail of the previous read
+        // for sequential flow, and a (rare, random-seek-only) one-off backward read otherwise.
+        byte[] previousBlock;
+        if (blockStartInSlice == 0)
+        {
+            previousBlock = crypto.InitV;
+        }
+        else if (!TryGetCachedCipher(slice.PartIndex, blockStartInSlice - blockSize, out previousBlock))
+        {
+            await SeekPartToAsync(slice, sliceStart + blockStartInSlice - blockSize, ct).ConfigureAwait(false);
+            previousBlock = new byte[blockSize];
+            await _currentPartStream!.ReadExactlyAsync(previousBlock, ct).ConfigureAwait(false);
+        }
+
         await SeekPartToAsync(slice, sliceStart + blockStartInSlice, ct).ConfigureAwait(false);
         var cipherBuffer = new byte[cipherLength];
         await _currentPartStream!.ReadExactlyAsync(cipherBuffer, ct).ConfigureAwait(false);
-
-        var previousBlock = blockStartInSlice == 0
-            ? crypto.InitV
-            : await ReadPreviousCiphertextBlockAsync(slice, blockStartInSlice, ct).ConfigureAwait(false);
+        CacheCipherRun(slice.PartIndex, blockStartInSlice, previousBlock, cipherBuffer);
 
         var key = GetOrDeriveKey(slice.PartIndex, crypto);
         var plaintext = RarAesCbcDecryptor.Decrypt(key, previousBlock, cipherBuffer);
@@ -161,17 +181,32 @@ public sealed class RarStoredFileStream : FastReadOnlyStream
         return plaintext.AsMemory(sourceOffset, toRead);
     }
 
-    /// <summary>Re-reads the 16 raw ciphertext bytes immediately preceding <paramref name="blockStartInSlice"/>,
-    /// within the same slice/volume (CBC never crosses a volume boundary here).</summary>
-    private async ValueTask<byte[]> ReadPreviousCiphertextBlockAsync(
-        RarStoredFileSlice slice, long blockStartInSlice, CancellationToken ct)
+    private bool TryGetCachedCipher(int partIndex, long blockStartInSlice, out byte[] block)
     {
         const int blockSize = RarAesCbcDecryptor.BlockSize;
-        await SeekPartToAsync(slice, slice.ByteRangeWithinFile.StartInclusive + blockStartInSlice - blockSize, ct)
-            .ConfigureAwait(false);
-        var previousBlock = new byte[blockSize];
-        await _currentPartStream!.ReadExactlyAsync(previousBlock, ct).ConfigureAwait(false);
-        return previousBlock;
+        if (partIndex == _cipherCachePartIndex
+            && blockStartInSlice >= _cipherCacheStartInSlice
+            && blockStartInSlice + blockSize <= _cipherCacheStartInSlice + _cipherCache.Length)
+        {
+            block = _cipherCache
+                .AsSpan(checked((int)(blockStartInSlice - _cipherCacheStartInSlice)), blockSize)
+                .ToArray();
+            return true;
+        }
+
+        block = [];
+        return false;
+    }
+
+    private void CacheCipherRun(int partIndex, long blockStartInSlice, byte[] previousBlock, byte[] cipherBuffer)
+    {
+        const int blockSize = RarAesCbcDecryptor.BlockSize;
+        var combined = new byte[blockSize + cipherBuffer.Length];
+        previousBlock.CopyTo(combined, 0);
+        cipherBuffer.CopyTo(combined, blockSize);
+        _cipherCachePartIndex = partIndex;
+        _cipherCacheStartInSlice = blockStartInSlice - blockSize;
+        _cipherCache = combined;
     }
 
     private byte[] GetOrDeriveKey(int partIndex, RarFileCrypto crypto)

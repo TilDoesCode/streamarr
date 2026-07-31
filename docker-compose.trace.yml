@@ -1,0 +1,4 @@
+services:
+  streamarr:
+    environment:
+      STREAMARR_NNTP_TRACE: "1"

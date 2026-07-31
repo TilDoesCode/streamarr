@@ -472,4 +472,76 @@ public class NzbFileStreamTests
             await base.DisposeAsync();
         }
     }
+
+    /// <summary>
+    /// A small forward seek must drain the open read-ahead pipeline instead of tearing
+    /// it down: a teardown re-probes the target article with a full duplicate download.
+    /// Encrypted-RAR playback used to trigger that teardown on every 64 KiB read.
+    /// </summary>
+    [Fact]
+    public async Task ForwardSeekWithinDiscardWindow_DownloadsEachSegmentAtMostOnce()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+
+        await using var stream = new NzbFileStream(
+            segmentIds,
+            FileBytes.Length,
+            client,
+            articleBufferSize: 3);
+
+        var head = new byte[10_000];
+        await stream.ReadExactlyAsync(head);
+        Assert.Equal(FileBytes.AsSpan(0, head.Length).ToArray(), head);
+
+        stream.Seek(130_000, SeekOrigin.Begin);
+        var tail = new byte[FileBytes.Length - 130_000];
+        await stream.ReadExactlyAsync(tail);
+        Assert.Equal(FileBytes.AsSpan(130_000).ToArray(), tail);
+
+        Assert.True(
+            server.BodiesServed <= PartCount,
+            $"Expected at most {PartCount} article downloads, saw {server.BodiesServed}.");
+    }
+
+    /// <summary>
+    /// Seeking back into an already-fetched region must cost zero wire traffic: probe
+    /// ranges come from the shared segment metadata cache and article bytes from the
+    /// segment cache. Interpolation probes used to bypass both and re-download whole
+    /// articles on every seek.
+    /// </summary>
+    [Fact]
+    public async Task RepeatedSeek_WithMetadataAndSegmentCache_IssuesNoNewDownloads()
+    {
+        await using var server = new MockNntpServer();
+        var segmentIds = PublishSegments(server);
+        using var client = await Connect(server);
+        using var segmentCache = new SegmentCache(64L * 1024 * 1024);
+        var metadata = new SegmentMetadataCache();
+
+        await using (var first = new NzbFileStream(
+            segmentIds, FileBytes.Length, client, articleBufferSize: 3,
+            segmentCache: segmentCache, segmentMetadata: metadata))
+        {
+            first.Seek(200_000, SeekOrigin.Begin);
+            var chunk = new byte[FileBytes.Length - 200_000];
+            await first.ReadExactlyAsync(chunk);
+            Assert.Equal(FileBytes.AsSpan(200_000).ToArray(), chunk);
+        }
+
+        var bodiesAfterFirst = server.BodiesServed;
+
+        await using (var second = new NzbFileStream(
+            segmentIds, FileBytes.Length, client, articleBufferSize: 3,
+            segmentCache: segmentCache, segmentMetadata: metadata))
+        {
+            second.Seek(210_000, SeekOrigin.Begin);
+            var chunk = new byte[40_000];
+            await second.ReadExactlyAsync(chunk);
+            Assert.Equal(FileBytes.AsSpan(210_000, chunk.Length).ToArray(), chunk);
+        }
+
+        Assert.Equal(bodiesAfterFirst, server.BodiesServed);
+    }
 }

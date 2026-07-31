@@ -334,6 +334,7 @@ public static class StreamarrServerBootstrap
             var sizeMb = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.SegmentCacheSizeMb;
             return new Streamarr.Usenet.Streams.SegmentCache(checked((long)sizeMb * 1024 * 1024));
         });
+        services.AddSingleton(new Streamarr.Usenet.Streams.SegmentMetadataCache());
         services.AddSingleton<MediaFileMaterializer>();
         services.AddSingleton<MediaMaterializationCache>();
         services.AddSingleton<FfprobeClient>();

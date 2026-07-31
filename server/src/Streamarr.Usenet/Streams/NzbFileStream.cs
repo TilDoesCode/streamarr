@@ -24,7 +24,8 @@ public class NzbFileStream(
     Action<string>? onSegmentRequested = null,
     int startupArticleBufferSize = 0,
     int startupReadAheadSegments = 0,
-    Stream? openedFirstSegment = null
+    Stream? openedFirstSegment = null,
+    SegmentMetadataCache? segmentMetadata = null
 ) : FastReadOnlyStream
 {
     private readonly bool _validated = ValidateArguments(
@@ -33,7 +34,14 @@ public class NzbFileStream(
         articleBufferSize,
         startupArticleBufferSize,
         startupReadAheadSegments);
+    // Forward seeks up to this distance are served by draining the already-open inner
+    // stream instead of tearing it down. A teardown discards the whole read-ahead
+    // pipeline and costs a full interpolation re-probe, which is far more expensive
+    // than skipping a few segments that the read-ahead has typically already fetched.
+    internal const long ForwardDiscardLimitBytes = 8L * 1024 * 1024;
+
     private long _position;
+    private long _innerPosition;
     private bool _disposed;
     private Stream? _innerStream;
     private Stream? _openedFirstSegment = openedFirstSegment;
@@ -71,9 +79,31 @@ public class NzbFileStream(
         var remaining = fileSize - _position;
         if (buffer.Length > remaining)
             buffer = buffer[..checked((int)remaining)];
-        _innerStream ??= await GetFileStream(_position, cancellationToken).ConfigureAwait(false);
+
+        if (_innerStream is not null && _innerPosition != _position)
+        {
+            var delta = _position - _innerPosition;
+            if (delta > 0 && delta <= ForwardDiscardLimitBytes)
+            {
+                await _innerStream.DiscardBytesAsync(delta, cancellationToken).ConfigureAwait(false);
+                _innerPosition = _position;
+            }
+            else
+            {
+                await _innerStream.DisposeAsync().ConfigureAwait(false);
+                _innerStream = null;
+            }
+        }
+
+        if (_innerStream is null)
+        {
+            _innerStream = await GetFileStream(_position, cancellationToken).ConfigureAwait(false);
+            _innerPosition = _position;
+        }
+
         var read = await _innerStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
         _position += read;
+        _innerPosition += read;
         return read;
     }
 
@@ -98,16 +128,15 @@ public class NzbFileStream(
 
         if (absoluteOffset < 0 || absoluteOffset > fileSize)
             throw new IOException("Cannot seek outside the decoded file.");
-        if (_position == absoluteOffset) return _position;
+        // Deliberately lazy: the open inner stream (and its read-ahead pipeline) is kept.
+        // The next read reconciles — draining forward within the discard window, or
+        // tearing down only when the target truly lies elsewhere. Seek-then-seek-back
+        // patterns (ffprobe, encrypted-RAR CBC reads) therefore cost nothing.
         _position = absoluteOffset;
-        var unopened = Interlocked.Exchange(ref _openedFirstSegment, null);
-        unopened?.Dispose();
-        _innerStream?.Dispose();
-        _innerStream = null;
         return _position;
     }
 
-    private async Task<(InterpolationSearch.Result Result, Stream Stream)> SeekSegment(
+    private async Task<(InterpolationSearch.Result Result, Stream? Stream)> SeekSegment(
         long byteOffset,
         CancellationToken ct)
     {
@@ -120,17 +149,34 @@ public class NzbFileStream(
                 new LongRange(0, fileSize),
                 async (guess) =>
                 {
-                    var response = await usenetClient.DecodedBodyAsync(fileSegmentIds[guess], ct).ConfigureAwait(false);
+                    var segmentId = fileSegmentIds[guess];
+
+                    // Zero-wire fast path: a previously probed/downloaded article's part
+                    // range answers the guess without re-downloading anything.
+                    if (segmentMetadata?.TryGet(segmentId) is { } knownRange)
+                        return knownRange;
+
+                    if (Environment.GetEnvironmentVariable("STREAMARR_NNTP_TRACE") == "1")
+                        Console.Error.WriteLine($"[nntp-trace] {DateTime.UtcNow:HH:mm:ss.fff} SEEK-PROBE idx={guess} target={byteOffset}");
+                    var response = await usenetClient.DecodedBodyAsync(segmentId, ct).ConfigureAwait(false);
                     var stream = response.Stream;
                     try
                     {
                         var header = await stream.GetYencHeadersAsync(ct).ConfigureAwait(false)
                                      ?? throw new InvalidDataException("The NNTP article carried no yEnc headers.");
                         var range = new LongRange(header.PartOffset, checked(header.PartOffset + header.PartSize));
+                        segmentMetadata?.Store(segmentId, header.PartOffset, header.PartSize);
                         if (range.Contains(byteOffset))
+                        {
+                            if (foundStream is not null)
+                                await foundStream.DisposeAsync().ConfigureAwait(false);
                             foundStream = stream;
+                        }
                         else
+                        {
                             await stream.DisposeAsync().ConfigureAwait(false);
+                        }
+
                         return range;
                     }
                     catch
@@ -141,8 +187,9 @@ public class NzbFileStream(
                 },
                 ct
             ).ConfigureAwait(false);
-            var matchedStream = foundStream
-                                ?? throw new InvalidDataException("Interpolation search lost its matched article.");
+            // A metadata-served search finds the index without opening any article; the
+            // caller's segment pipeline then fetches it (usually straight from the cache).
+            var matchedStream = foundStream;
             foundStream = null;
             return (result, matchedStream);
         }
@@ -171,6 +218,11 @@ public class NzbFileStream(
             }
         }
 
+        // A mid-file open will never use the pre-opened first segment; release its connection.
+        var unconsumedFirst = Interlocked.Exchange(ref _openedFirstSegment, null);
+        if (unconsumedFirst is not null)
+            await unconsumedFirst.DisposeAsync().ConfigureAwait(false);
+
         var found = await SeekSegment(rangeStart, cancellationToken).ConfigureAwait(false);
         Stream? stream = null;
         try
@@ -184,7 +236,7 @@ public class NzbFileStream(
         {
             if (stream is not null)
                 await stream.DisposeAsync().ConfigureAwait(false);
-            else
+            else if (found.Stream is not null)
                 await found.Stream.DisposeAsync().ConfigureAwait(false);
             throw;
         }
@@ -215,7 +267,8 @@ public class NzbFileStream(
             initialOpen ? startupReadAheadSegments : 0,
             openedFirstSegment,
             progressiveFirstSegment: false,
-            disableReadAhead: nearEnd && articleBufferSize > 0);
+            disableReadAhead: nearEnd && articleBufferSize > 0,
+            segmentMetadata: segmentMetadata);
     }
 
     protected override void Dispose(bool disposing)
