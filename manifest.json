@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.10.1.0",
+        "changelog": "Fix resumed and encrypted-RAR playback stalling under sustained reads: preserve active read-ahead streams across small forward seeks, reuse cached yEnc segment ranges instead of re-downloading articles during interpolation probes, and retain the previous ciphertext block for sequential CBC decryption. Add regression coverage and diagnostic tooling for seek amplification and time-to-first-frame investigations.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.10.1/streamarr-jellyfin-0.10.1.zip",
+        "checksum": "2a418a6629e749102324ad7c14ebf88b",
+        "timestamp": "2026-07-31T11:52:49Z"
+      },
+      {
         "version": "0.10.0.0",
         "changelog": "Gate the 'Streamarr' library behind deliberate engagement: search hits now materialize into a hidden staging area and only join the visible library once you play, favorite, or mark one watched (removing all three demotes it back), so browsing and searching can no longer spam the library — promoted items become a permanent history exempt from the ephemeral TTL and capacity limits. Also fix metadata loading intermittently for one client while another was materializing something else, honor the Core Server's Retry-After hint instead of a fixed backoff when it is briefly at capacity, and widen the season/episode load timeout so a merely-slow (not broken) TMDB response is no longer discarded as empty.",
         "targetAbi": "10.11.11.0",
