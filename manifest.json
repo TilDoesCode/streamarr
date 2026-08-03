@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.11.0.0",
+        "changelog": "Move recursive TV hierarchy expansion off the search request path into a background HierarchyEnrichmentDispatcher, add an admin-configurable indexer result limit that applies live without a restart, and lower the idle NNTP connection timeout from 300s to 120s to free pooled connections sooner.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.11.0/streamarr-jellyfin-0.11.0.zip",
+        "checksum": "95587b94142b81f8d3c2b610e87f1cc6",
+        "timestamp": "2026-08-03T14:29:58Z"
+      },
+      {
         "version": "0.10.1.0",
         "changelog": "Fix resumed and encrypted-RAR playback stalling under sustained reads: preserve active read-ahead streams across small forward seeks, reuse cached yEnc segment ranges instead of re-downloading articles during interpolation probes, and retain the previous ciphertext block for sequential CBC decryption. Add regression coverage and diagnostic tooling for seek amplification and time-to-first-frame investigations.",
         "targetAbi": "10.11.11.0",
