@@ -17,6 +17,16 @@ namespace Streamarr.Usenet.Nntp;
 /// </summary>
 public static class UsenetStreamingClient
 {
+    /// <summary>
+    /// Pooled connections idle longer than this are DATE-probed before reuse — NNTP
+    /// providers silently drop idle connections (observed within a few minutes on
+    /// commercial servers), and serving a dead socket costs a failed command, a burned
+    /// retry, and a circuit-breaker strike. One ~RTT probe per suspect borrow is cheap.
+    /// </summary>
+    private static readonly TimeSpan DefaultRevalidateIdleConnectionsAfter = TimeSpan.FromSeconds(60);
+
+    private static readonly TimeSpan ConnectionProbeTimeout = TimeSpan.FromSeconds(5);
+
     public static MultiProviderNntpClient Create(
         IEnumerable<UsenetProvider> providerList,
         ILoggerFactory? loggerFactory = null,
@@ -34,12 +44,15 @@ public static class UsenetStreamingClient
     public static MultiConnectionNntpClient CreateProviderClient(
         UsenetProvider provider,
         ILoggerFactory? loggerFactory = null,
-        TimeSpan? connectionIdleTimeout = null)
+        TimeSpan? connectionIdleTimeout = null,
+        TimeSpan? revalidateIdleConnectionsAfter = null)
     {
         var connectionPool = new ConnectionPool<INntpClient>(
             maxConnections: provider.MaxConnections,
             connectionFactory: ct => CreateNewConnection(provider, ct),
-            idleTimeout: connectionIdleTimeout);
+            idleTimeout: connectionIdleTimeout,
+            connectionValidator: ProbeConnectionAsync,
+            revalidateAfter: revalidateIdleConnectionsAfter ?? DefaultRevalidateIdleConnectionsAfter);
 
         var circuitBreaker = new ProviderCircuitBreaker(
             provider.Name,
@@ -52,6 +65,19 @@ public static class UsenetStreamingClient
             provider.Name,
             provider.Priority,
             loggerFactory?.CreateLogger<MultiConnectionNntpClient>());
+    }
+
+    /// <summary>
+    /// Liveness probe for a pooled connection: DATE is stateless, answers in one round
+    /// trip, and immediately exposes a socket the provider has silently closed. Bounded
+    /// by its own short timeout so a half-open connection cannot stall a borrow.
+    /// </summary>
+    private static async ValueTask<bool> ProbeConnectionAsync(INntpClient client, CancellationToken ct)
+    {
+        using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        probeCts.CancelAfter(ConnectionProbeTimeout);
+        var response = await client.DateAsync(probeCts.Token).ConfigureAwait(false);
+        return response.Success;
     }
 
     public static async ValueTask<INntpClient> CreateNewConnection

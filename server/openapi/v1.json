@@ -4177,6 +4177,10 @@
             "type": "integer",
             "format": "int32"
           },
+          "indexerResultLimit": {
+            "type": "integer",
+            "format": "int32"
+          },
           "segmentCacheSizeMb": {
             "type": "integer",
             "format": "int32"
@@ -4213,6 +4217,11 @@
             "nullable": true
           },
           "searchCacheTtlSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "indexerResultLimit": {
             "type": "integer",
             "format": "int32",
             "nullable": true
@@ -4294,6 +4303,11 @@
           "itemCount": {
             "type": "integer",
             "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           },
           "elapsedMs": {
             "type": "number",
@@ -6648,7 +6662,7 @@
     },
     {
       "name": "GeneralConfig",
-      "description": "General config GET/PUT (BRIEF §6.2): TMDB key, TTLs, cache sizes, NNTP budget. The\r\nTMDB credential is write-only (masked on read, omit-to-keep on write) and takes effect\r\nimmediately. Other scalar changes take effect on restart. Admin session required."
+      "description": "General config GET/PUT (BRIEF §6.2): TMDB key, TTLs, cache sizes, NNTP budget. The\r\nTMDB credential is write-only (masked on read, omit-to-keep on write) and takes effect\r\nimmediately. The indexer result limit also applies immediately; other scalars require a restart."
     },
     {
       "name": "Health",

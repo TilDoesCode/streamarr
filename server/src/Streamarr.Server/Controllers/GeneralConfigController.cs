@@ -9,7 +9,7 @@ namespace Streamarr.Server.Controllers;
 /// <summary>
 /// General config GET/PUT (BRIEF §6.2): TMDB key, TTLs, cache sizes, NNTP budget. The
 /// TMDB credential is write-only (masked on read, omit-to-keep on write) and takes effect
-/// immediately. Other scalar changes take effect on restart. Admin session required.
+/// immediately. The indexer result limit also applies immediately; other scalars require a restart.
 /// </summary>
 [ApiController]
 [Authorize(Policy = AuthRoles.AdminPolicy)]
@@ -42,6 +42,8 @@ public class GeneralConfigController(GeneralConfigService general) : ControllerB
                 "'ephemeralCacheSizeMb' must be between 1 and 67108864."));
         if (write.SearchCacheTtlSeconds is < 0 or > 3600)
             return BadRequest(ErrorResponse.Of("invalid_config", "'searchCacheTtlSeconds' must be between 0 and 3600."));
+        if (write.IndexerResultLimit is < 1 or > 1000)
+            return BadRequest(ErrorResponse.Of("invalid_config", "'indexerResultLimit' must be between 1 and 1000."));
         if (write.SegmentCacheSizeMb is < 0 or > 1_048_576)
             return BadRequest(ErrorResponse.Of("invalid_config", "'segmentCacheSizeMb' is outside its allowed range."));
         if (write.TmdbApiKey?.Length > 4096 || Options.StreamarrOptionsValidator.ContainsControl(write.TmdbApiKey))

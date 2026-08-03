@@ -192,6 +192,7 @@ public sealed record IndexerDiagnosticDto
     public required string IndexerName { get; init; }
     public required string Status { get; init; }
     public int ItemCount { get; init; }
+    public int? TotalCount { get; init; }
     public double ElapsedMs { get; init; }
     public string? Error { get; init; }
 }

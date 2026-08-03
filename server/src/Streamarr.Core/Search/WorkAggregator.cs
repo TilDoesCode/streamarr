@@ -18,6 +18,10 @@ namespace Streamarr.Core.Search;
 /// </summary>
 public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator, IReleaseHealthCache? healthCache = null)
 {
+    private static readonly Regex PossessiveApostropheRegex = new(
+        @"(?<=\p{L})['\u2019]s\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public async Task<SearchAggregation> AggregateAsync(
         IReadOnlyList<Release> releases,
         IReadOnlyList<IndexerOutcome> outcomes,
@@ -382,7 +386,7 @@ public sealed class WorkAggregator(ITmdbClient tmdb, ReleaseEvaluator evaluator,
             .FirstOrDefault();
 
     private static string[] SemanticTitleTokens(string title)
-        => NewznabQuery.NormalizeTerm(title)
+        => NewznabQuery.NormalizeTerm(PossessiveApostropheRegex.Replace(title, "s"))
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(NormalizeOrdinalToken)
             .ToArray();

@@ -45,6 +45,13 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
     private readonly Func<CancellationToken, ValueTask<T>> _factory;
     private readonly int _maxConnections;
 
+    // NNTP providers silently drop idle connections well before our own IdleTimeout
+    // (observed ~2-4 min on commercial servers). A pooled connection idle longer than
+    // _revalidateAfter is therefore verified via _validator before being served; a
+    // failed probe destroys it and the borrow falls through to the next candidate.
+    private readonly Func<T, CancellationToken, ValueTask<bool>>? _validator;
+    private readonly TimeSpan _revalidateAfter;
+
     /* --------------------------------- state --------------------------------------- */
 
     private readonly ConcurrentStack<Pooled> _idleConnections = new();
@@ -61,7 +68,9 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
     public ConnectionPool(
         int maxConnections,
         Func<CancellationToken, ValueTask<T>> connectionFactory,
-        TimeSpan? idleTimeout = null)
+        TimeSpan? idleTimeout = null,
+        Func<T, CancellationToken, ValueTask<bool>>? connectionValidator = null,
+        TimeSpan? revalidateAfter = null)
     {
         if (maxConnections <= 0)
             throw new ArgumentOutOfRangeException(nameof(maxConnections));
@@ -69,6 +78,8 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
         _factory = connectionFactory
                    ?? throw new ArgumentNullException(nameof(connectionFactory));
         IdleTimeout = idleTimeout ?? TimeSpan.FromSeconds(30);
+        _validator = connectionValidator;
+        _revalidateAfter = revalidateAfter ?? TimeSpan.FromSeconds(60);
 
         _maxConnections = maxConnections;
         _gate = new PrioritizedSemaphore(maxConnections, maxConnections);
@@ -108,8 +119,27 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
         {
             if (!item.IsExpired(IdleTimeout))
             {
-                TriggerConnectionPoolChangedEvent();
-                return BuildLock(item.Connection);
+                bool usable;
+                try
+                {
+                    usable = await IsStillUsableAsync(item, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Cancellation mid-probe: the popped connection and the permit
+                    // must not leak with the exception.
+                    DisposeConnection(item.Connection);
+                    Interlocked.Decrement(ref _live);
+                    _gate.Release();
+                    TriggerConnectionPoolChangedEvent();
+                    throw;
+                }
+
+                if (usable)
+                {
+                    TriggerConnectionPoolChangedEvent();
+                    return BuildLock(item.Connection, fromIdlePool: true);
+                }
             }
 
             // Stale – destroy and continue looking.
@@ -132,13 +162,37 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
 
         Interlocked.Increment(ref _live);
         TriggerConnectionPoolChangedEvent();
-        return BuildLock(conn);
+        return BuildLock(conn, fromIdlePool: false);
 
-        ConnectionLock<T> BuildLock(T c)
-            => new(c, Return, Destroy);
+        ConnectionLock<T> BuildLock(T c, bool fromIdlePool)
+            => new(c, Return, Destroy, fromIdlePool);
 
         static void ThrowDisposed()
             => throw new ObjectDisposedException(nameof(ConnectionPool<T>));
+    }
+
+    /// <summary>
+    /// Recently used connections are served as-is; ones idle past the revalidation
+    /// threshold are probed first. Probe failures report unusable (never throw) so
+    /// the borrow loop can fall through; caller cancellation still propagates.
+    /// </summary>
+    private async ValueTask<bool> IsStillUsableAsync(Pooled item, CancellationToken cancellationToken)
+    {
+        if (_validator is null || !item.IsExpired(_revalidateAfter))
+            return true;
+
+        try
+        {
+            return await _validator(item.Connection, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private Task<ConnectionLock<T>>? TryStartConnectionLock(CancellationToken cancellationToken)
@@ -376,13 +430,23 @@ public sealed class ConnectionLock<T> : IDisposable
     (
         T connection,
         Action<T> syncReturn,
-        Action<T> syncDestroy
+        Action<T> syncDestroy,
+        bool fromIdlePool = false
     )
     {
         _connection = connection;
         _syncReturn = syncReturn;
         _syncDestroy = syncDestroy;
+        WasReused = fromIdlePool;
     }
+
+    /// <summary>
+    /// True when this lock wraps a connection reused from the idle pool rather than a
+    /// freshly established one. A first-command failure on a reused connection is far
+    /// more likely provider-side idle disconnection than a genuine outage, so callers
+    /// should replace-and-retry without charging failure budgets.
+    /// </summary>
+    public bool WasReused { get; }
 
     public T Connection
         => _connection ?? throw new ObjectDisposedException(nameof(ConnectionLock<T>));

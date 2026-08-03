@@ -195,4 +195,93 @@ public class PoolingTests
 
         Assert.Equal(3, attempts); // the permit was released each time, no deadlock
     }
+
+    /// <summary>
+    /// NNTP providers silently drop idle connections after a few minutes; the pool
+    /// used to hand those corpses out, and every one cost a failed command, a burned
+    /// article retry, and a circuit-breaker strike — a resumed stream after a playback
+    /// pause could black the only provider out for minutes (the residual-stutter bug).
+    /// A connection idle past the revalidation threshold must be probed or replaced.
+    /// </summary>
+    [Fact]
+    public async Task ConnectionPool_RevalidatesConnectionsIdlePastThreshold()
+    {
+        var created = 0;
+        var validated = new List<int>();
+        await using var pool = new ConnectionPool<object>(
+            2,
+            _ => new ValueTask<object>(Interlocked.Increment(ref created)),
+            idleTimeout: TimeSpan.FromMinutes(5),
+            connectionValidator: (conn, _) =>
+            {
+                validated.Add((int)conn);
+                return new ValueTask<bool>(false); // provider dropped it
+            },
+            revalidateAfter: TimeSpan.FromMilliseconds(50));
+
+        var first = await pool.GetConnectionLockAsync(SemaphorePriority.High);
+        Assert.False(first.WasReused);
+        first.Dispose();
+
+        // Under the threshold: reused untouched, no probe.
+        var quick = await pool.GetConnectionLockAsync(SemaphorePriority.High);
+        Assert.True(quick.WasReused);
+        Assert.Empty(validated);
+        quick.Dispose();
+
+        // Past the threshold: probed, found dead, replaced with a fresh connection.
+        await Task.Delay(120);
+        var afterIdle = await pool.GetConnectionLockAsync(SemaphorePriority.High);
+        Assert.False(afterIdle.WasReused);
+        Assert.Single(validated);
+        Assert.Equal(2, created);
+        afterIdle.Dispose();
+    }
+
+    /// <summary>
+    /// End-to-end staleness recovery: the provider silently closes idle connections,
+    /// yet a later BODY must succeed transparently — replaced connection, no error to
+    /// the caller, and crucially no circuit-breaker trip (a tripped breaker skips the
+    /// provider for 60-300s, which the player experiences as continuous stuttering).
+    /// </summary>
+    [Fact]
+    public async Task PooledClient_SurvivesProviderIdleDisconnect_WithoutTrippingBreaker()
+    {
+        var data = YencTestEncoder.LcgBytes(7, 20_000);
+        await using var server = new MockNntpServer
+        {
+            IdleDisconnectAfter = TimeSpan.FromMilliseconds(250),
+            CommandLatency = TimeSpan.FromMilliseconds(50), // force parallel commands onto parallel connections
+        };
+        for (var i = 0; i < 8; i++)
+            server.Articles[$"seg{i}@test"] = YencTestEncoder.Encode(data, $"f{i}.bin");
+
+        using var client = UsenetStreamingClient.CreateProviderClient(
+            ProviderFor(server, maxConnections: 4),
+            connectionIdleTimeout: TimeSpan.FromMinutes(5),
+            revalidateIdleConnectionsAfter: TimeSpan.FromSeconds(30));
+
+        async Task<byte[]> Download(int i)
+        {
+            var response = await client.DecodedBodyAsync($"seg{i}@test", CancellationToken.None);
+            await using var stream = response.Stream;
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            return ms.ToArray();
+        }
+
+        // Warm several connections, then let the provider silently drop them all. The
+        // idle age stays under the revalidation threshold, so the burst below is served
+        // the dead connections — the stale-retry path must absorb every one invisibly:
+        // no caller-visible error and no breaker strikes (3 strikes would blackout the
+        // provider for 60s+, which playback experiences as continuous stuttering).
+        var warm = await Task.WhenAll(Enumerable.Range(0, 4).Select(Download));
+        Assert.All(warm, r => Assert.Equal(data, r));
+        await Task.Delay(600);
+
+        var burst = await Task.WhenAll(Enumerable.Range(4, 4).Select(Download));
+
+        Assert.All(burst, r => Assert.Equal(data, r));
+        Assert.False(client.IsTripped);
+    }
 }

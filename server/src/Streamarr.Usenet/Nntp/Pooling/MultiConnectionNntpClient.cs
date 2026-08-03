@@ -157,6 +157,13 @@ public class MultiConnectionNntpClient(
         int retryCount = 1
     ) where T : NntpResponse
     {
+        // Providers silently drop idle connections; a command failing on a REUSED pool
+        // connection is overwhelmingly that, not a provider outage. Such failures get
+        // their own bounded budget and never feed the circuit breaker or consume the
+        // caller-visible retries — otherwise one resumed stream after an idle gap can
+        // trip the breaker and black the provider out for minutes.
+        var staleRetries = 3;
+
         while (retryCount >= 0)
         {
             ConnectionLock<INntpClient>? connectionLock = null;
@@ -205,6 +212,16 @@ public class MultiConnectionNntpClient(
                 Quietly(() => connectionLock.Dispose());
                 Quietly(() => onConnectionReadyAgain?.Invoke(ArticleBodyResult.NotRetrieved));
                 throw;
+            }
+            catch (Exception e) when (connectionLock.WasReused && staleRetries > 0)
+            {
+                staleRetries--;
+                Quietly(() => connectionLock.Replace());
+                Quietly(() => connectionLock.Dispose());
+                _logger.LogDebug(e,
+                    "Reused NNTP connection for provider {Provider} was stale during {Command}; replacing it without penalty.",
+                    ProviderName, name);
+                continue;
             }
             catch (Exception e)
             {

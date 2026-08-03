@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Streamarr.Core.Indexers;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Config;
 using Streamarr.Server.Persistence;
@@ -23,7 +25,8 @@ public sealed class GeneralConfigServiceTests
             var factory = new BlockingFirstDbContextFactory(options);
             var protector = new TestSecretProtector();
             var live = new TmdbOptions();
-            var service = new GeneralConfigService(factory, protector, live);
+            var liveSearch = new IndexerSearchOptions();
+            var service = new GeneralConfigService(factory, protector, live, liveSearch);
 
             var first = service.UpdateAsync(new GeneralConfigWrite { TmdbApiKey = "credential-a" }, default);
             await factory.FirstCallEntered.WaitAsync(TimeSpan.FromSeconds(2));
@@ -43,6 +46,33 @@ public sealed class GeneralConfigServiceTests
             Assert.Equal("credential-b", protector.Unprotect(persisted.TmdbApiKeyEncrypted));
             Assert.Equal("credential-b", live.ApiKey);
             Assert.Equal(2, factory.CallCount);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ResultLimitUpdate_PersistsAndTakesEffectImmediately()
+    {
+        var directory = Directory.CreateTempSubdirectory("streamarr-general-config-");
+        try
+        {
+            var options = new DbContextOptionsBuilder<StreamarrDbContext>()
+                .UseSqlite($"Data Source={Path.Combine(directory.FullName, "config.db")}")
+                .Options;
+            await using (var setup = new StreamarrDbContext(options))
+                await setup.Database.EnsureCreatedAsync();
+
+            var factory = new PooledDbContextFactory<StreamarrDbContext>(options);
+            var liveSearch = new IndexerSearchOptions();
+            var service = new GeneralConfigService(factory, new TestSecretProtector(), new TmdbOptions(), liveSearch);
+
+            var updated = await service.UpdateAsync(new GeneralConfigWrite { IndexerResultLimit = 250 }, default);
+
+            Assert.Equal(250, updated.IndexerResultLimit);
+            Assert.Equal(250, liveSearch.DefaultLimit);
         }
         finally
         {

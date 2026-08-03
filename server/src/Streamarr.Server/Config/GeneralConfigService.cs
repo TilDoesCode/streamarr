@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Streamarr.Core.Indexers;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
@@ -14,7 +15,8 @@ namespace Streamarr.Server.Config;
 public sealed class GeneralConfigService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     ISecretProtector protector,
-    TmdbOptions liveTmdbOptions)
+    TmdbOptions liveTmdbOptions,
+    IndexerSearchOptions liveSearchOptions)
 {
     private readonly SemaphoreSlim _updateGate = new(1, 1);
 
@@ -35,6 +37,7 @@ public sealed class GeneralConfigService(
             if (write.SessionTtlSeconds is { } ttl) entity.SessionTtlSeconds = ttl;
             if (write.EphemeralCacheSizeMb is { } ephemeralSize) entity.EphemeralCacheSizeMb = ephemeralSize;
             if (write.SearchCacheTtlSeconds is { } sc) entity.SearchCacheTtlSeconds = sc;
+            if (write.IndexerResultLimit is { } resultLimit) entity.IndexerResultLimit = resultLimit;
             if (write.SegmentCacheSizeMb is { } sz) entity.SegmentCacheSizeMb = sz;
             if (write.ConnectionBudget is { } budget) entity.ConnectionBudget = budget;
             if (write.AddStreamarrBadge is { } badge) entity.AddStreamarrBadge = badge;
@@ -55,6 +58,7 @@ public sealed class GeneralConfigService(
             // commit credential B and then overwrite the process with credential A.
             if (replacementCredential is not null)
                 liveTmdbOptions.ApiKey = replacementCredential;
+            liveSearchOptions.DefaultLimit = entity.IndexerResultLimit;
 
             return entity;
         }
@@ -85,6 +89,7 @@ public sealed record GeneralConfigWrite
     public int? SessionTtlSeconds { get; init; }
     public int? EphemeralCacheSizeMb { get; init; }
     public int? SearchCacheTtlSeconds { get; init; }
+    public int? IndexerResultLimit { get; init; }
     public int? SegmentCacheSizeMb { get; init; }
     public int? ConnectionBudget { get; init; }
     public bool? AddStreamarrBadge { get; init; }

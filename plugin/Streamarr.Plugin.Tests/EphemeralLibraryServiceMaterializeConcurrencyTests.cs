@@ -51,7 +51,8 @@ public class EphemeralLibraryServiceMaterializeConcurrencyTests : IDisposable
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var (library, store) = CreateService(handler);
+        var (library, store, enrichment) = CreateService(handler);
+        await enrichment.StartAsync(CancellationToken.None);
 
         var slowWork = MakeWork("work-slow", posterUrl: "https://image.tmdb.org/t/p/w780/slow.jpg");
         var fastWork = MakeWork("work-fast", posterUrl: null); // no poster: zero network I/O at all
@@ -81,6 +82,8 @@ public class EphemeralLibraryServiceMaterializeConcurrencyTests : IDisposable
         Assert.True(store.ContainsKey(slowId));
         Assert.True(store.ContainsKey(fastId));
         Assert.NotEqual(slowId, fastId);
+        await enrichment.StopAsync(CancellationToken.None);
+        enrichment.Dispose();
     }
 
     private static WorkDto MakeWork(string workId, string? posterUrl) => new()
@@ -92,7 +95,7 @@ public class EphemeralLibraryServiceMaterializeConcurrencyTests : IDisposable
         AddStreamarrBadge = posterUrl is not null,
     };
 
-    private (EphemeralLibraryService Library, ConcurrentDictionary<Guid, BaseItem> Store) CreateService(
+    private (EphemeralLibraryService Library, ConcurrentDictionary<Guid, BaseItem> Store, HierarchyEnrichmentDispatcher Enrichment) CreateService(
         HttpMessageHandler artworkHandler)
     {
         var store = new ConcurrentDictionary<Guid, BaseItem>();
@@ -151,6 +154,8 @@ public class EphemeralLibraryServiceMaterializeConcurrencyTests : IDisposable
         var userManager = Substitute.For<IUserManager>();
         userManager.GetUsers().Returns(Array.Empty<User>());
 
+        var enrichment = new HierarchyEnrichmentDispatcher(
+            NullLogger<HierarchyEnrichmentDispatcher>.Instance);
         var library = new EphemeralLibraryService(
             libraryManager,
             new EphemeralReleaseStore(),
@@ -164,9 +169,10 @@ public class EphemeralLibraryServiceMaterializeConcurrencyTests : IDisposable
                 new StubHttpClientFactory(artworkHandler),
                 new StubApplicationPaths(_cacheRoot),
                 NullLogger<ArtworkBadgeService>.Instance),
+            enrichment,
             NullLogger<EphemeralLibraryService>.Instance);
 
-        return (library, store);
+        return (library, store, enrichment);
     }
 
     private static Guid DeterministicGuid(string key)

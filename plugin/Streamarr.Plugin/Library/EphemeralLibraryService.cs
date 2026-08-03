@@ -36,6 +36,7 @@ public sealed class EphemeralLibraryService(
     IProviderManager providerManager,
     IFileSystem fileSystem,
     ArtworkBadgeService artworkBadge,
+    HierarchyEnrichmentDispatcher enrichment,
     ILogger<EphemeralLibraryService> logger)
 {
     public const int MaxEphemeralItems = 500;
@@ -53,11 +54,9 @@ public sealed class EphemeralLibraryService(
     /// <summary>
     /// Serializes every materialization plugin-wide (there is deliberately no per-work/per-user
     /// scoping: capacity eviction reasons over every ephemeral item at once and needs a single
-    /// consistent view). Because it is global, code holding this gate must never await network
-    /// I/O (TMDB artwork downloads in particular) — every <c>Materialize*Async</c> entry point
-    /// resolves artwork <em>before</em> acquiring the gate for exactly this reason. Otherwise one
-    /// client's slow/retrying artwork fetch would stall every other client's unrelated
-    /// materialization for as long as that fetch takes.
+    /// consistent view). Code holding this gate never awaits artwork network I/O: hierarchy
+    /// shells are committed with remote image URLs, then a bounded background worker badges
+    /// artwork and attaches people metadata after the client response has been released.
     /// </summary>
     private readonly SemaphoreSlim _materializeGate = new(1, 1);
     private readonly object _hierarchyProtectionSync = new();
@@ -89,47 +88,37 @@ public sealed class EphemeralLibraryService(
     /// </summary>
     public async Task<Guid> MaterializeAsync(WorkDto work, CancellationToken ct)
     {
-        // Resolve artwork before taking the plugin-wide materialize lock below: it is pure network
-        // I/O against TMDB/the local artwork cache (retried with its own backoff on a slow/flaky
-        // CDN) and touches no Jellyfin library state, so doing it while holding the single global
-        // lock would stall every other client's unrelated materialization for as long as this one
-        // download takes (see _materializeGate's remarks).
-        var primaryImage = await artworkBadge.GetPosterAsync(
-            work.PosterUrl,
-            work.WorkId,
-            work.AddStreamarrBadge,
-            ct).ConfigureAwait(false);
-
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        Guid itemId;
         try
         {
-            return await MaterializeCoreAsync(work, primaryImage, ct).ConfigureAwait(false);
+            itemId = await MaterializeCoreAsync(work, work.PosterUrl, ct, applyPeople: false)
+                .ConfigureAwait(false);
         }
         finally
         {
             _materializeGate.Release();
         }
+        enrichment.Enqueue("work:" + work.WorkId, token => EnrichWorkAsync(work, token));
+        return itemId;
     }
 
     /// <summary>Materializes one series shell; no season or indexer request occurs here.</summary>
     public async Task<Guid> MaterializeSeriesAsync(TvSeriesDto series, CancellationToken ct)
     {
-        // See MaterializeAsync: resolve artwork before acquiring the lock.
-        var primaryImage = await artworkBadge.GetPosterAsync(
-            series.PosterUrl,
-            series.WorkId,
-            series.AddStreamarrBadge,
-            ct).ConfigureAwait(false);
-
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        Guid itemId;
         try
         {
-            return await MaterializeSeriesCoreAsync(series, primaryImage, ct).ConfigureAwait(false);
+            itemId = await MaterializeSeriesCoreAsync(series, series.PosterUrl, ct, applyPeople: false)
+                .ConfigureAwait(false);
         }
         finally
         {
             _materializeGate.Release();
         }
+        enrichment.Enqueue("series:" + series.WorkId, token => EnrichSeriesAsync(series, token));
+        return itemId;
     }
 
     /// <summary>Materializes the lightweight season directory returned when a series opens.</summary>
@@ -137,27 +126,16 @@ public sealed class EphemeralLibraryService(
         TvSeriesDetailsResponse details,
         CancellationToken ct)
     {
-        // See MaterializeAsync: resolve every artwork download up front, outside the lock, so a
-        // slow poster fetch for one season never blocks an unrelated materialization elsewhere.
-        var seriesImageTask = artworkBadge.GetPosterAsync(
-            details.Series.PosterUrl,
-            details.Series.WorkId,
-            details.Series.AddStreamarrBadge,
-            ct);
-        var seasonImageTasks = details.Seasons.ToDictionary(
-            season => season.WorkId,
-            season => artworkBadge.GetPosterAsync(
-                season.PosterUrl,
-                season.WorkId,
-                details.Series.AddStreamarrBadge,
-                ct));
-        await Task.WhenAll(seasonImageTasks.Values.Append(seriesImageTask)).ConfigureAwait(false);
-        var seriesImage = await seriesImageTask.ConfigureAwait(false);
-
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        IReadOnlyList<Guid> result;
         try
         {
-            var seriesId = await MaterializeSeriesCoreAsync(details.Series, seriesImage, ct).ConfigureAwait(false);
+            var seriesId = await MaterializeSeriesCoreAsync(
+                    details.Series,
+                    details.Series.PosterUrl,
+                    ct,
+                    applyPeople: false)
+                .ConfigureAwait(false);
             if (libraryManager.GetItemById(seriesId) is not Series parent)
                 throw new InvalidOperationException($"The Streamarr series parent {seriesId} is missing.");
             await ClearHierarchyCompletionAsync(parent, ct).ConfigureAwait(false);
@@ -184,7 +162,7 @@ public sealed class EphemeralLibraryService(
                 }
 
                 var item = existing as Season ?? new Season { Id = itemId };
-                PopulateSeason(item, season, parent, await seasonImageTasks[season.WorkId].ConfigureAwait(false));
+                PopulateSeason(item, season, parent, season.PosterUrl);
                 (existing is null ? creates : updates).Add(item);
             }
 
@@ -198,12 +176,16 @@ public sealed class EphemeralLibraryService(
             SaveBatch(creates, parent, ct);
             await UpdateBatchAsync(updates, parent, ct).ConfigureAwait(false);
             await MarkHierarchyCompleteAsync(parent, ids.Count, ct).ConfigureAwait(false);
-            return ids;
+            result = ids;
         }
         finally
         {
             _materializeGate.Release();
         }
+        enrichment.Enqueue(
+            "seasons:" + details.Series.WorkId,
+            token => EnrichSeasonsAsync(details, token));
+        return result;
     }
 
     /// <summary>
@@ -215,38 +197,20 @@ public sealed class EphemeralLibraryService(
         CancellationToken ct,
         bool protectSeriesHierarchy = false)
     {
-        // See MaterializeAsync: resolve every artwork download up front, outside the lock, so a
-        // slow episode still or poster fetch never blocks an unrelated materialization elsewhere.
-        var seriesImageTask = artworkBadge.GetPosterAsync(
-            details.Series.PosterUrl,
-            details.Series.WorkId,
-            details.Series.AddStreamarrBadge,
-            ct);
-        var seasonImageTask = artworkBadge.GetPosterAsync(
-            details.Season.PosterUrl,
-            details.Season.WorkId,
-            details.Series.AddStreamarrBadge,
-            ct);
-        var episodeImageTasks = details.Episodes.ToDictionary(
-            episode => episode.WorkId,
-            episode => artworkBadge.GetPosterAsync(
-                episode.StillUrl,
-                episode.WorkId,
-                episode.AddStreamarrBadge,
-                ct));
-        await Task.WhenAll(episodeImageTasks.Values.Append(seriesImageTask).Append(seasonImageTask))
-            .ConfigureAwait(false);
-        var seriesImage = await seriesImageTask.ConfigureAwait(false);
-        var seasonImage = await seasonImageTask.ConfigureAwait(false);
-
         await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        IReadOnlyList<Guid> result;
         try
         {
-            var seriesId = await MaterializeSeriesCoreAsync(details.Series, seriesImage, ct).ConfigureAwait(false);
+            var seriesId = await MaterializeSeriesCoreAsync(
+                    details.Series,
+                    details.Series.PosterUrl,
+                    ct,
+                    applyPeople: false)
+                .ConfigureAwait(false);
             var seasonId = await MaterializeSeasonCoreAsync(
                     details.Season,
                     seriesId,
-                    seasonImage,
+                    details.Season.PosterUrl,
                     ct)
                 .ConfigureAwait(false);
             if (libraryManager.GetItemById(seriesId) is not Series seriesParent)
@@ -260,7 +224,6 @@ public sealed class EphemeralLibraryService(
             var updates = new List<BaseItem>();
             var retiredStoreIds = new List<Guid>();
             var works = new List<KeyValuePair<Guid, WorkDto>>(details.Episodes.Count);
-            var episodePeople = new List<(BaseItem Item, IReadOnlyList<PersonDto> People)>(details.Episodes.Count);
             foreach (var episode in details.Episodes)
             {
                 ct.ThrowIfCancellationRequested();
@@ -285,10 +248,9 @@ public sealed class EphemeralLibraryService(
                     seriesParent,
                     seasonParent,
                     details.Series,
-                    await episodeImageTasks[episode.WorkId].ConfigureAwait(false));
+                    episode.StillUrl);
                 (existing is null ? creates : updates).Add(item);
                 works.Add(new KeyValuePair<Guid, WorkDto>(itemId, episode.ToWork()));
-                episodePeople.Add((item, episode.People));
             }
 
             await RemoveStaleDirectChildrenAsync(seasonParent.Id, BaseItemKind.Episode, ids.ToHashSet(), ct)
@@ -302,17 +264,19 @@ public sealed class EphemeralLibraryService(
                 .ConfigureAwait(false);
             SaveBatch(creates, seasonParent, ct);
             await UpdateBatchAsync(updates, seasonParent, ct).ConfigureAwait(false);
-            foreach (var (item, people) in episodePeople)
-                await ApplyPeopleAsync(item, people, ct).ConfigureAwait(false);
             if (!await store.PutRangeAsync(works, ct).ConfigureAwait(false))
                 throw new IOException("Could not persist the Streamarr episode release cache.");
             await MarkHierarchyCompleteAsync(seasonParent, ids.Count, ct).ConfigureAwait(false);
-            return ids;
+            result = ids;
         }
         finally
         {
             _materializeGate.Release();
         }
+        enrichment.Enqueue(
+            "episodes:" + details.Season.WorkId,
+            token => EnrichEpisodesAsync(details, token));
+        return result;
     }
 
     public bool TryGetOwnedSeries(Guid itemId, out Series? series, out int tmdbId)
@@ -465,10 +429,13 @@ public sealed class EphemeralLibraryService(
     }
 
     /// <summary>
-    /// Creates/updates the series shell. <paramref name="primaryImage"/> must already be resolved
-    /// (see MaterializeAsync's remarks on why artwork network I/O never happens under the lock).
+    /// Creates or updates the series shell without performing artwork network I/O.
     /// </summary>
-    private async Task<Guid> MaterializeSeriesCoreAsync(TvSeriesDto series, string? primaryImage, CancellationToken ct)
+    private async Task<Guid> MaterializeSeriesCoreAsync(
+        TvSeriesDto series,
+        string? primaryImage,
+        CancellationToken ct,
+        bool applyPeople = true)
     {
         var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
         var itemId = ItemIdFor(series.WorkId);
@@ -489,13 +456,13 @@ public sealed class EphemeralLibraryService(
         var item = existing as Series ?? new Series { Id = itemId };
         PopulateSeries(item, series, folder.Id, primaryImage);
         await SaveAsync(item, folder, isNew, ct).ConfigureAwait(false);
-        await ApplyPeopleAsync(item, series.People, ct).ConfigureAwait(false);
+        if (applyPeople)
+            await ApplyPeopleAsync(item, series.People, ct).ConfigureAwait(false);
         return itemId;
     }
 
     /// <summary>
-    /// Creates/updates one season. <paramref name="primaryImage"/> must already be resolved (see
-    /// MaterializeAsync's remarks on why artwork network I/O never happens under the lock).
+    /// Creates or updates one season without performing artwork network I/O.
     /// </summary>
     private async Task<Guid> MaterializeSeasonCoreAsync(
         TvSeasonDto season,
@@ -736,11 +703,13 @@ public sealed class EphemeralLibraryService(
     }
 
     /// <summary>
-    /// Creates/updates one movie/episode work. <paramref name="primaryImage"/> must already be
-    /// resolved (see MaterializeAsync's remarks on why artwork network I/O never happens under the
-    /// lock).
+    /// Creates or updates one movie/episode work without performing artwork network I/O.
     /// </summary>
-    private async Task<Guid> MaterializeCoreAsync(WorkDto work, string? primaryImage, CancellationToken ct)
+    private async Task<Guid> MaterializeCoreAsync(
+        WorkDto work,
+        string? primaryImage,
+        CancellationToken ct,
+        bool applyPeople = true)
     {
         var roots = await EnsureFoldersAsync(ct).ConfigureAwait(false);
         var itemId = ItemIdFor(work.WorkId);
@@ -828,7 +797,8 @@ public sealed class EphemeralLibraryService(
             logger.LogDebug("Refreshed ephemeral work {WorkId} (item {ItemId})", work.WorkId, itemId);
         }
 
-        await ApplyPeopleAsync(item, work.People, ct).ConfigureAwait(false);
+        if (applyPeople)
+            await ApplyPeopleAsync(item, work.People, ct).ConfigureAwait(false);
         store.Put(itemId, work);
         return itemId;
     }
@@ -1962,6 +1932,172 @@ public sealed class EphemeralLibraryService(
         item.RemoteTrailers = string.IsNullOrWhiteSpace(trailerUrl)
             ? []
             : [new MediaUrl { Name = "Trailer", Url = trailerUrl }];
+    }
+
+    private Task EnrichWorkAsync(WorkDto work, CancellationToken ct)
+        => EnrichOneAsync(
+            work.WorkId,
+            work.PosterUrl,
+            work.AddStreamarrBadge,
+            work.People,
+            ct);
+
+    private Task EnrichSeriesAsync(TvSeriesDto series, CancellationToken ct)
+        => EnrichOneAsync(
+            series.WorkId,
+            series.PosterUrl,
+            series.AddStreamarrBadge,
+            series.People,
+            ct);
+
+    private async Task EnrichOneAsync(
+        string workId,
+        string? sourceUrl,
+        bool badgeEnabled,
+        IReadOnlyList<PersonDto> people,
+        CancellationToken ct)
+    {
+        var image = await artworkBadge.GetPosterAsync(sourceUrl, workId, badgeEnabled, ct)
+            .ConfigureAwait(false);
+        await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (TryGetOwnedWork(workId) is not { } item)
+                return;
+            await UpdateEnrichedItemAsync(item, image, people, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _materializeGate.Release();
+        }
+    }
+
+    private async Task EnrichSeasonsAsync(TvSeriesDetailsResponse details, CancellationToken ct)
+    {
+        var seriesImageTask = artworkBadge.GetPosterAsync(
+            details.Series.PosterUrl,
+            details.Series.WorkId,
+            details.Series.AddStreamarrBadge,
+            ct);
+        var seasonImageTasks = details.Seasons.ToDictionary(
+            season => season.WorkId,
+            season => artworkBadge.GetPosterAsync(
+                season.PosterUrl,
+                season.WorkId,
+                details.Series.AddStreamarrBadge,
+                ct));
+        await Task.WhenAll(seasonImageTasks.Values.Append(seriesImageTask)).ConfigureAwait(false);
+
+        await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (TryGetOwnedWork(details.Series.WorkId) is { } series)
+            {
+                await UpdateEnrichedItemAsync(
+                        series,
+                        await seriesImageTask.ConfigureAwait(false),
+                        details.Series.People,
+                        ct)
+                    .ConfigureAwait(false);
+            }
+            foreach (var season in details.Seasons)
+            {
+                if (TryGetOwnedWork(season.WorkId) is not { } item)
+                    continue;
+                await UpdateEnrichedItemAsync(
+                        item,
+                        await seasonImageTasks[season.WorkId].ConfigureAwait(false),
+                        [],
+                        ct)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _materializeGate.Release();
+        }
+    }
+
+    private async Task EnrichEpisodesAsync(TvSeasonDetailsResponse details, CancellationToken ct)
+    {
+        var seriesImageTask = artworkBadge.GetPosterAsync(
+            details.Series.PosterUrl,
+            details.Series.WorkId,
+            details.Series.AddStreamarrBadge,
+            ct);
+        var seasonImageTask = artworkBadge.GetPosterAsync(
+            details.Season.PosterUrl,
+            details.Season.WorkId,
+            details.Series.AddStreamarrBadge,
+            ct);
+        var episodeImageTasks = details.Episodes.ToDictionary(
+            episode => episode.WorkId,
+            episode => artworkBadge.GetPosterAsync(
+                episode.StillUrl,
+                episode.WorkId,
+                episode.AddStreamarrBadge,
+                ct));
+        await Task.WhenAll(episodeImageTasks.Values.Append(seriesImageTask).Append(seasonImageTask))
+            .ConfigureAwait(false);
+
+        await _materializeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (TryGetOwnedWork(details.Series.WorkId) is { } series)
+            {
+                await UpdateEnrichedItemAsync(
+                        series,
+                        await seriesImageTask.ConfigureAwait(false),
+                        details.Series.People,
+                        ct)
+                    .ConfigureAwait(false);
+            }
+            if (TryGetOwnedWork(details.Season.WorkId) is { } season)
+            {
+                await UpdateEnrichedItemAsync(
+                        season,
+                        await seasonImageTask.ConfigureAwait(false),
+                        [],
+                        ct)
+                    .ConfigureAwait(false);
+            }
+            foreach (var episode in details.Episodes)
+            {
+                if (TryGetOwnedWork(episode.WorkId) is not { } item)
+                    continue;
+                await UpdateEnrichedItemAsync(
+                        item,
+                        await episodeImageTasks[episode.WorkId].ConfigureAwait(false),
+                        episode.People,
+                        ct)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _materializeGate.Release();
+        }
+    }
+
+    private BaseItem? TryGetOwnedWork(string workId)
+    {
+        var item = libraryManager.GetItemById(ItemIdFor(workId));
+        return item is not null && HasWorkId(item, workId) ? item : null;
+    }
+
+    private async Task UpdateEnrichedItemAsync(
+        BaseItem item,
+        string? image,
+        IReadOnlyList<PersonDto> people,
+        CancellationToken ct)
+    {
+        if (libraryManager.GetItemById(item.ParentId) is not { } parent)
+            return;
+        TryApplyImage(item, image, ImageType.Primary);
+        await libraryManager.UpdateItemAsync(item, parent, ItemUpdateType.MetadataEdit, ct)
+            .ConfigureAwait(false);
+        if (people.Count > 0)
+            await ApplyPeopleAsync(item, people, ct).ConfigureAwait(false);
     }
 
     private async Task ApplyPeopleAsync(

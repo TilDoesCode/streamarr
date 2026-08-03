@@ -20,6 +20,7 @@ const schema = z.object({
   sessionTtlSeconds: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   ephemeralCacheSizeMb: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   searchCacheTtlSeconds: z.coerce.number().int("Must be a whole number").min(0, "Cannot be negative"),
+  indexerResultLimit: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1").max(1000, "Must not exceed 1000"),
   segmentCacheSizeMb: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   connectionBudget: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   addStreamarrBadge: z.boolean(),
@@ -46,6 +47,7 @@ export function GeneralSettings() {
       sessionTtlSeconds: 86_400,
       ephemeralCacheSizeMb: 102_400,
       searchCacheTtlSeconds: 60,
+      indexerResultLimit: 100,
       segmentCacheSizeMb: 512,
       connectionBudget: 20,
       addStreamarrBadge: true,
@@ -60,6 +62,7 @@ export function GeneralSettings() {
         sessionTtlSeconds: data.sessionTtlSeconds,
         ephemeralCacheSizeMb: data.ephemeralCacheSizeMb,
         searchCacheTtlSeconds: data.searchCacheTtlSeconds,
+        indexerResultLimit: data.indexerResultLimit,
         segmentCacheSizeMb: data.segmentCacheSizeMb,
         connectionBudget: data.connectionBudget,
         addStreamarrBadge: data.addStreamarrBadge !== false,
@@ -76,6 +79,7 @@ export function GeneralSettings() {
       sessionTtlSeconds: parsed.sessionTtlSeconds,
       ephemeralCacheSizeMb: parsed.ephemeralCacheSizeMb,
       searchCacheTtlSeconds: parsed.searchCacheTtlSeconds,
+      indexerResultLimit: parsed.indexerResultLimit,
       segmentCacheSizeMb: parsed.segmentCacheSizeMb,
       connectionBudget: parsed.connectionBudget,
       addStreamarrBadge: parsed.addStreamarrBadge,
@@ -108,7 +112,7 @@ export function GeneralSettings() {
         <CardDescription>
           TMDB credential, ephemeral-file retention, search/segment caches, and the global NNTP
           connection budget (BRIEF §6.3). TMDB credentials and artwork marking take effect
-          immediately; resource limits apply on restart.
+          immediately, as does the indexer result limit; other resource limits apply on restart.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -156,6 +160,14 @@ export function GeneralSettings() {
               error={errors.searchCacheTtlSeconds?.message}
             >
               <Input id="searchCacheTtlSeconds" type="number" min={0} aria-invalid={!!errors.searchCacheTtlSeconds} {...register("searchCacheTtlSeconds")} />
+            </Field>
+            <Field
+              id="indexerResultLimit"
+              label="Indexer result limit"
+              hint="Maximum releases loaded from each indexer per search. Indexers may report a larger available total."
+              error={errors.indexerResultLimit?.message}
+            >
+              <Input id="indexerResultLimit" type="number" min={1} max={1000} aria-invalid={!!errors.indexerResultLimit} {...register("indexerResultLimit")} />
             </Field>
             <Field
               id="segmentCacheSizeMb"

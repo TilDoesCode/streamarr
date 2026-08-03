@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.10.1.0",
+    "version": "0.11.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Fix resumed and encrypted-RAR playback stalling under sustained reads: preserve active read-ahead streams across small forward seeks, reuse cached yEnc segment ranges instead of re-downloading articles during interpolation probes, and retain the previous ciphertext block for sequential CBC decryption. Add regression coverage and diagnostic tooling for seek amplification and time-to-first-frame investigations."
+    "changelog": "Move recursive TV hierarchy expansion off the search request path into a background HierarchyEnrichmentDispatcher, add an admin-configurable indexer result limit that applies live without a restart, and lower the idle NNTP connection timeout from 300s to 120s to free pooled connections sooner."
 }

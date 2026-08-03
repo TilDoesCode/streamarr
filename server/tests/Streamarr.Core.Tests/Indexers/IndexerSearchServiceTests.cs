@@ -25,7 +25,7 @@ public class IndexerSearchServiceTests
     public async Task FanOut_MergesReleasesFromEveryEnabledIndexer()
     {
         var client = new FakeNewznabClient()
-            .Returns("Alpha", FakeNewznabClient.Item("Alpha.Release.2021-A", 1000, "a"))
+            .ReturnsTotal("Alpha", 750, FakeNewznabClient.Item("Alpha.Release.2021-A", 1000, "a"))
             .Returns("Beta", FakeNewznabClient.Item("Beta.Release.2021-B", 2000, "b"));
 
         var result = await Service(client, [NewznabFixtures.Indexer("Alpha", 0), NewznabFixtures.Indexer("Beta", 1)])
@@ -34,6 +34,8 @@ public class IndexerSearchServiceTests
         Assert.Equal(2, result.Releases.Count);
         Assert.Contains(result.Outcomes, o => o.IndexerName == "Alpha" && o.Succeeded);
         Assert.Contains(result.Outcomes, o => o.IndexerName == "Beta" && o.Succeeded);
+        Assert.Equal(750, result.Outcomes.Single(o => o.IndexerName == "Alpha").TotalCount);
+        Assert.Null(result.Outcomes.Single(o => o.IndexerName == "Beta").TotalCount);
         Assert.Contains(result.Releases, release => release.IndexerId == "alpha");
         Assert.Contains(result.Releases, release => release.IndexerId == "beta");
         Assert.False(result.FromCache);
@@ -249,6 +251,43 @@ public class IndexerSearchServiceTests
     }
 
     [Fact]
+    public async Task ConcurrentIdenticalSearches_ShareOneFanOut()
+    {
+        var client = new FakeNewznabClient()
+            .Delays(
+                "Alpha",
+                TimeSpan.FromMilliseconds(75),
+                FakeNewznabClient.Item("Alpha.Release-A", 1000, "a"));
+        var service = Service(client, [NewznabFixtures.Indexer("Alpha")]);
+
+        var first = service.SearchAsync(Query, CancellationToken.None);
+        var second = service.SearchAsync(Query, CancellationToken.None);
+        var results = await Task.WhenAll(first, second);
+
+        Assert.All(results, result => Assert.Single(result.Releases));
+        Assert.Equal(1, client.SearchCallCount);
+    }
+
+    [Fact]
+    public async Task CancelledWaiter_DoesNotCancelSharedFanOut()
+    {
+        var client = new FakeNewznabClient()
+            .Delays(
+                "Alpha",
+                TimeSpan.FromMilliseconds(100),
+                FakeNewznabClient.Item("Alpha.Release-A", 1000, "a"));
+        var service = Service(client, [NewznabFixtures.Indexer("Alpha")]);
+        using var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+
+        var abandoned = service.SearchAsync(Query, cancelled.Token);
+        var surviving = service.SearchAsync(Query, CancellationToken.None);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => abandoned);
+        Assert.Single((await surviving).Releases);
+        Assert.Equal(1, client.SearchCallCount);
+    }
+
+    [Fact]
     public async Task Cache_DifferentQuery_IsNotServedFromCache()
     {
         var client = new FakeNewznabClient()
@@ -258,6 +297,26 @@ public class IndexerSearchServiceTests
         await service.SearchAsync(new NewznabQuery { Term = "first" }, CancellationToken.None);
         await service.SearchAsync(new NewznabQuery { Term = "second" }, CancellationToken.None);
 
+        Assert.Equal(2, client.SearchCallCount);
+    }
+
+    [Fact]
+    public async Task Cache_ChangedDefaultLimit_TriggersFreshFanOut()
+    {
+        var client = new FakeNewznabClient()
+            .Returns("Alpha", FakeNewznabClient.Item("Alpha.Release-A", 1000, "a"));
+        var options = new IndexerSearchOptions
+        {
+            DefaultLimit = 100,
+            PerIndexerRateLimitMilliseconds = 0,
+        };
+        var service = Service(client, [NewznabFixtures.Indexer("Alpha")], options);
+
+        await service.SearchAsync(Query, CancellationToken.None);
+        options.DefaultLimit = 250;
+        var afterChange = await service.SearchAsync(Query, CancellationToken.None);
+
+        Assert.False(afterChange.FromCache);
         Assert.Equal(2, client.SearchCallCount);
     }
 

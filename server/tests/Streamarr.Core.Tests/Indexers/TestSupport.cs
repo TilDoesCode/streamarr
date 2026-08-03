@@ -78,6 +78,12 @@ internal sealed class FakeNewznabClient : INewznabClient
         return this;
     }
 
+    public FakeNewznabClient ReturnsTotal(string indexerName, int total, params NewznabItem[] items)
+    {
+        _behaviours[indexerName] = _ => Task.FromResult(new NewznabSearchResponse { Items = items, Total = total });
+        return this;
+    }
+
     public FakeNewznabClient Throws(string indexerName, Exception exception)
     {
         _behaviours[indexerName] = _ => Task.FromException<NewznabSearchResponse>(exception);

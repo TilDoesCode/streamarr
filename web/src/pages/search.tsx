@@ -37,6 +37,7 @@ import {
 import type {
   DebugReleaseDto,
   DebugWorkDto,
+  IndexerDiagnosticDto,
   ParsedFieldsDto,
   ReleaseDto,
   ScoreLineDto,
@@ -62,6 +63,13 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "grabs", label: "Grabs" },
   { key: "name", label: "Name" },
 ];
+
+function indexerResultSummary(indexer: IndexerDiagnosticDto): string {
+  const loaded = indexer.itemCount ?? 0;
+  return indexer.totalCount != null && indexer.totalCount > loaded
+    ? `${loaded} of ${indexer.totalCount} loaded`
+    : `${loaded}`;
+}
 
 export function SearchPage() {
   return (
@@ -586,7 +594,7 @@ function TvSeasonRow({ series, season }: { series: TvSeriesDto; season: TvSeason
                       variant={indexer.status === "succeeded" ? "success" : "destructive"}
                       title={indexer.error ?? undefined}
                     >
-                      {indexer.indexerName}: {indexer.itemCount ?? 0} · {Math.round(indexer.elapsedMs ?? 0)}ms
+                      {indexer.indexerName}: {indexerResultSummary(indexer)} · {Math.round(indexer.elapsedMs ?? 0)}ms
                     </Badge>
                   ))}
                 </div>
@@ -872,7 +880,7 @@ function DebugSearchPanel() {
               variant={ix.status === "succeeded" ? "success" : "destructive"}
               title={ix.error ?? undefined}
             >
-              {ix.indexerName}: {ix.itemCount ?? 0} · {Math.round(ix.elapsedMs ?? 0)}ms
+              {ix.indexerName}: {indexerResultSummary(ix)} · {Math.round(ix.elapsedMs ?? 0)}ms
             </Badge>
           ))}
         </div>

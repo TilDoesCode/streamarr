@@ -175,12 +175,14 @@ public class WorkAggregatorTests
     }
 
     [Theory]
-    [InlineData(2734, "Law & Order: Special Victims Unit", 1999, "Law.and.Order.SVU.S01E01.1080p.WEB-DL.x265-GROUP")]
-    [InlineData(37680, "Suits", 2011, "Suits.2018.S01E01.1080p.WEB-DL.x265-GROUP")]
+    [InlineData(2734, "Law & Order: Special Victims Unit", 1999, 1, "Law.and.Order.SVU.S01E01.1080p.WEB-DL.x265-GROUP")]
+    [InlineData(37680, "Suits", 2011, 1, "Suits.2018.S01E01.1080p.WEB-DL.x265-GROUP")]
+    [InlineData(1416, "Grey's Anatomy", 2005, 21, "Greys.Anatomy.S21E01.1080p.WEB-DL.x265-GROUP")]
     public async Task AuthoritativeTvTarget_AcceptsCommonReleaseTitleAlias(
         int tmdbId,
         string canonicalTitle,
         int canonicalYear,
+        int season,
         string releaseTitle)
     {
         var target = FakeTmdbClient.Tv(tmdbId, canonicalTitle, canonicalYear, runtime: 43);
@@ -188,7 +190,7 @@ public class WorkAggregatorTests
         {
             RequestedType = MediaType.Tv,
             TmdbId = target.TmdbId,
-            Season = 1,
+            Season = season,
             CanonicalTitle = target.Title,
             CanonicalYear = target.Year,
             ResolvedTarget = target,
@@ -200,7 +202,7 @@ public class WorkAggregatorTests
             Raw(releaseTitle, 2_000_000_000, "alias"));
 
         var work = Assert.Single(result.Works);
-        Assert.Equal($"tmdb-tv-{tmdbId}-s01e01", work.WorkId);
+        Assert.Equal($"tmdb-tv-{tmdbId}-s{season:D2}e01", work.WorkId);
         Assert.Equal(target.Title, work.Title);
         Assert.Equal("alias", Assert.Single(work.Releases).ReleaseId);
         Assert.Equal(0, tmdb.SearchTvCalls);

@@ -27,6 +27,9 @@ public sealed class GeneralConfigEntity
 
     public int SearchCacheTtlSeconds { get; set; } = 60;
 
+    /// <summary>Maximum Newznab items loaded from each indexer per search.</summary>
+    public int IndexerResultLimit { get; set; } = 100;
+
     /// <summary>Segment cache size in mebibytes.</summary>
     public int SegmentCacheSizeMb { get; set; } = 512;
 

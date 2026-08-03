@@ -71,6 +71,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<MediaSourceOfferStore>();
         serviceCollection.AddSingleton<StreamarrMediaSourceProjection>();
         serviceCollection.AddSingleton<HierarchyLoadCoordinator>();
+        serviceCollection.AddSingleton<HierarchyEnrichmentDispatcher>();
         serviceCollection.AddHttpContextAccessor();
 
         // Adapters (stateless).
@@ -90,6 +91,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // Ensures the visible "Streamarr" library placement at startup (Continue Watching /
         // Next Up / Favorites integration).
         serviceCollection.AddHostedService<LibraryIntegrationEntryPoint>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<HierarchyEnrichmentDispatcher>());
 
         // Engagement-gated visibility: search hits stay in the hidden staging root until a user
         // plays/favorites them, at which point the subtree is promoted into the visible library.

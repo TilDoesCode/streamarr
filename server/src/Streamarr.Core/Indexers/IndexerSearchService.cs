@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -27,17 +28,44 @@ public sealed class IndexerSearchService(
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ILogger _logger = logger ?? NullLogger<IndexerSearchService>.Instance;
     private readonly SemaphoreSlim _requestGate = new(Math.Max(1, options.MaxConcurrentIndexerRequests));
+    private readonly ConcurrentDictionary<string, Lazy<Task<IndexerSearchResult>>> _inflight =
+        new(StringComparer.Ordinal);
     private readonly Func<TimeSpan, CancellationToken, Task> _delay =
         retryDelay ?? ((delay, ct) => Task.Delay(delay, ct));
 
     public async Task<IndexerSearchResult> SearchAsync(NewznabQuery query, CancellationToken cancellationToken)
     {
-        var cacheKey = query.CacheKey();
+        var effectiveQuery = query.Limit is null
+            ? query with { Limit = options.DefaultLimit }
+            : query;
+        var cacheKey = effectiveQuery.CacheKey();
         if (cache.TryGet(cacheKey, out var cached))
         {
             _logger.LogDebug("Search cache hit");
             return cached with { FromCache = true };
         }
+
+        var pending = _inflight.GetOrAdd(
+            cacheKey,
+            _ => new Lazy<Task<IndexerSearchResult>>(
+                () => SearchUncachedAsync(effectiveQuery, cacheKey),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+        var shared = pending.Value;
+        _ = shared.ContinueWith(
+            _ => _inflight.TryRemove(
+                new KeyValuePair<string, Lazy<Task<IndexerSearchResult>>>(cacheKey, pending)),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        return await shared.WaitAsync(cancellationToken);
+    }
+
+    private async Task<IndexerSearchResult> SearchUncachedAsync(
+        NewznabQuery effectiveQuery,
+        string cacheKey)
+    {
+        if (cache.TryGet(cacheKey, out var cached))
+            return cached with { FromCache = true };
 
         var indexers = configStore.GetEnabled()
             .Take(Math.Max(1, options.MaxIndexersPerSearch))
@@ -45,14 +73,10 @@ public sealed class IndexerSearchService(
         if (indexers.Length == 0)
             return IndexerSearchResult.Empty;
 
-        var effectiveQuery = query.Limit is null
-            ? query with { Limit = options.DefaultLimit }
-            : query;
-
         // Fan out; each task is fully isolated and never throws (except on caller
         // cancellation) so a single failure can't abort Task.WhenAll.
         var tasks = indexers
-            .Select(indexer => QueryOneAsync(indexer, effectiveQuery, cancellationToken))
+            .Select(indexer => QueryOneAsync(indexer, effectiveQuery, CancellationToken.None))
             .ToArray();
 
         var perIndexer = await Task.WhenAll(tasks);
@@ -94,9 +118,11 @@ public sealed class IndexerSearchService(
                 await _requestGate.WaitAsync(timeoutCts.Token);
 
                 IReadOnlyList<Release> releases;
+                int? totalCount;
                 try
                 {
                     var response = await client.SearchAsync(indexer, query, timeoutCts.Token);
+                    totalCount = response.Total;
                     releases = response.Items
                         .Select(item => ToRelease(indexer, item))
                         .ToArray();
@@ -112,6 +138,7 @@ public sealed class IndexerSearchService(
                     IndexerName = indexer.Name,
                     Status = IndexerOutcomeStatus.Succeeded,
                     ItemCount = releases.Count,
+                    TotalCount = totalCount,
                     Elapsed = _time.GetElapsedTime(started),
                 });
             }

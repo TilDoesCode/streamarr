@@ -105,6 +105,8 @@ public class EngagementPlacementTests : IDisposable
                 new StubHttpClientFactory(artworkHandler),
                 new StubApplicationPaths(_cacheRoot),
                 NullLogger<ArtworkBadgeService>.Instance),
+            new HierarchyEnrichmentDispatcher(
+                NullLogger<HierarchyEnrichmentDispatcher>.Instance),
             NullLogger<EphemeralLibraryService>.Instance);
     }
 

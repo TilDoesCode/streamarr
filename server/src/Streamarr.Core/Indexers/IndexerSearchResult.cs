@@ -19,6 +19,9 @@ public sealed record IndexerOutcome
     /// <summary>Items the indexer returned (before cross-indexer dedupe).</summary>
     public int ItemCount { get; init; }
 
+    /// <summary>Total matches reported by the indexer; may exceed the loaded page.</summary>
+    public int? TotalCount { get; init; }
+
     public TimeSpan Elapsed { get; init; }
 
     /// <summary>Present when <see cref="Status"/> is not <see cref="IndexerOutcomeStatus.Succeeded"/>.</summary>

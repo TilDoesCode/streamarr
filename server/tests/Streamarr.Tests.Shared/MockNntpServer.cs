@@ -46,6 +46,14 @@ public sealed class MockNntpServer : IAsyncDisposable
     /// <summary>Optional artificial latency applied before every command response (network RTT simulation).</summary>
     public TimeSpan CommandLatency { get; init; } = TimeSpan.Zero;
 
+    /// <summary>
+    /// When set, a connection receiving no command for this long is closed silently —
+    /// exactly how commercial NNTP providers drop idle connections. The client only
+    /// notices on its next command (EOF), which is the staleness scenario the pool's
+    /// revalidation exists for.
+    /// </summary>
+    public TimeSpan? IdleDisconnectAfter { get; init; }
+
     /// <summary>Optional per-connection body throughput cap in bytes/second (0 = unlimited).</summary>
     public int BodyBytesPerSecond { get; init; }
 
@@ -117,7 +125,24 @@ public sealed class MockNntpServer : IAsyncDisposable
 
             while (!_cts.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync(_cts.Token);
+                string? line;
+                if (IdleDisconnectAfter is { } idleCutoff)
+                {
+                    try
+                    {
+                        line = await reader.ReadLineAsync(_cts.Token).AsTask()
+                            .WaitAsync(idleCutoff, _cts.Token);
+                    }
+                    catch (TimeoutException)
+                    {
+                        return; // silent provider-side idle disconnect
+                    }
+                }
+                else
+                {
+                    line = await reader.ReadLineAsync(_cts.Token);
+                }
+
                 if (line == null) return;
                 Interlocked.Increment(ref _commandsServed);
 

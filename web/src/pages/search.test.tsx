@@ -16,7 +16,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 const debugResponse = {
-  indexers: [{ indexerId: "1", indexerName: "mock", status: "succeeded", itemCount: 2, elapsedMs: 7 }],
+  indexers: [{ indexerId: "1", indexerName: "mock", status: "succeeded", itemCount: 2, totalCount: 12, elapsedMs: 7 }],
   results: [
     {
       workId: "tmdb-movie-1",
@@ -134,7 +134,7 @@ const tvSeriesDetails = {
 const tvSeasonDetails = {
   series: tvSeriesDetails.series,
   season: tvSeriesDetails.seasons[0],
-  indexers: [{ indexerId: "1", indexerName: "mock", status: "succeeded", itemCount: 1, elapsedMs: 8 }],
+  indexers: [{ indexerId: "1", indexerName: "mock", status: "succeeded", itemCount: 1, totalCount: 8, elapsedMs: 8 }],
   episodes: [
     {
       workId: "tmdb-tv-90228-s01e01",
@@ -405,6 +405,7 @@ describe("SearchPage debug playground", () => {
     expect(screen.getByText("Twice Born")).toBeInTheDocument();
     expect(screen.getByText("not found")).toBeInTheDocument();
     expect(screen.getAllByText("1 available")).toHaveLength(2);
+    expect(screen.getByText(/mock: 1 of 8 loaded/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /s01e04 twice born, 1 releases, expand/i }));
     expect(await screen.findByText(/Dune\.Prophecy\.S01E04/)).toBeInTheDocument();
@@ -511,6 +512,7 @@ describe("SearchPage debug playground", () => {
     await runSearch();
     expect(screen.getByText(/Example\.2021\.SAMPLE\.720p/)).toBeInTheDocument();
     expect(screen.getByText(/2 releases · 1 rejected/)).toBeInTheDocument();
+    expect(screen.getByText(/mock: 2 of 12 loaded/)).toBeInTheDocument();
   });
 
   it("filters out rejected releases when the toggle is unchecked", async () => {

@@ -220,6 +220,7 @@ public sealed class TvCatalogService(
         IndexerName = outcome.IndexerName,
         Status = outcome.Status.ToString().ToLowerInvariant(),
         ItemCount = outcome.ItemCount,
+        TotalCount = outcome.TotalCount,
         ElapsedMs = outcome.Elapsed.TotalMilliseconds,
         Error = outcome.Error,
     };

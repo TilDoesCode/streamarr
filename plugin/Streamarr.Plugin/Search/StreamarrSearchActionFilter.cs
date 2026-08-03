@@ -67,7 +67,6 @@ public sealed class StreamarrSearchActionFilter(
     /// <summary>Upper bound on works materialized per search, to bound request cost.</summary>
     private const int MaxWorks = 20;
     private const int MaxSeries = 3;
-    private const int MaxRecursiveSeasonConcurrency = 3;
     private const int MaxSearchTermLength = 256;
 
     private const string SearchTermKey = "searchTerm";
@@ -549,8 +548,7 @@ public sealed class StreamarrSearchActionFilter(
         Guid ParentId,
         BaseItemKind ChildKind,
         int? SeasonNumber,
-        Guid? ExpectedSeriesId,
-        bool SupportsRecursive);
+        Guid? ExpectedSeriesId);
 
     /// <summary>
     /// Runs movie availability and bounded TV-series discovery concurrently under the keystroke
@@ -636,11 +634,9 @@ public sealed class StreamarrSearchActionFilter(
             && library.TryGetOwnedSeries(request.ParentId, out var series, out var tmdbId))
         {
             var allowsSeasons = HierarchyAllowsKind(http.Request.Query, BaseItemKind.Season);
-            var expandEpisodes = request.SupportsRecursive
-                                 && HierarchyAllowsRecursiveEpisodes(http.Request.Query);
             if (series is null
                 || !CanExposeToUser(series, isTv: true, user)
-                || (!allowsSeasons && !expandEpisodes))
+                || !allowsSeasons)
             {
                 return;
             }
@@ -664,19 +660,6 @@ public sealed class StreamarrSearchActionFilter(
                 }
             }
 
-            if (expandEpisodes)
-            {
-                using var seriesReservation = library.ReserveSeriesHierarchy(request.ParentId);
-                if (!library.CanExpandCompleteSeriesHierarchy(request.ParentId))
-                {
-                    logger.LogDebug(
-                        "Skipping recursive episode expansion for TMDB series {TmdbId}: the complete hierarchy cannot be represented within the ephemeral capacity",
-                        tmdbId);
-                    return;
-                }
-
-                await ExpandRecursiveEpisodesAsync(request.ParentId, tmdbId, ct).ConfigureAwait(false);
-            }
             return;
         }
 
@@ -736,9 +719,7 @@ public sealed class StreamarrSearchActionFilter(
             return;
         }
 
-        // A series-wide /Shows/{seriesId}/Episodes request (no seasonId/season constraint) is
-        // Jellyfin Web's playback-queue reload for an episode-card play click. Cover every
-        // canonical season; completed seasons are skipped without any Core round-trip.
+        // A series-wide queue reload exposes only episodes already loaded by an explicit season.
         if (request.ChildKind == BaseItemKind.Episode
             && request.SeasonNumber is null
             && request.ExpectedSeriesId == request.ParentId
@@ -751,33 +732,9 @@ public sealed class StreamarrSearchActionFilter(
                 return;
             }
 
-            if (!library.IsHierarchyComplete(request.ParentId, BaseItemKind.Season))
-            {
-                using var hierarchyLoad = hierarchyLoads.Acquire(
-                        new HierarchyLoadCoordinator.Key(wholeTmdbId, null),
-                        HierarchyTimeout,
-                        loadToken => api.GetTvSeriesAsync(wholeTmdbId, loadToken));
-                if (!library.IsHierarchyComplete(request.ParentId, BaseItemKind.Season))
-                {
-                    var details = await hierarchyLoad.FetchAsync(ct).ConfigureAwait(false);
-                    if (details is not null
-                        && !library.IsHierarchyComplete(request.ParentId, BaseItemKind.Season))
-                    {
-                        await library.MaterializeSeasonsAsync(details, ct).ConfigureAwait(false);
-                    }
-                }
-            }
-
-            using var seriesReservation = library.ReserveSeriesHierarchy(request.ParentId);
-            if (!library.CanExpandCompleteSeriesHierarchy(request.ParentId))
-            {
-                logger.LogDebug(
-                    "Skipping series-wide episode expansion for TMDB series {TmdbId}: the complete hierarchy cannot be represented within the ephemeral capacity",
-                    wholeTmdbId);
-                return;
-            }
-
-            await ExpandRecursiveEpisodesAsync(request.ParentId, wholeTmdbId, ct).ConfigureAwait(false);
+            logger.LogDebug(
+                "Serving the existing episode queue for TMDB series {TmdbId} without recursive season searches",
+                wholeTmdbId);
         }
     }
 
@@ -807,9 +764,7 @@ public sealed class StreamarrSearchActionFilter(
             return;
         }
 
-        // Only the Core/indexer fetch is shared. Direct and recursive callers subsequently enter
-        // the library's materialization gate with their own capacity-protection policy. The lease
-        // remains active through that commit, so a third caller can reuse the completed response.
+        // The lease remains active through commit, so duplicate direct callers share one fetch.
         var details = await hierarchyLoad.FetchAsync(ct).ConfigureAwait(false);
         if (details is not null)
         {
@@ -817,48 +772,6 @@ public sealed class StreamarrSearchActionFilter(
                 .MaterializeEpisodesAsync(details, ct, protectSeriesHierarchy)
                 .ConfigureAwait(false);
         }
-    }
-
-    private async Task ExpandRecursiveEpisodesAsync(Guid seriesId, int tmdbId, CancellationToken ct)
-    {
-        var incompleteSeasons = library.GetOwnedSeasons(seriesId)
-            .Where(season => season.IndexNumber is >= 0
-                             && !library.IsHierarchyComplete(season.Id, BaseItemKind.Episode))
-            .ToArray();
-        await Parallel.ForEachAsync(
-                incompleteSeasons,
-                new ParallelOptions
-                {
-                    CancellationToken = ct,
-                    MaxDegreeOfParallelism = MaxRecursiveSeasonConcurrency,
-                },
-                async (season, seasonToken) =>
-                {
-                    try
-                    {
-                        await EnsureEpisodesAsync(
-                                seriesId,
-                                season.Id,
-                                tmdbId,
-                                season.IndexNumber!.Value,
-                                seasonToken,
-                                protectSeriesHierarchy: true)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (seasonToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogDebug(
-                            "Could not recursively populate TMDB series {TmdbId} season {Season} ({FailureType})",
-                            tmdbId,
-                            season.IndexNumber,
-                            ex.GetType().Name);
-                    }
-                })
-            .ConfigureAwait(false);
     }
 
     internal static bool HierarchyAllowsKind(IQueryCollection query, BaseItemKind kind)
@@ -972,7 +885,7 @@ public sealed class StreamarrSearchActionFilter(
             return true;
 
         var httpRequest = context.HttpContext.Request;
-        request = new HierarchyRequest(Guid.Empty, BaseItemKind.Folder, null, null, false);
+        request = new HierarchyRequest(Guid.Empty, BaseItemKind.Folder, null, null);
         if (!IsSupportedSearchPath(httpRequest.Path, isHintRequest: false)
             || !TryParentId(httpRequest, out var parentId)
             || OwnedChildKind(parentId) is not { } kind)
@@ -980,7 +893,7 @@ public sealed class StreamarrSearchActionFilter(
             return false;
         }
 
-        request = new HierarchyRequest(parentId, kind, null, null, true);
+        request = new HierarchyRequest(parentId, kind, null, null);
         return true;
     }
 
@@ -988,7 +901,7 @@ public sealed class StreamarrSearchActionFilter(
         ActionExecutingContext context,
         out HierarchyRequest request)
     {
-        request = new HierarchyRequest(Guid.Empty, BaseItemKind.Folder, null, null, false);
+        request = new HierarchyRequest(Guid.Empty, BaseItemKind.Folder, null, null);
         var parts = (context.HttpContext.Request.Path.Value ?? string.Empty)
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (!IsSupportedHierarchyPath(context.HttpContext.Request.Path)
@@ -999,7 +912,7 @@ public sealed class StreamarrSearchActionFilter(
 
         if (string.Equals(parts[2], "Seasons", StringComparison.OrdinalIgnoreCase))
         {
-            request = new HierarchyRequest(seriesId, BaseItemKind.Season, null, seriesId, false);
+            request = new HierarchyRequest(seriesId, BaseItemKind.Season, null, seriesId);
             return true;
         }
 
@@ -1016,7 +929,7 @@ public sealed class StreamarrSearchActionFilter(
                 return false;
             }
 
-            request = new HierarchyRequest(seasonId, BaseItemKind.Episode, null, seriesId, false);
+            request = new HierarchyRequest(seasonId, BaseItemKind.Episode, null, seriesId);
             return true;
         }
 
@@ -1026,7 +939,7 @@ public sealed class StreamarrSearchActionFilter(
             // with only startItemId/limit — no season constraint at all. Treat it as a
             // series-wide episode request; without this the clicked plugin episode is missing
             // from the queue and playback fails with an empty item list.
-            request = new HierarchyRequest(seriesId, BaseItemKind.Episode, null, seriesId, false);
+            request = new HierarchyRequest(seriesId, BaseItemKind.Episode, null, seriesId);
             return true;
         }
 
@@ -1037,7 +950,7 @@ public sealed class StreamarrSearchActionFilter(
             return false;
         }
 
-        request = new HierarchyRequest(seriesId, BaseItemKind.Episode, seasonNumber, seriesId, false);
+        request = new HierarchyRequest(seriesId, BaseItemKind.Episode, seasonNumber, seriesId);
         return true;
     }
 

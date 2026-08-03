@@ -100,6 +100,7 @@ public sealed record GeneralConfigResponse
     public int SessionTtlSeconds { get; init; }
     public int EphemeralCacheSizeMb { get; init; }
     public int SearchCacheTtlSeconds { get; init; }
+    public int IndexerResultLimit { get; init; }
     public int SegmentCacheSizeMb { get; init; }
     public int ConnectionBudget { get; init; }
     public bool AddStreamarrBadge { get; init; }
@@ -112,6 +113,7 @@ public sealed record GeneralConfigResponse
         SessionTtlSeconds = e.SessionTtlSeconds,
         EphemeralCacheSizeMb = e.EphemeralCacheSizeMb,
         SearchCacheTtlSeconds = e.SearchCacheTtlSeconds,
+        IndexerResultLimit = e.IndexerResultLimit,
         SegmentCacheSizeMb = e.SegmentCacheSizeMb,
         ConnectionBudget = e.ConnectionBudget,
         AddStreamarrBadge = e.AddStreamarrBadge,

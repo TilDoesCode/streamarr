@@ -11,6 +11,7 @@ const config = {
   sessionTtlSeconds: 86400,
   ephemeralCacheSizeMb: 102400,
   searchCacheTtlSeconds: 60,
+  indexerResultLimit: 100,
   segmentCacheSizeMb: 512,
   connectionBudget: 20,
   addStreamarrBadge: true,
@@ -60,6 +61,7 @@ describe("GeneralSettings", () => {
     const budget = await screen.findByLabelText(/NNTP connection budget/i);
     expect(budget).toHaveValue(20);
     expect(screen.getByLabelText(/Ephemeral file cache/i)).toHaveValue(102400);
+    expect(screen.getByLabelText(/Indexer result limit/i)).toHaveValue(100);
     // Write-only TMDB key: field is blank with the mask as placeholder.
     const tmdb = screen.getByLabelText(/TMDB credential/i) as HTMLInputElement;
     expect(tmdb.value).toBe("");
@@ -103,6 +105,19 @@ describe("GeneralSettings", () => {
 
     expect(await screen.findByText(/must be at least 1/i)).toBeInTheDocument();
     expect(putBodies).toHaveLength(0);
+  });
+
+  it("saves a custom per-indexer result limit", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<GeneralSettings />);
+    const limit = await screen.findByLabelText(/Indexer result limit/i);
+
+    await user.clear(limit);
+    await user.type(limit, "250");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(putBodies).toHaveLength(1));
+    expect((putBodies[0] as Record<string, unknown>).indexerResultLimit).toBe(250);
   });
 
   it("omits the TMDB key on save when left blank (omit-to-keep)", async () => {

@@ -2928,6 +2928,8 @@ export interface components {
             /** Format: int32 */
             searchCacheTtlSeconds?: number;
             /** Format: int32 */
+            indexerResultLimit?: number;
+            /** Format: int32 */
             segmentCacheSizeMb?: number;
             /** Format: int32 */
             connectionBudget?: number;
@@ -2943,6 +2945,8 @@ export interface components {
             ephemeralCacheSizeMb?: number | null;
             /** Format: int32 */
             searchCacheTtlSeconds?: number | null;
+            /** Format: int32 */
+            indexerResultLimit?: number | null;
             /** Format: int32 */
             segmentCacheSizeMb?: number | null;
             /** Format: int32 */
@@ -2963,6 +2967,8 @@ export interface components {
             status: string | null;
             /** Format: int32 */
             itemCount?: number;
+            /** Format: int32 */
+            totalCount?: number | null;
             /** Format: double */
             elapsedMs?: number;
             error?: string | null;

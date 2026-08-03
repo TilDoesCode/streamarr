@@ -66,7 +66,7 @@ public sealed class StreamarrOptions
     public int ConnectionWarmupCount { get; set; } = 20;
 
     /// <summary>How long an authenticated NNTP connection may remain idle before reaping.</summary>
-    public int ConnectionIdleTimeoutSeconds { get; set; } = 300;
+    public int ConnectionIdleTimeoutSeconds { get; set; } = 120;
 
     /// <summary>
     /// Hard maximum age of an ephemeral file capability. Unlike the old sliding session TTL,

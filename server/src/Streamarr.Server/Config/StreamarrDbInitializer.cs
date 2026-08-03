@@ -93,6 +93,7 @@ public sealed class StreamarrDbInitializer(
                 SessionTtlSeconds = opts.SessionTtlSeconds,
                 EphemeralCacheSizeMb = opts.EphemeralCacheSizeMb,
                 SearchCacheTtlSeconds = opts.Search.SearchCacheTtlSeconds,
+                IndexerResultLimit = opts.Search.DefaultLimit,
                 SegmentCacheSizeMb = opts.SegmentCacheSizeMb,
                 ConnectionBudget = opts.ConnectionBudget,
                 AddStreamarrBadge = true,
@@ -118,6 +119,7 @@ public sealed class StreamarrDbInitializer(
             opts.SessionTtlSeconds = general.SessionTtlSeconds;
             opts.EphemeralCacheSizeMb = general.EphemeralCacheSizeMb;
             opts.Search.SearchCacheTtlSeconds = general.SearchCacheTtlSeconds;
+            opts.Search.DefaultLimit = general.IndexerResultLimit;
             opts.SegmentCacheSizeMb = general.SegmentCacheSizeMb;
 
             // Once the row exists it is authoritative, including an intentional clear.

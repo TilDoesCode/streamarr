@@ -353,6 +353,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
     {
         using var client = Client();
         var liveTmdb = _factory.Services.GetRequiredService<TmdbOptions>();
+        var liveSearch = _factory.Services.GetRequiredService<IndexerSearchOptions>();
         var revisionBefore = liveTmdb.CredentialRevision;
 
         await client.PutAsJsonAsync("/api/v1/config/general", new
@@ -361,6 +362,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
             connectionBudget = 42,
             sessionTtlSeconds = 1800,
             ephemeralCacheSizeMb = 204800,
+            indexerResultLimit = 250,
         });
 
         Assert.Equal("tmdb-secret-123", liveTmdb.ApiKey);
@@ -375,6 +377,8 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(42, body.GetProperty("connectionBudget").GetInt32());
         Assert.Equal(1800, body.GetProperty("sessionTtlSeconds").GetInt32());
         Assert.Equal(204800, body.GetProperty("ephemeralCacheSizeMb").GetInt32());
+        Assert.Equal(250, body.GetProperty("indexerResultLimit").GetInt32());
+        Assert.Equal(250, liveSearch.DefaultLimit);
 
         // omit-to-keep: a PUT without the key leaves it in place.
         var revisionBeforeOmittedWrite = liveTmdb.CredentialRevision;
@@ -396,6 +400,11 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         response = await client.PutAsJsonAsync(
             "/api/v1/config/general",
             new { ephemeralCacheSizeMb = 0 });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        response = await client.PutAsJsonAsync(
+            "/api/v1/config/general",
+            new { indexerResultLimit = 1001 });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 

@@ -9,7 +9,7 @@ Usage:
   python3 stream_repro.py --base http://127.0.0.1:39080 --jwt-file /tmp/streamarr-jwt \
       --release <releaseId> --work <workId> [--minutes 30] [--label baseline]
 """
-import argparse, json, sys, time, urllib.request, threading, datetime
+import argparse, json, sys, time, urllib.request, urllib.parse, threading, datetime
 
 def api(base, path, jwt, body=None, timeout=180):
     req = urllib.request.Request(base + path, method="POST" if body is not None else "GET")
@@ -37,7 +37,6 @@ def main():
     jwt = open(args.jwt_file).read().strip()
 
     if args.query:
-        import urllib.parse
         d = api(args.base, "/api/v1/search?q=" + urllib.parse.quote(args.query), jwt, timeout=120)
         found = None
         for w in d.get("results", []):

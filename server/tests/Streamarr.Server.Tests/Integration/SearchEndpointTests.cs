@@ -257,6 +257,9 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
         Assert.All(response.Episodes, episode => Assert.Equal("Suits", episode.SeriesTitle));
         Assert.Single(response.Indexers);
         Assert.Equal("succeeded", response.Indexers[0].Status);
+        Assert.Null(FakeSearchNewznabClient.LastSuitsSeasonQuery?.Term);
+        Assert.Equal("tt1632701", FakeSearchNewznabClient.LastSuitsSeasonQuery?.ImdbId);
+        Assert.Equal(37680, FakeSearchNewznabClient.LastSuitsSeasonQuery?.TmdbId);
     }
 
     [Fact]
@@ -414,6 +417,8 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
     /// <summary>Returns a fixed page of releases: two good, one sample, one undersized fake.</summary>
     private sealed class FakeSearchNewznabClient : INewznabClient
     {
+        public static NewznabQuery? LastSuitsSeasonQuery { get; private set; }
+
         public static int SuitsSeasonSearches;
         public static int RawOnlySearches;
         public static int TotalSearches;
@@ -468,6 +473,7 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             Interlocked.Increment(ref TotalSearches);
             if (query is { TmdbId: 37680, Season: 1, Episode: null })
             {
+                LastSuitsSeasonQuery = query;
                 Interlocked.Increment(ref SuitsSeasonSearches);
                 return Task.FromResult(new NewznabSearchResponse { Items = SuitsSeasonOneItems });
             }

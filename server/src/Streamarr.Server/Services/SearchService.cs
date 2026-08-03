@@ -170,7 +170,8 @@ public sealed class SearchService(
             Kind = target.MediaType == MediaType.Tv
                 ? NewznabSearchKind.Tv
                 : NewznabSearchKind.Movie,
-            Term = target.Title,
+            // Avoid turning punctuation variants into an extra AND filter when stable ids identify the work.
+            Term = null,
             ImdbId = target.ImdbId,
             TmdbId = target.TmdbId,
             Season = context.Season,
