@@ -281,6 +281,17 @@ assert_release_sources() {
     ' "$file" >/dev/null
 }
 
+assert_placeholder_source() {
+  local file="$1"
+  jq -e '
+    (.MediaSourceCount == 1)
+      and ((.MediaSources // []) | length) == 1
+      and .MediaSources[0].Type == "Placeholder"
+      and .MediaSources[0].Protocol == "File"
+      and .MediaSources[0].RequiresOpening == false
+  ' "$file" >/dev/null
+}
+
 assert_last_resolve() {
   local expected_release="$1"
   local expected_work="$2"
@@ -972,7 +983,7 @@ assert_release_sources \
   "$tmp_dir/available-episode-summary.json" 2 \
   "$episode_source_id" "$episode_release_name" \
   "$episode_alt_source_id" "$episode_alt_release_name"
-assert_release_sources "$tmp_dir/unavailable-episode-summary.json" 0
+assert_placeholder_source "$tmp_dir/unavailable-episode-summary.json"
 
 for detail_route in current legacy; do
   if [[ "$detail_route" == "current" ]]; then
@@ -997,7 +1008,7 @@ for detail_route in current legacy; do
     "$tmp_dir/available-episode-detail-$detail_route.json" 2 \
     "$episode_source_id" "$episode_release_name" \
     "$episode_alt_source_id" "$episode_alt_release_name"
-  assert_release_sources "$tmp_dir/unavailable-episode-detail-$detail_route.json" 0
+  assert_placeholder_source "$tmp_dir/unavailable-episode-detail-$detail_route.json"
 done
 
 # The same version-as-item lookup must work for episode releases.
