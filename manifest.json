@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.11.1.0",
+        "changelog": "Improve ephemeral TV hierarchy materialization and release refresh behavior, harden streaming around encrypted RAR and NZB file handling, and add configuration and coverage for library engagement and media-source projection.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.11.1/streamarr-jellyfin-0.11.1.zip",
+        "checksum": "b7441121dd1179a755734df7d2ee12b2",
+        "timestamp": "2026-08-04T13:37:15Z"
+      },
+      {
         "version": "0.11.0.0",
         "changelog": "Move recursive TV hierarchy expansion off the search request path into a background HierarchyEnrichmentDispatcher, add an admin-configurable indexer result limit that applies live without a restart, and lower the idle NNTP connection timeout from 300s to 120s to free pooled connections sooner.",
         "targetAbi": "10.11.11.0",
