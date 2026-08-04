@@ -812,19 +812,31 @@ public sealed class EphemeralLibraryService(
         if (incomingSlots < 0 || incomingSlots > MaxEphemeralItems)
             throw new InvalidOperationException($"The limit of {MaxEphemeralItems} ephemeral Streamarr items was reached.");
 
+        if (incomingSlots == 0)
+            return;
+
         var maximumExistingItems = MaxEphemeralItems - incomingSlots;
         var blocked = new HashSet<Guid>();
         var evictedIds = new HashSet<Guid>();
+        var capacitySatisfied = false;
         try
         {
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
-                var lifecycle = GetLifecycleItems();
-                // Promoted subtrees are the user's deliberate history: they neither count against
-                // the ephemeral cap nor are ever eligible as capacity-eviction victims.
-                if (lifecycle.Count(candidate => !candidate.IsPromoted) <= maximumExistingItems)
+                var items = GetEphemeralItems();
+                if (CountDescendants(items, StagingFolderId) <= maximumExistingItems)
+                {
+                    capacitySatisfied = true;
                     break;
+                }
+
+                var lifecycle = BuildLifecycleItems(items);
+                var remainingIds = lifecycle
+                    .Where(candidate => !candidate.IsPromoted)
+                    .Select(candidate => candidate.Item.Id)
+                    .ToHashSet();
+                var slotsToFree = remainingIds.Count - maximumExistingItems;
                 IReadOnlySet<Guid> reservedSeriesIds;
                 lock (_hierarchyProtectionSync)
                     reservedSeriesIds = _seriesHierarchyReservations.Keys.ToHashSet();
@@ -833,63 +845,97 @@ public sealed class EphemeralLibraryService(
                     protectedItemIds,
                     protectDescendantsOfProtectedItems,
                     reservedSeriesIds);
-                var victim = EphemeralLifecycle
-                    .OrderForDeletion(lifecycle)
-                    .FirstOrDefault(candidate => !candidate.IsPromoted
-                                                 && !blocked.Contains(candidate.Item.Id)
-                                                 && !protectedHierarchyIds.Contains(candidate.Item.Id)
-                                                 && !candidate.SubtreeIds.Any(protectedItemIds.Contains));
-                if (victim is null)
-                    break;
-
-                if (!tracker.TryClaimItemsForDeletion(
-                        victim.SubtreeIds,
-                        requireNoSessions: true,
-                        out _))
+                var claimed = new List<LifecycleItem>();
+                var claimedIds = new HashSet<Guid>();
+                foreach (var candidate in EphemeralLifecycle.OrderForDeletion(lifecycle))
                 {
-                    blocked.Add(victim.Item.Id);
-                    continue;
+                    if (candidate.IsPromoted
+                        || blocked.Contains(candidate.Item.Id)
+                        || protectedHierarchyIds.Contains(candidate.Item.Id)
+                        || candidate.SubtreeIds.Any(protectedItemIds.Contains)
+                        || candidate.SubtreeIds.Any(claimedIds.Contains))
+                    {
+                        continue;
+                    }
+
+                    if (!tracker.TryClaimItemsForDeletion(
+                            candidate.SubtreeIds,
+                            requireNoSessions: true,
+                            out _))
+                    {
+                        blocked.UnionWith(candidate.SubtreeIds);
+                        continue;
+                    }
+
+                    claimed.Add(candidate);
+                    claimedIds.UnionWith(candidate.SubtreeIds);
+                    if (claimedIds.Count >= slotsToFree)
+                        break;
                 }
+
+                if (claimed.Count == 0)
+                    break;
 
                 try
                 {
-                    await InvalidateHierarchyCompletionAsync(victim.Item.ParentId, ct).ConfigureAwait(false);
-                    var deleted = false;
+                    foreach (var parentId in claimed.Select(candidate => candidate.Item.ParentId).Distinct())
+                        await InvalidateHierarchyCompletionAsync(parentId, ct).ConfigureAwait(false);
+
                     lock (_hierarchyProtectionSync)
                     {
-                        // Reservation acquisition uses this same lock. Whichever side wins has a
-                        // deterministic happens-before relationship: recursion either protects the
-                        // subtree, or starts only after this synchronous delete is visible.
-                        lifecycle = GetLifecycleItems();
-                        var current = lifecycle.FirstOrDefault(candidate => candidate.Item.Id == victim.Item.Id);
                         var reservedProtection = SelectProtectedHierarchyIds(
                             lifecycle,
                             protectedItemIds,
                             protectDescendantsOfProtectedItems,
                             _seriesHierarchyReservations.Keys.ToHashSet());
-                        if (current is not null
-                            && !current.IsPromoted
-                            && !reservedProtection.Contains(current.Item.Id))
+
+                        foreach (var candidate in claimed)
                         {
-                            evictedIds.UnionWith(DeleteTreeCore(current.Item, removeReleaseState: false));
-                            deleted = true;
+                            if (remainingIds.Count <= maximumExistingItems)
+                                break;
+                            if (reservedProtection.Contains(candidate.Item.Id)
+                                || candidate.SubtreeIds.Any(protectedItemIds.Contains)
+                                || candidate.SubtreeIds.Any(id => !remainingIds.Contains(id)))
+                            {
+                                blocked.Add(candidate.Item.Id);
+                                continue;
+                            }
+
+                            var current = libraryManager.GetItemById(candidate.Item.Id);
+                            if (current is null
+                                || current.ParentId != candidate.Item.ParentId
+                                || !current.ProviderIds.TryGetValue(WorkIdProviderKey, out var currentWorkId)
+                                || !candidate.Item.ProviderIds.TryGetValue(WorkIdProviderKey, out var expectedWorkId)
+                                || !string.Equals(currentWorkId, expectedWorkId, StringComparison.Ordinal))
+                            {
+                                blocked.Add(candidate.Item.Id);
+                                continue;
+                            }
+
+                            var deleted = DeleteTreeCore(
+                                current,
+                                removeReleaseState: false,
+                                candidate.SubtreeIds);
+                            evictedIds.UnionWith(deleted);
+                            remainingIds.ExceptWith(deleted);
+                            logger.LogInformation(
+                                "Evicted ephemeral subtree {ItemId} ({Count} item(s)) at the hard item limit",
+                                candidate.Item.Id,
+                                deleted.Count);
                         }
                     }
 
-                    if (!deleted)
+                    if (remainingIds.Count <= maximumExistingItems)
                     {
-                        blocked.Add(victim.Item.Id);
-                        continue;
+                        capacitySatisfied = true;
+                        break;
                     }
                 }
                 finally
                 {
-                    tracker.ReleaseDeletionClaim(victim.SubtreeIds);
+                    foreach (var candidate in claimed)
+                        tracker.ReleaseDeletionClaim(candidate.SubtreeIds);
                 }
-                logger.LogInformation(
-                    "Evicted ephemeral subtree {ItemId} ({Count} item(s)) at the hard item limit",
-                    victim.Item.Id,
-                    victim.SubtreeIds.Count);
             }
         }
         finally
@@ -899,7 +945,7 @@ public sealed class EphemeralLibraryService(
             store.RemoveRange(evictedIds);
         }
 
-        if (GetLifecycleItems().Count(candidate => !candidate.IsPromoted) > maximumExistingItems)
+        if (!capacitySatisfied)
             throw new InvalidOperationException($"The limit of {MaxEphemeralItems} ephemeral Streamarr items was reached.");
     }
 
@@ -938,8 +984,10 @@ public sealed class EphemeralLibraryService(
     /// row.
     /// </summary>
     public IReadOnlyList<LifecycleItem> GetLifecycleItems()
+        => BuildLifecycleItems(GetEphemeralItems());
+
+    private IReadOnlyList<LifecycleItem> BuildLifecycleItems(IReadOnlyList<BaseItem> items)
     {
-        var items = GetEphemeralItems();
         var byId = items.ToDictionary(item => item.Id);
         var libraryFolderId = FolderId;
         return EphemeralLifecycle.Build(items.Select(item =>
@@ -966,6 +1014,29 @@ public sealed class EphemeralLibraryService(
                 candidate.IsEngaged,
                 candidate.IsPromoted))
             .ToList();
+    }
+
+    internal static int CountDescendants(IReadOnlyCollection<BaseItem> items, Guid rootId)
+    {
+        var children = items
+            .GroupBy(item => item.ParentId)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Id).ToArray());
+        var discovered = new HashSet<Guid>();
+        var pending = new Stack<Guid>();
+        pending.Push(rootId);
+        while (pending.TryPop(out var parentId))
+        {
+            if (!children.TryGetValue(parentId, out var childIds))
+                continue;
+            foreach (var childId in childIds)
+            {
+                if (!discovered.Add(childId))
+                    continue;
+                pending.Push(childId);
+            }
+        }
+
+        return discovered.Count;
     }
 
     /// <summary>
@@ -1588,9 +1659,13 @@ public sealed class EphemeralLibraryService(
     public void Delete(BaseItem item)
         => libraryManager.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false });
 
-    private IReadOnlyList<Guid> DeleteTreeCore(BaseItem item, bool removeReleaseState)
+    private IReadOnlyList<Guid> DeleteTreeCore(
+        BaseItem item,
+        bool removeReleaseState,
+        IReadOnlySet<Guid>? knownSubtreeIds = null)
     {
-        var subtreeIds = GetLifecycleItems()
+        var subtreeIds = knownSubtreeIds
+                         ?? GetLifecycleItems()
                              .FirstOrDefault(candidate => candidate.Item.Id == item.Id)
                              ?.SubtreeIds
                          ?? new HashSet<Guid> { item.Id };

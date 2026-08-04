@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.11.0.0",
+    "version": "0.11.1.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Move recursive TV hierarchy expansion off the search request path into a background HierarchyEnrichmentDispatcher, add an admin-configurable indexer result limit that applies live without a restart, and lower the idle NNTP connection timeout from 300s to 120s to free pooled connections sooner."
+    "changelog": "Improve ephemeral TV hierarchy materialization and release refresh behavior, harden streaming around encrypted RAR and NZB file handling, and add configuration and coverage for library engagement and media-source projection."
 }

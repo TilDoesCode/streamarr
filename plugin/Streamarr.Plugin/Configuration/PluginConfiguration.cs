@@ -11,6 +11,8 @@ public class PluginConfiguration : BasePluginConfiguration
 {
     public const int MinEphemeralTtlMinutes = 5;
     public const int MaxEphemeralTtlMinutes = 43_200;
+    public const int MinReleaseCacheTtlMinutes = 1;
+    public const int MaxReleaseCacheTtlMinutes = 1_440;
     public const int MaxPinnedQueryLength = 256;
     public const int MaxServerUrlLength = 2048;
     // Keep this aligned with Core's validated static-key ceiling.
@@ -18,6 +20,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public const int MaxProfileIdLength = 128;
 
     private int _ephemeralTtlMinutes = 720;
+    private int _releaseCacheTtlMinutes = 30;
     private string _pinnedWorkQuery = "Big Buck Bunny";
     private string _serverUrl = "http://streamarr:8080";
     private string _publicStreamUrl = string.Empty;
@@ -81,6 +84,20 @@ public class PluginConfiguration : BasePluginConfiguration
     {
         get => _ephemeralTtlMinutes;
         set => _ephemeralTtlMinutes = Math.Clamp(value, MinEphemeralTtlMinutes, MaxEphemeralTtlMinutes);
+    }
+
+    /// <summary>
+    /// How long a cached item's release list is trusted before <c>EphemeralReleaseRefresher</c>
+    /// re-checks Core in the background on the next view. An entry with zero releases is always
+    /// treated as needing a re-check (subject to a short fixed retry floor) regardless of this
+    /// value, so an item materialized while Core had a search bug does not stay "no versions"
+    /// forever once that bug is fixed — see the "Refresh cached releases now" button for an
+    /// immediate, unconditional version of the same check.
+    /// </summary>
+    public int ReleaseCacheTtlMinutes
+    {
+        get => _releaseCacheTtlMinutes;
+        set => _releaseCacheTtlMinutes = Math.Clamp(value, MinReleaseCacheTtlMinutes, MaxReleaseCacheTtlMinutes);
     }
 
     /// <summary>

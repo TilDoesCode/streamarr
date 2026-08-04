@@ -61,6 +61,14 @@ public sealed class EphemeralReleaseStore
     public sealed record Entry(Guid ItemId, WorkDto Work)
     {
         public DateTime LastAccessedUtc { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// When <see cref="Work"/> was last written from a Core response — distinct from
+        /// <see cref="LastAccessedUtc"/>, which only tracks reads. Drives staleness checks in
+        /// <c>EphemeralReleaseRefresher</c> (a viewed-but-not-refreshed episode with 0 releases
+        /// from a since-fixed indexer bug must not stay wrong forever).
+        /// </summary>
+        public DateTime LastRefreshedUtc { get; init; } = DateTime.UtcNow;
     }
 
     public void Put(Guid itemId, WorkDto work)

@@ -26,6 +26,7 @@ public sealed class StreamarrMediaSourceProvider(
     PlaybackSessionTracker tracker,
     MediaSourceOfferStore offers,
     StreamarrMediaSourceProjection projection,
+    EphemeralReleaseRefresher refresher,
     StreamarrApiClient api,
     PlaybackEventDispatcher dispatcher,
     IHttpContextAccessor httpContextAccessor,
@@ -33,12 +34,17 @@ public sealed class StreamarrMediaSourceProvider(
     ILibraryManager libraryManager,
     ILogger<StreamarrMediaSourceProvider> logger) : IMediaSourceProvider
 {
-    public Task<IEnumerable<MediaSourceInfo>> GetMediaSources(BaseItem item, CancellationToken cancellationToken)
+    public async Task<IEnumerable<MediaSourceInfo>> GetMediaSources(BaseItem item, CancellationToken cancellationToken)
     {
+        // Self-heals a "0 releases" or stale cache entry (e.g. materialized while an indexer bug
+        // was still live) before answering, so a fixed Core no longer requires re-opening the
+        // season page to be reflected — see EphemeralReleaseRefresher.
+        await refresher.RefreshIfStaleAsync(item.Id, cancellationToken).ConfigureAwait(false);
+
         var userId = CurrentUserId();
         var user = userId == Guid.Empty ? null : userManager.GetUserById(userId);
         projection.TryProject(item, user, userId, out var sources);
-        return Task.FromResult<IEnumerable<MediaSourceInfo>>(sources);
+        return sources;
     }
 
     public async Task<ILiveStream> OpenMediaSource(

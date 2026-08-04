@@ -1,4 +1,5 @@
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Model.Dto;
 using Microsoft.Extensions.Logging.Abstractions;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Library;
@@ -116,5 +117,27 @@ public class MediaSourceProjectionTests
         var user = new JellyfinUser("projection-tester", "auth-provider", "reset-provider");
         Assert.True(projection.TryProject(item, user, Guid.Empty, out sources));
         Assert.Empty(sources);
+    }
+
+    /// <summary>
+    /// Pins the exact shape official clients require to treat an owned, non-Virtual item as
+    /// "navigable but unplayable": a single <c>MediaSourceType.Placeholder</c> source, never an
+    /// empty array. Jellyfin Web's item-details "Version" selector only skips its own crashing
+    /// <c>MediaSources[0]</c> read when <c>!MediaSources</c> or when there is exactly one source
+    /// whose Type is Placeholder (see <c>supportsMediaSourceSelection</c> in jellyfin-web); a bare
+    /// empty array satisfies neither guard. <c>StreamarrSearchActionFilter</c> also rewrites every
+    /// owned item's LocationType away from Virtual, which is the other guard clients use to avoid
+    /// rendering the selector — so the empty-array shape is doubly unsafe for owned items.
+    /// </summary>
+    [Fact]
+    public void Placeholder_source_is_a_single_pathless_entry()
+    {
+        var itemId = Guid.NewGuid();
+
+        var placeholder = StreamarrMediaSourceProjection.PlaceholderSource(itemId);
+
+        Assert.Equal(MediaSourceType.Placeholder, placeholder.Type);
+        Assert.Equal(itemId.ToString("N"), placeholder.Id);
+        Assert.True(string.IsNullOrEmpty(placeholder.Path));
     }
 }

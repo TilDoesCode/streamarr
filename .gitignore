@@ -18,6 +18,7 @@ web/dist/
 server/src/Streamarr.Server/wwwroot/
 
 # Local state
+*.nzb
 *.db
 *.db-shm
 *.db-wal

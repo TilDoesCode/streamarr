@@ -8,6 +8,8 @@ core_url="${STREAMARR_BENCHMARK_CORE_URL:-http://host.docker.internal:8080}"
 core_api_key="${STREAMARR_BENCHMARK_API_KEY:-}"
 query="${STREAMARR_BENCHMARK_QUERY:-Greys Anatomy}"
 season_number="${STREAMARR_BENCHMARK_SEASON:-21}"
+prefill_query="${STREAMARR_BENCHMARK_PREFILL_QUERY:-}"
+prefill_max_seasons="${STREAMARR_BENCHMARK_PREFILL_MAX_SEASONS:-0}"
 artifact_root="${STREAMARR_BENCHMARK_ARTIFACT_ROOT:-$repo_root/artifacts}"
 keep_artifacts="${STREAMARR_BENCHMARK_KEEP_ARTIFACTS:-1}"
 name="streamarr-jellyfin-benchmark-${RANDOM}"
@@ -136,6 +138,41 @@ user_token="$(curl -fsS -X POST "$base_url/Users/AuthenticateByName" \
   --data "{\"Username\":\"streamarr-benchmark-user\",\"Pw\":\"$user_password\"}" | jq -er '.AccessToken')"
 user_header="Authorization: $user_auth, Token=\"$user_token\""
 
+if [[ -n "$prefill_query" ]]; then
+  curl -fsS --get "$base_url/Items" \
+    -H "$user_header" \
+    --data-urlencode "userId=$user_id" \
+    --data-urlencode 'recursive=true' \
+    --data-urlencode "searchTerm=$prefill_query" \
+    --data-urlencode 'includeItemTypes=Series' \
+    --data-urlencode 'limit=20' \
+    -o "$tmp_dir/prefill-search.json"
+  prefill_series_id="$(jq -er '[.Items[] | select(.Type == "Series")][0].Id' "$tmp_dir/prefill-search.json")"
+  curl -fsS --get "$base_url/Shows/$prefill_series_id/Seasons" \
+    -H "$user_header" \
+    --data-urlencode "userId=$user_id" \
+    -o "$tmp_dir/prefill-seasons.json"
+  prefill_season_ids=()
+  while IFS= read -r prefill_season_id; do
+    prefill_season_ids+=("$prefill_season_id")
+  done < <(jq -r '.Items[] | select(.IndexNumber > 0) | .Id' "$tmp_dir/prefill-seasons.json")
+  if [[ "$prefill_max_seasons" =~ ^[0-9]+$ ]] && (( prefill_max_seasons > 0 )); then
+    prefill_season_ids=("${prefill_season_ids[@]:0:prefill_max_seasons}")
+  fi
+  prefill_index=0
+  for prefill_season_id in "${prefill_season_ids[@]}"; do
+    prefill_index=$((prefill_index + 1))
+    prefill_seconds="$(curl -fsS -o "$tmp_dir/prefill-episodes-$prefill_index.json" -w '%{time_total}' --get \
+      "$base_url/Shows/$prefill_series_id/Episodes" \
+      -H "$user_header" \
+      --data-urlencode "userId=$user_id" \
+      --data-urlencode "seasonId=$prefill_season_id")"
+    prefill_episode_count="$(jq '.Items | length' "$tmp_dir/prefill-episodes-$prefill_index.json")"
+    printf 'prefill season=%s episodes=%s milliseconds=%s\n' \
+      "$prefill_index" "$prefill_episode_count" "$(awk -v seconds="$prefill_seconds" 'BEGIN { printf "%.3f", seconds * 1000 }')"
+  done
+fi
+
 timed_get() {
   label="$1"
   output="$2"
@@ -181,12 +218,13 @@ for run in 1 2 3 4 5; do
     --data-urlencode "seasonId=$season_id" >"$tmp_dir/timing-episodes-warm-$run.json"
 done
 
-jq -s --arg query "$query" --argjson season "$season_number" \
+jq -s --arg query "$query" --arg prefillQuery "$prefill_query" --argjson season "$season_number" \
   --argjson seasons "$(jq '.Items | length' "$tmp_dir/seasons-cold.json")" \
   --argjson recursive "$(jq '.Items | length' "$tmp_dir/episodes-recursive-unloaded.json")" \
   --argjson episodes "$(jq '.Items | length' "$tmp_dir/episodes-cold.json")" '
   {
     query:$query,
+    prefillQuery:(if $prefillQuery == "" then null else $prefillQuery end),
     season:$season,
     seasonsReturned:$seasons,
     episodesReturned:$episodes,

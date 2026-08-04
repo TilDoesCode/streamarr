@@ -235,6 +235,46 @@ public class RarEncryptedStreamTests
         Assert.Equal(file.Slices.Select(s => s.PartIndex).Distinct().Count(), opens);
     }
 
+    [Fact]
+    public async Task MultiVolume_UnalignedSeekThenSmallSequentialReads_ToEof_NeverSeeksBackwardOrReopensParts()
+    {
+        const int offset = 13;
+        var (file, partNames) = await ReadMultiVolumeFile(Password);
+        var backwardSeeks = 0;
+        var opensByPart = new Dictionary<int, int>();
+
+        await using var stream = new RarStoredFileStream(
+            file,
+            (partIndex, _) =>
+            {
+                opensByPart[partIndex] = opensByPart.GetValueOrDefault(partIndex) + 1;
+                return new ValueTask<Stream>(new SeekDirectionTrackingStream(
+                    File.OpenRead(RarFixtures.PathOf(partNames[partIndex])),
+                    onBackwardSeek: () => backwardSeeks++));
+            },
+            Password);
+
+        stream.Seek(offset, SeekOrigin.Begin);
+        using var ms = new MemoryStream();
+        var buffer = new byte[37];
+        int read;
+        while ((read = await stream.ReadAsync(buffer)) > 0)
+            await ms.WriteAsync(buffer.AsMemory(0, read));
+
+        Assert.Equal(Payload[offset..], ms.ToArray());
+        Assert.Equal(0, await stream.ReadAsync(buffer));
+
+        var expectedPartIndices = file.Slices
+            .Where(slice => slice.ByteRangeWithinFile.EndExclusive > offset)
+            .Select(slice => slice.PartIndex)
+            .Distinct()
+            .Order()
+            .ToArray();
+        Assert.Equal(expectedPartIndices, opensByPart.Keys.Order().ToArray());
+        Assert.All(opensByPart.Values, openCount => Assert.Equal(1, openCount));
+        Assert.Equal(0, backwardSeeks);
+    }
+
     private sealed class SeekDirectionTrackingStream(FileStream inner, Action onBackwardSeek) : Stream
     {
         public override bool CanRead => true;

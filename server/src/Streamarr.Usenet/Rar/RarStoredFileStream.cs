@@ -170,10 +170,23 @@ public sealed class RarStoredFileStream : FastReadOnlyStream
             await _currentPartStream!.ReadExactlyAsync(previousBlock, ct).ConfigureAwait(false);
         }
 
-        await SeekPartToAsync(slice, sliceStart + blockStartInSlice, ct).ConfigureAwait(false);
         var cipherBuffer = new byte[cipherLength];
-        await _currentPartStream!.ReadExactlyAsync(cipherBuffer, ct).ConfigureAwait(false);
-        CacheCipherRun(slice.PartIndex, blockStartInSlice, previousBlock, cipherBuffer);
+        var cachedCipherLength = CopyCachedCipherPrefix(
+            slice.PartIndex,
+            blockStartInSlice,
+            cipherBuffer);
+        if (cachedCipherLength < cipherBuffer.Length)
+        {
+            await SeekPartToAsync(
+                    slice,
+                    sliceStart + blockStartInSlice + cachedCipherLength,
+                    ct)
+                .ConfigureAwait(false);
+            await _currentPartStream!
+                .ReadExactlyAsync(cipherBuffer.AsMemory(cachedCipherLength), ct)
+                .ConfigureAwait(false);
+            CacheCipherRun(slice.PartIndex, blockStartInSlice, previousBlock, cipherBuffer);
+        }
 
         var key = GetOrDeriveKey(slice.PartIndex, crypto);
         var plaintext = RarAesCbcDecryptor.Decrypt(key, previousBlock, cipherBuffer);
@@ -196,6 +209,22 @@ public sealed class RarStoredFileStream : FastReadOnlyStream
 
         block = [];
         return false;
+    }
+
+    private int CopyCachedCipherPrefix(int partIndex, long blockStartInSlice, Span<byte> destination)
+    {
+        var cacheEndInSlice = _cipherCacheStartInSlice + _cipherCache.Length;
+        if (partIndex != _cipherCachePartIndex
+            || blockStartInSlice < _cipherCacheStartInSlice
+            || blockStartInSlice >= cacheEndInSlice)
+            return 0;
+
+        var length = (int)Math.Min(destination.Length, cacheEndInSlice - blockStartInSlice);
+        _cipherCache.AsSpan(
+                checked((int)(blockStartInSlice - _cipherCacheStartInSlice)),
+                length)
+            .CopyTo(destination);
+        return length;
     }
 
     private void CacheCipherRun(int partIndex, long blockStartInSlice, byte[] previousBlock, byte[] cipherBuffer)

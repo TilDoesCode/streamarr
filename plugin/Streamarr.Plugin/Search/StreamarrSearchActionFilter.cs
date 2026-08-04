@@ -45,6 +45,7 @@ public sealed class StreamarrSearchActionFilter(
     EphemeralLibraryService library,
     HierarchyLoadCoordinator hierarchyLoads,
     StreamarrMediaSourceProjection projection,
+    EphemeralReleaseRefresher refresher,
     IDtoService dtoService,
     IImageProcessor imageProcessor,
     IUserManager userManager,
@@ -134,7 +135,7 @@ public sealed class StreamarrSearchActionFilter(
                         new DtoOptions(true) { EnableUserData = true },
                         releaseUser,
                         null!);
-                    ProjectOwnedSources([ownerDto], context.HttpContext);
+                    await ProjectOwnedSourcesAsync([ownerDto], context.HttpContext, ct).ConfigureAwait(false);
                     executed.Result = new OkObjectResult(ownerDto);
                 }
                 return;
@@ -155,7 +156,7 @@ public sealed class StreamarrSearchActionFilter(
             // discovery toggle, exactly like the IMediaSourceProvider itself.
             if (obj.Value is BaseItemDto detail && IsSupportedDetailPath(request.Path))
             {
-                ProjectOwnedSources([detail], context.HttpContext);
+                await ProjectOwnedSourcesAsync([detail], context.HttpContext, ct).ConfigureAwait(false);
                 return;
             }
 
@@ -168,7 +169,7 @@ public sealed class StreamarrSearchActionFilter(
                 && IsSupportedSearchPath(request.Path, isHintRequest: false)
                 && HasExplicitItemIds(request.Query))
             {
-                ProjectOwnedSources(explicitItems.Items, context.HttpContext);
+                await ProjectOwnedSourcesAsync(explicitItems.Items, context.HttpContext, ct).ConfigureAwait(false);
             }
 
             if (!interceptionEnabled)
@@ -196,7 +197,7 @@ public sealed class StreamarrSearchActionFilter(
                     {
                         // Native and injected child DTOs both carry Jellyfin's pathless
                         // placeholder; show-navigation responses must advertise real releases.
-                        ProjectOwnedSources(items.Items, context.HttpContext);
+                        await ProjectOwnedSourcesAsync(items.Items, context.HttpContext, ct).ConfigureAwait(false);
                         break;
                     }
 
@@ -996,21 +997,25 @@ public sealed class StreamarrSearchActionFilter(
     /// are touched, and each token receives the host routing prefix that
     /// <c>MediaSourceManager.SetKeyProperties</c> would have added on the provider path.
     /// </summary>
-    private void ProjectOwnedSources(IReadOnlyList<BaseItemDto> dtos, HttpContext http)
+    private async Task ProjectOwnedSourcesAsync(IReadOnlyList<BaseItemDto> dtos, HttpContext http, CancellationToken ct)
     {
         User? user = null;
         var offerOwnerId = Guid.Empty;
         var resolved = false;
-        foreach (var dto in dtos)
-        {
-            if (dto is null
-                || dto.Id == Guid.Empty
-                || dto.MediaSources is null
-                || !projection.Owns(dto.Id))
-            {
-                continue;
-            }
+        var candidates = dtos
+            .Where(dto => dto is not null && dto.Id != Guid.Empty && dto.MediaSources is not null && projection.Owns(dto.Id))
+            .ToArray();
+        if (candidates.Length == 0)
+            return;
 
+        // A "0 releases" or stale entry (e.g. materialized while Core had a search bug) must
+        // not stay wrong forever just because a season page happens not to be re-opened — see
+        // EphemeralReleaseRefresher. Bounded and run in parallel so a whole season of stale
+        // episodes cannot serialize into N × the single-item refresh timeout.
+        await Task.WhenAll(candidates.Select(dto => refresher.RefreshIfStaleAsync(dto.Id, ct))).ConfigureAwait(false);
+
+        foreach (var dto in candidates)
+        {
             if (!resolved)
             {
                 resolved = true;

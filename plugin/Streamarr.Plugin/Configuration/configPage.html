@@ -42,6 +42,12 @@
                     </div>
 
                     <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ReleaseCacheTtlMinutes">Release cache refresh interval (minutes)</label>
+                        <input is="emby-input" type="number" id="ReleaseCacheTtlMinutes" name="ReleaseCacheTtlMinutes" min="1" max="1440" />
+                        <div class="fieldDescription">How long a cached item's version list is trusted before it's silently re-checked with Core the next time someone opens it. An item with zero versions is always re-checked. Use "Refresh cached releases now" below to force an immediate re-check of everything.</div>
+                    </div>
+
+                    <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="ProfileId">Quality profile id (optional)</label>
                         <input is="emby-input" type="text" id="ProfileId" name="ProfileId" maxlength="128" autocomplete="off" />
                         <div class="fieldDescription">Leave blank to use the server's default profile.</div>
@@ -79,6 +85,9 @@
                     <button is="emby-button" type="button" id="SyncPinnedWork" class="raised block emby-button">
                         <span>Materialize pinned work</span>
                     </button>
+                    <button is="emby-button" type="button" id="RefreshReleaseCache" class="raised block emby-button">
+                        <span>Refresh cached releases now</span>
+                    </button>
                 </div>
 
                 <p id="StreamarrStatus" class="fieldDescription" style="margin-top:1em;"></p>
@@ -102,6 +111,7 @@
                     page.querySelector('#PublicStreamUrl').value = config.PublicStreamUrl || '';
                     page.querySelector('#ApiKey').value = config.ApiKey || '';
                     page.querySelector('#EphemeralTtlMinutes').value = config.EphemeralTtlMinutes || 720;
+                    page.querySelector('#ReleaseCacheTtlMinutes').value = config.ReleaseCacheTtlMinutes || 30;
                     page.querySelector('#ProfileId').value = config.ProfileId || '';
                     page.querySelector('#InterceptionEnabled').checked = !!config.InterceptionEnabled;
                     page.querySelector('#LibraryEnabled').checked = config.LibraryEnabled !== false;
@@ -120,6 +130,7 @@
                     config.PublicStreamUrl = page.querySelector('#PublicStreamUrl').value;
                     config.ApiKey = page.querySelector('#ApiKey').value;
                     config.EphemeralTtlMinutes = parseInt(page.querySelector('#EphemeralTtlMinutes').value, 10) || 720;
+                    config.ReleaseCacheTtlMinutes = parseInt(page.querySelector('#ReleaseCacheTtlMinutes').value, 10) || 30;
                     config.ProfileId = page.querySelector('#ProfileId').value;
                     config.InterceptionEnabled = page.querySelector('#InterceptionEnabled').checked;
                     config.LibraryEnabled = page.querySelector('#LibraryEnabled').checked;
@@ -162,6 +173,21 @@
                     dataType: 'json'
                 }).then(function (r) {
                     status(r.Message || (r.Ok ? 'Done.' : 'Failed.'));
+                }).catch(function () {
+                    status('Request failed.');
+                });
+            });
+
+            document.querySelector('#RefreshReleaseCache').addEventListener('click', function () {
+                status('Refreshing cached releases…');
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('Streamarr/RefreshReleaseCache'),
+                    dataType: 'json'
+                }).then(function (r) {
+                    status(r.Ok
+                        ? ('Done. Re-checked ' + r.Refreshed + ' cached item(s) with Core.')
+                        : ('Failed: ' + (r.Error || 'unknown error')));
                 }).catch(function () {
                     status('Request failed.');
                 });

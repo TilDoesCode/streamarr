@@ -5,6 +5,7 @@ using System.Text;
 using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
@@ -76,6 +77,9 @@ public class EngagementPlacementTests : IDisposable
         libraryManager
             .UpdatePeopleAsync(Arg.Any<BaseItem>(), Arg.Any<IReadOnlyList<PersonInfo>>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
+        libraryManager
+            .When(x => x.DeleteItem(Arg.Any<BaseItem>(), Arg.Any<DeleteOptions>()))
+            .Do(callInfo => _store.TryRemove(((BaseItem)callInfo[0]!).Id, out _));
         // Series.CreatePresentationUniqueKey consults the static library-manager for grouping options.
         libraryManager.GetLibraryOptions(Arg.Any<BaseItem>())
             .Returns(new MediaBrowser.Model.Configuration.LibraryOptions { EnableAutomaticSeriesGrouping = false });
@@ -122,6 +126,59 @@ public class EngagementPlacementTests : IDisposable
         Assert.Equal(_aggregateRoot.Id, _store[_library.StagingFolderId].ParentId);
         Assert.Equal(_userRoot.Id, _store[_library.FolderId].ParentId);
         Assert.False(Assert.Single(_library.GetLifecycleItems(), c => c.Item.Id == itemId).IsPromoted);
+    }
+
+    [Fact]
+    public async Task Capacity_evicts_multiple_candidates_from_one_repository_snapshot()
+    {
+        await _library.MaterializeAsync(Movie("seed-0"), CancellationToken.None);
+        for (var index = 1; index < EphemeralLibraryService.MaxEphemeralItems; index++)
+        {
+            var workId = $"seed-{index}";
+            var item = new Movie
+            {
+                Id = _library.ItemIdFor(workId),
+                Name = workId,
+                ParentId = _library.StagingFolderId,
+                ProviderIds = new Dictionary<string, string>
+                {
+                    [EphemeralLibraryService.WorkIdProviderKey] = workId,
+                    [EphemeralLibraryService.OwnerProviderKey] = EphemeralLibraryService.OwnerProviderValue,
+                },
+                Tags = [EphemeralLibraryService.EphemeralTag, EphemeralLibraryService.StreamarrTag],
+            };
+            _store[item.Id] = item;
+        }
+
+        _libraryManager.ClearReceivedCalls();
+        var series = new TvSeriesDto
+        {
+            WorkId = "replacement-series",
+            Title = "Replacement",
+            TmdbId = 4711,
+            AddStreamarrBadge = false,
+        };
+        var seasons = Enumerable.Range(1, 4)
+            .Select(index => new TvSeasonDto
+            {
+                WorkId = $"replacement-s{index:D2}",
+                Title = $"Season {index}",
+                TmdbId = 4711,
+                SeasonNumber = index,
+                EpisodeCount = 0,
+            })
+            .ToArray();
+        await _library.MaterializeSeasonsAsync(
+            new TvSeriesDetailsResponse { Series = series, Seasons = seasons },
+            CancellationToken.None);
+
+        Assert.Equal(
+            EphemeralLibraryService.MaxEphemeralItems,
+            EphemeralLibraryService.CountDescendants(_store.Values.ToArray(), _library.StagingFolderId));
+        Assert.Equal(
+            8,
+            _libraryManager.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILibraryManager.GetItemList)));
+        _libraryManager.Received(5).DeleteItem(Arg.Any<BaseItem>(), Arg.Any<DeleteOptions>());
     }
 
     [Fact]

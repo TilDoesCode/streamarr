@@ -3,6 +3,7 @@ using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
 using Streamarr.Plugin.Library;
 
@@ -117,6 +118,15 @@ public sealed class StreamarrMediaSourceProjection(
             logger.LogDebug(
                 "Declining Streamarr media sources for item {ItemId}: Core returned no releases",
                 item.Id);
+            // Jellyfin's own convention for "this item exists but has nothing playable yet"
+            // (BaseItem.GetVersionInfo) is a single Type=Placeholder source, never a bare empty
+            // array. StreamarrSearchActionFilter.ApplyOwnedItemPresentation already rewrote this
+            // DTO's LocationType away from Virtual, so official clients no longer treat the item
+            // as unplayable on that basis; they instead special-case exactly "one Placeholder
+            // source" to keep the detail page navigable without rendering a version selector. An
+            // empty array satisfies neither check, so Jellyfin Web's version-selector code reads
+            // MediaSources[0] on a zero-length array and crashes the whole item-details page.
+            sources = [PlaceholderSource(item.Id)];
             return true;
         }
 
@@ -137,4 +147,15 @@ public sealed class StreamarrMediaSourceProjection(
         logger.LogDebug("Offering {Count} Streamarr versions for item {ItemId}", sources.Count, item.Id);
         return true;
     }
+
+    /// <summary>
+    /// A pathless placeholder source for an owned item with no releases — see the usage site
+    /// for why this must never be an empty <c>MediaSources</c> array.
+    /// </summary>
+    internal static MediaSourceInfo PlaceholderSource(Guid itemId) => new()
+    {
+        Id = itemId.ToString("N", CultureInfo.InvariantCulture),
+        Protocol = MediaProtocol.File,
+        Type = MediaSourceType.Placeholder,
+    };
 }

@@ -215,36 +215,52 @@ public class NzbFileStreamTests
     }
 
     [Fact]
-    public async Task NearEndSeek_DisablesReadAheadForShortTailRanges()
+    public async Task NearEndOpenEndedRead_StartsLastArticleBeforePenultimateCompletes()
     {
-        await using var server = new MockNntpServer();
-        var segmentIds = PublishSegments(server);
-        using var client = UsenetStreamingClient.CreateProviderClient(new()
-        {
-            Name = "mock",
-            Host = server.Host,
-            Port = server.Port,
-            UseSsl = false,
-            Username = server.Username,
-            Password = server.Password,
-            MaxConnections = 6,
-        });
-        await using var stream = new Streamarr.Usenet.Streams.NzbFileStream(
+        var segmentIds = Enumerable.Range(1, PartCount)
+            .Select(index => $"tail-part-{index}@test")
+            .ToArray();
+        var metadata = new SegmentMetadataCache();
+        for (var index = 0; index < segmentIds.Length; index++)
+            metadata.Store(segmentIds[index], index * PartSize, PartSize);
+
+        using var client = new TailReadAheadNntpClient(
+            segmentIds[^2],
+            segmentIds[^1]);
+        await using var stream = new NzbFileStream(
             segmentIds,
             FileBytes.Length,
             client,
             articleBufferSize: 3,
             startupArticleBufferSize: 6,
-            startupReadAheadSegments: 6);
-        var before = server.BodiesServed;
+            startupReadAheadSegments: 6,
+            segmentMetadata: metadata);
 
         stream.Seek(200_000, SeekOrigin.Begin); // second-last article
-        var oneByte = new byte[1];
-        await stream.ReadExactlyAsync(oneByte);
-        await Task.Delay(50);
+        using var output = new MemoryStream();
+        var readToEnd = stream.CopyToAsync(output);
 
-        Assert.Equal(FileBytes[200_000], oneByte[0]);
-        Assert.Equal(1, server.BodiesServed - before);
+        await client.PenultimateBodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var lastStartedBeforePenultimateCompleted = false;
+        try
+        {
+            await client.LastBodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            lastStartedBeforePenultimateCompleted = true;
+        }
+        catch (TimeoutException)
+        {
+            // A serial tail pipeline cannot start the last BODY while the penultimate BODY is blocked.
+        }
+        finally
+        {
+            client.ReleasePenultimate.TrySetResult();
+            await readToEnd.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        Assert.True(
+            lastStartedBeforePenultimateCompleted,
+            "An open-ended tail read must prefetch the last BODY while the penultimate BODY is still downloading.");
+        Assert.Equal(FileBytes[200_000..], output.ToArray());
     }
 
     [Fact]
@@ -320,7 +336,7 @@ public class NzbFileStreamTests
     }
 
     [Fact]
-    public async Task NearEndOnDemandPath_RetainsCachePolicyForEveryTailArticle()
+    public async Task NearEndBufferedPath_CachesEveryTailArticle()
     {
         await using var server = new MockNntpServer();
         var segmentIds = PublishSegments(server);
@@ -380,6 +396,95 @@ public class NzbFileStreamTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => read.WaitAsync(TimeSpan.FromSeconds(1)));
         Assert.True(client.Body.IsDisposed);
+    }
+
+    private sealed class TailReadAheadNntpClient(
+        string penultimateId,
+        string lastId) : NntpClientBase
+    {
+        public TaskCompletionSource PenultimateBodyStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource LastBodyStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleasePenultimate { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken)
+        {
+            var id = segmentId.ToString();
+            string encoded;
+            if (id == penultimateId)
+            {
+                PenultimateBodyStarted.TrySetResult();
+                await ReleasePenultimate.Task.WaitAsync(cancellationToken);
+                encoded = YencTestEncoder.EncodePart(
+                    FileBytes,
+                    "tail-part.bin",
+                    PartCount - 1,
+                    PartCount,
+                    (PartCount - 2L) * PartSize + 1,
+                    (PartCount - 1L) * PartSize);
+            }
+            else if (id == lastId)
+            {
+                LastBodyStarted.TrySetResult();
+                encoded = YencTestEncoder.EncodePart(
+                    FileBytes,
+                    "tail-part.bin",
+                    PartCount,
+                    PartCount,
+                    (PartCount - 1L) * PartSize + 1,
+                    FileBytes.Length);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unexpected BODY request for <{id}>.");
+            }
+
+            return new NntpDecodedBodyResponse
+            {
+                ResponseCode = 222,
+                ResponseMessage = "222 body follows",
+                SegmentId = segmentId,
+                Stream = new YencStream(new MemoryStream(
+                    System.Text.Encoding.Latin1.GetBytes(encoded),
+                    writable: false)),
+            };
+        }
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            Action<ArticleBodyResult>? onConnectionReadyAgain,
+            CancellationToken cancellationToken)
+            => DecodedBodyAsync(segmentId, cancellationToken);
+
+        public override Task ConnectAsync(
+            string host,
+            int port,
+            bool useSsl,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpResponse> AuthenticateAsync(
+            string user,
+            string pass,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpStatResponse> StatAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpHeadResponse> HeadAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(
+            SegmentId segmentId,
+            Action<ArticleBodyResult>? onConnectionReadyAgain,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task<NntpDateResponse> DateAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public override void Dispose() { }
     }
 
     private sealed class BlockingSeekNntpClient : NntpClientBase

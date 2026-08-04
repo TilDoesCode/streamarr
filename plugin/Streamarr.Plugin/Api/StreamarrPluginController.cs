@@ -5,6 +5,7 @@ using MediaBrowser.Common.Api;
 using Microsoft.Extensions.Logging;
 using Streamarr.Plugin.Bootstrap;
 using Streamarr.Plugin.Library;
+using Streamarr.Plugin.MediaSources;
 
 namespace Streamarr.Plugin.Api;
 
@@ -22,6 +23,7 @@ public sealed class StreamarrPluginController(
     StreamarrApiClient api,
     PinnedWorkBootstrapper bootstrapper,
     EphemeralLibraryService library,
+    EphemeralReleaseRefresher refresher,
     ILogger<StreamarrPluginController> logger) : ControllerBase
 {
     public sealed record TestConnectionResult(bool Ok, string? Version, string? Status, string? Error);
@@ -29,6 +31,8 @@ public sealed class StreamarrPluginController(
     public sealed record BootstrapResult(bool Ok, string Message, string? ItemId, string? WorkId);
 
     public sealed record EnsureLibraryResult(bool Ok, string? Error);
+
+    public sealed record RefreshReleaseCacheResult(bool Ok, int Refreshed, string? Error);
 
     /// <summary>
     /// Verifies the configured server URL and API key using shallow health followed by
@@ -62,6 +66,33 @@ public sealed class StreamarrPluginController(
         var query = Plugin.Instance?.Configuration.PinnedWorkQuery ?? string.Empty;
         var result = await bootstrapper.RunAsync(query, ct).ConfigureAwait(false);
         return Ok(new BootstrapResult(result.Success, result.Message, result.ItemId?.ToString(), result.WorkId));
+    }
+
+    /// <summary>
+    /// Re-checks Core for every currently cached item's releases right now, ignoring the normal
+    /// TTL/cooldown (BRIEF §8.3). The escape hatch for "I fixed something on the Core side, why
+    /// does Jellyfin still show no versions" — the background refresh in
+    /// <see cref="EphemeralReleaseRefresher"/> would eventually catch up on its own, but an
+    /// engaged/favorited item that nobody revisits via its season page otherwise never does.
+    /// </summary>
+    [HttpPost("RefreshReleaseCache")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<RefreshReleaseCacheResult>> RefreshReleaseCache(CancellationToken ct)
+    {
+        try
+        {
+            var refreshed = await refresher.RefreshAllNowAsync(ct).ConfigureAwait(false);
+            return Ok(new RefreshReleaseCacheResult(true, refreshed, null));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Streamarr release cache refresh failed ({FailureType})", ex.GetType().Name);
+            return Ok(new RefreshReleaseCacheResult(false, 0, "refresh_failed"));
+        }
     }
 
     /// <summary>
