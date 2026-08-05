@@ -176,7 +176,8 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
         psi.ArgumentList.Add("-print_format");
         psi.ArgumentList.Add("json");
         psi.ArgumentList.Add("-show_entries");
-        psi.ArgumentList.Add("format=duration:stream=codec_type,codec_name,width,height,channels:stream_tags=language");
+        psi.ArgumentList.Add(
+            "format=duration:stream=codec_type,codec_name,width,height,channels:stream_tags=language:stream_disposition=attached_pic");
         psi.ArgumentList.Add(url);
         return psi;
     }
@@ -231,7 +232,11 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
         {
             foreach (var stream in streams.EnumerateArray().Take(MaxMediaStreams))
             {
-                var type = GetString(stream, "codec_type") switch
+                var codecType = GetString(stream, "codec_type");
+                if (codecType == "video" && IsAttachedPicture(stream))
+                    continue;
+
+                var type = codecType switch
                 {
                     "video" => "Video",
                     "audio" => "Audio",
@@ -256,6 +261,21 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
         }
 
         return new FfprobeResult { RunTimeTicks = runTimeTicks, MediaStreams = mediaStreams };
+    }
+
+    private static bool IsAttachedPicture(JsonElement stream)
+    {
+        if (!stream.TryGetProperty("disposition", out var disposition)
+            || disposition.ValueKind != JsonValueKind.Object
+            || !disposition.TryGetProperty("attached_pic", out var attachedPicture))
+        {
+            return false;
+        }
+
+        return attachedPicture.ValueKind == JsonValueKind.True
+               || attachedPicture.ValueKind == JsonValueKind.Number
+               && attachedPicture.TryGetInt32(out var value)
+               && value != 0;
     }
 
     private static string? GetString(JsonElement element, string name)

@@ -41,6 +41,54 @@ public sealed class FfprobeClientSecurityTests
     }
 
     [Fact]
+    public void Parse_ExcludesMatroskaAttachedPicturesFromPlayableVideoStreams()
+    {
+        const string json = """
+                            {
+                              "format": { "duration": "1298.72" },
+                              "streams": [
+                                {
+                                  "codec_type": "video",
+                                  "codec_name": "h264",
+                                  "width": 1920,
+                                  "height": 1080,
+                                  "disposition": { "attached_pic": 0 }
+                                },
+                                {
+                                  "codec_type": "audio",
+                                  "codec_name": "eac3",
+                                  "channels": 6,
+                                  "tags": { "language": "eng" }
+                                },
+                                {
+                                  "codec_type": "video",
+                                  "codec_name": "png",
+                                  "width": 400,
+                                  "height": 225,
+                                  "disposition": { "attached_pic": 1 },
+                                  "tags": { "filename": "cover.png" }
+                                }
+                              ]
+                            }
+                            """;
+
+        var result = FfprobeClient.Parse(json);
+
+        Assert.Collection(
+            result.MediaStreams,
+            video =>
+            {
+                Assert.Equal("Video", video.Type);
+                Assert.Equal("h264", video.Codec);
+            },
+            audio =>
+            {
+                Assert.Equal("Audio", audio.Type);
+                Assert.Equal("eac3", audio.Codec);
+            });
+    }
+
+    [Fact]
     public void StartInfo_AppliesBoundedProbeBudgets_AndKeepsCapabilityLiteral()
     {
         const string capability = "http://127.0.0.1:1234/api/v1/stream/token?x=$(ignored)";
@@ -48,6 +96,9 @@ public sealed class FfprobeClientSecurityTests
 
         Assert.Contains("1048576", startInfo.ArgumentList);
         Assert.Contains("2000000", startInfo.ArgumentList);
+        Assert.Contains(
+            startInfo.ArgumentList,
+            argument => argument.Contains("stream_disposition=attached_pic", StringComparison.Ordinal));
         Assert.Equal(capability, startInfo.ArgumentList[startInfo.ArgumentList.Count - 1]);
         Assert.False(startInfo.UseShellExecute);
     }
