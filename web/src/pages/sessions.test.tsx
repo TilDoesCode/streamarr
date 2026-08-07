@@ -26,12 +26,32 @@ const session = {
   expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
 };
 
+const historyRecord = {
+  token: "attempt-dead-1",
+  releaseId: "rel-dead-only",
+  workId: "tmdb-movie-9",
+  title: null,
+  container: null,
+  sizeBytes: null,
+  bytesServed: 0,
+  nntpCommandsTotal: 0,
+  client: "web",
+  requestedById: null,
+  requestedByName: null,
+  createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+  closedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+  finalState: "dead",
+  closeReason: null,
+};
+
 let closed: string[] = [];
 let sessionsList = [session];
+let streamRecordsList = [historyRecord];
 
 function installFetch() {
   closed = [];
   sessionsList = [session];
+  streamRecordsList = [historyRecord];
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -41,6 +61,7 @@ function installFetch() {
       sessionsList = [];
       return jsonResponse(204, undefined);
     }
+    if (url.includes("/streams") && method === "GET") return jsonResponse(200, streamRecordsList);
     if (url.includes("/sessions") && method === "GET") return jsonResponse(200, sessionsList);
     return jsonResponse(404, { error: { code: "not_found", message: "no" } });
   });
@@ -82,6 +103,21 @@ describe("SessionsPage", () => {
     await user.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => expect(closed).toEqual(["tok-1"]));
+  });
+
+  it("switches to the History tab and lists retained streams with their final state", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SessionsPage />);
+    await screen.findByText("rel-direct");
+
+    await user.click(screen.getByRole("tab", { name: /history/i }));
+
+    const row = (await screen.findByText("rel-dead-only")).closest("tr")!;
+    expect(within(row).getByText("dead")).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: /inspect/i })).toHaveAttribute(
+      "href",
+      "/sessions/$sessionToken",
+    );
   });
 });
 

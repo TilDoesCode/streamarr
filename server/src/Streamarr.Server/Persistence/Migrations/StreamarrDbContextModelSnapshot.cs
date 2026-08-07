@@ -343,6 +343,121 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.ToTable("Providers");
                 });
 
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.StreamEventEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("AtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Detail")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("DurationMs")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("StartMs")
+                        .HasColumnType("REAL");
+
+                    b.Property<long>("StreamRecordId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StreamRecordId");
+
+                    b.ToTable("StreamEvents");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.StreamRecordEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("BytesServed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Client")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CloseReason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Container")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FinalState")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("NntpCommandsTotal")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReleaseId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestedById")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestedByName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("TimelineStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Token")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptId")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("FinalState");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("StreamRecords");
+                });
+
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.UserEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -428,6 +543,20 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.HasIndex("ReleaseId");
 
                     b.ToTable("WatchEvents");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.StreamEventEntity", b =>
+                {
+                    b.HasOne("Streamarr.Server.Persistence.Entities.StreamRecordEntity", null)
+                        .WithMany("Events")
+                        .HasForeignKey("StreamRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.StreamRecordEntity", b =>
+                {
+                    b.Navigation("Events");
                 });
 #pragma warning restore 612, 618
         }

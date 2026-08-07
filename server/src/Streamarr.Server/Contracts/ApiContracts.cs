@@ -89,6 +89,51 @@ public sealed record ResolveResponse
     /// classification — so a front-end can surface exactly what happened (BRIEF §10-M7).
     /// </summary>
     public IReadOnlyList<ResolveAttempt> Attempts { get; init; } = [];
+
+    /// <summary>
+    /// Upstream availability evidence, independent of local repair:
+    /// "unknown" | "ready" | "degraded" | "dead". Additive; absent on older servers.
+    /// </summary>
+    public string? OriginHealth { get; init; }
+
+    /// <summary>
+    /// How the release is playable right now:
+    /// "remoteReady" | "progressive" | "repairing" | "repairedReady" | "unavailable".
+    /// A locally repaired release reports Status "ready" for old clients while
+    /// OriginHealth stays "dead".
+    /// </summary>
+    public string? Playability { get; init; }
+
+    /// <summary>PAR2 repair status for this release, when a job exists. Additive.</summary>
+    public RepairStatusInfo? Repair { get; init; }
+}
+
+/// <summary>Structured repair progress attached to resolve responses and status endpoints.</summary>
+public sealed record RepairStatusInfo
+{
+    public required string JobId { get; init; }
+
+    /// <summary>"unknown" | "notNeeded" | "repairable" | "insufficientParity" | "unsupported" | "limitsExceeded".</summary>
+    public required string Disposition { get; init; }
+
+    /// <summary>"none" | "queued" | "planning" | "materializingSources" | "downloadingRecovery" | "reconstructing" | "verifying" | "ready" | "failed" | "cancelled" | "evicted".</summary>
+    public required string State { get; init; }
+
+    /// <summary>Coarse phase label for player-facing hints ("recovery", "verify", …).</summary>
+    public string? Phase { get; init; }
+
+    public long ProcessedBytes { get; init; }
+    public long TotalBytes { get; init; }
+    public int ProgressPercent { get; init; }
+    public double? EtaSeconds { get; init; }
+
+    /// <summary>Suggested delay before a client polls or retries the resolve.</summary>
+    public int? RetryAfterSeconds { get; init; }
+
+    /// <summary>True when the server would admit a progressive (repair-while-streaming) session.</summary>
+    public bool ProgressiveEligible { get; init; }
+
+    public string? FailureReason { get; init; }
 }
 
 /// <summary>One live session as listed by GET /api/v1/sessions.</summary>
@@ -207,6 +252,78 @@ public sealed record StreamingHistoryResponse
     public string? ExternalUserName { get; init; }
     public string? DeviceName { get; init; }
     public DateTimeOffset ReceivedAt { get; init; }
+}
+
+/// <summary>
+/// One row of the permanent stream-attempt history (BRIEF §11 console) — the last N stream
+/// attempts, live or long since closed, so a report like "this release errored around 9pm"
+/// can be looked up after the fact. List-view shape; omits the event timeline.
+/// </summary>
+public sealed record StreamRecordSummaryResponse
+{
+    /// <summary>The real session token when one was minted, otherwise a synthetic attempt id.</summary>
+    public required string Token { get; init; }
+
+    public required string ReleaseId { get; init; }
+    public required string WorkId { get; init; }
+    public string? Title { get; init; }
+    public string? Container { get; init; }
+    public long? SizeBytes { get; init; }
+    public long BytesServed { get; init; }
+    public long NntpCommandsTotal { get; init; }
+    public string? Client { get; init; }
+    public string? RequestedById { get; init; }
+    public string? RequestedByName { get; init; }
+    public required DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? ClosedAt { get; init; }
+
+    /// <summary>Null while still open/live. "ready"|"degraded"|"dead"|"closed"|"expired"|"evicted"|"purged"|"invalidated"|"reused"|"error".</summary>
+    public string? FinalState { get; init; }
+    public string? CloseReason { get; init; }
+}
+
+/// <summary>One stream-history record with its full, time-ordered diagnostic event log.</summary>
+public sealed record StreamRecordResponse
+{
+    public required string Token { get; init; }
+    public required string ReleaseId { get; init; }
+    public required string WorkId { get; init; }
+    public string? Title { get; init; }
+    public string? Container { get; init; }
+    public long? SizeBytes { get; init; }
+    public long BytesServed { get; init; }
+    public long NntpCommandsTotal { get; init; }
+    public string? Client { get; init; }
+    public string? RequestedById { get; init; }
+    public string? RequestedByName { get; init; }
+    public required DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? ClosedAt { get; init; }
+    public string? FinalState { get; init; }
+    public string? CloseReason { get; init; }
+
+    /// <summary>Wall-clock instant of timeline t0, for aligning the flamegraph (matches SessionResponse.TimelineStartedAt).</summary>
+    public DateTimeOffset? TimelineStartedAt { get; init; }
+
+    /// <summary>Request→first-frame spans only (same shape as the live console's flamegraph).</summary>
+    public IReadOnlyList<TtffSpanResponse> Timeline { get; init; } = [];
+
+    /// <summary>Every recorded event, chronological — ttff spans, folded-in PAR2 repair transitions, session lifecycle, errors.</summary>
+    public IReadOnlyList<StreamEventResponse> Events { get; init; } = [];
+}
+
+/// <summary>One chronological diagnostic log entry for a <see cref="StreamRecordResponse"/>.</summary>
+public sealed record StreamEventResponse
+{
+    public required DateTimeOffset AtUtc { get; init; }
+
+    /// <summary>"ttff" | "lifecycle" | "repair" | "error".</summary>
+    public required string Source { get; init; }
+
+    public required string Category { get; init; }
+    public required string Name { get; init; }
+    public string? Detail { get; init; }
+    public double? StartMs { get; init; }
+    public double? DurationMs { get; init; }
 }
 
 /// <summary>Typed error envelope rendered consistently by every endpoint.</summary>

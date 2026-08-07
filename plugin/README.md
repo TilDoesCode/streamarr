@@ -13,14 +13,14 @@ Target: **Jellyfin 10.11.11** (`net9.0`). See [`../docs/jellyfin-compatibility.m
 
 | Piece | File | Role |
 |---|---|---|
-| `Plugin` + config page | `Plugin.cs`, `Configuration/` | Private Core control URL, optional client-reachable stream URL, API key, TTL, interception toggle, profile id, pinned query; "Test connection" + "Materialize pinned work" buttons |
-| Typed HTTP client | `Api/StreamarrApiClient.cs` | Bounded transport over shallow `/health`, authenticated `/caps`, `/search`, `/resolve`, `/sessions/{token}/close`, and `/events` |
+| `Plugin` + config page | `Plugin.cs`, `Configuration/` | Private Core control URL, optional client-reachable stream URL, API key, TTL, interception and repair-notification toggles, profile id, pinned query; "Test connection" + "Materialize pinned work" buttons |
+| Typed HTTP client | `Api/StreamarrApiClient.cs` | Bounded transport over shallow `/health`, authenticated `/caps`, `/search`, two-phase `/playback-sessions` admission/claim/abandon (with legacy `/resolve` fallback), repair status, session close, and `/events` |
 | Service wiring | `PluginServiceRegistrator.cs` | Registers the typed `HttpClient`, media-source provider, event bridge, scheduled tasks, and the search action filter (`Configure<MvcOptions>`) |
 | Ephemeral materialization | `Library/` | One private virtual `Movie`/`Episode` per work, stable GUID from `workId`, explicit ownership ids, persisted bounded release cache, and ownership-safe TTL cleanup |
 | **Search interception** ⚠️ | `Search/StreamarrSearchActionFilter.cs` | **The single version-fragile file.** `IAsyncActionFilter` over `/Items` (with `searchTerm`) + `/Search/Hints`: calls `/api/v1/search` (short timeout), materializes/merges ephemeral works. Fully try/catch-guarded behind the toggle — any error/timeout falls through to native results |
 | Search merge/hint shaping | `Search/SearchInjection.cs` | Host-free, unit-tested merge + dedup + hint building (no domain logic) |
-| Lazy media sources | `MediaSources/` | `IMediaSourceProvider`: one `MediaSourceInfo` per release (`RequiresOpening`) with an opaque, bounded, replay-safe offer tied to the authenticated Jellyfin user/item/work/release; idle offers expire after ten minutes, active playback holds the lease, and final close starts the replay window; `OpenMediaSource` validates it before `/resolve`, accepts only an attributed same-work fallback, and exposes no reusable media auth header; `ILiveStream.Close` releases plugin attribution but never revokes Core playback |
-| Playback events | `Playback/` | Hooks `ISessionManager` start/progress/stop → bounded/coalesced delivery to `POST /api/v1/events` |
+| Lazy media sources | `MediaSources/` | `IMediaSourceProvider`: one `MediaSourceInfo` per release (`RequiresOpening`) with an opaque, bounded, replay-safe offer tied to the authenticated Jellyfin user/item/work/release; `OpenMediaSource` validates it, performs bounded two-phase admission, claims only a validated terminal response, abandons every unclaimed path, accepts only an attributed same-work fallback, and exposes no reusable media auth header; `ILiveStream.Close` releases plugin attribution but never revokes Core playback |
+| Playback events + repair status | `Playback/` | Hooks `ISessionManager` start/progress/stop → bounded/coalesced event delivery; fairly polls active Streamarr sources and sends deduplicated repair-state messages only to clients supporting `DisplayMessage` |
 | Bootstrap task | `ScheduledTasks/SyncPinnedWorkTask.cs` | "Sync one pinned work" — materializes one item for the M5 smoke test |
 | **TTL cleanup task** | `ScheduledTasks/EphemeralCleanupTask.cs` | `IScheduledTask` (hourly): deletes `usenet-ephemeral` items past their TTL via `ILibraryManager` |
 

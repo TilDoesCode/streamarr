@@ -11,7 +11,7 @@ namespace Streamarr.Core.Media;
 /// </summary>
 public interface IReleaseHealthCache
 {
-    /// <summary>Record the latest health classification for a release.</summary>
+    /// <summary>Record health without overwriting a live dead entry with a stale healthy observation.</summary>
     void Record(string releaseId, ReleaseHealth health);
 
     /// <summary>The cached classification, or null if unknown / expired.</summary>
@@ -34,8 +34,17 @@ public sealed class ReleaseHealthCache(
     {
         if (string.IsNullOrEmpty(releaseId) || ttl <= TimeSpan.Zero)
             return;
+        var now = _time.GetUtcNow();
+        var next = new Entry(health, now + ttl);
         PruneExpired();
-        _entries[releaseId] = new Entry(health, _time.GetUtcNow() + ttl);
+        _entries.AddOrUpdate(
+            releaseId,
+            next,
+            (_, existing) => existing is { Health: ReleaseHealth.Dead }
+                             && existing.ExpiresAtUtc > now
+                             && health != ReleaseHealth.Dead
+                ? existing
+                : next);
         while (_entries.Count > Math.Max(1, maxEntries))
         {
             var oldest = _entries.MinBy(p => p.Value.ExpiresAtUtc);

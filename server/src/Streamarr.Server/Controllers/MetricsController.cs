@@ -24,7 +24,9 @@ public class MetricsController(
     SessionManager sessions,
     SearchCache searchCache,
     MultiProviderNntpClient nntp,
-    IOptions<StreamarrOptions> options) : ControllerBase
+    IOptions<StreamarrOptions> options,
+    Services.Repair.RepairCoordinator? repairCoordinator = null,
+    Services.Repair.RepairArtifactCache? repairArtifacts = null) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(MetricsResponse), StatusCodes.Status200OK)]
@@ -80,6 +82,21 @@ public class MetricsController(
                 LastLatencyMs = i.LastLatencyMs,
                 AvgLatencyMs = i.AvgLatencyMs,
             }).ToList(),
+            Repairs = new RepairMetrics
+            {
+                ActiveJobs = repairCoordinator?.ActiveJobCount ?? 0,
+                AttemptsTotal = metrics.RepairAttemptsTotal,
+                SucceededTotal = metrics.RepairSucceededTotal,
+                FailedTotal = metrics.RepairFailedTotal,
+                CancelledTotal = metrics.RepairCancelledTotal,
+                CacheHitsTotal = metrics.RepairCacheHitsTotal,
+                ArtifactEvictionsTotal = metrics.RepairArtifactEvictionsTotal,
+                WaitAtHoleStartedTotal = metrics.RepairWaitAtHoleStartedTotal,
+                WaitAtHoleResumedTotal = metrics.RepairWaitAtHoleResumedTotal,
+                WaitAtHoleSecondsTotal = metrics.RepairWaitAtHoleSecondsTotal,
+                ArtifactBytes = repairArtifacts?.TotalBytes ?? 0,
+                FailuresByReason = metrics.RepairFailuresByReason(),
+            },
         });
     }
 }

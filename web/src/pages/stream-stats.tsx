@@ -31,9 +31,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { errorMessage } from "@/api/client";
-import { useEphemeralFiles, useMetrics, useSessions, useStreamingHistory } from "@/api/queries";
-import type { SessionResponse, StreamingHistoryResponse, TtffSpanResponse } from "@/api/types";
+import { ApiError, errorMessage } from "@/api/client";
+import { useEphemeralFiles, useMetrics, useSessions, useStreamingHistory, useStreamRecord } from "@/api/queries";
+import type { SessionResponse, StreamEventResponse, StreamingHistoryResponse, StreamRecordResponse, TtffSpanResponse } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { cn, formatBytes, formatTicks, timeAgo } from "@/lib/utils";
 
@@ -51,6 +51,9 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
   const history = useStreamingHistory(400);
   const session = sessions.data?.find((item) => item.token === token);
   const file = files.data?.find((item) => item.token === token);
+  // Live-only telemetry (below) needs the live session; once it's gone, fall back to the
+  // permanent stream-history record so this page keeps working after the fact (BRIEF §11).
+  const record = useStreamRecord(token, { enabled: token.length > 0 && !session && !sessions.isLoading });
   const [now, setNow] = useState(() => Date.now());
   const rates = useTransferRate(session);
 
@@ -78,12 +81,20 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
   }
 
   if (!session) {
+    if (record.isLoading) return <StreamStatsSkeleton />;
+    if (record.data) return <HistoricalStreamConsole record={record.data} />;
+
+    const notFound = record.error instanceof ApiError && record.error.status === 404;
     return (
       <StreamStatsMessage
         icon={<Radio />}
-        eyebrow="Session no longer live"
-        title="This stream has left the wire"
-        description="Stream stats are live-only. The capability may have been evicted by the ephemeral-file LRU budget or reached its hard expiry."
+        eyebrow={notFound ? "Nothing retained" : "Telemetry unavailable"}
+        title={notFound ? "This stream left no trace" : "The stream record could not load"}
+        description={
+          notFound
+            ? "No live session, and nothing in the permanent stream history for this token — it may predate the retention window, or the token is wrong."
+            : errorMessage(record.error)
+        }
       />
     );
   }
@@ -264,6 +275,214 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
       </main>
     </div>
   );
+}
+
+/**
+ * The same "web terminal" console shell, sourced from the permanent stream-history record
+ * instead of a live session — this is what makes a closed/evicted/failed stream inspectable
+ * after the fact: exactly which release, when, and the full chronological event log (resolve
+ * stages, folded-in PAR2 repair transitions, session lifecycle, errors).
+ */
+function HistoricalStreamConsole({ record }: { record: StreamRecordResponse }) {
+  const title = record.title || record.releaseId || "Untitled stream";
+  const requester = record.requestedByName || record.requestedById || "Unattributed request";
+  const createdMs = Date.parse(record.createdAt);
+  const closedMs = record.closedAt ? Date.parse(record.closedAt) : null;
+  const durationSeconds =
+    closedMs != null && !Number.isNaN(createdMs) ? Math.max(0, (closedMs - createdMs) / 1_000) : null;
+
+  return (
+    <div className="stream-console relative isolate overflow-hidden rounded-[1.35rem] border bg-card text-card-foreground shadow-[0_22px_65px_-42px_rgba(15,23,42,.35)] dark:shadow-[0_24px_75px_-44px_rgba(0,0,0,.9)]">
+      <ConsoleBackdrop />
+
+      <header className="relative border-b bg-muted/20 px-4 py-4 dark:bg-muted/10 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <Link to="/sessions"><ArrowLeft />All streams</Link>
+          </Button>
+          <span className="hidden h-4 w-px bg-border sm:block" />
+          <span className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <span className="size-2 rounded-full bg-muted-foreground/50" />
+            retained history
+          </span>
+          <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+            permanent stream console
+          </span>
+        </div>
+      </header>
+
+      <main className="relative">
+        <section className="border-b px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+          <div className="max-w-4xl">
+            <div className="flex items-center gap-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
+              <span className="h-px w-10 bg-primary/70" />
+              Stream telemetry / {record.client || "unknown source"}
+            </div>
+            <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0">
+                <h2 className="max-w-3xl break-words text-2xl font-semibold leading-tight tracking-[-0.035em] text-foreground sm:text-3xl lg:text-[2.5rem]">
+                  {title}
+                </h2>
+                <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{record.releaseId}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <FinalStateBadge state={record.finalState} />
+                <span className="rounded-full border bg-background/60 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {record.container || "stream"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-2 border-b md:grid-cols-4">
+          <MetricCell
+            icon={<Radio />}
+            label="Bytes served"
+            value={formatBytes(record.bytesServed)}
+            detail={record.sizeBytes ? `of ${formatBytes(record.sizeBytes)} payload` : "total delivered"}
+          />
+          <MetricCell
+            icon={<Network />}
+            label="NNTP commands"
+            value={(record.nntpCommandsTotal ?? 0).toLocaleString()}
+            detail="issued over the stream's life"
+          />
+          <MetricCell
+            icon={<Clock3 />}
+            label="Duration"
+            value={durationSeconds == null ? "still open" : formatDuration(durationSeconds)}
+            detail="created → closed"
+          />
+          <MetricCell
+            icon={<AlertTriangle />}
+            label="Close reason"
+            value={record.closeReason || "—"}
+            detail={record.finalState ?? "open"}
+          />
+        </section>
+
+        <TtffFlamegraph spans={record.timeline ?? []} />
+
+        <section className="grid min-w-0 grid-cols-1 xl:grid-cols-[minmax(0,1.18fr)_minmax(23rem,.82fr)]">
+          <div className="min-w-0 border-b p-4 sm:p-6 lg:p-8 xl:border-b-0 xl:border-r">
+            <SectionHeading
+              icon={<Terminal />}
+              eyebrow="Event log"
+              title="What happened, in order"
+              detail="Resolve stages, folded-in PAR2 repair transitions, session lifecycle, and errors — the exact console the request said it wanted."
+            />
+            <EventLog events={record.events ?? []} />
+          </div>
+
+          <aside className="min-w-0 p-4 sm:p-6 lg:p-8">
+            <SectionHeading
+              icon={<Database />}
+              eyebrow="Session ledger"
+              title="Identity & lifecycle"
+              detail="Exact values for correlating a support report with server logs."
+            />
+            <dl className="mt-7 divide-y border-y">
+              <LedgerRow label="Created" value={formatTimestamp(record.createdAt)} detail={timeAgo(record.createdAt)} />
+              <LedgerRow
+                label="Closed"
+                value={record.closedAt ? formatTimestamp(record.closedAt) : "still open"}
+                detail={record.closedAt ? timeAgo(record.closedAt) : "no close recorded"}
+              />
+              <LedgerRow
+                label="Duration"
+                value={durationSeconds == null ? "—" : formatDuration(durationSeconds)}
+                detail="wall-clock lifetime"
+              />
+              <LedgerRow label="MIME route" value={mimeFor(record.container)} detail="direct byte-range delivery" />
+            </dl>
+
+            <div className="mt-7 space-y-3">
+              <Identifier label="Stream token" value={record.token || "—"} secret />
+              <Identifier label="Release ID" value={record.releaseId || "—"} />
+              <Identifier label="Work ID" value={record.workId || "—"} />
+            </div>
+
+            <div className="mt-7 grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2">
+              <DetailCell icon={<UserRound />} label="Requester" value={requester} detail={record.requestedById || "No stable user ID reported"} />
+              <DetailCell icon={<MonitorPlay />} label="Originating client" value={record.client || "Unknown"} detail="Capability session source" />
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function FinalStateBadge({ state }: { state?: string | null }) {
+  const label = state ?? "open";
+  const isGood = state === "closed" || state === "purged" || state === "reused";
+  const isBad = state === "dead" || state === "error" || state === "evicted" || state === "expired" || state === "invalidated";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider",
+        isGood && "border-success/20 bg-success/10 text-success-foreground",
+        isBad && "border-destructive/20 bg-destructive/10 text-destructive",
+        !isGood && !isBad && "border-muted-foreground/20 bg-muted/40 text-muted-foreground",
+      )}
+    >
+      {isGood ? <ShieldCheck className="size-3" /> : isBad ? <AlertTriangle className="size-3" /> : <Clock3 className="size-3" />}
+      {label}
+    </span>
+  );
+}
+
+function EventLog({ events }: { events: StreamEventResponse[] }) {
+  if (!events.length) {
+    return (
+      <div className="mt-7 flex min-h-28 items-center justify-center rounded-xl border border-dashed px-6 text-center font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+        No diagnostic events were recorded for this stream
+      </div>
+    );
+  }
+  return (
+    <ol className="mt-7 space-y-1.5">
+      {events.map((event, index) => (
+        <li
+          key={`${event.atUtc}-${index}`}
+          className="flex items-start gap-3 rounded-lg border bg-muted/15 px-3 py-2.5 text-xs transition-colors hover:bg-muted/30"
+        >
+          <span className={cn("mt-1 size-1.5 shrink-0 rounded-full", eventSourceDot(event.source))} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                {event.source}/{event.category}
+              </span>
+              <span className="font-medium text-foreground">{event.name}</span>
+              {event.durationMs != null && (
+                <span className="font-mono text-[9px] text-muted-foreground/70">{formatMs(event.durationMs)}</span>
+              )}
+            </div>
+            {event.detail && (
+              <p className="mt-0.5 truncate text-muted-foreground" title={event.detail}>
+                {event.detail}
+              </p>
+            )}
+          </div>
+          <span className="shrink-0 font-mono text-[9px] text-muted-foreground/70">{formatTimestamp(event.atUtc)}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function eventSourceDot(source?: string | null) {
+  switch (source) {
+    case "ttff":
+      return "bg-primary";
+    case "repair":
+      return "bg-amber-500";
+    case "error":
+      return "bg-rose-500";
+    default:
+      return "bg-slate-400"; // lifecycle
+  }
 }
 
 function ConsoleBackdrop() {

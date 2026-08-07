@@ -1,11 +1,13 @@
 # API contract — `/api/v1`
 
 The Core Server's HTTP API is **the** cross-interface contract (BRIEF §3.1): the
-Jellyfin plugin, the Management UI, and any future client all speak it, and all
-generate their types from the frozen spec at
-[`server/openapi/v1.json`](../server/openapi/v1.json). This document is the
-human-readable companion to that spec — it does not add or remove endpoints, it
-explains them. **If an endpoint is not in `v1.json`, it does not exist.**
+Jellyfin plugin, the Management UI, and any future client all speak it. The Management
+UI generates its TypeScript types from the frozen spec at
+[`server/openapi/v1.json`](../server/openapi/v1.json); the Jellyfin plugin maintains
+bounded DTOs for only the fields it consumes, and future clients can generate from the
+same spec. This document is the human-readable companion to that spec — it does not add
+or remove endpoints, it explains them. **If an endpoint is not in `v1.json`, it does
+not exist.**
 
 The spec is served live at `/openapi/v1.json` (all environments) and, in Development,
 browsable at `/swagger`.
@@ -25,7 +27,7 @@ credential transports, resolved by
 
 | Mode | Token | Scope |
 |---|---|---|
-| **Machine / API key** | The static bootstrap key (`Streamarr:ApiKey`) or a key minted via `POST /config/apikeys`. | `search`, `resolve`, `events`, `caps`, and shallow `health`. **Not** `/config`, `/debug`, session listing, or metrics. |
+| **Machine / API key** | The static bootstrap key (`Streamarr:ApiKey`) or a key minted via `POST /config/apikeys`. | `search`, `resolve`, two-phase `playback-sessions`, `events`, `caps`, and shallow `health`. **Not** `/config`, `/debug`, repair administration, session listing, or metrics. |
 | **Browser admin session** | The HttpOnly, `SameSite=Strict` cookie set by `POST /auth/login`. | Everything, including `/config/*` and `/debug/search`. Unsafe requests additionally require an exact same-origin `Origin` header. |
 | **Non-browser admin session** | A short-lived JWT from `POST /auth/login`, sent as a bearer token. | The same admin scope; retained for CLI and API clients. |
 
@@ -547,6 +549,76 @@ user profiles are stored as JSON. No secrets. Full field reference in
 The plaintext `token` is returned only at creation; thereafter only its `prefix` and
 metadata are visible. Keys are **revoked (soft-deleted)**, not hard-deleted, so past
 issuance stays auditable.
+
+---
+
+## 10. PAR2 repair & two-phase playback admission
+
+### Additive resolve fields
+
+`POST /api/v1/resolve` responses gained three **additive** fields (absent on older
+servers; the legacy meaning of `status=ready|degraded|dead` is unchanged):
+
+```json
+{
+  "status": "degraded",
+  "streamUrl": "/api/v1/stream/<capability>",
+  "originHealth": "dead",
+  "playability": "progressive",
+  "repair": {
+    "jobId": "…", "disposition": "repairable", "state": "downloadingRecovery",
+    "phase": "recovery", "processedBytes": 123, "totalBytes": 456,
+    "progressPercent": 27, "etaSeconds": 180, "retryAfterSeconds": 5,
+    "progressiveEligible": true
+  }
+}
+```
+
+- `originHealth` (`unknown|ready|degraded|dead`) is **upstream evidence only** — a
+  locally repaired release stays `dead` here while `status` reads `ready` for old
+  clients.
+- `playability`: `remoteReady | progressive | repairing | repairedReady | unavailable`.
+- `repair.disposition`: `unknown | notNeeded | repairable | insufficientParity |
+  unsupported | limitsExceeded`; `repair.state`: `none | queued | planning |
+  materializingSources | downloadingRecovery | reconstructing | verifying | ready |
+  failed | cancelled | evicted`.
+
+### Repair endpoints
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /api/v1/repairs` | admin | Jobs + artifacts + cache budget overview (redacted event log per job). |
+| `GET /api/v1/repairs/{jobId}` | admin | One job. |
+| `POST /api/v1/repairs` `{releaseId, workId?}` | admin | Idempotent manual start (bypasses the failure backoff; an active job for the fingerprint is returned as-is). |
+| `POST /api/v1/repairs/{jobId}/cancel` | admin | Cancels an active job. |
+| `GET /api/v1/sessions/{token}/repair` | stream capability | Playability + repair progress for exactly this live session; possession of the token is the authorization (same model as `/timeline`). |
+
+Responses never contain message-ids, workspace paths, passwords or credentials.
+
+### `POST /api/v1/playback-sessions` (two-phase admission)
+
+Same body and machine-auth posture as `/resolve`. Answers within a short hard budget:
+`200 {phase:"ready", resolve:{…}}` on the fast path, or `202 {phase:"preparing",
+admissionId, retryAfterSeconds}` while health check, materialization, ffprobe and
+repair analysis continue server-side under the admission's own lifetime.
+`GET /api/v1/playback-sessions/{admissionId}` polls the phase; terminal answers are
+`ready` (with the full resolve payload — a dead resolve arrives as `failed` **with**
+the resolve payload so fallback attribution survives) or `failed` with a stable,
+redacted `error` code (`unknown_release`, `no_playable_file`, `prepare_timeout`, …).
+
+Terminal ownership is explicit:
+
+| Endpoint | Result |
+|---|---|
+| `POST /api/v1/playback-sessions/{admissionId}/claim` | Atomically consumes a terminal admission and returns its final response. Returns `409` while preparing and `404` when unknown or already claimed. |
+| `DELETE /api/v1/playback-sessions/{admissionId}` | Idempotently abandons pending work and closes any idle capability it created. A short claimed-admission handle accepts cleanup after a lost claim response; expiry of that handle does not shorten the capability's normal session lifetime, and cleanup never tears down a stream that has started. |
+
+The Jellyfin plugin polls under an 11-minute deadline, claims only after validating the
+terminal response, and abandons every unclaimed path. Jellyfin necessarily holds its
+global live-stream lock until `OpenMediaSource` returns; two-phase admission instead
+decouples Core work from a single HTTP request and makes cancellation and capability
+ownership deterministic. Older Core versions remain supported through a direct
+`POST /resolve` fallback.
 
 ---
 

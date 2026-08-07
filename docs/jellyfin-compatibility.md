@@ -39,7 +39,21 @@ Compiled, tested, and host-loaded against `Jellyfin.Controller` 10.11.11:
   (note it also requires `IDisposable.Dispose()`).
 - `MediaBrowser.Controller.Plugins.IPluginServiceRegistrator.RegisterServices(IServiceCollection, IServerApplicationHost)`.
 - `MediaBrowser.Controller.Session.ISessionManager` — `PlaybackStart` / `PlaybackProgress`
-  / `PlaybackStopped` events (args `PlaybackProgressEventArgs` / `PlaybackStopEventArgs`).
+  / `PlaybackStopped` events (args `PlaybackProgressEventArgs` / `PlaybackStopEventArgs`),
+  plus `Sessions` and `SendMessageCommand(...)` used by the repair-status observer
+  (`Playback/RepairStatusObserver.cs`): while Core repairs a damaged source mid-stream,
+  actively played Streamarr sessions get deduplicated `DisplayMessage` transitions
+  ("Quelle beschädigt – Reparatur läuft" / "Reparatur abgeschlossen"), only on clients
+  whose `Capabilities.SupportedCommands` contain `DisplayMessage`. All other clients
+  simply see their native buffering state because Core keeps the HTTP stream open at the
+  hole instead of delivering EOF. Fail-open: observer errors never touch playback, and
+  capability tokens are never logged. Toggle: `RepairNotificationsEnabled`.
+  `OpenMediaSource` uses Core's two-phase admission (`POST /api/v1/playback-sessions`)
+  under a plugin-owned 11-minute deadline token, because Jellyfin's API path passes
+  `CancellationToken.None` while holding the global live-stream lock. The lock remains
+  held until `OpenMediaSource` returns; admission gives the Core operation an independent
+  lifetime plus an explicit claim/abandon handoff instead of relying on that missing
+  caller cancellation signal.
 - `MediaBrowser.Model.Tasks.IScheduledTask` — the "sync pinned work" bootstrap task and the
   M6 "clean up ephemeral items" TTL task (`ScheduledTasks/EphemeralCleanupTask.cs`).
 
@@ -92,6 +106,12 @@ however, enforce the boundary around its machine-authenticated Core client:
   work, and offered release. Idle offers expire after ten minutes; active playback holds
   the lease and final close starts the replay window. `OpenMediaSource` validates the token before
   any call to Core; arbitrary caller-controlled release ids never reach `/resolve`.
+- **Prepared playback has explicit ownership.** The plugin polls Core's two-phase
+  admission under a bounded deadline, validates the terminal response, then claims it.
+  Cancellation, malformed responses, or claim failure trigger an independent short
+  DELETE cleanup. Core retains a brief post-claim handle so cleanup can still find a
+  lost response; expiring that handle does not revoke the claimed capability, and Core
+  atomically refuses to purge a capability after streaming starts.
 - **Server fallback is constrained and attributed.** `POST /api/v1/resolve` may walk
   next-best releases of the same work (bounded by `Streamarr:MaxFallbackHops`) and
   return an `attempts` trail plus `fallbackFromReleaseId`. The plugin accepts the

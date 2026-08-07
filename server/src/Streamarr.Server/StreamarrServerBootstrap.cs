@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Serilog.Core;
 using Serilog.Events;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
@@ -50,6 +51,8 @@ public static class StreamarrServerBootstrap
             // Typed HttpClient information logs contain full query strings. Newznab
             // and TMDB authenticate in those query strings, so never emit these URIs.
             .MinimumLevel.Override("System.Net.Http.HttpClient", LogEventLevel.Warning)
+            // Request-scoped path properties can contain stream capability tokens.
+            .Enrich.With(new RedactPathPropertiesEnricher())
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"));
 
@@ -133,7 +136,6 @@ public static class StreamarrServerBootstrap
                 Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "bearer" },
             };
             o.AddSecurityDefinition("bearer", scheme);
-            o.AddSecurityRequirement(new OpenApiSecurityRequirement { [scheme] = Array.Empty<string>() });
             o.OperationFilter<AllowAnonymousOperationFilter>();
 
             foreach (var xml in Directory.GetFiles(AppContext.BaseDirectory, "Streamarr.*.xml"))
@@ -206,6 +208,9 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<GeneralConfigService>();
         services.AddSingleton<NotificationConfigService>();
         services.AddSingleton<WatchEventService>();
+        services.AddSingleton<StreamHistoryRecorder>();
+        services.AddSingleton<IStreamHistoryRecorder>(sp => sp.GetRequiredService<StreamHistoryRecorder>());
+        services.AddHostedService(sp => sp.GetRequiredService<StreamHistoryRecorder>());
         services.AddSingleton<NzbCacheService>();
         services.AddSingleton<MediaProbeCache>();
         services.AddSingleton<ApiKeyService>();
@@ -241,14 +246,18 @@ public static class StreamarrServerBootstrap
         services.AddHostedService<NntpConnectionWarmupService>();
 
         // … wrapped in the global NNTP connection budget shared across all sessions.
-        services.AddSingleton<INntpClient>(sp =>
+        // The gate is a singleton so the repair pipeline shares the SAME budget at
+        // low priority instead of oversubscribing the provider.
+        services.AddSingleton<SemaphoreNntpGate>(sp =>
         {
             var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<StreamarrOptions>>().Value;
-            return new GatedNntpClient(
-                sp.GetRequiredService<MultiProviderNntpClient>(),
-                new SemaphoreNntpGate(Math.Max(1, options.ConnectionBudget)),
-                disposeInner: true);
+            return new SemaphoreNntpGate(Math.Max(1, options.ConnectionBudget));
         });
+        services.AddSingleton<INntpClient>(sp => new GatedNntpClient(
+            sp.GetRequiredService<MultiProviderNntpClient>(),
+            sp.GetRequiredService<SemaphoreNntpGate>(),
+            disposeInner: true,
+            disposeGate: false));
 
         // Observability (BRIEF §10-M7): process-wide metrics behind /api/v1/metrics, and
         // the seam the indexer fan-out reports per-indexer latency into.
@@ -339,6 +348,25 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<MediaMaterializationCache>();
         services.AddSingleton<FfprobeClient>();
         services.AddSingleton<ResolveService>();
+        services.AddSingleton<PlaybackAdmissionService>();
+        services.AddHostedService(sp => sp.GetRequiredService<PlaybackAdmissionService>());
+
+        // PAR2 repair pipeline: same provider failover + global budget, low priority.
+        services.AddSingleton(sp => new Services.Repair.RepairNntpClient(new GatedNntpClient(
+            sp.GetRequiredService<MultiProviderNntpClient>(),
+            sp.GetRequiredService<SemaphoreNntpGate>(),
+            disposeInner: false,
+            transferPriority: Streamarr.Usenet.Concurrency.SemaphorePriority.Low,
+            disposeGate: false)));
+        services.AddSingleton<Services.Repair.RepairWorkspace>();
+        services.AddSingleton<Services.Repair.RepairArtifactCache>();
+        services.AddSingleton<Services.Repair.IPar2RepairEngine, Services.Repair.Par2RepairEngine>();
+        services.AddSingleton<Services.Repair.IRepairMediaVerifier, Services.Repair.FfprobeRepairMediaVerifier>();
+        services.AddSingleton<Services.Repair.RepairCoordinator>();
+        services.AddSingleton<Services.Repair.RepairStreamGateway>();
+        services.AddSingleton<Services.Repair.IRepairStreamGateway>(
+            sp => sp.GetRequiredService<Services.Repair.RepairStreamGateway>());
+        services.AddHostedService<Services.Repair.RepairMaintenanceService>();
         services.AddHttpClient<NzbFetcher>(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(60);
@@ -361,12 +389,14 @@ public static class StreamarrServerBootstrap
         {
             o.MessageTemplate = "HTTP {RequestMethod} {RequestPath} completed {StatusCode} in {Elapsed:0.0000} ms";
             o.IncludeQueryInRequestPath = false;
-            o.GetMessageTemplateProperties = (context, elapsed, statusCode, _) =>
+            // Signature is (context, requestPath, elapsedMs, statusCode) — binding the raw
+            // path parameter here would leak stream capability tokens into the log line.
+            o.GetMessageTemplateProperties = (context, _, elapsedMs, statusCode) =>
             [
                 new LogEventProperty("RequestMethod", new ScalarValue(context.Request.Method)),
                 new LogEventProperty("RequestPath", new ScalarValue(RedactRequestPath(context.Request.Path))),
                 new LogEventProperty("StatusCode", new ScalarValue(statusCode)),
-                new LogEventProperty("Elapsed", new ScalarValue(elapsed)),
+                new LogEventProperty("Elapsed", new ScalarValue(elapsedMs)),
             ];
         });
 
@@ -519,14 +549,54 @@ public static class StreamarrServerBootstrap
         if (path.StartsWithSegments("/api/v1/stream", StringComparison.OrdinalIgnoreCase))
             return "/api/v1/stream/{capability}";
 
-        if (path.StartsWithSegments("/api/v1/sessions", StringComparison.OrdinalIgnoreCase,
-                out var remainder) &&
-            remainder.Value?.EndsWith("/close", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return "/api/v1/sessions/{capability}/close";
-        }
+        var redacted = RedactChild(path, "/api/v1/sessions", "capability")
+                       ?? RedactChild(path, "/api/v1/playback-sessions", "admission")
+                       ?? RedactChild(path, "/api/v1/ephemeral-files", "capability");
+        if (redacted is not null)
+            return redacted;
 
         return value;
+
+        static string? RedactChild(PathString requestPath, string prefix, string placeholder)
+        {
+            if (!requestPath.StartsWithSegments(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase,
+                    out var remainder)
+                || remainder.Value is not { Length: > 1 } rest)
+            {
+                return null;
+            }
+
+            var operation = rest.IndexOf('/', 1);
+            return operation < 0
+                ? $"{prefix}/{{{placeholder}}}"
+                : $"{prefix}/{{{placeholder}}}{rest[operation..]}";
+        }
+    }
+
+    /// <summary>
+    /// Scrubs capability tokens from the ambient request-scope properties that ASP.NET
+    /// pushes onto every log event emitted during a stream/session request.
+    /// </summary>
+    private sealed class RedactPathPropertiesEnricher : ILogEventEnricher
+    {
+        public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
+        {
+            foreach (var name in (string[])["RequestPath", "Path"])
+            {
+                if (logEvent.Properties.TryGetValue(name, out var value)
+                    && value is ScalarValue { Value: string raw })
+                {
+                    var redacted = RedactRequestPath(new PathString(raw));
+                    if (!string.Equals(raw, redacted, StringComparison.Ordinal))
+                    {
+                        logEvent.AddOrUpdateProperty(
+                            propertyFactory.CreateProperty(name, redacted));
+                    }
+                }
+            }
+        }
     }
 
     private static bool HasSameOrigin(HttpRequest request, IReadOnlySet<string> trustedOrigins)

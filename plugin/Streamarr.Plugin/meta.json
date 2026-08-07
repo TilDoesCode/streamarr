@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.11.2.0",
+    "version": "0.12.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Fix ffprobe media-stream parsing to exclude embedded cover-art (Matroska attached-picture) streams from the playable video track list, preventing them from being misidentified as the primary video stream."
+    "changelog": "Add a PAR2 repair pipeline: when a needed article is definitively gone mid-stream, Core reconstructs the raw source/RAR bytes from the release's PAR2 set and resumes the open stream at the same offset instead of failing, with a Repairs page for live job status and admin control. Add two-phase playback admission (POST /api/v1/playback-sessions) so slow health/materialization/repair prepares no longer hold Jellyfin's global live-stream lock, with an in-player repair-status notification and a direct-resolve fallback for older Core versions. Add a Streaming History page recording completed playback sessions."
 }

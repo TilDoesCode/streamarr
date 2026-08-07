@@ -13,6 +13,27 @@ public sealed record MetricsResponse
     public required SearchCacheMetrics SearchCache { get; init; }
     public long BytesServedTotal { get; init; }
     public IReadOnlyList<IndexerLatencyMetric> Indexers { get; init; } = [];
+
+    /// <summary>PAR2 repair pipeline counters (additive; absent on older servers).</summary>
+    public RepairMetrics? Repairs { get; init; }
+}
+
+/// <summary>Low-cardinality repair counters; failure reasons are disposition names only.</summary>
+public sealed record RepairMetrics
+{
+    public int ActiveJobs { get; init; }
+    public long AttemptsTotal { get; init; }
+    public long SucceededTotal { get; init; }
+    public long FailedTotal { get; init; }
+    public long CancelledTotal { get; init; }
+    public long CacheHitsTotal { get; init; }
+    public long ArtifactEvictionsTotal { get; init; }
+    public long WaitAtHoleStartedTotal { get; init; }
+    public long WaitAtHoleResumedTotal { get; init; }
+    public double WaitAtHoleSecondsTotal { get; init; }
+    public long ArtifactBytes { get; init; }
+    public IReadOnlyDictionary<string, long> FailuresByReason { get; init; }
+        = new Dictionary<string, long>();
 }
 
 public sealed record SessionMetrics

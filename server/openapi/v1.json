@@ -41,7 +41,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -107,7 +112,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/apikeys/{id}": {
@@ -169,7 +179,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/auth/login": {
@@ -271,7 +286,12 @@
           "204": {
             "description": "No Content"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/auth/me": {
@@ -301,7 +321,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/auth/password": {
@@ -373,7 +398,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/caps": {
@@ -402,7 +432,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/ephemeral-files": {
@@ -440,7 +475,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/ephemeral-files/{token}/purge": {
@@ -503,7 +543,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/events": {
@@ -554,7 +599,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "get": {
         "tags": [
@@ -601,7 +651,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/general": {
@@ -630,7 +685,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -696,7 +756,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/health": {
@@ -813,7 +878,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -879,7 +949,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/indexers/{id}": {
@@ -958,7 +1033,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -1054,7 +1134,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -1114,7 +1199,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/indexers/order": {
@@ -1166,7 +1256,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/indexers/{id}/test": {
@@ -1246,7 +1341,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/library/releases": {
@@ -1284,7 +1384,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/library/releases/{releaseId}": {
@@ -1326,7 +1431,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/library/releases/{releaseId}/download": {
@@ -1369,7 +1479,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/metrics": {
@@ -1398,7 +1513,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/notifications": {
@@ -1427,7 +1547,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -1493,7 +1618,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/notifications/test": {
@@ -1542,7 +1672,298 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/playback-sessions": {
+      "post": {
+        "tags": [
+          "PlaybackSessions"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/playback-sessions/{admissionId}": {
+      "get": {
+        "tags": [
+          "PlaybackSessions"
+        ],
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "PlaybackSessions"
+        ],
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/playback-sessions/{admissionId}/claim": {
+      "post": {
+        "tags": [
+          "PlaybackSessions"
+        ],
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAdmissionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/profiles": {
@@ -1580,7 +2001,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -1646,7 +2072,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/profiles/{id}": {
@@ -1705,7 +2136,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -1801,7 +2237,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -1861,7 +2302,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/profiles/import/preview": {
@@ -1949,7 +2395,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/profiles/import": {
@@ -2046,7 +2497,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/providers": {
@@ -2084,7 +2540,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -2150,7 +2611,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/providers/{id}": {
@@ -2229,7 +2695,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -2325,7 +2796,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -2385,7 +2861,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/providers/order": {
@@ -2437,7 +2918,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/providers/{id}/test": {
@@ -2517,7 +3003,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/config/providers/{id}/speedtest": {
@@ -2592,6 +3083,328 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/repairs": {
+      "get": {
+        "tags": [
+          "Repairs"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairOverviewResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairOverviewResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairOverviewResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Repairs"
+        ],
+        "summary": "Idempotent manual start: an existing active job for the release is returned as-is.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRepairRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRepairRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRepairRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairJobResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairJobResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/repairs/{jobId}": {
+      "get": {
+        "tags": [
+          "Repairs"
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairJobResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairJobResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairJobResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/repairs/{jobId}/cancel": {
+      "post": {
+        "tags": [
+          "Repairs"
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sessions/{token}/repair": {
+      "get": {
+        "tags": [
+          "Repairs"
+        ],
+        "summary": "Capability-token-bound repair status for a live session: possession of the stream\r\ntoken authorizes exactly this release's repair progress (same model as /timeline).",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRepairStatusResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRepairStatusResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRepairStatusResponse"
                 }
               }
             }
@@ -2744,7 +3557,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/search": {
@@ -2887,7 +3705,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/debug/search": {
@@ -2995,7 +3818,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/sessions": {
@@ -3033,7 +3861,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/sessions/{token}/close": {
@@ -3185,6 +4018,124 @@
         }
       }
     },
+    "/api/v1/streams": {
+      "get": {
+        "tags": [
+          "StreamHistory"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamRecordSummaryResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamRecordSummaryResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamRecordSummaryResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/streams/{token}": {
+      "get": {
+        "tags": [
+          "StreamHistory"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamRecordResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamRecordResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamRecordResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/tv/search": {
       "get": {
         "tags": [
@@ -3249,7 +4200,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/tv/{tmdbId}": {
@@ -3309,7 +4265,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/tv/{tmdbId}/seasons/{seasonNumber}": {
@@ -3425,7 +4386,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     }
   },
@@ -4645,6 +5611,9 @@
               "$ref": "#/components/schemas/IndexerLatencyMetric"
             },
             "nullable": true
+          },
+          "repairs": {
+            "$ref": "#/components/schemas/RepairMetrics"
           }
         },
         "additionalProperties": false,
@@ -4981,6 +5950,39 @@
         },
         "additionalProperties": false,
         "description": "The raw parser output for a release (BRIEF §7.1), surfaced for tuning."
+      },
+      "PlaybackAdmissionResponse": {
+        "required": [
+          "admissionId",
+          "phase"
+        ],
+        "type": "object",
+        "properties": {
+          "admissionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "phase": {
+            "type": "string",
+            "description": "\"preparing\" | \"ready\" | \"failed\".",
+            "nullable": true
+          },
+          "retryAfterSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "resolve": {
+            "$ref": "#/components/schemas/ResolveResponse"
+          },
+          "error": {
+            "type": "string",
+            "description": "Redacted failure classification when phase is \"failed\".",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Two-phase playback admission (POST/GET /api/v1/playback-sessions): the POST answers\r\nwithin a hard budget; \"preparing\" answers carry a pollable admission id while health\r\ncheck, materialization, ffprobe and repair analysis continue server-side."
       },
       "ProfileImportCandidate": {
         "required": [
@@ -5727,6 +6729,333 @@
         "additionalProperties": false,
         "description": "Transactional priority order; every current row id must appear exactly once."
       },
+      "RepairArtifactResponse": {
+        "required": [
+          "bytes",
+          "createdUtc",
+          "fingerprint",
+          "lastAccessUtc",
+          "pinCount",
+          "releaseTitle"
+        ],
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAccessUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pinCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One published repair artifact in the cache."
+      },
+      "RepairJobEventResponse": {
+        "type": "object",
+        "properties": {
+          "atUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RepairJobResponse": {
+        "required": [
+          "createdAtUtc",
+          "disposition",
+          "fingerprint",
+          "jobId",
+          "releaseId",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "nullable": true
+          },
+          "fingerprint": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "disposition": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "phase": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "processedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "progressPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sourceBytesDownloaded": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "parityBytesDownloaded": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "damagedBlocks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recoveryBlocksUsed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waiters": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "etaSeconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepairJobEventResponse"
+            },
+            "description": "Redacted state-transition log for live debugging (bounded).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Admin view of one repair job (GET /api/v1/repairs, /api/v1/repairs/{jobId})."
+      },
+      "RepairMetrics": {
+        "type": "object",
+        "properties": {
+          "activeJobs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "attemptsTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "succeededTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failedTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cancelledTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cacheHitsTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "artifactEvictionsTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waitAtHoleStartedTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waitAtHoleResumedTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waitAtHoleSecondsTotal": {
+            "type": "number",
+            "format": "double"
+          },
+          "artifactBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failuresByReason": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Low-cardinality repair counters; failure reasons are disposition names only."
+      },
+      "RepairOverviewResponse": {
+        "required": [
+          "artifacts",
+          "cacheBudgetBytes",
+          "cacheBytesUsed",
+          "enabled",
+          "jobs",
+          "policy"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "policy": {
+            "type": "string",
+            "nullable": true
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepairJobResponse"
+            },
+            "nullable": true
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepairArtifactResponse"
+            },
+            "nullable": true
+          },
+          "cacheBytesUsed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cacheBudgetBytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false,
+        "description": "GET /api/v1/repairs — jobs, artifacts and cache budget at a glance."
+      },
+      "RepairStatusInfo": {
+        "required": [
+          "disposition",
+          "jobId",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "nullable": true
+          },
+          "disposition": {
+            "type": "string",
+            "description": "\"unknown\" | \"notNeeded\" | \"repairable\" | \"insufficientParity\" | \"unsupported\" | \"limitsExceeded\".",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "\"none\" | \"queued\" | \"planning\" | \"materializingSources\" | \"downloadingRecovery\" | \"reconstructing\" | \"verifying\" | \"ready\" | \"failed\" | \"cancelled\" | \"evicted\".",
+            "nullable": true
+          },
+          "phase": {
+            "type": "string",
+            "description": "Coarse phase label for player-facing hints (\"recovery\", \"verify\", …).",
+            "nullable": true
+          },
+          "processedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "progressPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "etaSeconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "retryAfterSeconds": {
+            "type": "integer",
+            "description": "Suggested delay before a client polls or retries the resolve.",
+            "format": "int32",
+            "nullable": true
+          },
+          "progressiveEligible": {
+            "type": "boolean",
+            "description": "True when the server would admit a progressive (repair-while-streaming) session."
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Structured repair progress attached to resolve responses and status endpoints."
+      },
       "ResolveAttempt": {
         "required": [
           "releaseId",
@@ -5863,6 +7192,19 @@
             },
             "description": "The chain of releases the resolve pipeline tried, in order, each with its health\r\nclassification — so a front-end can surface exactly what happened (BRIEF §10-M7).",
             "nullable": true
+          },
+          "originHealth": {
+            "type": "string",
+            "description": "Upstream availability evidence, independent of local repair:\r\n\"unknown\" | \"ready\" | \"degraded\" | \"dead\". Additive; absent on older servers.",
+            "nullable": true
+          },
+          "playability": {
+            "type": "string",
+            "description": "How the release is playable right now:\r\n\"remoteReady\" | \"progressive\" | \"repairing\" | \"repairedReady\" | \"unavailable\".\r\nA locally repaired release reports Status \"ready\" for old clients while\r\nOriginHealth stays \"dead\".",
+            "nullable": true
+          },
+          "repair": {
+            "$ref": "#/components/schemas/RepairStatusInfo"
           }
         },
         "additionalProperties": false,
@@ -5945,6 +7287,23 @@
           }
         },
         "additionalProperties": false
+      },
+      "SessionRepairStatusResponse": {
+        "required": [
+          "playability"
+        ],
+        "type": "object",
+        "properties": {
+          "playability": {
+            "type": "string",
+            "nullable": true
+          },
+          "repair": {
+            "$ref": "#/components/schemas/RepairStatusInfo"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Capability-token-bound repair status for an active session (no ids beyond the job)."
       },
       "SessionResponse": {
         "required": [
@@ -6050,6 +7409,242 @@
           }
         },
         "additionalProperties": false
+      },
+      "StartRepairRequest": {
+        "required": [
+          "releaseId"
+        ],
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "POST /api/v1/repairs — idempotent manual start for a registered release."
+      },
+      "StreamEventResponse": {
+        "required": [
+          "atUtc",
+          "category",
+          "name",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "atUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string",
+            "description": "\"ttff\" | \"lifecycle\" | \"repair\" | \"error\".",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "startMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "durationMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One chronological diagnostic log entry for a Streamarr.Server.Contracts.StreamRecordResponse."
+      },
+      "StreamRecordResponse": {
+        "required": [
+          "createdAt",
+          "releaseId",
+          "token",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "container": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "bytesServed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "nntpCommandsTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "client": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "finalState": {
+            "type": "string",
+            "nullable": true
+          },
+          "closeReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "timelineStartedAt": {
+            "type": "string",
+            "description": "Wall-clock instant of timeline t0, for aligning the flamegraph (matches SessionResponse.TimelineStartedAt).",
+            "format": "date-time",
+            "nullable": true
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TtffSpanResponse"
+            },
+            "description": "Request→first-frame spans only (same shape as the live console's flamegraph).",
+            "nullable": true
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamEventResponse"
+            },
+            "description": "Every recorded event, chronological — ttff spans, folded-in PAR2 repair transitions, session lifecycle, errors.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One stream-history record with its full, time-ordered diagnostic event log."
+      },
+      "StreamRecordSummaryResponse": {
+        "required": [
+          "createdAt",
+          "releaseId",
+          "token",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The real session token when one was minted, otherwise a synthetic attempt id.",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "container": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "bytesServed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "nntpCommandsTotal": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "client": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "finalState": {
+            "type": "string",
+            "description": "Null while still open/live. \"ready\"|\"degraded\"|\"dead\"|\"closed\"|\"expired\"|\"evicted\"|\"purged\"|\"invalidated\"|\"reused\"|\"error\".",
+            "nullable": true
+          },
+          "closeReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One row of the permanent stream-attempt history (BRIEF §11 console) — the last N stream\r\nattempts, live or long since closed, so a report like \"this release errored around 9pm\"\r\ncan be looked up after the fact. List-view shape; omits the event timeline."
       },
       "StreamingHistoryResponse": {
         "required": [
@@ -6638,11 +8233,6 @@
       }
     }
   },
-  "security": [
-    {
-      "bearer": []
-    }
-  ],
   "tags": [
     {
       "name": "ApiKeys",
@@ -6681,12 +8271,20 @@
       "description": "GET /api/v1/metrics (BRIEF §10-M7 observability): a JSON snapshot of sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency. Admin-only, like session\r\nlisting, because provider/indexer names and circuit state are operational inventory."
     },
     {
+      "name": "PlaybackSessions",
+      "description": "Two-phase playback admission keeps slow preparation off the initial HTTP request.\r\nJellyfin's global live-stream lock remains held while OpenMediaSource polls it.\r\nUses the same machine-auth posture and validation as POST /api/v1/resolve."
+    },
+    {
       "name": "Profiles",
       "description": "Quality profile CRUD (BRIEF §6.2 / §7.3). The built-in default profile is always\r\nlisted and cannot be edited or deleted; user profiles are stored as JSON. No secrets.\r\nAdmin session required (BRIEF §6.4)."
     },
     {
       "name": "Providers",
       "description": "Usenet provider config CRUD + connectivity test (BRIEF §6.2, DECISIONS.md #6).\r\nThe password is write-only: GETs return it masked; PUT omits-to-keep.\r\nAdmin session required (BRIEF §6.4)."
+    },
+    {
+      "name": "Repairs",
+      "description": "Repair job observability and control. Admin-scoped except the capability-token-bound\r\nper-session status. Responses never contain message-ids, paths or credentials."
     },
     {
       "name": "Resolve",
@@ -6703,6 +8301,10 @@
     {
       "name": "Stream",
       "description": "GET /api/v1/stream/{token} — a capability-authorized, Range-capable HTTP byte\r\nstream (BRIEF §3.3): honors `Range: bytes=…` with 206 + Content-Range +\r\nAccept-Ranges, serves the full body otherwise, and seeks anywhere — including\r\ninside RAR-wrapped files. Player-agnostic by contract; no Jellyfin-specific\r\nbehavior may ever be added here."
+    },
+    {
+      "name": "StreamHistory",
+      "description": "GET /api/v1/streams(/{token}) — the permanent stream-attempt history (BRIEF §11 console):\r\nthe last `MaxRetainedStreams` resolve attempts, live or long since closed, each with\r\nits full diagnostic event timeline. Distinct from the live-only `/api/v1/sessions` and\r\nthe byte-range `/api/v1/stream/{token}`."
     },
     {
       "name": "TvCatalog",

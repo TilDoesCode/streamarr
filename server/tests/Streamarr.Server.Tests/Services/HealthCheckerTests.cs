@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Streamarr.Core.Media;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
+using Streamarr.Usenet.Streams;
 
 namespace Streamarr.Server.Tests.Services;
 
@@ -11,9 +12,11 @@ public class HealthCheckerTests
     private static HealthChecker Checker(
         FakeNntpClient client,
         int sampleCount = 24,
+        int startupSampleCount = 0,
         double deadRatio = 0.5,
         int concurrency = 4,
-        int connectionBudget = 20)
+        int connectionBudget = 20,
+        SegmentCache? segmentCache = null)
         => new(
             client,
             Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
@@ -21,12 +24,15 @@ public class HealthCheckerTests
                 HealthCheck = new HealthCheckOptions
                 {
                     SampleCount = sampleCount,
+                    StartupSampleCount = startupSampleCount,
+                    StartupBodyConcurrency = Math.Min(concurrency, 4),
                     Concurrency = concurrency,
                     DeadMissingRatio = deadRatio,
                 },
                 ConnectionBudget = connectionBudget,
             }),
-            NullLogger<HealthChecker>.Instance);
+            NullLogger<HealthChecker>.Instance,
+            segmentCache);
 
     private static string[] Segments(int count) =>
         Enumerable.Range(1, count).Select(i => $"seg{i}@test").ToArray();
@@ -42,20 +48,37 @@ public class HealthCheckerTests
         Assert.Equal(ReleaseHealth.Ready, result.Health);
         Assert.Equal("ready", result.StatusLabel);
         Assert.Equal(8, result.SampledCount);
-        Assert.Equal(0, result.MissingCount);
+        Assert.Equal(0, result.ConfirmedMissingCount);
+        Assert.Equal(0, result.IndeterminateCount);
     }
 
     [Fact]
-    public async Task FewMissingSegments_IsDegraded()
+    public async Task OneConfirmedMissingMediaSegment_IsDead()
     {
         var segments = Segments(8);
         var client = new FakeNntpClient(segments.Where(s => s != "seg5@test"));
 
         var result = await Checker(client).CheckAsync(segments, CancellationToken.None);
 
+        Assert.Equal(ReleaseHealth.Dead, result.Health);
+        Assert.Equal("dead", result.StatusLabel);
+        Assert.Equal(1, result.ConfirmedMissingCount);
+        Assert.Equal(0, result.IndeterminateCount);
+    }
+
+    [Fact]
+    public async Task OneIndeterminateStat_IsDegraded()
+    {
+        var segments = Segments(8);
+        var client = new FakeNntpClient(segments);
+        client.FailingSegments.Add("seg5@test");
+
+        var result = await Checker(client).CheckAsync(segments, CancellationToken.None);
+
         Assert.Equal(ReleaseHealth.Degraded, result.Health);
         Assert.Equal("degraded", result.StatusLabel);
-        Assert.Equal(1, result.MissingCount);
+        Assert.Equal(0, result.ConfirmedMissingCount);
+        Assert.Equal(1, result.IndeterminateCount);
     }
 
     [Fact]
@@ -68,7 +91,7 @@ public class HealthCheckerTests
 
         Assert.Equal(ReleaseHealth.Dead, result.Health);
         Assert.Equal("dead", result.StatusLabel);
-        Assert.Equal(6, result.MissingCount);
+        Assert.Equal(6, result.ConfirmedMissingCount);
     }
 
     [Fact]
@@ -118,6 +141,79 @@ public class HealthCheckerTests
     }
 
     [Fact]
+    public async Task FuNStyleEarlyHole_IsIncludedInStartupSampleAndClassifiedDead()
+    {
+        var segments = Segments(1725);
+        var client = new FakeNntpClient(segments);
+        client.MissingBodySegments.Add("seg41@test");
+        using var cache = new SegmentCache(1024 * 1024);
+
+        var result = await Checker(client, sampleCount: 24, startupSampleCount: 64, segmentCache: cache)
+            .CheckAsync(segments, CancellationToken.None);
+
+        Assert.Equal(ReleaseHealth.Dead, result.Health);
+        Assert.Equal(87, result.SampledCount);
+        Assert.Equal(1, result.ConfirmedMissingCount);
+        Assert.Contains("seg41@test", client.BodyRequestedSegments);
+        Assert.DoesNotContain("seg41@test", client.StattedSegments);
+        Assert.InRange(client.BodyRequestedSegments.Count, 41, 45);
+        Assert.True(cache.TryGet("seg1@test", out _));
+    }
+
+    [Fact]
+    public async Task SuccessfulStartupBodyVerification_WarmsCacheForTheNextReader()
+    {
+        var segments = Segments(9);
+        var client = new FakeNntpClient(segments);
+        using var cache = new SegmentCache(1024 * 1024);
+        var checker = Checker(
+            client,
+            sampleCount: 1,
+            startupSampleCount: 8,
+            segmentCache: cache);
+
+        var first = await checker.CheckAsync(segments, CancellationToken.None);
+        var bodyRequestsAfterFirstCheck = client.BodyRequestedSegments.Count;
+        var second = await checker.CheckAsync(segments, CancellationToken.None);
+
+        Assert.Equal(ReleaseHealth.Ready, first.Health);
+        Assert.Equal(ReleaseHealth.Ready, second.Health);
+        Assert.Equal(8, bodyRequestsAfterFirstCheck);
+        Assert.Equal(bodyRequestsAfterFirstCheck, client.BodyRequestedSegments.Count);
+        Assert.All(segments[..8], segmentId => Assert.True(cache.TryGet(segmentId, out _)));
+        Assert.DoesNotContain(segments[..8], segmentId => client.StattedSegments.Contains(segmentId));
+    }
+
+    [Fact]
+    public async Task StartupBodyTransportFailure_IsDeadInsteadOfAdmittingAnUnverifiedRelease()
+    {
+        var segments = Segments(1725);
+        var client = new FakeNntpClient(segments);
+        client.FailingBodySegments.Add("seg41@test");
+
+        var result = await Checker(client, sampleCount: 24, startupSampleCount: 64)
+            .CheckAsync(segments, CancellationToken.None);
+
+        Assert.Equal(ReleaseHealth.Dead, result.Health);
+        Assert.Equal(0, result.ConfirmedMissingCount);
+        Assert.Equal(1, result.IndeterminateCount);
+        Assert.Contains("seg41@test", client.BodyRequestedSegments);
+    }
+
+    [Fact]
+    public void SelectSamples_CombinesStartupPrefixWithWholeFileSpreadWithoutDuplicates()
+    {
+        var segments = Segments(1725);
+
+        var sample = HealthChecker.SelectSamples(segments, evenlySpreadSamples: 24, startupSamples: 64);
+
+        Assert.Equal(87, sample.Count);
+        Assert.Equal(sample.Distinct().Count(), sample.Count);
+        Assert.Equal(segments[..64], sample.Take(64));
+        Assert.Equal("seg1725@test", sample[^1]);
+    }
+
+    [Fact]
     public async Task Concurrency_UsesConfiguredProviderBudgetWithoutChangingSampleSet()
     {
         var segments = Segments(24);
@@ -139,6 +235,8 @@ public class HealthCheckerTests
         Assert.Equal(20, options.ConnectionWarmupCount);
         Assert.Equal(20, options.RarMaterializationConcurrency);
         Assert.Equal(20, options.HealthCheck.Concurrency);
+        Assert.Equal(64, options.HealthCheck.StartupSampleCount);
+        Assert.Equal(4, options.HealthCheck.StartupBodyConcurrency);
         Assert.Equal(20, NntpConnectionWarmupService.EffectiveWarmupCount(options));
     }
 }

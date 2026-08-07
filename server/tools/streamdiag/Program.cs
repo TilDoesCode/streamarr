@@ -21,6 +21,17 @@ if (args.Length > 0 && args[0] == "enc")
     return;
 }
 
+if (args.Length > 0 && args[0] == "repair")
+{
+    // repair [mediaSeconds=150] [damagedArticles=1] [recoverySlices=4] [hold]
+    await RepairDiag.Run(
+        args.Length > 1 ? int.Parse(args[1]) : 150,
+        args.Length > 2 ? int.Parse(args[2]) : 1,
+        args.Length > 3 ? int.Parse(args[3]) : 4,
+        hold: args.Contains("hold"));
+    return;
+}
+
 if (args.Length > 0 && args[0] == "rar")
 {
     await RarDiag.Run(

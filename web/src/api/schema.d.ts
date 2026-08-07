@@ -1311,6 +1311,212 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/playback-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ResolveRequest"];
+                    "text/json": components["schemas"]["ResolveRequest"];
+                    "application/*+json": components["schemas"]["ResolveRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackAdmissionResponse"];
+                        "application/json": components["schemas"]["PlaybackAdmissionResponse"];
+                        "text/json": components["schemas"]["PlaybackAdmissionResponse"];
+                    };
+                };
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackAdmissionResponse"];
+                        "application/json": components["schemas"]["PlaybackAdmissionResponse"];
+                        "text/json": components["schemas"]["PlaybackAdmissionResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playback-sessions/{admissionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    admissionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackAdmissionResponse"];
+                        "application/json": components["schemas"]["PlaybackAdmissionResponse"];
+                        "text/json": components["schemas"]["PlaybackAdmissionResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    admissionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playback-sessions/{admissionId}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    admissionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackAdmissionResponse"];
+                        "application/json": components["schemas"]["PlaybackAdmissionResponse"];
+                        "text/json": components["schemas"]["PlaybackAdmissionResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config/profiles": {
         parameters: {
             query?: never;
@@ -2070,6 +2276,254 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RepairOverviewResponse"];
+                        "application/json": components["schemas"]["RepairOverviewResponse"];
+                        "text/json": components["schemas"]["RepairOverviewResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Idempotent manual start: an existing active job for the release is returned as-is. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["StartRepairRequest"];
+                    "text/json": components["schemas"]["StartRepairRequest"];
+                    "application/*+json": components["schemas"]["StartRepairRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RepairJobResponse"];
+                        "application/json": components["schemas"]["RepairJobResponse"];
+                        "text/json": components["schemas"]["RepairJobResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repairs/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    jobId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RepairJobResponse"];
+                        "application/json": components["schemas"]["RepairJobResponse"];
+                        "text/json": components["schemas"]["RepairJobResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repairs/{jobId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    jobId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{token}/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Capability-token-bound repair status for a live session: possession of the stream
+         *     token authorizes exactly this release's repair progress (same model as /timeline).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SessionRepairStatusResponse"];
+                        "application/json": components["schemas"]["SessionRepairStatusResponse"];
+                        "text/json": components["schemas"]["SessionRepairStatusResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resolve": {
         parameters: {
             query?: never;
@@ -2483,6 +2937,95 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["StreamRecordSummaryResponse"][];
+                        "application/json": components["schemas"]["StreamRecordSummaryResponse"][];
+                        "text/json": components["schemas"]["StreamRecordSummaryResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/streams/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["StreamRecordResponse"];
+                        "application/json": components["schemas"]["StreamRecordResponse"];
+                        "text/json": components["schemas"]["StreamRecordResponse"];
+                    };
                 };
                 /** @description Not Found */
                 404: {
@@ -3077,6 +3620,7 @@ export interface components {
             /** Format: int64 */
             bytesServedTotal?: number;
             indexers?: components["schemas"]["IndexerLatencyMetric"][] | null;
+            repairs?: components["schemas"]["RepairMetrics"];
         };
         NotificationConfigResponse: {
             enabled?: boolean;
@@ -3190,6 +3734,21 @@ export interface components {
             absoluteEpisodes?: number[] | null;
             seasonPack?: boolean;
             airDate?: string | null;
+        };
+        /**
+         * @description Two-phase playback admission (POST/GET /api/v1/playback-sessions): the POST answers
+         *     within a hard budget; "preparing" answers carry a pollable admission id while health
+         *     check, materialization, ffprobe and repair analysis continue server-side.
+         */
+        PlaybackAdmissionResponse: {
+            admissionId: string | null;
+            /** @description "preparing" | "ready" | "failed". */
+            phase: string | null;
+            /** Format: int32 */
+            retryAfterSeconds?: number | null;
+            resolve?: components["schemas"]["ResolveResponse"];
+            /** @description Redacted failure classification when phase is "failed". */
+            error?: string | null;
         };
         ProfileImportCandidate: {
             /** Format: int32 */
@@ -3436,6 +3995,126 @@ export interface components {
         ReorderRequest: {
             ids: string[] | null;
         };
+        /** @description One published repair artifact in the cache. */
+        RepairArtifactResponse: {
+            fingerprint: string | null;
+            releaseTitle: string | null;
+            /** Format: int64 */
+            bytes: number;
+            /** Format: date-time */
+            createdUtc: string;
+            /** Format: date-time */
+            lastAccessUtc: string;
+            /** Format: int32 */
+            pinCount: number;
+        };
+        RepairJobEventResponse: {
+            /** Format: date-time */
+            atUtc?: string;
+            state?: string | null;
+            message?: string | null;
+        };
+        /** @description Admin view of one repair job (GET /api/v1/repairs, /api/v1/repairs/{jobId}). */
+        RepairJobResponse: {
+            jobId: string | null;
+            fingerprint: string | null;
+            releaseId: string | null;
+            workId?: string | null;
+            releaseTitle?: string | null;
+            disposition: string | null;
+            state: string | null;
+            phase?: string | null;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            completedAtUtc?: string | null;
+            /** Format: int64 */
+            processedBytes?: number;
+            /** Format: int64 */
+            totalBytes?: number;
+            /** Format: int32 */
+            progressPercent?: number;
+            /** Format: int64 */
+            sourceBytesDownloaded?: number;
+            /** Format: int64 */
+            parityBytesDownloaded?: number;
+            /** Format: int32 */
+            damagedBlocks?: number;
+            /** Format: int32 */
+            recoveryBlocksUsed?: number;
+            /** Format: int32 */
+            waiters?: number;
+            /** Format: double */
+            etaSeconds?: number | null;
+            failureReason?: string | null;
+            /** @description Redacted state-transition log for live debugging (bounded). */
+            events?: components["schemas"]["RepairJobEventResponse"][] | null;
+        };
+        /** @description Low-cardinality repair counters; failure reasons are disposition names only. */
+        RepairMetrics: {
+            /** Format: int32 */
+            activeJobs?: number;
+            /** Format: int64 */
+            attemptsTotal?: number;
+            /** Format: int64 */
+            succeededTotal?: number;
+            /** Format: int64 */
+            failedTotal?: number;
+            /** Format: int64 */
+            cancelledTotal?: number;
+            /** Format: int64 */
+            cacheHitsTotal?: number;
+            /** Format: int64 */
+            artifactEvictionsTotal?: number;
+            /** Format: int64 */
+            waitAtHoleStartedTotal?: number;
+            /** Format: int64 */
+            waitAtHoleResumedTotal?: number;
+            /** Format: double */
+            waitAtHoleSecondsTotal?: number;
+            /** Format: int64 */
+            artifactBytes?: number;
+            failuresByReason?: {
+                [key: string]: number;
+            } | null;
+        };
+        /** @description GET /api/v1/repairs — jobs, artifacts and cache budget at a glance. */
+        RepairOverviewResponse: {
+            enabled: boolean;
+            policy: string | null;
+            jobs: components["schemas"]["RepairJobResponse"][] | null;
+            artifacts: components["schemas"]["RepairArtifactResponse"][] | null;
+            /** Format: int64 */
+            cacheBytesUsed: number;
+            /** Format: int64 */
+            cacheBudgetBytes: number;
+        };
+        /** @description Structured repair progress attached to resolve responses and status endpoints. */
+        RepairStatusInfo: {
+            jobId: string | null;
+            /** @description "unknown" | "notNeeded" | "repairable" | "insufficientParity" | "unsupported" | "limitsExceeded". */
+            disposition: string | null;
+            /** @description "none" | "queued" | "planning" | "materializingSources" | "downloadingRecovery" | "reconstructing" | "verifying" | "ready" | "failed" | "cancelled" | "evicted". */
+            state: string | null;
+            /** @description Coarse phase label for player-facing hints ("recovery", "verify", …). */
+            phase?: string | null;
+            /** Format: int64 */
+            processedBytes?: number;
+            /** Format: int64 */
+            totalBytes?: number;
+            /** Format: int32 */
+            progressPercent?: number;
+            /** Format: double */
+            etaSeconds?: number | null;
+            /**
+             * Format: int32
+             * @description Suggested delay before a client polls or retries the resolve.
+             */
+            retryAfterSeconds?: number | null;
+            /** @description True when the server would admit a progressive (repair-while-streaming) session. */
+            progressiveEligible?: boolean;
+            failureReason?: string | null;
+        };
         /** @description One release the resolve pipeline attempted, with its health classification. */
         ResolveAttempt: {
             releaseId: string | null;
@@ -3503,6 +4182,19 @@ export interface components {
              *     classification — so a front-end can surface exactly what happened (BRIEF §10-M7).
              */
             attempts?: components["schemas"]["ResolveAttempt"][] | null;
+            /**
+             * @description Upstream availability evidence, independent of local repair:
+             *     "unknown" | "ready" | "degraded" | "dead". Additive; absent on older servers.
+             */
+            originHealth?: string | null;
+            /**
+             * @description How the release is playable right now:
+             *     "remoteReady" | "progressive" | "repairing" | "repairedReady" | "unavailable".
+             *     A locally repaired release reports Status "ready" for old clients while
+             *     OriginHealth stays "dead".
+             */
+            playability?: string | null;
+            repair?: components["schemas"]["RepairStatusInfo"];
         };
         /** @description One line of the score breakdown (BRIEF §7.3): a rule and its point value. */
         ScoreLineDto: {
@@ -3541,6 +4233,11 @@ export interface components {
             /** Format: int64 */
             closedTotal?: number;
         };
+        /** @description Capability-token-bound repair status for an active session (no ids beyond the job). */
+        SessionRepairStatusResponse: {
+            playability: string | null;
+            repair?: components["schemas"]["RepairStatusInfo"];
+        };
         /** @description One live session as listed by GET /api/v1/sessions. */
         SessionResponse: {
             token: string | null;
@@ -3578,6 +4275,86 @@ export interface components {
             minBytesPerMinute: number;
             /** Format: int64 */
             maxBytesPerMinute: number;
+        };
+        /** @description POST /api/v1/repairs — idempotent manual start for a registered release. */
+        StartRepairRequest: {
+            releaseId: string | null;
+            workId?: string | null;
+        };
+        /** @description One chronological diagnostic log entry for a Streamarr.Server.Contracts.StreamRecordResponse. */
+        StreamEventResponse: {
+            /** Format: date-time */
+            atUtc: string;
+            /** @description "ttff" | "lifecycle" | "repair" | "error". */
+            source: string | null;
+            category: string | null;
+            name: string | null;
+            detail?: string | null;
+            /** Format: double */
+            startMs?: number | null;
+            /** Format: double */
+            durationMs?: number | null;
+        };
+        /** @description One stream-history record with its full, time-ordered diagnostic event log. */
+        StreamRecordResponse: {
+            token: string | null;
+            releaseId: string | null;
+            workId: string | null;
+            title?: string | null;
+            container?: string | null;
+            /** Format: int64 */
+            sizeBytes?: number | null;
+            /** Format: int64 */
+            bytesServed?: number;
+            /** Format: int64 */
+            nntpCommandsTotal?: number;
+            client?: string | null;
+            requestedById?: string | null;
+            requestedByName?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            closedAt?: string | null;
+            finalState?: string | null;
+            closeReason?: string | null;
+            /**
+             * Format: date-time
+             * @description Wall-clock instant of timeline t0, for aligning the flamegraph (matches SessionResponse.TimelineStartedAt).
+             */
+            timelineStartedAt?: string | null;
+            /** @description Request→first-frame spans only (same shape as the live console's flamegraph). */
+            timeline?: components["schemas"]["TtffSpanResponse"][] | null;
+            /** @description Every recorded event, chronological — ttff spans, folded-in PAR2 repair transitions, session lifecycle, errors. */
+            events?: components["schemas"]["StreamEventResponse"][] | null;
+        };
+        /**
+         * @description One row of the permanent stream-attempt history (BRIEF §11 console) — the last N stream
+         *     attempts, live or long since closed, so a report like "this release errored around 9pm"
+         *     can be looked up after the fact. List-view shape; omits the event timeline.
+         */
+        StreamRecordSummaryResponse: {
+            /** @description The real session token when one was minted, otherwise a synthetic attempt id. */
+            token: string | null;
+            releaseId: string | null;
+            workId: string | null;
+            title?: string | null;
+            container?: string | null;
+            /** Format: int64 */
+            sizeBytes?: number | null;
+            /** Format: int64 */
+            bytesServed?: number;
+            /** Format: int64 */
+            nntpCommandsTotal?: number;
+            client?: string | null;
+            requestedById?: string | null;
+            requestedByName?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            closedAt?: string | null;
+            /** @description Null while still open/live. "ready"|"degraded"|"dead"|"closed"|"expired"|"evicted"|"purged"|"invalidated"|"reused"|"error". */
+            finalState?: string | null;
+            closeReason?: string | null;
         };
         /** @description One event in the cross-front-end streaming history. */
         StreamingHistoryResponse: {

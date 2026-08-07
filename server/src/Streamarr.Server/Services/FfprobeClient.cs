@@ -155,6 +155,110 @@ public class FfprobeClient(IOptions<StreamarrOptions> options, ILogger<FfprobeCl
         }
     }
 
+    /// <summary>
+    /// Probes media supplied through stdin (used by the repair verifier for RAR-projected
+    /// files that have no local path). Seek-requiring containers may not probe this way;
+    /// callers treat a null result as verification failure.
+    /// </summary>
+    public async Task<FfprobeResult?> ProbePipeAsync(Func<Stream> openSource, CancellationToken ct)
+    {
+        await _processGate.WaitAsync(ct);
+        var o = options.Value;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(o.FfprobeTimeoutSeconds));
+            var psi = CreateStartInfo(
+                o.FfprobePath, "pipe:0", o.FfprobeEscalatedProbeSizeBytes, o.FfprobeEscalatedAnalyzeDurationMs);
+            psi.RedirectStandardInput = true;
+
+            using var process = Process.Start(psi)
+                ?? throw new InvalidOperationException("Could not start ffprobe.");
+
+            void KillProcess()
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // may already have exited
+                }
+            }
+
+            var pump = Task.Run(async () =>
+            {
+                try
+                {
+                    await using var source = openSource();
+                    await source.CopyToAsync(process.StandardInput.BaseStream, timeout.Token);
+                }
+                catch (IOException) when (process.HasExited)
+                {
+                    // ffprobe closes the pipe once it has read enough — expected.
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                finally
+                {
+                    try
+                    {
+                        process.StandardInput.Close();
+                    }
+                    catch (IOException)
+                    {
+                    }
+                }
+            }, CancellationToken.None);
+
+            var stdoutTask = ReadBoundedTextAsync(
+                process.StandardOutput.BaseStream, MaxStandardOutputBytes, timeout.Token, KillProcess);
+            var stderrTask = ReadBoundedTextAsync(
+                process.StandardError.BaseStream, MaxStandardErrorBytes, timeout.Token, KillProcess);
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                KillProcess();
+                try
+                {
+                    await Task.WhenAll(stdoutTask, stderrTask, pump).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+                throw;
+            }
+
+            await Task.WhenAll(stdoutTask, stderrTask, pump).ConfigureAwait(false);
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                logger.LogWarning("ffprobe (pipe) exited with {ExitCode}", process.ExitCode);
+                return null;
+            }
+            return Parse(stdout);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning("ffprobe (pipe) timed out");
+            return null;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning("ffprobe (pipe) failed ({FailureType})", e.GetType().Name);
+            return null;
+        }
+        finally
+        {
+            _processGate.Release();
+        }
+    }
+
     internal static ProcessStartInfo CreateStartInfo(
         string path,
         string url,

@@ -216,6 +216,13 @@ public sealed class StreamarrOptions
     /// <summary>Maximum retained playback-event rows; oldest rows are pruned on write.</summary>
     public int MaxWatchEvents { get; set; } = 10_000;
 
+    /// <summary>
+    /// Maximum retained stream-attempt history rows (permanent debugging console —
+    /// resolve + repair + session-lifecycle timeline per stream). Oldest *closed* rows
+    /// are pruned on write; a still-open/live row is never an eviction candidate.
+    /// </summary>
+    public int MaxRetainedStreams { get; set; } = 50;
+
     /// <summary>Lifetime of a shared deep dependency-health snapshot.</summary>
     public int DeepHealthCacheSeconds { get; set; } = 30;
 
@@ -232,6 +239,78 @@ public sealed class StreamarrOptions
     public TmdbOptions Tmdb { get; set; } = new();
 
     public HealthCheckOptions HealthCheck { get; set; } = new();
+
+    /// <summary>PAR2-based repair pipeline (dynamic mid-stream repair + resolve-time jobs).</summary>
+    public RepairOptions Repair { get; set; } = new();
+}
+
+/// <summary>When the Core repairs a damaged release instead of (or in addition to) falling back.</summary>
+public enum RepairPolicy
+{
+    /// <summary>Repair only when no healthy sibling release exists (default).</summary>
+    WhenNoFallback,
+
+    /// <summary>Always repair the requested release, even when a healthy fallback exists.</summary>
+    PreferRepair,
+}
+
+/// <summary>Options for the PAR2 repair pipeline. Conservative defaults; all validated.</summary>
+public sealed class RepairOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    public RepairPolicy Policy { get; set; } = RepairPolicy.WhenNoFallback;
+
+    /// <summary>Offer a progressive (repair-while-streaming) capability at resolve time.</summary>
+    public bool ProgressiveEnabled { get; set; }
+
+    /// <summary>A progressive offer requires at least this many intact bytes before the first hole.</summary>
+    public long ProgressiveMinIntactPrefixBytes { get; set; } = 32L * 1024 * 1024;
+
+    public int MaxConcurrentJobs { get; set; } = 1;
+
+    /// <summary>Concurrent low-priority NNTP fetches a repair job may occupy.</summary>
+    public int MaxConnections { get; set; } = 4;
+
+    /// <summary>Workspace + artifact root; empty resolves to &lt;content root&gt;/cache/repair.</summary>
+    public string WorkspacePath { get; set; } = string.Empty;
+
+    /// <summary>Total budget for published artifacts (LRU-evicted).</summary>
+    public long CacheBudgetBytes { get; set; } = 20L * 1024 * 1024 * 1024;
+
+    /// <summary>Largest single artifact the pipeline will attempt.</summary>
+    public long MaxArtifactBytes { get; set; } = 8L * 1024 * 1024 * 1024;
+
+    /// <summary>Repair refuses to start when the workspace volume has less free space.</summary>
+    public long MinFreeDiskBytes { get; set; } = 5L * 1024 * 1024 * 1024;
+
+    public int JobTimeoutSeconds { get; set; } = 3_600;
+
+    /// <summary>How long an already-open read blocks at a hole before failing over to the old behavior.</summary>
+    public int WaitAtHoleTimeoutSeconds { get; set; } = 90;
+
+    public int ArtifactTtlSeconds { get; set; } = 7 * 24 * 3_600;
+
+    /// <summary>A failed job cannot be retried for this long.</summary>
+    public int FailureBackoffSeconds { get; set; } = 900;
+
+    /// <summary>Retained state-transition events per job for debugging.</summary>
+    public int MaxJobEvents { get; set; } = 128;
+
+    /// <summary>Finished jobs kept in the in-memory list for the admin UI.</summary>
+    public int MaxFinishedJobs { get; set; } = 64;
+
+    /// <summary>Upper bound for a single PAR2 packet accepted from the wire.</summary>
+    public long MaxPar2PacketBytes { get; set; } = 256L * 1024 * 1024;
+
+    /// <summary>Upper bound for the PAR2 slice (block) size.</summary>
+    public long MaxPar2SliceBytes { get; set; } = 128L * 1024 * 1024;
+
+    /// <summary>Most files accepted in one recovery set.</summary>
+    public int MaxPar2Files { get; set; } = 256;
+
+    /// <summary>Largest accepted PAR2 index file.</summary>
+    public long MaxPar2IndexBytes { get; set; } = 64L * 1024 * 1024;
 }
 
 /// <summary>First-run admin credentials (BRIEF §6.4). Seeds the extensible users table.</summary>
@@ -299,8 +378,14 @@ public sealed class HealthCheckOptions
     /// <summary>Maximum segments STAT'ed per release (evenly spread, incl. first/last).</summary>
     public int SampleCount { get; set; } = 24;
 
+    /// <summary>Contiguous media segments verified through BODY from the start of every release.</summary>
+    public int StartupSampleCount { get; set; } = 64;
+
+    /// <summary>Maximum decoded startup BODY transfers running ahead of the verifier.</summary>
+    public int StartupBodyConcurrency { get; set; } = 4;
+
     public int Concurrency { get; set; } = 20;
 
-    /// <summary>Missing-sample ratio at or above which a release is dead (below: degraded).</summary>
+    /// <summary>Indeterminate spread-sample ratio at or above which a release is dead.</summary>
     public double DeadMissingRatio { get; set; } = 0.5;
 }

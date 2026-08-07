@@ -161,6 +161,65 @@ internal static class StreamarrPayloadBounds
                     Status = BoundedText(attempt.Status, 32) ?? "unknown",
                 })
                 .ToArray(),
+            OriginHealth = BoundedText(response.OriginHealth, 32),
+            Playability = BoundedText(response.Playability, 32),
+            Repair = Normalize(response.Repair),
+        };
+    }
+
+    internal static SessionRepairStatusDto? Normalize(SessionRepairStatusDto? response)
+        => response is null
+            ? null
+            : response with
+            {
+                Playability = BoundedText(response.Playability, 32) ?? "remoteReady",
+                Repair = Normalize(response.Repair),
+            };
+
+    internal static PlaybackAdmissionDto? Normalize(PlaybackAdmissionDto? response)
+    {
+        if (response is null
+            || NormalizeAdmissionId(response.AdmissionId) is not { } admissionId)
+        {
+            return null;
+        }
+
+        var phase = response.Phase?.Trim().ToLowerInvariant();
+        if (phase is not ("preparing" or "ready" or "failed"))
+            return null;
+
+        return response with
+        {
+            AdmissionId = admissionId,
+            Phase = phase,
+            RetryAfterSeconds = response.RetryAfterSeconds is >= 1 and <= 10
+                ? response.RetryAfterSeconds
+                : null,
+            Resolve = Normalize(response.Resolve),
+            Error = BoundedText(response.Error, 256),
+        };
+    }
+
+    internal static string? NormalizeAdmissionId(string? admissionId)
+        => TryIdentifier(admissionId, 64, out var normalized) ? normalized : null;
+
+    private static RepairStatusDto? Normalize(RepairStatusDto? repair)
+    {
+        if (repair is null || !TryIdentifier(repair.JobId, 64, out var jobId))
+            return null;
+
+        return repair with
+        {
+            JobId = jobId,
+            Disposition = BoundedText(repair.Disposition, 32) ?? "unknown",
+            State = BoundedText(repair.State, 32) ?? "none",
+            Phase = BoundedText(repair.Phase, 32),
+            ProcessedBytes = Math.Max(0, repair.ProcessedBytes),
+            TotalBytes = Math.Max(0, repair.TotalBytes),
+            ProgressPercent = Math.Clamp(repair.ProgressPercent, 0, 100),
+            EtaSeconds = repair.EtaSeconds is >= 0 and <= 604_800 ? repair.EtaSeconds : null,
+            RetryAfterSeconds = repair.RetryAfterSeconds is >= 0 and <= 3_600 ? repair.RetryAfterSeconds : null,
+            FailureReason = BoundedText(repair.FailureReason, 512),
         };
     }
 

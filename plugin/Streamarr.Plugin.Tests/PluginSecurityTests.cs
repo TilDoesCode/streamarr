@@ -81,4 +81,24 @@ public class PluginSecurityTests
         Assert.Throws<ArgumentException>(() => config.ProfileId = new string('p', PluginConfiguration.MaxProfileIdLength + 1));
         Assert.Throws<ArgumentException>(() => config.PinnedWorkQuery = "movie\nforged-log-line");
     }
+
+    [Fact]
+    public void Configuration_page_loads_and_saves_the_repair_notification_toggle()
+    {
+        using var stream = typeof(Streamarr.Plugin.Plugin).Assembly.GetManifestResourceStream(
+            "Streamarr.Plugin.Configuration.configPage.html");
+        Assert.NotNull(stream);
+        using var reader = new StreamReader(stream!);
+        var html = reader.ReadToEnd();
+
+        Assert.Contains("id=\"RepairNotificationsEnabled\"", html, StringComparison.Ordinal);
+        Assert.Contains(
+            "checked = config.RepairNotificationsEnabled !== false",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "config.RepairNotificationsEnabled = page.querySelector('#RepairNotificationsEnabled').checked",
+            html,
+            StringComparison.Ordinal);
+    }
 }

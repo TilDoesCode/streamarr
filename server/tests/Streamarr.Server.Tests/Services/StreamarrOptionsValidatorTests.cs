@@ -175,9 +175,69 @@ public sealed class StreamarrOptionsValidatorTests
     }
 
     [Fact]
+    public void HealthStartupSampleCount_AllowsDisableAndRejectsOutOfRangeValues()
+    {
+        var validator = new StreamarrOptionsValidator();
+        var options = new StreamarrOptions();
+
+        options.HealthCheck.StartupSampleCount = 0;
+        Assert.True(validator.Validate(null, options).Succeeded);
+
+        options.HealthCheck.StartupSampleCount = 1_001;
+        var result = validator.Validate(null, options);
+        Assert.True(result.Failed);
+        Assert.Contains(
+            result.Failures!,
+            failure => failure.Contains("HealthCheck.StartupSampleCount", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    public void HealthStartupBodyConcurrency_RejectsOutOfRangeValues(int value)
+    {
+        var options = new StreamarrOptions();
+        options.HealthCheck.StartupBodyConcurrency = value;
+
+        var result = new StreamarrOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            result.Failures!,
+            failure => failure.Contains("HealthCheck.StartupBodyConcurrency", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RepairArtifactLimit_CannotExceedTheCacheBudget()
+    {
+        var options = new StreamarrOptions();
+        options.Repair.CacheBudgetBytes = 64L * 1024 * 1024;
+        options.Repair.MaxArtifactBytes = 128L * 1024 * 1024;
+
+        var result = new StreamarrOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            result.Failures!,
+            failure => failure.Contains("MaxArtifactBytes", StringComparison.Ordinal)
+                       && failure.Contains("CacheBudgetBytes", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void NullNestedConfigurationFailsValidationWithoutThrowing()
     {
         var options = new StreamarrOptions { Search = null! };
+
+        var result = new StreamarrOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.Contains("must not be null", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NullRepairConfigurationFailsValidationWithoutThrowing()
+    {
+        var options = new StreamarrOptions { Repair = null! };
 
         var result = new StreamarrOptionsValidator().Validate(null, options);
 

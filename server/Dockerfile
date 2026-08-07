@@ -39,6 +39,7 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 ENV Streamarr__ConnectionString="Data Source=/app/data/streamarr.db"
 ENV Streamarr__DataProtectionKeysPath=/app/keys
 ENV Streamarr__NzbCachePath=/app/data/nzb
+ENV Streamarr__Repair__WorkspacePath=/app/data/repair
 EXPOSE 8080
 USER app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

@@ -16,8 +16,8 @@ namespace Streamarr.Plugin.MediaSources;
 /// <list type="bullet">
 /// <item><see cref="GetMediaSources"/> lists one selectable version per ranked release,
 /// with no Usenet contact.</item>
-/// <item><see cref="OpenMediaSource"/> calls <c>POST /api/v1/resolve</c> and, on a dead
-/// release, follows the server-suggested fallback exactly once.</item>
+/// <item><see cref="OpenMediaSource"/> uses Core's bounded two-phase playback admission
+/// (or legacy <c>POST /api/v1/resolve</c>) and follows a server-suggested fallback exactly once.</item>
 /// </list>
 /// Ranking, health classification and the fallback choice are all the server's.
 /// </summary>
@@ -73,13 +73,19 @@ public sealed class StreamarrMediaSourceProvider(
                 throw new InvalidOperationException("The Streamarr media-source offer no longer matches a materialized work.");
             }
 
+            // Plugin-owned deadline: Jellyfin's API path may pass CancellationToken.None while
+            // holding its global live-stream lock. Core's admission keeps preparing for at most
+            // ten minutes; one extra minute of margin bounds the worst case instead of forever.
+            using var openDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            openDeadline.CancelAfter(TimeSpan.FromMinutes(11));
+
             var openStopwatch = System.Diagnostics.Stopwatch.StartNew();
             var resolve = await ResolveWithFallbackAsync(
                 offer,
                 entry.Work,
                 user.Id.ToString("D"),
                 user.Username,
-                cancellationToken).ConfigureAwait(false);
+                openDeadline.Token).ConfigureAwait(false);
             openStopwatch.Stop();
             var openMs = openStopwatch.Elapsed.TotalMilliseconds;
             // Jellyfin-console TTFF breadcrumb (BRIEF §11): how long the server-side open+resolve
@@ -277,7 +283,7 @@ public sealed class StreamarrMediaSourceProvider(
     {
         try
         {
-            return await api.ResolveAsync(
+            return await api.AdmitPlaybackAsync(
                     releaseId,
                     offer.WorkId,
                     requestedById,
@@ -303,7 +309,7 @@ public sealed class StreamarrMediaSourceProvider(
                     $"Release {releaseId} is no longer available for persisted work {offer.WorkId}.",
                     exception);
 
-            return await api.ResolveAsync(
+            return await api.AdmitPlaybackAsync(
                     releaseId,
                     offer.WorkId,
                     requestedById,

@@ -39,6 +39,32 @@ public class ReleaseHealthCacheTests
         cache.Record("rel-1", ReleaseHealth.Dead);
         Assert.Null(cache.Get("rel-1"));
     }
+
+    [Fact]
+    public void LiveDeadClassificationCannotBeOverwrittenByConcurrentHealthyObservations()
+    {
+        var cache = new ReleaseHealthCache(TimeSpan.FromMinutes(30));
+        cache.Record("rel-1", ReleaseHealth.Dead);
+
+        Parallel.For(0, 1_000, i => cache.Record(
+            "rel-1",
+            i % 2 == 0 ? ReleaseHealth.Ready : ReleaseHealth.Degraded));
+
+        Assert.Equal(ReleaseHealth.Dead, cache.Get("rel-1"));
+    }
+
+    [Fact]
+    public void HealthyClassificationMayReplaceDeadAfterItsTtlExpires()
+    {
+        var time = new ManualTimeProvider(new DateTimeOffset(2026, 7, 12, 0, 0, 0, TimeSpan.Zero));
+        var cache = new ReleaseHealthCache(TimeSpan.FromMinutes(10), time);
+        cache.Record("rel-1", ReleaseHealth.Dead);
+
+        time.Advance(TimeSpan.FromMinutes(11));
+        cache.Record("rel-1", ReleaseHealth.Ready);
+
+        Assert.Equal(ReleaseHealth.Ready, cache.Get("rel-1"));
+    }
 }
 
 public class FindFallbackTests

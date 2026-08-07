@@ -19,6 +19,8 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<CachedReleaseEntity> CachedReleases => Set<CachedReleaseEntity>();
     public DbSet<ApiKeyEntity> ApiKeys => Set<ApiKeyEntity>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
+    public DbSet<StreamRecordEntity> StreamRecords => Set<StreamRecordEntity>();
+    public DbSet<StreamEventEntity> StreamEvents => Set<StreamEventEntity>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -70,6 +72,26 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.HasKey(x => x.Id);
             e.Property(x => x.Username).IsRequired();
             e.HasIndex(x => x.Username).IsUnique();
+        });
+
+        model.Entity<StreamRecordEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.AttemptId).IsUnique();
+            e.HasIndex(x => x.Token).IsUnique();
+            e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => x.FinalState);
+            e.Property(x => x.AttemptId).IsRequired();
+            e.HasMany(x => x.Events)
+                .WithOne()
+                .HasForeignKey(x => x.StreamRecordId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<StreamEventEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.StreamRecordId);
         });
     }
 }

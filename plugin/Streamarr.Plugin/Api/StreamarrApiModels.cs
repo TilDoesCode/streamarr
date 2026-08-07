@@ -253,6 +253,51 @@ public sealed record ResolveResponse
     public string? SuggestedFallbackReleaseId { get; init; }
     public string? FallbackFromReleaseId { get; init; }
     public IReadOnlyList<ResolveAttempt> Attempts { get; init; } = [];
+
+    /// <summary>"unknown" | "ready" | "degraded" | "dead" — upstream evidence only. Additive.</summary>
+    public string? OriginHealth { get; init; }
+
+    /// <summary>"remoteReady" | "progressive" | "repairing" | "repairedReady" | "unavailable". Additive.</summary>
+    public string? Playability { get; init; }
+
+    /// <summary>PAR2 repair progress for this release, when a job exists. Additive.</summary>
+    public RepairStatusDto? Repair { get; init; }
+}
+
+/// <summary>Structured repair progress mirrored from the Core contracts (transport only).</summary>
+public sealed record RepairStatusDto
+{
+    public string JobId { get; init; } = string.Empty;
+    public string Disposition { get; init; } = "unknown";
+    public string State { get; init; } = "none";
+    public string? Phase { get; init; }
+    public long ProcessedBytes { get; init; }
+    public long TotalBytes { get; init; }
+    public int ProgressPercent { get; init; }
+    public double? EtaSeconds { get; init; }
+    public int? RetryAfterSeconds { get; init; }
+    public bool ProgressiveEligible { get; init; }
+    public string? FailureReason { get; init; }
+}
+
+/// <summary>Response of <c>GET /api/v1/sessions/{token}/repair</c> (capability-token-bound).</summary>
+public sealed record SessionRepairStatusDto
+{
+    public string Playability { get; init; } = "remoteReady";
+    public RepairStatusDto? Repair { get; init; }
+}
+
+/// <summary>Response of <c>POST/GET /api/v1/playback-sessions</c> (two-phase admission).</summary>
+public sealed record PlaybackAdmissionDto
+{
+    public string AdmissionId { get; init; } = string.Empty;
+
+    /// <summary>"preparing" | "ready" | "failed".</summary>
+    public string Phase { get; init; } = "failed";
+
+    public int? RetryAfterSeconds { get; init; }
+    public ResolveResponse? Resolve { get; init; }
+    public string? Error { get; init; }
 }
 
 public sealed record ResolveAttempt

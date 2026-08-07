@@ -65,6 +65,28 @@ public sealed class MockNntpServer : IAsyncDisposable
 
     /// <summary>message-id (no brackets) → raw yEnc article text (CRLF lines, not dot-stuffed).</summary>
     public ConcurrentDictionary<string, string> Articles { get; } = new();
+    public ConcurrentDictionary<string, byte> StatOnlyArticles { get; } = new();
+
+    /// <summary>
+    /// Per-message-id BODY script: called with the 1-based BODY attempt count and returns
+    /// the behavior for that call. Overrides the default article lookup when present.
+    /// </summary>
+    public ConcurrentDictionary<string, Func<int, MockBodyBehavior>> BodyScripts { get; } = new();
+
+    /// <summary>
+    /// Per-message-id STAT script: called with the 1-based STAT attempt count; returns
+    /// whether STAT reports the article as present. Overrides the default lookup.
+    /// </summary>
+    public ConcurrentDictionary<string, Func<int, bool>> StatScripts { get; } = new();
+
+    /// <summary>Optional per-message-id gate awaited before a BODY answer (deterministic delays).</summary>
+    public ConcurrentDictionary<string, TaskCompletionSource> BodyGates { get; } = new();
+
+    private readonly ConcurrentDictionary<string, int> _bodyCalls = new();
+    private readonly ConcurrentDictionary<string, int> _statCalls = new();
+
+    /// <summary>BODY attempts observed for one message-id (scripted or not).</summary>
+    public int BodyCallCount(string messageId) => _bodyCalls.GetValueOrDefault(messageId);
 
     public int MaxObservedConnections => _maxObservedConnections;
     public int CommandsServed => _commandsServed;
@@ -239,7 +261,15 @@ public sealed class MockNntpServer : IAsyncDisposable
     private async Task RespondStat(StreamWriter writer, string[] parts)
     {
         var id = ExtractMessageId(parts);
-        if (!RejectBodies && id != null && Articles.ContainsKey(id))
+        if (id != null && StatScripts.TryGetValue(id, out var script))
+        {
+            var call = _statCalls.AddOrUpdate(id, 1, (_, v) => v + 1);
+            await writer.WriteAsync(script(call)
+                ? $"223 0 <{id}>\r\n"
+                : "430 No article with that message-id\r\n");
+            return;
+        }
+        if (!RejectBodies && id != null && (Articles.ContainsKey(id) || StatOnlyArticles.ContainsKey(id)))
             await writer.WriteAsync($"223 0 <{id}>\r\n");
         else
             await writer.WriteAsync("430 No article with that message-id\r\n");
@@ -287,11 +317,29 @@ public sealed class MockNntpServer : IAsyncDisposable
         }
 
         var id = ExtractMessageId(parts);
-        if (RejectBodies || id == null || !Articles.TryGetValue(id, out var article))
+        var behavior = MockBodyBehavior.Serve;
+        if (id != null)
+        {
+            var call = _bodyCalls.AddOrUpdate(id, 1, (_, v) => v + 1);
+            if (BodyScripts.TryGetValue(id, out var script))
+                behavior = script(call);
+            if (BodyGates.TryGetValue(id, out var gate))
+                await gate.Task.WaitAsync(_cts.Token);
+        }
+
+        if (behavior == MockBodyBehavior.Disconnect)
+            throw new IOException("scripted mock disconnect");
+
+        string? article = null;
+        var present = id != null && Articles.TryGetValue(id, out article);
+        if (RejectBodies || behavior == MockBodyBehavior.Missing || id == null || !present)
         {
             await writer.WriteAsync("430 No article with that message-id\r\n");
             return;
         }
+
+        if (behavior is MockBodyBehavior.Corrupt or MockBodyBehavior.Truncate)
+            article = MutateArticle(article!, behavior);
 
         Interlocked.Increment(ref _bodiesServed);
         OnBodyServed?.Invoke(id);
@@ -315,7 +363,7 @@ public sealed class MockNntpServer : IAsyncDisposable
         // timeout. Keep the already-flushed status line incremental, then buffer the
         // bounded article body and flush it once at the terminator.
         writer.AutoFlush = false;
-        var lines = article.Split("\r\n");
+        var lines = article!.Split("\r\n");
         // a trailing CRLF produces one empty trailing element — not a body line
         var lineCount = lines.Length > 0 && lines[^1].Length == 0 ? lines.Length - 1 : lines.Length;
         var throttleBytes = 0;
@@ -382,4 +430,40 @@ public sealed class MockNntpServer : IAsyncDisposable
 
         _cts.Dispose();
     }
+
+    /// <summary>Applies a scripted mutation to a raw yEnc article (corrupt payload / truncated body).</summary>
+    private static string MutateArticle(string article, MockBodyBehavior behavior)
+    {
+        var lines = article.Split("\r\n").ToList();
+        if (behavior == MockBodyBehavior.Truncate)
+        {
+            // Drop the second half of the payload including the =yend trailer: the decoded
+            // size check then fails exactly like a really cut-off article.
+            var keep = Math.Max(2, lines.Count / 2);
+            return string.Join("\r\n", lines.Take(keep)) + "\r\n";
+        }
+
+        // Corrupt: flip characters on a payload line (never a =y* control line).
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Length < 8 || lines[i].StartsWith("=y", StringComparison.Ordinal))
+                continue;
+            var chars = lines[i].ToCharArray();
+            for (var k = 2; k < Math.Min(10, chars.Length - 2); k++)
+                chars[k] = chars[k] == 'A' ? 'B' : 'A';
+            lines[i] = new string(chars);
+            break;
+        }
+        return string.Join("\r\n", lines);
+    }
+}
+
+/// <summary>Scripted per-call BODY behavior for one message-id.</summary>
+public enum MockBodyBehavior
+{
+    Serve,
+    Missing,
+    Corrupt,
+    Truncate,
+    Disconnect,
 }

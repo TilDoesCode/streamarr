@@ -12,7 +12,7 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
 
         if (o.Admin is null || o.TrustedProxies is null || o.TrustedOrigins is null ||
             o.Providers is null || o.Indexers is null ||
-            o.Search is null || o.Tmdb is null || o.HealthCheck is null)
+            o.Search is null || o.Tmdb is null || o.HealthCheck is null || o.Repair is null)
         {
             return ValidateOptionsResult.Fail(
                 "Streamarr configuration collections and nested option sections must not be null.");
@@ -109,6 +109,7 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.ReleaseStoreMaxEntries, 1, 1_000_000, nameof(o.ReleaseStoreMaxEntries));
         Range(o.TmdbCacheMaxEntries, 1, 100_000, nameof(o.TmdbCacheMaxEntries));
         Range(o.MaxWatchEvents, 1, 1_000_000, nameof(o.MaxWatchEvents));
+        Range(o.MaxRetainedStreams, 1, 10_000, nameof(o.MaxRetainedStreams));
         Range(o.DeepHealthCacheSeconds, 1, 600, nameof(o.DeepHealthCacheSeconds));
         if ((long)o.MaxNzbBytes * o.MaxConcurrentResolves > 1024L * 1024 * 1024)
             failures.Add("MaxNzbBytes multiplied by MaxConcurrentResolves must not exceed 1 GiB.");
@@ -144,9 +145,32 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
             failures.Add("TMDB image sizes must be non-empty alphanumeric values of at most 32 characters.");
 
         Range(o.HealthCheck.SampleCount, 1, 1_000, "HealthCheck.SampleCount");
+        Range(o.HealthCheck.StartupSampleCount, 0, 1_000, "HealthCheck.StartupSampleCount");
+        Range(o.HealthCheck.StartupBodyConcurrency, 1, 100, "HealthCheck.StartupBodyConcurrency");
         Range(o.HealthCheck.Concurrency, 1, 100, "HealthCheck.Concurrency");
         if (o.HealthCheck.DeadMissingRatio is <= 0 or > 1)
             failures.Add("HealthCheck.DeadMissingRatio must be greater than 0 and at most 1.");
+
+        Range(o.Repair.MaxConcurrentJobs, 1, 8, "Repair.MaxConcurrentJobs");
+        Range(o.Repair.MaxConnections, 1, 100, "Repair.MaxConnections");
+        RangeLong(o.Repair.ProgressiveMinIntactPrefixBytes, 0, 64L * 1024 * 1024 * 1024, "Repair.ProgressiveMinIntactPrefixBytes");
+        RangeLong(o.Repair.CacheBudgetBytes, 64L * 1024 * 1024, long.MaxValue, "Repair.CacheBudgetBytes");
+        RangeLong(o.Repair.MaxArtifactBytes, 64L * 1024 * 1024, long.MaxValue, "Repair.MaxArtifactBytes");
+        if (o.Repair.MaxArtifactBytes > o.Repair.CacheBudgetBytes)
+            failures.Add("Repair.MaxArtifactBytes must not exceed Repair.CacheBudgetBytes.");
+        RangeLong(o.Repair.MinFreeDiskBytes, 0, long.MaxValue, "Repair.MinFreeDiskBytes");
+        Range(o.Repair.JobTimeoutSeconds, 30, 86_400, "Repair.JobTimeoutSeconds");
+        Range(o.Repair.WaitAtHoleTimeoutSeconds, 0, 3_600, "Repair.WaitAtHoleTimeoutSeconds");
+        Range(o.Repair.ArtifactTtlSeconds, 60, 365 * 24 * 3_600, "Repair.ArtifactTtlSeconds");
+        Range(o.Repair.FailureBackoffSeconds, 0, 24 * 3_600, "Repair.FailureBackoffSeconds");
+        Range(o.Repair.MaxJobEvents, 8, 4_096, "Repair.MaxJobEvents");
+        Range(o.Repair.MaxFinishedJobs, 1, 4_096, "Repair.MaxFinishedJobs");
+        RangeLong(o.Repair.MaxPar2PacketBytes, 4_096, 1L * 1024 * 1024 * 1024, "Repair.MaxPar2PacketBytes");
+        RangeLong(o.Repair.MaxPar2SliceBytes, 4, 1L * 1024 * 1024 * 1024, "Repair.MaxPar2SliceBytes");
+        Range(o.Repair.MaxPar2Files, 1, 4_096, "Repair.MaxPar2Files");
+        RangeLong(o.Repair.MaxPar2IndexBytes, 4_096, 1L * 1024 * 1024 * 1024, "Repair.MaxPar2IndexBytes");
+        if (o.Repair.WorkspacePath.Length > 1_024 || ContainsControl(o.Repair.WorkspacePath))
+            failures.Add("Repair.WorkspacePath must not exceed 1024 characters or contain control characters.");
 
         foreach (var p in o.Providers)
         {
@@ -176,6 +200,12 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
 
         void Range(int value, int min, int max, string property)
+        {
+            if (value < min || value > max)
+                failures.Add($"{property} must be between {min} and {max}.");
+        }
+
+        void RangeLong(long value, long min, long max, string property)
         {
             if (value < min || value > max)
                 failures.Add($"{property} must be between {min} and {max}.");

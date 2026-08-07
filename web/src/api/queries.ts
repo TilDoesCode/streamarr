@@ -29,11 +29,14 @@ import type {
   ProfileImportRequest,
   QualityProfile,
   ReorderRequest,
+  RepairOverviewResponse,
   ResolveRequest,
   ResolveResponse,
   SearchResponse,
   SessionResponse,
   StreamingHistoryResponse,
+  StreamRecordResponse,
+  StreamRecordSummaryResponse,
   TvSeasonDetailsResponse,
   TvSeriesDetailsResponse,
   TvSeriesSearchResponse,
@@ -50,9 +53,12 @@ export const queryKeys = {
   profiles: ["config", "profiles"] as const,
   sessions: ["sessions"] as const,
   metrics: ["metrics"] as const,
+  repairs: ["repairs"] as const,
   cachedReleases: ["library", "cached-releases"] as const,
   ephemeralFiles: ["ephemeral-files"] as const,
   streamingHistory: ["streaming-history"] as const,
+  streamRecords: ["stream-records"] as const,
+  streamRecord: (token: string) => ["stream-records", token] as const,
   resolvedRelease: (releaseId: string, workId?: string) =>
     ["resolve", releaseId, workId ?? null] as const,
   tvSeries: (tmdbId: number) => ["tv", tmdbId] as const,
@@ -219,6 +225,31 @@ export function useCloseSession() {
   });
 }
 
+// ---- PAR2 repair pipeline ------------------------------------------------------------
+
+/**
+ * Repair pipeline overview: jobs (with their bounded event logs), published artifacts, and
+ * the artifact-cache budget. Polled like sessions so live jobs stay current without SSE.
+ */
+export function useRepairs({ enabled = true, refetchInterval = 3_000 } = {}) {
+  return useQuery({
+    queryKey: queryKeys.repairs,
+    queryFn: ({ signal }) => apiFetch<RepairOverviewResponse>("/repairs", { signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+/** Cancel an active repair job. */
+export function useCancelRepair() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) =>
+      apiFetch<void>(`/repairs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.repairs }),
+  });
+}
+
 /** Persistent NZB cache library. */
 export function useCachedReleases() {
   return useQuery({
@@ -274,6 +305,39 @@ export function useStreamingHistory(limit = 200) {
     queryKey: [...queryKeys.streamingHistory, limit],
     queryFn: ({ signal }) =>
       apiFetch<StreamingHistoryResponse[]>("/events", { query: { limit }, signal }),
+  });
+}
+
+// ---- Permanent stream history (BRIEF §11 console) -------------------------------------
+//
+// Distinct from `useSessions` (live only) and `useStreamingHistory` (playback watch events):
+// this is the last `MaxRetainedStreams` resolve attempts — live or long since closed, even
+// ones that never opened a session — each with its full internal diagnostic timeline so a
+// stream can be dissected after the fact.
+
+/** The retained stream-attempt list (newest first), for the Sessions page's History tab. */
+export function useStreamRecords(limit = 50, { enabled = true, refetchInterval }: { enabled?: boolean; refetchInterval?: number } = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.streamRecords, limit],
+    queryFn: ({ signal }) =>
+      apiFetch<StreamRecordSummaryResponse[]>("/streams", { query: { limit }, signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+/**
+ * One stream's full diagnostic timeline. A 404 is an expected, meaningful outcome (nothing
+ * retained for this token — never resolved, or aged out of the retention window) rather than
+ * a real failure, so it isn't retried.
+ */
+export function useStreamRecord(token: string, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.streamRecord(token),
+    queryFn: ({ signal }) =>
+      apiFetch<StreamRecordResponse>(`/streams/${encodeURIComponent(token)}`, { signal }),
+    enabled: enabled && token.length > 0,
+    retry: false,
   });
 }
 

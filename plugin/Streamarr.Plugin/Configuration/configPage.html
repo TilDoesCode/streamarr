@@ -68,6 +68,11 @@
                         <span>Swiftfin compatibility — serve Streamarr items to Swiftfin via a server-side remux stream, since Swiftfin cannot open remote on-demand sources itself (on by default; other clients are never affected)</span>
                     </label>
 
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="RepairNotificationsEnabled" name="RepairNotificationsEnabled" />
+                        <span>Repair notifications — show deduplicated PAR2 repair status messages on supported playback clients (on by default; notification failures never affect playback)</span>
+                    </label>
+
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="PinnedWorkQuery">Pinned-work query (M5 bootstrap)</label>
                         <input is="emby-input" type="text" id="PinnedWorkQuery" name="PinnedWorkQuery" maxlength="256" />
@@ -116,6 +121,7 @@
                     page.querySelector('#InterceptionEnabled').checked = !!config.InterceptionEnabled;
                     page.querySelector('#LibraryEnabled').checked = config.LibraryEnabled !== false;
                     page.querySelector('#SwiftfinCompatibilityEnabled').checked = config.SwiftfinCompatibilityEnabled !== false;
+                    page.querySelector('#RepairNotificationsEnabled').checked = config.RepairNotificationsEnabled !== false;
                     page.querySelector('#PinnedWorkQuery').value = config.PinnedWorkQuery || '';
                     Dashboard.hideLoadingMsg();
                 });
@@ -135,6 +141,7 @@
                     config.InterceptionEnabled = page.querySelector('#InterceptionEnabled').checked;
                     config.LibraryEnabled = page.querySelector('#LibraryEnabled').checked;
                     config.SwiftfinCompatibilityEnabled = page.querySelector('#SwiftfinCompatibilityEnabled').checked;
+                    config.RepairNotificationsEnabled = page.querySelector('#RepairNotificationsEnabled').checked;
                     config.PinnedWorkQuery = page.querySelector('#PinnedWorkQuery').value;
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                         // Apply the library placement immediately so toggling the

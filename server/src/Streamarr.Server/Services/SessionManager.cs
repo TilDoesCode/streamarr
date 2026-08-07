@@ -2,8 +2,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
+using Streamarr.Core.Media;
 using Streamarr.Core.Sessions;
 using Streamarr.Server.Options;
+using Streamarr.Server.Services.Repair;
+using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nntp.Pooling;
 using Streamarr.Usenet.Streams;
@@ -70,6 +73,13 @@ public sealed class ActiveSession
     /// rendered as a flamegraph on the stream page. Null when diagnostics are unavailable.
     /// </summary>
     public TtffTimeline? Timeline { get; internal set; }
+
+    /// <summary>
+    /// Links this session back to its permanent <c>StreamRecord</c> history row (BRIEF §11
+    /// console), when history tracking is enabled. Null for sessions created without a
+    /// tracked resolve attempt (e.g. some test construction paths).
+    /// </summary>
+    public string? StreamAttemptId { get; internal set; }
 
     public string Token => Session.Token;
     public long BytesServed => Interlocked.Read(ref _bytesServed);
@@ -248,7 +258,10 @@ public sealed class SessionManager(
     ILogger<SessionManager> logger,
     StreamarrMetrics? metrics = null,
     SegmentCache? segmentCache = null,
-    TimeProvider? time = null) : BackgroundService
+    TimeProvider? time = null,
+    IReleaseHealthCache? healthCache = null,
+    IRepairStreamGateway? repairGateway = null,
+    IStreamHistoryRecorder? historyRecorder = null) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
     private readonly object _createGate = new();
@@ -266,7 +279,8 @@ public sealed class SessionManager(
         string? requestedById = null,
         string? requestedByName = null,
         string? title = null,
-        TtffTimeline? timeline = null)
+        TtffTimeline? timeline = null,
+        string? streamAttemptId = null)
     {
         lock (_createGate)
         {
@@ -280,7 +294,8 @@ public sealed class SessionManager(
                 title,
                 timeline,
                 status: "ready",
-                opening: false);
+                opening: false,
+                streamAttemptId);
         }
     }
 
@@ -298,10 +313,18 @@ public sealed class SessionManager(
         string? requestedById = null,
         string? requestedByName = null,
         string? title = null,
-        TtffTimeline? timeline = null)
+        TtffTimeline? timeline = null,
+        string? streamAttemptId = null)
     {
         lock (_createGate)
         {
+            if (healthCache?.IsDead(releaseId) == true
+                && repairGateway?.AllowsPlaybackWhileDead(releaseId) != true)
+            {
+                InvalidateReleaseSessionsLocked(releaseId);
+                throw new SessionUnavailableException("The release became unavailable before session admission.");
+            }
+
             var now = _time.GetUtcNow();
             SweepExpiredLocked(now);
             if (FindReusableLocked(releaseId, workId, client, requestedById) is { } reusable)
@@ -312,6 +335,19 @@ public sealed class SessionManager(
                     reusable.Token[..8],
                     releaseId,
                     requestedById ?? requestedByName ?? "unknown");
+
+                // This resolve attempt didn't mint a session of its own — close its history row
+                // out immediately rather than leaving it open forever; the reused session's own
+                // row (from whichever attempt originally created it) keeps tracking normally.
+                if (streamAttemptId is not null)
+                {
+                    historyRecorder?.Finalize(streamAttemptId, new StreamRecordFinalize
+                    {
+                        FinalState = "reused",
+                        CloseReason = $"reused session {reusable.Token[..8]} for release {releaseId}",
+                    });
+                }
+
                 return new SessionAdmission(reusable, Created: false);
             }
 
@@ -326,7 +362,8 @@ public sealed class SessionManager(
                     title,
                     timeline,
                     status,
-                    opening: true),
+                    opening: true,
+                    streamAttemptId),
                 Created: true);
         }
     }
@@ -339,6 +376,13 @@ public sealed class SessionManager(
     {
         lock (_createGate)
         {
+            if (healthCache?.IsDead(releaseId) == true
+                && repairGateway?.AllowsPlaybackWhileDead(releaseId) != true)
+            {
+                InvalidateReleaseSessionsLocked(releaseId);
+                return null;
+            }
+
             SweepExpiredLocked(_time.GetUtcNow());
             var reusable = FindReusableLocked(releaseId, workId, client, requestedById);
             reusable?.Touch();
@@ -381,7 +425,8 @@ public sealed class SessionManager(
         string? title,
         TtffTimeline? timeline,
         string status,
-        bool opening)
+        bool opening,
+        string? streamAttemptId = null)
     {
         var now = _time.GetUtcNow();
         SweepExpiredLocked(now);
@@ -428,8 +473,12 @@ public sealed class SessionManager(
                 opening)
             {
                 Timeline = timeline,
+                StreamAttemptId = streamAttemptId,
             };
         } while (!_sessions.TryAdd(active.Token, active));
+
+        if (streamAttemptId is not null)
+            historyRecorder?.AttachToken(streamAttemptId, active.Token);
 
         metrics?.SessionOpened();
         logger.LogInformation(
@@ -473,6 +522,21 @@ public sealed class SessionManager(
             }
             admitted = true;
 
+            // Mid-stream damage escalates to the repair coordinator instead of EOF/invalidation;
+            // healthy reads pass through this wrapper with zero repair I/O. Opening-phase
+            // streams (resolve-time ffprobe) stay unwrapped so a damaged article keeps the
+            // fast dead→fallback path instead of stalling the resolve at a hole.
+            if (repairGateway is { Enabled: true } && session.Session.State == SessionState.Ready)
+            {
+                inner = new RepairAwareStream(
+                    inner,
+                    repairGateway,
+                    new RepairStreamContext(
+                        session.Session.ReleaseId,
+                        session.Session.WorkId,
+                        session.Title));
+            }
+
             // Offset (from resolve t0) at which this HTTP stream request opened its stream, so the
             // first-byte span lands in the right place on the request→first-frame flamegraph.
             var openMs = session.Timeline?.ElapsedMs;
@@ -510,7 +574,8 @@ public sealed class SessionManager(
                         _streamGate.Release();
                     }
                 },
-                pacer);
+                pacer,
+                exception => InvalidateMissingRelease(session, exception));
         }
         catch
         {
@@ -521,6 +586,79 @@ public sealed class SessionManager(
         }
     }
 
+    private void InvalidateMissingRelease(ActiveSession session, Exception exception)
+    {
+        if (!RepairAwareStream.IsRepairableFailure(exception))
+            return;
+
+        // While a repair job or a local artifact can still serve this release, sessions
+        // must survive; only origin evidence is recorded (by the repair gateway).
+        if (repairGateway?.AllowsPlaybackWhileDead(session.Session.ReleaseId) == true)
+        {
+            healthCache?.Record(session.Session.ReleaseId, ReleaseHealth.Dead);
+            logger.LogWarning(
+                "Release {ReleaseId} lost an article mid-stream; repair is active, keeping capability sessions alive",
+                session.Session.ReleaseId);
+            return;
+        }
+
+        int removed;
+        lock (_createGate)
+        {
+            healthCache?.Record(session.Session.ReleaseId, ReleaseHealth.Dead);
+            removed = InvalidateReleaseSessionsLocked(session.Session.ReleaseId);
+        }
+
+        logger.LogWarning(
+            "Release {ReleaseId} became unavailable while streaming; marked dead and invalidated {RemovedCapabilities} capability session(s)",
+            session.Session.ReleaseId,
+            removed);
+    }
+
+    /// <summary>
+    /// Flushes this session's full diagnostic timeline and closes out its permanent history
+    /// row (BRIEF §11 console), when history tracking is enabled and this session was opened
+    /// under a tracked resolve attempt. Best-effort: every call into the history recorder
+    /// is a non-blocking queue write, so this can never throw or stall a removal path.
+    /// </summary>
+    private void RecordHistoryClose(ActiveSession session, string finalState, string? reason)
+    {
+        if (historyRecorder is null || session.StreamAttemptId is not { } attemptId)
+            return;
+
+        historyRecorder.AppendEvents(attemptId, StreamHistoryRecorder.EventsFromTimeline(session.Timeline));
+        historyRecorder.Finalize(attemptId, new StreamRecordFinalize
+        {
+            FinalState = finalState,
+            CloseReason = reason,
+            Title = session.Title,
+            Container = session.File.Container,
+            SizeBytes = session.File.SizeBytes,
+            BytesServed = session.BytesServed,
+            NntpCommandsTotal = session.NntpUsage.TotalCommands,
+        });
+    }
+
+    private int InvalidateReleaseSessionsLocked(string releaseId)
+    {
+        var removed = 0;
+        foreach (var (token, candidate) in _sessions)
+        {
+            if (!string.Equals(candidate.Session.ReleaseId, releaseId, StringComparison.Ordinal)
+                || !_sessions.TryRemove(token, out var invalidated))
+            {
+                continue;
+            }
+
+            invalidated.MarkClosed();
+            metrics?.SessionClosed();
+            RecordHistoryClose(invalidated, "invalidated", "release became unavailable");
+            removed++;
+        }
+
+        return removed;
+    }
+
     public bool CloseSession(string token)
     {
         if (!_sessions.TryRemove(token, out var session))
@@ -528,6 +666,7 @@ public sealed class SessionManager(
 
         session.MarkClosed();
         metrics?.SessionClosed();
+        RecordHistoryClose(session, "closed", reason: null);
         logger.LogInformation(
             "Closed capability session for release {ReleaseId} ({BytesServed} bytes served)",
             session.Session.ReleaseId, session.BytesServed);
@@ -550,6 +689,7 @@ public sealed class SessionManager(
 
         _sessions.TryRemove(token, out _);
         metrics?.SessionClosed();
+        RecordHistoryClose(session, "purged", "reclaimed idle cache on operator request");
         logger.LogInformation(
             "Purged ephemeral file for release {ReleaseId} ({BytesServed} bytes served) on operator request",
             session.Session.ReleaseId, session.BytesServed);
@@ -578,6 +718,7 @@ public sealed class SessionManager(
 
             expired.MarkClosed();
             metrics?.SessionClosed();
+            RecordHistoryClose(expired, "expired", "hard TTL reached");
             removed++;
             logger.LogInformation(
                 "Expired ephemeral file for release {ReleaseId} (hard ttl reached)",
@@ -618,6 +759,7 @@ public sealed class SessionManager(
 
             evicted.MarkClosed();
             metrics?.SessionClosed();
+            RecordHistoryClose(evicted, "evicted", reason);
             logger.LogInformation(
                 "Evicted ephemeral file for release {ReleaseId} ({SizeBytes} bytes, last access {LastAccessedAt}) because of {Reason}",
                 evicted.Session.ReleaseId,
@@ -656,7 +798,8 @@ internal sealed class SessionStream(
     ActiveSession session,
     double? openMs = null,
     Action? onDispose = null,
-    StreamPacer? pacer = null) : Stream
+    StreamPacer? pacer = null,
+    Action<Exception>? onReadFailure = null) : Stream
 {
     private int _disposed;
     private int _firstByteRecorded;
@@ -676,7 +819,16 @@ internal sealed class SessionStream(
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(session.IsClosed, this);
-        var read = await inner.ReadAsync(buffer, cancellationToken);
+        int read;
+        try
+        {
+            read = await inner.ReadAsync(buffer, cancellationToken);
+        }
+        catch (Exception e)
+        {
+            onReadFailure?.Invoke(e);
+            throw;
+        }
         if (read > 0)
         {
             if (openMs is { } start

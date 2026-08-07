@@ -63,6 +63,12 @@ export type ResolveRequest = S["ResolveRequest"];
 export type ResolveResponse = S["ResolveResponse"];
 export type MediaStreamInfo = S["MediaStreamInfo"];
 
+export type RepairOverviewResponse = S["RepairOverviewResponse"];
+export type RepairJobResponse = S["RepairJobResponse"];
+export type RepairJobEventResponse = S["RepairJobEventResponse"];
+export type RepairArtifactResponse = S["RepairArtifactResponse"];
+export type RepairMetrics = S["RepairMetrics"];
+
 export type SessionResponse = S["SessionResponse"];
 export type TtffSpanResponse = S["TtffSpanResponse"];
 export type MetricsResponse = S["MetricsResponse"];
@@ -70,3 +76,7 @@ export type CachedReleaseResponse = S["CachedReleaseResponse"];
 export type EphemeralFileResponse = S["EphemeralFileResponse"];
 export type StreamingHistoryResponse = S["StreamingHistoryResponse"];
 export type ReachabilityStatus = S["ReachabilityStatus"];
+
+export type StreamRecordSummaryResponse = S["StreamRecordSummaryResponse"];
+export type StreamRecordResponse = S["StreamRecordResponse"];
+export type StreamEventResponse = S["StreamEventResponse"];

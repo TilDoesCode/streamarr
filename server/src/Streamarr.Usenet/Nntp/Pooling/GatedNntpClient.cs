@@ -72,9 +72,16 @@ public sealed class CountingNntpGate : INntpGate
 /// until the article body has fully left the wire (signalled by the inner client's
 /// onConnectionReadyAgain callback), matching actual connection occupancy.
 /// </summary>
-public class GatedNntpClient(INntpClient inner, INntpGate gate, bool disposeInner = false)
+public class GatedNntpClient(
+    INntpClient inner,
+    INntpGate gate,
+    bool disposeInner = false,
+    SemaphorePriority transferPriority = SemaphorePriority.High,
+    bool disposeGate = true)
     : NntpClientBase
 {
+    private int _disposed;
+
     public INntpGate Gate => gate;
 
     public override Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
@@ -102,7 +109,7 @@ public class GatedNntpClient(INntpClient inner, INntpGate gate, bool disposeInne
         CancellationToken ct
     )
     {
-        await gate.AcquireAsync(SemaphorePriority.High, ct).ConfigureAwait(false);
+        await gate.AcquireAsync(transferPriority, ct).ConfigureAwait(false);
         var released = 0;
         try
         {
@@ -137,7 +144,7 @@ public class GatedNntpClient(INntpClient inner, INntpGate gate, bool disposeInne
         CancellationToken ct
     )
     {
-        await gate.AcquireAsync(SemaphorePriority.High, ct).ConfigureAwait(false);
+        await gate.AcquireAsync(transferPriority, ct).ConfigureAwait(false);
         var released = 0;
         try
         {
@@ -178,10 +185,18 @@ public class GatedNntpClient(INntpClient inner, INntpGate gate, bool disposeInne
 
     public override void Dispose()
     {
-        if (disposeInner)
-            inner.Dispose();
-        if (gate is IDisposable disposableGate)
-            disposableGate.Dispose();
-        GC.SuppressFinalize(this);
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+        try
+        {
+            if (disposeInner)
+                inner.Dispose();
+        }
+        finally
+        {
+            if (disposeGate && gate is IDisposable disposableGate)
+                disposableGate.Dispose();
+            GC.SuppressFinalize(this);
+        }
     }
 }

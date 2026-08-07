@@ -123,6 +123,12 @@ const ephemeralRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/ephemeral-files"), "EphemeralFilesPage"),
 });
 
+const repairsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/repairs",
+  component: lazyRouteComponent(() => import("@/pages/repairs"), "RepairsPage"),
+});
+
 const historyRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/history",
@@ -143,6 +149,7 @@ const routeTree = rootRoute.addChildren([
     streamStatsRoute,
     libraryRoute,
     ephemeralRoute,
+    repairsRoute,
     historyRoute,
   ]),
 ]);

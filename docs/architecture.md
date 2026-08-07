@@ -180,9 +180,12 @@ The same three calls, wrapped by the plugin's translation to Jellyfin's data mod
    returns one `MediaSourceInfo` per release (`RequiresOpening = true`,
    opaque, bounded, replay-safe `OpenToken` tied to that authenticated user,
    item, work, and offered release). **No Usenet contact yet.**
-5. `OpenMediaSource(openToken)` validates the offer, then calls
-   `POST /api/v1/resolve`. It accepts only a server-attributed release from the same
-   offered work. On `ready` it returns
+5. `OpenMediaSource(openToken)` validates the offer, then starts a two-phase Core
+   admission. A fast result is returned immediately; a slow health/materialization/
+   repair prepare is polled under an 11-minute plugin deadline and explicitly claimed
+   only after it becomes terminal. Cancellation or rejection abandons the admission;
+   older Core versions fall back to `POST /api/v1/resolve`. The plugin accepts only a
+   server-attributed release from the same offered work. On `ready` it returns
    `MediaSourceInfo { Path = streamUrl, Protocol = Http, IsRemote = true,
    RequiresClosing = true, MediaStreams = <pre-probed>, RunTimeTicks,
    low AnalyzeDurationMs }` with no reusable `RequiredHttpHeaders` credential.
@@ -276,6 +279,62 @@ single-hop fallback (BRIEF §8.4) is now a **backstop** — the Core has usually
 walked the release list before the plugin ever sees a dead result.
 
 ---
+
+## 5b. The PAR2 repair pipeline (dynamic mid-stream recovery)
+
+When a needed article is *definitively* gone — BODY 430 after full multi-provider
+failover, or an equivalently validated yEnc transfer failure — the classic answer was
+"mark dead, invalidate sessions, fall back". That still holds **before** playback
+(default policy `whenNoFallback`: a healthy sibling wins). But **mid-stream** a release
+switch is impossible (container bytes, timestamps, track layout differ), so the same
+release is repaired from its PAR2 set while the open HTTP stream waits at the hole.
+
+```
+      SessionStream ── read error ──▶ RepairAwareStream (classifies; healthy reads: zero repair I/O)
+                                            │  hole! remembers logical media offset
+                                            ▼
+                                   RepairStreamGateway ── origin evidence → ReleaseHealthCache (dead)
+                                            │  attach waiter (cancellation-safe, WaitAtHoleTimeout)
+                                            ▼
+   RepairCoordinator  ── single-flight per canonical content/layout fingerprint ──────┐
+      │ queued → planning → materializingSources → downloadingRecovery →               │
+      │ reconstructing → verifying → ready | failed | cancelled                        │
+      ▼                                                                                │
+   Par2SetParser (bounded multi-set candidate selection; packet MD5/set-id/IFSC)      │
+   RepairSourceMaterializer (yEnc segments → validated decoded offsets in sparse       │
+      files; missing articles become exact raw ranges; low-priority NNTP via the       │
+      global ConnectionBudget + provider failover)                                     │
+   Par2RecoveryEngine (GF(2^16) Reed-Solomon over the damaged source slices,           │
+      smallest sufficient recovery set, falls back to further volumes)                 │
+   verify: slice MD5s → whole-file MD5s → RAR index/projection → ffprobe               │
+      ▼                                                                                │
+   RepairArtifactCache — atomic publish (.partial → rename), manifest-validated        │
+      restart recovery, LRU byte budget + TTL, pinning by active streams ◀─────────────┘
+```
+
+Key invariants:
+
+- **PAR2 repairs the raw source bytes** (for RAR releases: the ciphertext/RAR volumes),
+  never decrypted or extracted projections. RAR index, password and media projection
+  logic run unchanged on the repaired files.
+- **Damage is counted in source slices, not articles** — one 512-KiB article can cross
+  a slice boundary and cost two recovery slices.
+- **One active job per fingerprint**, any number of waiters; a waiter's cancellation
+  never cancels the shared job; a failed job backs off (`FailureBackoffSeconds`) and
+  keeps the legacy dead/invalidations intact.
+- **originHealth vs playability are separate axes**: a published artifact makes the
+  release locally playable (`repairedReady`) while the origin stays `dead` in the
+  health cache until its natural TTL; artifact eviction never resurrects `ready`.
+- **No unverified bytes**: reconstruction must pass IFSC slice checksums, the PAR2
+  whole-file MD5, and an ffprobe of the projected media before publish; the waiting
+  read then reopens *locally* at the exact remembered offset — same URL,
+  Content-Length, Range semantics and timeline.
+- Two-phase playback admission (`/api/v1/playback-sessions`) gives slow prepares an
+  independent Core lifetime, a bounded plugin deadline, and an explicit claim/abandon
+  handoff. Jellyfin necessarily keeps its global live-stream lock until
+  `OpenMediaSource` returns; admission lets the plugin explicitly clean up lost or
+  abandoned requests without shortening a successfully claimed capability's normal
+  session lifetime. See `api.md` §10.
 
 ## 6. Observability
 

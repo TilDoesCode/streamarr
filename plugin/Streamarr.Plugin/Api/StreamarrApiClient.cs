@@ -27,6 +27,8 @@ public sealed class StreamarrApiClient
     private readonly Func<PluginConfiguration> _configuration;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
+    private readonly record struct TransportSnapshot(string BaseUrl, string ApiKey);
+
     public StreamarrApiClient(HttpClient httpClient, ILogger<StreamarrApiClient> logger)
         : this(httpClient, logger, static () => Plugin.Instance?.Configuration ?? new PluginConfiguration())
     {
@@ -51,6 +53,12 @@ public sealed class StreamarrApiClient
     private string PublicStreamUrl => string.IsNullOrWhiteSpace(Config.PublicStreamUrl)
         ? BaseUrl
         : Config.PublicStreamUrl.TrimEnd('/');
+
+    private TransportSnapshot CaptureTransport()
+    {
+        var config = Config;
+        return new TransportSnapshot(config.ServerUrl.TrimEnd('/'), config.ApiKey);
+    }
 
     public async Task<HealthResponse?> GetHealthAsync(CancellationToken ct)
     {
@@ -187,6 +195,21 @@ public sealed class StreamarrApiClient
         string? requestedById,
         string? requestedByName,
         CancellationToken ct)
+        => await ResolveAsync(
+            releaseId,
+            workId,
+            requestedById,
+            requestedByName,
+            CaptureTransport(),
+            ct).ConfigureAwait(false);
+
+    private async Task<ResolveResponse?> ResolveAsync(
+        string releaseId,
+        string? workId,
+        string? requestedById,
+        string? requestedByName,
+        TransportSnapshot transport,
+        CancellationToken ct)
         => StreamarrPayloadBounds.Normalize(await SendAsync<ResolveResponse>(
             HttpMethod.Post,
             "/api/v1/resolve",
@@ -198,7 +221,220 @@ public sealed class StreamarrApiClient
                 RequestedById = requestedById,
                 RequestedByName = requestedByName,
             },
-            ct).ConfigureAwait(false));
+            ct,
+            transport: transport).ConfigureAwait(false));
+
+    /// <summary>
+    /// Two-phase playback admission: the POST answers within Core's short hard budget; while
+    /// the prepare (health check, materialization, ffprobe, repair analysis) continues
+    /// server-side, this method polls the admission id in separate requests. That decouples
+    /// Core's work from any individual HTTP request lifetime; Jellyfin still waits here while
+    /// holding its global live-stream lock, bounded by the caller's deadline token. Falls back
+    /// to the legacy single-phase resolve on older Cores without the endpoint.
+    /// </summary>
+    public async Task<ResolveResponse?> AdmitPlaybackAsync(
+        string releaseId,
+        string? workId,
+        string? requestedById,
+        string? requestedByName,
+        CancellationToken ct)
+    {
+        var transport = CaptureTransport();
+        string? admissionId = null;
+        var lifecycleComplete = false;
+        try
+        {
+            var initial = await SendAsync<PlaybackAdmissionDto>(
+                    HttpMethod.Post,
+                    "/api/v1/playback-sessions",
+                    new ResolveRequest
+                    {
+                        ReleaseId = releaseId,
+                        WorkId = workId,
+                        Client = "jellyfin",
+                        RequestedById = requestedById,
+                        RequestedByName = requestedByName,
+                    },
+                    ct,
+                    notFoundIsSuccess: true,
+                    methodNotAllowedIsSuccess: true,
+                    transport: transport)
+                .ConfigureAwait(false);
+            if (initial is null)
+            {
+                return await ResolveAsync(releaseId, workId, requestedById, requestedByName, transport, ct)
+                    .ConfigureAwait(false);
+            }
+
+            // Preserve a valid id before validating the rest of the envelope, so even a
+            // malformed Core response can be abandoned instead of consuming admission capacity.
+            admissionId = StreamarrPayloadBounds.NormalizeAdmissionId(initial.AdmissionId);
+            var admission = StreamarrPayloadBounds.Normalize(initial)
+                            ?? throw new StreamarrApiException(
+                                System.Net.HttpStatusCode.BadGateway,
+                                "invalid_playback_admission_response");
+
+            admissionId = admission.AdmissionId;
+            var polls = 0;
+            while (admission.Phase == "preparing")
+            {
+                if (++polls > 600)
+                {
+                    throw new StreamarrApiException(
+                        System.Net.HttpStatusCode.GatewayTimeout,
+                        "playback_admission_poll_limit");
+                }
+
+                await _delay(
+                        TimeSpan.FromSeconds(admission.RetryAfterSeconds ?? 2),
+                        ct)
+                    .ConfigureAwait(false);
+                var next = StreamarrPayloadBounds.Normalize(await SendAsync<PlaybackAdmissionDto>(
+                        HttpMethod.Get,
+                        $"/api/v1/playback-sessions/{Uri.EscapeDataString(admissionId)}",
+                        null,
+                        ct,
+                        retryTransient: true,
+                        transport: transport)
+                    .ConfigureAwait(false));
+                if (next is null || !string.Equals(next.AdmissionId, admissionId, StringComparison.Ordinal))
+                {
+                    throw new StreamarrApiException(
+                        System.Net.HttpStatusCode.BadGateway,
+                        "invalid_playback_admission_response");
+                }
+
+                admission = next;
+            }
+
+            if (admission.Phase == "ready")
+            {
+                var resolve = admission.Resolve
+                              ?? throw new StreamarrApiException(
+                                  System.Net.HttpStatusCode.BadGateway,
+                                  "ready_playback_admission_missing_resolve");
+                if (!HasCloseableStreamCapability(resolve))
+                {
+                    throw new StreamarrApiException(
+                        System.Net.HttpStatusCode.BadGateway,
+                        "invalid_ready_playback_admission_resolve");
+                }
+
+                // Claim is deliberately last: once Core removes the terminal admission, this
+                // client owns the resulting stream capability. A Core without the handshake
+                // cannot transfer ownership safely, so fail closed and abandon the admission.
+                var claimResponse = await SendAsync<PlaybackAdmissionDto>(
+                        HttpMethod.Post,
+                        $"/api/v1/playback-sessions/{Uri.EscapeDataString(admissionId)}/claim",
+                        null,
+                        ct,
+                        notFoundIsSuccess: true,
+                        methodNotAllowedIsSuccess: true,
+                        transport: transport)
+                    .ConfigureAwait(false);
+                if (claimResponse is null)
+                {
+                    throw new StreamarrApiException(
+                        System.Net.HttpStatusCode.BadGateway,
+                        "playback_admission_claim_unsupported");
+                }
+
+                var claimed = StreamarrPayloadBounds.Normalize(claimResponse)
+                              ?? throw new StreamarrApiException(
+                                  System.Net.HttpStatusCode.BadGateway,
+                                  "invalid_playback_admission_claim");
+                if (!string.Equals(claimed.AdmissionId, admissionId, StringComparison.Ordinal)
+                    || claimed.Phase != "ready"
+                    || claimed.Resolve is null
+                    || !HasCloseableStreamCapability(claimed.Resolve))
+                {
+                    throw new StreamarrApiException(
+                        System.Net.HttpStatusCode.BadGateway,
+                        "invalid_playback_admission_claim");
+                }
+
+                resolve = claimed.Resolve;
+                lifecycleComplete = true;
+                return resolve;
+            }
+
+            // Core represents a fully evaluated dead release as phase=failed plus the same dead
+            // resolve envelope used by the legacy API. Return it so the provider can follow
+            // Core's suggested fallback; the finally block still abandons this failed admission.
+            if (admission.Resolve is { } failedResolve)
+            {
+                if (string.Equals(failedResolve.Status, "dead", StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(failedResolve.StreamUrl))
+                {
+                    return failedResolve;
+                }
+
+                throw new StreamarrApiException(
+                    System.Net.HttpStatusCode.BadGateway,
+                    "invalid_failed_playback_admission_resolve");
+            }
+
+            if (string.Equals(admission.Error, "unknown_release", StringComparison.Ordinal))
+                throw new StreamarrApiException(System.Net.HttpStatusCode.NotFound, "unknown_release");
+            throw new StreamarrApiException(
+                System.Net.HttpStatusCode.BadGateway,
+                $"playback_admission_failed:{admission.Error ?? "unknown"}");
+        }
+        finally
+        {
+            if (admissionId is not null && !lifecycleComplete)
+                await AbandonPlaybackAdmissionAsync(admissionId, transport).ConfigureAwait(false);
+        }
+    }
+
+    private async Task AbandonPlaybackAdmissionAsync(string admissionId, TransportSnapshot transport)
+    {
+        using var cleanupDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            await SendAsync<object>(
+                    HttpMethod.Delete,
+                    $"/api/v1/playback-sessions/{Uri.EscapeDataString(admissionId)}",
+                    null,
+                    cleanupDeadline.Token,
+                    notFoundIsSuccess: true,
+                    methodNotAllowedIsSuccess: true,
+                    transport: transport)
+                .ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            // Cleanup must never replace the admission failure/cancellation observed by Jellyfin.
+            _logger.LogDebug("Playback admission cleanup failed ({FailureType})", e.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// Capability-token-bound repair status for a live session. Best-effort observability:
+    /// a missing/closed session or older Core yields null, never an exception surface that
+    /// could touch playback. The token itself is never logged.
+    /// </summary>
+    public async Task<SessionRepairStatusDto?> GetSessionRepairStatusAsync(string token, CancellationToken ct)
+    {
+        try
+        {
+            return StreamarrPayloadBounds.Normalize(await SendAsync<SessionRepairStatusDto>(
+                    HttpMethod.Get,
+                    $"/api/v1/sessions/{Uri.EscapeDataString(token)}/repair",
+                    null,
+                    ct,
+                    notFoundIsSuccess: true)
+                .ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     public async Task CloseSessionAsync(string token, CancellationToken ct)
         => await SendAsync<object>(
@@ -298,10 +534,17 @@ public sealed class StreamarrApiClient
         const string prefix = "/api/v1/stream/";
         if (!path.StartsWith(prefix, StringComparison.Ordinal))
             return false;
-        var token = path.AsSpan(prefix.Length);
-        return token.Length is > 0 and <= 256
-               && token.IndexOfAnyExcept("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_".AsSpan()) < 0;
+        return IsCapabilityToken(path.AsSpan(prefix.Length));
     }
+
+    private static bool IsCapabilityToken(ReadOnlySpan<char> token)
+        => token.Length is > 0 and <= 256
+           && token.IndexOfAnyExcept("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_".AsSpan()) < 0;
+
+    private static bool HasCloseableStreamCapability(ResolveResponse response)
+        => !string.Equals(response.Status, "dead", StringComparison.OrdinalIgnoreCase)
+           && TokenFromStreamUrl(response.StreamUrl) is { } token
+           && IsCapabilityToken(token);
 
     /// <summary>Extracts the opaque stream token from a Core Server stream URL.</summary>
     public static string? TokenFromStreamUrl(string? streamUrl)
@@ -322,15 +565,26 @@ public sealed class StreamarrApiClient
         object? body,
         CancellationToken ct,
         bool notFoundIsSuccess = false,
-        bool retryTransient = false)
+        bool methodNotAllowedIsSuccess = false,
+        bool retryTransient = false,
+        TransportSnapshot? transport = null)
         where T : class
     {
         const int maxAttempts = 3;
+        var requestTransport = transport ?? CaptureTransport();
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                return await SendOnceAsync<T>(method, path, body, ct, notFoundIsSuccess).ConfigureAwait(false);
+                return await SendOnceAsync<T>(
+                        method,
+                        path,
+                        body,
+                        ct,
+                        notFoundIsSuccess,
+                        methodNotAllowedIsSuccess,
+                        requestTransport)
+                    .ConfigureAwait(false);
             }
             catch (StreamarrApiException ex) when (
                 retryTransient
@@ -351,12 +605,14 @@ public sealed class StreamarrApiClient
         string path,
         object? body,
         CancellationToken ct,
-        bool notFoundIsSuccess)
+        bool notFoundIsSuccess,
+        bool methodNotAllowedIsSuccess,
+        TransportSnapshot transport)
         where T : class
     {
-        using var request = new HttpRequestMessage(method, BaseUrl + path);
-        if (!string.IsNullOrWhiteSpace(Config.ApiKey))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Config.ApiKey);
+        using var request = new HttpRequestMessage(method, transport.BaseUrl + path);
+        if (!string.IsNullOrWhiteSpace(transport.ApiKey))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", transport.ApiKey);
         if (body is not null)
             request.Content = JsonContent.Create(body, options: JsonOptions);
 
@@ -366,14 +622,22 @@ public sealed class StreamarrApiClient
             request,
             HttpCompletionOption.ResponseHeadersRead,
             ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode
-            && !(notFoundIsSuccess && response.StatusCode == System.Net.HttpStatusCode.NotFound))
+        if ((notFoundIsSuccess && response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            || (methodNotAllowedIsSuccess && response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed))
         {
-            // Session URLs contain bearer capabilities. Never accept or log a server-provided
-            // error body for those requests because a peer could reflect the token in it.
-            var capabilityRequest = path.StartsWith("/api/v1/sessions/", StringComparison.OrdinalIgnoreCase);
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Session and admission instance URLs contain bearer capabilities. Never accept or
+            // log a peer-provided error body for those requests because it could reflect the token.
+            var capabilityRequest = path.StartsWith("/api/v1/sessions/", StringComparison.OrdinalIgnoreCase)
+                                    || path.StartsWith(
+                                        "/api/v1/playback-sessions/",
+                                        StringComparison.OrdinalIgnoreCase);
             var detail = capabilityRequest
-                ? "session_close_failed"
+                ? "capability_request_failed"
                 : await ReadErrorAsync(response, ct).ConfigureAwait(false);
             _logger.LogWarning(
                 "Streamarr API {Method} {Path} failed: {Status} {Detail}",
@@ -443,9 +707,23 @@ public sealed class StreamarrApiClient
     {
         var queryIndex = path.IndexOf('?', StringComparison.Ordinal);
         var pathOnly = queryIndex < 0 ? path : path[..queryIndex];
-        return pathOnly.StartsWith("/api/v1/sessions/", StringComparison.OrdinalIgnoreCase)
-            ? "/api/v1/sessions/{session}/close"
-            : pathOnly;
+        if (pathOnly.StartsWith("/api/v1/sessions/", StringComparison.OrdinalIgnoreCase))
+        {
+            if (pathOnly.EndsWith("/repair", StringComparison.OrdinalIgnoreCase))
+                return "/api/v1/sessions/{session}/repair";
+            if (pathOnly.EndsWith("/timeline", StringComparison.OrdinalIgnoreCase))
+                return "/api/v1/sessions/{session}/timeline";
+            return "/api/v1/sessions/{session}/close";
+        }
+
+        if (pathOnly.StartsWith("/api/v1/playback-sessions/", StringComparison.OrdinalIgnoreCase))
+        {
+            return pathOnly.EndsWith("/claim", StringComparison.OrdinalIgnoreCase)
+                ? "/api/v1/playback-sessions/{admission}/claim"
+                : "/api/v1/playback-sessions/{admission}";
+        }
+
+        return pathOnly;
     }
 
     private static async Task<string> ReadErrorAsync(HttpResponseMessage response, CancellationToken ct)

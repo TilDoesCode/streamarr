@@ -42,6 +42,33 @@ const liveFile = {
   purgeAt: liveSession.expiresAt,
 };
 
+const historicalRecord = {
+  token,
+  releaseId: liveSession.releaseId,
+  workId: liveSession.workId,
+  title: "Asterion Station — The Quiet Array",
+  container: "mkv",
+  sizeBytes: liveSession.sizeBytes,
+  bytesServed: liveSession.bytesServed,
+  nntpCommandsTotal: liveSession.nntpCommandsTotal,
+  client: "jellyfin",
+  requestedById: liveSession.requestedById,
+  requestedByName: liveSession.requestedByName,
+  createdAt: new Date(now - 40 * 60_000).toISOString(),
+  closedAt: new Date(now - 20 * 60_000).toISOString(),
+  finalState: "closed",
+  closeReason: null,
+  timelineStartedAt: new Date(now - 40 * 60_000).toISOString(),
+  timeline: [
+    { name: "nzb-fetch", category: "nzb", startMs: 0, durationMs: 42, detail: "cache" },
+  ],
+  events: [
+    { atUtc: new Date(now - 40 * 60_000).toISOString(), source: "ttff", category: "nzb", name: "nzb-fetch", detail: "cache" },
+    { atUtc: new Date(now - 39 * 60_000).toISOString(), source: "repair", category: "Failed", name: "Failed", detail: "failed: the release carries no PAR2 set" },
+    { atUtc: new Date(now - 20 * 60_000).toISOString(), source: "lifecycle", category: "closed", name: "closed", detail: null },
+  ],
+};
+
 function response(body: unknown): Promise<Response> {
   return Promise.resolve({
     ok: true,
@@ -53,10 +80,29 @@ function response(body: unknown): Promise<Response> {
   } as unknown as Response);
 }
 
-function installFetch(sessions: unknown[] = [liveSession], files: unknown[] = [liveFile]) {
+function notFoundResponse(): Promise<Response> {
+  const body = { error: { code: "unknown_stream", message: "No retained stream record exists for this token." } };
+  return Promise.resolve({
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body)),
+    clone: () => ({ json: () => Promise.resolve(body) }),
+  } as unknown as Response);
+}
+
+function installFetch(
+  sessions: unknown[] = [liveSession],
+  files: unknown[] = [liveFile],
+  streamRecord: unknown | "not-found" = "not-found",
+) {
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/ephemeral-files")) return response(files);
+    if (url.includes(`/streams/${token}`)) {
+      return streamRecord === "not-found" ? notFoundResponse() : response(streamRecord);
+    }
     if (url.includes("/sessions")) return response(sessions);
     if (url.includes("/metrics")) return response({
       sessions: { active: 3, openedTotal: 89, closedTotal: 86 },
@@ -106,12 +152,25 @@ describe("StreamStatsPage", () => {
     expect(screen.getByText("video/x-matroska")).toBeInTheDocument();
   });
 
-  it("shows an explicit ended state when the live session has expired", async () => {
-    installFetch([], []);
+  it("shows an explicit not-found state when neither a live session nor a retained record exist", async () => {
+    installFetch([], [], "not-found");
     renderWithProviders(<StreamStatsPage sessionToken={token} />);
 
-    expect(await screen.findByRole("heading", { name: "This stream has left the wire" })).toBeInTheDocument();
-    expect(screen.getByText(/live-only/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "This stream left no trace" })).toBeInTheDocument();
+    expect(screen.getByText(/nothing in the permanent stream history/i)).toBeInTheDocument();
+  });
+
+  it("falls back to the permanent stream-history record once the live session is gone", async () => {
+    installFetch([], [], historicalRecord);
+    renderWithProviders(<StreamStatsPage sessionToken={token} />);
+
+    expect(await screen.findByRole("heading", { name: "Asterion Station — The Quiet Array" })).toBeInTheDocument();
+    expect(screen.getByText("retained history")).toBeInTheDocument();
+    expect(screen.getAllByText("closed").length).toBeGreaterThan(0);
+    // the folded-in PAR2 repair failure shows up in the chronological event log
+    expect(screen.getByText(/failed: the release carries no PAR2 set/i)).toBeInTheDocument();
+    // the ttff span still renders (once in the reused flamegraph, once in the event log)
+    expect(screen.getAllByText("nzb-fetch").length).toBeGreaterThan(0);
   });
 
   it("renders the request→first-frame flamegraph when the session carries a timeline", async () => {

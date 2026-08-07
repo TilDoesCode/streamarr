@@ -1,5 +1,8 @@
+using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
+using Streamarr.Usenet.Yenc;
+using Streamarr.Tests.Shared;
 
 namespace Streamarr.Server.Tests.Services;
 
@@ -12,7 +15,12 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
     private int _activeStats;
     private int _maxConcurrentStats;
     public HashSet<string> ExistingSegments { get; } = new(existingSegments ?? [], StringComparer.Ordinal);
+    public HashSet<string> FailingSegments { get; } = new(StringComparer.Ordinal);
+    public HashSet<string> MissingBodySegments { get; } = new(StringComparer.Ordinal);
+    public HashSet<string> FailingBodySegments { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, string> BodyOverrides { get; } = new(StringComparer.Ordinal);
     public List<string> StattedSegments { get; } = [];
+    public List<string> BodyRequestedSegments { get; } = [];
     public NntpResponse AuthenticationResponse { get; set; } = new()
     {
         ResponseCode = 281,
@@ -35,18 +43,21 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
         {
             if (StatDelay > TimeSpan.Zero)
                 await Task.Delay(StatDelay, cancellationToken);
-        lock (StattedSegments)
-        {
-            StattedSegments.Add(segmentId);
-        }
+            lock (StattedSegments)
+            {
+                StattedSegments.Add(segmentId);
+            }
 
-        var exists = ExistingSegments.Contains(segmentId);
-        return new NntpStatResponse
-        {
-            ResponseCode = exists ? 223 : 430,
-            ResponseMessage = exists ? "223 exists" : "430 no such article",
-            ArticleExists = exists,
-        };
+            if (FailingSegments.Contains(segmentId))
+                throw new IOException("simulated STAT failure");
+
+            var exists = ExistingSegments.Contains(segmentId);
+            return new NntpStatResponse
+            {
+                ResponseCode = exists ? 223 : 430,
+                ResponseMessage = exists ? "223 exists" : "430 no such article",
+                ArticleExists = exists,
+            };
         }
         finally
         {
@@ -69,11 +80,34 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
         => throw new NotSupportedException();
 
     public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(SegmentId segmentId, CancellationToken cancellationToken)
-        => throw new NotSupportedException();
+        => DecodedBodyAsync(segmentId, onConnectionReadyAgain: null, cancellationToken);
 
     public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
         SegmentId segmentId, Action<ArticleBodyResult>? onConnectionReadyAgain, CancellationToken cancellationToken)
-        => throw new NotSupportedException();
+    {
+        lock (BodyRequestedSegments)
+        {
+            BodyRequestedSegments.Add(segmentId);
+        }
+        if (MissingBodySegments.Contains(segmentId))
+            throw new UsenetArticleNotFoundException(segmentId);
+        if (FailingBodySegments.Contains(segmentId))
+            throw new IOException("simulated BODY failure");
+        if (!ExistingSegments.Contains(segmentId))
+            throw new UsenetArticleNotFoundException(segmentId);
+
+        onConnectionReadyAgain?.Invoke(ArticleBodyResult.Retrieved);
+        var encodedBody = BodyOverrides.TryGetValue(segmentId, out var body)
+            ? body
+            : YencTestEncoder.Encode(System.Text.Encoding.ASCII.GetBytes($"body:{segmentId}"), "body.bin");
+        return Task.FromResult(new NntpDecodedBodyResponse
+        {
+            SegmentId = segmentId,
+            ResponseCode = 222,
+            ResponseMessage = "222 body follows",
+            Stream = new YencStream(new MemoryStream(System.Text.Encoding.Latin1.GetBytes(encodedBody))),
+        });
+    }
 
     public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(SegmentId segmentId, CancellationToken cancellationToken)
         => throw new NotSupportedException();

@@ -89,6 +89,10 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // Playback-event bridge (subscribes to ISessionManager on startup).
         serviceCollection.AddHostedService<PlaybackEventEntryPoint>();
 
+        // Bounded repair-status observer: polls token-bound Core repair status for actively
+        // played Streamarr sessions and surfaces deduplicated DisplayMessage transitions.
+        serviceCollection.AddHostedService<RepairStatusObserver>();
+
         // Ensures the visible "Streamarr" library placement at startup (Continue Watching /
         // Next Up / Favorites integration).
         serviceCollection.AddHostedService<LibraryIntegrationEntryPoint>();

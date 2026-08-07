@@ -125,6 +125,14 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool SwiftfinCompatibilityEnabled { get; set; } = true;
 
     /// <summary>
+    /// Best-effort repair notifications: while a Core PAR2 repair stalls an active playback
+    /// session, clients that support DisplayMessage get deduplicated status transitions
+    /// ("source damaged — repairing", "repair complete"). Purely observational — errors or
+    /// unsupported clients never affect playback. On by default.
+    /// </summary>
+    public bool RepairNotificationsEnabled { get; set; } = true;
+
+    /// <summary>
     /// Optional Core Server quality-profile id to pass through on searches. Empty = use
     /// the server's default profile.
     /// </summary>

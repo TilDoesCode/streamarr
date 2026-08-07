@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, CircleUserRound, Clock3, History, MonitorPlay, Search, Square } from "lucide-react";
-import { useCachedReleases, useStreamingHistory } from "@/api/queries";
-import type { StreamingHistoryResponse } from "@/api/types";
+import { Link } from "@tanstack/react-router";
+import { ArrowUpRight, CheckCircle2, CircleUserRound, Clock3, History, MonitorPlay, Search, Square, Terminal } from "lucide-react";
+import { useCachedReleases, useStreamingHistory, useStreamRecords } from "@/api/queries";
+import type { StreamingHistoryResponse, StreamRecordSummaryResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
 import { EmptyOpsState, OpsHero, OpsMetric, OpsMetrics } from "@/components/ops-page";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatTicks, timeAgo } from "@/lib/utils";
 
@@ -27,6 +29,10 @@ interface PlaybackVisit {
 export function StreamingHistoryPage() {
   const history = useStreamingHistory();
   const library = useCachedReleases();
+  // Correlates each playback visit back to its internal stream-console record (BRIEF §11), so
+  // "user X reported an error" can jump straight from the playback event to the full resolve +
+  // repair + session diagnostic log for that release, not just Jellyfin's own start/stop trail.
+  const streamRecords = useStreamRecords(50);
   const [filter, setFilter] = useState("");
   const [state, setState] = useState("all");
   const titleByRelease = useMemo(
@@ -35,6 +41,14 @@ export function StreamingHistoryPage() {
     )),
     [library.data],
   );
+  const streamByRelease = useMemo(() => {
+    const map = new Map<string, StreamRecordSummaryResponse>();
+    // Newest first (server order) — keep only the most recent retained stream per release.
+    for (const record of streamRecords.data ?? []) {
+      if (record.releaseId && !map.has(record.releaseId)) map.set(record.releaseId, record);
+    }
+    return map;
+  }, [streamRecords.data]);
   const visits = useMemo(
     () => aggregate(history.data ?? [], titleByRelease),
     [history.data, titleByRelease],
@@ -88,14 +102,16 @@ export function StreamingHistoryPage() {
         <EmptyOpsState icon={<History className="size-5" />} title="No playback history yet" description="Start a Streamarr item in Jellyfin. Core will record the Jellyfin user and device alongside start, progress, and stop events." />
       ) : (
         <div className="relative space-y-3 before:absolute before:bottom-10 before:left-[1.95rem] before:top-10 before:w-px before:bg-border sm:before:left-[2.45rem]">
-          {visible.map((visit) => <HistoryRow key={visit.key} visit={visit} />)}
+          {visible.map((visit) => (
+            <HistoryRow key={visit.key} visit={visit} streamRecord={streamByRelease.get(visit.releaseId)} />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function HistoryRow({ visit }: { visit: PlaybackVisit }) {
+function HistoryRow({ visit, streamRecord }: { visit: PlaybackVisit; streamRecord?: StreamRecordSummaryResponse }) {
   const stopped = visit.state === "stop";
   const initial = (visit.userName || "?").trim().charAt(0).toUpperCase();
   return (
@@ -125,6 +141,15 @@ function HistoryRow({ visit }: { visit: PlaybackVisit }) {
           <p className="mt-1 text-lg font-semibold tabular-nums">{formatTicks(visit.positionTicks)}</p>
         </div>
         <p className="flex items-center gap-1 text-[11px] text-muted-foreground"><CheckCircle2 className="size-3.5" />{visit.eventCount} events</p>
+        {streamRecord && (
+          <Button asChild size="sm" variant="outline" className="gap-1.5">
+            <Link to="/sessions/$sessionToken" params={{ sessionToken: streamRecord.token ?? "" }}>
+              <Terminal className="size-3.5" />
+              Stream console
+              <ArrowUpRight className="size-3" />
+            </Link>
+          </Button>
+        )}
       </div>
     </article>
   );

@@ -77,15 +77,20 @@ docker run --init --read-only --cap-drop ALL --security-opt no-new-privileges \
   streamarr
 ```
 
-The image stores SQLite at `/app/data/streamarr.db`, persists Data Protection keys at
-`/app/keys`, and runs as the unprivileged `app` user. Back up both volumes together.
+The image stores SQLite at `/app/data/streamarr.db`, the persistent NZB cache under
+`/app/data/nzb`, and the repair workspace/artifact cache under `/app/data/repair`.
+Data Protection keys persist at `/app/keys`, and the image runs as the unprivileged
+`app` user. Back up the database and `/app/keys` together so protected data remains
+decryptable. The NZB and repair directories are reconstructible caches and can be
+excluded from space-conscious backups.
 
 The application port is intentionally HTTP-only inside the container. A production
 installation **must** terminate HTTPS at a trusted reverse proxy/VPN ingress and proxy
 to this loopback/private port. Do not change the example to `-p 8080:8080` on an
-internet-facing host. Configure the proxy to redact `/api/v1/stream/*` paths and all
-query strings from access logs, and limit request/body sizes at the edge as a second
-layer of defense.
+internet-facing host. Configure the proxy to redact capability- or admission-bearing
+paths (`/api/v1/stream/*`, `/api/v1/sessions/*`, `/api/v1/playback-sessions/*`, and
+`/api/v1/ephemeral-files/*`) and all query strings from access logs. Limit request/body
+sizes at the edge as a second layer of defense.
 
 For example, a Caddy instance on the same host can terminate TLS automatically:
 
@@ -96,8 +101,8 @@ streamarr.example.com {
 }
 ```
 
-Keep proxy access logging disabled for stream paths unless its configuration can
-reliably redact the capability token.
+Keep proxy access logging disabled for capability and admission paths unless its
+configuration can reliably redact their tokens and identifiers.
 
 Loopback reverse proxies are trusted automatically. If the proxy reaches Kestrel from
 another container or host, add only its exact source address through
@@ -350,8 +355,67 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | Key | Default | Meaning |
 |---|---|---|
 | `SampleCount` | `24` | Max segments STAT'ed per release (evenly spread, incl. first/last). |
-| `Concurrency` | `8` | Concurrent STAT probes. |
-| `DeadMissingRatio` | `0.5` | Missing-sample ratio at/above which a release is `dead` (below → `degraded`). |
+| `StartupSampleCount` | `64` | Contiguous media segments verified through decoded `BODY` reads and cached from the beginning, in addition to the spread `STAT` sample. |
+| `StartupBodyConcurrency` | `4` | Maximum startup `BODY` transfers running ahead; bounded separately so a dead release cannot occupy the whole connection budget while fallback starts. |
+| `Concurrency` | `20` | Concurrent STAT probes. |
+| `DeadMissingRatio` | `0.5` | Indeterminate spread-`STAT` ratio at/above which a release is `dead`; any missing article or failed startup `BODY` chain is immediately `dead`. |
+
+### `Repair` (PAR2 repair pipeline)
+
+When a needed article is definitively gone (BODY 430 after full provider failover) and no
+healthy sibling release exists, the Core repairs the *raw* source/RAR bytes from the
+release's PAR2 set and serves a verified local artifact — the open HTTP stream waits at
+the hole and continues at the same offset instead of ending in a silent EOF. Healthy
+streams never touch this pipeline (no PAR2 index download, no workspace I/O).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Enabled` | `true` | Master switch for the repair pipeline. |
+| `Policy` | `WhenNoFallback` | `WhenNoFallback`: a healthy sibling release still wins before playback; repair engages only when no healthy way out exists. `PreferRepair`: the originally chosen release is repaired instead of falling back. Mid-stream there is never a release switch — the same release is repaired. |
+| `ProgressiveEnabled` | `false` | Allows resolve to admit a *progressive* session on an origin-dead release when the damage sits far behind an intact prefix; reads that reach the hole wait on the shared job. |
+| `ProgressiveMinIntactPrefixBytes` | `32 MiB` | Conservative eligibility floor for progressive admission. |
+| `MaxConcurrentJobs` | `1` | Repair jobs running at once; more jobs queue. |
+| `MaxConnections` | `4` | NNTP connections a job may use. Repair traffic flows through the same global `ConnectionBudget`/failover path as playback, at low priority. |
+| `WorkspacePath` | *(content root)*`/cache/repair` | Private workspace + artifact cache root (0700, symlink-rejecting, traversal-checked). The official container overrides this to the persistent `/app/data/repair` volume. |
+| `CacheBudgetBytes` | `20 GiB` | Artifact-cache byte budget (LRU beyond it; pinned/most-recent artifacts are never evicted). |
+| `MaxArtifactBytes` | `8 GiB` | A recovery set larger than this is classified `limitsExceeded`. |
+| `MinFreeDiskBytes` | `5 GiB` | Required free disk headroom before a job materializes sources. |
+| `JobTimeoutSeconds` | `3600` | Hard wall-clock budget per job. |
+| `WaitAtHoleTimeoutSeconds` | `90` | How long an open read waits at a hole before the request fails; the job continues in the background and a client retry serves the finished artifact. |
+| `ArtifactTtlSeconds` | `604800` | Idle artifact TTL (sweeper). Eviction never makes the origin look healthy again. |
+| `FailureBackoffSeconds` | `900` | Automatic-retry backoff after a failed job (manual admin start bypasses it). |
+| `MaxJobEvents` / `MaxFinishedJobs` | `128` / `64` | Bounded per-job event log / finished-job history for the admin UI. |
+| `MaxPar2PacketBytes`, `MaxPar2SliceBytes`, `MaxPar2Files`, `MaxPar2IndexBytes` | `256 MiB`, `128 MiB`, `256`, `64 MiB` | Parser safety limits — oversized or malformed PAR2 input fails the job instead of allocating unbounded memory. |
+
+Reconstruction also has fixed fail-closed bounds: at most 256 damaged slices, 512 MiB
+estimated working memory, 100 million matrix operations, and 50 billion total word
+operations. These are defense-in-depth implementation limits rather than tuning knobs;
+exceeding one produces `limitsExceeded` without publishing an artifact.
+
+Operational notes for live debugging:
+
+- **Repairs page** in the Management UI: per-job state, disposition, damaged/recovery
+  block counts, source/parity bytes, waiters, ETA and the redacted event log; artifacts
+  with size, age and pin count; admin cancel.
+- `GET /api/v1/metrics` → `repairs` counters (attempts, success, failure by disposition,
+  cache hits, wait-at-hole started/resumed/seconds, artifact bytes, evictions).
+- Structured logs use release ids and failure types only — never message-ids, tokens,
+  passwords or workspace paths.
+- A locally repaired release keeps `originHealth=dead` while its artifact is cached;
+  this field records the upstream evidence that triggered repair, while `playability`
+  turns `repairedReady`. The health-cache TTL governs fresh upstream ranking checks; it
+  does not relabel a cached artifact. After artifact eviction the next resolve
+  re-evaluates from scratch — no stale "ready".
+
+Troubleshooting:
+
+| Symptom | Meaning / action |
+|---|---|
+| Job ends `insufficientParity` | More source blocks are damaged than intact recovery slices exist. The release keeps the classic dead/fallback behavior. Nothing to fix locally. |
+| Job ends `unsupported` | No compatible PAR2 set, invalid/unretrievable bounded index candidates, a media file not covered by the set, or the reconstructed media projection failed structural/ffprobe verification. Seek-heavy media inside RAR may fail the bounded pipe probe; the artifact is not published and legacy fallback remains intact. |
+| Job ends `limitsExceeded` | Artifact, free-disk, recovery-workspace, time, or bounded PAR2 set-discovery budget hit — check `MaxArtifactBytes`, `MinFreeDiskBytes`, `JobTimeoutSeconds`, free disk, and whether the NZB contains many unrelated PAR2 sets. Ordinary volumes from one filename stem are grouped and do not consume independent discovery attempts. |
+| Player stalls ~`WaitAtHoleTimeoutSeconds` then errors | The repair outlasted the client tolerance. The job keeps running; pressing play again serves the finished artifact (`playability=repairedReady`). |
+| Repeated attempts blocked | `FailureBackoffSeconds` is active for that fingerprint; a manual `POST /api/v1/repairs` bypasses it. |
 
 ---
 

@@ -196,20 +196,52 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
     // ---------------------------------------------------------------- health classification
 
     [Fact]
-    public async Task Resolve_ReleaseWithMissingArticle_IsDegraded_ButStreamable()
+    public async Task Resolve_ReleaseWithOneConfirmedMissingMediaArticle_IsDead()
     {
         using var client = fixture.CreateClient();
-        var resolved = await ResolveAsync(client, StreamarrServerFixture.DegradedReleaseId);
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/resolve",
+            new ResolveRequest
+            {
+                ReleaseId = StreamarrServerFixture.SingleHoleReleaseId,
+                Client = "tests",
+                AutoFallback = false,
+            });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var resolved = (await response.Content.ReadFromJsonAsync<ResolveResponse>())!;
 
-        Assert.Equal("degraded", resolved.Status);
+        Assert.Equal("dead", resolved.Status);
+        Assert.Null(resolved.StreamUrl);
+        Assert.Empty(resolved.MediaStreams);
+    }
+
+    [Fact]
+    public async Task Resolve_StatPresentButStartupBodyMissing_AutoFallsBack()
+    {
+        using var client = fixture.CreateClient();
+
+        var resolved = await ResolveAsync(client, StreamarrServerFixture.SingleHoleReleaseId);
+
+        Assert.Equal("ready", resolved.Status);
+        Assert.Equal(StreamarrServerFixture.SingleHoleFallbackReleaseId, resolved.ReleaseId);
+        Assert.Equal(StreamarrServerFixture.SingleHoleReleaseId, resolved.FallbackFromReleaseId);
         Assert.NotNull(resolved.StreamUrl);
+        Assert.Collection(
+            resolved.Attempts,
+            attempt =>
+            {
+                Assert.Equal(StreamarrServerFixture.SingleHoleReleaseId, attempt.ReleaseId);
+                Assert.Equal("dead", attempt.Status);
+            },
+            attempt =>
+            {
+                Assert.Equal(StreamarrServerFixture.SingleHoleFallbackReleaseId, attempt.ReleaseId);
+                Assert.Equal("ready", attempt.Status);
+            });
 
-        // the intact head of the file still streams
-        using var request = new HttpRequestMessage(HttpMethod.Get, resolved.StreamUrl);
-        request.Headers.Range = new RangeHeaderValue(0, 1023);
-        using var response = await client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.PartialContent, response.StatusCode);
-        Assert.Equal(fixture.Video[..1024], await response.Content.ReadAsByteArrayAsync());
+        using var streamResponse = await client.GetAsync(resolved.StreamUrl);
+        Assert.Equal(HttpStatusCode.OK, streamResponse.StatusCode);
+        Assert.Equal(fixture.Video, await streamResponse.Content.ReadAsByteArrayAsync());
     }
 
     [Fact]
@@ -261,6 +293,31 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
         var attempt = Assert.Single(resolved.Attempts);
         Assert.Equal(StreamarrServerFixture.DeadOnlyReleaseId, attempt.ReleaseId);
         Assert.Equal("dead", attempt.Status);
+    }
+
+    [Fact]
+    public async Task Resolve_ArticleMissingDuringFfprobe_MarksDeadAndAutoFallsBack()
+    {
+        using var client = fixture.CreateClient();
+
+        var resolved = await ResolveAsync(client, StreamarrServerFixture.ProbeHoleReleaseId);
+
+        Assert.Equal("ready", resolved.Status);
+        Assert.Equal(StreamarrServerFixture.ProbeHoleFallbackReleaseId, resolved.ReleaseId);
+        Assert.Equal(StreamarrServerFixture.ProbeHoleReleaseId, resolved.FallbackFromReleaseId);
+        Assert.NotNull(resolved.StreamUrl);
+        Assert.Collection(
+            resolved.Attempts,
+            attempt =>
+            {
+                Assert.Equal(StreamarrServerFixture.ProbeHoleReleaseId, attempt.ReleaseId);
+                Assert.Equal("dead", attempt.Status);
+            },
+            attempt =>
+            {
+                Assert.Equal(StreamarrServerFixture.ProbeHoleFallbackReleaseId, attempt.ReleaseId);
+                Assert.Equal("ready", attempt.Status);
+            });
     }
 
     // ---------------------------------------------------------------- sessions

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -114,6 +115,26 @@ public sealed class SpaServingTests : IAsyncLifetime
         var res = await client.GetAsync("/openapi/v1.json");
         res.EnsureSuccessStatusCode();
         Assert.Contains("openapi", await res.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Openapi_security_matches_endpoint_authorization()
+    {
+        using var client = Client();
+        using var spec = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
+        var root = spec.RootElement;
+        var paths = root.GetProperty("paths");
+
+        Assert.False(root.TryGetProperty("security", out _));
+        Assert.False(paths.GetProperty("/api/v1/auth/login").GetProperty("post").TryGetProperty("security", out _));
+        Assert.False(paths.GetProperty("/api/v1/sessions/{token}/close").GetProperty("post").TryGetProperty("security", out _));
+        Assert.False(paths.GetProperty("/api/v1/sessions/{token}/repair").GetProperty("get").TryGetProperty("security", out _));
+
+        var security = paths.GetProperty("/api/v1/playback-sessions")
+            .GetProperty("post")
+            .GetProperty("security");
+        Assert.Equal(JsonValueKind.Array, security.ValueKind);
+        Assert.True(security[0].TryGetProperty("bearer", out _));
     }
 
     public async Task DisposeAsync()

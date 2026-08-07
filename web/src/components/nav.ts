@@ -8,6 +8,7 @@ import {
   Radio,
   Archive,
   TimerReset,
+  Wrench,
   History,
   Settings,
   type LucideIcon,
@@ -31,6 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/sessions", label: "Sessions", icon: Radio },
   { to: "/library", label: "Cached Library", icon: Archive },
   { to: "/ephemeral", label: "Ephemeral Files", icon: TimerReset },
+  { to: "/repairs", label: "Repairs", icon: Wrench },
   { to: "/history", label: "Streaming History", icon: History },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

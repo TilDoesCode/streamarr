@@ -79,7 +79,8 @@ docker compose logs --tail=100 streamarr
 Wait until `docker compose ps` reports `healthy`, then open
 `http://<configured-address>:8080`. The Core container includes the API and Management
 UI, runs as a non-root user with no Linux capabilities and a read-only root filesystem,
-and persists only its SQLite database and Data Protection key ring in named volumes.
+and persists its SQLite database, NZB cache, verified PAR2 repair artifacts, and Data
+Protection key ring in named volumes.
 
 For a reverse proxy on the same host, proxy HTTPS to `127.0.0.1:8080`. If the proxy is
 in another container or on another machine, set `STREAMARR_TRUSTED_PROXY` to its exact
@@ -283,6 +284,7 @@ server/     ASP.NET Core service (.NET 8) — the product
             ├── parsing/     release-name parser + test corpus
             ├── ranking/     quality profiles, scoring, rejection rules
             ├── usenet/      embedded nzbdav core: NNTP pool, yEnc, RAR random access
+            ├── repair/      bounded PAR2 recovery, verified artifacts, live-hole resume
             ├── sessions/    resolve → session → stream lifecycle
             └── api/         /api/v1 + OpenAPI
 
@@ -435,7 +437,8 @@ with ffmpeg so the bundled Chromium can decode it. `web` (build + typecheck + Vi
 **Shipped in M5 (Jellyfin playback thin-slice):** the `plugin/` Jellyfin plugin, built
 from the official template shape against **Jellyfin 10.11.11** (`Jellyfin.Controller`
 pinned; ABI recorded in `docs/jellyfin-compatibility.md`). A deliberately **minimal
-config page** (server URL, API key, TTL, interception toggle, profile id, pinned query)
+config page** (server URL, API key, TTL, interception and repair-notification toggles,
+profile id, pinned query)
 with **Test connection** (anonymous shallow `/api/v1/health` plus authenticated
 `/api/v1/caps`) and **Materialize pinned work** buttons; an
 `IPluginServiceRegistrator` wiring a typed `HttpClient` over the Core Server API; the M5
@@ -446,9 +449,11 @@ metadata passed through) via a "sync one pinned work" scheduled task / config bu
 an opaque, bounded, replay-safe `OpenToken` tied to the authenticated Jellyfin user, item,
 work, and offered release; idle offers expire after ten minutes, while active playback holds
 the lease and starts that replay window on final close; no Usenet contact) whose `OpenMediaSource`
-validates that offer and calls `POST /resolve` → capability HTTP `Path` + pre-probed
-`MediaStreams`/`RunTimeTicks` + low `AnalyzeDurationMs`, accepting only a server fallback
-within the same offered work; no reusable credential or `RequiredHttpHeaders` is added
+validates that offer, performs bounded two-phase admission, claims only a validated
+terminal result, and abandons cancellation/failure paths (with direct `/resolve` fallback
+for older Core versions) → capability HTTP `Path` + pre-probed `MediaStreams`/
+`RunTimeTicks` + low `AnalyzeDurationMs`, accepting only a server fallback within the
+same offered work; no reusable credential or `RequiredHttpHeaders` is added
 to the media source. `ILiveStream.Close` releases plugin-side attribution while Core retains the
 file under its configurable decoded-size LRU budget and hard maximum age; playback
 `start`/`progress`/`stop` is reported to `POST /api/v1/events` as telemetry only. **Zero domain logic —

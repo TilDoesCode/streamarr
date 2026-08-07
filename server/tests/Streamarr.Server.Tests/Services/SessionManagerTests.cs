@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Streamarr.Core.Media;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
+using Streamarr.Usenet.Exceptions;
 
 namespace Streamarr.Server.Tests.Services;
 
@@ -11,7 +13,9 @@ public class SessionManagerTests
     private static SessionManager Manager(
         int ttlSeconds = 300,
         int cacheSizeMb = 102_400,
-        TimeProvider? time = null) => new(
+        TimeProvider? time = null,
+        IReleaseHealthCache? healthCache = null,
+        IStreamHistoryRecorder? historyRecorder = null) => new(
         new FakeNntpClient(),
         Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
         {
@@ -20,7 +24,9 @@ public class SessionManagerTests
             MaxSessions = 200,
         }),
         NullLogger<SessionManager>.Instance,
-        time: time);
+        time: time,
+        healthCache: healthCache,
+        historyRecorder: historyRecorder);
 
     private static ResolvedMediaFile MediaFile(long? sizeBytes = null) => new()
     {
@@ -133,6 +139,51 @@ public class SessionManagerTests
         Assert.Equal(Payload, ms.ToArray());
         Assert.Equal(Payload.Length, session.BytesServed);
         Assert.Equal(Payload.Length, session.Session.BytesServed);
+    }
+
+    [Fact]
+    public async Task MissingArticleDuringStreaming_MarksReleaseDeadAndInvalidatesSession()
+    {
+        var healthCache = new ReleaseHealthCache(TimeSpan.FromMinutes(5));
+        var manager = Manager(healthCache: healthCache);
+        var media = MediaFile() with
+        {
+            OpenStream = _ => new MissingArticleStream(),
+        };
+        var session = manager.GetOrCreateOpeningSession(
+            "rel-missing", "work-1", media, "ready", "jellyfin", "user-1").Session;
+        var parallelOpening = manager.GetOrCreateOpeningSession(
+            "rel-missing", "work-1", media, "ready", "jellyfin", "user-2").Session;
+
+        await using var stream = manager.OpenStream(session);
+        await Assert.ThrowsAsync<UsenetArticleNotFoundException>(
+            () => stream.ReadAsync(new byte[16].AsMemory()).AsTask());
+
+        Assert.True(healthCache.IsDead("rel-missing"));
+        Assert.False(manager.TryGetSession(session.Token, out _));
+        Assert.False(manager.TryGetSession(parallelOpening.Token, out _));
+        Assert.Throws<SessionUnavailableException>(() => manager.GetOrCreateOpeningSession(
+            "rel-missing", "work-1", media, "ready", "jellyfin", "user-3"));
+    }
+
+    [Fact]
+    public async Task WrappedYencCorruptionDuringStreaming_MarksReleaseDeadAndInvalidatesSession()
+    {
+        var healthCache = new ReleaseHealthCache(TimeSpan.FromMinutes(5));
+        var manager = Manager(healthCache: healthCache);
+        var media = MediaFile() with
+        {
+            OpenStream = _ => new WrappedYencCorruptionStream(),
+        };
+        var session = manager.GetOrCreateOpeningSession(
+            "rel-corrupt", "work-1", media, "ready", "jellyfin", "user-1").Session;
+
+        await using var stream = manager.OpenStream(session);
+        await Assert.ThrowsAsync<IOException>(
+            () => stream.ReadAsync(new byte[16].AsMemory()).AsTask());
+
+        Assert.True(healthCache.IsDead("rel-corrupt"));
+        Assert.False(manager.TryGetSession(session.Token, out _));
     }
 
     [Fact]
@@ -355,6 +406,105 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public void GetOrCreateOpeningSession_AttachesStreamAttemptIdAndPropagatesToSession()
+    {
+        var history = new FakeStreamHistoryRecorder();
+        var manager = Manager(historyRecorder: history);
+        var attemptId = history.BeginAttempt(new StreamAttemptBegin { ReleaseId = "rel-1" });
+
+        var admission = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", "user-1",
+            streamAttemptId: attemptId);
+
+        Assert.True(admission.Created);
+        Assert.Equal(attemptId, admission.Session.StreamAttemptId);
+        Assert.Equal(admission.Session.Token, history.AttachedTokens[attemptId]);
+    }
+
+    [Fact]
+    public void GetOrCreateOpeningSession_Reuse_FinalizesTheReusingAttemptAsReused()
+    {
+        var history = new FakeStreamHistoryRecorder();
+        var manager = Manager(historyRecorder: history);
+        var firstAttempt = history.BeginAttempt(new StreamAttemptBegin { ReleaseId = "rel-1" });
+        var first = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", "user-1",
+            streamAttemptId: firstAttempt);
+
+        var secondAttempt = history.BeginAttempt(new StreamAttemptBegin { ReleaseId = "rel-1" });
+        var second = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "jellyfin", "user-1",
+            streamAttemptId: secondAttempt);
+
+        Assert.True(first.Created);
+        Assert.False(second.Created);
+        Assert.Same(first.Session, second.Session);
+        Assert.Contains(history.Finalized, f => f.AttemptId == secondAttempt && f.Finalize.FinalState == "reused");
+        Assert.DoesNotContain(history.Finalized, f => f.AttemptId == firstAttempt);
+    }
+
+    [Fact]
+    public void CloseSession_FinalizesHistoryRow()
+    {
+        var history = new FakeStreamHistoryRecorder();
+        var manager = Manager(historyRecorder: history);
+        var attemptId = history.BeginAttempt(new StreamAttemptBegin { ReleaseId = "rel-1" });
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null, streamAttemptId: attemptId);
+
+        Assert.True(manager.CloseSession(session.Token));
+
+        Assert.Contains(history.Finalized, f => f.AttemptId == attemptId && f.Finalize.FinalState == "closed");
+    }
+
+    [Fact]
+    public void PurgeSession_FinalizesHistoryRow()
+    {
+        var history = new FakeStreamHistoryRecorder();
+        var manager = Manager(historyRecorder: history);
+        var attemptId = history.BeginAttempt(new StreamAttemptBegin { ReleaseId = "rel-1" });
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null, streamAttemptId: attemptId);
+
+        Assert.Equal(PurgeOutcome.Purged, manager.PurgeSession(session.Token));
+
+        Assert.Contains(history.Finalized, f => f.AttemptId == attemptId && f.Finalize.FinalState == "purged");
+    }
+
+    [Fact]
+    public void SweepExpired_FinalizesHistoryRow()
+    {
+        var history = new FakeStreamHistoryRecorder();
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time, historyRecorder: history);
+        var attemptId = history.BeginAttempt(new StreamAttemptBegin { ReleaseId = "rel-1" });
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null, streamAttemptId: attemptId);
+
+        time.Advance(TimeSpan.FromSeconds(61));
+        Assert.Equal(1, manager.SweepExpired());
+
+        Assert.Contains(history.Finalized, f => f.AttemptId == attemptId && f.Finalize.FinalState == "expired");
+    }
+
+    [Fact]
+    public void EvictLeastRecentlyUsed_FinalizesHistoryRow()
+    {
+        var history = new FakeStreamHistoryRecorder();
+        var manager = new SessionManager(
+            new FakeNntpClient(),
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
+            {
+                SessionTtlSeconds = 300,
+                MaxSessions = 1,
+            }),
+            NullLogger<SessionManager>.Instance,
+            historyRecorder: history);
+        var attemptId = history.BeginAttempt(new StreamAttemptBegin { ReleaseId = "one" });
+        manager.CreateSession("one", "work", MediaFile(), null, streamAttemptId: attemptId);
+        manager.CreateSession("two", "work", MediaFile(), null);
+
+        Assert.Contains(history.Finalized, f => f.AttemptId == attemptId && f.Finalize.FinalState == "evicted");
+    }
+
+    [Fact]
     public void SessionLimit_EvictsLruInsteadOfRejectingNewFile()
     {
         var manager = new SessionManager(
@@ -376,6 +526,39 @@ public class SessionManagerTests
     {
         public override ValueTask DisposeAsync()
             => ValueTask.FromException(new IOException("simulated dispose failure"));
+    }
+
+    private sealed class MissingArticleStream : MemoryStream
+    {
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromException<int>(new UsenetArticleNotFoundException("missing@test"));
+    }
+
+    private sealed class WrappedYencCorruptionStream : MemoryStream
+    {
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromException<int>(new IOException(
+                "The decoded article is corrupt.",
+                new YencCrcMismatchException("CRC mismatch.")));
+    }
+
+    /// <summary>Synchronous, in-memory double of the real channel-backed recorder — no
+    /// background consumer or SQLite needed to assert what SessionManager sent it.</summary>
+    private sealed class FakeStreamHistoryRecorder : IStreamHistoryRecorder
+    {
+        private int _count;
+        public Dictionary<string, string> AttachedTokens { get; } = new(StringComparer.Ordinal);
+        public List<(string? AttemptId, IReadOnlyList<StreamEventWrite> Events)> Appended { get; } = [];
+        public List<(string? AttemptId, StreamRecordFinalize Finalize)> Finalized { get; } = [];
+
+        public string BeginAttempt(StreamAttemptBegin begin) => $"attempt-{Interlocked.Increment(ref _count)}";
+        public void AttachToken(string attemptId, string sessionToken) => AttachedTokens[attemptId] = sessionToken;
+        public void AppendEvents(string? attemptId, IReadOnlyList<StreamEventWrite> events) => Appended.Add((attemptId, events));
+        public void Finalize(string? attemptId, StreamRecordFinalize finalize) => Finalized.Add((attemptId, finalize));
     }
 
     private sealed class ManualTimeProvider : TimeProvider
