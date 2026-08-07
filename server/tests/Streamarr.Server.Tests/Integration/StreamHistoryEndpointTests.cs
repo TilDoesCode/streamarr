@@ -82,8 +82,15 @@ public class StreamHistoryEndpointTests(StreamarrServerFixture fixture)
         // feature exists for. (Not asserting on ttff spans here: once healthCache has this
         // release cached dead — plausible given other tests in this shared collection resolve
         // it too — later resolves take the short-circuit path that never measures a timeline.)
-        var detail = await client.GetFromJsonAsync<StreamRecordResponse>($"/api/v1/streams/{record.Token}");
-        Assert.NotNull(detail);
+        // The repair job's failure event is appended asynchronously and can land after the
+        // record is already visible as "dead" (that Finalize and this AppendEvents are not
+        // causally ordered) — poll for it instead of assuming a single fetch already has it.
+        var detail = await WaitForAsync(async () =>
+        {
+            var body = await client.GetFromJsonAsync<StreamRecordResponse>($"/api/v1/streams/{record.Token}");
+            var hasRepairFailure = body?.Events.Any(e => e.Source == "repair" && e.Detail == "failed: the release carries no PAR2 set") ?? false;
+            return hasRepairFailure ? body : null;
+        });
         Assert.Contains(detail!.Events, e => e.Source == "repair" && e.Detail == "failed: the release carries no PAR2 set");
     }
 

@@ -247,6 +247,20 @@ public sealed class RepairCoordinator(
             _activeByFingerprint[context.Fingerprint] = job;
             RegisterReleaseFingerprint(releaseId, context.Fingerprint);
             metrics?.RepairAttempted();
+
+            // Known synchronously from the NZB analysis already done above (no I/O left to
+            // do) — fail inline instead of via the backgrounded pipeline. RunJobSafelyAsync
+            // deliberately yields before its first state transition, so a caller reading
+            // this job's Events right after admission (ResolveService copies them into the
+            // stream's permanent history) would otherwise race the background task and
+            // almost always observe an empty log instead of this failure.
+            if (context.Par2 is null)
+            {
+                job.Fail(RepairDisposition.Unsupported, "the release carries no PAR2 set");
+                FinishJob(job);
+                return new RepairJobHandle(job);
+            }
+
             _ = RunJobSafelyAsync(job);
             return new RepairJobHandle(job);
         }
