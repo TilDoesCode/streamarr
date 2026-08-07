@@ -9,3 +9,13 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(^|/)server/tests/Streamarr\.Server\.Tests/Integration/ConfigApiTests\.cs$''']
 regexes = ['''tmdbApiKey\s*=\s*"tmdb-secret-123"''']
+
+[[allowlists]]
+description = "Known non-secret local diagnostic-harness credentials (RepairDiag)"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)server/tools/streamdiag/RepairDiag\.cs$''']
+regexes = [
+    '''ApiKey\s*=\s*"diag-api-key-0123456789abcdef0123456789abcdef"''',
+    '''AdminPassword\s*=\s*"diag-admin-password-0123456789"''',
+]
