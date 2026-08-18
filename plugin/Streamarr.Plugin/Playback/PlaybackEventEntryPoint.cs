@@ -72,6 +72,8 @@ public sealed class PlaybackEventEntryPoint(
             WorkId = attribution?.WorkId ?? entry?.Work.WorkId,
             Event = kind,
             PositionTicks = e.PlaybackPositionTicks,
+            DurationTicks = item.RunTimeTicks,
+            SessionToken = attribution?.SessionToken,
             Source = "jellyfin",
             PlaybackSessionId = e.PlaySessionId,
             ExternalUserId = e.Session?.UserId == Guid.Empty ? null : e.Session?.UserId.ToString("D"),

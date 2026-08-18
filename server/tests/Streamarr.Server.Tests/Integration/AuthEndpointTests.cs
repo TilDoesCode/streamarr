@@ -29,10 +29,12 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
         ["GET", "/api/v1/caps"],
         ["POST", "/api/v1/events"],
         ["GET", "/api/v1/sessions"],
+        ["GET", "/api/v1/pre-downloads"],
         ["POST", "/api/v1/debug/search"],
         ["GET", "/api/v1/config/indexers"],
         ["GET", "/api/v1/config/providers"],
         ["GET", "/api/v1/config/general"],
+        ["GET", "/api/v1/config/pre-download"],
         ["GET", "/api/v1/config/notifications"],
         ["GET", "/api/v1/config/profiles"],
         ["GET", "/api/v1/config/apikeys"],
@@ -77,6 +79,7 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
         // In scope (BRIEF §6.4): caps is reachable.
         Assert.Equal(HttpStatusCode.OK, (await machine.GetAsync("/api/v1/caps")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/sessions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/pre-downloads")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/metrics")).StatusCode);
 
         // Out of scope: /config + /debug are forbidden (authenticated, wrong role → 403).
@@ -94,6 +97,8 @@ public sealed class AuthEndpointTests : IClassFixture<AuthEndpointTests.Factory>
         await admin.AuthenticateAsAdminAsync();
 
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/general")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/pre-download")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/pre-downloads")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/notifications")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/config/apikeys")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/v1/caps")).StatusCode);

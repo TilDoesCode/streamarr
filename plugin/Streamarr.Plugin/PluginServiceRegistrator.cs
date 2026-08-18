@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Bootstrap;
+using Streamarr.Plugin.Downloads;
 using Streamarr.Plugin.Library;
 using Streamarr.Plugin.MediaSources;
 using Streamarr.Plugin.Playback;
@@ -79,8 +80,11 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<EphemeralLibraryService>();
         serviceCollection.AddSingleton<PinnedWorkBootstrapper>();
 
-        // The lazy media-source provider Jellyfin discovers via DI.
-        serviceCollection.AddSingleton<IMediaSourceProvider, StreamarrMediaSourceProvider>();
+        // The lazy media-source provider Jellyfin discovers via DI. Also registered under its
+        // concrete type (same singleton instance) so the download action filter below can
+        // reuse its admission/fallback/tracking logic exactly instead of duplicating it.
+        serviceCollection.AddSingleton<StreamarrMediaSourceProvider>();
+        serviceCollection.AddSingleton<IMediaSourceProvider>(sp => sp.GetRequiredService<StreamarrMediaSourceProvider>());
 
         // Scheduled tasks: the M5 pinned-work bootstrap and the M6 TTL cleanup (BRIEF §8.5).
         serviceCollection.AddSingleton<IScheduledTask, SyncPinnedWorkTask>();
@@ -118,5 +122,13 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // scoped by client + item; every other client keeps its native behavior.
         serviceCollection.Configure<MvcOptions>(options =>
             options.Filters.Add<StreamarrPlaybackCompatibilityFilter>());
+
+        // Client-agnostic file download (docs/jellyfin-compatibility.md): rewrites Jellyfin's
+        // built-in GET /Items/{id}/Download for Streamarr-owned items into a full-speed proxy
+        // of the Core Server's unpaced download capability. Every native/third-party Jellyfin
+        // client that calls the standard download endpoint is covered; every other item's
+        // Download falls through to Jellyfin's own PhysicalFile handler untouched.
+        serviceCollection.Configure<MvcOptions>(options =>
+            options.Filters.Add<StreamarrDownloadActionFilter>());
     }
 }

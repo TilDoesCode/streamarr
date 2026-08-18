@@ -11,6 +11,9 @@ export type ChangePasswordRequest = S["ChangePasswordRequest"];
 
 export type GeneralConfigResponse = S["GeneralConfigResponse"];
 export type GeneralConfigWrite = S["GeneralConfigWrite"];
+export type PreDownloadConfigResponse = S["PreDownloadConfigResponse"];
+export type PreDownloadConfigWrite = S["PreDownloadConfigWrite"];
+export type PreDownloadJobResponse = S["PreDownloadJobResponse"];
 export type NotificationConfigResponse = S["NotificationConfigResponse"];
 export type NotificationConfigWrite = S["NotificationConfigWrite"];
 export type NotificationTestResponse = S["NotificationTestResponse"];
@@ -71,6 +74,10 @@ export type RepairMetrics = S["RepairMetrics"];
 
 export type SessionResponse = S["SessionResponse"];
 export type TtffSpanResponse = S["TtffSpanResponse"];
+export type ArticleMapResponse = S["ArticleMapResponse"];
+export type ArticleTelemetryResponse = S["ArticleTelemetryResponse"];
+export type ArticleProviderAttemptResponse = S["ArticleProviderAttemptResponse"];
+export type ArticleProviderSummaryResponse = S["ArticleProviderSummaryResponse"];
 export type MetricsResponse = S["MetricsResponse"];
 export type CachedReleaseResponse = S["CachedReleaseResponse"];
 export type EphemeralFileResponse = S["EphemeralFileResponse"];
@@ -80,3 +87,7 @@ export type ReachabilityStatus = S["ReachabilityStatus"];
 export type StreamRecordSummaryResponse = S["StreamRecordSummaryResponse"];
 export type StreamRecordResponse = S["StreamRecordResponse"];
 export type StreamEventResponse = S["StreamEventResponse"];
+
+export type LogEntryResponse = S["LogEntryResponse"];
+export type LogSourceStatusResponse = S["LogSourceStatusResponse"];
+export type LogFeedResponse = S["LogFeedResponse"];

@@ -14,7 +14,8 @@ public sealed class WatchEventService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     TimeProvider time,
     IOptions<StreamarrOptions> options,
-    Services.PushoverNotificationService? notifications = null)
+    Services.PushoverNotificationService? notifications = null,
+    Services.PreDownloadCoordinator? preDownloads = null)
 {
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
@@ -44,12 +45,15 @@ public sealed class WatchEventService(
                 if (existing is not null)
                 {
                     existing.PositionTicks = write.PositionTicks ?? 0;
+                    existing.DurationTicks = write.DurationTicks ?? 0;
+                    existing.SessionToken = write.SessionToken ?? string.Empty;
                     existing.ReceivedAt = receivedAt;
                     existing.ExternalUserName = write.ExternalUserName ?? string.Empty;
                     existing.DeviceName = write.DeviceName ?? string.Empty;
                     await db.SaveChangesAsync(ct);
                     await PruneAsync(db, ct);
                     Notify(write);
+                    preDownloads?.Enqueue(write);
                     return existing;
                 }
             }
@@ -60,6 +64,8 @@ public sealed class WatchEventService(
                 WorkId = workId,
                 Event = write.Event,
                 PositionTicks = write.PositionTicks ?? 0,
+                DurationTicks = write.DurationTicks ?? 0,
+                SessionToken = write.SessionToken ?? string.Empty,
                 Source = source,
                 PlaybackSessionId = write.PlaybackSessionId ?? string.Empty,
                 ExternalUserId = write.ExternalUserId ?? string.Empty,
@@ -72,6 +78,7 @@ public sealed class WatchEventService(
 
             await PruneAsync(db, ct);
             Notify(write);
+            preDownloads?.Enqueue(write);
 
             return entity;
         }
@@ -143,6 +150,8 @@ public sealed record WatchEventWrite
     public string? WorkId { get; init; }
     public required string Event { get; init; }
     public long? PositionTicks { get; init; }
+    public long? DurationTicks { get; init; }
+    public string? SessionToken { get; init; }
     public string? Source { get; init; }
     public string? PlaybackSessionId { get; init; }
     public string? ExternalUserId { get; init; }

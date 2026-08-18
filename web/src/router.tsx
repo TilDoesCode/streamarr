@@ -135,6 +135,12 @@ const historyRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/streaming-history"), "StreamingHistoryPage"),
 });
 
+const logsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/logs",
+  component: lazyRouteComponent(() => import("@/pages/logs"), "LogsPage"),
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -151,6 +157,7 @@ const routeTree = rootRoute.addChildren([
     ephemeralRoute,
     repairsRoute,
     historyRoute,
+    logsRoute,
   ]),
 ]);
 

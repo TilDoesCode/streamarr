@@ -15,6 +15,10 @@ public sealed class WatchEventEntity
 
     public long PositionTicks { get; set; }
 
+    public long DurationTicks { get; set; }
+
+    public string SessionToken { get; set; } = string.Empty;
+
     /// <summary>Originating front-end ("jellyfin" | "web" | …).</summary>
     public string Source { get; set; } = string.Empty;
 

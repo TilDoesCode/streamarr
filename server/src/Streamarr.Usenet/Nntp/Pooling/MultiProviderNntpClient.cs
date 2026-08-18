@@ -4,6 +4,7 @@
 // See NOTICE at the repository root. Modified for Streamarr
 // (Serilog -> ILogger; provider priority added to ordering; renamed types).
 
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -56,12 +57,12 @@ public class MultiProviderNntpClient : NntpClientBase
 
     public override Task<NntpStatResponse> StatAsync(SegmentId segmentId, CancellationToken cancellationToken)
     {
-        return RunFromPoolWithBackup(x => x.StatAsync(segmentId, cancellationToken), cancellationToken);
+        return RunFromPoolWithBackup("STAT", x => x.StatAsync(segmentId, cancellationToken), cancellationToken);
     }
 
     public override Task<NntpHeadResponse> HeadAsync(SegmentId segmentId, CancellationToken cancellationToken)
     {
-        return RunFromPoolWithBackup(x => x.HeadAsync(segmentId, cancellationToken), cancellationToken);
+        return RunFromPoolWithBackup("HEAD", x => x.HeadAsync(segmentId, cancellationToken), cancellationToken);
     }
 
     public override Task<NntpDecodedBodyResponse> DecodedBodyAsync
@@ -70,7 +71,7 @@ public class MultiProviderNntpClient : NntpClientBase
         CancellationToken cancellationToken
     )
     {
-        return RunFromPoolWithBackup(x => x.DecodedBodyAsync(segmentId, cancellationToken), cancellationToken);
+        return RunFromPoolWithBackup("BODY", x => x.DecodedBodyAsync(segmentId, cancellationToken), cancellationToken);
     }
 
     public override Task<NntpDecodedArticleResponse> DecodedArticleAsync
@@ -79,12 +80,15 @@ public class MultiProviderNntpClient : NntpClientBase
         CancellationToken cancellationToken
     )
     {
-        return RunFromPoolWithBackup(x => x.DecodedArticleAsync(segmentId, cancellationToken), cancellationToken);
+        return RunFromPoolWithBackup(
+            "ARTICLE",
+            x => x.DecodedArticleAsync(segmentId, cancellationToken),
+            cancellationToken);
     }
 
     public override Task<NntpDateResponse> DateAsync(CancellationToken cancellationToken)
     {
-        return RunFromPoolWithBackup(x => x.DateAsync(cancellationToken), cancellationToken);
+        return RunFromPoolWithBackup("DATE", x => x.DateAsync(cancellationToken), cancellationToken);
     }
 
     public override async Task<NntpDecodedBodyResponse> DecodedBodyAsync
@@ -98,6 +102,7 @@ public class MultiProviderNntpClient : NntpClientBase
         try
         {
             result = await RunFromPoolWithBackup(
+                "BODY",
                 x => x.DecodedBodyAsync(segmentId, OnConnectionReadyAgain, cancellationToken),
                 cancellationToken
             ).ConfigureAwait(false);
@@ -130,6 +135,7 @@ public class MultiProviderNntpClient : NntpClientBase
         try
         {
             result = await RunFromPoolWithBackup(
+                "ARTICLE",
                 x => x.DecodedArticleAsync(segmentId, OnConnectionReadyAgain, cancellationToken),
                 cancellationToken
             ).ConfigureAwait(false);
@@ -153,43 +159,85 @@ public class MultiProviderNntpClient : NntpClientBase
 
     private async Task<T> RunFromPoolWithBackup<T>
     (
+        string operation,
         Func<INntpClient, Task<T>> task,
         CancellationToken cancellationToken
     ) where T : NntpResponse
     {
         ExceptionDispatchInfo? lastException = null;
+        var attempts = new List<NntpProviderAttempt>();
         var orderedProviders = GetOrderedProviders();
-        for (var i = 0; i < orderedProviders.Count; i++)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var provider = orderedProviders[i];
-            var isLastProvider = i == orderedProviders.Count - 1;
-
-            if (lastException is not null)
+            for (var i = 0; i < orderedProviders.Count; i++)
             {
-                _logger.LogDebug(
-                    "Encountered error during NNTP Operation: `{Message}`. Trying another provider.",
-                    lastException.SourceException.Message);
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                var provider = orderedProviders[i];
+                var isLastProvider = i == orderedProviders.Count - 1;
 
-            try
-            {
-                var result = await task.Invoke(provider).ConfigureAwait(false);
+                if (lastException is not null)
+                {
+                    _logger.LogDebug(
+                        "Encountered error during NNTP Operation: `{Message}`. Trying another provider.",
+                        lastException.SourceException.Message);
+                }
 
-                // if no article with that message-id is found, try again with the next provider.
-                if (!isLastProvider && result.ResponseType == NntpResponseType.NoArticleWithThatMessageId)
-                    continue;
+                var stopwatch = Stopwatch.StartNew();
+                try
+                {
+                    var result = await task.Invoke(provider).ConfigureAwait(false);
+                    stopwatch.Stop();
 
-                return result;
-            }
-            catch (Exception e) when (!SingleConnectionNntpClient.IsCancellation(e))
-            {
-                lastException = ExceptionDispatchInfo.Capture(e);
+                    var missing = result.ResponseType == NntpResponseType.NoArticleWithThatMessageId;
+                    var outcome = missing
+                        ? NntpProviderAttemptOutcome.Missing
+                        : result.Success
+                            ? NntpProviderAttemptOutcome.Success
+                            : NntpProviderAttemptOutcome.Rejected;
+                    attempts.Add(new NntpProviderAttempt(
+                        provider.ProviderName,
+                        operation,
+                        outcome,
+                        stopwatch.Elapsed.TotalMilliseconds,
+                        result.ResponseCode,
+                        ErrorMessage: outcome == NntpProviderAttemptOutcome.Success
+                            ? null
+                            : NntpProviderAttemptMetadata.NormalizeErrorMessage(result.ResponseMessage)));
+
+                    // if no article with that message-id is found, try again with the next provider.
+                    if (!isLastProvider && missing)
+                        continue;
+
+                    result.ProviderAttempts.AddRange(attempts);
+                    return result;
+                }
+                catch (Exception e) when (!SingleConnectionNntpClient.IsCancellation(e))
+                {
+                    stopwatch.Stop();
+                    attempts.Add(NntpProviderAttemptMetadata.FromException(
+                        provider.ProviderName,
+                        operation,
+                        stopwatch.Elapsed.TotalMilliseconds,
+                        e));
+                    lastException = ExceptionDispatchInfo.Capture(e);
+                }
             }
         }
+        catch (Exception e) when (SingleConnectionNntpClient.IsCancellation(e))
+        {
+            NntpProviderAttemptMetadata.SetAttempts(e, attempts);
+            throw;
+        }
 
-        lastException?.Throw();
-        throw new InvalidOperationException("There are no usenet providers configured.");
+        if (lastException is not null)
+        {
+            NntpProviderAttemptMetadata.SetAttempts(lastException.SourceException, attempts);
+            lastException.Throw();
+        }
+
+        var noProviders = new InvalidOperationException("There are no usenet providers configured.");
+        NntpProviderAttemptMetadata.SetAttempts(noProviders, attempts);
+        throw noProviders;
     }
 
     private List<MultiConnectionNntpClient> GetOrderedProviders()

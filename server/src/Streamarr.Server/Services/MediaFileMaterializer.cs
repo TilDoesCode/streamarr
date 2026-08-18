@@ -26,8 +26,15 @@ public sealed record ResolvedMediaFile
     /// <summary>Telemetry-capable stream factory; old callers can keep using OpenStream.</summary>
     public Func<INntpClient, Action<string>?, Stream>? OpenObservedStream { get; init; }
 
+    public Func<INntpClient, Action<string>?, Action<SegmentTransferEvent>?, Stream>? OpenTelemetryStream { get; init; }
+
+    /// <summary>Low-read-ahead factory that bypasses the hot in-memory playback cache.</summary>
+    public Func<INntpClient, Action<string>?, Action<SegmentTransferEvent>?, Stream>? OpenPreDownloadStream { get; init; }
+
     /// <summary>All article ids that may back this ephemeral media file.</summary>
     public IReadOnlyList<string> SegmentIds { get; init; } = [];
+
+    public IReadOnlyList<ArticleManifestEntry> ArticleManifest { get; init; } = [];
 
     /// <summary>
     /// Conservative size of the object graph retained by the materialization delegates.
@@ -55,6 +62,13 @@ public class MediaFileMaterializer(
     {
         var file = candidate.Files[0];
         var segmentIds = file.GetSegmentIds();
+        var manifest = file.Segments
+            .Select(segment => new ArticleManifestEntry(
+                segment.MessageId,
+                candidate.DisplayName,
+                segment.Number,
+                segment.Bytes))
+            .ToArray();
         var size = await nntpClient.GetFileSizeAsync(file, ct);
         ValidateMediaSize(size);
         var readAhead = options.Value.ArticleReadAheadCount;
@@ -69,6 +83,7 @@ public class MediaFileMaterializer(
             Container = container,
             SizeBytes = size,
             SegmentIds = segmentIds,
+            ArticleManifest = manifest,
             EstimatedCacheWeightBytes = EstimateCacheWeightBytes(
                 candidate.DisplayName,
                 container,
@@ -85,6 +100,19 @@ public class MediaFileMaterializer(
                 startupReadAhead,
                 startupSegments,
                 segmentMetadata: segmentMetadata),
+            OpenTelemetryStream = (client, onSegmentRequested, onTransfer) => new NzbFileStream(
+                segmentIds, size, client, readAhead, segmentCache, retryCount, onSegmentRequested,
+                startupReadAhead,
+                startupSegments,
+                segmentMetadata: segmentMetadata,
+                onTransfer: onTransfer),
+            OpenPreDownloadStream = (client, onSegmentRequested, onTransfer) => new NzbFileStream(
+                segmentIds, size, client, articleBufferSize: 1, segmentCache: null, retryCount,
+                onSegmentRequested,
+                startupArticleBufferSize: 1,
+                startupReadAheadSegments: 1,
+                segmentMetadata: segmentMetadata,
+                onTransfer: onTransfer),
         };
     }
 
@@ -97,6 +125,9 @@ public class MediaFileMaterializer(
         var startupReadAhead = options.Value.ArticleStartupReadAheadCount;
         var startupSegments = options.Value.ArticleStartupReadAheadSegments;
         var retryCount = options.Value.ArticleDownloadRetryCount;
+        var volumeFileNames = candidate.Files
+            .Select(file => file.GetSubjectFileName())
+            .ToArray();
         var volumes = new (string[] SegmentIds, long Size)[candidate.Files.Count];
         var parsedVolumes = new RarVolume[candidate.Files.Count];
         var parallelOptions = new ParallelOptions
@@ -130,7 +161,7 @@ public class MediaFileMaterializer(
                     openedFirstSegment: firstBody.Stream);
                 firstBodyTransferred = true;
                 parsedVolumes[i] = await RarVolumeReader.ReadAsync(
-                    headerStream, file.GetSubjectFileName(), token, candidate.Password);
+                    headerStream, volumeFileNames[i], token, candidate.Password);
             }
             finally
             {
@@ -147,6 +178,13 @@ public class MediaFileMaterializer(
                     ?? throw new NoPlayableFileException("The RAR set contains no stored files.");
         ValidateMediaSize(media.Size);
         var segmentIds = volumes.SelectMany(volume => volume.SegmentIds).ToArray();
+        var manifest = candidate.Files
+            .SelectMany((file, fileIndex) => file.Segments.Select(segment => new ArticleManifestEntry(
+                segment.MessageId,
+                volumeFileNames[fileIndex],
+                segment.Number,
+                segment.Bytes)))
+            .ToArray();
         var container = Extension(media.PathWithinArchive);
 
         return new ResolvedMediaFile
@@ -155,12 +193,14 @@ public class MediaFileMaterializer(
             Container = container,
             SizeBytes = media.Size,
             SegmentIds = segmentIds,
+            ArticleManifest = manifest,
             EstimatedCacheWeightBytes = EstimateCacheWeightBytes(
                 media.PathWithinArchive,
                 container,
                 volumes.Select(volume => (IReadOnlyList<string>)volume.SegmentIds),
                 hasFlattenedSegmentArray: true,
-                rarSliceCount: media.Slices.Count),
+                rarSliceCount: media.Slices.Count,
+                manifestFileNames: volumeFileNames),
             OpenStream = client => new RarStoredFileStream(
                 media,
                 (partIndex, _) => new ValueTask<Stream>(
@@ -190,6 +230,38 @@ public class MediaFileMaterializer(
                         startupSegments,
                         segmentMetadata: segmentMetadata)),
                 candidate.Password),
+            OpenTelemetryStream = (client, onSegmentRequested, onTransfer) => new RarStoredFileStream(
+                media,
+                (partIndex, _) => new ValueTask<Stream>(
+                    new NzbFileStream(
+                        volumes[partIndex].SegmentIds,
+                        volumes[partIndex].Size,
+                        client,
+                        readAhead,
+                        segmentCache,
+                        retryCount,
+                        onSegmentRequested,
+                        startupReadAhead,
+                        startupSegments,
+                        segmentMetadata: segmentMetadata,
+                        onTransfer: onTransfer)),
+                candidate.Password),
+            OpenPreDownloadStream = (client, onSegmentRequested, onTransfer) => new RarStoredFileStream(
+                media,
+                (partIndex, _) => new ValueTask<Stream>(
+                    new NzbFileStream(
+                        volumes[partIndex].SegmentIds,
+                        volumes[partIndex].Size,
+                        client,
+                        articleBufferSize: 1,
+                        segmentCache: null,
+                        retryCount,
+                        onSegmentRequested,
+                        startupArticleBufferSize: 1,
+                        startupReadAheadSegments: 1,
+                        segmentMetadata: segmentMetadata,
+                        onTransfer: onTransfer)),
+                candidate.Password),
         };
     }
 
@@ -204,7 +276,8 @@ public class MediaFileMaterializer(
         string container,
         IEnumerable<IReadOnlyList<string>> segmentIdArrays,
         bool hasFlattenedSegmentArray,
-        int rarSliceCount)
+        int rarSliceCount,
+        IEnumerable<string>? manifestFileNames = null)
     {
         const long fixedObjectGraphBytes = 4 * 1024;
         const long rarSliceObjectGraphBytes = 192;
@@ -232,6 +305,15 @@ public class MediaFileMaterializer(
             estimate = SaturatingAdd(
                 estimate,
                 SaturatingAdd(24, SaturatingMultiply(arrayCount, 16)));
+        }
+
+        // One manifest array plus one ArticleManifestEntry record per segment; strings are shared.
+        estimate = SaturatingAdd(estimate, EstimatedReferenceArrayBytes(segmentCount));
+        estimate = SaturatingAdd(estimate, SaturatingMultiply(segmentCount, 56));
+        if (manifestFileNames is not null)
+        {
+            foreach (var manifestFileName in manifestFileNames)
+                estimate = SaturatingAdd(estimate, EstimatedStringBytes(manifestFileName));
         }
 
         if (rarSliceCount > 0)

@@ -154,6 +154,16 @@ public sealed record SessionResponse
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset LastAccessedAt { get; init; }
     public DateTimeOffset ExpiresAt { get; init; }
+    public required string RetentionPriority { get; init; }
+    public string? PreDownloadJobId { get; init; }
+    public string? PreDownloadKind { get; init; }
+    public string? PreDownloadReason { get; init; }
+    public string? PreDownloadSourceToken { get; init; }
+    public string? PreDownloadState { get; init; }
+    public long PreDownloadedBytes { get; init; }
+    public long PreDownloadTotalBytes { get; init; }
+    public double PreDownloadPercent { get; init; }
+    public bool LocalCacheReady { get; init; }
 
     /// <summary>Wall-clock instant of timeline t0 (resolve start), for aligning client spans.</summary>
     public DateTimeOffset? TimelineStartedAt { get; init; }
@@ -230,6 +240,16 @@ public sealed record EphemeralFileResponse
     public double EstimatedStreamedPercent { get; init; }
     public int CachedChunks { get; init; }
     public long StorageBytes { get; init; }
+    public required string RetentionPriority { get; init; }
+    public string? PreDownloadJobId { get; init; }
+    public string? PreDownloadKind { get; init; }
+    public string? PreDownloadReason { get; init; }
+    public string? PreDownloadSourceToken { get; init; }
+    public string? PreDownloadState { get; init; }
+    public long PreDownloadedBytes { get; init; }
+    public long PreDownloadTotalBytes { get; init; }
+    public double PreDownloadPercent { get; init; }
+    public bool LocalCacheReady { get; init; }
 
     /// <summary>True while at least one HTTP stream is open; such files cannot be manually purged.</summary>
     public bool IsStreaming { get; init; }
@@ -246,6 +266,8 @@ public sealed record StreamingHistoryResponse
     public required string WorkId { get; init; }
     public required string Event { get; init; }
     public long PositionTicks { get; init; }
+    public long DurationTicks { get; init; }
+    public string? SessionToken { get; init; }
     public required string Source { get; init; }
     public string? PlaybackSessionId { get; init; }
     public string? ExternalUserId { get; init; }
@@ -324,6 +346,71 @@ public sealed record StreamEventResponse
     public string? Detail { get; init; }
     public double? StartMs { get; init; }
     public double? DurationMs { get; init; }
+}
+
+/// <summary>Live, bounded diagnostic snapshot of every article in a release.</summary>
+public sealed record ArticleMapResponse
+{
+    public required string ReleaseId { get; init; }
+    public int TotalArticles { get; init; }
+    public int TrackedArticles { get; init; }
+    public int TruncatedArticles { get; init; }
+    public int PendingArticles { get; init; }
+    public int ActiveArticles { get; init; }
+    public int PartialArticles { get; init; }
+    public int DownloadedArticles { get; init; }
+    public int CachedArticles { get; init; }
+    public int FailedArticles { get; init; }
+    public long DownloadedBytes { get; init; }
+    public double? AverageDurationMs { get; init; }
+    public double? EffectiveBytesPerSecond { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; }
+    public IReadOnlyList<ArticleTelemetryResponse> Articles { get; init; } = [];
+    public IReadOnlyList<ArticleProviderSummaryResponse> Providers { get; init; } = [];
+}
+
+/// <summary>Current transfer state and diagnostic evidence for one ordered release article.</summary>
+public sealed record ArticleTelemetryResponse
+{
+    public int Index { get; init; }
+    public string? FileName { get; init; }
+    public int? ArticleNumber { get; init; }
+    public long ExpectedBytes { get; init; }
+    public required string MessageId { get; init; }
+    public required string State { get; init; }
+    public long Bytes { get; init; }
+    public double? DurationMs { get; init; }
+    public double? ThroughputBytesPerSecond { get; init; }
+    public DateTimeOffset? StartedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; init; }
+    public string? SuccessfulProvider { get; init; }
+    public string? ErrorType { get; init; }
+    public string? ErrorMessage { get; init; }
+    public long ProviderAttemptCount { get; init; }
+    public bool AttemptsTruncated { get; init; }
+    public IReadOnlyList<ArticleProviderAttemptResponse> Attempts { get; init; } = [];
+}
+
+/// <summary>One provider attempt made while retrieving an article.</summary>
+public sealed record ArticleProviderAttemptResponse
+{
+    public required string Provider { get; init; }
+    public required string Operation { get; init; }
+    public required string Outcome { get; init; }
+    public double DurationMs { get; init; }
+    public int? ResponseCode { get; init; }
+    public string? ErrorType { get; init; }
+    public string? ErrorMessage { get; init; }
+}
+
+/// <summary>Aggregate provider outcomes across the release snapshot.</summary>
+public sealed record ArticleProviderSummaryResponse
+{
+    public required string Provider { get; init; }
+    public long Successes { get; init; }
+    public long Missing { get; init; }
+    public long Errors { get; init; }
+    public double? AverageDurationMs { get; init; }
 }
 
 /// <summary>Typed error envelope rendered consistently by every endpoint.</summary>

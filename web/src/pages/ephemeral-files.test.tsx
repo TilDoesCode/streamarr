@@ -28,6 +28,11 @@ function file(overrides: Record<string, unknown> = {}) {
     estimatedStreamedPercent: 40,
     cachedChunks: 4,
     storageBytes: 400_000,
+    retentionPriority: "normal",
+    preDownloadedBytes: 0,
+    preDownloadTotalBytes: 0,
+    preDownloadPercent: 0,
+    localCacheReady: false,
     isStreaming: false,
     createdAt: new Date().toISOString(),
     lastAccessedAt: new Date().toISOString(),
@@ -101,6 +106,31 @@ describe("EphemeralFilesPage", () => {
     expect(screen.queryByRole("button", { name: /purge ephemeral file/i })).not.toBeInTheDocument();
     const streaming = screen.getByRole("button", { name: /streaming/i });
     expect(streaming).toBeDisabled();
+  });
+
+  it("shows background retention and real disk pre-download progress separately from the playback footprint", async () => {
+    filesList = [file({
+      retentionPriority: "background",
+      preDownloadJobId: "job-next-2",
+      preDownloadKind: "nextEpisode",
+      preDownloadReason: "Watch progress reached 75%",
+      preDownloadSourceToken: "source-token",
+      preDownloadState: "downloading",
+      preDownloadedBytes: 250_000,
+      preDownloadTotalBytes: 1_000_000,
+      preDownloadPercent: 25,
+      localCacheReady: false,
+      estimatedStreamedPercent: 40,
+    })];
+
+    renderWithProviders(<EphemeralFilesPage />);
+    await screen.findByRole("heading", { name: "Big Buck Bunny" });
+
+    expect(screen.getByText("background retention")).toBeInTheDocument();
+    expect(screen.getByText("Watch progress reached 75%")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Ephemeral disk pre-download progress" })).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getByRole("progressbar", { name: "Playback segment request footprint" })).toHaveAttribute("aria-valuenow", "40");
+    expect(screen.getByText(/neither watch progress nor disk pre-download completion/i)).toBeInTheDocument();
   });
 });
 

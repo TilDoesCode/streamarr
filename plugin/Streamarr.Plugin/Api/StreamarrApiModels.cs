@@ -328,6 +328,8 @@ public sealed record EventRequest
     public required string Event { get; init; }
 
     public long? PositionTicks { get; init; }
+    public long? DurationTicks { get; init; }
+    public string? SessionToken { get; init; }
     public string? Source { get; init; }
     public string? PlaybackSessionId { get; init; }
     public string? ExternalUserId { get; init; }

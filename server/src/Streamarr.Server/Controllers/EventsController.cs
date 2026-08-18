@@ -28,13 +28,15 @@ public class EventsController(WatchEventService events) : ControllerBase
         if (request.ReleaseId.Length > 256 || request.WorkId?.Length > 256 || request.Source?.Length > 64 ||
             request.PlaybackSessionId?.Length > 256 || request.ExternalUserId?.Length > 256 ||
             request.ExternalUserName?.Length > 256 || request.DeviceName?.Length > 256 ||
-            request.PositionTicks is < 0 ||
+            request.SessionToken?.Length > 256 || request.PositionTicks is < 0 ||
+            request.DurationTicks is < 0 ||
             request.ReleaseId.Any(char.IsControl) || request.WorkId?.Any(char.IsControl) == true ||
             request.Source?.Any(char.IsControl) == true ||
             request.PlaybackSessionId?.Any(char.IsControl) == true ||
             request.ExternalUserId?.Any(char.IsControl) == true ||
             request.ExternalUserName?.Any(char.IsControl) == true ||
-            request.DeviceName?.Any(char.IsControl) == true)
+            request.DeviceName?.Any(char.IsControl) == true ||
+            request.SessionToken?.Any(char.IsControl) == true)
             return BadRequest(ErrorResponse.Of("invalid_event", "One or more event values are outside their allowed range."));
 
         await events.RecordAsync(new WatchEventWrite
@@ -43,6 +45,8 @@ public class EventsController(WatchEventService events) : ControllerBase
             WorkId = request.WorkId,
             Event = request.Event.ToLowerInvariant(),
             PositionTicks = request.PositionTicks,
+            DurationTicks = request.DurationTicks,
+            SessionToken = request.SessionToken,
             Source = request.Source,
             PlaybackSessionId = request.PlaybackSessionId,
             ExternalUserId = request.ExternalUserId,
@@ -66,6 +70,8 @@ public class EventsController(WatchEventService events) : ControllerBase
             WorkId = entry.WorkId,
             Event = entry.Event,
             PositionTicks = entry.PositionTicks,
+            DurationTicks = entry.DurationTicks,
+            SessionToken = NullIfEmpty(entry.SessionToken),
             Source = entry.Source,
             PlaybackSessionId = NullIfEmpty(entry.PlaybackSessionId),
             ExternalUserId = NullIfEmpty(entry.ExternalUserId),

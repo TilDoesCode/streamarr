@@ -10,6 +10,7 @@ import {
   TimerReset,
   Wrench,
   History,
+  ScrollText,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -34,5 +35,6 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/ephemeral", label: "Ephemeral Files", icon: TimerReset },
   { to: "/repairs", label: "Repairs", icon: Wrench },
   { to: "/history", label: "Streaming History", icon: History },
+  { to: "/logs", label: "Logs", icon: ScrollText },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

@@ -91,6 +91,13 @@ public class ResolveController(
             return UnprocessableEntity(
                 ErrorResponse.OfHostNotAllowed("nzb_host_not_allowed", e.Message, e.Host, e.IndexerId));
         }
+        catch (NzbUnexpectedContentException e)
+        {
+            NotifyResolveFailure(request, e.Message);
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                ErrorResponse.Of("nzb_fetch_failed", e.Message));
+        }
         catch (InvalidDataException e)
         {
             NotifyResolveFailure(request, e.Message);

@@ -282,6 +282,8 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
             ["Streamarr:ConnectionBudget"] = "12",
             ["Streamarr:SessionTtlSeconds"] = "300",
             ["Streamarr:AllowLocalNzbFiles"] = "true",
+            ["Streamarr:PreDownload:CachePath"] = Path.Combine(_tempDir, "pre-download"),
+            ["Streamarr:PreDownload:MinimumFreeDiskBytes"] = "0",
             ["Streamarr:HealthCheck:SampleCount"] = "24",
             ["Streamarr:HealthCheck:StartupSampleCount"] = "8",
             ["Streamarr:HealthCheck:DeadMissingRatio"] = "0.5",

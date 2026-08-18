@@ -9,6 +9,55 @@ namespace Streamarr.Server.Tests.Services;
 public sealed class WatchEventServiceTests
 {
     [Fact]
+    public async Task ProgressCoalescing_PersistsLatestDurationAndSessionToken()
+    {
+        var directory = Directory.CreateTempSubdirectory("streamarr-events-contract-").FullName;
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddDbContextFactory<StreamarrDbContext>(o =>
+                o.UseSqlite($"Data Source={Path.Combine(directory, "events.db")}"));
+            services.AddSingleton(TimeProvider.System);
+            services.Configure<StreamarrOptions>(o => o.MaxWatchEvents = 10);
+            services.AddSingleton<WatchEventService>();
+            await using var provider = services.BuildServiceProvider();
+
+            var dbFactory = provider.GetRequiredService<IDbContextFactory<StreamarrDbContext>>();
+            await using (var db = await dbFactory.CreateDbContextAsync())
+                await db.Database.EnsureCreatedAsync();
+
+            var events = provider.GetRequiredService<WatchEventService>();
+            var first = await events.RecordAsync(
+                Write("progress", "progress", 10) with
+                {
+                    DurationTicks = 1_000,
+                    SessionToken = "session-token-old",
+                },
+                default);
+            var updated = await events.RecordAsync(
+                Write("progress", "progress", 20) with
+                {
+                    DurationTicks = 2_000,
+                    SessionToken = "session-token-current",
+                },
+                default);
+
+            Assert.Equal(first.Id, updated.Id);
+            Assert.Equal(1, await events.CountAsync(default));
+
+            await using var verificationDb = await dbFactory.CreateDbContextAsync();
+            var persisted = Assert.Single(await verificationDb.WatchEvents.AsNoTracking().ToListAsync());
+            Assert.Equal(20, persisted.PositionTicks);
+            Assert.Equal(2_000, persisted.DurationTicks);
+            Assert.Equal("session-token-current", persisted.SessionToken);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ProgressIsCoalesced_AndOldestRowsArePrunedToConfiguredLimit()
     {
         var directory = Directory.CreateTempSubdirectory("streamarr-events-").FullName;

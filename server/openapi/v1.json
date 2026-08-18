@@ -440,6 +440,51 @@
         ]
       }
     },
+    "/api/v1/download/{token}": {
+      "get": {
+        "tags": [
+          "Download"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "206": {
+            "description": "Partial Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ephemeral-files": {
       "get": {
         "tags": [
@@ -1487,6 +1532,101 @@
         ]
       }
     },
+    "/api/v1/logs": {
+      "get": {
+        "tags": [
+          "Logs"
+        ],
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "all"
+            }
+          },
+          {
+            "name": "minimumLevel",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "information"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "streamToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogFeedResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogFeedResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogFeedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/metrics": {
       "get": {
         "tags": [
@@ -1954,6 +2094,163 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/pre-download": {
+      "get": {
+        "tags": [
+          "PreDownloadConfig"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreDownloadConfigResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreDownloadConfigResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreDownloadConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "PreDownloadConfig"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreDownloadConfigWrite"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreDownloadConfigWrite"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreDownloadConfigWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreDownloadConfigResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreDownloadConfigResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreDownloadConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pre-downloads": {
+      "get": {
+        "tags": [
+          "PreDownloads"
+        ],
+        "parameters": [
+          {
+            "name": "sessionToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PreDownloadJobResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PreDownloadJobResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PreDownloadJobResponse"
+                  }
                 }
               }
             }
@@ -3911,6 +4208,70 @@
         }
       }
     },
+    "/api/v1/sessions/{token}/articles": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleMapResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleMapResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleMapResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sessions/{token}/timeline": {
       "post": {
         "tags": [
@@ -4432,6 +4793,246 @@
         },
         "additionalProperties": false
       },
+      "ArticleMapResponse": {
+        "required": [
+          "releaseId"
+        ],
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trackedArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "truncatedArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pendingArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "activeArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "partialArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "downloadedArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cachedArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failedArticles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "downloadedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "averageDurationMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "effectiveBytesPerSecond": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "articles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleTelemetryResponse"
+            },
+            "nullable": true
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleProviderSummaryResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Live, bounded diagnostic snapshot of every article in a release."
+      },
+      "ArticleProviderAttemptResponse": {
+        "required": [
+          "operation",
+          "outcome",
+          "provider"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "nullable": true
+          },
+          "operation": {
+            "type": "string",
+            "nullable": true
+          },
+          "outcome": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "responseCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "errorType": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorMessage": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One provider attempt made while retrieving an article."
+      },
+      "ArticleProviderSummaryResponse": {
+        "required": [
+          "provider"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "nullable": true
+          },
+          "successes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "averageDurationMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Aggregate provider outcomes across the release snapshot."
+      },
+      "ArticleTelemetryResponse": {
+        "required": [
+          "messageId",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "articleNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "expectedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "messageId": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "throughputBytesPerSecond": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "successfulProvider": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorType": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "providerAttemptCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "attemptsTruncated": {
+            "type": "boolean"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleProviderAttemptResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Current transfer state and diagnostic evidence for one ordered release article."
+      },
       "CachedReleaseResponse": {
         "required": [
           "indexer",
@@ -4935,6 +5536,7 @@
         "required": [
           "fileName",
           "releaseId",
+          "retentionPriority",
           "state",
           "title",
           "token",
@@ -5009,6 +5611,45 @@
           "storageBytes": {
             "type": "integer",
             "format": "int64"
+          },
+          "retentionPriority": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadJobId": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadSourceToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadState": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "preDownloadTotalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "preDownloadPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "localCacheReady": {
+            "type": "boolean"
           },
           "isStreaming": {
             "type": "boolean",
@@ -5094,6 +5735,17 @@
           "positionTicks": {
             "type": "integer",
             "format": "int64",
+            "nullable": true
+          },
+          "durationTicks": {
+            "type": "integer",
+            "description": "Total playable duration reported by the front-end, in 100 ns ticks.",
+            "format": "int64",
+            "nullable": true
+          },
+          "sessionToken": {
+            "type": "string",
+            "description": "Opaque Core capability token attributed to this playback. It lets background work bind\r\nprogress to the exact ephemeral file without guessing from release or user metadata.",
             "nullable": true
           },
           "source": {
@@ -5469,6 +6121,116 @@
         },
         "additionalProperties": false,
         "description": "Write model for indexer create/update. Secret Streamarr.Server.Config.IndexerWrite.ApiKey is write-only."
+      },
+      "LogEntryResponse": {
+        "required": [
+          "category",
+          "id",
+          "level",
+          "message",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "atUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "level": {
+            "type": "string",
+            "description": "trace | debug | information | warning | error.",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "core | jellyfin.",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "exception": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One sanitized diagnostic event suitable for display in the management UI."
+      },
+      "LogFeedResponse": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogEntryResponse"
+            },
+            "nullable": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogSourceStatusResponse"
+            },
+            "nullable": true
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Combined, newest-first diagnostic feed from Core and configured integrations."
+      },
+      "LogSourceStatusResponse": {
+        "required": [
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "core | jellyfin.",
+            "nullable": true
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastCheckedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Availability of one log source at the time the feed was generated."
       },
       "LoginRequest": {
         "type": "object",
@@ -5983,6 +6745,211 @@
         },
         "additionalProperties": false,
         "description": "Two-phase playback admission (POST/GET /api/v1/playback-sessions): the POST answers\r\nwithin a hard budget; \"preparing\" answers carry a pollable admission id while health\r\ncheck, materialization, ffprobe and repair analysis continue server-side."
+      },
+      "PreDownloadConfigResponse": {
+        "required": [
+          "currentFileThresholdSeconds",
+          "downloadCurrentFile",
+          "downloadNextEpisode",
+          "enabled",
+          "maxConcurrentDownloads",
+          "nextEpisodeThresholdPercent"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "downloadCurrentFile": {
+            "type": "boolean"
+          },
+          "currentFileThresholdSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "downloadNextEpisode": {
+            "type": "boolean"
+          },
+          "nextEpisodeThresholdPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxConcurrentDownloads": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Effective low-priority pre-download policy."
+      },
+      "PreDownloadConfigWrite": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "downloadCurrentFile": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "currentFileThresholdSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "downloadNextEpisode": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "nextEpisodeThresholdPercent": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxConcurrentDownloads": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Partial pre-download policy update; omitted properties retain their current values."
+      },
+      "PreDownloadJobResponse": {
+        "required": [
+          "id",
+          "kind",
+          "priority",
+          "reason",
+          "sourceReleaseId",
+          "sourceToken",
+          "sourceWorkId",
+          "state",
+          "triggerUnit"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceReleaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetReleaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetSeasonNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "targetEpisodeNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "bytesDownloaded": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "progressPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "watchPositionTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "watchDurationTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "watchProgressPercent": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "triggerThreshold": {
+            "type": "number",
+            "format": "double"
+          },
+          "triggerUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "queuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorMessage": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Live or recently completed background materialization visible to operators."
       },
       "ProfileImportCandidate": {
         "required": [
@@ -7308,6 +8275,7 @@
       "SessionResponse": {
         "required": [
           "releaseId",
+          "retentionPriority",
           "state",
           "token",
           "workId"
@@ -7373,6 +8341,45 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "retentionPriority": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadJobId": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadSourceToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadState": {
+            "type": "string",
+            "nullable": true
+          },
+          "preDownloadedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "preDownloadTotalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "preDownloadPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "localCacheReady": {
+            "type": "boolean"
           },
           "timelineStartedAt": {
             "type": "string",
@@ -7674,6 +8681,14 @@
           "positionTicks": {
             "type": "integer",
             "format": "int64"
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessionToken": {
+            "type": "string",
+            "nullable": true
           },
           "source": {
             "type": "string",
@@ -8247,6 +9262,10 @@
       "description": "GET /api/v1/caps (BRIEF §6.2): the categories the configured indexers search and the\r\nproviders streaming can draw from — a front-end's view of what this server supports."
     },
     {
+      "name": "Download",
+      "description": "GET /api/v1/download/{token} — the same capability-authorized session as\r\nGET /api/v1/stream/{token} (Streamarr.Server.Controllers.StreamController), served at full transport\r\nspeed instead of paced for real-time playback, with an attachment\r\n`Content-Disposition` so any HTTP client saves the complete file. Callers that want\r\nthe whole file as fast as the configured Usenet provider(s) allow — rather than paced to\r\nmatch playback — use this sibling instead of `/stream`. Player-agnostic by contract;\r\nno Jellyfin-specific behavior may ever be added here (mirrors Streamarr.Server.Controllers.StreamController)."
+    },
+    {
       "name": "Events",
       "description": "POST /api/v1/events — ingests playback events from any front-end into SQLite\r\n(BRIEF §6.1 module 7 / §6.2). This is how watch state escapes a front-end's own DB."
     },
@@ -8265,6 +9284,10 @@
     {
       "name": "Library",
       "description": "Admin library of releases backed by Core's persistent NZB cache."
+    },
+    {
+      "name": "Logs",
+      "description": "Bounded, sanitized diagnostics from Core and the optional Jellyfin integration."
     },
     {
       "name": "Metrics",

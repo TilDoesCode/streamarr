@@ -14,6 +14,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<ProviderEntity> Providers => Set<ProviderEntity>();
     public DbSet<ProfileEntity> Profiles => Set<ProfileEntity>();
     public DbSet<GeneralConfigEntity> GeneralConfig => Set<GeneralConfigEntity>();
+    public DbSet<PreDownloadConfigEntity> PreDownloadConfig => Set<PreDownloadConfigEntity>();
     public DbSet<NotificationConfigEntity> NotificationConfig => Set<NotificationConfigEntity>();
     public DbSet<WatchEventEntity> WatchEvents => Set<WatchEventEntity>();
     public DbSet<CachedReleaseEntity> CachedReleases => Set<CachedReleaseEntity>();
@@ -43,6 +44,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
         });
 
         model.Entity<GeneralConfigEntity>(e => e.HasKey(x => x.Id));
+        model.Entity<PreDownloadConfigEntity>(e => e.HasKey(x => x.Id));
         model.Entity<NotificationConfigEntity>(e => e.HasKey(x => x.Id));
 
         model.Entity<WatchEventEntity>(e =>

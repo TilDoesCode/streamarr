@@ -124,6 +124,15 @@ public class NzbFetcher(
                 throw new InvalidDataException($"The NZB exceeds the {options.Value.MaxNzbBytes} byte limit.");
             }
 
+            if (IsHtml(response.Content.Headers.ContentType?.MediaType))
+            {
+                response.Dispose();
+                _logger.LogWarning(
+                    "Rejected an HTML response while downloading an NZB for indexer {IndexerId}",
+                    configured.Id);
+                throw new NzbUnexpectedContentException();
+            }
+
             // The response owns its content stream, so return a wrapper that disposes both.
             var stream = await response.Content.ReadAsStreamAsync(ct);
             return new ResponseStream(stream, response);
@@ -231,6 +240,10 @@ public class NzbFetcher(
         HttpStatusCode.RedirectMethod or
         HttpStatusCode.TemporaryRedirect or
         HttpStatusCode.PermanentRedirect;
+
+    private static bool IsHtml(string? mediaType)
+        => string.Equals(mediaType, "text/html", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(mediaType, "application/xhtml+xml", StringComparison.OrdinalIgnoreCase);
 
     private sealed class ResponseStream(Stream inner, HttpResponseMessage response) : Stream
     {

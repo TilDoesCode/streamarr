@@ -40,6 +40,12 @@ public sealed record StreamRecordFinalize
     public long? NntpCommandsTotal { get; init; }
 }
 
+/// <summary>Small projection used by high-frequency log polling; intentionally excludes events.</summary>
+internal sealed record StreamCorrelationRecord(
+    string AttemptId,
+    string ReleaseId,
+    string? WorkId);
+
 /// <summary>
 /// The write-side, hot-path-safe surface of <see cref="StreamHistoryRecorder"/> — extracted
 /// purely as a test seam (mirrors <c>IReleaseHealthCache</c>/<c>IRepairStreamGateway</c>) so
@@ -151,6 +157,25 @@ public sealed class StreamHistoryRecorder(
             .FirstOrDefaultAsync(r => r.Token == tokenOrAttemptId || r.AttemptId == tokenOrAttemptId, ct);
         record?.Events.Sort((a, b) => a.AtUtc.CompareTo(b.AtUtc));
         return record;
+    }
+
+    /// <summary>
+    /// Resolves a live-token or attempt id without loading the potentially large event
+    /// collection. The log viewer polls frequently, so its correlation lookup must stay cheap.
+    /// </summary>
+    internal async Task<StreamCorrelationRecord?> GetCorrelationAsync(
+        string tokenOrAttemptId,
+        CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.StreamRecords
+            .AsNoTracking()
+            .Where(record => record.Token == tokenOrAttemptId || record.AttemptId == tokenOrAttemptId)
+            .Select(record => new StreamCorrelationRecord(
+                record.AttemptId,
+                record.ReleaseId,
+                record.WorkId))
+            .FirstOrDefaultAsync(ct);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

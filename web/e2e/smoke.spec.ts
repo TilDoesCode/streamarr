@@ -51,6 +51,77 @@ async function ephemeralFileCount(page: Page): Promise<number> {
   });
 }
 
+function failedArticleMap(releaseId: string) {
+  const articles = Array.from({ length: 96 }, (_, index) => {
+    const base = {
+      index,
+      fileName: "Example.Movie.2021.1080p.WEB-DL.mkv",
+      articleNumber: index + 1,
+      expectedBytes: 768_000,
+      messageId: `example-part-${String(index + 1).padStart(4, "0")}@streamarr.test`,
+      bytes: 0,
+      attempts: [] as Record<string, unknown>[],
+    };
+    if (index === 37) {
+      return {
+        ...base,
+        state: "failed",
+        durationMs: 2_634,
+        errorType: "UsenetArticleNotFoundException",
+        errorMessage: "No configured provider retained this article after failover.",
+        attempts: [
+          { provider: "Eweka EU", operation: "BODY", outcome: "missing", durationMs: 184, responseCode: 430, errorType: "UsenetArticleNotFoundException", errorMessage: "430 No article with that message-id" },
+          { provider: "Blocknews", operation: "BODY", outcome: "error", durationMs: 2_450, errorType: "CouldNotConnectToUsenetException", errorMessage: "The provider did not answer before the command timeout." },
+        ],
+      };
+    }
+    if (index === 14 || index === 15) {
+      return { ...base, state: "cached", bytes: 768_000, durationMs: 0, successfulProvider: "segment cache" };
+    }
+    if (index < 48) {
+      return {
+        ...base,
+        state: "downloaded",
+        bytes: 768_000,
+        durationMs: 140 + (index % 8) * 19,
+        throughputBytesPerSecond: 4_800_000,
+        successfulProvider: "Eweka EU",
+        attempts: [{ provider: "Eweka EU", operation: "BODY", outcome: "success", durationMs: 118, responseCode: 222 }],
+      };
+    }
+    if (index < 50) {
+      return {
+        ...base,
+        state: "downloading",
+        bytes: 310_000,
+        durationMs: 390,
+        successfulProvider: "Eweka EU",
+        attempts: [{ provider: "Eweka EU", operation: "BODY", outcome: "success", durationMs: 126, responseCode: 222 }],
+      };
+    }
+    return { ...base, state: "pending" };
+  });
+
+  return {
+    releaseId,
+    totalArticles: articles.length,
+    pendingArticles: 46,
+    activeArticles: 2,
+    downloadedArticles: 45,
+    cachedArticles: 2,
+    failedArticles: 1,
+    downloadedBytes: 36_096_000,
+    averageDurationMs: 219,
+    effectiveBytesPerSecond: 5_340_000,
+    updatedAt: new Date().toISOString(),
+    providers: [
+      { provider: "Eweka EU", successes: 47, missing: 1, errors: 0, averageDurationMs: 132 },
+      { provider: "Blocknews", successes: 0, missing: 0, errors: 1, averageDurationMs: 2_450 },
+    ],
+    articles,
+  };
+}
+
 test("login → add indexer → search → resolve → preview-play, with Jellyfin absent", async ({
   page,
   context,
@@ -232,8 +303,40 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   // ephemeral-file, metrics and playback-event APIs.
   await peer.getByRole("link", { name: /inspect stream/i }).last().click();
   await expect(peer).toHaveURL(/\/sessions\/[^/]+$/);
-  await expect(peer.getByText("Live signal")).toBeVisible();
+  await expect(peer.getByText(/^live signal$/i)).toBeVisible();
   await expect(peer.getByRole("heading", { name: "Identity & lifecycle" })).toBeVisible();
+  await expect(peer.getByRole("heading", { name: "Every article, one live signal" })).toBeVisible();
+  await expect(peer.getByRole("list", { name: "Articles in release order" })).toBeVisible();
+  const articleFlightMap = peer.locator("section").filter({
+    has: peer.getByRole("heading", { name: "Every article, one live signal" }),
+  }).first();
+  await peer.addStyleTag({ content: "header.sticky { position: static !important; }" });
+
+  if (await peer.getByRole("button", { name: "Switch to light mode" }).isVisible())
+    await peer.getByRole("button", { name: "Switch to light mode" }).click();
+  const articleMapMobile = testInfo.outputPath("article-map-mobile-light.png");
+  await articleFlightMap.screenshot({ path: articleMapMobile });
+  await testInfo.attach("article map mobile light", { path: articleMapMobile, contentType: "image/png" });
+
+  await peer.getByRole("button", { name: "Switch to dark mode" }).click();
+  await peer.setViewportSize({ width: 1440, height: 1000 });
+  const articleMapDesktop = testInfo.outputPath("article-map-desktop-dark.png");
+  await articleFlightMap.screenshot({ path: articleMapDesktop });
+  await testInfo.attach("article map desktop dark", { path: articleMapDesktop, contentType: "image/png" });
+
+  await peer.route("**/api/v1/sessions/*/articles", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(failedArticleMap(retainedAtPause!.releaseId!)) });
+  });
+  await peer.reload();
+  await peer.addStyleTag({ content: "header.sticky { position: static !important; }" });
+  await peer.getByRole("button", { name: /article 38: failed/i }).click();
+  await expect(peer.getByRole("alert")).toContainText("No configured provider retained this article after failover.");
+  const articleMapFailure = testInfo.outputPath("article-map-provider-failure.png");
+  await articleFlightMap.screenshot({ path: articleMapFailure });
+  await testInfo.attach("article map provider failure", { path: articleMapFailure, contentType: "image/png" });
+  await peer.unroute("**/api/v1/sessions/*/articles");
+
+  await peer.setViewportSize({ width: 375, height: 800 });
   await peer.getByRole("link", { name: /all streams/i }).click();
 
   const closeSession = peer.getByRole("button", { name: /force-close/i }).last();

@@ -6,6 +6,7 @@
 // exclusive-connection mechanism; pooled connections are still released as soon
 // as each article body has fully arrived (onConnectionReadyAgain).
 
+using System.Diagnostics;
 using System.Threading.Channels;
 using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Models;
@@ -27,6 +28,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     private readonly SegmentMetadataCache? _segmentMetadata;
     private readonly int _retryCount;
     private readonly Action<string>? _onSegmentRequested;
+    private readonly Action<SegmentTransferEvent>? _onTransfer;
     private readonly Channel<Task<Stream>> _streamTasks;
     private readonly SemaphoreSlim _queueAdvanced = new(0);
     private readonly CancellationTokenSource _cts;
@@ -53,7 +55,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         Stream? openedFirstSegment = null,
         bool progressiveFirstSegment = false,
         bool disableReadAhead = false,
-        SegmentMetadataCache? segmentMetadata = null
+        SegmentMetadataCache? segmentMetadata = null,
+        Action<SegmentTransferEvent>? onTransfer = null
     )
     {
         return articleBufferSize == 0
@@ -63,7 +66,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 onSegmentRequested,
                 openedFirstSegment,
                 segmentCache,
-                progressiveFirstSegment)
+                progressiveFirstSegment,
+                onTransfer)
             : new MultiSegmentStream(
                 segmentIds,
                 usenetClient,
@@ -77,7 +81,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 openedFirstSegment,
                 progressiveFirstSegment,
                 disableReadAhead,
-                segmentMetadata);
+                segmentMetadata,
+                onTransfer);
     }
 
     private MultiSegmentStream
@@ -94,7 +99,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         Stream? openedFirstSegment,
         bool progressiveFirstSegment,
         bool disableReadAhead,
-        SegmentMetadataCache? segmentMetadata = null
+        SegmentMetadataCache? segmentMetadata = null,
+        Action<SegmentTransferEvent>? onTransfer = null
     )
     {
         _segmentIds = segmentIds;
@@ -105,6 +111,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
             ? retryCount
             : throw new ArgumentOutOfRangeException(nameof(retryCount));
         _onSegmentRequested = onSegmentRequested;
+        _onTransfer = onTransfer;
         _steadyReadAhead = articleBufferSize;
         var startupWindow = startupArticleBufferSize > 0
             ? Math.Max(articleBufferSize, startupArticleBufferSize)
@@ -185,18 +192,22 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         CancellationToken cancellationToken)
     {
         Stream? stream = openedStream;
+        var started = Stopwatch.GetTimestamp();
         try
         {
             _onSegmentRequested?.Invoke(SegmentId.Normalize(segmentId));
+            Notify(segmentId, SegmentTransferStage.Queued);
             var cache = _segmentCache is { CapacityBytes: > 0 } ? _segmentCache : null;
             if (cache?.TryGet(segmentId, out var cached) == true)
             {
                 if (stream is not null)
                     await stream.DisposeAsync().ConfigureAwait(false);
                 stream = null;
+                Notify(segmentId, SegmentTransferStage.Cached, cached.LongLength, 0);
                 return new MemoryStream(cached, writable: false);
             }
 
+            Notify(segmentId, SegmentTransferStage.Downloading);
             YencHeader? headers = null;
             if (stream is null)
             {
@@ -224,14 +235,26 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                          ?? throw new InvalidDataException(
                              $"Article <{SegmentId.Normalize(segmentId)}> returned no decoded stream.");
             stream = null;
-            return cache is null
+            var observed = cache is null
                 ? result
                 : new ProgressiveSegmentCacheStream(result, segmentId, cache);
+            return new ObservedSegmentStream(observed, segmentId, started, Notify);
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             if (stream is not null)
                 await stream.DisposeAsync().ConfigureAwait(false);
+            Notify(
+                segmentId,
+                SegmentTransferStage.Partial,
+                durationMs: Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            if (stream is not null)
+                await stream.DisposeAsync().ConfigureAwait(false);
+            NotifyFailure(segmentId, exception);
             throw;
         }
     }
@@ -246,6 +269,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         try
         {
             _onSegmentRequested?.Invoke(SegmentId.Normalize(segmentId));
+            Notify(segmentId, SegmentTransferStage.Queued);
         }
         catch
         {
@@ -266,19 +290,33 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         if (_segmentCache is not { CapacityBytes: > 0 } cache)
             return await DownloadSegmentBytes(segmentId, openedStream, cancellationToken).ConfigureAwait(false);
 
+        if (cache.TryGet(segmentId, out var cached))
+        {
+            if (openedStream is not null)
+                await openedStream.DisposeAsync().ConfigureAwait(false);
+            Notify(segmentId, SegmentTransferStage.Cached, cached.LongLength, 0);
+            return cached;
+        }
+
         // GetOrAdd invokes a newly selected factory synchronously. Transfer ownership
         // of the already-open BODY only to that factory; a cache hit or an existing
         // in-flight transfer disposes the redundant probe immediately.
         Stream? candidate = openedStream;
         Task<byte[]> task;
+        var factoryStarted = 0;
+        var waitStarted = Stopwatch.GetTimestamp();
         try
         {
             task = cache.GetOrAddAsync(
                 segmentId,
-                ct => DownloadSegmentBytes(
-                    segmentId,
-                    Interlocked.Exchange(ref candidate, null),
-                    ct),
+                ct =>
+                {
+                    Interlocked.Exchange(ref factoryStarted, 1);
+                    return DownloadSegmentBytes(
+                        segmentId,
+                        Interlocked.Exchange(ref candidate, null),
+                        ct);
+                },
                 cancellationToken);
         }
         finally
@@ -288,7 +326,29 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 await unused.DisposeAsync().ConfigureAwait(false);
         }
 
-        return await task.ConfigureAwait(false);
+        try
+        {
+            var bytes = await task.ConfigureAwait(false);
+            if (Volatile.Read(ref factoryStarted) == 0)
+            {
+                Notify(
+                    segmentId,
+                    SegmentTransferStage.Cached,
+                    bytes.LongLength,
+                    Stopwatch.GetElapsedTime(waitStarted).TotalMilliseconds);
+            }
+            return bytes;
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested
+            && Volatile.Read(ref factoryStarted) == 0)
+        {
+            Notify(
+                segmentId,
+                SegmentTransferStage.Partial,
+                durationMs: Stopwatch.GetElapsedTime(waitStarted).TotalMilliseconds);
+            throw;
+        }
     }
 
     private async Task<byte[]> DownloadSegmentBytes(
@@ -298,6 +358,9 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     {
         Exception? lastFailure = null;
         var initialStream = openedStream;
+        var started = Stopwatch.GetTimestamp();
+        long partialBytes = 0;
+        Notify(segmentId, SegmentTransferStage.Downloading);
         try
         {
             for (var attempt = 0; attempt <= _retryCount; attempt++)
@@ -330,10 +393,23 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                             ? checked((int)headers.PartSize)
                             : 0;
                         using var output = capacity > 0 ? new MemoryStream(capacity) : new MemoryStream();
-                        await body.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-                        if (output.TryGetBuffer(out var buffer) && output.Length == buffer.Count)
-                            return buffer.Array!;
-                        return output.ToArray();
+                        try
+                        {
+                            await body.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            partialBytes = Math.Max(partialBytes, output.Length);
+                        }
+                        var bytes = output.TryGetBuffer(out var buffer) && output.Length == buffer.Count
+                            ? buffer.Array!
+                            : output.ToArray();
+                        Notify(
+                            segmentId,
+                            SegmentTransferStage.Downloaded,
+                            bytes.LongLength,
+                            Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                        return bytes;
                     }
                 }
                 catch (Exception e) when (e is not OperationCanceledException and not UsenetArticleNotFoundException)
@@ -346,11 +422,62 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 $"NNTP article <{SegmentId.Normalize(segmentId)}> failed after {_retryCount + 1} attempts.",
                 lastFailure);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Notify(
+                segmentId,
+                SegmentTransferStage.Partial,
+                partialBytes,
+                durationMs: Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            NotifyFailure(segmentId, exception, started);
+            throw;
+        }
         finally
         {
             if (initialStream is not null)
                 await initialStream.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    private void Notify(
+        string segmentId,
+        SegmentTransferStage stage,
+        long bytes = 0,
+        double? durationMs = null,
+        string? errorType = null,
+        string? errorMessage = null)
+        => _onTransfer?.Invoke(new SegmentTransferEvent
+        {
+            SegmentId = SegmentId.Normalize(segmentId),
+            Stage = stage,
+            Bytes = Math.Max(0, bytes),
+            DurationMs = durationMs,
+            ErrorType = errorType,
+            ErrorMessage = errorMessage,
+        });
+
+    private void NotifyFailure(string segmentId, Exception exception, long? started = null)
+    {
+        var diagnostic = DiagnosticException(exception);
+        Notify(
+            segmentId,
+            SegmentTransferStage.Failed,
+            durationMs: started is null ? null : Stopwatch.GetElapsedTime(started.Value).TotalMilliseconds,
+            errorType: diagnostic.GetType().Name,
+            errorMessage: SafeError(diagnostic));
+    }
+
+    private static Exception DiagnosticException(Exception exception)
+        => exception.InnerException is null ? exception : exception.GetBaseException();
+
+    private static string SafeError(Exception exception)
+    {
+        var message = exception.Message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return message.Length <= 512 ? message : message[..512];
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -439,18 +566,135 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
     }
 }
 
+internal sealed class ObservedSegmentStream(
+    Stream inner,
+    string segmentId,
+    long started,
+    Action<string, SegmentTransferStage, long, double?, string?, string?> notify)
+    : FastReadOnlyNonSeekableStream
+{
+    private const long ProgressIntervalBytes = 256 * 1024;
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
+    private long _bytes;
+    private long _lastProgressBytes;
+    private long _lastProgressAt;
+    private int _terminal;
+
+    public override async ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var read = await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (read > 0)
+            {
+                _bytes += read;
+                ReportProgressIfDue();
+                return read;
+            }
+
+            Complete(SegmentTransferStage.Downloaded);
+            return 0;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Complete(SegmentTransferStage.Partial);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var diagnostic = exception.InnerException is null ? exception : exception.GetBaseException();
+            Complete(
+                SegmentTransferStage.Failed,
+                diagnostic.GetType().Name,
+                SafeError(diagnostic));
+            throw;
+        }
+    }
+
+    private void ReportProgressIfDue()
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (_lastProgressAt == 0)
+            _lastProgressAt = started;
+        if (_bytes - _lastProgressBytes < ProgressIntervalBytes
+            && Stopwatch.GetElapsedTime(_lastProgressAt, now) < ProgressInterval)
+        {
+            return;
+        }
+
+        _lastProgressBytes = _bytes;
+        _lastProgressAt = now;
+        notify(
+            segmentId,
+            SegmentTransferStage.Downloading,
+            _bytes,
+            Stopwatch.GetElapsedTime(started, now).TotalMilliseconds,
+            null,
+            null);
+    }
+
+    private void Complete(
+        SegmentTransferStage stage,
+        string? errorType = null,
+        string? errorMessage = null)
+    {
+        if (Interlocked.Exchange(ref _terminal, 1) != 0)
+            return;
+        notify(
+            segmentId,
+            stage,
+            Interlocked.Read(ref _bytes),
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            errorType,
+            errorMessage);
+    }
+
+    private static string SafeError(Exception exception)
+    {
+        var message = exception.Message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return message.Length <= 512 ? message : message[..512];
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (!disposing)
+            return;
+        Complete(SegmentTransferStage.Partial);
+        inner.Dispose();
+        base.Dispose(disposing);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        Complete(SegmentTransferStage.Partial);
+        await inner.DisposeAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
+    }
+}
+
 /// <summary>
 /// Concatenates the yEnc-decoded bodies of consecutive segments with no
 /// read-ahead: each segment is downloaded on demand.
 /// </summary>
 public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
 {
+    private const long ProgressIntervalBytes = 256 * 1024;
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private readonly Memory<string> _segmentIds;
     private readonly INntpClient _usenetClient;
     private Stream? _stream;
     private int _currentIndex;
     private bool _disposed;
     private readonly Action<string>? _onSegmentRequested;
+    private readonly Action<SegmentTransferEvent>? _onTransfer;
+    private string? _currentSegmentId;
+    private long _currentStarted;
+    private long _currentBytes;
+    private long _lastProgressBytes;
+    private long _lastProgressAt;
+    private bool _currentCached;
 
     public UnbufferedMultiSegmentStream(
         Memory<string> segmentIds,
@@ -458,11 +702,13 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
         Action<string>? onSegmentRequested = null,
         Stream? openedFirstSegment = null,
         SegmentCache? segmentCache = null,
-        bool progressiveFirstSegment = false)
+        bool progressiveFirstSegment = false,
+        Action<SegmentTransferEvent>? onTransfer = null)
     {
         _segmentIds = segmentIds;
         _usenetClient = usenetClient;
         _onSegmentRequested = onSegmentRequested;
+        _onTransfer = onTransfer;
         if (openedFirstSegment is not null
             && progressiveFirstSegment
             && segmentCache is { CapacityBytes: > 0 }
@@ -473,6 +719,7 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
             {
                 openedFirstSegment.Dispose();
                 _stream = new MemoryStream(cached, writable: false);
+                _currentCached = true;
             }
             else
             {
@@ -485,7 +732,19 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
         }
         _currentIndex = openedFirstSegment is null ? 0 : 1;
         if (openedFirstSegment is not null && !_segmentIds.IsEmpty)
+        {
+            _currentSegmentId = SegmentId.Normalize(_segmentIds.Span[0]);
             _onSegmentRequested?.Invoke(SegmentId.Normalize(_segmentIds.Span[0]));
+            Notify(_currentSegmentId, SegmentTransferStage.Queued);
+            if (_currentCached && _stream is MemoryStream memory)
+                Notify(_currentSegmentId, SegmentTransferStage.Cached, memory.Length, 0);
+            else
+            {
+                _currentStarted = Stopwatch.GetTimestamp();
+                _lastProgressAt = _currentStarted;
+                Notify(_currentSegmentId, SegmentTransferStage.Downloading);
+            }
+        }
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -493,29 +752,114 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
         ThrowIfDisposed();
         if (buffer.IsEmpty) return 0;
 
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            // if the stream is null, get the next stream.
-            if (_stream == null)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                if (_currentIndex >= _segmentIds.Length) return 0;
-                _onSegmentRequested?.Invoke(SegmentId.Normalize(_segmentIds.Span[_currentIndex]));
-                var body = await _usenetClient
-                    .DecodedBodyAsync(_segmentIds.Span[_currentIndex++], cancellationToken)
-                    .ConfigureAwait(false);
-                _stream = body.Stream;
+                if (_stream == null)
+                {
+                    if (_currentIndex >= _segmentIds.Length) return 0;
+                    var segmentId = _segmentIds.Span[_currentIndex++];
+                    _currentSegmentId = SegmentId.Normalize(segmentId);
+                    _currentBytes = 0;
+                    _currentCached = false;
+                    _onSegmentRequested?.Invoke(_currentSegmentId);
+                    Notify(_currentSegmentId, SegmentTransferStage.Queued);
+                    _currentStarted = Stopwatch.GetTimestamp();
+                    _lastProgressBytes = 0;
+                    _lastProgressAt = _currentStarted;
+                    Notify(_currentSegmentId, SegmentTransferStage.Downloading);
+                    var body = await _usenetClient
+                        .DecodedBodyAsync(segmentId, cancellationToken)
+                        .ConfigureAwait(false);
+                    _stream = body.Stream;
+                }
+
+                var read = await _stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (read > 0)
+                {
+                    _currentBytes += read;
+                    ReportProgressIfDue();
+                    return read;
+                }
+
+                await _stream.DisposeAsync().ConfigureAwait(false);
+                _stream = null;
+                if (!_currentCached && _currentSegmentId is not null)
+                {
+                    Notify(
+                        _currentSegmentId,
+                        SegmentTransferStage.Downloaded,
+                        _currentBytes,
+                        Stopwatch.GetElapsedTime(_currentStarted).TotalMilliseconds);
+                }
+                _currentSegmentId = null;
             }
-
-            // read from the stream
-            var read = await _stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (read > 0) return read;
-
-            // if the stream ended, continue to the next stream.
-            await _stream.DisposeAsync().ConfigureAwait(false);
-            _stream = null;
+        }
+        catch (Exception exception)
+        {
+            if (_currentSegmentId is not null)
+            {
+                var cancelled = exception is OperationCanceledException
+                    && cancellationToken.IsCancellationRequested;
+                var diagnostic = exception.InnerException is null ? exception : exception.GetBaseException();
+                Notify(
+                    _currentSegmentId,
+                    cancelled ? SegmentTransferStage.Partial : SegmentTransferStage.Failed,
+                    _currentBytes,
+                    _currentStarted == 0 ? null : Stopwatch.GetElapsedTime(_currentStarted).TotalMilliseconds,
+                    cancelled ? null : diagnostic.GetType().Name,
+                    cancelled ? null : SafeError(diagnostic));
+                _currentSegmentId = null;
+            }
+            throw;
         }
 
         return 0;
+    }
+
+    private void ReportProgressIfDue()
+    {
+        if (_currentCached || _currentSegmentId is null || _currentStarted == 0)
+            return;
+
+        var now = Stopwatch.GetTimestamp();
+        if (_currentBytes - _lastProgressBytes < ProgressIntervalBytes
+            && Stopwatch.GetElapsedTime(_lastProgressAt, now) < ProgressInterval)
+        {
+            return;
+        }
+
+        _lastProgressBytes = _currentBytes;
+        _lastProgressAt = now;
+        Notify(
+            _currentSegmentId,
+            SegmentTransferStage.Downloading,
+            _currentBytes,
+            Stopwatch.GetElapsedTime(_currentStarted, now).TotalMilliseconds);
+    }
+
+    private void Notify(
+        string segmentId,
+        SegmentTransferStage stage,
+        long bytes = 0,
+        double? durationMs = null,
+        string? errorType = null,
+        string? errorMessage = null)
+        => _onTransfer?.Invoke(new SegmentTransferEvent
+        {
+            SegmentId = segmentId,
+            Stage = stage,
+            Bytes = Math.Max(0, bytes),
+            DurationMs = durationMs,
+            ErrorType = errorType,
+            ErrorMessage = errorMessage,
+        });
+
+    private static string SafeError(Exception exception)
+    {
+        var message = exception.Message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return message.Length <= 512 ? message : message[..512];
     }
 
     private void ThrowIfDisposed()
@@ -528,6 +872,12 @@ public class UnbufferedMultiSegmentStream : FastReadOnlyNonSeekableStream
         if (_disposed) return;
         if (!disposing) return;
         _disposed = true;
+        if (_currentSegmentId is not null && !_currentCached)
+            Notify(
+                _currentSegmentId,
+                SegmentTransferStage.Partial,
+                _currentBytes,
+                _currentStarted == 0 ? null : Stopwatch.GetElapsedTime(_currentStarted).TotalMilliseconds);
         _stream?.Dispose();
         base.Dispose(disposing);
     }

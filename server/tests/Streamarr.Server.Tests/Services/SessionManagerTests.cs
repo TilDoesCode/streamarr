@@ -15,7 +15,8 @@ public class SessionManagerTests
         int cacheSizeMb = 102_400,
         TimeProvider? time = null,
         IReleaseHealthCache? healthCache = null,
-        IStreamHistoryRecorder? historyRecorder = null) => new(
+        IStreamHistoryRecorder? historyRecorder = null,
+        int articleTelemetryCapacity = 500_000) => new(
         new FakeNntpClient(),
         Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
         {
@@ -24,6 +25,7 @@ public class SessionManagerTests
             MaxSessions = 200,
         }),
         NullLogger<SessionManager>.Instance,
+        articleTelemetryCapacity,
         time: time,
         healthCache: healthCache,
         historyRecorder: historyRecorder);
@@ -35,6 +37,19 @@ public class SessionManagerTests
         SizeBytes = sizeBytes ?? Payload.Length,
         OpenStream = _ => new MemoryStream(Payload),
     };
+
+    private static ResolvedMediaFile MediaFileWithArticles(params string[] messageIds)
+        => MediaFile() with
+        {
+            SegmentIds = messageIds,
+            ArticleManifest = messageIds
+                .Select((messageId, index) => new ArticleManifestEntry(
+                    messageId,
+                    "video.mkv",
+                    index + 1,
+                    1_000))
+                .ToArray(),
+        };
 
     [Fact]
     public void CreateSession_IssuesUnguessableUniqueTokens()
@@ -290,6 +305,47 @@ public class SessionManagerTests
 
         Assert.Equal(0, manager.SweepExpired());
         Assert.Single(manager.ListSessions());
+    }
+
+    [Fact]
+    public void NewLiveArticleMap_EvictsRetainedMapBeforeTruncatingLiveTelemetry()
+    {
+        var manager = Manager(articleTelemetryCapacity: 2);
+        var retained = manager.CreateSession(
+            "old-release",
+            "old-work",
+            MediaFileWithArticles("old-1@test", "old-2@test"),
+            null);
+        Assert.True(manager.CloseSession(retained.Token));
+        Assert.Equal(2, manager.GetArticleTracker(retained.Token)?.TrackedArticleCount);
+
+        var live = manager.CreateSession(
+            "live-release",
+            "live-work",
+            MediaFileWithArticles("live-1@test", "live-2@test"),
+            null);
+
+        Assert.Null(manager.GetArticleTracker(retained.Token));
+        Assert.Equal(2, live.ArticleTracker?.TrackedArticleCount);
+        Assert.Equal(0, live.ArticleTracker?.Snapshot().TruncatedArticles);
+    }
+
+    [Fact]
+    public void ExpiredRetainedArticleMap_IsPrunedSafely()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(time: time, articleTelemetryCapacity: 2);
+        var retained = manager.CreateSession(
+            "old-release",
+            "old-work",
+            MediaFileWithArticles("old@test"),
+            null);
+        Assert.True(manager.CloseSession(retained.Token));
+
+        time.Advance(TimeSpan.FromHours(1) + TimeSpan.FromMilliseconds(1));
+
+        Assert.Equal(0, manager.SweepExpired());
+        Assert.Null(manager.GetArticleTracker(retained.Token));
     }
 
     [Fact]

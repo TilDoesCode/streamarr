@@ -65,6 +65,7 @@ public record NntpResponse
 {
     public required int ResponseCode { get; init; }
     public required string ResponseMessage { get; init; }
+    public List<NntpProviderAttempt> ProviderAttempts { get; init; } = [];
 
     public NntpResponseType ResponseType => Enum.IsDefined(typeof(NntpResponseType), ResponseCode)
         ? (NntpResponseType)ResponseCode

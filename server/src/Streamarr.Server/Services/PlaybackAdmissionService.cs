@@ -253,15 +253,9 @@ public sealed class PlaybackAdmissionService(
 
     private static PlaybackAdmissionResponse Failed(Admission admission)
     {
-        var reason = admission.Work.IsCanceled
-            ? "prepare_timeout"
-            : admission.Work.Exception?.InnerException switch
-            {
-                ReleaseNotFoundException => "unknown_release",
-                NoPlayableFileException => "no_playable_file",
-                ResourceCapacityException => "capacity_reached",
-                _ => "prepare_failed",
-            };
+        var reason = FailureReason(
+            admission.Work.Exception?.InnerException,
+            admission.Work.IsCanceled);
         return new PlaybackAdmissionResponse
         {
             AdmissionId = admission.Id,
@@ -269,6 +263,18 @@ public sealed class PlaybackAdmissionService(
             Error = reason,
         };
     }
+
+    internal static string FailureReason(Exception? exception, bool canceled)
+        => canceled
+            ? "prepare_timeout"
+            : exception switch
+            {
+                ReleaseNotFoundException => "unknown_release",
+                NoPlayableFileException => "no_playable_file",
+                NzbUnexpectedContentException => "nzb_fetch_failed",
+                ResourceCapacityException => "capacity_reached",
+                _ => "prepare_failed",
+            };
 
     internal void Sweep()
     {

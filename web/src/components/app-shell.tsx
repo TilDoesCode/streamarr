@@ -63,7 +63,7 @@ export function AppShell() {
   // needs the full viewport width. Let those breathe instead of the comfortable-reading cap.
   const wideLayout = useRouterState({
     select: (s) =>
-      ["/search", "/library", "/ephemeral", "/history"].some((path) =>
+      ["/search", "/library", "/ephemeral", "/history", "/logs"].some((path) =>
         s.location.pathname.startsWith(path),
       ) || s.location.pathname.startsWith("/sessions/"),
   });

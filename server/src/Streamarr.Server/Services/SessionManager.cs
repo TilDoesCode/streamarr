@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Streamarr.Core.Media;
 using Streamarr.Core.Sessions;
+using Streamarr.Server.Logging;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services.Repair;
 using Streamarr.Usenet.Exceptions;
@@ -12,6 +13,12 @@ using Streamarr.Usenet.Nntp.Pooling;
 using Streamarr.Usenet.Streams;
 
 namespace Streamarr.Server.Services;
+
+public enum EphemeralRetentionPriority
+{
+    Background,
+    Normal,
+}
 
 /// <summary>
 /// One live streaming session (BRIEF §6.1 module 6): the resolved media file,
@@ -24,6 +31,7 @@ public sealed class ActiveSession
     private long _runTimeTicks;
     private int _openStreamCount;
     private int _closed;
+    private int _retentionPriority;
     private readonly TaskCompletionSource<bool> _openingCompleted = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _lifecycleGate = new();
@@ -39,10 +47,12 @@ public sealed class ActiveSession
         CountingNntpGate nntpUsage,
         StreamarrMetrics? metrics = null,
         SegmentCache? segmentCache = null,
+        ArticleDownloadTracker? articleTracker = null,
         string? title = null,
         TimeProvider? time = null,
         string status = "ready",
-        bool opening = false)
+        bool opening = false,
+        EphemeralRetentionPriority retentionPriority = EphemeralRetentionPriority.Normal)
     {
         Session = session;
         File = file;
@@ -51,9 +61,11 @@ public sealed class ActiveSession
         ContentType = ContainerContentTypes.For(file.Container);
         _metrics = metrics;
         _segmentCache = segmentCache;
+        ArticleTracker = articleTracker;
         _time = time ?? TimeProvider.System;
         Title = string.IsNullOrWhiteSpace(title) ? file.FileName : title;
         Status = status;
+        _retentionPriority = (int)retentionPriority;
         if (!opening)
             _openingCompleted.TrySetResult(true);
     }
@@ -62,10 +74,19 @@ public sealed class ActiveSession
     public ResolvedMediaFile File { get; }
     public INntpClient NntpClient { get; }
     public CountingNntpGate NntpUsage { get; }
+    public ArticleDownloadTracker? ArticleTracker { get; internal set; }
     public string ContentType { get; }
     public string Title { get; }
     public string Status { get; }
     public FfprobeResult? Probe { get; private set; }
+    public PreDownloadCacheFile? PreDownloadCache { get; private set; }
+    public string? PreDownloadJobId { get; private set; }
+    public string? PreDownloadKind { get; private set; }
+    public string? PreDownloadReason { get; private set; }
+    public string? PreDownloadSourceToken { get; private set; }
+    public EphemeralRetentionPriority RetentionPriority
+        => (EphemeralRetentionPriority)Volatile.Read(ref _retentionPriority);
+    public long RunTimeTicks => Volatile.Read(ref _runTimeTicks);
 
     /// <summary>
     /// Request→first-frame timing for this playback attempt (BRIEF §11 diagnostics). Populated
@@ -100,6 +121,10 @@ public sealed class ActiveSession
                 return _openStreamCount > 0;
         }
     }
+
+    public bool IsPreDownloading
+        => PreDownloadCache is { IsComplete: false } cache
+           && !cache.IsCancelled;
 
     public DateTimeOffset ExpiresAt
     {
@@ -156,6 +181,46 @@ public sealed class ActiveSession
 
     internal void RecordChunkRequested(string segmentId) => _queriedChunks.TryAdd(segmentId, 0);
 
+    internal void RecordTransferEvent(SegmentTransferEvent transfer)
+    {
+        var tracker = ArticleTracker;
+        if (tracker is null)
+            return;
+
+        switch (transfer.Stage)
+        {
+            case SegmentTransferStage.Queued:
+                tracker.MarkQueued(transfer.SegmentId);
+                break;
+            case SegmentTransferStage.Downloading:
+                tracker.MarkDownloading(
+                    transfer.SegmentId,
+                    bytes: transfer.Bytes,
+                    durationMs: transfer.DurationMs);
+                break;
+            case SegmentTransferStage.Cached:
+                tracker.MarkCached(transfer.SegmentId, transfer.Bytes, transfer.DurationMs);
+                break;
+            case SegmentTransferStage.Downloaded:
+                tracker.MarkDownloaded(transfer.SegmentId, transfer.Bytes, transfer.DurationMs);
+                break;
+            case SegmentTransferStage.Partial:
+                tracker.MarkPartial(
+                    transfer.SegmentId,
+                    transfer.Bytes,
+                    durationMs: transfer.DurationMs);
+                break;
+            case SegmentTransferStage.Failed:
+                tracker.MarkFailed(
+                    transfer.SegmentId,
+                    transfer.ErrorType,
+                    transfer.ErrorMessage,
+                    transfer.Bytes,
+                    transfer.DurationMs);
+                break;
+        }
+    }
+
     internal void AddBytesServed(long count)
     {
         Session.BytesServed = Interlocked.Add(ref _bytesServed, count);
@@ -169,6 +234,35 @@ public sealed class ActiveSession
     /// </summary>
     internal void SetRunTimeTicks(long? runTimeTicks)
         => Volatile.Write(ref _runTimeTicks, runTimeTicks is > 0 ? runTimeTicks.Value : 0);
+
+    internal void SetRetentionPriority(EphemeralRetentionPriority priority)
+    {
+        lock (_lifecycleGate)
+            Interlocked.Exchange(ref _retentionPriority, (int)priority);
+    }
+
+    internal void PromoteRetention()
+        => SetRetentionPriority(EphemeralRetentionPriority.Normal);
+
+    internal bool AttachPreDownload(
+        PreDownloadCacheFile cache,
+        string jobId,
+        string kind,
+        string reason,
+        string? sourceToken)
+    {
+        lock (_lifecycleGate)
+        {
+            if (_closed != 0 || PreDownloadCache is not null)
+                return false;
+            PreDownloadCache = cache;
+            PreDownloadJobId = jobId;
+            PreDownloadKind = kind;
+            PreDownloadReason = reason;
+            PreDownloadSourceToken = sourceToken;
+            return true;
+        }
+    }
 
     internal double GetPacingSustainBytesPerSecond(double configuredFloor)
         => StreamPacer.SelectSustainBytesPerSecond(
@@ -204,6 +298,7 @@ public sealed class ActiveSession
             Volatile.Write(ref _closed, 1);
             Session.State = SessionState.Closed;
         }
+        PreDownloadCache?.Dispose();
         _openingCompleted.TrySetResult(false);
     }
 
@@ -213,16 +308,19 @@ public sealed class ActiveSession
     /// before the purge (and observed here) or refused afterwards — the guard can never race a
     /// stream open. Returns false when the file is being streamed or is already closed.
     /// </summary>
-    internal bool TryPurgeIfIdle()
+    internal bool TryPurgeIfIdle(EphemeralRetentionPriority? requiredPriority = null)
     {
         lock (_lifecycleGate)
         {
-            if (_closed != 0 || _openStreamCount > 0)
+            if (_closed != 0
+                || _openStreamCount > 0
+                || (requiredPriority is { } required && RetentionPriority != required))
                 return false;
 
             Volatile.Write(ref _closed, 1);
             Session.State = SessionState.Closed;
         }
+        PreDownloadCache?.Dispose();
         _openingCompleted.TrySetResult(false);
         return true;
     }
@@ -263,10 +361,40 @@ public sealed class SessionManager(
     IRepairStreamGateway? repairGateway = null,
     IStreamHistoryRecorder? historyRecorder = null) : BackgroundService
 {
+    private const int DefaultArticleTelemetryCapacity = 500_000;
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, RetainedArticleMap> _articleMaps = new(StringComparer.Ordinal);
     private readonly object _createGate = new();
     private readonly SemaphoreSlim _streamGate = new(Math.Max(1, options.Value.MaxConcurrentStreams));
     private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private readonly int _articleTelemetryCapacity = DefaultArticleTelemetryCapacity;
+
+    internal SessionManager(
+        INntpClient nntpClient,
+        IOptions<StreamarrOptions> options,
+        ILogger<SessionManager> logger,
+        int articleTelemetryCapacity,
+        StreamarrMetrics? metrics = null,
+        SegmentCache? segmentCache = null,
+        TimeProvider? time = null,
+        IReleaseHealthCache? healthCache = null,
+        IRepairStreamGateway? repairGateway = null,
+        IStreamHistoryRecorder? historyRecorder = null)
+        : this(
+            nntpClient,
+            options,
+            logger,
+            metrics,
+            segmentCache,
+            time,
+            healthCache,
+            repairGateway,
+            historyRecorder)
+    {
+        _articleTelemetryCapacity = articleTelemetryCapacity is >= 0 and <= DefaultArticleTelemetryCapacity
+            ? articleTelemetryCapacity
+            : throw new ArgumentOutOfRangeException(nameof(articleTelemetryCapacity));
+    }
 
     /// <summary>Total NNTP commands in flight across all live sessions (connections in use).</summary>
     public int NntpConnectionsInUse => _sessions.Values.Sum(s => s.NntpUsage.InFlight);
@@ -314,7 +442,8 @@ public sealed class SessionManager(
         string? requestedByName = null,
         string? title = null,
         TtffTimeline? timeline = null,
-        string? streamAttemptId = null)
+        string? streamAttemptId = null,
+        EphemeralRetentionPriority retentionPriority = EphemeralRetentionPriority.Normal)
     {
         lock (_createGate)
         {
@@ -329,6 +458,8 @@ public sealed class SessionManager(
             SweepExpiredLocked(now);
             if (FindReusableLocked(releaseId, workId, client, requestedById) is { } reusable)
             {
+                if (retentionPriority == EphemeralRetentionPriority.Normal)
+                    reusable.PromoteRetention();
                 reusable.Touch();
                 logger.LogInformation(
                     "Reusing capability session {Token} for release {ReleaseId} and requester {RequestedById}",
@@ -363,7 +494,8 @@ public sealed class SessionManager(
                     timeline,
                     status,
                     opening: true,
-                    streamAttemptId),
+                    streamAttemptId,
+                    retentionPriority),
                 Created: true);
         }
     }
@@ -372,7 +504,8 @@ public sealed class SessionManager(
         string releaseId,
         string workId,
         string? client,
-        string? requestedById = null)
+        string? requestedById = null,
+        EphemeralRetentionPriority retentionPriority = EphemeralRetentionPriority.Normal)
     {
         lock (_createGate)
         {
@@ -385,6 +518,8 @@ public sealed class SessionManager(
 
             SweepExpiredLocked(_time.GetUtcNow());
             var reusable = FindReusableLocked(releaseId, workId, client, requestedById);
+            if (retentionPriority == EphemeralRetentionPriority.Normal)
+                reusable?.PromoteRetention();
             reusable?.Touch();
             return reusable;
         }
@@ -426,20 +561,47 @@ public sealed class SessionManager(
         TtffTimeline? timeline,
         string status,
         bool opening,
-        string? streamAttemptId = null)
+        string? streamAttemptId = null,
+        EphemeralRetentionPriority retentionPriority = EphemeralRetentionPriority.Normal)
     {
         var now = _time.GetUtcNow();
         SweepExpiredLocked(now);
-        MakeRoomFor(file.SizeBytes);
+        MakeRoomFor(file.SizeBytes, retentionPriority);
         while (_sessions.Count >= options.Value.MaxSessions)
         {
-            if (!EvictLeastRecentlyUsed("session-count limit"))
-                throw new ResourceCapacityException("The live session limit has been reached.");
+            if (!EvictLeastRecentlyUsed(
+                    "session-count limit",
+                    backgroundOnly: retentionPriority == EphemeralRetentionPriority.Background))
+            {
+                throw new ResourceCapacityException(
+                    retentionPriority == EphemeralRetentionPriority.Background
+                        ? "The implicit pre-download cannot displace an explicitly requested session."
+                        : "The live session limit has been reached.");
+            }
         }
 
         // 192 bits of CSPRNG entropy — opaque and unguessable (BRIEF §6.4)
         var usage = new CountingNntpGate();
-        var sessionClient = new GatedNntpClient(nntpClient, usage);
+        IEnumerable<ArticleManifestEntry> articleManifest = file.ArticleManifest.Count > 0
+            ? file.ArticleManifest
+            : file.SegmentIds.Select((id, index) => new ArticleManifestEntry(id, file.FileName, index + 1));
+        var requestedTrackerCapacity = Math.Min(
+            ArticleDownloadTracker.MaxTrackedArticles,
+            file.ArticleManifest.Count > 0 ? file.ArticleManifest.Count : file.SegmentIds.Count);
+        PrepareArticleTelemetryCapacityLocked(now, requestedTrackerCapacity);
+        var trackedArticles = TrackedArticleTelemetryCount();
+        var trackerCapacity = Math.Clamp(
+            _articleTelemetryCapacity - trackedArticles,
+            0,
+            ArticleDownloadTracker.MaxTrackedArticles);
+        var articleTracker = new ArticleDownloadTracker(
+            releaseId,
+            articleManifest,
+            _time,
+            maxTrackedArticles: trackerCapacity);
+        var sessionClient = new ArticleTrackingNntpClient(
+            new GatedNntpClient(nntpClient, usage),
+            articleTracker);
 
         ActiveSession active;
         do
@@ -467,10 +629,12 @@ public sealed class SessionManager(
                 usage,
                 metrics,
                 segmentCache,
+                articleTracker,
                 title,
                 _time,
                 status,
-                opening)
+                opening,
+                retentionPriority)
             {
                 Timeline = timeline,
                 StreamAttemptId = streamAttemptId,
@@ -502,8 +666,92 @@ public sealed class SessionManager(
         return false;
     }
 
-    /// <summary>Opens a fresh stream over the session's media file for one HTTP request.</summary>
-    public Stream OpenStream(ActiveSession session)
+    public ActiveSession? FindForPlaybackEvent(
+        string? token,
+        string releaseId,
+        string? workId,
+        string? client,
+        string? requestedById)
+    {
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            if (TryGetSession(token, out var exact)
+                && string.Equals(exact.Session.ReleaseId, releaseId, StringComparison.Ordinal)
+                && (string.IsNullOrWhiteSpace(workId)
+                    || string.Equals(exact.Session.WorkId, workId, StringComparison.Ordinal)))
+            {
+                return exact;
+            }
+            return null;
+        }
+
+        return _sessions.Values
+            .Where(session => !session.IsExpired(_time.GetUtcNow())
+                              && string.Equals(session.Session.ReleaseId, releaseId, StringComparison.Ordinal)
+                              && (string.IsNullOrWhiteSpace(workId)
+                                  || string.Equals(session.Session.WorkId, workId, StringComparison.Ordinal))
+                              && (string.IsNullOrWhiteSpace(client)
+                                  || string.Equals(session.Session.Client, client, StringComparison.Ordinal))
+                              && (string.IsNullOrWhiteSpace(requestedById)
+                                  || string.Equals(
+                                      session.Session.RequestedById,
+                                      requestedById,
+                                      StringComparison.Ordinal)))
+            .OrderByDescending(session => session.IsStreaming)
+            .ThenByDescending(session => session.Session.LastAccessedAt)
+            .FirstOrDefault();
+    }
+
+    public Stream OpenPreDownloadSource(
+        ActiveSession session,
+        PreDownloadNntpClient lowPriorityClient)
+    {
+        if (!TryGetSession(session.Token, out var current) || !ReferenceEquals(current, session))
+            throw new SessionUnavailableException("The pre-download target is no longer retained.");
+
+        INntpClient client = new GatedNntpClient(
+            lowPriorityClient,
+            session.NntpUsage,
+            disposeInner: false,
+            disposeGate: false);
+        if (session.ArticleTracker is { } tracker)
+            client = new ArticleTrackingNntpClient(client, tracker);
+
+        return session.File.OpenPreDownloadStream is { } preDownload
+            ? preDownload(client, null, session.RecordTransferEvent)
+            : session.File.OpenTelemetryStream is { } telemetry
+            ? telemetry(client, null, session.RecordTransferEvent)
+            : session.File.OpenObservedStream is { } observed
+                ? observed(client, null)
+                : session.File.OpenStream(client);
+    }
+
+    public ArticleDownloadTracker? GetArticleTracker(string token)
+    {
+        if (TryGetSession(token, out var live))
+            return live.ArticleTracker;
+
+        if (!_articleMaps.TryGetValue(token, out var retained))
+            return null;
+        if (retained.ExpiresAt > _time.GetUtcNow())
+            return retained.Tracker;
+
+        _articleMaps.TryRemove(token, out _);
+        return null;
+    }
+
+    /// <summary>
+    /// Opens a fresh stream over the session's media file for one HTTP request.
+    /// </summary>
+    /// <param name="session">The live session to stream.</param>
+    /// <param name="paced">
+    /// When false, skips the playback-pacing token bucket entirely (BRIEF full-speed download):
+    /// reads proceed as fast as the underlying NNTP fetch can supply, unbounded by
+    /// <see cref="StreamarrOptions.StreamPacingSustainBytesPerSecond"/>. Used by
+    /// <c>GET /api/v1/download/{token}</c>; the playback path (<c>/api/v1/stream/{token}</c>)
+    /// always passes true so on-demand playback keeps its existing TTFF/fairness behavior.
+    /// </param>
+    public Stream OpenStream(ActiveSession session, bool paced = true)
     {
         if (!_streamGate.Wait(0))
             throw new ResourceCapacityException("The concurrent stream limit has been reached.");
@@ -511,8 +759,11 @@ public sealed class SessionManager(
         var admitted = false;
         try
         {
+            session.PromoteRetention();
             if (!session.TryOpenStream(
-                    () => session.File.OpenObservedStream is { } observed
+                    () => session.File.OpenTelemetryStream is { } telemetry
+                        ? telemetry(session.NntpClient, session.RecordChunkRequested, session.RecordTransferEvent)
+                        : session.File.OpenObservedStream is { } observed
                         ? observed(session.NntpClient, session.RecordChunkRequested)
                         : session.File.OpenStream(session.NntpClient),
                     out var inner)
@@ -537,6 +788,8 @@ public sealed class SessionManager(
                         session.Title));
             }
 
+            inner = new PreDownloadAwareStream(inner, () => session.PreDownloadCache);
+
             // Offset (from resolve t0) at which this HTTP stream request opened its stream, so the
             // first-byte span lands in the right place on the request→first-frame flamegraph.
             var openMs = session.Timeline?.ElapsedMs;
@@ -544,7 +797,7 @@ public sealed class SessionManager(
             var o = options.Value;
             var sustainBytesPerSecond = session.GetPacingSustainBytesPerSecond(
                 o.StreamPacingSustainBytesPerSecond);
-            var pacer = o.StreamPacingEnabled
+            var pacer = paced && o.StreamPacingEnabled
                 ? new StreamPacer(
                     o.StreamPacingBurstBytes,
                     sustainBytesPerSecond,
@@ -575,7 +828,7 @@ public sealed class SessionManager(
                     }
                 },
                 pacer,
-                exception => InvalidateMissingRelease(session, exception));
+                exception => RecordStreamReadFailure(session, exception));
         }
         catch
         {
@@ -584,6 +837,48 @@ public sealed class SessionManager(
             _streamGate.Release();
             throw;
         }
+    }
+
+    private void RecordStreamReadFailure(ActiveSession session, Exception exception)
+    {
+        var properties = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            [LogPropertyNames.ReleaseId] = session.Session.ReleaseId,
+            [LogPropertyNames.WorkId] = session.Session.WorkId,
+            [LogPropertyNames.StreamTokenFingerprint] = LogSanitizer.FingerprintToken(session.Token),
+        };
+        if (!string.IsNullOrWhiteSpace(session.StreamAttemptId))
+            properties[LogPropertyNames.StreamAttemptId] = session.StreamAttemptId!;
+
+        using var scope = logger.BeginScope(properties);
+        if (exception is OperationCanceledException)
+        {
+            logger.LogDebug(
+                "Stream read for release {ReleaseId} was cancelled by the client",
+                session.Session.ReleaseId);
+            return;
+        }
+
+        logger.LogError(
+            exception,
+            "Stream read failed for release {ReleaseId} ({FailureType})",
+            session.Session.ReleaseId,
+            exception.GetType().Name);
+
+        if (historyRecorder is not null && session.StreamAttemptId is { } attemptId)
+        {
+            historyRecorder.AppendEvents(attemptId,
+            [
+                new StreamEventWrite(
+                    DateTimeOffset.UtcNow,
+                    "error",
+                    "stream",
+                    exception.GetType().Name,
+                    LogSanitizer.SanitizeAndTruncate(exception.Message, 1_024)),
+            ]);
+        }
+
+        InvalidateMissingRelease(session, exception);
     }
 
     private void InvalidateMissingRelease(ActiveSession session, Exception exception)
@@ -623,6 +918,7 @@ public sealed class SessionManager(
     /// </summary>
     private void RecordHistoryClose(ActiveSession session, string finalState, string? reason)
     {
+        RetainArticleMap(session);
         if (historyRecorder is null || session.StreamAttemptId is not { } attemptId)
             return;
 
@@ -638,6 +934,60 @@ public sealed class SessionManager(
             NntpCommandsTotal = session.NntpUsage.TotalCommands,
         });
     }
+
+    private void RetainArticleMap(ActiveSession session)
+    {
+        if (session.ArticleTracker is not { } tracker)
+            return;
+
+        lock (_createGate)
+        {
+            var now = _time.GetUtcNow();
+            PruneExpiredArticleMapsLocked(now);
+            _articleMaps[session.Token] = new RetainedArticleMap(
+                tracker,
+                now.AddHours(1));
+            while (_articleMaps.Count > 5
+                   || TrackedArticleTelemetryCount() > _articleTelemetryCapacity)
+            {
+                if (!RemoveOldestRetainedArticleMapLocked())
+                    break;
+            }
+        }
+    }
+
+    private void PrepareArticleTelemetryCapacityLocked(
+        DateTimeOffset now,
+        int requestedTrackerCapacity)
+    {
+        PruneExpiredArticleMapsLocked(now);
+        var retainedBudget = Math.Max(0, _articleTelemetryCapacity - requestedTrackerCapacity);
+        while (!_articleMaps.IsEmpty && TrackedArticleTelemetryCount() > retainedBudget)
+        {
+            if (!RemoveOldestRetainedArticleMapLocked())
+                break;
+        }
+    }
+
+    private void PruneExpiredArticleMapsLocked(DateTimeOffset now)
+    {
+        foreach (var (token, retained) in _articleMaps)
+        {
+            if (retained.ExpiresAt <= now)
+                _articleMaps.TryRemove(token, out _);
+        }
+    }
+
+    private bool RemoveOldestRetainedArticleMapLocked()
+    {
+        var oldest = _articleMaps.MinBy(pair => pair.Value.ExpiresAt);
+        return !string.IsNullOrEmpty(oldest.Key)
+               && _articleMaps.TryRemove(oldest.Key, out _);
+    }
+
+    private int TrackedArticleTelemetryCount()
+        => _sessions.Values.Sum(session => session.ArticleTracker?.TrackedArticleCount ?? 0)
+            + _articleMaps.Values.Sum(retained => retained.Tracker.TrackedArticleCount);
 
     private int InvalidateReleaseSessionsLocked(string releaseId)
     {
@@ -658,6 +1008,10 @@ public sealed class SessionManager(
 
         return removed;
     }
+
+    private sealed record RetainedArticleMap(
+        ArticleDownloadTracker Tracker,
+        DateTimeOffset ExpiresAt);
 
     public bool CloseSession(string token)
     {
@@ -680,11 +1034,19 @@ public sealed class SessionManager(
     /// operator-facing "reclaim idle cache now" control.
     /// </summary>
     public PurgeOutcome PurgeSession(string token)
+        => PurgeSession(token, requiredPriority: null);
+
+    internal PurgeOutcome PurgeBackgroundSession(string token)
+        => PurgeSession(token, EphemeralRetentionPriority.Background);
+
+    private PurgeOutcome PurgeSession(
+        string token,
+        EphemeralRetentionPriority? requiredPriority)
     {
         if (!TryGetSession(token, out var session))
             return PurgeOutcome.NotFound;
 
-        if (!session.TryPurgeIfIdle())
+        if (!session.TryPurgeIfIdle(requiredPriority))
             return PurgeOutcome.Streaming;
 
         _sessions.TryRemove(token, out _);
@@ -709,6 +1071,8 @@ public sealed class SessionManager(
     private int SweepExpiredLocked(DateTimeOffset now)
     {
         var removed = 0;
+        PruneExpiredArticleMapsLocked(now);
+
         foreach (var (token, session) in _sessions)
         {
             if (!session.IsExpired(now))
@@ -728,14 +1092,27 @@ public sealed class SessionManager(
         return removed;
     }
 
-    private void MakeRoomFor(long incomingSizeBytes)
+    private void MakeRoomFor(
+        long incomingSizeBytes,
+        EphemeralRetentionPriority incomingPriority)
     {
         var capacityBytes = checked((long)options.Value.EphemeralCacheSizeMb * 1024 * 1024);
+        if (incomingPriority == EphemeralRetentionPriority.Background
+            && incomingSizeBytes > capacityBytes)
+        {
+            throw new ResourceCapacityException(
+                "The implicit pre-download is larger than the ephemeral cache budget.");
+        }
         while (!_sessions.IsEmpty
                && CacheSizeBytes() > capacityBytes - Math.Min(incomingSizeBytes, capacityBytes))
         {
-            if (!EvictLeastRecentlyUsed("ephemeral-cache byte budget"))
-                break;
+            if (!EvictLeastRecentlyUsed(
+                    "ephemeral-cache byte budget",
+                    backgroundOnly: incomingPriority == EphemeralRetentionPriority.Background))
+            {
+                throw new ResourceCapacityException(
+                    "The implicit pre-download cannot displace an explicitly requested file.");
+            }
         }
     }
 
@@ -747,10 +1124,13 @@ public sealed class SessionManager(
         return total;
     }
 
-    private bool EvictLeastRecentlyUsed(string reason)
+    private bool EvictLeastRecentlyUsed(string reason, bool backgroundOnly = false)
     {
         foreach (var candidate in _sessions.Values
-                     .OrderBy(session => session.Session.LastAccessedAt)
+                     .Where(session => !backgroundOnly
+                                       || session.RetentionPriority == EphemeralRetentionPriority.Background)
+                     .OrderBy(session => session.RetentionPriority)
+                     .ThenBy(session => session.Session.LastAccessedAt)
                      .ThenBy(session => session.Session.CreatedAt)
                      .ThenBy(session => session.Token, StringComparer.Ordinal))
         {

@@ -238,10 +238,37 @@ public sealed class StreamarrOptions
     /// <summary>TMDB matcher config: API key, image sizes, cache TTL (BRIEF §6.1 / §6.3).</summary>
     public TmdbOptions Tmdb { get; set; } = new();
 
+    /// <summary>Low-priority background completion and next-episode pre-download policy.</summary>
+    public PreDownloadOptions PreDownload { get; set; } = new();
+
     public HealthCheckOptions HealthCheck { get; set; } = new();
 
     /// <summary>PAR2-based repair pipeline (dynamic mid-stream repair + resolve-time jobs).</summary>
     public RepairOptions Repair { get; set; } = new();
+}
+
+/// <summary>Config-bindable defaults used to seed the persisted pre-download policy.</summary>
+public sealed class PreDownloadOptions
+{
+    public const int MinCurrentFileThresholdSeconds = 0;
+    public const int MaxCurrentFileThresholdSeconds = 3_600;
+    public const int MinNextEpisodeThresholdPercent = 1;
+    public const int MaxNextEpisodeThresholdPercent = 100;
+    public const int MinimumConcurrentDownloads = 1;
+    public const int MaximumConcurrentDownloads = 8;
+
+    public bool Enabled { get; set; }
+    public bool DownloadCurrentFile { get; set; } = true;
+    public int CurrentFileThresholdSeconds { get; set; } = 10;
+    public bool DownloadNextEpisode { get; set; } = true;
+    public int NextEpisodeThresholdPercent { get; set; } = 75;
+    public int MaxConcurrentDownloads { get; set; } = 1;
+
+    /// <summary>Workspace root for completed and partial pre-download files.</summary>
+    public string CachePath { get; set; } = string.Empty;
+
+    /// <summary>Free-space reserve the background downloader must leave untouched.</summary>
+    public long MinimumFreeDiskBytes { get; set; } = 1L * 1024 * 1024 * 1024;
 }
 
 /// <summary>When the Core repairs a damaged release instead of (or in addition to) falling back.</summary>

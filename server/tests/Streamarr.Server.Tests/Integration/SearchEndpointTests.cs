@@ -22,6 +22,7 @@ namespace Streamarr.Server.Tests.Integration;
 /// <see cref="WebApplicationFactory{TEntryPoint}"/>, replacing only the two external
 /// boundaries (indexer HTTP + TMDB HTTP) with fakes.
 /// </summary>
+[Collection("search-endpoint")]
 public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Factory>
 {
     private const string ApiKey = "test-api-key-aaaaaaaaaaaaaaaaaaaa";
@@ -465,6 +466,11 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             Item("Suits.S01.1080p.WEB-DL.x265-GROUP", 30_000_000_000, "suits-s01-pack", grabs: 90),
         ];
 
+        private static readonly NewznabItem[] SuitsSeasonTwoItems =
+        [
+            Item("Suits.S02E01.1080p.WEB-DL.x265-GROUP", 3_200_000_000, "suits-s02e01", grabs: 75),
+        ];
+
         public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
             => Task.FromResult(new NewznabCapabilities());
 
@@ -477,6 +483,12 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
                 Interlocked.Increment(ref SuitsSeasonSearches);
                 return Task.FromResult(new NewznabSearchResponse { Items = SuitsSeasonOneItems });
             }
+
+            if (query is { TmdbId: 37680, Season: 2, Episode: null })
+                return Task.FromResult(new NewznabSearchResponse { Items = SuitsSeasonTwoItems });
+
+            if (query is { TmdbId: 37680, Season: 0, Episode: null })
+                return Task.FromResult(new NewznabSearchResponse());
 
             if (string.Equals(query.Term, "Raw only", StringComparison.OrdinalIgnoreCase))
             {
@@ -656,18 +668,43 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
             int tmdbId,
             int seasonNumber,
             CancellationToken cancellationToken)
-            => Task.FromResult<TmdbTvSeasonCatalog?>(tmdbId == Suits.TmdbId && seasonNumber == 1
-                ? new TmdbTvSeasonCatalog
+            => Task.FromResult<TmdbTvSeasonCatalog?>(tmdbId == Suits.TmdbId
+                ? seasonNumber switch
                 {
-                    TmdbId = tmdbId,
-                    SeasonNumber = seasonNumber,
-                    Title = "Season 1",
-                    Episodes =
-                    [
-                        new TmdbEpisode { EpisodeNumber = 1, Title = "Pilot", RuntimeMinutes = 72, StillUrl = "https://image.example/still/suits-s01e01.jpg" },
-                        new TmdbEpisode { EpisodeNumber = 2, Title = "Errors and Omissions", RuntimeMinutes = 43 },
-                        new TmdbEpisode { EpisodeNumber = 3, Title = "Inside Track", RuntimeMinutes = 42 },
-                    ],
+                    0 => new TmdbTvSeasonCatalog
+                    {
+                        TmdbId = tmdbId,
+                        SeasonNumber = seasonNumber,
+                        Title = "Specials",
+                        Episodes =
+                        [
+                            new TmdbEpisode { EpisodeNumber = 1, Title = "Special" },
+                        ],
+                    },
+                    1 => new TmdbTvSeasonCatalog
+                    {
+                        TmdbId = tmdbId,
+                        SeasonNumber = seasonNumber,
+                        Title = "Season 1",
+                        Episodes =
+                        [
+                            new TmdbEpisode { EpisodeNumber = 1, Title = "Pilot", RuntimeMinutes = 72, StillUrl = "https://image.example/still/suits-s01e01.jpg" },
+                            new TmdbEpisode { EpisodeNumber = 2, Title = "Errors and Omissions", RuntimeMinutes = 43 },
+                            new TmdbEpisode { EpisodeNumber = 3, Title = "Inside Track", RuntimeMinutes = 42 },
+                        ],
+                    },
+                    2 => new TmdbTvSeasonCatalog
+                    {
+                        TmdbId = tmdbId,
+                        SeasonNumber = seasonNumber,
+                        Title = "Season 2",
+                        Episodes =
+                        [
+                            new TmdbEpisode { EpisodeNumber = 1, Title = "She Knows" },
+                            new TmdbEpisode { EpisodeNumber = 2, Title = "The Choice" },
+                        ],
+                    },
+                    _ => null,
                 }
                 : null);
         public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken) => Task.FromResult<TmdbMatch?>(ExampleMovie);

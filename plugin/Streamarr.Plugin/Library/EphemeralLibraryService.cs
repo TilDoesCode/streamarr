@@ -581,6 +581,7 @@ public sealed class EphemeralLibraryService(
         ApplyTags(item);
         TryApplyImage(item, primaryImage, ImageType.Primary);
         TryApplyImage(item, series.BackdropUrl, ImageType.Backdrop);
+        TryApplyImage(item, series.BackdropUrl, ImageType.Thumb);
     }
 
     private async Task SaveAsync(BaseItem item, BaseItem parent, bool isNew, CancellationToken ct)
@@ -1071,7 +1072,7 @@ public sealed class EphemeralLibraryService(
     /// <summary>
     /// Ensures the plugin folder exists, matches the configured placement (visible "Streamarr"
     /// library below the user root, or isolated below the aggregate root), and upgrades items
-    /// written by earlier plugin versions. Two legacy states are repaired in place, preserving
+    /// written by earlier plugin versions. Legacy states are repaired in place, preserving
     /// user data: (a) rows persisted under plugin CLR subclasses, which Jellyfin's type-filtered
     /// native queries (Next Up, favorites sections, includeItemTypes) can never match, are
     /// re-saved as the built-in Movie/Series/Season/Episode types; (b) flat movies and series
@@ -1103,6 +1104,9 @@ public sealed class EphemeralLibraryService(
                     changed = true;
                 }
 
+                if (EnsureSeriesThumbFromBackdrop(target))
+                    changed = true;
+
                 if (changed)
                     upgraded.Add(target);
             }
@@ -1120,7 +1124,7 @@ public sealed class EphemeralLibraryService(
                     await UpdateBatchAsync(parentGroup.ToArray(), parent, ct).ConfigureAwait(false);
                 }
                 logger.LogInformation(
-                    "Upgraded {Count} ephemeral item(s) from legacy type/virtual/presentation-key state",
+                    "Upgraded {Count} ephemeral item(s) from a legacy compatibility state",
                     upgraded.Count);
             }
         }
@@ -1186,6 +1190,27 @@ public sealed class EphemeralLibraryService(
         }
 
         return target;
+    }
+
+    private static bool EnsureSeriesThumbFromBackdrop(BaseItem item)
+    {
+        if (item is not Series series
+            || series.HasImage(ImageType.Thumb, 0)
+            || series.GetImageInfo(ImageType.Backdrop, 0) is not { } backdrop)
+        {
+            return false;
+        }
+
+        series.SetImage(new ItemImageInfo
+        {
+            Path = backdrop.Path,
+            Type = ImageType.Thumb,
+            DateModified = backdrop.DateModified,
+            Width = backdrop.Width,
+            Height = backdrop.Height,
+            BlurHash = backdrop.BlurHash,
+        }, 0);
+        return true;
     }
 
     public async Task<int> PruneOrphanedReleaseStateAsync(CancellationToken ct)

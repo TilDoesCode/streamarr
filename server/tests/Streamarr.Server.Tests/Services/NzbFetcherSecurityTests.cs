@@ -37,6 +37,73 @@ public class NzbFetcherSecurityTests
         Assert.Equal(1, handler.RequestCount);
     }
 
+    [Theory]
+    [InlineData("text/html")]
+    [InlineData("application/xhtml+xml")]
+    public async Task HtmlResponseAfterSameOriginRedirect_IsRejected(string mediaType)
+    {
+        var handler = new StubHandler(request => request.RequestUri?.AbsolutePath == "/rules"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("<!doctype html><html><body>rules</body></html>", Encoding.UTF8, mediaType),
+            }
+            : new HttpResponseMessage(HttpStatusCode.Redirect)
+            {
+                Headers = { Location = new Uri("/rules?from=getnzb", UriKind.Relative) },
+            });
+
+        var ex = await Assert.ThrowsAsync<NzbUnexpectedContentException>(() => Create(handler).FetchAsync(
+            "https://indexer.example/download/one.nzb", "Indexer", CancellationToken.None));
+
+        Assert.Equal(NzbUnexpectedContentException.SafeMessage, ex.Message);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task SameOriginRedirect_ToNzb_IsAccepted()
+    {
+        var handler = new StubHandler(request => request.RequestUri?.AbsolutePath == "/download/final.nzb"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(NzbXml, Encoding.UTF8, "application/x-nzb"),
+            }
+            : new HttpResponseMessage(HttpStatusCode.Redirect)
+            {
+                Headers = { Location = new Uri("/download/final.nzb", UriKind.Relative) },
+            });
+
+        var document = await Create(handler).FetchAsync(
+            "https://indexer.example/download/one.nzb", "Indexer", CancellationToken.None);
+
+        Assert.Single(document.Files);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task RedirectToAllowedDownloadHost_ToNzb_IsAccepted()
+    {
+        var indexer = Indexer with { AllowedDownloadHosts = ["dl.indexer.example"] };
+        var handler = new StubHandler(request => request.RequestUri?.Host == "dl.indexer.example"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(NzbXml, Encoding.UTF8, "application/x-nzb"),
+            }
+            : new HttpResponseMessage(HttpStatusCode.Redirect)
+            {
+                Headers = { Location = new Uri("https://dl.indexer.example/one.nzb") },
+            });
+        var fetcher = new NzbFetcher(
+            new HttpClient(handler),
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions()),
+            new Store(indexer));
+
+        var document = await fetcher.FetchAsync(
+            "https://indexer.example/download/one.nzb", "Indexer", CancellationToken.None);
+
+        Assert.Single(document.Files);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
     [Fact]
     public async Task DifferentInitialOrigin_IsRejectedBeforeNetworkIo()
     {

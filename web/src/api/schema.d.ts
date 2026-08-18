@@ -373,6 +373,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/download/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Partial Content */
+                206: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ephemeral-files": {
         parameters: {
             query?: never;
@@ -1151,6 +1204,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    source?: string;
+                    minimumLevel?: string;
+                    search?: string;
+                    streamToken?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["LogFeedResponse"];
+                        "application/json": components["schemas"]["LogFeedResponse"];
+                        "text/json": components["schemas"]["LogFeedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/metrics": {
         parameters: {
             query?: never;
@@ -1511,6 +1618,120 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/pre-download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PreDownloadConfigResponse"];
+                        "application/json": components["schemas"]["PreDownloadConfigResponse"];
+                        "text/json": components["schemas"]["PreDownloadConfigResponse"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PreDownloadConfigWrite"];
+                    "text/json": components["schemas"]["PreDownloadConfigWrite"];
+                    "application/*+json": components["schemas"]["PreDownloadConfigWrite"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PreDownloadConfigResponse"];
+                        "application/json": components["schemas"]["PreDownloadConfigResponse"];
+                        "text/json": components["schemas"]["PreDownloadConfigResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pre-downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    sessionToken?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PreDownloadJobResponse"][];
+                        "application/json": components["schemas"]["PreDownloadJobResponse"][];
+                        "text/json": components["schemas"]["PreDownloadJobResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2848,6 +3069,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{token}/articles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ArticleMapResponse"];
+                        "application/json": components["schemas"]["ArticleMapResponse"];
+                        "text/json": components["schemas"]["ArticleMapResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{token}/timeline": {
         parameters: {
             query?: never;
@@ -3238,6 +3509,91 @@ export interface components {
             revokedAt?: string | null;
             revoked?: boolean;
         };
+        /** @description Live, bounded diagnostic snapshot of every article in a release. */
+        ArticleMapResponse: {
+            releaseId: string | null;
+            /** Format: int32 */
+            totalArticles?: number;
+            /** Format: int32 */
+            trackedArticles?: number;
+            /** Format: int32 */
+            truncatedArticles?: number;
+            /** Format: int32 */
+            pendingArticles?: number;
+            /** Format: int32 */
+            activeArticles?: number;
+            /** Format: int32 */
+            partialArticles?: number;
+            /** Format: int32 */
+            downloadedArticles?: number;
+            /** Format: int32 */
+            cachedArticles?: number;
+            /** Format: int32 */
+            failedArticles?: number;
+            /** Format: int64 */
+            downloadedBytes?: number;
+            /** Format: double */
+            averageDurationMs?: number | null;
+            /** Format: double */
+            effectiveBytesPerSecond?: number | null;
+            /** Format: date-time */
+            updatedAt?: string;
+            articles?: components["schemas"]["ArticleTelemetryResponse"][] | null;
+            providers?: components["schemas"]["ArticleProviderSummaryResponse"][] | null;
+        };
+        /** @description One provider attempt made while retrieving an article. */
+        ArticleProviderAttemptResponse: {
+            provider: string | null;
+            operation: string | null;
+            outcome: string | null;
+            /** Format: double */
+            durationMs?: number;
+            /** Format: int32 */
+            responseCode?: number | null;
+            errorType?: string | null;
+            errorMessage?: string | null;
+        };
+        /** @description Aggregate provider outcomes across the release snapshot. */
+        ArticleProviderSummaryResponse: {
+            provider: string | null;
+            /** Format: int64 */
+            successes?: number;
+            /** Format: int64 */
+            missing?: number;
+            /** Format: int64 */
+            errors?: number;
+            /** Format: double */
+            averageDurationMs?: number | null;
+        };
+        /** @description Current transfer state and diagnostic evidence for one ordered release article. */
+        ArticleTelemetryResponse: {
+            /** Format: int32 */
+            index?: number;
+            fileName?: string | null;
+            /** Format: int32 */
+            articleNumber?: number | null;
+            /** Format: int64 */
+            expectedBytes?: number;
+            messageId: string | null;
+            state: string | null;
+            /** Format: int64 */
+            bytes?: number;
+            /** Format: double */
+            durationMs?: number | null;
+            /** Format: double */
+            throughputBytesPerSecond?: number | null;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            successfulProvider?: string | null;
+            errorType?: string | null;
+            errorMessage?: string | null;
+            /** Format: int64 */
+            providerAttemptCount?: number;
+            attemptsTruncated?: boolean;
+            attempts?: components["schemas"]["ArticleProviderAttemptResponse"][] | null;
+        };
         /** @description One release whose source NZB is available from Core's persistent cache. */
         CachedReleaseResponse: {
             releaseId: string | null;
@@ -3424,6 +3780,19 @@ export interface components {
             cachedChunks?: number;
             /** Format: int64 */
             storageBytes?: number;
+            retentionPriority: string | null;
+            preDownloadJobId?: string | null;
+            preDownloadKind?: string | null;
+            preDownloadReason?: string | null;
+            preDownloadSourceToken?: string | null;
+            preDownloadState?: string | null;
+            /** Format: int64 */
+            preDownloadedBytes?: number;
+            /** Format: int64 */
+            preDownloadTotalBytes?: number;
+            /** Format: double */
+            preDownloadPercent?: number;
+            localCacheReady?: boolean;
             /** @description True while at least one HTTP stream is open; such files cannot be manually purged. */
             isStreaming?: boolean;
             /** Format: date-time */
@@ -3453,6 +3822,16 @@ export interface components {
             event: string | null;
             /** Format: int64 */
             positionTicks?: number | null;
+            /**
+             * Format: int64
+             * @description Total playable duration reported by the front-end, in 100 ns ticks.
+             */
+            durationTicks?: number | null;
+            /**
+             * @description Opaque Core capability token attributed to this playback. It lets background work bind
+             *     progress to the exact ephemeral file without guessing from release or user metadata.
+             */
+            sessionToken?: string | null;
             /** @description Originating front-end ("jellyfin" | "web" | …). */
             source?: string | null;
             playbackSessionId?: string | null;
@@ -3568,6 +3947,39 @@ export interface components {
             enabled?: boolean | null;
             /** Format: int32 */
             priority?: number | null;
+        };
+        /** @description One sanitized diagnostic event suitable for display in the management UI. */
+        LogEntryResponse: {
+            id: string | null;
+            /** Format: date-time */
+            atUtc?: string;
+            /** @description trace | debug | information | warning | error. */
+            level: string | null;
+            /** @description core | jellyfin. */
+            source: string | null;
+            category: string | null;
+            message: string | null;
+            exception?: string | null;
+            releaseId?: string | null;
+            workId?: string | null;
+        };
+        /** @description Combined, newest-first diagnostic feed from Core and configured integrations. */
+        LogFeedResponse: {
+            entries?: components["schemas"]["LogEntryResponse"][] | null;
+            sources?: components["schemas"]["LogSourceStatusResponse"][] | null;
+            /** Format: date-time */
+            generatedAt?: string;
+            hasMore?: boolean;
+        };
+        /** @description Availability of one log source at the time the feed was generated. */
+        LogSourceStatusResponse: {
+            /** @description core | jellyfin. */
+            source: string | null;
+            configured?: boolean;
+            available?: boolean;
+            message?: string | null;
+            /** Format: date-time */
+            lastCheckedAt?: string | null;
         };
         /** @description Body of POST /api/v1/auth/login (BRIEF §6.4). */
         LoginRequest: {
@@ -3749,6 +4161,74 @@ export interface components {
             resolve?: components["schemas"]["ResolveResponse"];
             /** @description Redacted failure classification when phase is "failed". */
             error?: string | null;
+        };
+        /** @description Effective low-priority pre-download policy. */
+        PreDownloadConfigResponse: {
+            enabled: boolean;
+            downloadCurrentFile: boolean;
+            /** Format: int32 */
+            currentFileThresholdSeconds: number;
+            downloadNextEpisode: boolean;
+            /** Format: int32 */
+            nextEpisodeThresholdPercent: number;
+            /** Format: int32 */
+            maxConcurrentDownloads: number;
+        };
+        /** @description Partial pre-download policy update; omitted properties retain their current values. */
+        PreDownloadConfigWrite: {
+            enabled?: boolean | null;
+            downloadCurrentFile?: boolean | null;
+            /** Format: int32 */
+            currentFileThresholdSeconds?: number | null;
+            downloadNextEpisode?: boolean | null;
+            /** Format: int32 */
+            nextEpisodeThresholdPercent?: number | null;
+            /** Format: int32 */
+            maxConcurrentDownloads?: number | null;
+        };
+        /** @description Live or recently completed background materialization visible to operators. */
+        PreDownloadJobResponse: {
+            id: string | null;
+            state: string | null;
+            kind: string | null;
+            reason: string | null;
+            priority: string | null;
+            sourceToken: string | null;
+            sourceReleaseId: string | null;
+            sourceWorkId: string | null;
+            targetToken?: string | null;
+            targetReleaseId?: string | null;
+            targetWorkId?: string | null;
+            targetTitle?: string | null;
+            /** Format: int32 */
+            targetSeasonNumber?: number | null;
+            /** Format: int32 */
+            targetEpisodeNumber?: number | null;
+            /** Format: int64 */
+            bytesDownloaded?: number;
+            /** Format: int64 */
+            totalBytes?: number;
+            /** Format: double */
+            progressPercent?: number;
+            /** Format: int64 */
+            watchPositionTicks?: number;
+            /** Format: int64 */
+            watchDurationTicks?: number;
+            /** Format: double */
+            watchProgressPercent?: number | null;
+            /** Format: double */
+            triggerThreshold?: number;
+            triggerUnit: string | null;
+            /** Format: date-time */
+            queuedAt?: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: date-time */
+            completedAt?: string | null;
+            errorCode?: string | null;
+            errorMessage?: string | null;
         };
         ProfileImportCandidate: {
             /** Format: int32 */
@@ -4262,6 +4742,19 @@ export interface components {
             lastAccessedAt?: string;
             /** Format: date-time */
             expiresAt?: string;
+            retentionPriority: string | null;
+            preDownloadJobId?: string | null;
+            preDownloadKind?: string | null;
+            preDownloadReason?: string | null;
+            preDownloadSourceToken?: string | null;
+            preDownloadState?: string | null;
+            /** Format: int64 */
+            preDownloadedBytes?: number;
+            /** Format: int64 */
+            preDownloadTotalBytes?: number;
+            /** Format: double */
+            preDownloadPercent?: number;
+            localCacheReady?: boolean;
             /**
              * Format: date-time
              * @description Wall-clock instant of timeline t0 (resolve start), for aligning client spans.
@@ -4365,6 +4858,9 @@ export interface components {
             event: string | null;
             /** Format: int64 */
             positionTicks?: number;
+            /** Format: int64 */
+            durationTicks?: number;
+            sessionToken?: string | null;
             source: string | null;
             playbackSessionId?: string | null;
             externalUserId?: string | null;

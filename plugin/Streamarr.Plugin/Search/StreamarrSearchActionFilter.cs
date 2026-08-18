@@ -1,5 +1,7 @@
+using Jellyfin.Data;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
@@ -136,6 +138,14 @@ public sealed class StreamarrSearchActionFilter(
                         releaseUser,
                         null!);
                     await ProjectOwnedSourcesAsync([ownerDto], context.HttpContext, ct).ConfigureAwait(false);
+                    // This path builds the DTO directly via IDtoService rather than Jellyfin's own
+                    // GetItem action, so it never passes through FixUpOwnedDto below. Video.CanDownload
+                    // is always false for a pathless item (BRIEF client-agnostic download), which would
+                    // otherwise hide the Download action on exactly the id clients resolve a selected
+                    // version through. Mirror the same per-user permission check Jellyfin's own
+                    // Video.CanDownload(user) would apply once IsFileProtocol is no longer the blocker.
+                    if (releaseUser.HasPermission(PermissionKind.EnableContentDownloading))
+                        ownerDto.CanDownload = true;
                     executed.Result = new OkObjectResult(ownerDto);
                 }
                 return;

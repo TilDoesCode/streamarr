@@ -169,6 +169,15 @@ public sealed record EventRequest
 
     public long? PositionTicks { get; init; }
 
+    /// <summary>Total playable duration reported by the front-end, in 100 ns ticks.</summary>
+    public long? DurationTicks { get; init; }
+
+    /// <summary>
+    /// Opaque Core capability token attributed to this playback. It lets background work bind
+    /// progress to the exact ephemeral file without guessing from release or user metadata.
+    /// </summary>
+    public string? SessionToken { get; init; }
+
     /// <summary>Originating front-end ("jellyfin" | "web" | …).</summary>
     public string? Source { get; init; }
 

@@ -111,9 +111,13 @@ services:
       # it here makes a fresh Compose volume immediately capable of semantic discovery.
       Streamarr__Tmdb__ApiKey: "${TMDB_API_KEY:-}"
       Streamarr__Tmdb__Language: "${TMDB_LANGUAGE:-}"
+      Streamarr__Jellyfin__BaseUrl: "${JELLYFIN_LOG_BASE_URL:-}"
+      Streamarr__Jellyfin__ApiKey: "${JELLYFIN_LOG_API_KEY:-}"
       Streamarr__ConnectionString: "Data Source=/app/data/streamarr.db"
       Streamarr__DataProtectionKeysPath: "/app/keys"
       Streamarr__NzbCachePath: "/app/data/nzb"
+      # Keep the pre-download workspace on the writable data volume when the rootfs is read-only.
+      Streamarr__PreDownload__CachePath: "/app/data/predownload"
       # Surface the [TTFF] request→first-frame span lines in the dev console (BRIEF §11).
       Serilog__MinimumLevel__Override__Streamarr: "Debug"
       # Stream-pacing knobs (BRIEF §11 TTFF fix): sustain is a floor; probed high-bitrate media

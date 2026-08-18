@@ -19,6 +19,7 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
     public HashSet<string> MissingBodySegments { get; } = new(StringComparer.Ordinal);
     public HashSet<string> FailingBodySegments { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, string> BodyOverrides { get; } = new(StringComparer.Ordinal);
+    public string? BodyProviderName { get; set; }
     public List<string> StattedSegments { get; } = [];
     public List<string> BodyRequestedSegments { get; } = [];
     public NntpResponse AuthenticationResponse { get; set; } = new()
@@ -100,13 +101,23 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
         var encodedBody = BodyOverrides.TryGetValue(segmentId, out var body)
             ? body
             : YencTestEncoder.Encode(System.Text.Encoding.ASCII.GetBytes($"body:{segmentId}"), "body.bin");
-        return Task.FromResult(new NntpDecodedBodyResponse
+        var response = new NntpDecodedBodyResponse
         {
             SegmentId = segmentId,
             ResponseCode = 222,
             ResponseMessage = "222 body follows",
             Stream = new YencStream(new MemoryStream(System.Text.Encoding.Latin1.GetBytes(encodedBody))),
-        });
+        };
+        if (BodyProviderName is { } provider)
+        {
+            response.ProviderAttempts.Add(new NntpProviderAttempt(
+                provider,
+                "BODY",
+                NntpProviderAttemptOutcome.Success,
+                5,
+                222));
+        }
+        return Task.FromResult(response);
     }
 
     public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(SegmentId segmentId, CancellationToken cancellationToken)

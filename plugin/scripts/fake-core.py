@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hmac
 import json
 import os
@@ -29,6 +30,9 @@ COUNTS = {
 }
 COUNTS_LOCK = threading.Lock()
 LAST_RESOLVE_REQUEST: Optional[dict[str, object]] = None
+ARTWORK_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAAC0SDtlAAAAF0lEQVR42mPM1bjJQApgYiARjGqgiQYAhI4BgL/Atq0AAAAASUVORK5CYII="
+)
 
 MOVIE = {
     "workId": "ci-smoke-work",
@@ -264,6 +268,13 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
+        if path == "/artwork/series-backdrop.png":
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(ARTWORK_PNG)))
+            self.end_headers()
+            self.wfile.write(ARTWORK_PNG)
+            return
         if not self.authorized():
             return
         if path == "/api/v1/caps":
@@ -364,6 +375,9 @@ def main() -> None:
         raise SystemExit("STREAMARR_FAKE_CORE_API_KEY is required")
 
     server = ThreadingHTTPServer(("0.0.0.0", 0), Handler)
+    SERIES["backdropUrl"] = (
+        f"http://host.docker.internal:{server.server_port}/artwork/series-backdrop.png"
+    )
     Path(args.ready_file).write_text(str(server.server_port), encoding="utf-8")
     server.serve_forever(poll_interval=0.1)
 

@@ -54,6 +54,11 @@ public sealed class StreamHistoryRecorderTests
         var byAttempt = await recorder.GetAsync(attemptId, default);
         Assert.NotNull(byAttempt);
         Assert.Equal(byToken.Id, byAttempt!.Id);
+
+        var correlation = await recorder.GetCorrelationAsync("token-1", default);
+        Assert.Equal(attemptId, correlation?.AttemptId);
+        Assert.Equal("rel-1", correlation?.ReleaseId);
+        Assert.Equal("work-1", correlation?.WorkId);
     }
 
     [Fact]

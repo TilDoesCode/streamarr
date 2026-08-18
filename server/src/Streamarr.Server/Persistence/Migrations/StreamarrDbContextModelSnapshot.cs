@@ -282,6 +282,35 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.ToTable("NotificationConfig");
                 });
 
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.PreDownloadConfigEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CurrentFileThresholdSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("DownloadCurrentFile")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("DownloadNextEpisode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxConcurrentDownloads")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("NextEpisodeThresholdPercent")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PreDownloadConfig");
+                });
+
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ProfileEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -500,6 +529,9 @@ namespace Streamarr.Server.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("DurationTicks")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Event")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -523,6 +555,10 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ReleaseId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SessionToken")
                         .IsRequired()
                         .HasColumnType("TEXT");
 

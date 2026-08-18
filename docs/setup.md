@@ -137,7 +137,7 @@ Config resolves from four overlapping places (later wins for a given key):
    `INDEXER_PROXY` is an explicit alias for `Streamarr:IndexerProxy` and takes
    precedence over the nested setting.
 4. **The Management UI / config API** — the SQLite-backed **source of truth** for
-   indexers, providers, profiles, general config, and API keys. On startup the
+   indexers, providers, profiles, general/pre-download config, and API keys. On startup the
    persisted config is overlaid onto the bound options, so once you have configured
    things in the UI, that is what runs. Provider pool changes are applied atomically to
    subsequent NNTP commands; an already-borrowed connection may finish before its retired
@@ -152,6 +152,39 @@ minted via `POST /api/v1/config/apikeys`; when enabled, the static key must be 3
 characters without whitespace or control characters. Secrets are encrypted at rest
 (ASP.NET Data Protection key ring under
 `Streamarr:DataProtectionKeysPath`) and never returned in plaintext by the API.
+
+### Operator logs and optional Jellyfin logs
+
+The **Logs** navigation item shows the Core's bounded, sanitized in-process log feed;
+each stream detail page applies the same feed with that attempt's release/work/token
+correlation. The Core retains the newest 2,000 events since process start and returns at
+most 500 per request. Health checks, successful log-feed polling, ordinary fast 2xx, and
+routine 4xx requests are suppressed from normal output; server failures, timeouts/rate
+limits, slow non-streaming requests, provider/indexer failures, resolve failures, and
+stream-read exceptions remain visible.
+
+Jellyfin can optionally be merged into the same views. In Jellyfin, create an API key
+under **Dashboard → Advanced → API Keys**, then configure both values and restart the
+Core:
+
+```dotenv
+# Compose network example; use the URL reachable from the Core in other deployments.
+JELLYFIN_LOG_BASE_URL=http://jellyfin:8096
+JELLYFIN_LOG_API_KEY=replace-with-the-jellyfin-api-key
+```
+
+Outside Compose, the equivalent variables are
+`Streamarr__Jellyfin__BaseUrl` and `Streamarr__Jellyfin__ApiKey`. The key is sent only in
+Jellyfin's `Authorization: MediaBrowser … Token="…"` header, never in a URL. Jellyfin
+protects server-log access with administrator elevation, so treat this API key as an
+administrator secret.
+
+Jellyfin exposes only a file list plus complete-file download, not a server-side tail or
+level filter. Streamarr therefore checks metadata every 15 seconds, downloads at most
+4 MiB when the newest primary server log changes, ignores ffmpeg/transcode files, and
+keeps only warning/error/fatal entries plus lines mentioning Streamarr. Retrieval is
+optional and failure-isolated: an unavailable or unconfigured Jellyfin is shown as source
+status and never affects Core startup, health, streaming, or Core-only logs.
 
 ### Route indexer traffic through Gluetun
 
@@ -286,6 +319,8 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `MaxWatchEvents` | `10000` | Maximum retained playback-event rows; oldest rows are pruned on write. |
 | `DeepHealthCacheSeconds` | `30` | Shared cache lifetime for admin-only dependency probes. |
 | `Admin` | — | First-run admin bootstrap (below). |
+| `PreDownload` | — | Background current-file and next-episode cache policy (below). |
+| `Jellyfin` | — | Optional read-only Jellyfin server-log source (below). |
 | `Providers[]` | `[]` | Priority-ordered Usenet providers (below). |
 | `Indexers[]` | `[]` | Newznab indexers seeding the config store (below). |
 | `Search` | — | Indexer fan-out tunables (below). |
@@ -298,6 +333,29 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 |---|---|---|
 | `Admin.Username` | `admin` | Bootstrap admin username (only used when the users table is empty). |
 | `Admin.Password` | `""` | Bootstrap password, also settable via `STREAMARR_ADMIN_PASSWORD`. Must be 12–1024 characters without control characters. Required outside Development; only Development generates/logs a random fallback once. |
+
+### `PreDownload`
+
+The six policy fields are persisted and can be changed live from the Management UI. `CachePath`
+and `MinimumFreeDiskBytes` are deployment-only safeguards and require configuration/restart.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `PreDownload.Enabled` | `false` | Master switch; disabling prevents new jobs without discarding saved rule values. |
+| `PreDownload.DownloadCurrentFile` | `true` | Finish materializing the current movie or episode after the grace period. |
+| `PreDownload.CurrentFileThresholdSeconds` | `10` | Watched seconds before current-file completion starts (`0..3600`). |
+| `PreDownload.DownloadNextEpisode` | `true` | Prepare the immediate canonical next episode when watch progress crosses the threshold. |
+| `PreDownload.NextEpisodeThresholdPercent` | `75` | Client-reported watch percentage that triggers next-episode preparation (`1..100`). |
+| `PreDownload.MaxConcurrentDownloads` | `1` | Concurrent low-priority jobs (`1..8`). |
+| `PreDownload.CachePath` | `""` | Disk workspace; empty uses `cache/pre-download` below the Core content root. |
+| `PreDownload.MinimumFreeDiskBytes` | `1073741824` | Free space the background writer must leave untouched. |
+
+### `Jellyfin` (optional operator log source)
+
+| Key | Default | Meaning |
+|---|---:|---|
+| `Jellyfin.BaseUrl` | `""` | Jellyfin HTTP(S) base URL reachable from the Core, including any configured base path. Must not contain credentials, query, or fragment. |
+| `Jellyfin.ApiKey` | `""` | Jellyfin administrator API key used only for `GET /System/Logs` and `GET /System/Logs/Log`. Both values empty disable the source; partial/invalid configuration is reported in the Logs UI. |
 
 ### `Providers[]` (each entry)
 

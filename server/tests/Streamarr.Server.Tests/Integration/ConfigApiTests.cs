@@ -11,6 +11,7 @@ using Streamarr.Core.Indexers;
 using Streamarr.Core.Providers;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Config;
+using Streamarr.Server.Contracts;
 using Streamarr.Tests.Shared;
 using Streamarr.Usenet.Nntp.Pooling;
 
@@ -408,6 +409,86 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task PreDownload_Get_Put_RoundTripsPartialUpdatesAndPublishesLiveSnapshot()
+    {
+        using var client = Client();
+        var service = _factory.Services.GetRequiredService<PreDownloadConfigService>();
+
+        var response = await client.PutAsJsonAsync("/api/v1/config/pre-download", new
+        {
+            enabled = true,
+            downloadCurrentFile = false,
+            currentFileThresholdSeconds = 25,
+            downloadNextEpisode = true,
+            nextEpisodeThresholdPercent = 80,
+            maxConcurrentDownloads = 3,
+        });
+        response.EnsureSuccessStatusCode();
+
+        response = await client.PutAsJsonAsync("/api/v1/config/pre-download", new
+        {
+            enabled = false,
+        });
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("enabled").GetBoolean());
+        Assert.False(body.GetProperty("downloadCurrentFile").GetBoolean());
+        Assert.Equal(25, body.GetProperty("currentFileThresholdSeconds").GetInt32());
+        Assert.True(body.GetProperty("downloadNextEpisode").GetBoolean());
+        Assert.Equal(80, body.GetProperty("nextEpisodeThresholdPercent").GetInt32());
+        Assert.Equal(3, body.GetProperty("maxConcurrentDownloads").GetInt32());
+        Assert.False(service.Current.Enabled);
+        Assert.False(service.Current.DownloadCurrentFile);
+        Assert.Equal(25, service.Current.CurrentFileThresholdSeconds);
+        Assert.Equal(80, service.Current.NextEpisodeThresholdPercent);
+        Assert.Equal(3, service.Current.MaxConcurrentDownloads);
+
+        var persisted = await client.GetFromJsonAsync<PreDownloadConfigResponse>(
+            "/api/v1/config/pre-download");
+        Assert.Equal(PreDownloadConfigResponse.From(service.Current), persisted);
+    }
+
+    [Theory]
+    [InlineData("currentFileThresholdSeconds", -1)]
+    [InlineData("currentFileThresholdSeconds", 3601)]
+    [InlineData("nextEpisodeThresholdPercent", 0)]
+    [InlineData("nextEpisodeThresholdPercent", 101)]
+    [InlineData("maxConcurrentDownloads", 0)]
+    [InlineData("maxConcurrentDownloads", 9)]
+    public async Task PreDownload_Put_RejectsInvalidRanges(string property, int value)
+    {
+        using var client = Client();
+        var response = await client.PutAsJsonAsync(
+            "/api/v1/config/pre-download",
+            new Dictionary<string, int> { [property] = value });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid_pre_download_config",
+            body.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData(0, 1, 1)]
+    [InlineData(3600, 100, 8)]
+    public async Task PreDownload_Put_AcceptsRangeBoundaries(
+        int currentThreshold,
+        int nextThreshold,
+        int concurrency)
+    {
+        using var client = Client();
+        var response = await client.PutAsJsonAsync("/api/v1/config/pre-download", new
+        {
+            currentFileThresholdSeconds = currentThreshold,
+            nextEpisodeThresholdPercent = nextThreshold,
+            maxConcurrentDownloads = concurrency,
+        });
+
+        response.EnsureSuccessStatusCode();
+    }
+
     // ---- profiles --------------------------------------------------------------------
 
     [Fact]
@@ -498,22 +579,35 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         using var client = Client();
         var svc = _factory.Services.GetRequiredService<WatchEventService>();
         var before = await svc.CountAsync(default);
+        var releaseId = "rel-contract-" + Guid.NewGuid().ToString("N");
+        const long durationTicks = 987_654_321L;
+        const string sessionToken = "session-contract-token";
 
         var response = await client.PostAsJsonAsync("/api/v1/events", new
         {
-            releaseId = "rel-abc",
+            releaseId,
             workId = "tmdb-movie-1",
             @event = "start",
             positionTicks = 123456789L,
+            durationTicks,
+            sessionToken,
             source = "web",
         });
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         Assert.Equal(before + 1, await svc.CountAsync(default));
         var recent = await svc.RecentAsync(1, default);
-        Assert.Equal("rel-abc", recent[0].ReleaseId);
+        Assert.Equal(releaseId, recent[0].ReleaseId);
         Assert.Equal("start", recent[0].Event);
         Assert.Equal("web", recent[0].Source);
+        Assert.Equal(durationTicks, recent[0].DurationTicks);
+        Assert.Equal(sessionToken, recent[0].SessionToken);
+
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/events?limit=500");
+        var listed = list.EnumerateArray().Single(entry =>
+            entry.GetProperty("releaseId").GetString() == releaseId);
+        Assert.Equal(durationTicks, listed.GetProperty("durationTicks").GetInt64());
+        Assert.Equal(sessionToken, listed.GetProperty("sessionToken").GetString());
     }
 
     [Fact]
@@ -522,6 +616,35 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         using var client = Client();
         var response = await client.PostAsJsonAsync("/api/v1/events", new { releaseId = "r", @event = "bogus" });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Events_ValidateDurationAndSessionTokenBounds()
+    {
+        using var client = Client();
+        var invalidPayloads = new object[]
+        {
+            new { releaseId = "negative-duration", @event = "progress", durationTicks = -1L },
+            new { releaseId = "long-token", @event = "progress", sessionToken = new string('x', 257) },
+            new { releaseId = "control-token", @event = "progress", sessionToken = "valid-prefix\u0001" },
+        };
+
+        foreach (var payload in invalidPayloads)
+        {
+            var response = await client.PostAsJsonAsync("/api/v1/events", payload);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("invalid_event", body.GetProperty("error").GetProperty("code").GetString());
+        }
+
+        var boundary = await client.PostAsJsonAsync("/api/v1/events", new
+        {
+            releaseId = "valid-event-boundary-" + Guid.NewGuid().ToString("N"),
+            @event = "progress",
+            durationTicks = 0L,
+            sessionToken = new string('x', 256),
+        });
+        Assert.Equal(HttpStatusCode.Accepted, boundary.StatusCode);
     }
 
     [Fact]
@@ -620,6 +743,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/indexers")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/providers")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/general")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/pre-download")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/profiles")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await machine.GetAsync("/api/v1/config/apikeys")).StatusCode);
 

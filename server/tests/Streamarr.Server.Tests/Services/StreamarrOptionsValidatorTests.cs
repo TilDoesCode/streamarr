@@ -31,6 +31,14 @@ public sealed class StreamarrOptionsValidatorTests
             MaxConcurrentSearches = 0,
             MaxWatchEvents = 0,
             EphemeralCacheSizeMb = 0,
+            PreDownload = new PreDownloadOptions
+            {
+                CurrentFileThresholdSeconds = -1,
+                NextEpisodeThresholdPercent = 101,
+                MaxConcurrentDownloads = 0,
+                CachePath = "cache\0bad",
+                MinimumFreeDiskBytes = -1,
+            },
         };
         invalid.Tmdb.BaseUrl = "file:///tmp/tmdb";
         invalid.Tmdb.ImageBaseUrl = "https://user:pass@images.example";
@@ -49,6 +57,11 @@ public sealed class StreamarrOptionsValidatorTests
         Assert.Contains("MaxConcurrentSearches", errors);
         Assert.Contains("MaxWatchEvents", errors);
         Assert.Contains("EphemeralCacheSizeMb", errors);
+        Assert.Contains("PreDownload.CurrentFileThresholdSeconds", errors);
+        Assert.Contains("PreDownload.NextEpisodeThresholdPercent", errors);
+        Assert.Contains("PreDownload.MaxConcurrentDownloads", errors);
+        Assert.Contains("PreDownload.CachePath", errors);
+        Assert.Contains("PreDownload.MinimumFreeDiskBytes", errors);
         Assert.Contains("Tmdb.BaseUrl", errors);
         Assert.Contains("Tmdb.ImageBaseUrl", errors);
         Assert.Contains("Tmdb.ApiKey", errors);

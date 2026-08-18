@@ -29,6 +29,29 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
             : NotFound(ErrorResponse.Of("unknown_session", "No live session exists for this token."));
     }
 
+    [HttpGet("{token}/articles")]
+    [Authorize(Policy = AuthRoles.AdminPolicy)]
+    [ProducesResponseType(typeof(ArticleMapResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public ActionResult<ArticleMapResponse> Articles(string token)
+    {
+        Response.Headers.CacheControl = "private, no-store, max-age=0";
+        var tracker = sessionManager.GetArticleTracker(token);
+        if (tracker is not null)
+            return Ok(tracker.Snapshot());
+
+        if (sessionManager.TryGetSession(token, out var active))
+        {
+            return Ok(new ArticleMapResponse
+            {
+                ReleaseId = active.Session.ReleaseId,
+                UpdatedAt = active.Session.LastAccessedAt,
+            });
+        }
+
+        return NotFound(ErrorResponse.Of("unknown_session", "No live or retained session exists for this token."));
+    }
+
     /// <summary>
     /// Appends client-observed spans (Jellyfin's PlaybackInfo→first delivered frame) to a live
     /// session's request→first-frame timeline so the stream page flamegraph spans both processes.
@@ -76,6 +99,16 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
         CreatedAt = active.Session.CreatedAt,
         LastAccessedAt = active.Session.LastAccessedAt,
         ExpiresAt = active.ExpiresAt,
+        RetentionPriority = active.RetentionPriority.ToString().ToLowerInvariant(),
+        PreDownloadJobId = active.PreDownloadJobId,
+        PreDownloadKind = active.PreDownloadKind,
+        PreDownloadReason = active.PreDownloadReason,
+        PreDownloadSourceToken = active.PreDownloadSourceToken,
+        PreDownloadState = PreDownloadState(active),
+        PreDownloadedBytes = active.PreDownloadCache?.DownloadedBytes ?? 0,
+        PreDownloadTotalBytes = active.PreDownloadCache?.TotalBytes ?? 0,
+        PreDownloadPercent = PreDownloadPercent(active),
+        LocalCacheReady = active.PreDownloadCache?.IsComplete == true,
         TimelineStartedAt = active.Timeline?.StartedAt,
         Timeline = active.Timeline is null
             ? []
@@ -89,4 +122,17 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
                 Source = s.Source,
             }).ToList(),
     };
+
+    private static string? PreDownloadState(ActiveSession active) => active.PreDownloadCache switch
+    {
+        null => null,
+        { IsComplete: true } => "completed",
+        { IsCancelled: true } => "cancelled",
+        _ => "downloading",
+    };
+
+    private static double PreDownloadPercent(ActiveSession active)
+        => active.PreDownloadCache is not { } cache || cache.TotalBytes <= 0
+            ? 0
+            : Math.Min(100, cache.DownloadedBytes * 100d / cache.TotalBytes);
 }

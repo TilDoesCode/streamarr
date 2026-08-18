@@ -211,9 +211,17 @@ public sealed class MediaMaterializationCacheTests
             [new[] { "one@test" }],
             hasFlattenedSegmentArray: true,
             rarSliceCount: 10);
+        var rarWithLongVolumeName = MediaFileMaterializer.EstimateCacheWeightBytes(
+            "video.mkv",
+            "mkv",
+            [new[] { "one@test" }],
+            hasFlattenedSegmentArray: true,
+            rarSliceCount: 10,
+            manifestFileNames: [new string('v', 900)]);
 
         Assert.True(longIds > shortIds + 1_700);
         Assert.True(rar > shortIds + 1_900);
+        Assert.True(rarWithLongVolumeName > rar + 1_700);
     }
 
     private static MediaMaterializationCache Cache(int maxEntries = 32, int maxSizeMb = 64)

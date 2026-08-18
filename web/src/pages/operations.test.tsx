@@ -37,7 +37,7 @@ describe("operations views", () => {
   it("shows requester, queried chunks, storage and purge clock", async () => {
     renderWithProviders(<EphemeralFilesPage />);
     expect((await screen.findAllByText("Mara")).length).toBeGreaterThan(0);
-    expect(screen.getByText(/496 \/ 1[,.]284 chunks queried/)).toBeInTheDocument();
+    expect(screen.getByText(/496 \/ 1[,.]284 unique chunks touched/)).toBeInTheDocument();
     expect(screen.getByText("496 chunks resident")).toBeInTheDocument();
     expect(screen.getAllByText(/in 45m/).length).toBeGreaterThan(0);
   });
@@ -83,6 +83,11 @@ const ephemeralFile = {
   estimatedStreamedPercent: 38.6,
   cachedChunks: 496,
   storageBytes: 7_900_000_000,
+  retentionPriority: "normal",
+  preDownloadedBytes: 0,
+  preDownloadTotalBytes: 0,
+  preDownloadPercent: 0,
+  localCacheReady: false,
   createdAt: now,
   lastAccessedAt: now,
   purgeAt: new Date(Date.now() + 45 * 60_000).toISOString(),

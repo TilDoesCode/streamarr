@@ -20,6 +20,7 @@ using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
+using Streamarr.Server.Logging;
 using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Security;
@@ -38,6 +39,8 @@ public static class StreamarrServerBootstrap
     public static WebApplicationBuilder AddStreamarrServer(this WebApplicationBuilder builder)
     {
         var services = builder.Services;
+        var coreLogStore = new CoreLogStore();
+        services.AddSingleton(coreLogStore);
 
         builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 1024 * 1024);
 
@@ -48,11 +51,14 @@ public static class StreamarrServerBootstrap
         builder.Host.UseSerilog((context, loggerConfig) => loggerConfig
             .ReadFrom.Configuration(context.Configuration)
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("Streamarr.Server.Auth.StreamarrAuthenticationHandler", LogEventLevel.Warning)
             // Typed HttpClient information logs contain full query strings. Newznab
             // and TMDB authenticate in those query strings, so never emit these URIs.
             .MinimumLevel.Override("System.Net.Http.HttpClient", LogEventLevel.Warning)
+            .Enrich.FromLogContext()
             // Request-scoped path properties can contain stream capability tokens.
             .Enrich.With(new RedactPathPropertiesEnricher())
+            .WriteTo.Sink(coreLogStore)
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"));
 
@@ -182,6 +188,7 @@ public static class StreamarrServerBootstrap
                     options.IndexerProxy = indexerProxy;
             })
             .ValidateOnStart();
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.PreDownload);
 
         // --- persistence + secret protection (BRIEF §4, §6.3) ---------------------------
         // Connection string + key-ring path resolve lazily from the bound options so
@@ -206,6 +213,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<ProviderConfigService>();
         services.AddSingleton<ProfileConfigService>();
         services.AddSingleton<GeneralConfigService>();
+        services.AddSingleton<PreDownloadConfigService>();
         services.AddSingleton<NotificationConfigService>();
         services.AddSingleton<WatchEventService>();
         services.AddSingleton<StreamHistoryRecorder>();
@@ -233,6 +241,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<PushoverNotificationService>();
         services.AddHostedService(sp => sp.GetRequiredService<PushoverNotificationService>());
         services.AddHostedService<DependencyOutageMonitor>();
+        services.AddJellyfinLogSource();
 
         // One pooled client per configured provider, fanned out in priority order …
         services.AddSingleton<MultiProviderNntpClient>(sp =>
@@ -336,6 +345,11 @@ public static class StreamarrServerBootstrap
         services.AddHostedService<ReleaseRegistrationHydrationService>();
         services.AddSingleton<SessionManager>();
         services.AddHostedService(sp => sp.GetRequiredService<SessionManager>());
+        services.AddSingleton<PreDownloadNntpClient>();
+        services.AddSingleton<PreDownloadWorkspace>();
+        services.AddSingleton<NextEpisodeResolver>();
+        services.AddSingleton<PreDownloadCoordinator>();
+        services.AddHostedService(sp => sp.GetRequiredService<PreDownloadCoordinator>());
         services.AddSingleton<HealthChecker>();
         services.AddSingleton<Controllers.DeepHealthDiagnostics>();
         services.AddSingleton(sp =>
@@ -381,23 +395,39 @@ public static class StreamarrServerBootstrap
 
     public static WebApplication UseStreamarrServer(this WebApplication app)
     {
-        // One structured summary line per request (method, path, status, elapsed) —
-        // BRIEF §10-M7 observability. Cheap and emitted at Information.
-        // Request paths can contain 192-bit stream capability tokens. Keep the useful
-        // method/status/timing summary without persisting path parameters.
+        // One structured request summary with a signal-based level: routine traffic stays
+        // at Debug, health/log polling is suppressed, and only failures/rate pressure/slow
+        // non-streaming work reaches the normal operator feed. Capability paths are redacted.
         app.UseSerilogRequestLogging(o =>
         {
             o.MessageTemplate = "HTTP {RequestMethod} {RequestPath} completed {StatusCode} in {Elapsed:0.0000} ms";
             o.IncludeQueryInRequestPath = false;
+            o.GetLevel = GetRequestLogLevel;
             // Signature is (context, requestPath, elapsedMs, statusCode) — binding the raw
             // path parameter here would leak stream capability tokens into the log line.
             o.GetMessageTemplateProperties = (context, _, elapsedMs, statusCode) =>
-            [
-                new LogEventProperty("RequestMethod", new ScalarValue(context.Request.Method)),
-                new LogEventProperty("RequestPath", new ScalarValue(RedactRequestPath(context.Request.Path))),
-                new LogEventProperty("StatusCode", new ScalarValue(statusCode)),
-                new LogEventProperty("Elapsed", new ScalarValue(elapsedMs)),
-            ];
+            {
+                var properties = new List<LogEventProperty>
+                {
+                    new("RequestMethod", new ScalarValue(context.Request.Method)),
+                    new("RequestPath", new ScalarValue(RedactRequestPath(context.Request.Path))),
+                    new("StatusCode", new ScalarValue(statusCode)),
+                    new("Elapsed", new ScalarValue(elapsedMs)),
+                };
+                foreach (var name in (string[])
+                         [
+                             LogPropertyNames.StreamAttemptId,
+                             LogPropertyNames.ReleaseId,
+                             LogPropertyNames.WorkId,
+                             LogPropertyNames.StreamTokenFingerprint,
+                         ])
+                {
+                    if (context.Items.TryGetValue(name, out var value) && value is not null)
+                        properties.Add(new LogEventProperty(name, new ScalarValue(value)));
+                }
+
+                return properties;
+            };
         });
 
         app.UseForwardedHeaders();
@@ -505,6 +535,7 @@ public static class StreamarrServerBootstrap
             .ToHashSet(StringComparer.Ordinal);
 
         app.UseRouting();
+        app.UseMiddleware<StreamLogContextMiddleware>();
         app.UseRateLimiter();
         app.UseAuthentication();
         app.Use(async (context, next) =>
@@ -543,6 +574,36 @@ public static class StreamarrServerBootstrap
         return app;
     }
 
+    internal static LogEventLevel GetRequestLogLevel(
+        HttpContext context,
+        double elapsedMilliseconds,
+        Exception? exception)
+    {
+        var path = context.Request.Path;
+        if (path.StartsWithSegments("/api/v1/health", StringComparison.OrdinalIgnoreCase))
+            return LogEventLevel.Verbose;
+
+        var status = context.Response.StatusCode;
+        if (exception is not null || status >= StatusCodes.Status500InternalServerError)
+            return LogEventLevel.Error;
+        if (path.StartsWithSegments("/api/v1/logs", StringComparison.OrdinalIgnoreCase)
+            && status < StatusCodes.Status400BadRequest)
+        {
+            return LogEventLevel.Verbose;
+        }
+        if (status is StatusCodes.Status408RequestTimeout or StatusCodes.Status429TooManyRequests)
+            return LogEventLevel.Warning;
+        if (status >= StatusCodes.Status400BadRequest)
+            return LogEventLevel.Debug;
+
+        var streaming = path.StartsWithSegments("/api/v1/stream", StringComparison.OrdinalIgnoreCase);
+        if (!streaming && elapsedMilliseconds >= 10_000)
+            return LogEventLevel.Warning;
+        if (!streaming && elapsedMilliseconds >= 2_000)
+            return LogEventLevel.Information;
+        return LogEventLevel.Debug;
+    }
+
     internal static string RedactRequestPath(PathString path)
     {
         var value = path.Value ?? string.Empty;
@@ -551,7 +612,8 @@ public static class StreamarrServerBootstrap
 
         var redacted = RedactChild(path, "/api/v1/sessions", "capability")
                        ?? RedactChild(path, "/api/v1/playback-sessions", "admission")
-                       ?? RedactChild(path, "/api/v1/ephemeral-files", "capability");
+                       ?? RedactChild(path, "/api/v1/ephemeral-files", "capability")
+                       ?? RedactChild(path, "/api/v1/streams", "stream");
         if (redacted is not null)
             return redacted;
 

@@ -23,6 +23,9 @@ public interface IReleaseStore
 
     RegisteredRelease? Get(string releaseId, string? workId = null);
 
+    /// <summary>Highest-ranked usable release currently registered for a work.</summary>
+    RegisteredRelease? FindBest(string workId);
+
     /// <summary>
     /// The next-best ranked, non-rejected release of the same work — surfaced as
     /// <c>suggestedFallbackReleaseId</c> when a release resolves dead.
@@ -94,6 +97,15 @@ public sealed class InMemoryReleaseStore(
                         && r.Release.Health != ReleaseHealth.Dead
                         // A release resolved dead in a prior attempt stays skipped for the
                         // cache TTL, so auto-fallback never loops back onto it (BRIEF §10-M7).
+                        && !(healthCache?.IsDead(r.Release.ReleaseId) ?? false))
+            .MaxBy(r => r.Release.Score);
+
+    public RegisteredRelease? FindBest(string workId)
+        => _releases.Values
+            .SelectMany(owners => owners.Values)
+            .Where(r => r.WorkId == workId
+                        && !r.Release.Rejected
+                        && r.Release.Health != ReleaseHealth.Dead
                         && !(healthCache?.IsDead(r.Release.ReleaseId) ?? false))
             .MaxBy(r => r.Release.Score);
 }

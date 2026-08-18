@@ -36,12 +36,35 @@ public sealed class EphemeralFilesController(SessionManager sessions) : Controll
                 EstimatedStreamedPercent = active.EstimatedStreamedPercent,
                 CachedChunks = storage.Count,
                 StorageBytes = storage.Bytes,
+                RetentionPriority = active.RetentionPriority.ToString().ToLowerInvariant(),
+                PreDownloadJobId = active.PreDownloadJobId,
+                PreDownloadKind = active.PreDownloadKind,
+                PreDownloadReason = active.PreDownloadReason,
+                PreDownloadSourceToken = active.PreDownloadSourceToken,
+                PreDownloadState = PreDownloadState(active),
+                PreDownloadedBytes = active.PreDownloadCache?.DownloadedBytes ?? 0,
+                PreDownloadTotalBytes = active.PreDownloadCache?.TotalBytes ?? 0,
+                PreDownloadPercent = PreDownloadPercent(active),
+                LocalCacheReady = active.PreDownloadCache?.IsComplete == true,
                 IsStreaming = active.IsStreaming,
                 CreatedAt = active.Session.CreatedAt,
                 LastAccessedAt = active.Session.LastAccessedAt,
                 PurgeAt = active.ExpiresAt,
             };
         }).ToList());
+
+    private static string? PreDownloadState(ActiveSession active) => active.PreDownloadCache switch
+    {
+        null => null,
+        { IsComplete: true } => "completed",
+        { IsCancelled: true } => "cancelled",
+        _ => "downloading",
+    };
+
+    private static double PreDownloadPercent(ActiveSession active)
+        => active.PreDownloadCache is not { } cache || cache.TotalBytes <= 0
+            ? 0
+            : Math.Min(100, cache.DownloadedBytes * 100d / cache.TotalBytes);
 
     /// <summary>
     /// Manually purges one idle ephemeral file from the server-owned cache. Refuses with 409

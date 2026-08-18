@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "./client";
 import type {
   ApiKeyResponse,
+  ArticleMapResponse,
   ChangePasswordRequest,
   CachedReleaseResponse,
   CreateApiKeyRequest,
@@ -15,9 +16,13 @@ import type {
   NotificationConfigResponse,
   NotificationConfigWrite,
   NotificationTestResponse,
+  PreDownloadConfigResponse,
+  PreDownloadConfigWrite,
+  PreDownloadJobResponse,
   IndexerResponse,
   IndexerTestResult,
   IndexerWrite,
+  LogFeedResponse,
   MetricsResponse,
   ProviderResponse,
   ProviderSpeedTestRequest,
@@ -46,12 +51,15 @@ import type {
 export const queryKeys = {
   health: (deep: boolean) => ["health", deep] as const,
   generalConfig: ["config", "general"] as const,
+  preDownloadConfig: ["config", "pre-download"] as const,
   notificationConfig: ["config", "notifications"] as const,
   apiKeys: ["config", "apikeys"] as const,
   indexers: ["config", "indexers"] as const,
   providers: ["config", "providers"] as const,
   profiles: ["config", "profiles"] as const,
   sessions: ["sessions"] as const,
+  preDownloads: (sessionToken?: string) => ["pre-downloads", sessionToken ?? null] as const,
+  sessionArticles: (token: string) => ["sessions", token, "articles"] as const,
   metrics: ["metrics"] as const,
   repairs: ["repairs"] as const,
   cachedReleases: ["library", "cached-releases"] as const,
@@ -59,6 +67,7 @@ export const queryKeys = {
   streamingHistory: ["streaming-history"] as const,
   streamRecords: ["stream-records"] as const,
   streamRecord: (token: string) => ["stream-records", token] as const,
+  logs: (filters: LogQuery) => ["logs", filters] as const,
   resolvedRelease: (releaseId: string, workId?: string) =>
     ["resolve", releaseId, workId ?? null] as const,
   tvSeries: (tmdbId: number) => ["tv", tmdbId] as const,
@@ -205,6 +214,54 @@ export function useSessions({ enabled = true, refetchInterval = 3_000 } = {}) {
   });
 }
 
+/**
+ * Low-priority materialization jobs. When a token is supplied, Core returns every job where
+ * that session was either the playback source or the prepared target.
+ */
+export function usePreDownloads(sessionToken?: string) {
+  return useQuery({
+    queryKey: queryKeys.preDownloads(sessionToken),
+    queryFn: ({ signal }) =>
+      apiFetch<PreDownloadJobResponse[]>("/pre-downloads", {
+        query: { sessionToken },
+        signal,
+      }),
+    enabled: sessionToken === undefined || sessionToken.length > 0,
+    refetchInterval: 2_000,
+  });
+}
+
+export function useSessionArticles(
+  token: string,
+  {
+    enabled = true,
+    live = true,
+    refetchInterval,
+  }: { enabled?: boolean; live?: boolean; refetchInterval?: number | false } = {},
+) {
+  const interval = refetchInterval !== undefined
+    ? refetchInterval
+    : live
+      ? (query: { state: { data?: ArticleMapResponse } }) => articlePollInterval(query.state.data)
+      : false;
+  return useQuery({
+    queryKey: queryKeys.sessionArticles(token),
+    queryFn: ({ signal }) =>
+      apiFetch<ArticleMapResponse>(`/sessions/${encodeURIComponent(token)}/articles`, { signal }),
+    enabled: enabled && token.length > 0,
+    refetchInterval: interval,
+    retry: false,
+  });
+}
+
+export function articlePollInterval(data?: ArticleMapResponse) {
+  const total = data?.totalArticles ?? data?.articles?.length ?? 0;
+  if (total >= 100_000) return 15_000;
+  if (total >= 25_000) return 8_000;
+  if (total >= 5_000) return 5_000;
+  return 2_000;
+}
+
 /** Global transport pressure used to put a single stream's NNTP usage in context. */
 export function useMetrics({ enabled = true, refetchInterval = 3_000 } = {}) {
   return useQuery({
@@ -341,6 +398,51 @@ export function useStreamRecord(token: string, { enabled = true } = {}) {
   });
 }
 
+export type LogSource = "all" | "core" | "jellyfin";
+export type LogMinimumLevel = "trace" | "debug" | "information" | "warning" | "error";
+
+export interface LogQuery {
+  source: LogSource;
+  minimumLevel: LogMinimumLevel;
+  search?: string;
+  streamToken?: string;
+  limit: number;
+}
+
+export function useLogs(
+  filters: LogQuery,
+  {
+    enabled = true,
+    refetchInterval = 2_000,
+    refetchOnWindowFocus = true,
+    refetchOnReconnect = true,
+  }: {
+    enabled?: boolean;
+    refetchInterval?: number | false;
+    refetchOnWindowFocus?: boolean;
+    refetchOnReconnect?: boolean;
+  } = {},
+) {
+  return useQuery({
+    queryKey: queryKeys.logs(filters),
+    queryFn: ({ signal }) => apiFetch<LogFeedResponse>("/logs", {
+      query: {
+        source: filters.source,
+        minimumLevel: filters.minimumLevel,
+        search: filters.search,
+        streamToken: filters.streamToken,
+        limit: filters.limit,
+      },
+      signal,
+    }),
+    enabled,
+    refetchInterval,
+    refetchOnWindowFocus,
+    refetchOnReconnect,
+    retry: false,
+  });
+}
+
 export function useGeneralConfig() {
   return useQuery({
     queryKey: queryKeys.generalConfig,
@@ -356,6 +458,23 @@ export function useUpdateGeneralConfig() {
     onSuccess: (data) => {
       qc.setQueryData(queryKeys.generalConfig, data);
     },
+  });
+}
+
+export function usePreDownloadConfig() {
+  return useQuery({
+    queryKey: queryKeys.preDownloadConfig,
+    queryFn: ({ signal }) =>
+      apiFetch<PreDownloadConfigResponse>("/config/pre-download", { signal }),
+  });
+}
+
+export function useUpdatePreDownloadConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (write: PreDownloadConfigWrite) =>
+      apiFetch<PreDownloadConfigResponse>("/config/pre-download", { method: "PUT", body: write }),
+    onSuccess: (data) => qc.setQueryData(queryKeys.preDownloadConfig, data),
   });
 }
 

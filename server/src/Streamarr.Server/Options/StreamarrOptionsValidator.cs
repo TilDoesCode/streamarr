@@ -12,7 +12,8 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
 
         if (o.Admin is null || o.TrustedProxies is null || o.TrustedOrigins is null ||
             o.Providers is null || o.Indexers is null ||
-            o.Search is null || o.Tmdb is null || o.HealthCheck is null || o.Repair is null)
+            o.Search is null || o.Tmdb is null || o.PreDownload is null ||
+            o.HealthCheck is null || o.Repair is null)
         {
             return ValidateOptionsResult.Fail(
                 "Streamarr configuration collections and nested option sections must not be null.");
@@ -143,6 +144,29 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
             failures.Add("Tmdb.Language must not exceed 32 characters or contain control characters.");
         if (!IsImageSize(o.Tmdb.PosterSize) || !IsImageSize(o.Tmdb.BackdropSize))
             failures.Add("TMDB image sizes must be non-empty alphanumeric values of at most 32 characters.");
+
+        Range(
+            o.PreDownload.CurrentFileThresholdSeconds,
+            PreDownloadOptions.MinCurrentFileThresholdSeconds,
+            PreDownloadOptions.MaxCurrentFileThresholdSeconds,
+            "PreDownload.CurrentFileThresholdSeconds");
+        Range(
+            o.PreDownload.NextEpisodeThresholdPercent,
+            PreDownloadOptions.MinNextEpisodeThresholdPercent,
+            PreDownloadOptions.MaxNextEpisodeThresholdPercent,
+            "PreDownload.NextEpisodeThresholdPercent");
+        Range(
+            o.PreDownload.MaxConcurrentDownloads,
+            PreDownloadOptions.MinimumConcurrentDownloads,
+            PreDownloadOptions.MaximumConcurrentDownloads,
+            "PreDownload.MaxConcurrentDownloads");
+        if (o.PreDownload.CachePath.Length > 4_096 || ContainsControl(o.PreDownload.CachePath))
+            failures.Add("PreDownload.CachePath must not exceed 4096 characters or contain control characters.");
+        RangeLong(
+            o.PreDownload.MinimumFreeDiskBytes,
+            0,
+            long.MaxValue,
+            "PreDownload.MinimumFreeDiskBytes");
 
         Range(o.HealthCheck.SampleCount, 1, 1_000, "HealthCheck.SampleCount");
         Range(o.HealthCheck.StartupSampleCount, 0, 1_000, "HealthCheck.StartupSampleCount");

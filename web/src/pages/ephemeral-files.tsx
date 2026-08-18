@@ -1,6 +1,6 @@
 import { type MouseEvent, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUpRight, Box, Clock3, HardDrive, Loader2, Radio, Trash2, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Box, Clock3, Download, HardDrive, Loader2, Radio, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { useEphemeralFiles, usePurgeEphemeralFile } from "@/api/queries";
 import type { EphemeralFileResponse } from "@/api/types";
@@ -8,7 +8,7 @@ import { errorMessage } from "@/api/client";
 import { EmptyOpsState, OpsHero, OpsMetric, OpsMetrics } from "@/components/ops-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatBytes, timeAgo } from "@/lib/utils";
+import { cn, formatBytes, timeAgo } from "@/lib/utils";
 
 export function EphemeralFilesPage() {
   const query = useEphemeralFiles();
@@ -61,7 +61,12 @@ export function EphemeralFilesPage() {
 }
 
 function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
-  const percent = Math.max(0, Math.min(100, file.estimatedStreamedPercent ?? 0));
+  const requestFootprintPercent = Math.max(0, Math.min(100, file.estimatedStreamedPercent ?? 0));
+  const preDownloadPercent = Math.max(0, Math.min(100, file.preDownloadPercent ?? 0));
+  const retentionPriority = file.retentionPriority || "normal";
+  const hasPreDownload = retentionPriority === "background"
+    || Boolean(file.preDownloadJobId || file.preDownloadReason || file.preDownloadState || file.localCacheReady)
+    || (file.preDownloadedBytes ?? 0) > 0;
   const requester = file.requestedByName || file.requestedById || "Unknown requester";
 
   return (
@@ -73,7 +78,7 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
         aria-label={`Inspect stream ${file.title ?? file.releaseId ?? ""}`}
       />
       <div className="grid lg:grid-cols-[minmax(0,1.3fr)_minmax(25rem,1fr)]">
-        <div className="p-5 sm:p-6">
+        <div className="min-w-0 p-5 sm:p-6">
           <div className="flex items-start gap-4">
             <div className="relative flex size-11 shrink-0 items-center justify-center rounded-xl border bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
               <Box className="size-5" />
@@ -84,34 +89,66 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
                 <h3 className="truncate text-base font-semibold tracking-tight" title={file.title ?? undefined}>{file.title ?? "Untitled release"}</h3>
                 <Badge variant="success" className="uppercase">{file.state ?? "ready"}</Badge>
                 {file.container && <Badge variant="outline" className="font-mono uppercase">{file.container}</Badge>}
-                <ArrowUpRight className="size-4 text-muted-foreground opacity-40 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-cyan-500 group-hover:opacity-100" />
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "gap-1 font-mono text-[9px] uppercase tracking-wider",
+                    retentionPriority === "background" && "border-primary/25 bg-primary/10 text-primary",
+                  )}
+                >
+                  <ShieldCheck className="size-3" /> {retentionPriority} retention
+                </Badge>
+                <ArrowUpRight className="hidden size-4 text-muted-foreground opacity-40 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-cyan-500 group-hover:opacity-100 sm:block" />
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground" title={file.fileName ?? undefined}>{file.fileName}</p>
             </div>
             <PurgeControl file={file} />
           </div>
 
+          {hasPreDownload && (
+            <PreDownloadFileProgress file={file} percent={preDownloadPercent} />
+          )}
+
           <div className="mt-6">
-            <div className="mb-2 flex items-end justify-between gap-4">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Estimated stream coverage</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{percent.toFixed(percent < 10 ? 1 : 0)}%</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Playback request footprint</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{requestFootprintPercent.toFixed(requestFootprintPercent < 10 ? 1 : 0)}%</p>
               </div>
-              <p className="text-right font-mono text-xs text-muted-foreground">
-                {(file.chunksQueried ?? 0).toLocaleString()} / {(file.totalChunks ?? 0).toLocaleString()} chunks queried
+              <p className="font-mono text-xs text-muted-foreground sm:text-right">
+                {(file.chunksQueried ?? 0).toLocaleString()} / {(file.totalChunks ?? 0).toLocaleString()} unique chunks touched
               </p>
             </div>
-            <div className="relative h-3 overflow-hidden rounded-full border bg-muted/70">
-              <div className="absolute inset-y-0 left-0 rounded-full bg-cyan-500 transition-[width] duration-700" style={{ width: `${percent}%` }} />
+            <div
+              className="relative h-3 overflow-hidden rounded-full border bg-muted/70"
+              role="progressbar"
+              aria-label="Playback segment request footprint"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(requestFootprintPercent)}
+            >
+              <div className="absolute inset-y-0 left-0 rounded-full bg-cyan-500 transition-[width] duration-700" style={{ width: `${requestFootprintPercent}%` }} />
               <div className="absolute inset-0 opacity-25" style={{ backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 11px,currentColor 12px,currentColor 13px)" }} />
             </div>
+            <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+              Unique media chunks requested by playback or probing; this is neither watch progress nor disk pre-download completion.
+            </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-px border-t bg-border lg:border-l lg:border-t-0">
           <Cell icon={<UserRound />} label="Requested by" value={requester} detail={file.client ?? "unknown client"} />
-          <Cell icon={<HardDrive />} label="Storage" value={formatBytes(file.storageBytes)} detail={`${(file.cachedChunks ?? 0).toLocaleString()} chunks resident`} />
+          <Cell icon={<ShieldCheck />} label="Retention" value={retentionPriority} detail={retentionPriority === "background" ? "implicit files evict first" : "explicit playback priority"} />
+          <Cell icon={<HardDrive />} label="Segment cache" value={formatBytes(file.storageBytes)} detail={`${(file.cachedChunks ?? 0).toLocaleString()} chunks resident`} />
           <Cell icon={<Radio />} label="Bytes served" value={formatBytes(file.bytesServed)} detail={`of ${formatBytes(file.sizeBytes)}`} />
+          {hasPreDownload && (
+            <Cell
+              icon={<Download />}
+              label="Disk pre-download"
+              value={`${preDownloadPercent.toFixed(preDownloadPercent > 0 && preDownloadPercent < 10 ? 1 : 0)}%`}
+              detail={`${formatBytes(file.preDownloadedBytes)} of ${formatBytes(file.preDownloadTotalBytes)}`}
+            />
+          )}
           <Cell icon={<Clock3 />} label="Hard expiry" value={file.purgeAt ? timeUntil(file.purgeAt) : "—"} detail={`LRU touch ${timeAgo(file.lastAccessedAt)}`} />
         </div>
       </div>
@@ -120,6 +157,59 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
         <span className="truncate">release / {file.releaseId}</span>
       </div>
     </article>
+  );
+}
+
+function PreDownloadFileProgress({ file, percent }: { file: EphemeralFileResponse; percent: number }) {
+  const state = file.preDownloadState || (file.localCacheReady ? "completed" : "queued");
+  return (
+    <div className="mt-6 min-w-0 rounded-xl border border-primary/20 bg-primary/[.045] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Download className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">Ephemeral disk file</p>
+            <p className="mt-1 text-sm font-medium text-foreground">
+              {file.localCacheReady ? "Local playback copy is ready" : "Background file materialization"}
+            </p>
+          </div>
+        </div>
+        <span className={cn(
+          "rounded-full border px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.14em]",
+          state === "completed" && "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+          state === "downloading" && "border-primary/25 bg-primary/10 text-primary",
+          ["failed", "cancelled"].includes(state) && "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+          !["completed", "downloading", "failed", "cancelled"].includes(state) && "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+        )}>
+          {state}
+        </span>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-1 font-mono">
+        <p className="text-xl font-semibold tabular-nums text-foreground">
+          {percent.toFixed(percent > 0 && percent < 10 ? 1 : 0)}%
+        </p>
+        <p className="min-w-0 text-right text-[10px] text-muted-foreground">
+          {formatBytes(file.preDownloadedBytes)} / {formatBytes(file.preDownloadTotalBytes)} on disk
+        </p>
+      </div>
+      <div
+        className="relative mt-2 h-2 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-label="Ephemeral disk pre-download progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+      >
+        <div className={cn("absolute inset-y-0 left-0 rounded-full transition-[width] duration-700", state === "completed" ? "bg-emerald-500" : "bg-primary")} style={{ width: `${percent}%` }} />
+        {state === "downloading" && <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/25 to-transparent" />}
+      </div>
+      <p className="mt-3 text-[10px] leading-4 text-muted-foreground">
+        <span className="font-medium text-foreground">Why:</span> {file.preDownloadReason || "Prepared by the low-priority pre-download policy."}
+      </p>
+    </div>
   );
 }
 

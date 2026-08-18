@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using Streamarr.Tests.Shared;
 using Streamarr.Usenet.Models;
@@ -78,6 +79,91 @@ public class MultiSegmentStreamTests
     }
 
     [Fact]
+    public async Task MidBodyFailure_ReportsTheRootCauseAfterRetriesAreExhausted()
+    {
+        var client = new RetryNntpClient(YencTestEncoder.LcgBytes(40, 20_000));
+        var events = new List<SegmentTransferEvent>();
+        await using var stream = MultiSegmentStream.Create(
+            new[] { "broken@test" },
+            client,
+            articleBufferSize: 1,
+            CancellationToken.None,
+            retryCount: 0,
+            onTransfer: transfer => events.Add(transfer));
+
+        await Assert.ThrowsAsync<IOException>(() => ReadAllAsync(stream));
+
+        var failure = Assert.Single(events, transfer => transfer.Stage == SegmentTransferStage.Failed);
+        Assert.Equal(nameof(IOException), failure.ErrorType);
+        Assert.Contains("Synthetic mid-body disconnect", failure.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task TransferObserver_ReportsQueueDownloadAndValidatedCompletion()
+    {
+        var expected = YencTestEncoder.LcgBytes(41, 8_000);
+        var client = new BlockingNntpClient(
+            new Dictionary<string, byte[]> { ["observed@test"] = expected },
+            requiredConcurrentCalls: 1);
+        var events = new List<SegmentTransferEvent>();
+
+        await using var stream = MultiSegmentStream.Create(
+            new[] { "observed@test" },
+            client,
+            articleBufferSize: 1,
+            CancellationToken.None,
+            onTransfer: transfer => events.Add(transfer));
+        await client.WindowFilled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        client.Release.SetResult();
+
+        Assert.Equal(expected, await ReadAllAsync(stream));
+        Assert.Collection(
+            events,
+            queued => Assert.Equal(SegmentTransferStage.Queued, queued.Stage),
+            downloading => Assert.Equal(SegmentTransferStage.Downloading, downloading.Stage),
+            downloaded =>
+            {
+                Assert.Equal(SegmentTransferStage.Downloaded, downloaded.Stage);
+                Assert.Equal(expected.LongLength, downloaded.Bytes);
+                Assert.True(downloaded.DurationMs >= 0);
+            });
+    }
+
+    [Fact]
+    public async Task TransferObserver_DistinguishesCacheHitFromProviderDownload()
+    {
+        var expected = YencTestEncoder.LcgBytes(42, 4_000);
+        var client = new BlockingNntpClient(
+            new Dictionary<string, byte[]> { ["cached-observed@test"] = expected },
+            requiredConcurrentCalls: 1);
+        using var cache = new SegmentCache(1024 * 1024);
+
+        await using (var warm = MultiSegmentStream.Create(
+                         new[] { "cached-observed@test" }, client, 1, CancellationToken.None, cache))
+        {
+            await client.WindowFilled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            client.Release.SetResult();
+            Assert.Equal(expected, await ReadAllAsync(warm));
+        }
+
+        var events = new List<SegmentTransferEvent>();
+        await using var cached = MultiSegmentStream.Create(
+            new[] { "cached-observed@test" },
+            client,
+            articleBufferSize: 1,
+            CancellationToken.None,
+            cache,
+            onTransfer: transfer => events.Add(transfer));
+
+        Assert.Equal(expected, await ReadAllAsync(cached));
+        Assert.Contains(events, transfer =>
+            transfer.Stage == SegmentTransferStage.Cached
+            && transfer.Bytes == expected.LongLength);
+        Assert.DoesNotContain(events, transfer => transfer.Stage == SegmentTransferStage.Downloading);
+        Assert.Equal(1, client.CallCount);
+    }
+
+    [Fact]
     public async Task SegmentCache_SharesInFlightDownload_AndReusesCompletedBytes()
     {
         var expected = YencTestEncoder.LcgBytes(5, 8_000);
@@ -102,6 +188,119 @@ public class MultiSegmentStreamTests
             new[] { "shared@test" }, client, 1, CancellationToken.None, cache);
         Assert.Equal(expected, await ReadAllAsync(third));
         Assert.Equal(1, client.CallCount);
+    }
+
+    [Fact]
+    public async Task CoalescedCacheWaiter_ReportsItsActualWaitDuration()
+    {
+        var expected = YencTestEncoder.LcgBytes(51, 8_000);
+        var client = new BlockingNntpClient(
+            new Dictionary<string, byte[]> { ["coalesced@test"] = expected },
+            requiredConcurrentCalls: 1);
+        using var cache = new SegmentCache(1024 * 1024);
+        await using var owner = MultiSegmentStream.Create(
+            new[] { "coalesced@test" }, client, 1, CancellationToken.None, cache);
+        await client.WindowFilled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var waiterEvents = new ConcurrentQueue<SegmentTransferEvent>();
+        await using var waiter = MultiSegmentStream.Create(
+            new[] { "coalesced@test" },
+            client,
+            1,
+            CancellationToken.None,
+            cache,
+            onTransfer: waiterEvents.Enqueue);
+        var reads = Task.WhenAll(ReadAllAsync(owner), ReadAllAsync(waiter));
+        await WaitForAsync(() => waiterEvents.Any(
+            transfer => transfer.Stage == SegmentTransferStage.Queued));
+        await Task.Delay(25);
+        client.Release.SetResult();
+
+        Assert.All(await reads, bytes => Assert.Equal(expected, bytes));
+        var cached = Assert.Single(waiterEvents,
+            transfer => transfer.Stage == SegmentTransferStage.Cached);
+        Assert.NotNull(cached.DurationMs);
+        Assert.True(cached.DurationMs >= 10);
+        Assert.Equal(1, client.CallCount);
+    }
+
+    [Fact]
+    public async Task CancelledCoalescedCacheWaiter_ReportsTerminalPartialNotFailure()
+    {
+        var expected = YencTestEncoder.LcgBytes(52, 8_000);
+        var client = new BlockingNntpClient(
+            new Dictionary<string, byte[]> { ["cancelled-waiter@test"] = expected },
+            requiredConcurrentCalls: 1);
+        using var cache = new SegmentCache(1024 * 1024);
+        await using var owner = MultiSegmentStream.Create(
+            new[] { "cancelled-waiter@test" }, client, 1, CancellationToken.None, cache);
+        await client.WindowFilled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var cancellation = new CancellationTokenSource();
+        var waiterEvents = new ConcurrentQueue<SegmentTransferEvent>();
+        await using var waiter = MultiSegmentStream.Create(
+            new[] { "cancelled-waiter@test" },
+            client,
+            1,
+            cancellation.Token,
+            cache,
+            onTransfer: waiterEvents.Enqueue);
+        var waiterRead = ReadAllAsync(waiter);
+        await WaitForAsync(() => waiterEvents.Any(
+            transfer => transfer.Stage == SegmentTransferStage.Queued));
+        await Task.Delay(25);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => waiterRead.WaitAsync(TimeSpan.FromSeconds(2)));
+        await WaitForAsync(() => waiterEvents.Any(
+            transfer => transfer.Stage == SegmentTransferStage.Partial));
+        var partial = Assert.Single(waiterEvents,
+            transfer => transfer.Stage == SegmentTransferStage.Partial);
+        Assert.NotNull(partial.DurationMs);
+        Assert.True(partial.DurationMs >= 10);
+        Assert.DoesNotContain(waiterEvents,
+            transfer => transfer.Stage == SegmentTransferStage.Failed);
+        Assert.Equal(1, client.CallCount);
+
+        client.Release.SetResult();
+        Assert.Equal(expected, await ReadAllAsync(owner));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task ActiveRead_ReportsBoundedCumulativeProgress(int articleBufferSize)
+    {
+        var expected = YencTestEncoder.LcgBytes(53, 800_000);
+        var events = new ConcurrentQueue<SegmentTransferEvent>();
+        await using var stream = MultiSegmentStream.Create(
+            new[] { "progress@test" },
+            new BlockingNntpClient(
+                new Dictionary<string, byte[]> { ["progress@test"] = expected },
+                requiredConcurrentCalls: 1),
+            articleBufferSize,
+            CancellationToken.None,
+            openedFirstSegment: new MemoryStream(expected, writable: false),
+            progressiveFirstSegment: articleBufferSize > 0,
+            onTransfer: events.Enqueue);
+
+        Assert.Equal(expected, await ReadAllAsync(stream));
+
+        var progress = events
+            .Where(transfer => transfer.Stage == SegmentTransferStage.Downloading
+                               && transfer.Bytes > 0)
+            .ToArray();
+        Assert.InRange(progress.Length, 1, 4);
+        Assert.All(progress, transfer =>
+        {
+            Assert.InRange(transfer.Bytes, 1, expected.LongLength - 1);
+            Assert.NotNull(transfer.DurationMs);
+        });
+        Assert.True(progress.SequenceEqual(progress.OrderBy(transfer => transfer.Bytes)));
+        var downloaded = Assert.Single(events,
+            transfer => transfer.Stage == SegmentTransferStage.Downloaded);
+        Assert.Equal(expected.LongLength, downloaded.Bytes);
     }
 
     [Fact]
@@ -235,13 +434,15 @@ public class MultiSegmentStreamTests
         var client = new CancellationBlockingNntpClient();
         using var cache = new SegmentCache(1024 * 1024);
         using var cancellation = new CancellationTokenSource();
+        var events = new List<SegmentTransferEvent>();
         await using var stream = MultiSegmentStream.Create(
             new[] { "cancel@test" },
             client,
             articleBufferSize: 1,
             cancellation.Token,
             cache,
-            progressiveFirstSegment: true);
+            progressiveFirstSegment: true,
+            onTransfer: transfer => events.Add(transfer));
 
         var read = stream.ReadAsync(new byte[1]).AsTask();
         await client.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -250,6 +451,8 @@ public class MultiSegmentStreamTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => read.WaitAsync(TimeSpan.FromSeconds(1)));
         await client.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Contains(events, transfer => transfer.Stage == SegmentTransferStage.Partial);
+        Assert.DoesNotContain(events, transfer => transfer.Stage == SegmentTransferStage.Failed);
     }
 
     [Fact]

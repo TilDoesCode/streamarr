@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Streamarr.Core.Media;
 using Streamarr.Server.Contracts;
+using Streamarr.Server.Logging;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services.Repair;
 
@@ -32,6 +33,40 @@ public sealed class ResolveService(
     IStreamHistoryRecorder? historyRecorder = null)
 {
     private readonly SemaphoreSlim _resolveGate = new(Math.Max(1, options.Value.MaxConcurrentResolves));
+    private readonly AsyncLocal<EphemeralRetentionPriority?> _retentionPriority = new();
+    private EphemeralRetentionPriority RequestedRetentionPriority
+        => _retentionPriority.Value ?? EphemeralRetentionPriority.Normal;
+
+    public async Task<ResolveResponse> ResolveForPreDownloadAsync(
+        string releaseId,
+        string workId,
+        string? client,
+        string? requestedById,
+        string? requestedByName,
+        Func<string, string> streamUrlForToken,
+        Func<string, string> localStreamUrlForToken,
+        CancellationToken ct)
+    {
+        var prior = _retentionPriority.Value;
+        _retentionPriority.Value = EphemeralRetentionPriority.Background;
+        try
+        {
+            return await ResolveAsync(
+                releaseId,
+                workId,
+                client,
+                requestedById,
+                requestedByName,
+                autoFallback: true,
+                streamUrlForToken,
+                localStreamUrlForToken,
+                ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _retentionPriority.Value = prior;
+        }
+    }
 
     /// <param name="streamUrlForToken">Builds the public stream URL returned to the client.</param>
     /// <param name="localStreamUrlForToken">
@@ -113,6 +148,16 @@ public sealed class ResolveService(
             RequestedByName = requestedByName,
         });
 
+        var scopeProperties = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            [LogPropertyNames.ReleaseId] = releaseId,
+        };
+        if (!string.IsNullOrWhiteSpace(workId))
+            scopeProperties[LogPropertyNames.WorkId] = workId;
+        if (!string.IsNullOrWhiteSpace(streamAttemptId))
+            scopeProperties[LogPropertyNames.StreamAttemptId] = streamAttemptId;
+        using var resolveScope = logger.BeginScope(scopeProperties);
+
         try
         {
             var response = await ResolveCoreAsync(
@@ -145,8 +190,32 @@ public sealed class ResolveService(
         }
         catch (Exception e)
         {
+            if (e is OperationCanceledException && ct.IsCancellationRequested)
+            {
+                logger.LogDebug(
+                    "Resolve for release {ReleaseId} was cancelled by the caller",
+                    releaseId);
+            }
+            else
+            {
+                logger.LogError(
+                    e,
+                    "Resolve failed for release {ReleaseId} during {FailureType}",
+                    releaseId,
+                    e.GetType().Name);
+            }
+
             if (streamAttemptId is not null)
             {
+                historyRecorder!.AppendEvents(streamAttemptId,
+                [
+                    new StreamEventWrite(
+                        DateTimeOffset.UtcNow,
+                        "error",
+                        "resolve",
+                        e.GetType().Name,
+                        LogSanitizer.SanitizeAndTruncate(e.Message, 1_024)),
+                ]);
                 historyRecorder!.Finalize(streamAttemptId, new StreamRecordFinalize
                 {
                     FinalState = "error",
@@ -197,6 +266,11 @@ public sealed class ResolveService(
                 streamAttemptId,
                 ct);
             workId = single.WorkId;
+            using var hopScope = logger.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [LogPropertyNames.ReleaseId] = currentId,
+                [LogPropertyNames.WorkId] = workId,
+            });
             attempts.Add(new ResolveAttempt { ReleaseId = currentId, Status = single.Response.Status });
 
             // This hop died without ever minting a session — its TtffTimeline would otherwise be
@@ -328,6 +402,11 @@ public sealed class ResolveService(
     {
         var registered = releaseStore.Get(releaseId, workId)
             ?? throw new ReleaseNotFoundException(releaseId);
+        using var releaseScope = logger.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            [LogPropertyNames.ReleaseId] = registered.Release.ReleaseId,
+            [LogPropertyNames.WorkId] = registered.WorkId,
+        });
         if (healthCache.IsDead(releaseId))
         {
             // A verified local repair artifact wins immediately; the origin stays dead.
@@ -347,7 +426,8 @@ public sealed class ResolveService(
                 releaseId,
                 registered.WorkId,
                 client,
-                requestedById) is { } retained)
+                requestedById,
+                RequestedRetentionPriority) is { } retained)
         {
             var reused = await TryBuildReuseResponseAsync(retained, streamUrlForToken, ct);
             if (reused is not null)
@@ -448,7 +528,8 @@ public sealed class ResolveService(
                     requestedByName,
                     registered.Release.Title,
                     timeline,
-                    streamAttemptId);
+                    streamAttemptId,
+                    RequestedRetentionPriority);
             }
             catch (SessionUnavailableException) when (healthCache.IsDead(releaseId))
             {
@@ -502,6 +583,8 @@ public sealed class ResolveService(
         // supplied duration, raise this session's pacing ceiling when necessary so Jellyfin's
         // HLS remux can always produce segments ahead of realtime for high-bitrate media.
         session.SetRunTimeTicks(probe?.RunTimeTicks);
+        // Undo the loopback ffprobe's playback-only retention promotion before publishing.
+        session.SetRetentionPriority(RequestedRetentionPriority);
 
         // Always-visible TTFF breakdown for the server console (per-span detail is at Debug).
         logger.LogInformation("[TTFF] resolve {ReleaseId} {Summary}", releaseId, timeline.Summarize());
@@ -626,7 +709,8 @@ public sealed class ResolveService(
                 requestedByName,
                 registered.Release.Title,
                 timeline,
-                streamAttemptId);
+                streamAttemptId,
+                RequestedRetentionPriority);
             session = admission.Session;
             if (admission.Created)
                 break;
@@ -652,6 +736,7 @@ public sealed class ResolveService(
         }
 
         session.SetRunTimeTicks(probe?.RunTimeTicks);
+        session.SetRetentionPriority(RequestedRetentionPriority);
         logger.LogInformation("[TTFF] resolve {ReleaseId} from local repair artifact {Summary}",
             releaseId, timeline.Summarize());
 
@@ -748,7 +833,8 @@ public sealed class ResolveService(
                 requestedByName,
                 registered.Release.Title,
                 timeline,
-                streamAttemptId);
+                streamAttemptId,
+                RequestedRetentionPriority);
             var session = admission.Session;
             if (!admission.Created)
             {
@@ -780,6 +866,7 @@ public sealed class ResolveService(
             }
 
             session.SetRunTimeTicks(probe?.RunTimeTicks);
+            session.SetRetentionPriority(RequestedRetentionPriority);
             var response = new ResolveResponse
             {
                 ReleaseId = releaseId,

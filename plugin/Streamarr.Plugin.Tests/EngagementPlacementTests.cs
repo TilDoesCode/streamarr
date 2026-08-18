@@ -6,8 +6,10 @@ using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -215,6 +217,26 @@ public class EngagementPlacementTests : IDisposable
     }
 
     [Fact]
+    public async Task Series_backdrop_is_also_exposed_as_a_horizontal_thumb()
+    {
+        const string backdropUrl = "https://image.example/series-backdrop.jpg";
+        var series = new TvSeriesDto
+        {
+            WorkId = "thumb-series",
+            Title = "Series",
+            TmdbId = 4711,
+            BackdropUrl = backdropUrl,
+            AddStreamarrBadge = false,
+        };
+
+        var seriesId = await _library.MaterializeSeriesAsync(series, CancellationToken.None);
+
+        var item = Assert.IsType<Series>(_store[seriesId]);
+        Assert.Equal(backdropUrl, item.GetImageInfo(ImageType.Backdrop, 0)?.Path);
+        Assert.Equal(backdropUrl, item.GetImageInfo(ImageType.Thumb, 0)?.Path);
+    }
+
+    [Fact]
     public async Task Reconcile_promotes_engaged_staging_items_and_demotes_unengaged_library_items()
     {
         var engagedId = await _library.MaterializeAsync(Movie("work-engaged"), CancellationToken.None);
@@ -279,6 +301,33 @@ public class EngagementPlacementTests : IDisposable
             ItemUpdateType.MetadataEdit,
             Arg.Any<CancellationToken>());
         Assert.Equal(_library.StagingFolderId, _store[itemId].ParentId);
+    }
+
+    [Fact]
+    public async Task Startup_backfills_a_missing_series_thumb_from_its_backdrop()
+    {
+        const string backdropUrl = "https://image.example/existing-series-backdrop.jpg";
+        var series = new TvSeriesDto
+        {
+            WorkId = "existing-thumb-series",
+            Title = "Series",
+            TmdbId = 4711,
+            BackdropUrl = backdropUrl,
+            AddStreamarrBadge = false,
+        };
+        var seriesId = await _library.MaterializeSeriesAsync(series, CancellationToken.None);
+        var existing = Assert.IsType<Series>(_store[seriesId]);
+        existing.RemoveImage(existing.GetImageInfo(ImageType.Thumb, 0)!);
+        _libraryManager.ClearReceivedCalls();
+
+        await _library.EnsureLibraryIntegrationAsync(CancellationToken.None);
+
+        Assert.Equal(backdropUrl, existing.GetImageInfo(ImageType.Thumb, 0)?.Path);
+        await _libraryManager.Received().UpdateItemsAsync(
+            Arg.Is<IReadOnlyList<BaseItem>>(items => items.Any(item => item.Id == seriesId)),
+            Arg.Is<BaseItem>(parent => parent.Id == _library.StagingFolderId),
+            ItemUpdateType.MetadataEdit,
+            Arg.Any<CancellationToken>());
     }
 
     private async Task<(Guid SeriesId, Guid SeasonId, IReadOnlyList<Guid> EpisodeIds)> MaterializeSeriesWithEpisodesAsync(

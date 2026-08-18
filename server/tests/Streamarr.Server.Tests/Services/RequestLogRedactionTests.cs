@@ -23,6 +23,8 @@ public sealed class RequestLogRedactionTests
             new PathString($"/api/v1/playback-sessions/{capability}/claim"));
         var ephemeralPurge = StreamarrServerBootstrap.RedactRequestPath(
             new PathString($"/api/v1/ephemeral-files/{capability}/purge"));
+        var streamHistory = StreamarrServerBootstrap.RedactRequestPath(
+            new PathString($"/api/v1/streams/{capability}"));
 
         Assert.Equal("/api/v1/stream/{capability}", stream);
         Assert.Equal("/api/v1/sessions/{capability}/close", close);
@@ -31,8 +33,9 @@ public sealed class RequestLogRedactionTests
         Assert.Equal("/api/v1/playback-sessions/{admission}", admissionStatus);
         Assert.Equal("/api/v1/playback-sessions/{admission}/claim", admissionClaim);
         Assert.Equal("/api/v1/ephemeral-files/{capability}/purge", ephemeralPurge);
+        Assert.Equal("/api/v1/streams/{stream}", streamHistory);
         Assert.All(
-            [stream, close, repair, timeline, admissionStatus, admissionClaim, ephemeralPurge],
+            [stream, close, repair, timeline, admissionStatus, admissionClaim, ephemeralPurge, streamHistory],
             value => Assert.DoesNotContain(capability, value));
         Assert.Equal(
             "/api/v1/playback-sessions",

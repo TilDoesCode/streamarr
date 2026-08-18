@@ -18,7 +18,8 @@ public sealed class StreamarrDbInitializer(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     IOptions<StreamarrOptions> options,
     IValidateOptions<StreamarrOptions> validator,
-    ISecretProtector protector)
+    ISecretProtector protector,
+    PreDownloadConfigService preDownloadConfig)
 {
     public void Initialize()
     {
@@ -101,6 +102,9 @@ public sealed class StreamarrDbInitializer(
             });
         }
 
+        if (!db.PreDownloadConfig.Any(x => x.Id == 1))
+            db.PreDownloadConfig.Add(PreDownloadConfigService.FromOptionsEntity(opts.PreDownload));
+
         db.SaveChanges();
     }
 
@@ -126,6 +130,10 @@ public sealed class StreamarrDbInitializer(
             // Otherwise an old environment credential would silently reappear on restart.
             opts.Tmdb.ApiKey = protector.Unprotect(general.TmdbApiKeyEncrypted);
         }
+
+        var preDownload = db.PreDownloadConfig.AsNoTracking().SingleOrDefault(x => x.Id == 1);
+        if (preDownload is not null)
+            preDownloadConfig.ApplyPersisted(preDownload);
 
         // Rebuild the provider list the NNTP pool is constructed from (M7 makes live
         // rebuild additive; for now the pool reads this at first-request resolve).

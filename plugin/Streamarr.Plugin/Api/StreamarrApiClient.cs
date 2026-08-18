@@ -436,6 +436,30 @@ public sealed class StreamarrApiClient
         }
     }
 
+    /// <summary>
+    /// Opens the full-speed, unpaced download capability for a live Core session — the
+    /// <c>GET /api/v1/download/{token}</c> sibling of the paced playback stream. Always
+    /// targets the internal/configured Core base URL, never the public stream URL: the
+    /// caller proxies these bytes itself (BRIEF client-agnostic download) rather than
+    /// redirecting a client to Core directly. The returned response has its headers read but
+    /// its content left unbuffered so the caller can copy the body straight through.
+    /// </summary>
+    public async Task<HttpResponseMessage> OpenDownloadAsync(
+        string token,
+        string? rangeHeader,
+        CancellationToken ct)
+    {
+        var transport = CaptureTransport();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{transport.BaseUrl}/api/v1/download/{Uri.EscapeDataString(token)}");
+        if (!string.IsNullOrWhiteSpace(transport.ApiKey))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", transport.ApiKey);
+        if (!string.IsNullOrWhiteSpace(rangeHeader))
+            request.Headers.TryAddWithoutValidation("Range", rangeHeader);
+
+        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+    }
+
     public async Task CloseSessionAsync(string token, CancellationToken ct)
         => await SendAsync<object>(
                 HttpMethod.Post,

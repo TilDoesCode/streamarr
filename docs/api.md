@@ -295,8 +295,9 @@ A dead-and-exhausted response (e.g. `autoFallback: false` on a dead release):
 
 Errors: `404 release_not_found`; `422 no_playable_file` / `invalid_release` (the NZB
 has no playable media file, or is malformed); `502 usenet_unreachable` /
-`nzb_fetch_failed` (the provider or the indexer NZB host could not be reached). A dead
-classification is **not** an error — it is a `200` with `status: "dead"`.
+`nzb_fetch_failed` (the provider or indexer could not be reached, or the indexer returned
+an HTML page instead of an NZB document). A dead classification is **not** an error — it
+is a `200` with `status: "dead"`.
 
 Whatever the outcome, a dead release is recorded in the health cache
 (`Streamarr:HealthCacheTtlSeconds`) so it is demoted/rejected on later searches and
@@ -353,6 +354,11 @@ client, timestamps:
     "sizeBytes": 5368709120, "bytesServed": 734003200,
     "nntpConnectionsInFlight": 3, "nntpCommandsTotal": 512,
     "client": "web",
+    "retentionPriority": "normal",
+    "preDownloadKind": "currentFile", "preDownloadState": "downloading",
+    "preDownloadReason": "Playback passed 10 seconds",
+    "preDownloadedBytes": 2147483648, "preDownloadTotalBytes": 5368709120,
+    "preDownloadPercent": 40, "localCacheReady": false,
     "createdAt": "2026-07-13T11:20:00Z",
     "lastAccessedAt": "2026-07-13T11:24:10Z",
     "expiresAt": "2026-07-13T12:20:00Z"
@@ -377,7 +383,8 @@ stopped.
 
 Operational view of the server-owned ephemeral file cache — one row per live file with its
 requester, decoded-size allocation, chunk footprint, resident storage, LRU access, hard expiry,
-and an `isStreaming` flag marking files with at least one open HTTP stream.
+and an `isStreaming` flag marking files with at least one open HTTP stream. Pre-downloaded files
+also expose their disk bytes, completion state, trigger reason, and `retentionPriority`.
 
 ### `POST /api/v1/ephemeral-files/{token}/purge` (admin only)
 
@@ -398,15 +405,28 @@ how watch state escapes a front-end's own DB. `202 Accepted`.
 
 ```json
 {
-  "releaseId": "…", "workId": "tmdb-movie-12345",
-  "event": "progress", "positionTicks": 42000000000, "source": "jellyfin"
+  "releaseId": "…", "workId": "tmdb-tv-90228-s01e02",
+  "event": "progress", "positionTicks": 42000000000,
+  "durationTicks": 56000000000, "sessionToken": "<opaque-token>",
+  "source": "jellyfin"
 }
 ```
 `event` is `"start"` | `"progress"` | `"stop"`; `source` is the originating front-end.
+`durationTicks` makes the next-episode threshold a watch-position percentage, independent of
+downloaded bytes. `sessionToken` binds the event to the exact live capability that may trigger a
+pre-download.
+
+### `GET /api/v1/pre-downloads` (admin only)
+
+Lists live and recently finished pre-download jobs. Optional `sessionToken` filtering returns
+jobs where that session is either the playback source or the prepared target. Each row keeps the
+watch-trigger snapshot (`watchPositionTicks`, `watchDurationTicks`, `watchProgressPercent`)
+separate from disk materialization (`bytesDownloaded`, `totalBytes`, `progressPercent`) and also
+reports kind, reason, target episode, low priority, timestamps, and any skip/failure code.
 
 ---
 
-## 8. Health, caps, metrics
+## 8. Health, caps, metrics, logs
 
 ### `GET /api/v1/health`
 
@@ -468,6 +488,51 @@ activity, so machine keys are intentionally insufficient.
 | `bytesServedTotal` | Cumulative bytes streamed by `/stream`. |
 | `indexers[]` | Per-indexer `requests`, `failures`, `lastLatencyMs`, `avgLatencyMs`. |
 
+### `GET /api/v1/logs`
+
+Admin-only, newest-first operational log feed used by the global **Logs** page and each
+stream detail page. A machine key is intentionally insufficient because exceptions and
+release/work identifiers are operator diagnostics.
+
+| Query | Default | Meaning |
+|---|---:|---|
+| `source` | `all` | `all`, `core`, or `jellyfin`. Selecting `core` never performs a Jellyfin request. |
+| `minimumLevel` | `information` | `trace`, `debug`, `information`, `warning`, or `error`; inclusive. |
+| `search` | — | Case-insensitive message/category/exception/identifier filter, at most 256 characters. |
+| `streamToken` | — | Correlates Core events by attempt/token and then release/work fallback; Jellyfin lines require the retained release/work identifier. |
+| `limit` | `200` | `1..500`; non-positive values use the default and larger values are clamped. |
+
+```json
+{
+  "entries": [
+    {
+      "id": "core-1842",
+      "atUtc": "2026-08-17T16:42:18.934Z",
+      "level": "error",
+      "source": "core",
+      "category": "Streamarr.Server.Services.SessionManager",
+      "message": "Stream read failed for release …",
+      "exception": "UsenetArticleNotFoundException: …",
+      "releaseId": "…",
+      "workId": "…"
+    }
+  ],
+  "sources": [
+    { "source": "core", "configured": true, "available": true, "lastCheckedAt": "…" },
+    { "source": "jellyfin", "configured": false, "available": false, "message": "…" }
+  ],
+  "generatedAt": "2026-08-17T16:42:19.441Z",
+  "hasMore": false
+}
+```
+
+The Core source is a sanitized, process-local ring containing the newest 2,000 Serilog
+events since startup. It retains only display fields and stream correlation—not arbitrary
+structured properties—and redacts credentials and capability paths. Jellyfin is optional;
+its availability or configuration failure is returned in `sources[]` without failing the
+Core feed. See the setup guide for its bounded full-file retrieval policy and environment
+variables.
+
 ---
 
 ## 9. Config API (admin only)
@@ -520,6 +585,26 @@ admin-only and consumes provider traffic.
 masked on read as `hasTmdbApiKey`, omit-to-keep on write), plus `sessionTtlSeconds`,
 `searchCacheTtlSeconds`, `segmentCacheSizeMb`, `connectionBudget`. Credential changes
 take effect immediately; other scalar changes take effect on restart.
+
+### Pre-download — `/api/v1/config/pre-download`
+
+`GET` / `PUT` the live background-cache policy. Writes are partial and take effect immediately:
+
+```json
+{
+  "enabled": true,
+  "downloadCurrentFile": true,
+  "currentFileThresholdSeconds": 10,
+  "downloadNextEpisode": true,
+  "nextEpisodeThresholdPercent": 75,
+  "maxConcurrentDownloads": 1
+}
+```
+
+Current-file work completes the already requested session after its watch-time grace period.
+Next-episode work resolves the immediate canonical TMDB episode after the configured watch
+percentage and admits it at lower retention priority. Both share the normal ephemeral TTL and
+logical byte budget; background NNTP transfers use low priority so playback traffic wins.
 
 ### Notifications — `/api/v1/config/notifications`
 

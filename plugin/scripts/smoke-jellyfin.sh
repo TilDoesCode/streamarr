@@ -1310,6 +1310,46 @@ for expected_name in "$movie_name" "$series_name" "Season 1" "Available Episode"
   assert_named_item_absent "$tmp_dir/root-items-after-hierarchy-denied.json" Items "$expected_name"
 done
 
+# Released Streamyfin builds require an inherited series Thumb when a Next Up episode has no still.
+code="$(curl -sS -o "$tmp_dir/episode-played.json" -w '%{http_code}' \
+  -X POST "$base_url/UserItems/$available_episode_id/UserData?userId=$allowed_id" \
+  -H "$allowed_header" \
+  -H 'Content-Type: application/json' \
+  --data '{"PlaybackPositionTicks":0,"Played":true}')"
+expect_code 200 "$code" "Episode watched-state update"
+curl -fsS --get "$base_url/Shows/NextUp" \
+  -H "$allowed_header" \
+  --data-urlencode "userId=$allowed_id" \
+  --data-urlencode 'startIndex=0' \
+  --data-urlencode 'limit=10' \
+  --data-urlencode 'enableImageTypes=Primary' \
+  --data-urlencode 'enableImageTypes=Backdrop' \
+  --data-urlencode 'enableImageTypes=Thumb' \
+  --data-urlencode 'enableResumable=false' \
+  -o "$tmp_dir/streamyfin-next-up.json"
+jq -e --arg episode "$unavailable_episode_id" --arg series "$series_id" '
+  [.Items[]? | select(.Id == $episode)] as $matches
+  | ($matches | length) == 1
+    and $matches[0].Type == "Episode"
+    and $matches[0].MediaType == "Video"
+    and $matches[0].ParentThumbItemId == $series
+    and ($matches[0].ParentThumbImageTag | type == "string" and length > 0)
+    and $matches[0].ParentBackdropItemId == $series
+' "$tmp_dir/streamyfin-next-up.json" >/dev/null \
+  || fail "Streamyfin-shaped Next Up response is missing the inherited series Thumb."
+thumb_tag="$(jq -er --arg episode "$unavailable_episode_id" \
+  '.Items[] | select(.Id == $episode) | .ParentThumbImageTag' \
+  "$tmp_dir/streamyfin-next-up.json")"
+code="$(curl -sS -o "$tmp_dir/streamyfin-next-up-thumb.png" -w '%{http_code}' --get \
+  "$base_url/Items/$series_id/Images/Thumb" \
+  -H "$allowed_header" \
+  --data-urlencode 'fillHeight=389' \
+  --data-urlencode 'quality=80' \
+  --data-urlencode "tag=$thumb_tag")"
+expect_code 200 "$code" "Streamyfin Next Up series Thumb"
+[[ -s "$tmp_dir/streamyfin-next-up-thumb.png" ]] \
+  || fail "Streamyfin Next Up series Thumb response was empty."
+
 # Point interception at a closed loopback port inside the container. Native Jellyfin responses
 # must still succeed and the Core-only synthetic result must disappear from both endpoints.
 jq '.ServerUrl = "http://127.0.0.1:1" | .InterceptionEnabled = true' \

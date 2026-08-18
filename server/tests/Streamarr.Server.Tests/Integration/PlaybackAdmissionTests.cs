@@ -251,6 +251,16 @@ public class PlaybackAdmissionTests(StreamarrServerFixture fixture)
             completed + TimeSpan.FromMinutes(3)));
     }
 
+    [Fact]
+    public void UnexpectedHtmlNzbResponse_HasAStableFetchFailureCode()
+    {
+        var reason = PlaybackAdmissionService.FailureReason(
+            new NzbUnexpectedContentException(),
+            canceled: false);
+
+        Assert.Equal("nzb_fetch_failed", reason);
+    }
+
     private sealed class ManualTimeProvider : TimeProvider
     {
         private DateTimeOffset _now = DateTimeOffset.Parse("2026-08-01T12:00:00Z");
