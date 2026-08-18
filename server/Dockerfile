@@ -15,7 +15,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- 2. .NET publish ----------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:08f003ba31fca1aeed32d5a076f62dc3b592faa0a811b072aa245321dd09f0ab AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:2ae6f287fa860c15f121474cf864b86765beb87507bbc3f48661a4f6f1ffc2b5 AS build
 WORKDIR /src
 COPY server/ server/
 # Bring the freshly built SPA into the server's static web root (single-origin prod path).
@@ -24,7 +24,7 @@ RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
       -c Release -o /app --no-self-contained
 
 # ---- 3. runtime ---------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:77526aac4254c2b26764c2ab09700f6bdbcad2e2cb748e0d57bc01ebdced6515 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:d72743fde6e26a853eaa5dd58a6e30cfbedf17186fe2aed6ff283b82efee9249 AS runtime
 # ffmpeg supplies ffprobe, which /resolve runs against the stream (BRIEF §6.2);
 # curl backs the compose healthcheck (GET /api/v1/health).
 RUN apt-get update \
@@ -40,6 +40,7 @@ ENV Streamarr__ConnectionString="Data Source=/app/data/streamarr.db"
 ENV Streamarr__DataProtectionKeysPath=/app/keys
 ENV Streamarr__NzbCachePath=/app/data/nzb
 ENV Streamarr__Repair__WorkspacePath=/app/data/repair
+ENV Streamarr__PreDownload__CachePath=/app/data/predownload
 EXPOSE 8080
 USER app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
