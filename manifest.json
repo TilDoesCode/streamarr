@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.13.0.0",
+        "changelog": "Add configurable low-priority pre-downloads that finish the current file after a playback grace period and prepare the next TV episode after a watch-progress threshold, with live job status, article maps, cache retention priorities, and disk-space safeguards. Add a bounded, sanitized operator log viewer that correlates Core events with streams and can optionally merge relevant Jellyfin server logs. Add native Jellyfin download support for Streamarr items through the standard permission-aware download endpoint. Harden NZB validation, multi-provider attempt reporting, and stream diagnostics, and improve series artwork compatibility.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.13.0/streamarr-jellyfin-0.13.0.zip",
+        "checksum": "2367a9bab56221b8513026eeba0c92d8",
+        "timestamp": "2026-08-18T18:54:32Z"
+      },
+      {
         "version": "0.12.0.0",
         "changelog": "Add a PAR2 repair pipeline: when a needed article is definitively gone mid-stream, Core reconstructs the raw source/RAR bytes from the release's PAR2 set and resumes the open stream at the same offset instead of failing, with a Repairs page for live job status and admin control. Add two-phase playback admission (POST /api/v1/playback-sessions) so slow health/materialization/repair prepares no longer hold Jellyfin's global live-stream lock, with an in-player repair-status notification and a direct-resolve fallback for older Core versions. Add a Streaming History page recording completed playback sessions.",
         "targetAbi": "10.11.11.0",
