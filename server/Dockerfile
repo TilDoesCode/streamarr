@@ -6,7 +6,7 @@
 # Build context is the repo root:  docker build -f server/Dockerfile .
 
 # ---- 1. SPA -------------------------------------------------------------------------
-FROM node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169 AS web
+FROM node:25-trixie-slim@sha256:aabbe39553d15ede8a97cc60c9e1a97034ff772afcf696ea42b94e7f5f2ec71b AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json* web/.npmrc ./
 RUN npm ci
