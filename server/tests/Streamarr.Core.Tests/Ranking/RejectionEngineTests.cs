@@ -78,6 +78,33 @@ public class RejectionEngineTests
     }
 
     [Fact]
+    public void SeasonPack_SizeSanity_IsSkipped()
+    {
+        // A whole season is many times one episode's runtime worth of bytes; judging it
+        // against the single-episode TMDB runtime would reject every pack as "too large".
+        var signals = Signals(
+            name: "Show.S01.1080p.WEB-DL.x265-GROUP",
+            sizeBytes: 60_000_000_000,
+            runtimeMinutes: 43) with
+        { SeasonPack = true };
+
+        var reasons = Engine.Evaluate(signals, Profile);
+        Assert.False(Has(reasons, RejectionCode.SizeTooLarge));
+    }
+
+    [Fact]
+    public void MultiEpisode_SizeSanity_ScalesRuntimeByEpisodeCount()
+    {
+        // 27 GB over 45 minutes is 600 MB/min (over the 450 MB/min 1080p ceiling) — but a
+        // double episode carries two runtimes, so scaled it is a sane 300 MB/min.
+        var doubleEpisode = Signals(sizeBytes: 27_000_000_000, runtimeMinutes: 45) with { EpisodeCount = 2 };
+        Assert.False(Has(Engine.Evaluate(doubleEpisode, Profile), RejectionCode.SizeTooLarge));
+
+        var single = Signals(sizeBytes: 27_000_000_000, runtimeMinutes: 45) with { EpisodeCount = 1 };
+        Assert.True(Has(Engine.Evaluate(single, Profile), RejectionCode.SizeTooLarge));
+    }
+
+    [Fact]
     public void SizeSanity_SkippedWhenRuntimeUnknown()
     {
         var reasons = Engine.Evaluate(Signals(sizeBytes: 300_000_000, runtimeMinutes: null), Profile);

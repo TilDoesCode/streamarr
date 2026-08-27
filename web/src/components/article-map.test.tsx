@@ -109,6 +109,28 @@ const articleMap = {
   ],
 } as unknown as ArticleMapResponse;
 
+function articleMapWithCount(count: number): ArticleMapResponse {
+  return {
+    ...articleMap,
+    totalArticles: count,
+    trackedArticles: count,
+    pendingArticles: count,
+    activeArticles: 0,
+    downloadedArticles: 0,
+    cachedArticles: 0,
+    failedArticles: 0,
+    downloadedBytes: 0,
+    providers: [],
+    articles: Array.from({ length: count }, (_, index) => ({
+      index,
+      messageId: `part-${index + 1}@boundary.example`,
+      state: "pending",
+      bytes: 0,
+      attempts: [],
+    })),
+  } as unknown as ArticleMapResponse;
+}
+
 describe("ArticleMap", () => {
   it("renders the aggregate flight deck, provider lanes, and every ordered article", () => {
     renderWithProviders(<ArticleMap data={articleMap} />);
@@ -259,7 +281,26 @@ describe("ArticleMap", () => {
     expect(screen.getByRole("heading", { name: "Article 5" })).toBeInTheDocument();
   });
 
+  it("keeps individual article buttons at the DOM rendering cutoff", () => {
+    renderWithProviders(<ArticleMap data={articleMapWithCount(64)} />);
+
+    const map = screen.getByRole("list", { name: "Articles in release order" });
+    expect(within(map).getAllByRole("button")).toHaveLength(64);
+    expect(screen.queryByRole("slider", { name: "Articles in release order" })).not.toBeInTheDocument();
+  });
+
+  it("switches to the canvas immediately above the DOM rendering cutoff", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    renderWithProviders(<ArticleMap data={articleMapWithCount(65)} />);
+
+    const map = screen.getByRole("slider", { name: "Articles in release order" });
+    expect(map).toHaveAttribute("data-render-mode", "canvas");
+    expect(map).toHaveAttribute("data-cell-count", "65");
+    expect(screen.queryByRole("list", { name: "Articles in release order" })).not.toBeInTheDocument();
+  });
+
   it("densely represents large manifests without losing a failed article", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     const lastIndex = 5_000;
     const articles = Array.from({ length: lastIndex + 1 }, (_, index) => ({
       index,
@@ -296,15 +337,13 @@ describe("ArticleMap", () => {
 
     renderWithProviders(<ArticleMap data={data} />);
 
-    const map = screen.getByRole("list", { name: "Articles in release order" });
-    const cells = map.querySelectorAll<HTMLButtonElement>("button");
-    expect(cells.length).toBeLessThanOrEqual(2_500);
-    const failedCell = map.querySelector<HTMLButtonElement>('[data-article-state="failed"]');
-    expect(failedCell).not.toBeNull();
-    expect(Number(failedCell?.getAttribute("data-bin-size"))).toBeGreaterThan(1);
-    expect(failedCell).toHaveAccessibleName(/articles .*: contains failed; selects article 5001/i);
+    const map = screen.getByRole("slider", { name: "Articles in release order" });
+    expect(map).toHaveAttribute("data-render-mode", "canvas");
+    expect(map).toHaveAttribute("data-cell-count", "2500");
+    expect(map).toHaveAttribute("data-article-state", "failed");
+    expect(map).toHaveAccessibleName("Articles in release order");
+    expect(map.getAttribute("aria-valuetext")).toMatch(/articles .*: contains failed; selects article 5001/i);
 
-    fireEvent.click(failedCell!);
     expect(screen.getByRole("heading", { name: "Article 5001" })).toBeInTheDocument();
     expect(screen.getByText("The final article is missing on every provider.")).toBeInTheDocument();
 
@@ -312,16 +351,12 @@ describe("ArticleMap", () => {
     expect(exactArticle).toHaveValue("5000");
     fireEvent.change(exactArticle, { target: { value: "4999" } });
     expect(screen.getByRole("heading", { name: "Article 5000" })).toBeInTheDocument();
-    expect(failedCell).toHaveAttribute("aria-pressed", "true");
-    expect(failedCell).toHaveAttribute("data-article-index", "4999");
-    expect(failedCell).toHaveAttribute("data-article-state", "downloaded");
-    expect(failedCell).toHaveAccessibleName(/selects article 5000/i);
-
-    fireEvent.click(failedCell!);
-    expect(screen.getByRole("heading", { name: "Article 5000" })).toBeInTheDocument();
+    expect(map).toHaveAttribute("data-article-index", "4999");
+    expect(map).toHaveAttribute("data-article-state", "downloaded");
+    expect(map.getAttribute("aria-valuetext")).toMatch(/selects article 5000/i);
 
     fireEvent.click(screen.getByRole("button", { name: /slow 1/i }));
     expect(screen.getByRole("heading", { name: "Article 5000" })).toBeInTheDocument();
-    expect(failedCell).toHaveAttribute("data-article-state", "downloaded");
+    expect(map).toHaveAttribute("data-article-state", "downloaded");
   }, 15_000);
 });

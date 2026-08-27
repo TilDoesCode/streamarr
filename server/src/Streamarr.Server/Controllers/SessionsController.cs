@@ -87,6 +87,8 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
         Token = active.Token,
         ReleaseId = active.Session.ReleaseId,
         WorkId = active.Session.WorkId,
+        Title = active.Title,
+        FileName = active.File.FileName,
         State = active.Session.State.ToString().ToLowerInvariant(),
         Container = active.Session.Container,
         SizeBytes = active.Session.SizeBytes,

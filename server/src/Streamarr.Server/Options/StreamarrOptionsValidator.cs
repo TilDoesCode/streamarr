@@ -156,6 +156,11 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
             PreDownloadOptions.MaxNextEpisodeThresholdPercent,
             "PreDownload.NextEpisodeThresholdPercent");
         Range(
+            o.PreDownload.NextEpisodeReleaseSimilarityThresholdPercent,
+            PreDownloadOptions.MinNextEpisodeReleaseSimilarityThresholdPercent,
+            PreDownloadOptions.MaxNextEpisodeReleaseSimilarityThresholdPercent,
+            "PreDownload.NextEpisodeReleaseSimilarityThresholdPercent");
+        Range(
             o.PreDownload.MaxConcurrentDownloads,
             PreDownloadOptions.MinimumConcurrentDownloads,
             PreDownloadOptions.MaximumConcurrentDownloads,

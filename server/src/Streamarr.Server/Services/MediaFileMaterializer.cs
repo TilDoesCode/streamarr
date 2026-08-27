@@ -56,7 +56,25 @@ public class MediaFileMaterializer(
     SegmentMetadataCache? segmentMetadata = null)
 {
     public Task<ResolvedMediaFile> MaterializeAsync(MediaFileCandidate candidate, CancellationToken ct)
-        => candidate.IsRarWrapped ? MaterializeRarAsync(candidate, ct) : MaterializeDirectAsync(candidate, ct);
+        => MaterializeAsync(candidate, target: null, strictEpisodeMatch: false, ct);
+
+    /// <param name="target">
+    /// The episode to select inside a multi-file RAR set (season pack support); the
+    /// direct-file case was already narrowed by <see cref="MediaFileSelector.SelectForEpisode"/>.
+    /// </param>
+    /// <param name="strictEpisodeMatch">
+    /// When true (the release is known to carry multiple episodes), an archive holding
+    /// several media files none of which matches <paramref name="target"/> fails instead
+    /// of silently streaming the largest — never play the wrong episode.
+    /// </param>
+    public Task<ResolvedMediaFile> MaterializeAsync(
+        MediaFileCandidate candidate,
+        EpisodeTarget? target,
+        bool strictEpisodeMatch,
+        CancellationToken ct)
+        => candidate.IsRarWrapped
+            ? MaterializeRarAsync(candidate, target, strictEpisodeMatch, ct)
+            : MaterializeDirectAsync(candidate, ct);
 
     private async Task<ResolvedMediaFile> MaterializeDirectAsync(MediaFileCandidate candidate, CancellationToken ct)
     {
@@ -116,7 +134,11 @@ public class MediaFileMaterializer(
         };
     }
 
-    private async Task<ResolvedMediaFile> MaterializeRarAsync(MediaFileCandidate candidate, CancellationToken ct)
+    private async Task<ResolvedMediaFile> MaterializeRarAsync(
+        MediaFileCandidate candidate,
+        EpisodeTarget? target,
+        bool strictEpisodeMatch,
+        CancellationToken ct)
     {
         if (candidate.Files.Count > RarArchiveIndexer.MaxVolumes)
             throw new InvalidDataException($"RAR sets may contain at most {RarArchiveIndexer.MaxVolumes} volumes.");
@@ -173,9 +195,7 @@ public class MediaFileMaterializer(
         // Index() orders volumes by part number — the same order as the candidate's
         // volume list, so slice PartIndex values map 1:1 onto `volumes`.
         var storedFiles = RarArchiveIndexer.Index(parsedVolumes);
-        var media = storedFiles.Where(f => MediaFileSelector.IsMediaFileName(f.PathWithinArchive)).MaxBy(f => f.Size)
-                    ?? storedFiles.MaxBy(f => f.Size)
-                    ?? throw new NoPlayableFileException("The RAR set contains no stored files.");
+        var media = SelectStoredFile(storedFiles, target, strictEpisodeMatch);
         ValidateMediaSize(media.Size);
         var segmentIds = volumes.SelectMany(volume => volume.SegmentIds).ToArray();
         var manifest = candidate.Files
@@ -344,6 +364,41 @@ public class MediaFileMaterializer(
 
     private static long EstimatedReferenceArrayBytes(long count)
         => Align8(SaturatingAdd(24, SaturatingMultiply(count, IntPtr.Size)));
+
+    /// <summary>
+    /// Chooses the stored file to stream out of an indexed RAR set. With an episode
+    /// target, a media file whose path carries that episode's numbering wins (largest
+    /// on ties — a same-episode sample is smaller than the feature). Without a match,
+    /// a strict multi-file archive fails; everything else keeps the legacy largest-file
+    /// behavior so single-episode releases are untouched.
+    /// </summary>
+    internal static RarStoredFile SelectStoredFile(
+        IReadOnlyList<RarStoredFile> storedFiles,
+        EpisodeTarget? target,
+        bool strictEpisodeMatch)
+    {
+        var mediaFiles = storedFiles
+            .Where(f => MediaFileSelector.IsMediaFileName(f.PathWithinArchive))
+            .ToList();
+
+        if (target is { } episode && mediaFiles.Count > 0)
+        {
+            var match = mediaFiles
+                .Where(f => episode.MatchesFileName(f.PathWithinArchive))
+                .MaxBy(f => f.Size);
+            if (match is not null)
+                return match;
+            if (strictEpisodeMatch && mediaFiles.Count > 1)
+            {
+                throw new NoPlayableFileException(
+                    $"The RAR set contains {mediaFiles.Count} media files but none is named for {episode}.");
+            }
+        }
+
+        return mediaFiles.MaxBy(f => f.Size)
+               ?? storedFiles.MaxBy(f => f.Size)
+               ?? throw new NoPlayableFileException("The RAR set contains no stored files.");
+    }
 
     private static long Align8(long value)
         => value >= long.MaxValue - 7 ? long.MaxValue : (value + 7) & ~7L;

@@ -2497,6 +2497,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/releases/local-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["LocalReleaseAvailabilityRequest"];
+                    "text/json": components["schemas"]["LocalReleaseAvailabilityRequest"];
+                    "application/*+json": components["schemas"]["LocalReleaseAvailabilityRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["LocalReleaseAvailabilityResponse"];
+                        "application/json": components["schemas"]["LocalReleaseAvailabilityResponse"];
+                        "text/json": components["schemas"]["LocalReleaseAvailabilityResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repairs": {
         parameters: {
             query?: never;
@@ -3818,6 +3872,7 @@ export interface components {
         EventRequest: {
             releaseId: string | null;
             workId?: string | null;
+            title?: string | null;
             /** @description "start" | "progress" | "stop". */
             event: string | null;
             /** Format: int64 */
@@ -3947,6 +4002,23 @@ export interface components {
             enabled?: boolean | null;
             /** Format: int32 */
             priority?: number | null;
+        };
+        /** @description One release whose episode-specific pre-download is running or locally complete. */
+        LocalReleaseAvailabilityEntry: {
+            workId: string | null;
+            releaseId: string | null;
+            state: string | null;
+            release?: components["schemas"]["ReleaseDto"];
+        };
+        /** @description Scoped query for releases with a pre-download file on Core's local disk. */
+        LocalReleaseAvailabilityRequest: {
+            workIds: string[] | null;
+            client: string | null;
+            requestedById: string | null;
+        };
+        /** @description Up to 20 disk-backed releases per requested work, scoped to one user and client. */
+        LocalReleaseAvailabilityResponse: {
+            releases: components["schemas"]["LocalReleaseAvailabilityEntry"][] | null;
         };
         /** @description One sanitized diagnostic event suitable for display in the management UI. */
         LogEntryResponse: {
@@ -4171,6 +4243,9 @@ export interface components {
             downloadNextEpisode: boolean;
             /** Format: int32 */
             nextEpisodeThresholdPercent: number;
+            preferSimilarNextEpisodeRelease: boolean;
+            /** Format: int32 */
+            nextEpisodeReleaseSimilarityThresholdPercent: number;
             /** Format: int32 */
             maxConcurrentDownloads: number;
         };
@@ -4183,6 +4258,9 @@ export interface components {
             downloadNextEpisode?: boolean | null;
             /** Format: int32 */
             nextEpisodeThresholdPercent?: number | null;
+            preferSimilarNextEpisodeRelease?: boolean | null;
+            /** Format: int32 */
+            nextEpisodeReleaseSimilarityThresholdPercent?: number | null;
             /** Format: int32 */
             maxConcurrentDownloads?: number | null;
         };
@@ -4723,6 +4801,8 @@ export interface components {
             token: string | null;
             releaseId: string | null;
             workId: string | null;
+            title: string | null;
+            fileName: string | null;
             state: string | null;
             container?: string | null;
             /** Format: int64 */
@@ -4794,6 +4874,8 @@ export interface components {
             releaseId: string | null;
             workId: string | null;
             title?: string | null;
+            resolvedReleaseId?: string | null;
+            resolvedTitle?: string | null;
             container?: string | null;
             /** Format: int64 */
             sizeBytes?: number | null;
@@ -4810,6 +4892,8 @@ export interface components {
             closedAt?: string | null;
             finalState?: string | null;
             closeReason?: string | null;
+            failureKind?: string | null;
+            failureReason?: string | null;
             /**
              * Format: date-time
              * @description Wall-clock instant of timeline t0, for aligning the flamegraph (matches SessionResponse.TimelineStartedAt).
@@ -4831,6 +4915,8 @@ export interface components {
             releaseId: string | null;
             workId: string | null;
             title?: string | null;
+            resolvedReleaseId?: string | null;
+            resolvedTitle?: string | null;
             container?: string | null;
             /** Format: int64 */
             sizeBytes?: number | null;
@@ -4848,6 +4934,8 @@ export interface components {
             /** @description Null while still open/live. "ready"|"degraded"|"dead"|"closed"|"expired"|"evicted"|"purged"|"invalidated"|"reused"|"error". */
             finalState?: string | null;
             closeReason?: string | null;
+            failureKind?: string | null;
+            failureReason?: string | null;
         };
         /** @description One event in the cross-front-end streaming history. */
         StreamingHistoryResponse: {
@@ -4855,6 +4943,7 @@ export interface components {
             id?: number;
             releaseId: string | null;
             workId: string | null;
+            title: string | null;
             event: string | null;
             /** Format: int64 */
             positionTicks?: number;

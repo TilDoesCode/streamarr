@@ -59,6 +59,28 @@ public sealed class MediaMaterializationCacheTests
     }
 
     [Fact]
+    public async Task GetOrCreate_EpisodeVariantsOfOnePack_GetDistinctEntries()
+    {
+        var cache = Cache();
+        var calls = 0;
+
+        Task<ResolvedMediaFile> Materialize(CancellationToken _)
+            => Task.FromResult(Media(++calls));
+
+        // A monolithic season pack: same releaseId, same candidate, different episode.
+        var candidate = Candidate("one@test");
+        var e1 = await cache.GetOrCreateAsync("release-1", candidate, Materialize, default, variant: "s01e01");
+        var e2 = await cache.GetOrCreateAsync("release-1", candidate, Materialize, default, variant: "s01e02");
+        var none = await cache.GetOrCreateAsync("release-1", candidate, Materialize, default);
+        var e1Again = await cache.GetOrCreateAsync("release-1", candidate, Materialize, default, variant: "s01e01");
+
+        Assert.NotSame(e1, e2);
+        Assert.NotSame(e1, none);
+        Assert.Same(e1, e1Again);
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
     public async Task GetOrCreate_IsSingleFlightForConcurrentCallers()
     {
         var cache = Cache();

@@ -72,6 +72,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<MediaSourceOfferStore>();
         serviceCollection.AddSingleton<StreamarrMediaSourceProjection>();
         serviceCollection.AddSingleton<EphemeralReleaseRefresher>();
+        serviceCollection.AddSingleton<LocalReleaseAvailabilityService>();
         serviceCollection.AddSingleton<HierarchyLoadCoordinator>();
         serviceCollection.AddSingleton<HierarchyEnrichmentDispatcher>();
         serviceCollection.AddHttpContextAccessor();

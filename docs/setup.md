@@ -336,7 +336,7 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 
 ### `PreDownload`
 
-The six policy fields are persisted and can be changed live from the Management UI. `CachePath`
+The eight policy fields are persisted and can be changed live from the Management UI. `CachePath`
 and `MinimumFreeDiskBytes` are deployment-only safeguards and require configuration/restart.
 
 | Key | Default | Meaning |
@@ -346,6 +346,8 @@ and `MinimumFreeDiskBytes` are deployment-only safeguards and require configurat
 | `PreDownload.CurrentFileThresholdSeconds` | `10` | Watched seconds before current-file completion starts (`0..3600`). |
 | `PreDownload.DownloadNextEpisode` | `true` | Prepare the immediate canonical next episode when watch progress crosses the threshold. |
 | `PreDownload.NextEpisodeThresholdPercent` | `75` | Client-reported watch percentage that triggers next-episode preparation (`1..100`). |
+| `PreDownload.PreferSimilarNextEpisodeRelease` | `false` | Prefer the next-episode release whose title most closely resembles the currently playing release; ranking remains the fallback. |
+| `PreDownload.NextEpisodeReleaseSimilarityThresholdPercent` | `75` | Minimum title-similarity score required before continuity overrides normal ranking (`0..100`). |
 | `PreDownload.MaxConcurrentDownloads` | `1` | Concurrent low-priority jobs (`1..8`). |
 | `PreDownload.CachePath` | `""` | Disk workspace; empty uses `cache/pre-download` below the Core content root. |
 | `PreDownload.MinimumFreeDiskBytes` | `1073741824` | Free space the background writer must leave untouched. |

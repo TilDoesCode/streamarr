@@ -23,6 +23,9 @@ public interface IReleaseStore
 
     RegisteredRelease? Get(string releaseId, string? workId = null);
 
+    /// <summary>Usable releases for one work in deterministic ranking order.</summary>
+    IReadOnlyList<RegisteredRelease> FindUsable(string workId);
+
     /// <summary>Highest-ranked usable release currently registered for a work.</summary>
     RegisteredRelease? FindBest(string workId);
 
@@ -88,24 +91,26 @@ public sealed class InMemoryReleaseStore(
             .FirstOrDefault();
     }
 
-    public RegisteredRelease? FindFallback(string workId, string excludeReleaseId)
+    public IReadOnlyList<RegisteredRelease> FindUsable(string workId)
         => _releases.Values
             .SelectMany(owners => owners.Values)
             .Where(r => r.WorkId == workId
-                        && r.Release.ReleaseId != excludeReleaseId
                         && !r.Release.Rejected
                         && r.Release.Health != ReleaseHealth.Dead
-                        // A release resolved dead in a prior attempt stays skipped for the
-                        // cache TTL, so auto-fallback never loops back onto it (BRIEF §10-M7).
                         && !(healthCache?.IsDead(r.Release.ReleaseId) ?? false))
-            .MaxBy(r => r.Release.Score);
+            .OrderByDescending(r => r.Release.Score)
+            .ThenBy(r => r.Release.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Release.Title, StringComparer.Ordinal)
+            .ThenBy(r => r.Release.ReleaseId, StringComparer.Ordinal)
+            .ToArray();
+
+    public RegisteredRelease? FindFallback(string workId, string excludeReleaseId)
+        => FindUsable(workId)
+            .FirstOrDefault(r => !string.Equals(
+                r.Release.ReleaseId,
+                excludeReleaseId,
+                StringComparison.Ordinal));
 
     public RegisteredRelease? FindBest(string workId)
-        => _releases.Values
-            .SelectMany(owners => owners.Values)
-            .Where(r => r.WorkId == workId
-                        && !r.Release.Rejected
-                        && r.Release.Health != ReleaseHealth.Dead
-                        && !(healthCache?.IsDead(r.Release.ReleaseId) ?? false))
-            .MaxBy(r => r.Release.Score);
+        => FindUsable(workId).FirstOrDefault();
 }

@@ -21,6 +21,9 @@ public sealed class StreamRecordEntity
     public string ReleaseId { get; set; } = string.Empty;
     public string WorkId { get; set; } = string.Empty;
     public string? Title { get; set; }
+    /// <summary>The actual fallback release used for playback, when it differs from the requested release.</summary>
+    public string? ResolvedReleaseId { get; set; }
+    public string? ResolvedTitle { get; set; }
     public string? Container { get; set; }
     public long? SizeBytes { get; set; }
     public long BytesServed { get; set; }

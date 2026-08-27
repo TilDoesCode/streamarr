@@ -13,6 +13,8 @@ public sealed record PreDownloadConfigSnapshot(
     int CurrentFileThresholdSeconds,
     bool DownloadNextEpisode,
     int NextEpisodeThresholdPercent,
+    bool PreferSimilarNextEpisodeRelease,
+    int NextEpisodeReleaseSimilarityThresholdPercent,
     int MaxConcurrentDownloads);
 
 /// <summary>SQLite-backed pre-download config with an atomically published live snapshot.</summary>
@@ -56,6 +58,10 @@ public sealed class PreDownloadConfigService(
             if (write.DownloadNextEpisode is { } next) entity.DownloadNextEpisode = next;
             if (write.NextEpisodeThresholdPercent is { } nextThreshold)
                 entity.NextEpisodeThresholdPercent = nextThreshold;
+            if (write.PreferSimilarNextEpisodeRelease is { } preferSimilar)
+                entity.PreferSimilarNextEpisodeRelease = preferSimilar;
+            if (write.NextEpisodeReleaseSimilarityThresholdPercent is { } similarityThreshold)
+                entity.NextEpisodeReleaseSimilarityThresholdPercent = similarityThreshold;
             if (write.MaxConcurrentDownloads is { } concurrency)
                 entity.MaxConcurrentDownloads = concurrency;
 
@@ -78,6 +84,8 @@ public sealed class PreDownloadConfigService(
         CurrentFileThresholdSeconds = options.CurrentFileThresholdSeconds,
         DownloadNextEpisode = options.DownloadNextEpisode,
         NextEpisodeThresholdPercent = options.NextEpisodeThresholdPercent,
+        PreferSimilarNextEpisodeRelease = options.PreferSimilarNextEpisodeRelease,
+        NextEpisodeReleaseSimilarityThresholdPercent = options.NextEpisodeReleaseSimilarityThresholdPercent,
         MaxConcurrentDownloads = options.MaxConcurrentDownloads,
     };
 
@@ -101,6 +109,8 @@ public sealed class PreDownloadConfigService(
             entity.CurrentFileThresholdSeconds,
             entity.DownloadNextEpisode,
             entity.NextEpisodeThresholdPercent,
+            entity.PreferSimilarNextEpisodeRelease,
+            entity.NextEpisodeReleaseSimilarityThresholdPercent,
             entity.MaxConcurrentDownloads);
 
         liveOptions.Enabled = snapshot.Enabled;
@@ -108,6 +118,8 @@ public sealed class PreDownloadConfigService(
         liveOptions.CurrentFileThresholdSeconds = snapshot.CurrentFileThresholdSeconds;
         liveOptions.DownloadNextEpisode = snapshot.DownloadNextEpisode;
         liveOptions.NextEpisodeThresholdPercent = snapshot.NextEpisodeThresholdPercent;
+        liveOptions.PreferSimilarNextEpisodeRelease = snapshot.PreferSimilarNextEpisodeRelease;
+        liveOptions.NextEpisodeReleaseSimilarityThresholdPercent = snapshot.NextEpisodeReleaseSimilarityThresholdPercent;
         liveOptions.MaxConcurrentDownloads = snapshot.MaxConcurrentDownloads;
         Volatile.Write(ref _current, snapshot);
         return snapshot;
@@ -119,5 +131,7 @@ public sealed class PreDownloadConfigService(
         options.CurrentFileThresholdSeconds,
         options.DownloadNextEpisode,
         options.NextEpisodeThresholdPercent,
+        options.PreferSimilarNextEpisodeRelease,
+        options.NextEpisodeReleaseSimilarityThresholdPercent,
         options.MaxConcurrentDownloads);
 }

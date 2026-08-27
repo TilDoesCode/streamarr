@@ -48,11 +48,7 @@ public static class MediaFileSelector
     public static MediaFileCandidate? SelectPrimary(NzbDocument document)
     {
         var password = FindPassword(document);
-        var named = document.Files
-            .Where(f => f.Segments.Count > 0)
-            .Select(f => (File: f, Name: f.GetSubjectFileName()))
-            .Where(x => !string.IsNullOrEmpty(x.Name))
-            .ToList();
+        var named = NamedFiles(document);
 
         // 1) a direct (un-archived) video file — pick the largest
         var direct = named
@@ -60,30 +56,94 @@ public static class MediaFileSelector
             .OrderByDescending(x => x.File.GetTotalYencodedSize())
             .FirstOrDefault();
         if (direct.File is not null)
-        {
-            return new MediaFileCandidate
-            {
-                DisplayName = direct.Name,
-                IsRarWrapped = false,
-                Files = [direct.File],
-                Password = password,
-            };
-        }
+            return DirectCandidate(direct, password);
 
         // 2) the largest RAR set (release RARs are stored; unwrapped at materialization)
-        var rarSets = named
+        var rarSets = RarSets(named);
+        if (rarSets.Count == 0)
+            return null;
+
+        return RarCandidate(rarSets.MaxBy(g => g.Sum(x => x.File.GetTotalYencodedSize()))!, password);
+    }
+
+    /// <summary>
+    /// Identifies the payload carrying one specific episode of a multi-episode NZB
+    /// (season pack support): a direct file or RAR set whose name carries the episode's
+    /// numbering wins; a lone RAR set is returned whole (the episode is selected inside
+    /// the archive during materialization). When nothing disambiguates, <paramref name="strict"/>
+    /// decides between failing (packs must never play the wrong episode) and the legacy
+    /// largest-payload behavior (single-episode releases keep working unchanged).
+    /// </summary>
+    public static MediaFileCandidate? SelectForEpisode(
+        NzbDocument document,
+        EpisodeTarget target,
+        bool strict)
+    {
+        var password = FindPassword(document);
+        var named = NamedFiles(document);
+
+        var directVideos = named.Where(x => IsMediaFileName(x.Name)).ToList();
+
+        // 1) a direct video file named for the episode — pick the largest match
+        //    (a sample clip of the same episode is smaller than the real thing).
+        var directMatch = directVideos
+            .Where(x => target.MatchesFileName(x.Name))
+            .OrderByDescending(x => x.File.GetTotalYencodedSize())
+            .FirstOrDefault();
+        if (directMatch.File is not null)
+            return DirectCandidate(directMatch, password);
+
+        // 2) a RAR set whose archive name carries the episode (per-episode-set packs)
+        var rarSets = RarSets(named);
+        var matchingSets = rarSets
+            .Where(g => target.MatchesFileName(g.Key))
+            .ToList();
+        if (matchingSets.Count > 0)
+            return RarCandidate(matchingSets.MaxBy(g => g.Sum(x => x.File.GetTotalYencodedSize()))!, password);
+
+        // 3) exactly one RAR set (monolithic pack, or an ordinary single-episode release):
+        //    return it whole — the materializer selects the episode's stored file inside.
+        if (rarSets.Count == 1)
+            return RarCandidate(rarSets[0], password);
+
+        // 4) no archive and exactly one video file: nothing to disambiguate.
+        if (rarSets.Count == 0 && directVideos.Count == 1)
+            return DirectCandidate(directVideos[0], password);
+
+        // 5) ambiguous with no episode evidence. For a known multi-episode release the
+        //    only safe answer is "no playable file" — never stream a wrong episode.
+        return strict ? null : SelectPrimary(document);
+    }
+
+    private static List<(NzbFile File, string Name)> NamedFiles(NzbDocument document)
+        => document.Files
+            .Where(f => f.Segments.Count > 0)
+            .Select(f => (File: f, Name: f.GetSubjectFileName()))
+            .Where(x => !string.IsNullOrEmpty(x.Name))
+            .ToList();
+
+    private static List<IGrouping<string, (NzbFile File, string Name, int? Part)>> RarSets(
+        IEnumerable<(NzbFile File, string Name)> named)
+        => named
             .Select(x => (x.File, x.Name, Part: RarVolumeReader.GetPartNumberFromFilename(x.Name)))
             .Where(x => x.Part != null)
             .GroupBy(x => RarVolumeReader.GetArchiveName(x.Name), StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (rarSets.Count == 0)
-            return null;
 
-        var volumes = rarSets
-            .MaxBy(g => g.Sum(x => x.File.GetTotalYencodedSize()))!
-            .OrderBy(x => x.Part!.Value)
-            .ToList();
+    private static MediaFileCandidate DirectCandidate((NzbFile File, string Name) file, string? password)
+        => new()
+        {
+            DisplayName = file.Name,
+            IsRarWrapped = false,
+            Files = [file.File],
+            Password = password,
+        };
 
+    private static MediaFileCandidate RarCandidate(
+        IGrouping<string, (NzbFile File, string Name, int? Part)> set,
+        string? password)
+    {
+        var volumes = set.OrderBy(x => x.Part!.Value).ToList();
         return new MediaFileCandidate
         {
             DisplayName = volumes[0].Name,

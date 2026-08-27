@@ -37,6 +37,7 @@ secrets.json
 server/src/Streamarr.Server/keys/
 server/src/Streamarr.Server/cache/
 server/tests/Streamarr.E2E.Harness/cache/
+server/tools/packdemo/cache/
 keys/
 
 # OS

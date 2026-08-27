@@ -61,6 +61,7 @@ export function EphemeralFilesPage() {
 }
 
 function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
+  const payloadPercent = percent(file.bytesServed ?? 0, file.sizeBytes ?? 0);
   const requestFootprintPercent = Math.max(0, Math.min(100, file.estimatedStreamedPercent ?? 0));
   const preDownloadPercent = Math.max(0, Math.min(100, file.preDownloadPercent ?? 0));
   const retentionPriority = file.retentionPriority || "normal";
@@ -112,26 +113,26 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
           <div className="mt-6">
             <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Playback request footprint</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{requestFootprintPercent.toFixed(requestFootprintPercent < 10 ? 1 : 0)}%</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Payload delivered</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{payloadPercent.toFixed(payloadPercent < 10 ? 1 : 0)}%</p>
               </div>
               <p className="font-mono text-xs text-muted-foreground sm:text-right">
-                {(file.chunksQueried ?? 0).toLocaleString()} / {(file.totalChunks ?? 0).toLocaleString()} unique chunks touched
+                {formatBytes(file.bytesServed)} / {formatBytes(file.sizeBytes)} served
               </p>
             </div>
             <div
               className="relative h-3 overflow-hidden rounded-full border bg-muted/70"
               role="progressbar"
-              aria-label="Playback segment request footprint"
+              aria-label="Payload delivered"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={Math.round(requestFootprintPercent)}
+              aria-valuenow={Math.round(payloadPercent)}
             >
-              <div className="absolute inset-y-0 left-0 rounded-full bg-cyan-500 transition-[width] duration-700" style={{ width: `${requestFootprintPercent}%` }} />
+              <div className="absolute inset-y-0 left-0 rounded-full bg-cyan-500 transition-[width] duration-700" style={{ width: `${payloadPercent}%` }} />
               <div className="absolute inset-0 opacity-25" style={{ backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 11px,currentColor 12px,currentColor 13px)" }} />
             </div>
             <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
-              Unique media chunks requested by playback or probing; this is neither watch progress nor disk pre-download completion.
+              Bytes delivered through this stream; this is the same payload progress shown in the stream header.
             </p>
           </div>
         </div>
@@ -140,7 +141,7 @@ function EphemeralRow({ file }: { file: EphemeralFileResponse }) {
           <Cell icon={<UserRound />} label="Requested by" value={requester} detail={file.client ?? "unknown client"} />
           <Cell icon={<ShieldCheck />} label="Retention" value={retentionPriority} detail={retentionPriority === "background" ? "implicit files evict first" : "explicit playback priority"} />
           <Cell icon={<HardDrive />} label="Segment cache" value={formatBytes(file.storageBytes)} detail={`${(file.cachedChunks ?? 0).toLocaleString()} chunks resident`} />
-          <Cell icon={<Radio />} label="Bytes served" value={formatBytes(file.bytesServed)} detail={`of ${formatBytes(file.sizeBytes)}`} />
+          <Cell icon={<Radio />} label="Chunks touched" value={`${requestFootprintPercent.toFixed(requestFootprintPercent < 10 ? 1 : 0)}%`} detail={`${(file.chunksQueried ?? 0).toLocaleString()} of ${(file.totalChunks ?? 0).toLocaleString()} unique chunks`} />
           {hasPreDownload && (
             <Cell
               icon={<Download />}
@@ -307,4 +308,9 @@ function timeUntil(iso: string): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest ? `in ${hours}h ${rest}m` : `in ${hours}h`;
+}
+
+function percent(value: number, total: number) {
+  if (!total || total <= 0) return 0;
+  return Math.max(0, Math.min(100, value / total * 100));
 }

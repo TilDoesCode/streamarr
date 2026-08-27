@@ -252,9 +252,14 @@ public sealed class SearchEndpointTests : IClassFixture<SearchEndpointTests.Fact
         Assert.Equal(before + 1, FakeSearchNewznabClient.SuitsSeasonSearches);
         Assert.Equal(3, response!.Episodes.Count);
         Assert.Equal("Pilot", response.Episodes[0].Title);
-        Assert.Equal(2, response.Episodes[0].Releases.Count);
-        Assert.Single(response.Episodes[1].Releases);
-        Assert.Empty(response.Episodes[2].Releases);
+        // per-episode releases plus the season pack, which is playable for every episode
+        Assert.Equal(3, response.Episodes[0].Releases.Count);
+        Assert.Equal(2, response.Episodes[1].Releases.Count);
+        var packOnly = Assert.Single(response.Episodes[2].Releases);
+        Assert.Equal("Suits.S01.1080p.WEB-DL.x265-GROUP", packOnly.Title);
+        Assert.All(response.Episodes, episode => Assert.Contains(
+            episode.Releases,
+            release => release.Title == "Suits.S01.1080p.WEB-DL.x265-GROUP"));
         Assert.All(response.Episodes, episode => Assert.Equal("Suits", episode.SeriesTitle));
         Assert.Single(response.Indexers);
         Assert.Equal("succeeded", response.Indexers[0].Status);

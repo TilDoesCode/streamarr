@@ -62,7 +62,24 @@ public sealed class NextEpisodeResolverTests : IClassFixture<SearchEndpointTests
     {
         var resolver = _factory.Services.GetRequiredService<NextEpisodeResolver>();
 
-        Assert.Null(await resolver.ResolveAsync("tmdb-tv-37680-s01e02", CancellationToken.None));
+        // S02E02 exists in the canonical directory but no release — and no pack — covers it.
+        Assert.Null(await resolver.ResolveAsync("tmdb-tv-37680-s02e01", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_SeasonPackCoversAnEpisodeWithNoDedicatedRelease()
+    {
+        var resolver = _factory.Services.GetRequiredService<NextEpisodeResolver>();
+
+        // S01E03 has no per-episode release; the S01 season pack is registered under it.
+        var target = await resolver.ResolveAsync("tmdb-tv-37680-s01e02", CancellationToken.None);
+
+        Assert.NotNull(target);
+        Assert.Equal("tmdb-tv-37680-s01e03", target!.WorkId);
+        var registered = _factory.Services.GetRequiredService<IReleaseStore>()
+            .Get(target.ReleaseId, target.WorkId);
+        Assert.NotNull(registered);
+        Assert.Equal("Suits.S01.1080p.WEB-DL.x265-GROUP", registered!.Release.Title);
     }
 
     [Fact]
@@ -84,15 +101,39 @@ public sealed class NextEpisodeResolverTests : IClassFixture<SearchEndpointTests
         Assert.Equal("healthy-highest-score", target.ReleaseId);
     }
 
+    [Fact]
+    public async Task ResolveAsync_WhenEnabled_PrefersSimilarReleaseFamilyOverHigherScore()
+    {
+        var resolver = _factory.Services.GetRequiredService<NextEpisodeResolver>();
+        var store = _factory.Services.GetRequiredService<IReleaseStore>();
+        const string targetWorkId = "tmdb-tv-37680-s01e02";
+        const string currentTitle = "Suits.S01E01.German.DL.1080p.NF.WEB-DL.x264-D3GI";
+        store.Register(targetWorkId, TestRelease(
+            "similar-d3gi",
+            score: -1_000,
+            title: "Suits.S01E02.German.DL.1080p.NF.WEB-DL.x264-D3GI"));
+
+        var target = await resolver.ResolveAsync(
+            "tmdb-tv-37680-s01e01",
+            currentTitle,
+            preferSimilarRelease: true,
+            ReleaseSimilarityScorer.DefaultThreshold,
+            CancellationToken.None);
+
+        Assert.NotNull(target);
+        Assert.Equal("similar-d3gi", target.ReleaseId);
+    }
+
     private static Release TestRelease(
         string releaseId,
         int score,
         bool rejected = false,
-        ReleaseHealth health = ReleaseHealth.Unknown)
+        ReleaseHealth health = ReleaseHealth.Unknown,
+        string? title = null)
         => new()
         {
             ReleaseId = releaseId,
-            Title = $"Suits.S01E02.1080p.WEB-DL-{releaseId}",
+            Title = title ?? $"Suits.S01E02.1080p.WEB-DL-{releaseId}",
             Indexer = "next-episode-test",
             SizeBytes = 3_000_000_000,
             Score = score,

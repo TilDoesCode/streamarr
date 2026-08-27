@@ -40,6 +40,65 @@ public static class Rar4TestWriter
         return volumes;
     }
 
+    /// <summary>
+    /// A stored multi-volume RAR4 set containing MULTIPLE entries — the season-pack
+    /// layout. Volumes are filled to <paramref name="chunkSize"/> data bytes, so entries
+    /// start mid-volume and span volume boundaries with proper split flags, exactly like
+    /// a real monolithic pack where "episode 15" begins somewhere inside part14.rar.
+    /// </summary>
+    public static IReadOnlyList<(string FileName, byte[] Bytes)> WriteMultiVolumePack(
+        string baseName,
+        IReadOnlyList<(string EntryName, byte[] Data)> entries,
+        int chunkSize)
+    {
+        var volumes = new List<(string, byte[])>();
+        var volumeIndex = 0;
+        var current = new MemoryStream();
+        var remaining = 0;
+
+        void OpenVolume()
+        {
+            current = new MemoryStream();
+            current.Write(Marker);
+            current.Write(MainHeader(volume: true, firstVolume: volumeIndex == 0));
+            remaining = chunkSize;
+        }
+
+        void CloseVolume()
+        {
+            var extension = volumeIndex == 0 ? ".rar" : $".r{volumeIndex - 1:00}";
+            volumes.Add((baseName + extension, current.ToArray()));
+            volumeIndex++;
+        }
+
+        OpenVolume();
+        foreach (var (name, data) in entries)
+        {
+            var offset = 0;
+            var wroteHeader = false;
+            while (!wroteHeader || offset < data.Length)
+            {
+                if (remaining == 0)
+                {
+                    CloseVolume();
+                    OpenVolume();
+                }
+
+                var take = Math.Min(remaining, data.Length - offset);
+                current.Write(FileHeader(
+                    name, data[offset..(offset + take)], data.Length,
+                    splitBefore: offset > 0,
+                    splitAfter: offset + take < data.Length));
+                offset += take;
+                remaining -= take;
+                wroteHeader = true;
+            }
+        }
+
+        CloseVolume();
+        return volumes;
+    }
+
     /// <summary>A single-volume stored RAR4 archive containing the given entries.</summary>
     public static byte[] WriteSingleVolume(params (string EntryName, byte[] Data)[] entries)
     {

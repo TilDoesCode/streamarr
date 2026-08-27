@@ -1,4 +1,5 @@
 using Streamarr.Core.Media;
+using Streamarr.Core.Parser;
 using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Contracts;
@@ -14,7 +15,8 @@ namespace Streamarr.Server.Services;
 public sealed class TvCatalogService(
     ITmdbClient tmdb,
     SearchService searchService,
-    GeneralConfigService generalConfig)
+    GeneralConfigService generalConfig,
+    IReleaseStore releaseStore)
 {
     public const int MaxSeriesCandidates = 3;
 
@@ -95,6 +97,21 @@ public sealed class TvCatalogService(
                     .ThenBy(release => release.Title, StringComparer.OrdinalIgnoreCase)
                     .ToArray());
 
+        // Season packs surface as season-level works (Episode == null). They are playable
+        // for every canonical episode: overlay them onto each episode's release list and
+        // register the release under each episode work, so a later /resolve with that
+        // workId can select the episode's payload inside the pack.
+        var packReleases = SeasonPackReleases(aggregation.Works, tmdbId, seasonNumber);
+        if (packReleases.Count > 0)
+        {
+            releaseStore.RegisterRange(seasonCatalog.Episodes
+                .SelectMany(episode => packReleases.Select(release => new RegisteredRelease
+                {
+                    WorkId = EpisodeWorkId(tmdbId, seasonNumber, episode.EpisodeNumber),
+                    Release = release,
+                })));
+        }
+
         var seasonSummary = seriesCatalog.Seasons
             .FirstOrDefault(season => season.SeasonNumber == seasonNumber)
             ?? new TmdbSeasonSummary
@@ -127,8 +144,9 @@ public sealed class TvCatalogService(
                 CommunityRating = episode.CommunityRating,
                 People = episode.People,
                 AddStreamarrBadge = addStreamarrBadge,
-                Releases = availableByEpisode
-                    .GetValueOrDefault(episode.EpisodeNumber, [])
+                Releases = MergeEpisodeReleases(
+                        availableByEpisode.GetValueOrDefault(episode.EpisodeNumber, []),
+                        packReleases)
                     .Select(release => ToReleaseDto(release, addReleaseScoreToName))
                     .ToArray(),
             }).ToArray(),
@@ -224,6 +242,41 @@ public sealed class TvCatalogService(
         ElapsedMs = outcome.Elapsed.TotalMilliseconds,
         Error = outcome.Error,
     };
+
+    /// <summary>
+    /// The accepted season-pack releases among a season search's works: season-level TV
+    /// works (Episode == null) of this season whose release names parse as packs. The
+    /// parse check keeps unrelated episode-less buckets (e.g. a movie caught by a TV
+    /// query) from being overlaid onto every episode.
+    /// </summary>
+    internal static IReadOnlyList<Release> SeasonPackReleases(
+        IReadOnlyList<Work> works,
+        int tmdbId,
+        int seasonNumber)
+        => works
+            .Where(work => work.MediaType == MediaType.Tv
+                           && work.TmdbId == tmdbId
+                           && work.Season == seasonNumber
+                           && work.Episode is null)
+            .SelectMany(work => work.Releases)
+            .Where(release => !release.Rejected)
+            .Where(release => ReleaseParser.Parse(release.Title).SeasonPack)
+            .GroupBy(release => release.ReleaseId, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+
+    /// <summary>Episode-specific releases first-class, packs merged in, ranked together.</summary>
+    internal static IEnumerable<Release> MergeEpisodeReleases(
+        IReadOnlyList<Release> episodeReleases,
+        IReadOnlyList<Release> packReleases)
+    {
+        var seen = episodeReleases.Select(release => release.ReleaseId)
+            .ToHashSet(StringComparer.Ordinal);
+        return episodeReleases
+            .Concat(packReleases.Where(release => seen.Add(release.ReleaseId)))
+            .OrderByDescending(release => release.Score)
+            .ThenBy(release => release.Title, StringComparer.OrdinalIgnoreCase);
+    }
 
     public static string SeriesWorkId(int tmdbId) => $"tmdb-tv-{tmdbId}";
 

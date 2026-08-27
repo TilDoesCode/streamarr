@@ -19,6 +19,8 @@ public sealed class PreDownloadConfigServiceTests
         Assert.Equal(10, entity.CurrentFileThresholdSeconds);
         Assert.True(entity.DownloadNextEpisode);
         Assert.Equal(75, entity.NextEpisodeThresholdPercent);
+        Assert.False(entity.PreferSimilarNextEpisodeRelease);
+        Assert.Equal(75, entity.NextEpisodeReleaseSimilarityThresholdPercent);
         Assert.Equal(1, entity.MaxConcurrentDownloads);
         Assert.Equal(string.Empty, options.CachePath);
         Assert.Equal(1L * 1024 * 1024 * 1024, options.MinimumFreeDiskBytes);
@@ -41,6 +43,8 @@ public sealed class PreDownloadConfigServiceTests
                 CurrentFileThresholdSeconds = 42,
                 DownloadNextEpisode = true,
                 NextEpisodeThresholdPercent = 80,
+                PreferSimilarNextEpisodeRelease = true,
+                NextEpisodeReleaseSimilarityThresholdPercent = 84,
                 MaxConcurrentDownloads = 3,
             };
             var service = new PreDownloadConfigService(new Factory(dbOptions), live);
@@ -53,12 +57,16 @@ public sealed class PreDownloadConfigServiceTests
             Assert.Equal(42, snapshot.CurrentFileThresholdSeconds);
             Assert.True(snapshot.DownloadNextEpisode);
             Assert.Equal(80, snapshot.NextEpisodeThresholdPercent);
+            Assert.True(snapshot.PreferSimilarNextEpisodeRelease);
+            Assert.Equal(84, snapshot.NextEpisodeReleaseSimilarityThresholdPercent);
             Assert.Equal(3, snapshot.MaxConcurrentDownloads);
 
             await using var db = new StreamarrDbContext(dbOptions);
             var stored = await db.PreDownloadConfig.AsNoTracking().SingleAsync(x => x.Id == 1);
             Assert.Equal(42, stored.CurrentFileThresholdSeconds);
             Assert.Equal(80, stored.NextEpisodeThresholdPercent);
+            Assert.True(stored.PreferSimilarNextEpisodeRelease);
+            Assert.Equal(84, stored.NextEpisodeReleaseSimilarityThresholdPercent);
         }
         finally
         {
@@ -89,6 +97,8 @@ public sealed class PreDownloadConfigServiceTests
             await service.UpdateAsync(new PreDownloadConfigWrite
             {
                 NextEpisodeThresholdPercent = 90,
+                PreferSimilarNextEpisodeRelease = true,
+                NextEpisodeReleaseSimilarityThresholdPercent = 82,
                 MaxConcurrentDownloads = 4,
             }, default);
 
@@ -98,8 +108,14 @@ public sealed class PreDownloadConfigServiceTests
             Assert.Equal(25, snapshot.CurrentFileThresholdSeconds);
             Assert.True(snapshot.DownloadNextEpisode);
             Assert.Equal(90, snapshot.NextEpisodeThresholdPercent);
+            Assert.True(snapshot.PreferSimilarNextEpisodeRelease);
+            Assert.Equal(82, snapshot.NextEpisodeReleaseSimilarityThresholdPercent);
             Assert.Equal(4, snapshot.MaxConcurrentDownloads);
             Assert.Equal(snapshot.Enabled, live.Enabled);
+            Assert.Equal(snapshot.PreferSimilarNextEpisodeRelease, live.PreferSimilarNextEpisodeRelease);
+            Assert.Equal(
+                snapshot.NextEpisodeReleaseSimilarityThresholdPercent,
+                live.NextEpisodeReleaseSimilarityThresholdPercent);
             Assert.Equal(snapshot.MaxConcurrentDownloads, live.MaxConcurrentDownloads);
 
             await using var db = new StreamarrDbContext(dbOptions);
@@ -109,6 +125,8 @@ public sealed class PreDownloadConfigServiceTests
             Assert.Equal(25, stored.CurrentFileThresholdSeconds);
             Assert.True(stored.DownloadNextEpisode);
             Assert.Equal(90, stored.NextEpisodeThresholdPercent);
+            Assert.True(stored.PreferSimilarNextEpisodeRelease);
+            Assert.Equal(82, stored.NextEpisodeReleaseSimilarityThresholdPercent);
             Assert.Equal(4, stored.MaxConcurrentDownloads);
         }
         finally

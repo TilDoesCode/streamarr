@@ -142,6 +142,8 @@ public sealed record SessionResponse
     public required string Token { get; init; }
     public required string ReleaseId { get; init; }
     public required string WorkId { get; init; }
+    public required string Title { get; init; }
+    public required string FileName { get; init; }
     public required string State { get; init; }
     public string? Container { get; init; }
     public long SizeBytes { get; init; }
@@ -258,12 +260,42 @@ public sealed record EphemeralFileResponse
     public DateTimeOffset PurgeAt { get; init; }
 }
 
+/// <summary>Scoped query for releases with a pre-download file on Core's local disk.</summary>
+public sealed record LocalReleaseAvailabilityRequest
+{
+    public required IReadOnlyList<string> WorkIds { get; init; }
+    public required string Client { get; init; }
+    public required string RequestedById { get; init; }
+}
+
+/// <summary>Up to 20 disk-backed releases per requested work, scoped to one user and client.</summary>
+public sealed record LocalReleaseAvailabilityResponse
+{
+    public required IReadOnlyList<LocalReleaseAvailabilityEntry> Releases { get; init; }
+}
+
+/// <summary>One release whose episode-specific pre-download is running or locally complete.</summary>
+public sealed record LocalReleaseAvailabilityEntry
+{
+    public required string WorkId { get; init; }
+    public required string ReleaseId { get; init; }
+    public required string State { get; init; }
+
+    /// <summary>
+    /// Current public metadata for the exact work/release registration, when it is still
+    /// present in the bounded release store. <see cref="ReleaseId"/> remains available
+    /// when the registration has already expired.
+    /// </summary>
+    public ReleaseDto? Release { get; init; }
+}
+
 /// <summary>One event in the cross-front-end streaming history.</summary>
 public sealed record StreamingHistoryResponse
 {
     public long Id { get; init; }
     public required string ReleaseId { get; init; }
     public required string WorkId { get; init; }
+    public required string Title { get; init; }
     public required string Event { get; init; }
     public long PositionTicks { get; init; }
     public long DurationTicks { get; init; }
@@ -289,6 +321,8 @@ public sealed record StreamRecordSummaryResponse
     public required string ReleaseId { get; init; }
     public required string WorkId { get; init; }
     public string? Title { get; init; }
+    public string? ResolvedReleaseId { get; init; }
+    public string? ResolvedTitle { get; init; }
     public string? Container { get; init; }
     public long? SizeBytes { get; init; }
     public long BytesServed { get; init; }
@@ -302,6 +336,8 @@ public sealed record StreamRecordSummaryResponse
     /// <summary>Null while still open/live. "ready"|"degraded"|"dead"|"closed"|"expired"|"evicted"|"purged"|"invalidated"|"reused"|"error".</summary>
     public string? FinalState { get; init; }
     public string? CloseReason { get; init; }
+    public string? FailureKind { get; init; }
+    public string? FailureReason { get; init; }
 }
 
 /// <summary>One stream-history record with its full, time-ordered diagnostic event log.</summary>
@@ -311,6 +347,8 @@ public sealed record StreamRecordResponse
     public required string ReleaseId { get; init; }
     public required string WorkId { get; init; }
     public string? Title { get; init; }
+    public string? ResolvedReleaseId { get; init; }
+    public string? ResolvedTitle { get; init; }
     public string? Container { get; init; }
     public long? SizeBytes { get; init; }
     public long BytesServed { get; init; }
@@ -322,6 +360,8 @@ public sealed record StreamRecordResponse
     public DateTimeOffset? ClosedAt { get; init; }
     public string? FinalState { get; init; }
     public string? CloseReason { get; init; }
+    public string? FailureKind { get; init; }
+    public string? FailureReason { get; init; }
 
     /// <summary>Wall-clock instant of timeline t0, for aligning the flamegraph (matches SessionResponse.TimelineStartedAt).</summary>
     public DateTimeOffset? TimelineStartedAt { get; init; }

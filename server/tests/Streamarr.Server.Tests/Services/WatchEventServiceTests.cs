@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Streamarr.Core.Media;
 using Streamarr.Server.Config;
 using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
@@ -19,6 +20,15 @@ public sealed class WatchEventServiceTests
                 o.UseSqlite($"Data Source={Path.Combine(directory, "events.db")}"));
             services.AddSingleton(TimeProvider.System);
             services.Configure<StreamarrOptions>(o => o.MaxWatchEvents = 10);
+            var releaseStore = new InMemoryReleaseStore();
+            releaseStore.Register("work", new Release
+            {
+                ReleaseId = "progress",
+                Title = "Example.Release.2026.1080p-WEB",
+                Indexer = "test",
+                SizeBytes = 1,
+            });
+            services.AddSingleton<IReleaseStore>(releaseStore);
             services.AddSingleton<WatchEventService>();
             await using var provider = services.BuildServiceProvider();
 
@@ -50,6 +60,7 @@ public sealed class WatchEventServiceTests
             Assert.Equal(20, persisted.PositionTicks);
             Assert.Equal(2_000, persisted.DurationTicks);
             Assert.Equal("session-token-current", persisted.SessionToken);
+            Assert.Equal("Example.Release.2026.1080p-WEB", persisted.Title);
         }
         finally
         {
@@ -68,6 +79,7 @@ public sealed class WatchEventServiceTests
                 o.UseSqlite($"Data Source={Path.Combine(directory, "events.db")}"));
             services.AddSingleton(TimeProvider.System);
             services.Configure<StreamarrOptions>(o => o.MaxWatchEvents = 3);
+            services.AddSingleton<IReleaseStore>(new InMemoryReleaseStore());
             services.AddSingleton<WatchEventService>();
             await using var provider = services.BuildServiceProvider();
 

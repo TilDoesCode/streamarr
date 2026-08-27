@@ -139,10 +139,12 @@ public sealed class ResolveService(
         // started real work and isn't a "stream" worth a permanent history row. Everything
         // past this point (thrown or graceful) is captured, so a crash mid-resolve still
         // leaves a debuggable trace (BRIEF §11 console).
+        var requestedRegistration = releaseStore.Get(releaseId, workId);
         var streamAttemptId = historyRecorder?.BeginAttempt(new StreamAttemptBegin
         {
             ReleaseId = releaseId,
-            WorkId = workId,
+            WorkId = requestedRegistration?.WorkId ?? workId,
+            Title = requestedRegistration?.Release.Title,
             Client = client,
             RequestedById = requestedById,
             RequestedByName = requestedByName,
@@ -452,8 +454,16 @@ public sealed class ResolveService(
                 registered.Release.IndexerId ?? registered.Release.Indexer,
                 ct);
         var nzb = cachedNzb.Document;
-        var candidate = MediaFileSelector.SelectPrimary(nzb)
-            ?? throw new NoPlayableFileException("The NZB contains no playable media file.");
+        // Season pack support: an episode work resolved against a multi-episode release
+        // must stream that episode's payload, not the pack's largest file.
+        var target = EpisodeTarget.FromWorkId(registered.WorkId);
+        var strictEpisodeMatch = target is not null && IsMultiEpisodeRelease(registered.Release.Title);
+        var candidate = (target is { } episodeTarget
+                ? MediaFileSelector.SelectForEpisode(nzb, episodeTarget, strictEpisodeMatch)
+                : MediaFileSelector.SelectPrimary(nzb))
+            ?? throw new NoPlayableFileException(strictEpisodeMatch && target is { } missing
+                ? $"The NZB carries multiple payloads but none is identifiable as {missing}."
+                : "The NZB contains no playable media file.");
 
         using var startupCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         // Preserve the exact ready/degraded/dead contract: all configured samples are
@@ -464,8 +474,9 @@ public sealed class ResolveService(
         var mediaTask = materializationCache.GetOrCreateAsync(
             releaseId,
             candidate,
-            token => materializer.MaterializeAsync(candidate, token),
-            startupCts.Token);
+            token => materializer.MaterializeAsync(candidate, target, strictEpisodeMatch, token),
+            startupCts.Token,
+            variant: target?.CacheDiscriminator);
 
         HealthCheckResult health;
         try
@@ -684,6 +695,19 @@ public sealed class ResolveService(
             return null;
         }
 
+        // Season pack guard: a repair artifact pins ONE media file of the release. If an
+        // episode work asks for a different episode of a multi-episode release, serving
+        // the pinned file would play the wrong content — fall through to dead/fallback.
+        if (EpisodeTarget.FromWorkId(registered.WorkId) is { } artifactTarget
+            && IsMultiEpisodeRelease(registered.Release.Title)
+            && !artifactTarget.MatchesFileName(projection.MediaFileName))
+        {
+            logger.LogInformation(
+                "Repair artifact for release {ReleaseId} pins a different episode than {Target}; skipping artifact playback",
+                releaseId, artifactTarget);
+            return null;
+        }
+
         var media = new ResolvedMediaFile
         {
             FileName = projection.MediaFileName,
@@ -814,14 +838,22 @@ public sealed class ResolveService(
                     nzbUrl,
                     registered.Release.IndexerId ?? registered.Release.Indexer,
                     ct);
-            var candidate = MediaFileSelector.SelectPrimary(cachedNzb.Document);
+            var target = EpisodeTarget.FromWorkId(registered.WorkId);
+            var strictEpisodeMatch = target is not null && IsMultiEpisodeRelease(registered.Release.Title);
+            var candidate = target is { } episodeTarget
+                ? MediaFileSelector.SelectForEpisode(cachedNzb.Document, episodeTarget, strictEpisodeMatch)
+                : MediaFileSelector.SelectPrimary(cachedNzb.Document);
             if (candidate is null)
                 return null;
 
             ResolvedMediaFile media;
             using (timeline.Measure("materialize", "materialize"))
                 media = await materializationCache.GetOrCreateAsync(
-                    releaseId, candidate, token => materializer.MaterializeAsync(candidate, token), ct);
+                    releaseId,
+                    candidate,
+                    token => materializer.MaterializeAsync(candidate, target, strictEpisodeMatch, token),
+                    ct,
+                    variant: target?.CacheDiscriminator);
 
             var admission = sessionManager.GetOrCreateOpeningSession(
                 releaseId,
@@ -1004,6 +1036,13 @@ public sealed class ResolveService(
             MediaStreams = probe?.MediaStreams ?? [],
             SessionTtlSeconds = options.Value.SessionTtlSeconds,
         };
+    }
+
+    /// <summary>A release whose name declares a season pack or multiple episodes.</summary>
+    internal static bool IsMultiEpisodeRelease(string title)
+    {
+        var parsed = Streamarr.Core.Parser.ReleaseParser.Parse(title);
+        return parsed.SeasonPack || parsed.Episodes.Count > 1;
     }
 
     internal static Task ObserveMaterializationAsync(Task<ResolvedMediaFile> task)

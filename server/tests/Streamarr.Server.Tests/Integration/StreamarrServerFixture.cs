@@ -66,6 +66,23 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
     public const string EmbeddedPar2ReleaseId = "rel-embedded-par2";
     public const string EmbeddedPar2WorkId = "tmdb-movie-25";
 
+    // Season packs (BRIEF §7 / api.md "season-pack matching"): one release owning several
+    // episode works. Monolithic = one RAR set containing all episode files; sets = one
+    // RAR set per episode inside the same NZB.
+    public const string SeasonPackReleaseId = "rel-season-pack";
+    public const string SeasonPackTitle = "Show.S01.1080p.WEB-DL.x264-PACK";
+    public const string SeasonPackSetsReleaseId = "rel-season-pack-sets";
+    public const string SeasonPackSetsTitle = "Show.S01.1080p.WEB-DL.x264-SETPACK";
+
+    /// <summary>Episode workIds the pack releases are registered under (1-based index).</summary>
+    public static string PackEpisodeWorkId(int episode) => $"tmdb-tv-777-s01e{episode:D2}";
+
+    /// <summary>A 4th episode work the packs do NOT contain — strict selection must fail it.</summary>
+    public static readonly string PackMissingEpisodeWorkId = PackEpisodeWorkId(4);
+
+    /// <summary>Three real, distinct mkv episodes (8s / 12s / 16s), index 0 = E01.</summary>
+    public byte[][] PackEpisodes { get; private set; } = null!;
+
     /// <summary>RAR volume chunk size — range tests cross this boundary on purpose.</summary>
     public const int RarChunkSize = 150_000;
 
@@ -262,6 +279,42 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
                 par2Set.Volumes[0].Bytes,
                 "embedded-par2-index"));
 
+        // 14) season packs: three real distinct episodes, published (a) as ONE monolithic
+        //     multi-volume RAR set — episodes start mid-volume and span volume boundaries —
+        //     and (b) as one RAR set per episode inside the same NZB.
+        PackEpisodes =
+        [
+            await TestMediaFile.GenerateMkvAsync(durationSeconds: 8),
+            await TestMediaFile.GenerateMkvAsync(durationSeconds: 12),
+            await TestMediaFile.GenerateMkvAsync(durationSeconds: 16),
+        ];
+        var packVolumes = Rar4TestWriter.WriteMultiVolumePack(
+            SeasonPackTitle,
+            [
+                ("Show.S01E01.mkv", PackEpisodes[0]),
+                ("Show.S01E02.mkv", PackEpisodes[1]),
+                ("Show.S01E03.mkv", PackEpisodes[2]),
+            ],
+            RarChunkSize);
+        var packFiles = packVolumes
+            .Select((v, i) => NzbTestFixtures.PublishFile(Nntp, v.FileName, v.Bytes, $"season-pack-vol{i}"))
+            .ToArray();
+        var seasonPackNzb = WriteNzb("season-pack.nzb", packFiles);
+
+        var packSetFiles = new List<PublishedNzbFile>();
+        for (var episode = 1; episode <= 3; episode++)
+        {
+            var setVolumes = Rar4TestWriter.WriteMultiVolume(
+                $"Show.S01E{episode:D2}.1080p.WEB-DL.x264-SETPACK",
+                $"Show.S01E{episode:D2}.mkv",
+                PackEpisodes[episode - 1],
+                RarChunkSize);
+            packSetFiles.AddRange(setVolumes.Select((v, i) =>
+                NzbTestFixtures.PublishFile(Nntp, v.FileName, v.Bytes, $"season-pack-sets-e{episode}v{i}")));
+        }
+
+        var seasonPackSetsNzb = WriteNzb("season-pack-sets.nzb", packSetFiles.ToArray());
+
         // --- boot the real server on a random loopback port ------------------------------
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -327,13 +380,29 @@ public sealed class StreamarrServerFixture : IAsyncLifetime
         Register(store, SlowOpenWorkId, SlowOpenReleaseId, slowOpenNzb, score: 900);
         Register(store, AmbiguousPar2WorkId, AmbiguousPar2ReleaseId, ambiguousNzb, score: 900);
         Register(store, EmbeddedPar2WorkId, EmbeddedPar2ReleaseId, embeddedNzb, score: 900);
+
+        // One pack release owns several episode works (multi-owner store) — exactly what
+        // TvCatalogService.GetSeasonAsync registers for a discovered season pack.
+        foreach (var episode in new[] { 1, 2, 3, 4 })
+        {
+            Register(store, PackEpisodeWorkId(episode), SeasonPackReleaseId, seasonPackNzb,
+                score: 900, title: SeasonPackTitle);
+            Register(store, PackEpisodeWorkId(episode), SeasonPackSetsReleaseId, seasonPackSetsNzb,
+                score: 850, title: SeasonPackSetsTitle);
+        }
     }
 
-    private static void Register(IReleaseStore store, string workId, string releaseId, string nzbPath, int score = 800)
+    private static void Register(
+        IReleaseStore store,
+        string workId,
+        string releaseId,
+        string nzbPath,
+        int score = 800,
+        string? title = null)
         => store.Register(workId, new Release
         {
             ReleaseId = releaseId,
-            Title = $"Example.2021.1080p.WEB-DL.x264-{releaseId}",
+            Title = title ?? $"Example.2021.1080p.WEB-DL.x264-{releaseId}",
             Indexer = "mock-indexer",
             SizeBytes = 0,
             Score = score,

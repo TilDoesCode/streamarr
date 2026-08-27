@@ -9,6 +9,7 @@ public sealed class WatchEventEntity
     public long Id { get; set; }
     public string ReleaseId { get; set; } = string.Empty;
     public string WorkId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
 
     /// <summary>"start" | "progress" | "stop".</summary>
     public string Event { get; set; } = string.Empty;

@@ -56,6 +56,26 @@ public class MediaSourceMapperTests
         Assert.Contains("Score 142", name);
     }
 
+    [Theory]
+    [InlineData(LocalReleaseState.Ready, "[D] ")]
+    [InlineData(LocalReleaseState.Downloading, "[~] ")]
+    public void VersionName_prefixes_local_pre_download_state(
+        LocalReleaseState state,
+        string prefix)
+    {
+        var name = MediaSourceMapper.FormatVersionName(SampleRelease(), state);
+
+        Assert.StartsWith(prefix, name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VersionName_does_not_prefix_remote_releases()
+    {
+        var name = MediaSourceMapper.FormatVersionName(SampleRelease());
+
+        Assert.False(name.StartsWith("[", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void VersionName_omits_score_when_disabled()
     {

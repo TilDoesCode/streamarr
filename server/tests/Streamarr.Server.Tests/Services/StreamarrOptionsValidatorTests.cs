@@ -35,6 +35,7 @@ public sealed class StreamarrOptionsValidatorTests
             {
                 CurrentFileThresholdSeconds = -1,
                 NextEpisodeThresholdPercent = 101,
+                NextEpisodeReleaseSimilarityThresholdPercent = 101,
                 MaxConcurrentDownloads = 0,
                 CachePath = "cache\0bad",
                 MinimumFreeDiskBytes = -1,
@@ -59,6 +60,7 @@ public sealed class StreamarrOptionsValidatorTests
         Assert.Contains("EphemeralCacheSizeMb", errors);
         Assert.Contains("PreDownload.CurrentFileThresholdSeconds", errors);
         Assert.Contains("PreDownload.NextEpisodeThresholdPercent", errors);
+        Assert.Contains("PreDownload.NextEpisodeReleaseSimilarityThresholdPercent", errors);
         Assert.Contains("PreDownload.MaxConcurrentDownloads", errors);
         Assert.Contains("PreDownload.CachePath", errors);
         Assert.Contains("PreDownload.MinimumFreeDiskBytes", errors);

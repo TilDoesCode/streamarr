@@ -37,7 +37,7 @@ describe("operations views", () => {
   it("shows requester, queried chunks, storage and purge clock", async () => {
     renderWithProviders(<EphemeralFilesPage />);
     expect((await screen.findAllByText("Mara")).length).toBeGreaterThan(0);
-    expect(screen.getByText(/496 \/ 1[,.]284 unique chunks touched/)).toBeInTheDocument();
+    expect(screen.getByText(/496 of 1[,.]284 unique chunks/)).toBeInTheDocument();
     expect(screen.getByText("496 chunks resident")).toBeInTheDocument();
     expect(screen.getAllByText(/in 45m/).length).toBeGreaterThan(0);
   });

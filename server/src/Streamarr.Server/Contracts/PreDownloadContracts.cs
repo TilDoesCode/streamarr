@@ -10,6 +10,8 @@ public sealed record PreDownloadConfigResponse
     public required int CurrentFileThresholdSeconds { get; init; }
     public required bool DownloadNextEpisode { get; init; }
     public required int NextEpisodeThresholdPercent { get; init; }
+    public required bool PreferSimilarNextEpisodeRelease { get; init; }
+    public required int NextEpisodeReleaseSimilarityThresholdPercent { get; init; }
     public required int MaxConcurrentDownloads { get; init; }
 
     public static PreDownloadConfigResponse From(PreDownloadConfigSnapshot snapshot) => new()
@@ -19,6 +21,8 @@ public sealed record PreDownloadConfigResponse
         CurrentFileThresholdSeconds = snapshot.CurrentFileThresholdSeconds,
         DownloadNextEpisode = snapshot.DownloadNextEpisode,
         NextEpisodeThresholdPercent = snapshot.NextEpisodeThresholdPercent,
+        PreferSimilarNextEpisodeRelease = snapshot.PreferSimilarNextEpisodeRelease,
+        NextEpisodeReleaseSimilarityThresholdPercent = snapshot.NextEpisodeReleaseSimilarityThresholdPercent,
         MaxConcurrentDownloads = snapshot.MaxConcurrentDownloads,
     };
 }
@@ -31,6 +35,8 @@ public sealed record PreDownloadConfigWrite
     public int? CurrentFileThresholdSeconds { get; init; }
     public bool? DownloadNextEpisode { get; init; }
     public int? NextEpisodeThresholdPercent { get; init; }
+    public bool? PreferSimilarNextEpisodeRelease { get; init; }
+    public int? NextEpisodeReleaseSimilarityThresholdPercent { get; init; }
     public int? MaxConcurrentDownloads { get; init; }
 }
 

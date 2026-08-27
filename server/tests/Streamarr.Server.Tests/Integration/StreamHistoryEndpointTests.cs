@@ -43,6 +43,9 @@ public class StreamHistoryEndpointTests(StreamarrServerFixture fixture)
         });
 
         Assert.Equal(StreamarrServerFixture.DirectReleaseId, record.ReleaseId);
+        Assert.Contains(StreamarrServerFixture.DirectReleaseId, record.Title);
+        Assert.Equal(StreamarrServerFixture.DirectReleaseId, record.ResolvedReleaseId);
+        Assert.Equal(record.Title, record.ResolvedTitle);
         Assert.Equal("closed", record.FinalState);
         Assert.Contains(record.Timeline, span => span.Category == "nzb");
         Assert.Contains(record.Timeline, span => span.Category == "materialize");
@@ -92,6 +95,46 @@ public class StreamHistoryEndpointTests(StreamarrServerFixture fixture)
             return hasRepairFailure ? body : null;
         });
         Assert.Contains(detail!.Events, e => e.Source == "repair" && e.Detail == "failed: the release carries no PAR2 set");
+
+        var summary = await WaitForAsync(async () =>
+        {
+            var records = await client.GetFromJsonAsync<List<StreamRecordSummaryResponse>>("/api/v1/streams?limit=200");
+            var candidate = records!.FirstOrDefault(item => item.Token == record.Token && item.FailureKind == "repair");
+            return candidate;
+        });
+        Assert.Equal("repair", summary.FailureKind);
+        Assert.Contains("no PAR2 set", summary.FailureReason);
+    }
+
+    [Fact]
+    public async Task FallbackHistory_KeepsRequestedAndResolvedReleaseNamesSeparate()
+    {
+        using var client = fixture.CreateClient();
+        var requester = "history-fallback-" + Guid.NewGuid().ToString("N");
+        var response = await client.PostAsJsonAsync("/api/v1/resolve", new ResolveRequest
+        {
+            ReleaseId = StreamarrServerFixture.DeadReleaseId,
+            WorkId = StreamarrServerFixture.DeadWorkId,
+            Client = "tests",
+            RequestedById = requester,
+        });
+        response.EnsureSuccessStatusCode();
+        var resolved = (await response.Content.ReadFromJsonAsync<ResolveResponse>())!;
+        Assert.Equal(StreamarrServerFixture.FallbackReleaseId, resolved.ReleaseId);
+        var token = resolved.StreamUrl!.Split('/').Last();
+        (await client.PostAsync($"/api/v1/sessions/{token}/close", content: null)).EnsureSuccessStatusCode();
+
+        await client.AuthenticateAsAdminAsync();
+        var record = await WaitForAsync(async () =>
+        {
+            var result = await client.GetFromJsonAsync<StreamRecordResponse>($"/api/v1/streams/{token}");
+            return result is { FinalState: "closed" } ? result : null;
+        });
+
+        Assert.Equal(StreamarrServerFixture.DeadReleaseId, record.ReleaseId);
+        Assert.Contains(StreamarrServerFixture.DeadReleaseId, record.Title);
+        Assert.Equal(StreamarrServerFixture.FallbackReleaseId, record.ResolvedReleaseId);
+        Assert.Contains(StreamarrServerFixture.FallbackReleaseId, record.ResolvedTitle);
     }
 
     [Fact]

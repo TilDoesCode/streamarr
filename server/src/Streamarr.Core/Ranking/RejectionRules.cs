@@ -69,14 +69,27 @@ public sealed class SampleRejectionRule : IRejectionRule
 /// <summary>
 /// Fake / size sanity: bytes-per-minute against the TMDB runtime, judged against the
 /// sane band for the claimed resolution (BRIEF.md §7.2). Skipped when runtime unknown.
+/// A multi-episode release scales the runtime by its episode count; a full season pack
+/// is skipped entirely — the season's episode count is unknown at ranking time, and
+/// dividing a whole season's bytes by one episode's runtime would reject every pack.
 /// </summary>
 public sealed class SizeSanityRejectionRule : IRejectionRule
 {
     public RejectionReason? Evaluate(ReleaseSignals signals, QualityProfile profile)
     {
+        if (signals.SeasonPack)
+        {
+            return null;
+        }
+
         if (signals.RuntimeMinutes is not { } runtime || runtime <= 0 || signals.SizeBytes <= 0)
         {
             return null;
+        }
+
+        if (signals.EpisodeCount > 1)
+        {
+            runtime *= signals.EpisodeCount;
         }
 
         var band = profile.BandFor(signals.Resolution);

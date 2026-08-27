@@ -297,14 +297,18 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   const peer = await context.newPage();
   await peer.setViewportSize({ width: 375, height: 800 });
   await peer.goto("/sessions");
-  await expect(peer.getByRole("heading", { name: "Sessions", level: 2 })).toBeVisible();
+  await expect(peer.getByRole("heading", { name: "Streams", level: 2 })).toBeVisible();
 
   // Every live stream drills into a real observability view backed by the same session,
   // ephemeral-file, metrics and playback-event APIs.
   await peer.getByRole("link", { name: /inspect stream/i }).last().click();
   await expect(peer).toHaveURL(/\/sessions\/[^/]+$/);
   await expect(peer.getByText(/^live signal$/i)).toBeVisible();
+  // The stream-details screen is now split into sub screens (tabs) so nothing forces a long
+  // scroll; each diagnostic lives on its own tab and is only mounted while active.
+  await peer.getByRole("tab", { name: "Network & session" }).click();
   await expect(peer.getByRole("heading", { name: "Identity & lifecycle" })).toBeVisible();
+  await peer.getByRole("tab", { name: "Articles" }).click();
   await expect(peer.getByRole("heading", { name: "Every article, one live signal" })).toBeVisible();
   await expect(peer.getByRole("list", { name: "Articles in release order" })).toBeVisible();
   const articleFlightMap = peer.locator("section").filter({
@@ -329,7 +333,8 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   });
   await peer.reload();
   await peer.addStyleTag({ content: "header.sticky { position: static !important; }" });
-  await peer.getByRole("button", { name: /article 38: failed/i }).click();
+  await peer.getByRole("tab", { name: "Articles" }).click();
+  await peer.getByRole("button", { name: /failed 1/i }).click();
   await expect(peer.getByRole("alert")).toContainText("No configured provider retained this article after failover.");
   const articleMapFailure = testInfo.outputPath("article-map-provider-failure.png");
   await articleFlightMap.screenshot({ path: articleMapFailure });
@@ -338,6 +343,24 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
 
   await peer.setViewportSize({ width: 375, height: 800 });
   await peer.getByRole("link", { name: /all streams/i }).click();
+
+  const systemLoad = peer.getByRole("region", { name: "Current system load" });
+  await expect(systemLoad).toBeVisible();
+  await expect(systemLoad.getByRole("group", { name: /Stream cache:/i })).toBeVisible();
+  const streamOutput = systemLoad.getByRole("group", { name: /Stream output:/i });
+  await expect(streamOutput).toBeVisible();
+  await expect(streamOutput).not.toHaveAccessibleName(/Measuring/i);
+  await expect(systemLoad.getByRole("group", { name: /Streaming now:/i })).toBeVisible();
+  await expect(systemLoad.getByRole("group", { name: /NNTP pressure:/i })).toBeVisible();
+  await expect(systemLoad.getByText("mock", { exact: true })).toBeVisible();
+  expect(await peer.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  if (await peer.getByRole("button", { name: "Switch to light mode" }).isVisible())
+    await peer.getByRole("button", { name: "Switch to light mode" }).click();
+  const streamsHero = peer.getByRole("heading", { name: "Streams", level: 2 }).locator("xpath=ancestor::section[1]");
+  const systemLoadMobile = testInfo.outputPath("stream-load-mobile-light.png");
+  await streamsHero.screenshot({ path: systemLoadMobile, animations: "disabled", caret: "hide" });
+  await testInfo.attach("stream load mobile light", { path: systemLoadMobile, contentType: "image/png" });
 
   const closeSession = peer.getByRole("button", { name: /force-close/i }).last();
   const closeBox = await closeSession.boundingBox();
@@ -352,25 +375,13 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   await expect(peer.getByRole("dialog")).toBeHidden();
   await expect(menuTrigger).toBeFocused();
 
-  // Keep visual proof from the real browser run: both operational views must show exactly one
-  // retained capability/file after the explicit pause → resolve → ranged continuation cycle.
+  // Capture the live cache, output, global pressure, and provider pool in one panel.
+  await peer.getByRole("button", { name: "Switch to dark mode" }).click();
   await peer.setViewportSize({ width: 1440, height: 1000 });
-  await expect(peer.getByText(/^1 live ·/)).toBeVisible();
-  const sessionsScreenshot = testInfo.outputPath("resume-reuses-session.png");
-  await peer.screenshot({ path: sessionsScreenshot, fullPage: true });
-  await testInfo.attach("resume reuses one Core session", {
+  const sessionsScreenshot = testInfo.outputPath("resume-reuses-stream-ledger.png");
+  await peer.screenshot({ path: sessionsScreenshot, fullPage: true, animations: "disabled", caret: "hide" });
+  await testInfo.attach("stream load and retained stream ledger", {
     path: sessionsScreenshot,
-    contentType: "image/png",
-  });
-
-  await peer.getByRole("link", { name: "Ephemeral Files" }).click();
-  await expect(peer.getByRole("heading", { name: "Ephemeral files", level: 2 })).toBeVisible();
-  await expect(peer.getByText("Retained files")).toBeVisible();
-  await expect(peer.getByText("1", { exact: true }).first()).toBeVisible();
-  const filesScreenshot = testInfo.outputPath("resume-reuses-ephemeral-file.png");
-  await peer.screenshot({ path: filesScreenshot, fullPage: true });
-  await testInfo.attach("resume reuses one ephemeral file", {
-    path: filesScreenshot,
     contentType: "image/png",
   });
 

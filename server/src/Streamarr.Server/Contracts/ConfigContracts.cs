@@ -163,6 +163,7 @@ public sealed record EventRequest
 {
     public required string ReleaseId { get; init; }
     public string? WorkId { get; init; }
+    public string? Title { get; init; }
 
     /// <summary>"start" | "progress" | "stop".</summary>
     public required string Event { get; init; }

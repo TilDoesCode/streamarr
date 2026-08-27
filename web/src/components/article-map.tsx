@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useId,
   useMemo,
@@ -6,6 +7,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -43,6 +45,7 @@ interface ArticleCell {
 
 const ACTIVE_STATES = new Set(["queued", "downloading"]);
 const MAX_ARTICLE_CELLS = 2_500;
+const MAX_DOM_ARTICLE_CELLS = 64;
 const STATE_PRIORITY: Record<string, number> = {
   failed: 0,
   downloading: 1,
@@ -104,7 +107,7 @@ export interface ArticleMapProps {
   className?: string;
 }
 
-export function ArticleMap({ data, className }: ArticleMapProps) {
+export const ArticleMap = memo(function ArticleMap({ data, className }: ArticleMapProps) {
   const headingId = useId();
   const keyboardHelpId = useId();
   const articles = useMemo<NormalizedArticle[]>(
@@ -163,7 +166,7 @@ export function ArticleMap({ data, className }: ArticleMapProps) {
     cellRefs.current.get(position)?.scrollIntoView?.({ block: "nearest" });
   }
 
-  function selectFromKeyboard(event: KeyboardEvent<HTMLButtonElement>, position: number) {
+  function selectFromKeyboard(event: KeyboardEvent<HTMLElement>, position: number) {
     let next = position;
     if (event.key === "ArrowRight" || event.key === "ArrowDown") next = Math.min(cells.length - 1, position + 1);
     else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = Math.max(0, position - 1);
@@ -307,68 +310,17 @@ export function ArticleMap({ data, className }: ArticleMapProps) {
             Use the arrow keys to inspect adjacent articles. Home and End jump to the first and last article.
           </p>
           {articles.length > 0 ? (
-            <ol
-              className="mt-5 grid max-h-[30rem] content-start gap-1 overflow-y-auto rounded-xl border bg-muted/15 p-3 shadow-inner focus-within:border-primary/40"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(1.5rem, 1fr))" }}
-              aria-label="Articles in release order"
-            >
-              {cells.map((cell, position) => {
-                const matches = cell.articles.some((candidate) => matchesFilter(candidate, filter, slowThresholdMs));
-                const isSelected = selectedCellPosition === position;
-                const article = isSelected && selected
-                  ? selected
-                  : filter !== "all" && matches
-                  ? preferredArticleInCell(cell, filter, slowThresholdMs)
-                  : cell.representative;
-                const state = normalize(article.state);
-                const meta = stateMeta(state);
-                const containsDownloading = cell.articles.some((candidate) => normalize(candidate.state) === "downloading");
-                const first = cell.articles[0];
-                const last = cell.articles.at(-1) ?? first;
-                return (
-                  <li key={`${first.index}-${last.index}`} className="aspect-square min-w-0">
-                    <button
-                      ref={(node) => {
-                        if (node) cellRefs.current.set(position, node);
-                        else cellRefs.current.delete(position);
-                      }}
-                      type="button"
-                      tabIndex={isSelected ? 0 : -1}
-                      aria-label={articleCellLabel(cell, article)}
-                      aria-describedby={keyboardHelpId}
-                      aria-pressed={isSelected}
-                      data-article-index={article.index}
-                      data-article-start={first.index}
-                      data-article-end={last.index}
-                      data-article-state={state}
-                      data-bin-size={cell.articles.length}
-                      data-filter-match={matches ? "true" : "false"}
-                      title={articleCellTitle(cell, article)}
-                      onClick={() => setSelectedIndex(article.index)}
-                      onKeyDown={(event) => selectFromKeyboard(event, position)}
-                      className={cn(
-                        "group relative block size-full overflow-hidden rounded-[3px] border transition-[opacity,transform,filter,box-shadow] duration-200 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                        meta.cell,
-                        meta.text,
-                        filter !== "all" && !matches && "scale-90 opacity-15 grayscale",
-                        filter !== "all" && matches && "scale-105",
-                        isSelected && "z-10 ring-2 ring-foreground ring-offset-1 ring-offset-card",
-                      )}
-                    >
-                      {state === "downloading" && (
-                        <span className="absolute inset-0 animate-ping rounded-[3px] bg-cyan-300/80 motion-reduce:animate-none" />
-                      )}
-                      <span className="absolute inset-0 z-[1] flex items-center justify-center" aria-hidden="true">
-                        <StateGlyph state={state} className="size-2.5" />
-                      </span>
-                      {containsDownloading && state !== "downloading" && (
-                        <span className="absolute bottom-px right-px z-[2] size-1 rounded-full bg-cyan-300 ring-1 ring-cyan-950/50" />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
+            <ArticleSurface
+              cells={cells}
+              filter={filter}
+              slowThresholdMs={slowThresholdMs}
+              selected={selected}
+              selectedCellPosition={selectedCellPosition}
+              keyboardHelpId={keyboardHelpId}
+              cellRefs={cellRefs}
+              onSelect={setSelectedIndex}
+              onKeyDown={selectFromKeyboard}
+            />
           ) : (
             <div className="mt-5 flex min-h-40 items-center justify-center rounded-xl border border-dashed px-6 text-center font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               No article telemetry in this snapshot
@@ -394,6 +346,223 @@ export function ArticleMap({ data, className }: ArticleMapProps) {
       </div>
     </section>
   );
+});
+
+interface ArticleSurfaceProps {
+  cells: ArticleCell[];
+  filter: ArticleFilter;
+  slowThresholdMs: number;
+  selected?: NormalizedArticle;
+  selectedCellPosition: number;
+  keyboardHelpId: string;
+  cellRefs: React.MutableRefObject<Map<number, HTMLButtonElement>>;
+  onSelect: (index: number) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLElement>, position: number) => void;
+}
+
+function ArticleSurface(props: ArticleSurfaceProps) {
+  if (props.cells.length > MAX_DOM_ARTICLE_CELLS) return <CanvasArticleSurface {...props} />;
+
+  const { cells, filter, slowThresholdMs, selected, selectedCellPosition, keyboardHelpId, cellRefs, onSelect, onKeyDown } = props;
+  return (
+    <ol
+      className="mt-5 grid max-h-[30rem] content-start gap-1 overflow-y-auto rounded-xl border bg-muted/15 p-3 shadow-inner focus-within:border-primary/40"
+      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(1.5rem, 1fr))" }}
+      aria-label="Articles in release order"
+    >
+      {cells.map((cell, position) => {
+        const matches = cell.articles.some((candidate) => matchesFilter(candidate, filter, slowThresholdMs));
+        const isSelected = selectedCellPosition === position;
+        const article = isSelected && selected
+          ? selected
+          : filter !== "all" && matches
+            ? preferredArticleInCell(cell, filter, slowThresholdMs)
+            : cell.representative;
+        const state = normalize(article.state);
+        const meta = stateMeta(state);
+        const containsDownloading = cell.articles.some((candidate) => normalize(candidate.state) === "downloading");
+        const first = cell.articles[0];
+        const last = cell.articles.at(-1) ?? first;
+        return (
+          <li key={`${first.index}-${last.index}`} className="aspect-square min-w-0">
+            <button
+              ref={(node) => {
+                if (node) cellRefs.current.set(position, node);
+                else cellRefs.current.delete(position);
+              }}
+              type="button"
+              tabIndex={isSelected ? 0 : -1}
+              aria-label={articleCellLabel(cell, article)}
+              aria-describedby={keyboardHelpId}
+              aria-pressed={isSelected}
+              data-article-index={article.index}
+              data-article-start={first.index}
+              data-article-end={last.index}
+              data-article-state={state}
+              data-bin-size={cell.articles.length}
+              data-filter-match={matches ? "true" : "false"}
+              title={articleCellTitle(cell, article)}
+              onClick={() => onSelect(article.index)}
+              onKeyDown={(event) => onKeyDown(event, position)}
+              className={cn(
+                "group relative block size-full overflow-hidden rounded-[3px] border transition-[opacity,transform,filter,box-shadow] duration-200 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                meta.cell,
+                meta.text,
+                filter !== "all" && !matches && "scale-90 opacity-15 grayscale",
+                filter !== "all" && matches && "scale-105",
+                isSelected && "z-10 ring-2 ring-foreground ring-offset-1 ring-offset-card",
+              )}
+            >
+              {state === "downloading" && (
+                <span className="absolute inset-0 animate-ping rounded-[3px] bg-cyan-300/80 motion-reduce:animate-none" />
+              )}
+              <span className="absolute inset-0 z-[1] flex items-center justify-center" aria-hidden="true">
+                <StateGlyph state={state} className="size-2.5" />
+              </span>
+              {containsDownloading && state !== "downloading" && (
+                <span className="absolute bottom-px right-px z-[2] size-1 rounded-full bg-cyan-300 ring-1 ring-cyan-950/50" />
+              )}
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+const CANVAS_STATE_COLORS: Record<string, string> = {
+  pending: "rgba(148, 163, 184, .18)",
+  queued: "#64748b",
+  downloading: "#06b6d4",
+  downloaded: "#8b5cf6",
+  cached: "#10b981",
+  failed: "#f43f5e",
+  partial: "#fbbf24",
+};
+
+function CanvasArticleSurface({ cells, filter, slowThresholdMs, selected, selectedCellPosition, keyboardHelpId, onSelect, onKeyDown }: ArticleSurfaceProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [width, setWidth] = useState(640);
+  const [themeVersion, setThemeVersion] = useState(0);
+  const layout = useMemo(() => articleCanvasLayout(cells.length, width), [cells.length, width]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || typeof ResizeObserver === "undefined") return;
+    const update = () => setWidth((current) => {
+      const styles = getComputedStyle(host);
+      const contentWidth = host.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+      const next = Math.max(240, Math.round(contentWidth));
+      return next === current ? current : next;
+    });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(() => setThemeVersion((value) => value + 1));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext?.("2d");
+    if (!canvas || !context) return;
+    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(layout.width * ratio);
+    canvas.height = Math.round(layout.height * ratio);
+    canvas.style.height = `${layout.height}px`;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, layout.width, layout.height);
+    const styles = getComputedStyle(document.documentElement);
+    const foreground = getComputedStyle(canvas).color;
+    const primaryToken = styles.getPropertyValue("--primary").trim();
+    const primary = !primaryToken
+      ? "#8b5cf6"
+      : /^(#|rgb|hsl|oklch|lab|color\()/i.test(primaryToken)
+        ? primaryToken
+        : `hsl(${primaryToken})`;
+
+    cells.forEach((cell, position) => {
+      const matches = cell.articles.some((candidate) => matchesFilter(candidate, filter, slowThresholdMs));
+      const article = position === selectedCellPosition && selected
+        ? selected
+        : filter !== "all" && matches
+          ? preferredArticleInCell(cell, filter, slowThresholdMs)
+          : cell.representative;
+      const column = position % layout.columns;
+      const row = Math.floor(position / layout.columns);
+      const x = column * layout.pitch + layout.gap;
+      const y = row * layout.pitch + layout.gap;
+      const size = layout.pitch - layout.gap;
+      context.globalAlpha = filter !== "all" && !matches ? 0.12 : 1;
+      const state = normalize(article.state);
+      context.fillStyle = state === "downloaded" ? primary : CANVAS_STATE_COLORS[state] ?? "#71717a";
+      context.fillRect(x, y, size, size);
+
+      if (position === selectedCellPosition) {
+        context.globalAlpha = 1;
+        context.strokeStyle = foreground || "#ffffff";
+        context.lineWidth = 2;
+        context.strokeRect(x - 1, y - 1, size + 2, size + 2);
+      }
+    });
+    context.globalAlpha = 1;
+  }, [cells, filter, layout, selected, selectedCellPosition, slowThresholdMs, themeVersion]);
+
+  function positionFromPointer(event: MouseEvent<HTMLCanvasElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return -1;
+    const x = (event.clientX - rect.left) * (layout.width / rect.width);
+    const y = (event.clientY - rect.top) * (layout.height / rect.height);
+    const position = Math.floor(y / layout.pitch) * layout.columns + Math.floor(x / layout.pitch);
+    return position >= 0 && position < cells.length ? position : -1;
+  }
+
+  const selectedCell = selectedCellPosition >= 0 ? cells[selectedCellPosition] : undefined;
+  return (
+    <div ref={hostRef} className="mt-5 overflow-hidden rounded-xl border bg-muted/15 p-3 shadow-inner focus-within:border-primary/40">
+      <canvas
+        ref={canvasRef}
+        role="slider"
+        tabIndex={0}
+        aria-label="Articles in release order"
+        aria-describedby={keyboardHelpId}
+        aria-valuemin={1}
+        aria-valuemax={cells.length}
+        aria-valuenow={Math.max(1, selectedCellPosition + 1)}
+        aria-valuetext={selectedCell && selected ? articleCellLabel(selectedCell, selected) : "No article selected"}
+        data-render-mode="canvas"
+        data-cell-count={cells.length}
+        data-article-index={selected?.index}
+        data-article-state={selected ? normalize(selected.state) : undefined}
+        className="block w-full cursor-crosshair rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        onClick={(event) => {
+          const position = positionFromPointer(event);
+          const cell = cells[position];
+          if (cell) onSelect(preferredArticleInCell(cell, filter, slowThresholdMs).index);
+        }}
+        onKeyDown={(event) => onKeyDown(event, Math.max(0, selectedCellPosition))}
+      />
+      <p className="mt-2 font-mono text-[9px] text-muted-foreground">
+        Canvas mode · {cells.length.toLocaleString()} cells · click or use arrow keys to inspect
+      </p>
+    </div>
+  );
+}
+
+function articleCanvasLayout(cellCount: number, availableWidth: number) {
+  const width = Math.max(240, availableWidth);
+  const target = cellCount > 1_500 ? 7 : cellCount > 700 ? 9 : 13;
+  const columns = Math.max(1, Math.min(cellCount, Math.floor(width / target)));
+  const pitch = width / columns;
+  const rows = Math.ceil(cellCount / columns);
+  return { width, height: Math.max(pitch, rows * pitch), columns, pitch, gap: pitch >= 10 ? 2 : 1 };
 }
 
 function CoverageRail({

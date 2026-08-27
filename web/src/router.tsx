@@ -120,7 +120,9 @@ const libraryRoute = createRoute({
 const ephemeralRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/ephemeral",
-  component: lazyRouteComponent(() => import("@/pages/ephemeral-files"), "EphemeralFilesPage"),
+  beforeLoad: () => {
+    throw redirect({ to: "/sessions" });
+  },
 });
 
 const repairsRoute = createRoute({
@@ -132,7 +134,9 @@ const repairsRoute = createRoute({
 const historyRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/history",
-  component: lazyRouteComponent(() => import("@/pages/streaming-history"), "StreamingHistoryPage"),
+  beforeLoad: () => {
+    throw redirect({ to: "/sessions" });
+  },
 });
 
 const logsRoute = createRoute({

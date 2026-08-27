@@ -20,11 +20,14 @@ public static class MediaSourceMapper
     /// an opaque short-lived offer capability in <c>OpenToken</c>, and no Usenet contact yet
     /// (BRIEF §8.4).
     /// </summary>
-    public static MediaSourceInfo ToUnopenedSource(ReleaseDto release, string openCapability) => new()
+    public static MediaSourceInfo ToUnopenedSource(
+        ReleaseDto release,
+        string openCapability,
+        LocalReleaseState localState = LocalReleaseState.Remote) => new()
     {
         Id = release.ReleaseId,
         OpenToken = openCapability,
-        Name = FormatVersionName(release),
+        Name = FormatVersionName(release, localState),
         Protocol = MediaProtocol.Http,
         IsRemote = true,
         RequiresOpening = true,
@@ -110,7 +113,9 @@ public static class MediaSourceMapper
     };
 
     /// <summary>Human-readable version label, e.g. "1080p WEB-DL x265 · DDP5.1 · GER".</summary>
-    public static string FormatVersionName(ReleaseDto release)
+    public static string FormatVersionName(
+        ReleaseDto release,
+        LocalReleaseState localState = LocalReleaseState.Remote)
     {
         var q = release.Quality;
         var primary = new[] { q.Resolution, q.Source, q.Codec, q.Hdr }
@@ -127,7 +132,13 @@ public static class MediaSourceMapper
             segments.Add($"Score {release.Score.ToString(CultureInfo.InvariantCulture)}");
 
         var name = string.Join(" · ", segments.Where(s => !string.IsNullOrWhiteSpace(s)));
-        return string.IsNullOrWhiteSpace(name) ? release.Title : name;
+        var formatted = string.IsNullOrWhiteSpace(name) ? release.Title : name;
+        return localState switch
+        {
+            LocalReleaseState.Ready => "[D] " + formatted,
+            LocalReleaseState.Downloading => "[~] " + formatted,
+            _ => formatted,
+        };
     }
 
     private static string FormatSize(long bytes)

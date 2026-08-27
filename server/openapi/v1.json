@@ -3412,6 +3412,79 @@
         ]
       }
     },
+    "/api/v1/releases/local-availability": {
+      "post": {
+        "tags": [
+          "ReleaseAvailability"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalReleaseAvailabilityRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalReleaseAvailabilityRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalReleaseAvailabilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalReleaseAvailabilityResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalReleaseAvailabilityResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalReleaseAvailabilityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/repairs": {
       "get": {
         "tags": [
@@ -5727,6 +5800,10 @@
             "type": "string",
             "nullable": true
           },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
           "event": {
             "type": "string",
             "description": "\"start\" | \"progress\" | \"stop\".",
@@ -6121,6 +6198,77 @@
         },
         "additionalProperties": false,
         "description": "Write model for indexer create/update. Secret Streamarr.Server.Config.IndexerWrite.ApiKey is write-only."
+      },
+      "LocalReleaseAvailabilityEntry": {
+        "required": [
+          "releaseId",
+          "state",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "release": {
+            "$ref": "#/components/schemas/ReleaseDto"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One release whose episode-specific pre-download is running or locally complete."
+      },
+      "LocalReleaseAvailabilityRequest": {
+        "required": [
+          "client",
+          "requestedById",
+          "workIds"
+        ],
+        "type": "object",
+        "properties": {
+          "workIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "client": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedById": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Scoped query for releases with a pre-download file on Core's local disk."
+      },
+      "LocalReleaseAvailabilityResponse": {
+        "required": [
+          "releases"
+        ],
+        "type": "object",
+        "properties": {
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocalReleaseAvailabilityEntry"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Up to 20 disk-backed releases per requested work, scoped to one user and client."
       },
       "LogEntryResponse": {
         "required": [
@@ -6753,7 +6901,9 @@
           "downloadNextEpisode",
           "enabled",
           "maxConcurrentDownloads",
-          "nextEpisodeThresholdPercent"
+          "nextEpisodeReleaseSimilarityThresholdPercent",
+          "nextEpisodeThresholdPercent",
+          "preferSimilarNextEpisodeRelease"
         ],
         "type": "object",
         "properties": {
@@ -6771,6 +6921,13 @@
             "type": "boolean"
           },
           "nextEpisodeThresholdPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "preferSimilarNextEpisodeRelease": {
+            "type": "boolean"
+          },
+          "nextEpisodeReleaseSimilarityThresholdPercent": {
             "type": "integer",
             "format": "int32"
           },
@@ -6803,6 +6960,15 @@
             "nullable": true
           },
           "nextEpisodeThresholdPercent": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "preferSimilarNextEpisodeRelease": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "nextEpisodeReleaseSimilarityThresholdPercent": {
             "type": "integer",
             "format": "int32",
             "nullable": true
@@ -8274,9 +8440,11 @@
       },
       "SessionResponse": {
         "required": [
+          "fileName",
           "releaseId",
           "retentionPriority",
           "state",
+          "title",
           "token",
           "workId"
         ],
@@ -8291,6 +8459,14 @@
             "nullable": true
           },
           "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileName": {
             "type": "string",
             "nullable": true
           },
@@ -8504,6 +8680,14 @@
             "type": "string",
             "nullable": true
           },
+          "resolvedReleaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedTitle": {
+            "type": "string",
+            "nullable": true
+          },
           "container": {
             "type": "string",
             "nullable": true
@@ -8547,6 +8731,14 @@
             "nullable": true
           },
           "closeReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureReason": {
             "type": "string",
             "nullable": true
           },
@@ -8602,6 +8794,14 @@
             "type": "string",
             "nullable": true
           },
+          "resolvedReleaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedTitle": {
+            "type": "string",
+            "nullable": true
+          },
           "container": {
             "type": "string",
             "nullable": true
@@ -8648,6 +8848,14 @@
           "closeReason": {
             "type": "string",
             "nullable": true
+          },
+          "failureKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false,
@@ -8658,6 +8866,7 @@
           "event",
           "releaseId",
           "source",
+          "title",
           "workId"
         ],
         "type": "object",
@@ -8671,6 +8880,10 @@
             "nullable": true
           },
           "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
             "type": "string",
             "nullable": true
           },

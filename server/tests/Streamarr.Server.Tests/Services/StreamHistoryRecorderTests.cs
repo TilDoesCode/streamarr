@@ -1,7 +1,10 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Streamarr.Server.Contracts;
+using Streamarr.Server.Controllers;
 using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
@@ -26,13 +29,20 @@ public sealed class StreamHistoryRecorderTests
         {
             ReleaseId = "rel-1",
             WorkId = "work-1",
+            Title = "Requested.Release.2026.1080p-WEB",
             Client = "web",
         });
         recorder.AttachToken(attemptId, "token-1");
-        recorder.AppendEvents(attemptId, [new StreamEventWrite(DateTimeOffset.UtcNow, "ttff", "nzb", "nzb-fetch", "ok", 0, 12)]);
+        recorder.AppendEvents(attemptId,
+        [
+            new StreamEventWrite(DateTimeOffset.UtcNow, "ttff", "nzb", "nzb-fetch", "ok", 0, 12),
+            new StreamEventWrite(DateTimeOffset.UtcNow.AddMilliseconds(20), "error", "stream", "UsenetArticleNotFoundException", "Article missing on all providers."),
+        ]);
         recorder.Finalize(attemptId, new StreamRecordFinalize
         {
             FinalState = "closed",
+            ResolvedReleaseId = "rel-fallback",
+            ResolvedTitle = "Fallback.Release.2026.1080p-WEB",
             BytesServed = 1024,
             NntpCommandsTotal = 3,
         });
@@ -46,10 +56,13 @@ public sealed class StreamHistoryRecorderTests
         });
         Assert.Equal("rel-1", byToken.ReleaseId);
         Assert.Equal("work-1", byToken.WorkId);
+        Assert.Equal("Requested.Release.2026.1080p-WEB", byToken.Title);
+        Assert.Equal("rel-fallback", byToken.ResolvedReleaseId);
+        Assert.Equal("Fallback.Release.2026.1080p-WEB", byToken.ResolvedTitle);
         Assert.Equal("closed", byToken.FinalState);
         Assert.Equal(1024, byToken.BytesServed);
-        Assert.Single(byToken.Events);
-        Assert.Equal("nzb-fetch", byToken.Events[0].Name);
+        Assert.Equal(2, byToken.Events.Count);
+        Assert.Contains(byToken.Events, entry => entry.Name == "nzb-fetch");
 
         var byAttempt = await recorder.GetAsync(attemptId, default);
         Assert.NotNull(byAttempt);
@@ -59,6 +72,14 @@ public sealed class StreamHistoryRecorderTests
         Assert.Equal(attemptId, correlation?.AttemptId);
         Assert.Equal("rel-1", correlation?.ReleaseId);
         Assert.Equal("work-1", correlation?.WorkId);
+
+        var controller = new StreamHistoryController(recorder);
+        var action = await controller.List(50, default);
+        var summaries = Assert.IsAssignableFrom<IReadOnlyList<StreamRecordSummaryResponse>>(
+            Assert.IsType<OkObjectResult>(action.Result).Value);
+        var summary = Assert.Single(summaries, entry => entry.Token == "token-1");
+        Assert.Equal("article", summary.FailureKind);
+        Assert.Equal("Article missing on all providers.", summary.FailureReason);
     }
 
     [Fact]

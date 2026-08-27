@@ -48,13 +48,21 @@ internal sealed class PreDownloadJob
             return _snapshot;
     }
 
-    public void Start(DateTimeOffset now)
-        => Update(current => current with
+    public bool TryStart(DateTimeOffset now)
+    {
+        lock (_gate)
         {
-            State = current.Kind == "nextEpisode" ? "resolving" : "downloading",
-            StartedAt = now,
-            UpdatedAt = now,
-        });
+            if (IsTerminal(_snapshot.State))
+                return false;
+            _snapshot = _snapshot with
+            {
+                State = _snapshot.Kind == "nextEpisode" ? "resolving" : "downloading",
+                StartedAt = now,
+                UpdatedAt = now,
+            };
+            return true;
+        }
+    }
 
     public void SetTarget(
         ActiveSession target,
@@ -62,7 +70,7 @@ internal sealed class PreDownloadJob
         int? seasonNumber,
         int? episodeNumber,
         DateTimeOffset now)
-        => Update(current => current with
+        => UpdateActive(current => current with
         {
             TargetToken = target.Token,
             TargetReleaseId = target.Session.ReleaseId,
@@ -76,7 +84,7 @@ internal sealed class PreDownloadJob
         });
 
     public void Progress(long bytes, long total, DateTimeOffset now)
-        => Update(current => current with
+        => UpdateActive(current => current with
         {
             BytesDownloaded = Math.Clamp(bytes, 0, total),
             TotalBytes = total,
@@ -85,7 +93,7 @@ internal sealed class PreDownloadJob
         });
 
     public void Complete(DateTimeOffset now)
-        => Update(current => current with
+        => UpdateActive(current => current with
         {
             State = "completed",
             BytesDownloaded = current.TotalBytes,
@@ -95,7 +103,7 @@ internal sealed class PreDownloadJob
         });
 
     public void End(string state, string code, string message, DateTimeOffset now)
-        => Update(current => current with
+        => UpdateActive(current => current with
         {
             State = state,
             ErrorCode = code,
@@ -104,9 +112,34 @@ internal sealed class PreDownloadJob
             CompletedAt = now,
         });
 
-    private void Update(Func<PreDownloadJobResponse, PreDownloadJobResponse> update)
+    public void CancelForReleaseSwitch(string replacementReleaseId, int graceSeconds, DateTimeOffset now)
     {
         lock (_gate)
-            _snapshot = update(_snapshot);
+        {
+            if (_snapshot.State == "completed"
+                || _snapshot.ErrorCode == "release_superseded")
+                return;
+
+            _snapshot = _snapshot with
+            {
+                State = "cancelled",
+                ErrorCode = "release_superseded",
+                ErrorMessage = $"The user selected release {replacementReleaseId}; the previous release was purged after the {graceSeconds}-second playback grace period.",
+                UpdatedAt = now,
+                CompletedAt = now,
+            };
+        }
     }
+
+    private void UpdateActive(Func<PreDownloadJobResponse, PreDownloadJobResponse> update)
+    {
+        lock (_gate)
+        {
+            if (!IsTerminal(_snapshot.State))
+                _snapshot = update(_snapshot);
+        }
+    }
+
+    private static bool IsTerminal(string state)
+        => state is "completed" or "failed" or "skipped" or "cancelled";
 }

@@ -96,6 +96,101 @@ public class MediaFileMaterializerTests
         Assert.Null(MediaFileSelector.SelectPrimary(nzb));
     }
 
+    // ---------------------------------------------------------------- season packs
+
+    private static readonly (string EntryName, byte[] Data)[] PackEntries =
+    [
+        ("Show.S01E01.mkv", YencTestEncoder.LcgBytes(21, 120_000)),
+        ("Show.S01E02.mkv", YencTestEncoder.LcgBytes(22, 260_000)),
+        ("Show.S01E03.mkv", YencTestEncoder.LcgBytes(23, 180_000)),
+    ];
+
+    private static async Task<(MediaFileCandidate Candidate, MockNntpServer Server)> PublishPack()
+    {
+        var server = new MockNntpServer();
+        // 100 KB volumes: E02 and E03 both start mid-volume and span volume boundaries.
+        var volumes = Rar4TestWriter.WriteMultiVolumePack("Show.S01.1080p", PackEntries, 100_000);
+        var files = volumes
+            .Select((v, i) => NzbTestFixtures.PublishFile(server, v.FileName, v.Bytes, $"packvol{i}"))
+            .ToArray();
+        var nzb = await ParseNzb(files);
+        var candidate = MediaFileSelector.SelectForEpisode(nzb, new EpisodeTarget(1, 2), strict: true);
+        Assert.NotNull(candidate);
+        Assert.True(candidate!.IsRarWrapped);
+        return (candidate, server);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task SeasonPackRar_MaterializesTheRequestedEpisode_ByteIdentically(int episode)
+    {
+        var (candidate, server) = await PublishPack();
+        await using var _ = server;
+        using var client = ClientFor(server, maxConnections: 8);
+        var materializer = new MediaFileMaterializer(
+            client, Microsoft.Extensions.Options.Options.Create(new StreamarrOptions()));
+
+        var media = await materializer.MaterializeAsync(
+            candidate, new EpisodeTarget(1, episode), strictEpisodeMatch: true, CancellationToken.None);
+
+        var expected = PackEntries[episode - 1];
+        Assert.Equal(expected.EntryName, media.FileName);
+        Assert.Equal(expected.Data.Length, media.SizeBytes);
+
+        await using var stream = media.OpenStream(client);
+        using var output = new MemoryStream();
+        await stream.CopyToAsync(output);
+        Assert.Equal(expected.Data, output.ToArray());
+    }
+
+    [Fact]
+    public async Task SeasonPackRar_SeeksIntoTheMiddleOfAnEpisode()
+    {
+        var (candidate, server) = await PublishPack();
+        await using var _ = server;
+        using var client = ClientFor(server, maxConnections: 8);
+        var materializer = new MediaFileMaterializer(
+            client, Microsoft.Extensions.Options.Options.Create(new StreamarrOptions()));
+
+        var media = await materializer.MaterializeAsync(
+            candidate, new EpisodeTarget(1, 2), strictEpisodeMatch: true, CancellationToken.None);
+
+        await using var stream = media.OpenStream(client);
+        stream.Seek(200_000, SeekOrigin.Begin); // crosses into a later RAR volume
+        var tail = new byte[60_000];
+        await stream.ReadExactlyAsync(tail);
+        Assert.Equal(PackEntries[1].Data[200_000..260_000], tail);
+    }
+
+    [Fact]
+    public async Task SeasonPackRar_StrictUnmatchedEpisode_ThrowsInsteadOfGuessing()
+    {
+        var (candidate, server) = await PublishPack();
+        await using var _ = server;
+        using var client = ClientFor(server, maxConnections: 8);
+        var materializer = new MediaFileMaterializer(
+            client, Microsoft.Extensions.Options.Options.Create(new StreamarrOptions()));
+
+        await Assert.ThrowsAsync<NoPlayableFileException>(() => materializer.MaterializeAsync(
+            candidate, new EpisodeTarget(2, 1), strictEpisodeMatch: true, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SeasonPackRar_WithoutTarget_KeepsLegacyLargestFileBehavior()
+    {
+        var (candidate, server) = await PublishPack();
+        await using var _ = server;
+        using var client = ClientFor(server, maxConnections: 8);
+        var materializer = new MediaFileMaterializer(
+            client, Microsoft.Extensions.Options.Options.Create(new StreamarrOptions()));
+
+        var media = await materializer.MaterializeAsync(candidate, CancellationToken.None);
+
+        Assert.Equal("Show.S01E02.mkv", media.FileName); // largest entry
+    }
+
     [Fact]
     public async Task RarMaterialization_DisposesOpenedFirstBody_WhenSizeValidationFails()
     {

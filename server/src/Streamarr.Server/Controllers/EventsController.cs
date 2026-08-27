@@ -25,12 +25,13 @@ public class EventsController(WatchEventService events) : ControllerBase
             return BadRequest(ErrorResponse.Of("invalid_event", "A non-empty 'releaseId' is required."));
         if (string.IsNullOrWhiteSpace(request.Event) || !Kinds.Contains(request.Event))
             return BadRequest(ErrorResponse.Of("invalid_event", "'event' must be one of: start, progress, stop."));
-        if (request.ReleaseId.Length > 256 || request.WorkId?.Length > 256 || request.Source?.Length > 64 ||
+        if (request.ReleaseId.Length > 256 || request.WorkId?.Length > 256 || request.Title?.Length > 1_024 || request.Source?.Length > 64 ||
             request.PlaybackSessionId?.Length > 256 || request.ExternalUserId?.Length > 256 ||
             request.ExternalUserName?.Length > 256 || request.DeviceName?.Length > 256 ||
             request.SessionToken?.Length > 256 || request.PositionTicks is < 0 ||
             request.DurationTicks is < 0 ||
             request.ReleaseId.Any(char.IsControl) || request.WorkId?.Any(char.IsControl) == true ||
+            request.Title?.Any(char.IsControl) == true ||
             request.Source?.Any(char.IsControl) == true ||
             request.PlaybackSessionId?.Any(char.IsControl) == true ||
             request.ExternalUserId?.Any(char.IsControl) == true ||
@@ -43,6 +44,7 @@ public class EventsController(WatchEventService events) : ControllerBase
         {
             ReleaseId = request.ReleaseId,
             WorkId = request.WorkId,
+            Title = request.Title,
             Event = request.Event.ToLowerInvariant(),
             PositionTicks = request.PositionTicks,
             DurationTicks = request.DurationTicks,
@@ -68,6 +70,7 @@ public class EventsController(WatchEventService events) : ControllerBase
             Id = entry.Id,
             ReleaseId = entry.ReleaseId,
             WorkId = entry.WorkId,
+            Title = string.IsNullOrWhiteSpace(entry.Title) ? "Unknown release" : entry.Title,
             Event = entry.Event,
             PositionTicks = entry.PositionTicks,
             DurationTicks = entry.DurationTicks,

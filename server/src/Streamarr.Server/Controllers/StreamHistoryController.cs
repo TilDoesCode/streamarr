@@ -37,65 +37,119 @@ public class StreamHistoryController(StreamHistoryRecorder historyRecorder) : Co
         return Ok(ToDetail(record));
     }
 
-    private static StreamRecordSummaryResponse ToSummary(StreamRecordEntity r) => new()
+    private static StreamRecordSummaryResponse ToSummary(StreamRecordEntity r)
     {
-        Token = r.Token ?? r.AttemptId,
-        ReleaseId = r.ReleaseId,
-        WorkId = r.WorkId,
-        Title = r.Title,
-        Container = r.Container,
-        SizeBytes = r.SizeBytes,
-        BytesServed = r.BytesServed,
-        NntpCommandsTotal = r.NntpCommandsTotal,
-        Client = r.Client,
-        RequestedById = r.RequestedById,
-        RequestedByName = r.RequestedByName,
-        CreatedAt = r.CreatedAt,
-        ClosedAt = r.ClosedAt,
-        FinalState = r.FinalState,
-        CloseReason = r.CloseReason,
-    };
+        var failure = FailureFor(r);
+        return new StreamRecordSummaryResponse
+        {
+            Token = r.Token ?? r.AttemptId,
+            ReleaseId = r.ReleaseId,
+            WorkId = r.WorkId,
+            Title = r.Title,
+            ResolvedReleaseId = r.ResolvedReleaseId,
+            ResolvedTitle = r.ResolvedTitle,
+            Container = r.Container,
+            SizeBytes = r.SizeBytes,
+            BytesServed = r.BytesServed,
+            NntpCommandsTotal = r.NntpCommandsTotal,
+            Client = r.Client,
+            RequestedById = r.RequestedById,
+            RequestedByName = r.RequestedByName,
+            CreatedAt = r.CreatedAt,
+            ClosedAt = r.ClosedAt,
+            FinalState = r.FinalState,
+            CloseReason = r.CloseReason,
+            FailureKind = failure.Kind,
+            FailureReason = failure.Reason,
+        };
+    }
 
-    private static StreamRecordResponse ToDetail(StreamRecordEntity r) => new()
+    private static StreamRecordResponse ToDetail(StreamRecordEntity r)
     {
-        Token = r.Token ?? r.AttemptId,
-        ReleaseId = r.ReleaseId,
-        WorkId = r.WorkId,
-        Title = r.Title,
-        Container = r.Container,
-        SizeBytes = r.SizeBytes,
-        BytesServed = r.BytesServed,
-        NntpCommandsTotal = r.NntpCommandsTotal,
-        Client = r.Client,
-        RequestedById = r.RequestedById,
-        RequestedByName = r.RequestedByName,
-        CreatedAt = r.CreatedAt,
-        ClosedAt = r.ClosedAt,
-        FinalState = r.FinalState,
-        CloseReason = r.CloseReason,
-        TimelineStartedAt = r.TimelineStartedAt,
-        Timeline = [.. r.Events
-            .Where(e => e.Source == "ttff")
-            .OrderBy(e => e.StartMs)
-            .Select(e => new TtffSpanResponse
-            {
-                Name = e.Name,
-                Category = e.Category,
-                StartMs = e.StartMs ?? 0,
-                DurationMs = e.DurationMs ?? 0,
-                Detail = e.Detail,
-            })],
-        Events = [.. r.Events
-            .OrderBy(e => e.AtUtc)
-            .Select(e => new StreamEventResponse
-            {
-                AtUtc = e.AtUtc,
-                Source = e.Source,
-                Category = e.Category,
-                Name = e.Name,
-                Detail = e.Detail,
-                StartMs = e.StartMs,
-                DurationMs = e.DurationMs,
-            })],
-    };
+        var failure = FailureFor(r);
+        return new StreamRecordResponse
+        {
+            Token = r.Token ?? r.AttemptId,
+            ReleaseId = r.ReleaseId,
+            WorkId = r.WorkId,
+            Title = r.Title,
+            ResolvedReleaseId = r.ResolvedReleaseId,
+            ResolvedTitle = r.ResolvedTitle,
+            Container = r.Container,
+            SizeBytes = r.SizeBytes,
+            BytesServed = r.BytesServed,
+            NntpCommandsTotal = r.NntpCommandsTotal,
+            Client = r.Client,
+            RequestedById = r.RequestedById,
+            RequestedByName = r.RequestedByName,
+            CreatedAt = r.CreatedAt,
+            ClosedAt = r.ClosedAt,
+            FinalState = r.FinalState,
+            CloseReason = r.CloseReason,
+            FailureKind = failure.Kind,
+            FailureReason = failure.Reason,
+            TimelineStartedAt = r.TimelineStartedAt,
+            Timeline = [.. r.Events
+                .Where(e => e.Source == "ttff")
+                .OrderBy(e => e.StartMs)
+                .Select(e => new TtffSpanResponse
+                {
+                    Name = e.Name,
+                    Category = e.Category,
+                    StartMs = e.StartMs ?? 0,
+                    DurationMs = e.DurationMs ?? 0,
+                    Detail = e.Detail,
+                })],
+            Events = [.. r.Events
+                .OrderBy(e => e.AtUtc)
+                .Select(e => new StreamEventResponse
+                {
+                    AtUtc = e.AtUtc,
+                    Source = e.Source,
+                    Category = e.Category,
+                    Name = e.Name,
+                    Detail = e.Detail,
+                    StartMs = e.StartMs,
+                    DurationMs = e.DurationMs,
+                })],
+        };
+    }
+
+    private static (string? Kind, string? Reason) FailureFor(StreamRecordEntity record)
+    {
+        var evidence = record.Events
+            .Where(e => e.Source == "error" || (e.Source == "repair" && e.Name == "Failed"))
+            .OrderByDescending(e => e.AtUtc)
+            .FirstOrDefault();
+        if (evidence is not null)
+        {
+            if (evidence.Source == "repair")
+                return ("repair", FirstNonEmpty(evidence.Detail, evidence.Name));
+
+            var articleFailure = string.Equals(evidence.Category, "stream", StringComparison.OrdinalIgnoreCase)
+                && (Contains(evidence.Name, "article")
+                    || Contains(evidence.Name, "yenc")
+                    || Contains(evidence.Detail, "article"));
+            var kind = articleFailure
+                ? "article"
+                : string.IsNullOrWhiteSpace(evidence.Category)
+                    ? evidence.Source.ToLowerInvariant()
+                    : evidence.Category.ToLowerInvariant();
+            return (kind, FirstNonEmpty(evidence.Detail, evidence.Name));
+        }
+
+        return record.FinalState?.ToLowerInvariant() switch
+        {
+            "dead" => ("availability", FirstNonEmpty(record.CloseReason, "Release unavailable.")),
+            "error" => ("resolve", FirstNonEmpty(record.CloseReason, "Resolve failed.")),
+            "invalidated" => ("article", FirstNonEmpty(record.CloseReason, "Release became unavailable while streaming.")),
+            _ => (null, null),
+        };
+    }
+
+    private static bool Contains(string? value, string fragment)
+        => value?.Contains(fragment, StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string FirstNonEmpty(string? preferred, string fallback)
+        => string.IsNullOrWhiteSpace(preferred) ? fallback : preferred;
 }

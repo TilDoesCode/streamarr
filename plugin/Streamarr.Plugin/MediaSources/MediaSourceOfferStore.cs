@@ -38,6 +38,8 @@ public sealed class MediaSourceOfferStore
         string WorkId,
         string ReleaseId,
         IReadOnlySet<string> AllowedReleaseIds,
+        IReadOnlySet<string> TrustedLocalReleaseIds,
+        IReadOnlyDictionary<string, string> ReleaseTitles,
         DateTime ExpiresUtc);
 
     public sealed class Lease : IDisposable
@@ -66,19 +68,62 @@ public sealed class MediaSourceOfferStore
         Guid itemId,
         Guid userId,
         string workId,
-        IReadOnlyList<string> releaseIds)
+        IReadOnlyList<string> releaseIds,
+        IReadOnlySet<string>? trustedLocalReleaseIds = null,
+        IReadOnlyDictionary<string, string>? releaseTitles = null,
+        IReadOnlySet<string>? persistedReleaseIds = null)
     {
         if (itemId == Guid.Empty || userId == Guid.Empty)
             return new Dictionary<string, string>();
         ArgumentException.ThrowIfNullOrWhiteSpace(workId);
+        ArgumentNullException.ThrowIfNull(releaseIds);
 
-        var releases = releaseIds
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.Ordinal)
-            .Take(StreamarrPayloadBounds.MaxReleasesPerWork)
-            .ToArray();
+        var trusted = trustedLocalReleaseIds ?? new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var selected = new List<string>(
+            StreamarrPayloadBounds.MaxReleasesPerWork + StreamarrPayloadBounds.MaxTransientLocalReleasesPerWork);
+        var regularCount = 0;
+        var trustedCount = 0;
+        foreach (var releaseId in releaseIds)
+        {
+            if (string.IsNullOrWhiteSpace(releaseId) || !seen.Add(releaseId))
+                continue;
+
+            var isTransientLocal = persistedReleaseIds is not null
+                                   && !persistedReleaseIds.Contains(releaseId)
+                                   && trusted.Contains(releaseId);
+            if (isTransientLocal)
+            {
+                if (trustedCount >= StreamarrPayloadBounds.MaxTransientLocalReleasesPerWork)
+                    continue;
+                trustedCount++;
+            }
+            else
+            {
+                if (regularCount >= StreamarrPayloadBounds.MaxReleasesPerWork)
+                    continue;
+                regularCount++;
+            }
+
+            selected.Add(releaseId);
+            if (regularCount >= StreamarrPayloadBounds.MaxReleasesPerWork
+                && trustedCount >= StreamarrPayloadBounds.MaxTransientLocalReleasesPerWork)
+            {
+                break;
+            }
+        }
+
+        var releases = selected.ToArray();
         if (releases.Length == 0)
             return new Dictionary<string, string>();
+
+        var selectedTrusted = releases
+            .Where(trusted.Contains)
+            .ToHashSet(StringComparer.Ordinal);
+        var selectedTitles = releases
+            .Where(releaseId => releaseTitles?.TryGetValue(releaseId, out var title) == true
+                                && !string.IsNullOrWhiteSpace(title))
+            .ToDictionary(releaseId => releaseId, releaseId => releaseTitles![releaseId], StringComparer.Ordinal);
 
         lock (_gate)
         {
@@ -111,13 +156,26 @@ public sealed class MediaSourceOfferStore
                 {
                     // Refresh the lease when Jellyfin asks for the same projection again. Keeping
                     // the token stable also makes already-cached client metadata safe to replay.
-                    StoreOffer(existingToken, existingOffer with { ExpiresUtc = expires });
+                    StoreOffer(existingToken, existingOffer with
+                    {
+                        TrustedLocalReleaseIds = selectedTrusted,
+                        ReleaseTitles = selectedTitles,
+                        ExpiresUtc = expires,
+                    });
                     result[releaseId] = existingToken;
                     continue;
                 }
 
                 var token = CreateToken();
-                StoreOffer(token, new Offer(itemId, userId, workId, releaseId, allowed, expires));
+                StoreOffer(token, new Offer(
+                    itemId,
+                    userId,
+                    workId,
+                    releaseId,
+                    allowed,
+                    selectedTrusted,
+                    selectedTitles,
+                    expires));
                 _byIndex[indexKey] = token;
                 _indexByToken[token] = indexKey;
                 result[releaseId] = token;
@@ -125,6 +183,28 @@ public sealed class MediaSourceOfferStore
 
             return result;
         }
+    }
+
+    public bool TryResolveReleaseSource(Guid sourceId, out Guid itemId)
+    {
+        itemId = Guid.Empty;
+        if (sourceId == Guid.Empty)
+            return false;
+
+        lock (_gate)
+        {
+            RemoveExpired(_time.GetUtcNow().UtcDateTime);
+            foreach (var offer in _byToken.Values)
+            {
+                if (StreamarrMediaSourceProjection.ReleaseSourceGuid(offer.WorkId, offer.ReleaseId) != sourceId)
+                    continue;
+
+                itemId = offer.ItemId;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public bool TryAcquire(string? token, Guid userId, out Lease? lease)

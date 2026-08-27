@@ -13,6 +13,7 @@ public sealed record StreamAttemptBegin
 {
     public required string ReleaseId { get; init; }
     public string? WorkId { get; init; }
+    public string? Title { get; init; }
     public string? Client { get; init; }
     public string? RequestedById { get; init; }
     public string? RequestedByName { get; init; }
@@ -33,7 +34,8 @@ public sealed record StreamRecordFinalize
 {
     public required string FinalState { get; init; }
     public string? CloseReason { get; init; }
-    public string? Title { get; init; }
+    public string? ResolvedReleaseId { get; init; }
+    public string? ResolvedTitle { get; init; }
     public string? Container { get; init; }
     public long? SizeBytes { get; init; }
     public long? BytesServed { get; init; }
@@ -115,7 +117,7 @@ public sealed class StreamHistoryRecorder(
     }
 
     /// <summary>
-    /// Newest-first summaries (no event timeline) for the History list. Ordered by <c>Id</c>
+    /// Newest-first summaries with only failure evidence eagerly loaded. Ordered by <c>Id</c>
     /// rather than <c>CreatedAt</c> — rows are inserted in arrival order so the two agree in
     /// practice, and SQLite's EF provider cannot translate an ORDER BY over a DateTimeOffset
     /// column.
@@ -125,6 +127,8 @@ public sealed class StreamHistoryRecorder(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.StreamRecords
             .AsNoTracking()
+            .Include(r => r.Events.Where(e =>
+                e.Source == "error" || (e.Source == "repair" && e.Name == "Failed")))
             .OrderByDescending(r => r.Id)
             .Take(Math.Clamp(limit, 1, 500))
             .ToListAsync(ct);
@@ -216,6 +220,7 @@ public sealed class StreamHistoryRecorder(
                     CreatedAt = begin.At,
                     ReleaseId = begin.Begin.ReleaseId,
                     WorkId = begin.Begin.WorkId ?? string.Empty,
+                    Title = begin.Begin.Title,
                     Client = begin.Begin.Client,
                     RequestedById = begin.Begin.RequestedById,
                     RequestedByName = begin.Begin.RequestedByName,
@@ -277,7 +282,10 @@ public sealed class StreamHistoryRecorder(
                 record.FinalState = finalize.Finalize.FinalState;
                 record.CloseReason = finalize.Finalize.CloseReason;
                 record.ClosedAt = finalize.At;
-                if (finalize.Finalize.Title is not null) record.Title = finalize.Finalize.Title;
+                if (finalize.Finalize.ResolvedReleaseId is not null)
+                    record.ResolvedReleaseId = finalize.Finalize.ResolvedReleaseId;
+                if (finalize.Finalize.ResolvedTitle is not null)
+                    record.ResolvedTitle = finalize.Finalize.ResolvedTitle;
                 if (finalize.Finalize.Container is not null) record.Container = finalize.Finalize.Container;
                 if (finalize.Finalize.SizeBytes is not null) record.SizeBytes = finalize.Finalize.SizeBytes;
                 if (finalize.Finalize.BytesServed is not null) record.BytesServed = finalize.Finalize.BytesServed.Value;

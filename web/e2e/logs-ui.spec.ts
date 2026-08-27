@@ -173,6 +173,8 @@ test("renders global and stream-correlated logs on desktop and mobile", async ({
   }));
 
   await page.goto(`/sessions/${STREAM_TOKEN}`);
+  // Logs now live on their own sub screen rather than the long-scrolling stream-details page.
+  await page.getByRole("tab", { name: "Logs" }).click();
   const streamLogs = page.locator('section[aria-label="Stream logs"]');
   await expect(streamLogs.getByRole("heading", { name: "Core & Jellyfin logs" })).toBeVisible();
   await expect(streamLogs.getByText("Provider failover exhausted", { exact: false })).toBeVisible();

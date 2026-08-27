@@ -15,7 +15,7 @@ namespace Streamarr.Server.Persistence.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.28");
+            modelBuilder.HasAnnotation("ProductVersion", "8.0.30");
 
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ApiKeyEntity", b =>
                 {
@@ -303,7 +303,13 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<int>("MaxConcurrentDownloads")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("NextEpisodeReleaseSimilarityThresholdPercent")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("NextEpisodeThresholdPercent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PreferSimilarNextEpisodeRelease")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
@@ -456,6 +462,12 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("RequestedByName")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ResolvedReleaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResolvedTitle")
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("SizeBytes")
                         .HasColumnType("INTEGER");
 
@@ -563,6 +575,10 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT");
 

@@ -22,10 +22,26 @@ public sealed partial class NextEpisodeResolver(
     internal static bool IsCanonicalEpisodeWorkId(string workId)
         => EpisodeWorkIdPattern().IsMatch(workId);
 
-    public async Task<NextEpisodeTarget?> ResolveAsync(
+    public Task<NextEpisodeTarget?> ResolveAsync(
         string sourceWorkId,
         CancellationToken cancellationToken)
+        => ResolveAsync(
+            sourceWorkId,
+            sourceReleaseTitle: null,
+            preferSimilarRelease: false,
+            similarityThreshold: ReleaseSimilarityScorer.DefaultThreshold,
+            cancellationToken: cancellationToken);
+
+    public async Task<NextEpisodeTarget?> ResolveAsync(
+        string sourceWorkId,
+        string? sourceReleaseTitle,
+        bool preferSimilarRelease,
+        int similarityThreshold,
+        CancellationToken cancellationToken)
     {
+        if (similarityThreshold is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(similarityThreshold));
+
         var match = EpisodeWorkIdPattern().Match(sourceWorkId);
         if (!match.Success
             || !int.TryParse(match.Groups["tmdb"].Value, out var tmdbId)
@@ -73,7 +89,11 @@ public sealed partial class NextEpisodeResolver(
 
         if (target is null)
             return null;
-        var release = releases.FindBest(target.WorkId);
+        var release = SelectRelease(
+            releases.FindUsable(target.WorkId),
+            sourceReleaseTitle,
+            preferSimilarRelease,
+            similarityThreshold);
         if (release is null)
             return null;
 
@@ -85,4 +105,40 @@ public sealed partial class NextEpisodeResolver(
             target.SeasonNumber,
             target.EpisodeNumber);
     }
+
+    internal static RegisteredRelease? SelectRelease(
+        IReadOnlyList<RegisteredRelease> candidates,
+        string? sourceReleaseTitle,
+        bool preferSimilarRelease,
+        int similarityThreshold)
+    {
+        var ranked = candidates
+            .OrderByDescending(candidate => candidate.Release.Score)
+            .ThenBy(candidate => candidate.Release.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(candidate => candidate.Release.Title, StringComparer.Ordinal)
+            .ThenBy(candidate => candidate.Release.ReleaseId, StringComparer.Ordinal)
+            .ToArray();
+        var fallback = ranked.FirstOrDefault();
+        if (!preferSimilarRelease || string.IsNullOrWhiteSpace(sourceReleaseTitle))
+            return fallback;
+
+        return ranked
+                   .Select(candidate => new SimilarityCandidate(
+                       candidate,
+                       ReleaseSimilarityScorer.Evaluate(sourceReleaseTitle, candidate.Release.Title)))
+                   .Where(candidate => candidate.Similarity.Eligible
+                                       && candidate.Similarity.Score >= similarityThreshold)
+                   .OrderByDescending(candidate => candidate.Similarity.Score)
+                   .ThenByDescending(candidate => candidate.Release.Release.Score)
+                   .ThenBy(candidate => candidate.Release.Release.Title, StringComparer.OrdinalIgnoreCase)
+                   .ThenBy(candidate => candidate.Release.Release.Title, StringComparer.Ordinal)
+                   .ThenBy(candidate => candidate.Release.Release.ReleaseId, StringComparer.Ordinal)
+                   .Select(candidate => candidate.Release)
+                   .FirstOrDefault()
+               ?? fallback;
+    }
+
+    private sealed record SimilarityCandidate(
+        RegisteredRelease Release,
+        ReleaseSimilarityResult Similarity);
 }

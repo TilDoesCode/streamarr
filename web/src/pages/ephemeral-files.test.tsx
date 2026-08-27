@@ -108,7 +108,7 @@ describe("EphemeralFilesPage", () => {
     expect(streaming).toBeDisabled();
   });
 
-  it("shows background retention and real disk pre-download progress separately from the playback footprint", async () => {
+  it("uses the stream header's payload progress while keeping disk and chunk progress separate", async () => {
     filesList = [file({
       retentionPriority: "background",
       preDownloadJobId: "job-next-2",
@@ -129,8 +129,10 @@ describe("EphemeralFilesPage", () => {
     expect(screen.getByText("background retention")).toBeInTheDocument();
     expect(screen.getByText("Watch progress reached 75%")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Ephemeral disk pre-download progress" })).toHaveAttribute("aria-valuenow", "25");
-    expect(screen.getByRole("progressbar", { name: "Playback segment request footprint" })).toHaveAttribute("aria-valuenow", "40");
-    expect(screen.getByText(/neither watch progress nor disk pre-download completion/i)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Payload delivered" })).toHaveAttribute("aria-valuenow", "50");
+    expect(screen.getByText("Chunks touched")).toBeInTheDocument();
+    expect(screen.getByText("40%")).toBeInTheDocument();
+    expect(screen.getByText(/same payload progress shown in the stream header/i)).toBeInTheDocument();
   });
 });
 

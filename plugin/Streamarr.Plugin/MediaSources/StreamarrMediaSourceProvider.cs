@@ -27,6 +27,7 @@ public sealed class StreamarrMediaSourceProvider(
     MediaSourceOfferStore offers,
     StreamarrMediaSourceProjection projection,
     EphemeralReleaseRefresher refresher,
+    LocalReleaseAvailabilityService localAvailability,
     StreamarrApiClient api,
     PlaybackEventDispatcher dispatcher,
     IHttpContextAccessor httpContextAccessor,
@@ -43,7 +44,10 @@ public sealed class StreamarrMediaSourceProvider(
 
         var userId = CurrentUserId();
         var user = userId == Guid.Empty ? null : userManager.GetUserById(userId);
-        projection.TryProject(item, user, userId, out var sources);
+        var availability = await localAvailability
+            .GetForItemsAsync([item.Id], userId, cancellationToken)
+            .ConfigureAwait(false);
+        projection.TryProject(item, user, userId, out var sources, availability);
         return sources;
     }
 
@@ -67,8 +71,7 @@ public sealed class StreamarrMediaSourceProvider(
 
             var entry = store.Peek(offer.ItemId);
             if (entry is null
-                || !string.Equals(entry.Work.WorkId, offer.WorkId, StringComparison.Ordinal)
-                || !entry.Work.Releases.Any(release => string.Equals(release.ReleaseId, offer.ReleaseId, StringComparison.Ordinal)))
+                || !OfferMatchesMaterializedWork(offer, entry.Work, offer.ReleaseId))
             {
                 throw new InvalidOperationException("The Streamarr media-source offer no longer matches a materialized work.");
             }
@@ -120,11 +123,7 @@ public sealed class StreamarrMediaSourceProvider(
                                && currentItem is not null
                                && currentItem.IsVisibleStandalone(currentUser)
                                && currentEntry is not null
-                               && string.Equals(currentEntry.Work.WorkId, offer.WorkId, StringComparison.Ordinal)
-                               && currentEntry.Work.Releases.Any(release => string.Equals(
-                                   release.ReleaseId,
-                                   resolve.ReleaseId,
-                                   StringComparison.Ordinal));
+                               && OfferMatchesMaterializedWork(offer, currentEntry.Work, resolve.ReleaseId);
                     }
                     catch (Exception ex)
                     {
@@ -155,12 +154,18 @@ public sealed class StreamarrMediaSourceProvider(
                 // as Jellyfin rewrites MediaSource.LiveStreamId after the provider returns), the
                 // resolved release id, and the stable source id clients report as MediaSourceId
                 // in their playback start/progress/stop callbacks.
-                if (!tracker.TryTrackSession(
+                var releaseTitle = offer.ReleaseTitles.GetValueOrDefault(resolve.ReleaseId)
+                                   ?? entry.Work.Releases.FirstOrDefault(release => string.Equals(
+                                       release.ReleaseId,
+                                       resolve.ReleaseId,
+                                       StringComparison.Ordinal))?.Title;
+                if (!tracker.TryTrackSessionWithTitle(
                         offer.ItemId,
                         liveStreamId,
                         resolve.ReleaseId,
                         offer.WorkId,
                         token,
+                        releaseTitle,
                         OfferStillValid,
                         out _,
                         stableSourceId,
@@ -322,6 +327,18 @@ public sealed class StreamarrMediaSourceProvider(
     private static bool IsDead(ResolveResponse resolve)
         => string.Equals(resolve.Status, "dead", StringComparison.OrdinalIgnoreCase)
            || string.IsNullOrWhiteSpace(resolve.StreamUrl);
+
+    internal static bool OfferMatchesMaterializedWork(
+        MediaSourceOfferStore.Offer offer,
+        WorkDto work,
+        string releaseId)
+        => string.Equals(work.WorkId, offer.WorkId, StringComparison.Ordinal)
+           && offer.AllowedReleaseIds.Contains(releaseId)
+           && (offer.TrustedLocalReleaseIds.Contains(releaseId)
+               || work.Releases.Any(release => string.Equals(
+                   release.ReleaseId,
+                   releaseId,
+                   StringComparison.Ordinal)));
 
     private async Task EnsureResolveWithinOfferAsync(
         ResolveResponse response,

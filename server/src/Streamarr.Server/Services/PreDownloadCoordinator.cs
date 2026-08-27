@@ -35,10 +35,15 @@ public sealed class PreDownloadCoordinator(
     private readonly ConcurrentDictionary<string, Task> _activeTasks = new(StringComparer.Ordinal);
     private readonly Queue<PendingJob> _pending = new();
     private readonly object _schedulerGate = new();
+    private readonly object _playbackGate = new();
+    private readonly Dictionary<PlaybackScope, PlaybackScopeState> _playbackSelections = [];
     private int _running;
 
-    public bool Enqueue(WatchEventWrite progress)
-        => _observations.Writer.TryWrite(progress);
+    public bool Enqueue(WatchEventWrite observation)
+    {
+        ObservePlaybackLifecycle(observation, time.GetUtcNow());
+        return _observations.Writer.TryWrite(observation);
+    }
 
     public IReadOnlyList<PreDownloadJobResponse> List(string? sessionToken = null)
         => _jobs.Values
@@ -57,7 +62,7 @@ public sealed class PreDownloadCoordinator(
             while (!stoppingToken.IsCancellationRequested)
             {
                 while (_observations.Reader.TryRead(out var observation))
-                    Observe(observation);
+                    ObservePreDownload(observation);
                 Dispatch(stoppingToken);
                 Prune();
                 await Task.Delay(250, stoppingToken).ConfigureAwait(false);
@@ -85,6 +90,17 @@ public sealed class PreDownloadCoordinator(
 
     internal void Observe(WatchEventWrite observation)
     {
+        Observe(observation, time.GetUtcNow());
+    }
+
+    internal void Observe(WatchEventWrite observation, DateTimeOffset observedAt)
+    {
+        ObservePlaybackLifecycle(observation, observedAt);
+        ObservePreDownload(observation);
+    }
+
+    private void ObservePreDownload(WatchEventWrite observation)
+    {
         var policy = config.Current;
         if (!policy.Enabled
             || !string.Equals(observation.Event, "progress", StringComparison.OrdinalIgnoreCase))
@@ -101,6 +117,10 @@ public sealed class PreDownloadCoordinator(
         if (source is null)
             return;
 
+        var playbackState = PlaybackState(source, observation.PlaybackSessionId);
+        if (playbackState == PlaybackGraceState.Stale)
+            return;
+
         var position = Math.Max(0, observation.PositionTicks ?? 0);
         var duration = observation.DurationTicks is > 0
             ? observation.DurationTicks.Value
@@ -109,8 +129,13 @@ public sealed class PreDownloadCoordinator(
             ? Math.Min(100, position * 100d / duration)
             : (double?)null;
 
-        if (policy.DownloadCurrentFile
-            && position >= policy.CurrentFileThresholdSeconds * TimeSpan.TicksPerSecond)
+        var currentFileGraceReached = playbackState switch
+        {
+            PlaybackGraceState.Reached => true,
+            PlaybackGraceState.Pending => false,
+            _ => position >= policy.CurrentFileThresholdSeconds * TimeSpan.TicksPerSecond,
+        };
+        if (policy.DownloadCurrentFile && currentFileGraceReached)
         {
             Queue(
                 $"current:{source.Token}",
@@ -121,7 +146,9 @@ public sealed class PreDownloadCoordinator(
                 duration,
                 watchPercent,
                 policy.CurrentFileThresholdSeconds,
-                "seconds");
+                "seconds",
+                policy.PreferSimilarNextEpisodeRelease,
+                policy.NextEpisodeReleaseSimilarityThresholdPercent);
         }
 
         if (policy.DownloadNextEpisode
@@ -138,7 +165,151 @@ public sealed class PreDownloadCoordinator(
                 duration,
                 watchPercent,
                 policy.NextEpisodeThresholdPercent,
-                "percent");
+                "percent",
+                policy.PreferSimilarNextEpisodeRelease,
+                policy.NextEpisodeReleaseSimilarityThresholdPercent);
+        }
+    }
+
+    private void ObservePlaybackLifecycle(
+        WatchEventWrite observation,
+        DateTimeOffset observedAt)
+    {
+        var eventKind = observation.Event?.ToLowerInvariant();
+        if (eventKind is not ("start" or "progress" or "stop"))
+            return;
+        if (!TryResolveTrustedPlayback(observation, out var source))
+            return;
+
+        var requesterId = source.Session.RequestedById!;
+        var client = source.Session.Client!;
+        CanonicalTmdbWorkId.TryNormalize(source.Session.WorkId, out var canonicalWorkId);
+        var scope = new PlaybackScope(canonicalWorkId, client, requesterId);
+        var identity = new PlaybackIdentity(source.Token, observation.PlaybackSessionId);
+        var position = Math.Max(0, observation.PositionTicks ?? 0);
+        lock (_playbackGate)
+        {
+            if (!_playbackSelections.TryGetValue(scope, out var playback))
+            {
+                playback = new PlaybackScopeState();
+                _playbackSelections[scope] = playback;
+            }
+
+            if (eventKind == "start")
+            {
+                playback.Select(
+                    source.Token,
+                    observation.PlaybackSessionId,
+                    position,
+                    observedAt,
+                    explicitStart: true);
+                return;
+            }
+
+            if (eventKind == "stop")
+            {
+                playback.Stop(identity);
+                return;
+            }
+
+            var selection = playback.Current;
+            if (selection is null || !selection.Matches(identity))
+            {
+                if (playback.IsRetired(identity))
+                    return;
+                selection = playback.Select(
+                    source.Token,
+                    observation.PlaybackSessionId,
+                    position,
+                    observedAt,
+                    explicitStart: false);
+                return;
+            }
+
+            selection.Observe(position, observedAt);
+
+            var graceSeconds = config.Current.CurrentFileThresholdSeconds;
+            var graceTicks = graceSeconds * TimeSpan.TicksPerSecond;
+            if (selection.WatchedTicks < graceTicks)
+                return;
+
+            var removed = sessions.SupersedeOtherReleases(source, graceSeconds);
+            CancelSupersededJobs(removed, source.Session.ReleaseId, graceSeconds);
+        }
+    }
+
+    private bool TryResolveTrustedPlayback(WatchEventWrite observation, out ActiveSession source)
+    {
+        source = null!;
+        if (string.IsNullOrWhiteSpace(observation.SessionToken)
+            || string.IsNullOrWhiteSpace(observation.WorkId)
+            || string.IsNullOrWhiteSpace(observation.ExternalUserId)
+            || string.IsNullOrWhiteSpace(observation.Source)
+            || !CanonicalTmdbWorkId.TryNormalize(observation.WorkId, out var eventWorkId)
+            || !sessions.TryGetSession(observation.SessionToken, out var exact)
+            || !CanonicalTmdbWorkId.TryNormalize(exact.Session.WorkId, out var sessionWorkId)
+            || !string.Equals(exact.Session.ReleaseId, observation.ReleaseId, StringComparison.Ordinal)
+            || !string.Equals(sessionWorkId, eventWorkId, StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(exact.Session.Client)
+            || !string.Equals(exact.Session.Client, observation.Source, StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(exact.Session.RequestedById)
+            || !string.Equals(
+                exact.Session.RequestedById,
+                observation.ExternalUserId,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        source = exact;
+        return true;
+    }
+
+    private PlaybackGraceState PlaybackState(ActiveSession source, string? playbackSessionId)
+    {
+        var requesterId = source.Session.RequestedById;
+        if (string.IsNullOrWhiteSpace(requesterId)
+            || string.IsNullOrWhiteSpace(source.Session.Client)
+            || !CanonicalTmdbWorkId.TryNormalize(source.Session.WorkId, out var canonicalWorkId))
+        {
+            return PlaybackGraceState.Unknown;
+        }
+
+        lock (_playbackGate)
+        {
+            if (!_playbackSelections.TryGetValue(
+                    new PlaybackScope(canonicalWorkId, source.Session.Client, requesterId),
+                    out var playback)
+                || playback.Current is not { } selection)
+            {
+                return PlaybackGraceState.Unknown;
+            }
+            if (!selection.Matches(new PlaybackIdentity(source.Token, playbackSessionId)))
+                return PlaybackGraceState.Stale;
+            var graceTicks = config.Current.CurrentFileThresholdSeconds * TimeSpan.TicksPerSecond;
+            return selection.WatchedTicks >= graceTicks
+                ? PlaybackGraceState.Reached
+                : PlaybackGraceState.Pending;
+        }
+    }
+
+    private void CancelSupersededJobs(
+        IReadOnlyList<SupersededSession> removed,
+        string replacementReleaseId,
+        int graceSeconds)
+    {
+        if (removed.Count == 0)
+            return;
+        var removedTokens = removed.Select(item => item.Token).ToHashSet(StringComparer.Ordinal);
+        var now = time.GetUtcNow();
+        foreach (var job in _jobs.Values)
+        {
+            var snapshot = job.Snapshot();
+            if ((snapshot.TargetToken is { } targetToken && removedTokens.Contains(targetToken))
+                || (snapshot.Kind == "currentFile" && removedTokens.Contains(snapshot.SourceToken)))
+            {
+                job.CancelForReleaseSwitch(replacementReleaseId, graceSeconds, now);
+            }
         }
     }
 
@@ -151,7 +322,9 @@ public sealed class PreDownloadCoordinator(
         long duration,
         double? watchPercent,
         double threshold,
-        string triggerUnit)
+        string triggerUnit,
+        bool preferSimilarNextEpisodeRelease,
+        int nextEpisodeReleaseSimilarityThresholdPercent)
     {
         var id = Convert.ToHexString(RandomNumberGenerator.GetBytes(12)).ToLowerInvariant();
         if (!_triggerKeys.TryAdd(triggerKey, id))
@@ -175,7 +348,13 @@ public sealed class PreDownloadCoordinator(
         }
 
         lock (_schedulerGate)
-            _pending.Enqueue(new PendingJob(job, triggerKey, kind, observation));
+            _pending.Enqueue(new PendingJob(
+                job,
+                triggerKey,
+                kind,
+                observation,
+                preferSimilarNextEpisodeRelease,
+                nextEpisodeReleaseSimilarityThresholdPercent));
     }
 
     private void Dispatch(CancellationToken stoppingToken)
@@ -209,7 +388,8 @@ public sealed class PreDownloadCoordinator(
     private async Task RunJobAsync(PendingJob pending, CancellationToken stoppingToken)
     {
         var job = pending.Job;
-        job.Start(time.GetUtcNow());
+        if (!job.TryStart(time.GetUtcNow()))
+            return;
         try
         {
             if (!sessions.TryGetSession(job.SourceToken, out var source))
@@ -227,6 +407,9 @@ public sealed class PreDownloadCoordinator(
 
             var target = await nextEpisodes.ResolveAsync(
                 source.Session.WorkId,
+                source.Title,
+                pending.PreferSimilarNextEpisodeRelease,
+                pending.NextEpisodeReleaseSimilarityThresholdPercent,
                 stoppingToken).ConfigureAwait(false);
             if (target is null)
             {
@@ -242,8 +425,8 @@ public sealed class PreDownloadCoordinator(
                 target.ReleaseId,
                 target.WorkId,
                 source.Session.Client,
-                pending.Observation.ExternalUserId ?? source.Session.RequestedById,
-                pending.Observation.ExternalUserName ?? source.Session.RequestedByName,
+                source.Session.RequestedById,
+                source.Session.RequestedByName,
                 token => token,
                 token => $"{LocalBaseUrl()}/api/v1/stream/{token}",
                 stoppingToken).ConfigureAwait(false);
@@ -381,6 +564,7 @@ public sealed class PreDownloadCoordinator(
 
     private void Prune()
     {
+        PrunePlaybackSelections();
         var cutoff = time.GetUtcNow() - FinishedJobLifetime;
         var candidates = _jobs.Values
             .Select(job => job.Snapshot())
@@ -404,6 +588,19 @@ public sealed class PreDownloadCoordinator(
                 continue;
             foreach (var pair in _triggerKeys.Where(pair => pair.Value == candidate.Id).ToArray())
                 _triggerKeys.TryRemove(pair.Key, out _);
+        }
+    }
+
+    private void PrunePlaybackSelections()
+    {
+        lock (_playbackGate)
+        {
+            foreach (var (scope, playback) in _playbackSelections.ToArray())
+            {
+                playback.Prune(token => sessions.TryGetSession(token, out _));
+                if (playback.IsEmpty)
+                    _playbackSelections.Remove(scope);
+            }
         }
     }
 
@@ -437,5 +634,99 @@ public sealed class PreDownloadCoordinator(
         PreDownloadJob Job,
         string TriggerKey,
         string Kind,
-        WatchEventWrite Observation);
+        WatchEventWrite Observation,
+        bool PreferSimilarNextEpisodeRelease,
+        int NextEpisodeReleaseSimilarityThresholdPercent);
+
+    private readonly record struct PlaybackScope(
+        string WorkId,
+        string Client,
+        string RequestedById);
+
+    private readonly record struct PlaybackIdentity(string Token, string? PlaybackSessionId);
+
+    private sealed class PlaybackScopeState
+    {
+        private readonly HashSet<PlaybackIdentity> _retired = [];
+
+        public PlaybackSelection? Current { get; private set; }
+        public bool IsEmpty => Current is null && _retired.Count == 0;
+
+        public PlaybackSelection Select(
+            string token,
+            string? playbackSessionId,
+            long positionTicks,
+            DateTimeOffset observedAt,
+            bool explicitStart)
+        {
+            var identity = new PlaybackIdentity(token, playbackSessionId);
+            if (Current is { } current && !current.Matches(identity))
+                _retired.Add(current.Identity);
+            if (explicitStart)
+                _retired.Remove(identity);
+            Current = new PlaybackSelection(identity, positionTicks, observedAt);
+            return Current;
+        }
+
+        public void Stop(PlaybackIdentity identity)
+        {
+            _retired.Add(identity);
+            if (Current?.Matches(identity) == true)
+                Current = null;
+        }
+
+        public bool IsRetired(PlaybackIdentity identity) => _retired.Contains(identity);
+
+        public void Prune(Func<string, bool> isLive)
+        {
+            if (Current is { } current && !isLive(current.Identity.Token))
+                Current = null;
+            _retired.RemoveWhere(identity => !isLive(identity.Token));
+        }
+    }
+
+    private sealed class PlaybackSelection(
+        PlaybackIdentity identity,
+        long positionTicks,
+        DateTimeOffset observedAt)
+    {
+        public PlaybackIdentity Identity { get; } = identity;
+        public long LastPositionTicks { get; private set; } = positionTicks;
+        public DateTimeOffset LastObservedAt { get; private set; } = observedAt;
+        public long WatchedTicks { get; private set; }
+
+        public bool Matches(PlaybackIdentity candidate)
+            => string.Equals(Identity.Token, candidate.Token, StringComparison.Ordinal)
+               && (string.IsNullOrWhiteSpace(Identity.PlaybackSessionId)
+                   || string.IsNullOrWhiteSpace(candidate.PlaybackSessionId)
+                   || string.Equals(
+                       Identity.PlaybackSessionId,
+                       candidate.PlaybackSessionId,
+                       StringComparison.Ordinal));
+
+        public void Observe(long positionTicks, DateTimeOffset observedAt)
+        {
+            if (positionTicks > LastPositionTicks)
+            {
+                var positionDelta = positionTicks - LastPositionTicks;
+                var elapsed = observedAt > LastObservedAt
+                    ? (observedAt - LastObservedAt).Ticks
+                    : 0;
+                var delta = Math.Min(positionDelta, elapsed);
+                WatchedTicks = WatchedTicks > long.MaxValue - delta
+                    ? long.MaxValue
+                    : WatchedTicks + delta;
+            }
+            LastPositionTicks = positionTicks;
+            LastObservedAt = observedAt;
+        }
+    }
+
+    private enum PlaybackGraceState
+    {
+        Unknown,
+        Pending,
+        Reached,
+        Stale,
+    }
 }

@@ -29,14 +29,15 @@ public sealed class MediaMaterializationCache(IOptions<StreamarrOptions> options
         string releaseId,
         MediaFileCandidate candidate,
         Func<CancellationToken, Task<ResolvedMediaFile>> materialize,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? variant = null)
     {
         var maxEntries = options.Value.MediaMaterializationCacheMaxEntries;
         var maxWeightBytes = (long)options.Value.MediaMaterializationCacheSizeMb * 1024 * 1024;
         if (maxEntries == 0 || maxWeightBytes == 0)
             return await materialize(ct);
 
-        var key = ComputeKey(releaseId, candidate);
+        var key = ComputeKey(releaseId, candidate, variant);
         if (_entries.TryGetValue(key, out var cached))
             return cached.File;
 
@@ -111,10 +112,16 @@ public sealed class MediaMaterializationCache(IOptions<StreamarrOptions> options
             : resultWeight + keyAndBookkeeping;
     }
 
-    internal static string ComputeKey(string releaseId, MediaFileCandidate candidate)
+    /// <param name="variant">
+    /// Distinguishes different selections from the same payload — e.g. the episode
+    /// chosen inside a season pack's single RAR set, where releaseId + candidate are
+    /// identical for every episode ("s01e15"). Null for single-payload releases.
+    /// </param>
+    internal static string ComputeKey(string releaseId, MediaFileCandidate candidate, string? variant = null)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         Append(releaseId);
+        Append(variant ?? string.Empty);
         Append(candidate.DisplayName);
         Append(candidate.IsRarWrapped ? "rar" : "direct");
         Append(candidate.Files.Count.ToString(CultureInfo.InvariantCulture));

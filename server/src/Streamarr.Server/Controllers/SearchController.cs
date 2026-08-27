@@ -200,7 +200,7 @@ public class SearchController(
         Releases = releases.Select(release => ToReleaseDto(release, addReleaseScoreToName)).ToArray(),
     };
 
-    private static ReleaseDto ToReleaseDto(Release release, bool addScoreToName) => new()
+    internal static ReleaseDto ToReleaseDto(Release release, bool addScoreToName) => new()
     {
         ReleaseId = release.ReleaseId,
         Title = release.Title,

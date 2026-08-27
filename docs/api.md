@@ -27,7 +27,7 @@ credential transports, resolved by
 
 | Mode | Token | Scope |
 |---|---|---|
-| **Machine / API key** | The static bootstrap key (`Streamarr:ApiKey`) or a key minted via `POST /config/apikeys`. | `search`, `resolve`, two-phase `playback-sessions`, `events`, `caps`, and shallow `health`. **Not** `/config`, `/debug`, repair administration, session listing, or metrics. |
+| **Machine / API key** | The static bootstrap key (`Streamarr:ApiKey`) or a key minted via `POST /config/apikeys`. | `search`, `resolve`, two-phase `playback-sessions`, release `local-availability`, `events`, `caps`, and shallow `health`. **Not** `/config`, `/debug`, repair administration, session listing, or metrics. |
 | **Browser admin session** | The HttpOnly, `SameSite=Strict` cookie set by `POST /auth/login`. | Everything, including `/config/*` and `/debug/search`. Unsafe requests additionally require an exact same-origin `Origin` header. |
 | **Non-browser admin session** | A short-lived JWT from `POST /auth/login`, sent as a bearer token. | The same admin scope; retained for CLI and API clients. |
 
@@ -161,7 +161,18 @@ The server does not issue one indexer request per episode. A season is searched 
 then parsed episode coordinates are distributed over the complete TMDB episode directory.
 Episodes with no accepted release remain in the response with `"releases": []`, allowing
 clients to show the complete season and distinguish “not found” from missing metadata.
-Season-pack matching is intentionally deferred.
+
+**Season packs are matched.** A release whose name parses as a full-season pack
+(`Show.S01`, `Show Season 1`) is overlaid onto every canonical episode of that season and
+registered under each episode work. Resolving it with an episode `workId` streams exactly
+that episode's payload: the episode's own file or RAR set inside the NZB when names carry
+episode numbering, or — for a monolithic RAR set — the matching stored file inside the
+archive, located byte-exactly through the RAR header chain (no extraction; seeking stays
+pure offset arithmetic). A pack that does not contain the requested episode fails the
+resolve with `no_playable_file` rather than ever streaming a wrong episode. Known
+limitations: multi-season packs (`S01-S05`) are only overlaid onto their first season, and
+packs whose *inner* file names are fully obfuscated cannot be episode-matched and are
+refused for safety.
 
 The series-search `limit` is constrained to `1..3`. The season endpoint accepts the same
 optional `profileId` ranking override as `/search` and returns per-indexer diagnostics in
@@ -394,6 +405,18 @@ playback, and `404 unknown_ephemeral_file` if no live file exists for the token.
 hard-TTL sweep and LRU eviction, this guard protects in-flight streams; use
 `POST /sessions/{token}/close` when a stream must be torn down regardless.
 
+### `POST /api/v1/releases/local-availability`
+
+Machine-authenticated, user-scoped lookup used by the Jellyfin plugin before it projects
+episode versions. The request carries 1–200 exact `workIds`, `client`, and `requestedById`;
+the response lists up to 20 matching, unexpired sessions per work that have a pre-download file,
+with state `ready` or `downloading`. When the release is still registered, its public metadata is
+included so Jellyfin can transiently expose a local release even when it fell outside the normal
+top-20 projection; NZB locations are never returned. Jellyfin keeps Core's release ranking within
+each state but places ready releases first, then in-progress local releases, and prefixes their
+version names with `[D]` or `[~]`. A failed lookup is treated as no local information, preserving
+normal ranking.
+
 ---
 
 ## 7. Events
@@ -597,14 +620,21 @@ take effect immediately; other scalar changes take effect on restart.
   "currentFileThresholdSeconds": 10,
   "downloadNextEpisode": true,
   "nextEpisodeThresholdPercent": 75,
+  "preferSimilarNextEpisodeRelease": true,
+  "nextEpisodeReleaseSimilarityThresholdPercent": 75,
   "maxConcurrentDownloads": 1
 }
 ```
 
 Current-file work completes the already requested session after its watch-time grace period.
 Next-episode work resolves the immediate canonical TMDB episode after the configured watch
-percentage and admits it at lower retention priority. Both share the normal ephemeral TTL and
-logical byte budget; background NNTP transfers use low priority so playback traffic wins.
+percentage and admits it at lower retention priority. When release continuity is enabled, the
+closest eligible release title at or above the configured similarity threshold is preferred; if
+none qualifies, the normal highest-ranked release remains the fallback. Explicit, non-overlapping
+language tags never qualify as continuous even when release group and quality otherwise match.
+Both job types share the
+normal ephemeral TTL and logical byte budget; background NNTP transfers use low priority so
+playback traffic wins.
 
 ### Notifications — `/api/v1/config/notifications`
 

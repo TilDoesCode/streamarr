@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.13.0.0",
+    "version": "0.14.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Add configurable low-priority pre-downloads that finish the current file after a playback grace period and prepare the next TV episode after a watch-progress threshold, with live job status, article maps, cache retention priorities, and disk-space safeguards. Add a bounded, sanitized operator log viewer that correlates Core events with streams and can optionally merge relevant Jellyfin server logs. Add native Jellyfin download support for Streamarr items through the standard permission-aware download endpoint. Harden NZB validation, multi-provider attempt reporting, and stream diagnostics, and improve series artwork compatibility."
+    "changelog": "Add season pack support: rank multi-episode and full-season releases correctly, resolve the right episode from a pack, and prefer a next-episode release from a similar pack when pre-downloading ahead. Add mid-stream release switching so a session can move to a better-matched release without dropping playback, with race-safe pre-download coordination and clearer failure reporting. Surface locally available and in-progress releases from Core to the Jellyfin plugin so search results reflect what's already downloading or ready. Consolidate the web dashboard's Ephemeral Files, Streaming History, and Stream Stats pages into a single tabbed Sessions view, and rename the Sessions nav item to Streams."
 }

@@ -31,7 +31,9 @@ public sealed class ActiveSession
     private long _runTimeTicks;
     private int _openStreamCount;
     private int _closed;
+    private int _initialMediaByteRecorded;
     private int _retentionPriority;
+    private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly TaskCompletionSource<bool> _openingCompleted = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _lifecycleGate = new();
@@ -107,6 +109,10 @@ public sealed class ActiveSession
     // SessionStream checks this for every body read. Keep the playback hot path lock-free; the
     // lifecycle gate is still used where open/close admission must be serialized.
     public bool IsClosed => Volatile.Read(ref _closed) != 0;
+    internal CancellationToken LifetimeToken => _lifetimeCancellation.Token;
+
+    internal bool TryRecordInitialMediaByte()
+        => Interlocked.Exchange(ref _initialMediaByteRecorded, 1) == 0;
 
     /// <summary>
     /// True while at least one HTTP stream is open over this file. A manual purge refuses to
@@ -298,6 +304,7 @@ public sealed class ActiveSession
             Volatile.Write(ref _closed, 1);
             Session.State = SessionState.Closed;
         }
+        _lifetimeCancellation.Cancel();
         PreDownloadCache?.Dispose();
         _openingCompleted.TrySetResult(false);
     }
@@ -320,6 +327,7 @@ public sealed class ActiveSession
             Volatile.Write(ref _closed, 1);
             Session.State = SessionState.Closed;
         }
+        _lifetimeCancellation.Cancel();
         PreDownloadCache?.Dispose();
         _openingCompleted.TrySetResult(false);
         return true;
@@ -327,6 +335,8 @@ public sealed class ActiveSession
 }
 
 public readonly record struct SessionAdmission(ActiveSession Session, bool Created);
+
+public readonly record struct LocalReleaseAvailability(string WorkId, string ReleaseId, string State);
 
 /// <summary>Result of a manual ephemeral-file purge request.</summary>
 public enum PurgeOutcome
@@ -340,6 +350,12 @@ public enum PurgeOutcome
     /// <summary>The idle file was purged from the cache.</summary>
     Purged,
 }
+
+internal sealed record SupersededSession(
+    string Token,
+    string ReleaseId,
+    string? PreDownloadJobId,
+    long PreDownloadedBytes);
 
 /// <summary>
 /// Owns the resolve → stream → close lifecycle: issues opaque unguessable stream
@@ -476,6 +492,8 @@ public sealed class SessionManager(
                     {
                         FinalState = "reused",
                         CloseReason = $"reused session {reusable.Token[..8]} for release {releaseId}",
+                        ResolvedReleaseId = reusable.Session.ReleaseId,
+                        ResolvedTitle = reusable.Title,
                     });
                 }
 
@@ -927,7 +945,8 @@ public sealed class SessionManager(
         {
             FinalState = finalState,
             CloseReason = reason,
-            Title = session.Title,
+            ResolvedReleaseId = session.Session.ReleaseId,
+            ResolvedTitle = session.Title,
             Container = session.File.Container,
             SizeBytes = session.File.SizeBytes,
             BytesServed = session.BytesServed,
@@ -1027,6 +1046,102 @@ public sealed class SessionManager(
         return true;
     }
 
+    internal IReadOnlyList<SupersededSession> SupersedeOtherReleases(
+        ActiveSession selected,
+        int graceSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(selected);
+        var requesterId = selected.Session.RequestedById;
+        var client = selected.Session.Client;
+        if (string.IsNullOrWhiteSpace(requesterId)
+            || string.IsNullOrWhiteSpace(client)
+            || !CanonicalTmdbWorkId.TryNormalize(selected.Session.WorkId, out var workId))
+        {
+            return [];
+        }
+
+        List<SupersededSession> removed = [];
+        lock (_createGate)
+        {
+            if (!_sessions.TryGetValue(selected.Token, out var current)
+                || !ReferenceEquals(current, selected))
+            {
+                return [];
+            }
+
+            foreach (var candidate in _sessions.Values
+                         .Where(candidate => candidate.Token != selected.Token
+                                             && candidate.Session.ReleaseId != selected.Session.ReleaseId
+                                             && CanonicalTmdbWorkId.TryNormalize(
+                                                 candidate.Session.WorkId,
+                                                 out var candidateWorkId)
+                                             && candidateWorkId == workId
+                                             && candidate.Session.Client == client
+                                             && candidate.Session.RequestedById == requesterId)
+                         .OrderBy(candidate => candidate.Session.CreatedAt)
+                         .ThenBy(candidate => candidate.Token, StringComparer.Ordinal)
+                         .ToArray())
+            {
+                if (!_sessions.TryRemove(
+                        new KeyValuePair<string, ActiveSession>(candidate.Token, candidate)))
+                {
+                    continue;
+                }
+
+                var preDownloadedBytes = candidate.PreDownloadCache?.DownloadedBytes ?? 0;
+                var preDownloadState = candidate.PreDownloadCache switch
+                {
+                    null => "none",
+                    { IsComplete: true } => "completed",
+                    { IsCancelled: true } => "cancelled",
+                    _ => "downloading",
+                };
+                var reason = $"release {candidate.Session.ReleaseId} was superseded by {selected.Session.ReleaseId} after the {graceSeconds}-second playback grace period";
+
+                if (historyRecorder is not null && candidate.StreamAttemptId is { } attemptId)
+                {
+                    historyRecorder.AppendEvents(attemptId,
+                    [
+                        new StreamEventWrite(
+                            _time.GetUtcNow(),
+                            "lifecycle",
+                            "release",
+                            "release-superseded",
+                            reason),
+                    ]);
+                }
+
+                candidate.MarkClosed();
+                metrics?.SessionClosed();
+                RecordHistoryClose(candidate, "purged", reason);
+                removed.Add(new SupersededSession(
+                    candidate.Token,
+                    candidate.Session.ReleaseId,
+                    candidate.PreDownloadJobId,
+                    preDownloadedBytes));
+
+                using var scope = logger.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal)
+                {
+                    [LogPropertyNames.ReleaseId] = candidate.Session.ReleaseId,
+                    [LogPropertyNames.WorkId] = workId,
+                    [LogPropertyNames.StreamTokenFingerprint] = LogSanitizer.FingerprintToken(candidate.Token),
+                });
+                logger.LogInformation(
+                    "Purged superseded release {OldReleaseId} after requester {RequestedById} on {Client} selected {NewReleaseId} for work {WorkId} and passed the {GraceSeconds}-second playback grace; pre-download state was {PreDownloadState} ({PreDownloadedBytes} bytes)",
+                    candidate.Session.ReleaseId,
+                    requesterId,
+                    client,
+                    selected.Session.ReleaseId,
+                    workId,
+                    graceSeconds,
+                    preDownloadState,
+                    preDownloadedBytes);
+            }
+        }
+
+        return removed;
+    }
+
     /// <summary>
     /// Manually purges one ephemeral file, refusing to evict a file that is being actively
     /// streamed so an operator cannot tear playback out from under a client. Unlike
@@ -1060,6 +1175,36 @@ public sealed class SessionManager(
 
     public IReadOnlyList<ActiveSession> ListSessions()
         => _sessions.Values.OrderBy(s => s.Session.CreatedAt).ToList();
+
+    public IReadOnlyList<LocalReleaseAvailability> ListLocalReleaseAvailability(
+        IReadOnlySet<string> workIds,
+        string client,
+        string requestedById)
+    {
+        ArgumentNullException.ThrowIfNull(workIds);
+        ArgumentException.ThrowIfNullOrWhiteSpace(client);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestedById);
+        var now = _time.GetUtcNow();
+        return _sessions.Values
+            .Where(session => workIds.Contains(session.Session.WorkId)
+                              && !session.IsExpired(now)
+                              && string.Equals(session.Session.Client, client, StringComparison.Ordinal)
+                              && string.Equals(session.Session.RequestedById, requestedById, StringComparison.Ordinal)
+                              && session.PreDownloadCache is { IsCancelled: false })
+            .Select(session => new LocalReleaseAvailability(
+                session.Session.WorkId,
+                session.Session.ReleaseId,
+                session.PreDownloadCache!.IsComplete ? "ready" : "downloading"))
+            .GroupBy(release => (release.WorkId, release.ReleaseId))
+            .Select(group => new LocalReleaseAvailability(
+                group.Key.WorkId,
+                group.Key.ReleaseId,
+                group.Any(release => release.State == "ready") ? "ready" : "downloading"))
+            .OrderBy(release => release.WorkId, StringComparer.Ordinal)
+            .ThenByDescending(release => release.State == "ready")
+            .ThenBy(release => release.ReleaseId, StringComparer.Ordinal)
+            .ToArray();
+    }
 
     /// <summary>Removes sessions whose hard creation-based TTL has lapsed.</summary>
     public int SweepExpired()
@@ -1182,7 +1327,6 @@ internal sealed class SessionStream(
     Action<Exception>? onReadFailure = null) : Stream
 {
     private int _disposed;
-    private int _firstByteRecorded;
     public override bool CanRead => true;
     public override bool CanSeek => inner.CanSeek;
     public override bool CanWrite => false;
@@ -1199,10 +1343,14 @@ internal sealed class SessionStream(
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(session.IsClosed, this);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            session.LifetimeToken);
+        var readCancellationToken = linkedCancellation.Token;
         int read;
         try
         {
-            read = await inner.ReadAsync(buffer, cancellationToken);
+            read = await inner.ReadAsync(buffer, readCancellationToken);
         }
         catch (Exception e)
         {
@@ -1213,7 +1361,7 @@ internal sealed class SessionStream(
         {
             if (openMs is { } start
                 && session.Timeline is { } timeline
-                && Interlocked.Exchange(ref _firstByteRecorded, 1) == 0)
+                && session.TryRecordInitialMediaByte())
             {
                 // Gap between this stream HTTP request opening and its first delivered byte
                 // (NNTP article fetch + yEnc decode, or a seek's interpolation search).
@@ -1225,7 +1373,7 @@ internal sealed class SessionStream(
             session.Touch();
 
             if (pacer is not null)
-                await pacer.PaceAsync(read, cancellationToken);
+                await pacer.PaceAsync(read, readCancellationToken);
         }
 
         return read;

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Streamarr.Core.Media;
 using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
@@ -14,6 +15,7 @@ public sealed class WatchEventService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     TimeProvider time,
     IOptions<StreamarrOptions> options,
+    IReleaseStore releaseStore,
     Services.PushoverNotificationService? notifications = null,
     Services.PreDownloadCoordinator? preDownloads = null)
 {
@@ -25,7 +27,11 @@ public sealed class WatchEventService(
         try
         {
             await using var db = await dbFactory.CreateDbContextAsync(ct);
-            var workId = write.WorkId ?? string.Empty;
+            var registration = releaseStore.Get(write.ReleaseId, write.WorkId);
+            var workId = write.WorkId ?? registration?.WorkId ?? string.Empty;
+            var title = string.IsNullOrWhiteSpace(write.Title)
+                ? registration?.Release.Title ?? string.Empty
+                : write.Title.Trim();
             var source = write.Source ?? string.Empty;
             var receivedAt = time.GetUtcNow();
 
@@ -47,6 +53,8 @@ public sealed class WatchEventService(
                     existing.PositionTicks = write.PositionTicks ?? 0;
                     existing.DurationTicks = write.DurationTicks ?? 0;
                     existing.SessionToken = write.SessionToken ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(title))
+                        existing.Title = title;
                     existing.ReceivedAt = receivedAt;
                     existing.ExternalUserName = write.ExternalUserName ?? string.Empty;
                     existing.DeviceName = write.DeviceName ?? string.Empty;
@@ -62,6 +70,7 @@ public sealed class WatchEventService(
             {
                 ReleaseId = write.ReleaseId,
                 WorkId = workId,
+                Title = title,
                 Event = write.Event,
                 PositionTicks = write.PositionTicks ?? 0,
                 DurationTicks = write.DurationTicks ?? 0,
@@ -148,6 +157,7 @@ public sealed record WatchEventWrite
 {
     public required string ReleaseId { get; init; }
     public string? WorkId { get; init; }
+    public string? Title { get; init; }
     public required string Event { get; init; }
     public long? PositionTicks { get; init; }
     public long? DurationTicks { get; init; }

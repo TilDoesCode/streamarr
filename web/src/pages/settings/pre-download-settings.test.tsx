@@ -11,6 +11,8 @@ const defaultConfig = {
   currentFileThresholdSeconds: 10,
   downloadNextEpisode: true,
   nextEpisodeThresholdPercent: 75,
+  preferSimilarNextEpisodeRelease: false,
+  nextEpisodeReleaseSimilarityThresholdPercent: 75,
   maxConcurrentDownloads: 1,
 };
 
@@ -41,9 +43,17 @@ describe("PreDownloadSettings", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Background caching is paused");
     expect(screen.getByRole("switch", { name: "Download the current file" })).toBeDisabled();
     expect(screen.getByRole("switch", { name: "Download the next episode" })).toBeDisabled();
+    expect(screen.getByRole("switch", {
+      name: "Prefer a similar next-episode release",
+    })).toBeDisabled();
     expect(screen.getByLabelText("Playback grace period")).toHaveValue(10);
     expect(screen.getByLabelText("Playback grace period")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByLabelText("Watch-progress trigger")).toHaveValue(75);
+    expect(screen.getByLabelText("Minimum title similarity")).toHaveValue(75);
+    expect(screen.getByLabelText("Minimum title similarity")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(screen.getByLabelText("Concurrent pre-downloads")).toHaveValue(1);
     expect(screen.getByText("Lower than explicit playback")).toBeInTheDocument();
     expect(screen.getByText("Shared ephemeral hard TTL")).toBeInTheDocument();
@@ -56,6 +66,10 @@ describe("PreDownloadSettings", () => {
     await user.click(await screen.findByRole("switch", { name: "Enable pre-download" }));
     await replaceNumber(user, screen.getByLabelText("Playback grace period"), "20");
     await replaceNumber(user, screen.getByLabelText("Watch-progress trigger"), "80");
+    await user.click(screen.getByRole("switch", {
+      name: "Prefer a similar next-episode release",
+    }));
+    await replaceNumber(user, screen.getByLabelText("Minimum title similarity"), "82");
     await replaceNumber(user, screen.getByLabelText("Concurrent pre-downloads"), "2");
     await user.click(screen.getByRole("button", { name: "Save pre-download settings" }));
 
@@ -66,12 +80,19 @@ describe("PreDownloadSettings", () => {
       currentFileThresholdSeconds: 20,
       downloadNextEpisode: true,
       nextEpisodeThresholdPercent: 80,
+      preferSimilarNextEpisodeRelease: true,
+      nextEpisodeReleaseSimilarityThresholdPercent: 82,
       maxConcurrentDownloads: 2,
     });
   });
 
   it("keeps a rule value while its switch is disabled", async () => {
-    config.enabled = true;
+    config = {
+      ...config,
+      enabled: true,
+      preferSimilarNextEpisodeRelease: true,
+      nextEpisodeReleaseSimilarityThresholdPercent: 88,
+    };
     const user = userEvent.setup();
     renderWithProviders(<PreDownloadSettings />);
 
@@ -79,6 +100,10 @@ describe("PreDownloadSettings", () => {
     await user.click(nextEpisode);
 
     expect(screen.getByLabelText("Watch-progress trigger")).toHaveAttribute("readonly");
+    expect(screen.getByRole("switch", {
+      name: "Prefer a similar next-episode release",
+    })).toBeDisabled();
+    expect(screen.getByLabelText("Minimum title similarity")).toHaveAttribute("readonly");
     await user.click(screen.getByRole("button", { name: "Save pre-download settings" }));
 
     await waitFor(() => expect(saved).toBeDefined());
@@ -86,6 +111,38 @@ describe("PreDownloadSettings", () => {
       enabled: true,
       downloadNextEpisode: false,
       nextEpisodeThresholdPercent: 75,
+      preferSimilarNextEpisodeRelease: true,
+      nextEpisodeReleaseSimilarityThresholdPercent: 88,
+    });
+  });
+
+  it("keeps the similarity threshold while release continuity is disabled", async () => {
+    config = {
+      ...config,
+      enabled: true,
+      preferSimilarNextEpisodeRelease: true,
+      nextEpisodeReleaseSimilarityThresholdPercent: 91,
+    };
+    const user = userEvent.setup();
+    renderWithProviders(<PreDownloadSettings />);
+
+    const releaseContinuity = await screen.findByRole("switch", {
+      name: "Prefer a similar next-episode release",
+    });
+    expect(releaseContinuity).toBeChecked();
+    expect(screen.getByLabelText("Minimum title similarity")).not.toHaveAttribute("readonly");
+
+    await user.click(releaseContinuity);
+
+    expect(releaseContinuity).not.toBeChecked();
+    expect(screen.getByLabelText("Minimum title similarity")).toHaveValue(91);
+    expect(screen.getByLabelText("Minimum title similarity")).toHaveAttribute("readonly");
+    await user.click(screen.getByRole("button", { name: "Save pre-download settings" }));
+
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).toMatchObject({
+      preferSimilarNextEpisodeRelease: false,
+      nextEpisodeReleaseSimilarityThresholdPercent: 91,
     });
   });
 
@@ -97,11 +154,16 @@ describe("PreDownloadSettings", () => {
     await screen.findByRole("switch", { name: "Enable pre-download" });
     await replaceNumber(user, screen.getByLabelText("Playback grace period"), "3601");
     await replaceNumber(user, screen.getByLabelText("Watch-progress trigger"), "0");
+    await user.click(screen.getByRole("switch", {
+      name: "Prefer a similar next-episode release",
+    }));
+    await replaceNumber(user, screen.getByLabelText("Minimum title similarity"), "101");
     await replaceNumber(user, screen.getByLabelText("Concurrent pre-downloads"), "9");
     await user.click(screen.getByRole("button", { name: "Save pre-download settings" }));
 
     expect(await screen.findByText("Must not exceed 3600 seconds")).toBeInTheDocument();
     expect(screen.getByText("Must be at least 1 percent")).toBeInTheDocument();
+    expect(screen.getByText("Must not exceed 100 percent")).toBeInTheDocument();
     expect(screen.getByText("Must not exceed 8")).toBeInTheDocument();
     expect(saved).toBeUndefined();
   });
@@ -114,6 +176,10 @@ describe("PreDownloadSettings", () => {
     await screen.findByRole("switch", { name: "Enable pre-download" });
     await replaceNumber(user, screen.getByLabelText("Playback grace period"), "0");
     await replaceNumber(user, screen.getByLabelText("Watch-progress trigger"), "100");
+    await user.click(screen.getByRole("switch", {
+      name: "Prefer a similar next-episode release",
+    }));
+    await replaceNumber(user, screen.getByLabelText("Minimum title similarity"), "0");
     await replaceNumber(user, screen.getByLabelText("Concurrent pre-downloads"), "8");
     await user.click(screen.getByRole("button", { name: "Save pre-download settings" }));
 
@@ -121,6 +187,8 @@ describe("PreDownloadSettings", () => {
     expect(saved).toMatchObject({
       currentFileThresholdSeconds: 0,
       nextEpisodeThresholdPercent: 100,
+      preferSimilarNextEpisodeRelease: true,
+      nextEpisodeReleaseSimilarityThresholdPercent: 0,
       maxConcurrentDownloads: 8,
     });
   });

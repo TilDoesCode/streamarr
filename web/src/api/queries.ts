@@ -278,7 +278,13 @@ export function useCloseSession() {
   return useMutation({
     mutationFn: (token: string) =>
       apiFetch<void>(`/sessions/${encodeURIComponent(token)}/close`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.sessions }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.sessions }),
+        qc.invalidateQueries({ queryKey: queryKeys.ephemeralFiles }),
+        qc.invalidateQueries({ queryKey: queryKeys.streamRecords }),
+      ]);
+    },
   });
 }
 
@@ -352,16 +358,27 @@ export function usePurgeEphemeralFile() {
   return useMutation({
     mutationFn: (token: string) =>
       apiFetch<void>(`/ephemeral-files/${encodeURIComponent(token)}/purge`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.ephemeralFiles }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.sessions }),
+        qc.invalidateQueries({ queryKey: queryKeys.ephemeralFiles }),
+        qc.invalidateQueries({ queryKey: queryKeys.streamRecords }),
+      ]);
+    },
   });
 }
 
 /** Playback events with the external Jellyfin account attached. */
-export function useStreamingHistory(limit = 200) {
+export function useStreamingHistory(
+  limit = 200,
+  { enabled = true, refetchInterval }: { enabled?: boolean; refetchInterval?: number | false } = {},
+) {
   return useQuery({
     queryKey: [...queryKeys.streamingHistory, limit],
     queryFn: ({ signal }) =>
       apiFetch<StreamingHistoryResponse[]>("/events", { query: { limit }, signal }),
+    enabled,
+    refetchInterval,
   });
 }
 
@@ -373,7 +390,7 @@ export function useStreamingHistory(limit = 200) {
 // stream can be dissected after the fact.
 
 /** The retained stream-attempt list (newest first), for the Sessions page's History tab. */
-export function useStreamRecords(limit = 50, { enabled = true, refetchInterval }: { enabled?: boolean; refetchInterval?: number } = {}) {
+export function useStreamRecords(limit = 50, { enabled = true, refetchInterval }: { enabled?: boolean; refetchInterval?: number | false } = {}) {
   return useQuery({
     queryKey: [...queryKeys.streamRecords, limit],
     queryFn: ({ signal }) =>

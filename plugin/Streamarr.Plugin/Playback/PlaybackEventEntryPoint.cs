@@ -66,10 +66,18 @@ public sealed class PlaybackEventEntryPoint(
         if (string.IsNullOrWhiteSpace(releaseId))
             return attribution;
 
+        var releaseTitle = attribution?.ReleaseTitle;
+        if (string.IsNullOrWhiteSpace(releaseTitle))
+            releaseTitle = entry?.Work.Releases.FirstOrDefault(release =>
+                string.Equals(release.ReleaseId, releaseId, StringComparison.Ordinal))?.Title;
+        if (string.IsNullOrWhiteSpace(releaseTitle))
+            releaseTitle = item.Name;
+
         var request = new EventRequest
         {
             ReleaseId = releaseId,
             WorkId = attribution?.WorkId ?? entry?.Work.WorkId,
+            Title = releaseTitle,
             Event = kind,
             PositionTicks = e.PlaybackPositionTicks,
             DurationTicks = item.RunTimeTicks,

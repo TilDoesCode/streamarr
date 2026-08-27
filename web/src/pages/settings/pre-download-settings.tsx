@@ -32,6 +32,12 @@ const schema = z.object({
     .int("Must be a whole number")
     .min(1, "Must be at least 1 percent")
     .max(100, "Must not exceed 100 percent"),
+  preferSimilarNextEpisodeRelease: z.boolean(),
+  nextEpisodeReleaseSimilarityThresholdPercent: z.coerce
+    .number()
+    .int("Must be a whole number")
+    .min(0, "Cannot be negative")
+    .max(100, "Must not exceed 100 percent"),
   maxConcurrentDownloads: z.coerce
     .number()
     .int("Must be a whole number")
@@ -47,6 +53,8 @@ const defaults: Values = {
   currentFileThresholdSeconds: 10,
   downloadNextEpisode: true,
   nextEpisodeThresholdPercent: 75,
+  preferSimilarNextEpisodeRelease: false,
+  nextEpisodeReleaseSimilarityThresholdPercent: 75,
   maxConcurrentDownloads: 1,
 };
 
@@ -68,6 +76,12 @@ export function PreDownloadSettings() {
       downloadNextEpisode: query.data.downloadNextEpisode ?? defaults.downloadNextEpisode,
       nextEpisodeThresholdPercent:
         query.data.nextEpisodeThresholdPercent ?? defaults.nextEpisodeThresholdPercent,
+      preferSimilarNextEpisodeRelease:
+        query.data.preferSimilarNextEpisodeRelease
+        ?? defaults.preferSimilarNextEpisodeRelease,
+      nextEpisodeReleaseSimilarityThresholdPercent:
+        query.data.nextEpisodeReleaseSimilarityThresholdPercent
+        ?? defaults.nextEpisodeReleaseSimilarityThresholdPercent,
       maxConcurrentDownloads:
         query.data.maxConcurrentDownloads ?? defaults.maxConcurrentDownloads,
     });
@@ -76,6 +90,7 @@ export function PreDownloadSettings() {
   const enabled = form.watch("enabled");
   const downloadCurrentFile = form.watch("downloadCurrentFile");
   const downloadNextEpisode = form.watch("downloadNextEpisode");
+  const preferSimilarNextEpisodeRelease = form.watch("preferSimilarNextEpisodeRelease");
 
   async function save(raw: Values) {
     const parsed = schema.parse(raw);
@@ -187,17 +202,62 @@ export function PreDownloadSettings() {
           control={form.control}
           name="downloadNextEpisode"
         >
-          <NumberField
-            id="nextEpisodeThresholdPercent"
-            label="Watch-progress trigger"
-            unit="percent"
-            hint="Uses client-reported watch position and runtime, not bytes downloaded or cached."
-            error={form.formState.errors.nextEpisodeThresholdPercent?.message}
-            disabled={!enabled || !downloadNextEpisode}
-            min={1}
-            max={100}
-            input={form.register("nextEpisodeThresholdPercent")}
-          />
+          <div className="space-y-6">
+            <NumberField
+              id="nextEpisodeThresholdPercent"
+              label="Watch-progress trigger"
+              unit="percent"
+              hint="Uses client-reported watch position and runtime, not bytes downloaded or cached."
+              error={form.formState.errors.nextEpisodeThresholdPercent?.message}
+              disabled={!enabled || !downloadNextEpisode}
+              min={1}
+              max={100}
+              input={form.register("nextEpisodeThresholdPercent")}
+            />
+
+            <section className="space-y-4 border-t pt-5" aria-labelledby="releaseContinuityTitle">
+              <div className="flex items-start justify-between gap-5">
+                <div className="space-y-1.5">
+                  <p id="releaseContinuityTitle" className="text-sm font-medium">
+                    Release continuity
+                  </p>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Prefer a next-episode release whose title resembles the release currently
+                    playing. Normal ranking remains the fallback when no title is similar enough.
+                  </p>
+                </div>
+                <Controller
+                  name="preferSimilarNextEpisodeRelease"
+                  control={form.control}
+                  render={({ field }) => (
+                    <Switch
+                      id="preferSimilarNextEpisodeRelease"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={!enabled || !downloadNextEpisode}
+                      aria-label="Prefer a similar next-episode release"
+                    />
+                  )}
+                />
+              </div>
+
+              <NumberField
+                id="nextEpisodeReleaseSimilarityThresholdPercent"
+                label="Minimum title similarity"
+                unit="percent"
+                hint="75 favors the same release family; 0 accepts the closest language-compatible title."
+                error={
+                  form.formState.errors.nextEpisodeReleaseSimilarityThresholdPercent?.message
+                }
+                disabled={
+                  !enabled || !downloadNextEpisode || !preferSimilarNextEpisodeRelease
+                }
+                min={0}
+                max={100}
+                input={form.register("nextEpisodeReleaseSimilarityThresholdPercent")}
+              />
+            </section>
+          </div>
         </RuleCard>
       </div>
 

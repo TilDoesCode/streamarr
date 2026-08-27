@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Streamarr.Core.Media;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
@@ -7,6 +9,73 @@ namespace Streamarr.Server.Tests.Services;
 
 public sealed class SessionManagerPreDownloadTests
 {
+    [Fact]
+    public async Task LocalReleaseAvailability_IsExactPerWorkClientAndRequester()
+    {
+        var directory = Directory.CreateTempSubdirectory("streamarr-local-release-");
+        var manager = CreateManager(cacheSizeMb: 100, maxSessions: 20);
+        try
+        {
+            var workspace = new PreDownloadWorkspace(
+                Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
+                {
+                    PreDownload = new PreDownloadOptions
+                    {
+                        CachePath = Path.Combine(directory.FullName, "cache"),
+                    },
+                }),
+                new TestHostEnvironment(directory.FullName),
+                NullLogger<PreDownloadWorkspace>.Instance);
+            var ready = manager.GetOrCreateOpeningSession(
+                "ready-release", "work-1", Media(4), "ready", "jellyfin", "user-1").Session;
+            var readyCache = new PreDownloadCacheFile(workspace, ready.Token, 4);
+            Assert.True(ready.AttachPreDownload(readyCache, "job-ready", "nextEpisode", "test", null));
+            await readyCache.DownloadAsync(new MemoryStream([1, 2, 3, 4]), null, CancellationToken.None);
+
+            var downloading = manager.GetOrCreateOpeningSession(
+                "downloading-release", "work-1", Media(4), "ready", "jellyfin", "user-1").Session;
+            Assert.True(downloading.AttachPreDownload(
+                new PreDownloadCacheFile(workspace, downloading.Token, 4),
+                "job-downloading",
+                "nextEpisode",
+                "test",
+                null));
+
+            var otherUser = manager.GetOrCreateOpeningSession(
+                "private-release", "work-1", Media(4), "ready", "jellyfin", "user-2").Session;
+            Assert.True(otherUser.AttachPreDownload(
+                new PreDownloadCacheFile(workspace, otherUser.Token, 4),
+                "job-private",
+                "nextEpisode",
+                "test",
+                null));
+
+            var available = manager.ListLocalReleaseAvailability(
+                new HashSet<string>(["work-1"], StringComparer.Ordinal),
+                "jellyfin",
+                "user-1");
+
+            Assert.Collection(
+                available,
+                release =>
+                {
+                    Assert.Equal("ready-release", release.ReleaseId);
+                    Assert.Equal("ready", release.State);
+                },
+                release =>
+                {
+                    Assert.Equal("downloading-release", release.ReleaseId);
+                    Assert.Equal("downloading", release.State);
+                });
+        }
+        finally
+        {
+            foreach (var session in manager.ListSessions())
+                manager.PurgeSession(session.Token);
+            directory.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void NormalAdmission_WhenByteBudgetIsFull_EvictsBackgroundBeforeOlderNormalSession()
     {
@@ -151,5 +220,13 @@ public sealed class SessionManagerPreDownloadTests
         public override DateTimeOffset GetUtcNow() => _now;
 
         public void Advance(TimeSpan duration) => _now += duration;
+    }
+
+    private sealed class TestHostEnvironment(string root) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Tests";
+        public string ApplicationName { get; set; } = "Streamarr.Tests";
+        public string ContentRootPath { get; set; } = root;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 }

@@ -183,6 +183,34 @@ public sealed class StreamarrApiClient
             .ConfigureAwait(false));
     }
 
+    public async Task<LocalReleaseAvailabilityResponse?> GetLocalReleaseAvailabilityAsync(
+        IReadOnlyList<string> workIds,
+        string client,
+        string requestedById,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(workIds);
+        if (workIds.Count is < 1 or > StreamarrPayloadBounds.MaxLocalAvailabilityWorkIds)
+            throw new ArgumentOutOfRangeException(nameof(workIds));
+        ArgumentException.ThrowIfNullOrWhiteSpace(client);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestedById);
+
+        var response = await SendAsync<LocalReleaseAvailabilityResponse>(
+                HttpMethod.Post,
+                "/api/v1/releases/local-availability",
+                new LocalReleaseAvailabilityRequest
+                {
+                    WorkIds = workIds,
+                    Client = client,
+                    RequestedById = requestedById,
+                },
+                ct,
+                notFoundIsSuccess: true,
+                methodNotAllowedIsSuccess: true)
+            .ConfigureAwait(false);
+        return response is null ? null : StreamarrPayloadBounds.Normalize(response);
+    }
+
     public async Task<ResolveResponse?> ResolveAsync(string releaseId, CancellationToken ct)
         => await ResolveAsync(releaseId, workId: null, ct).ConfigureAwait(false);
 

@@ -16,6 +16,7 @@ public sealed class PlaybackSessionTracker
         string ReleaseId,
         string? WorkId,
         string? SessionToken,
+        string? ReleaseTitle,
         DateTime OpenedUtc);
 
     private readonly ConcurrentDictionary<string, Attribution> _byAlias = new(StringComparer.Ordinal);
@@ -78,6 +79,48 @@ public sealed class PlaybackSessionTracker
         Func<bool>? canAdmit,
         out Attribution attribution,
         params string?[] additionalAliases)
+        => TryTrackSessionCore(
+            itemId,
+            mediaSourceId,
+            releaseId,
+            workId,
+            sessionToken,
+            releaseTitle: null,
+            canAdmit,
+            out attribution,
+            additionalAliases);
+
+    public bool TryTrackSessionWithTitle(
+        Guid itemId,
+        string mediaSourceId,
+        string releaseId,
+        string? workId,
+        string? sessionToken,
+        string? releaseTitle,
+        Func<bool>? canAdmit,
+        out Attribution attribution,
+        params string?[] additionalAliases)
+        => TryTrackSessionCore(
+            itemId,
+            mediaSourceId,
+            releaseId,
+            workId,
+            sessionToken,
+            releaseTitle,
+            canAdmit,
+            out attribution,
+            additionalAliases);
+
+    private bool TryTrackSessionCore(
+        Guid itemId,
+        string mediaSourceId,
+        string releaseId,
+        string? workId,
+        string? sessionToken,
+        string? releaseTitle,
+        Func<bool>? canAdmit,
+        out Attribution attribution,
+        params string?[] additionalAliases)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(mediaSourceId);
         ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
@@ -88,6 +131,7 @@ public sealed class PlaybackSessionTracker
             releaseId,
             workId,
             sessionToken,
+            releaseTitle,
             DateTime.UtcNow);
         lock (_gate)
         {

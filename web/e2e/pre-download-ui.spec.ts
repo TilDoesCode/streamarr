@@ -13,6 +13,7 @@ const CAPTURE_DIR = path.resolve(
 
 const capturePaths = {
   settings: path.join(CAPTURE_DIR, "settings-desktop-light.png"),
+  settingsMobile: path.join(CAPTURE_DIR, "settings-mobile-dark.png"),
   session: path.join(CAPTURE_DIR, "session-diagnostics-desktop-dark.png"),
   ephemeral: path.join(CAPTURE_DIR, "ephemeral-background-mobile-dark.png"),
 };
@@ -167,10 +168,14 @@ test("captures the pre-download settings, session diagnostics, and mobile backgr
     currentFileThresholdSeconds: 10,
     downloadNextEpisode: true,
     nextEpisodeThresholdPercent: 75,
+    preferSimilarNextEpisodeRelease: true,
+    nextEpisodeReleaseSimilarityThresholdPercent: 75,
     maxConcurrentDownloads: 1,
   }));
   await page.route("**/api/v1/sessions", (route) => fulfillGet(route, [sourceSession]));
   await page.route("**/api/v1/ephemeral-files", (route) => fulfillGet(route, ephemeralFiles));
+  await page.route("**/api/v1/streams?**", (route) => fulfillGet(route, []));
+  await page.route("**/api/v1/events?**", (route) => fulfillGet(route, []));
   await page.route("**/api/v1/pre-downloads?**", (route) => fulfillGet(route, [nextEpisodeJob]));
 
   await login(page);
@@ -183,6 +188,10 @@ test("captures the pre-download settings, session diagnostics, and mobile backgr
   await expect(page.getByRole("switch", { name: "Enable pre-download" })).toBeChecked();
   await expect(page.getByLabel("Playback grace period")).toHaveValue("10");
   await expect(page.getByLabel("Watch-progress trigger")).toHaveValue("75");
+  await expect(page.getByRole("switch", {
+    name: "Prefer a similar next-episode release",
+  })).toBeChecked();
+  await expect(page.getByLabel("Minimum title similarity")).toHaveValue("75");
   await settle(page);
   await page.screenshot({
     path: capturePaths.settings,
@@ -195,10 +204,31 @@ test("captures the pre-download settings, session diagnostics, and mobile backgr
     contentType: "image/png",
   });
 
-  // 2. The real session route with a single mocked next-episode job: 75% watch, 38% disk.
+  // 2. The same release-continuity controls remain readable without horizontal overflow on mobile.
   await page.getByRole("button", { name: "Switch to dark mode" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText("Release continuity")).toBeVisible();
+  await expect(page.getByLabel("Minimum title similarity")).toHaveValue("75");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await settle(page);
+  await page.screenshot({
+    path: capturePaths.settingsMobile,
+    fullPage: true,
+    animations: "disabled",
+    caret: "hide",
+  });
+  await testInfo.attach("pre-download release continuity — mobile dark", {
+    path: capturePaths.settingsMobile,
+    contentType: "image/png",
+  });
+
+  // 3. The real session route with a single mocked next-episode job: 75% watch, 38% disk.
+  await page.setViewportSize({ width: 1440, height: 1080 });
   await page.goto(`/sessions/${SOURCE_TOKEN}`);
+  // Pre-download diagnostics now live on their own sub screen rather than the long-scrolling
+  // stream-details page.
+  await page.getByRole("tab", { name: "Pre-downloads" }).click();
   const diagnostics = page.locator('section[aria-label="Pre-download diagnostics"]');
   await expect(diagnostics.getByRole("heading", { name: "Pre-download diagnostics" })).toBeVisible();
   await expect(diagnostics.getByText("S02E07 · Asterion Station — Signal in the Dust")).toBeVisible();
@@ -215,14 +245,16 @@ test("captures the pre-download settings, session diagnostics, and mobile backgr
     contentType: "image/png",
   });
 
-  // 3. Mobile operational view for a lower-retention target with a cancelled partial file.
+  // 4. Mobile operational view for a lower-retention target with a cancelled partial file.
   ephemeralFiles = [backgroundTargetFile];
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/ephemeral");
-  await expect(page.getByRole("heading", { name: "Asterion Station — Signal in the Dust" })).toBeVisible();
-  await expect(page.getByText("background retention")).toBeVisible();
-  await expect(page.getByText("cancelled", { exact: true })).toBeVisible();
-  await expect(page.getByRole("progressbar", { name: "Ephemeral disk pre-download progress" })).toHaveAttribute("aria-valuenow", "42");
+  await page.goto("/sessions");
+  const target = page.getByRole("heading", { name: "Asterion Station — Signal in the Dust" }).locator("xpath=ancestor::article[1]");
+  await expect(target).toBeVisible();
+  await expect(target.getByText("background retention")).toBeVisible();
+  await expect(target.getByText("cancelled", { exact: true })).toBeVisible();
+  await expect(target.getByText("42%", { exact: true })).toBeVisible();
+  await expect(target.getByRole("progressbar", { name: /payload delivered/i })).toHaveAttribute("aria-valuenow", "0");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await settle(page);
   await page.screenshot({

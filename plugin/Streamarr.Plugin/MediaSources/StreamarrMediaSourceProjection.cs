@@ -5,6 +5,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
+using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Library;
 
 namespace Streamarr.Plugin.MediaSources;
@@ -50,6 +51,14 @@ public sealed class StreamarrMediaSourceProjection(
     internal static string ReleaseSourceId(string workId, string releaseId)
         => ReleaseSourceGuid(workId, releaseId).ToString("N", CultureInfo.InvariantCulture);
 
+    internal static IReadOnlyList<ReleaseDto> OrderReleases(
+        string workId,
+        IReadOnlyList<ReleaseDto> releases,
+        LocalReleaseAvailabilitySnapshot availability)
+        => availability.MergeReleases(workId, releases)
+            .OrderByDescending(release => availability.GetState(workId, release.ReleaseId))
+            .ToArray();
+
     /// <summary>Cheap precheck so response fixups can skip native items without a library lookup.</summary>
     public bool Owns(Guid itemId) => itemId != Guid.Empty && store.Peek(itemId) is not null;
 
@@ -72,7 +81,7 @@ public sealed class StreamarrMediaSourceProjection(
             }
         }
 
-        return false;
+        return offers.TryResolveReleaseSource(sourceId, out itemId);
     }
 
     /// <summary>
@@ -87,7 +96,8 @@ public sealed class StreamarrMediaSourceProjection(
         BaseItem item,
         User? user,
         Guid offerOwnerId,
-        out IReadOnlyList<MediaSourceInfo> sources)
+        out IReadOnlyList<MediaSourceInfo> sources,
+        LocalReleaseAvailabilitySnapshot? availability = null)
     {
         ArgumentNullException.ThrowIfNull(item);
         sources = [];
@@ -113,7 +123,9 @@ public sealed class StreamarrMediaSourceProjection(
             return true;
         }
 
-        if (entry.Work.Releases.Count == 0)
+        var local = availability ?? LocalReleaseAvailabilitySnapshot.Empty;
+        var orderedReleases = OrderReleases(entry.Work.WorkId, entry.Work.Releases, local);
+        if (orderedReleases.Count == 0)
         {
             logger.LogDebug(
                 "Declining Streamarr media sources for item {ItemId}: Core returned no releases",
@@ -134,12 +146,24 @@ public sealed class StreamarrMediaSourceProjection(
             item.Id,
             offerOwnerId,
             entry.Work.WorkId,
-            entry.Work.Releases.Select(release => release.ReleaseId).ToArray());
-        sources = entry.Work.Releases
+            orderedReleases.Select(release => release.ReleaseId).ToArray(),
+            local.GetTrustedReleaseIds(entry.Work.WorkId),
+            orderedReleases.GroupBy(release => release.ReleaseId, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().Title,
+                    StringComparer.Ordinal),
+            entry.Work.Releases
+                .Select(release => release.ReleaseId)
+                .ToHashSet(StringComparer.Ordinal));
+        sources = orderedReleases
             .Where(release => capabilities.ContainsKey(release.ReleaseId))
             .Select(release =>
             {
-                var source = MediaSourceMapper.ToUnopenedSource(release, capabilities[release.ReleaseId]);
+                var source = MediaSourceMapper.ToUnopenedSource(
+                    release,
+                    capabilities[release.ReleaseId],
+                    local.GetState(entry.Work.WorkId, release.ReleaseId));
                 source.Id = ReleaseSourceId(entry.Work.WorkId, release.ReleaseId);
                 return source;
             })

@@ -214,6 +214,26 @@ public sealed record ReleaseDto
     public string Health { get; init; } = "unknown";
 }
 
+public sealed record LocalReleaseAvailabilityRequest
+{
+    public IReadOnlyList<string> WorkIds { get; init; } = [];
+    public string Client { get; init; } = string.Empty;
+    public string RequestedById { get; init; } = string.Empty;
+}
+
+public sealed record LocalReleaseAvailabilityResponse
+{
+    public IReadOnlyList<LocalReleaseAvailabilityDto> Releases { get; init; } = [];
+}
+
+public sealed record LocalReleaseAvailabilityDto
+{
+    public string WorkId { get; init; } = string.Empty;
+    public string ReleaseId { get; init; } = string.Empty;
+    public string State { get; init; } = string.Empty;
+    public ReleaseDto? Release { get; init; }
+}
+
 public sealed record QualityDto
 {
     public string? Resolution { get; init; }
@@ -323,6 +343,7 @@ public sealed record EventRequest
 {
     public required string ReleaseId { get; init; }
     public string? WorkId { get; init; }
+    public string? Title { get; init; }
 
     /// <summary>"start" | "progress" | "stop".</summary>
     public required string Event { get; init; }

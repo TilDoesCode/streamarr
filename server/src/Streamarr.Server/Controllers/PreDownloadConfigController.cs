@@ -36,6 +36,12 @@ public sealed class PreDownloadConfigController(PreDownloadConfigService config)
         {
             return Invalid("'nextEpisodeThresholdPercent' must be between 1 and 100.");
         }
+        if (write.NextEpisodeReleaseSimilarityThresholdPercent is
+            < PreDownloadOptions.MinNextEpisodeReleaseSimilarityThresholdPercent
+            or > PreDownloadOptions.MaxNextEpisodeReleaseSimilarityThresholdPercent)
+        {
+            return Invalid("'nextEpisodeReleaseSimilarityThresholdPercent' must be between 0 and 100.");
+        }
         if (write.MaxConcurrentDownloads is < PreDownloadOptions.MinimumConcurrentDownloads
             or > PreDownloadOptions.MaximumConcurrentDownloads)
         {

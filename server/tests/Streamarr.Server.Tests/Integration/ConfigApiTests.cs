@@ -8,10 +8,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Streamarr.Core.Indexers;
+using Streamarr.Core.Media;
 using Streamarr.Core.Providers;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
+using Streamarr.Server.Services;
 using Streamarr.Tests.Shared;
 using Streamarr.Usenet.Nntp.Pooling;
 
@@ -422,6 +424,8 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
             currentFileThresholdSeconds = 25,
             downloadNextEpisode = true,
             nextEpisodeThresholdPercent = 80,
+            preferSimilarNextEpisodeRelease = true,
+            nextEpisodeReleaseSimilarityThresholdPercent = 83,
             maxConcurrentDownloads = 3,
         });
         response.EnsureSuccessStatusCode();
@@ -438,11 +442,15 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(25, body.GetProperty("currentFileThresholdSeconds").GetInt32());
         Assert.True(body.GetProperty("downloadNextEpisode").GetBoolean());
         Assert.Equal(80, body.GetProperty("nextEpisodeThresholdPercent").GetInt32());
+        Assert.True(body.GetProperty("preferSimilarNextEpisodeRelease").GetBoolean());
+        Assert.Equal(83, body.GetProperty("nextEpisodeReleaseSimilarityThresholdPercent").GetInt32());
         Assert.Equal(3, body.GetProperty("maxConcurrentDownloads").GetInt32());
         Assert.False(service.Current.Enabled);
         Assert.False(service.Current.DownloadCurrentFile);
         Assert.Equal(25, service.Current.CurrentFileThresholdSeconds);
         Assert.Equal(80, service.Current.NextEpisodeThresholdPercent);
+        Assert.True(service.Current.PreferSimilarNextEpisodeRelease);
+        Assert.Equal(83, service.Current.NextEpisodeReleaseSimilarityThresholdPercent);
         Assert.Equal(3, service.Current.MaxConcurrentDownloads);
 
         var persisted = await client.GetFromJsonAsync<PreDownloadConfigResponse>(
@@ -455,6 +463,8 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
     [InlineData("currentFileThresholdSeconds", 3601)]
     [InlineData("nextEpisodeThresholdPercent", 0)]
     [InlineData("nextEpisodeThresholdPercent", 101)]
+    [InlineData("nextEpisodeReleaseSimilarityThresholdPercent", -1)]
+    [InlineData("nextEpisodeReleaseSimilarityThresholdPercent", 101)]
     [InlineData("maxConcurrentDownloads", 0)]
     [InlineData("maxConcurrentDownloads", 9)]
     public async Task PreDownload_Put_RejectsInvalidRanges(string property, int value)
@@ -471,11 +481,12 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
     }
 
     [Theory]
-    [InlineData(0, 1, 1)]
-    [InlineData(3600, 100, 8)]
+    [InlineData(0, 1, 0, 1)]
+    [InlineData(3600, 100, 100, 8)]
     public async Task PreDownload_Put_AcceptsRangeBoundaries(
         int currentThreshold,
         int nextThreshold,
+        int similarityThreshold,
         int concurrency)
     {
         using var client = Client();
@@ -483,6 +494,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         {
             currentFileThresholdSeconds = currentThreshold,
             nextEpisodeThresholdPercent = nextThreshold,
+            nextEpisodeReleaseSimilarityThresholdPercent = similarityThreshold,
             maxConcurrentDownloads = concurrency,
         });
 
@@ -582,11 +594,13 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         var releaseId = "rel-contract-" + Guid.NewGuid().ToString("N");
         const long durationTicks = 987_654_321L;
         const string sessionToken = "session-contract-token";
+        const string releaseTitle = "Example.Movie.2026.1080p.WEB-DL-GROUP";
 
         var response = await client.PostAsJsonAsync("/api/v1/events", new
         {
             releaseId,
             workId = "tmdb-movie-1",
+            title = releaseTitle,
             @event = "start",
             positionTicks = 123456789L,
             durationTicks,
@@ -600,6 +614,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         Assert.Equal(releaseId, recent[0].ReleaseId);
         Assert.Equal("start", recent[0].Event);
         Assert.Equal("web", recent[0].Source);
+        Assert.Equal(releaseTitle, recent[0].Title);
         Assert.Equal(durationTicks, recent[0].DurationTicks);
         Assert.Equal(sessionToken, recent[0].SessionToken);
 
@@ -608,6 +623,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
             entry.GetProperty("releaseId").GetString() == releaseId);
         Assert.Equal(durationTicks, listed.GetProperty("durationTicks").GetInt64());
         Assert.Equal(sessionToken, listed.GetProperty("sessionToken").GetString());
+        Assert.Equal(releaseTitle, listed.GetProperty("title").GetString());
     }
 
     [Fact]
@@ -627,6 +643,8 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
             new { releaseId = "negative-duration", @event = "progress", durationTicks = -1L },
             new { releaseId = "long-token", @event = "progress", sessionToken = new string('x', 257) },
             new { releaseId = "control-token", @event = "progress", sessionToken = "valid-prefix\u0001" },
+            new { releaseId = "long-title", @event = "progress", title = new string('x', 1_025) },
+            new { releaseId = "control-title", @event = "progress", title = "valid-prefix\u0001" },
         };
 
         foreach (var payload in invalidPayloads)
@@ -723,6 +741,241 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         await client.DeleteAsync($"/api/v1/config/indexers/{idxId}");
     }
 
+    [Fact]
+    public async Task LocalReleaseAvailability_AcceptsMachineScopeAndValidatesBounds()
+    {
+        using var machine = MachineClient();
+        var response = await machine.PostAsJsonAsync("/api/v1/releases/local-availability", new
+        {
+            workIds = new[] { "tmdb-tv-1-s01e02" },
+            client = "jellyfin",
+            requestedById = "user-1",
+        });
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Array, body.GetProperty("releases").ValueKind);
+
+        response = await machine.PostAsJsonAsync("/api/v1/releases/local-availability", new
+        {
+            workIds = Array.Empty<string>(),
+            client = "jellyfin",
+            requestedById = "user-1",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            "invalid_local_release_availability_request",
+            body.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task LocalReleaseAvailability_ReturnsExactScopedPublicReleaseMetadata()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var otherWorkId = $"availability-a-{suffix}";
+        var workId = $"availability-b-{suffix}";
+        var releaseId = $"availability-release-{suffix}";
+        var missingReleaseId = $"availability-missing-{suffix}";
+        var privateReleaseId = $"availability-private-{suffix}";
+        var sessions = _factory.Services.GetRequiredService<SessionManager>();
+        var workspace = _factory.Services.GetRequiredService<PreDownloadWorkspace>();
+        var releaseStore = _factory.Services.GetRequiredService<IReleaseStore>();
+        var general = _factory.Services.GetRequiredService<GeneralConfigService>();
+        var originalScoreSetting = (await general.GetAsync(CancellationToken.None))
+            .AddReleaseScoreToName;
+        var tokens = new List<string>();
+
+        void AddLocal(string localReleaseId, string requesterId)
+        {
+            var session = sessions.GetOrCreateOpeningSession(
+                localReleaseId,
+                workId,
+                new ResolvedMediaFile
+                {
+                    FileName = "episode.mkv",
+                    Container = "mkv",
+                    SizeBytes = 4,
+                    OpenStream = _ => new MemoryStream([1, 2, 3, 4]),
+                },
+                "ready",
+                "jellyfin",
+                requesterId).Session;
+            Assert.True(session.AttachPreDownload(
+                new PreDownloadCacheFile(workspace, session.Token, 4),
+                $"job-{localReleaseId}",
+                "nextEpisode",
+                "test",
+                null));
+            tokens.Add(session.Token);
+        }
+
+        try
+        {
+            releaseStore.Register(otherWorkId, new Release
+            {
+                ReleaseId = releaseId,
+                Title = "Wrong.Owner.S01E02.720p-GROUP",
+                Indexer = "wrong-indexer",
+                SizeBytes = 10,
+                Score = 1,
+            });
+            releaseStore.Register(workId, new Release
+            {
+                ReleaseId = releaseId,
+                Title = "Exact.Owner.S01E02.2160p.WEB-DL-GROUP",
+                Indexer = "exact-indexer",
+                SizeBytes = 4_294_967_296,
+                Quality = new QualityInfo
+                {
+                    Resolution = "2160p",
+                    Source = "webdl",
+                    Codec = "hevc",
+                    Hdr = "dolbyvision",
+                    Audio = "eac3",
+                    Edition = "extended",
+                    Proper = true,
+                    Repack = true,
+                },
+                Languages = ["de", "en"],
+                ReleaseGroup = "GROUP",
+                AgeDays = 2,
+                Grabs = 81,
+                Score = 934,
+                Health = ReleaseHealth.Ready,
+                NzbUrl = "https://indexer.example/secret.nzb",
+            });
+            releaseStore.Register(workId, new Release
+            {
+                ReleaseId = privateReleaseId,
+                Title = "Private.Owner.S01E02.1080p-GROUP",
+                Indexer = "private-indexer",
+                SizeBytes = 4,
+                Score = 500,
+            });
+            AddLocal(releaseId, "user-1");
+            AddLocal(missingReleaseId, "user-1");
+            AddLocal(privateReleaseId, "user-2");
+            await general.UpdateAsync(
+                new GeneralConfigWrite { AddReleaseScoreToName = false },
+                CancellationToken.None);
+
+            using var machine = MachineClient();
+            var response = await machine.PostAsJsonAsync("/api/v1/releases/local-availability", new
+            {
+                workIds = new[] { workId },
+                client = "jellyfin",
+                requestedById = "user-1",
+            });
+
+            response.EnsureSuccessStatusCode();
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var entries = body.GetProperty("releases").EnumerateArray().ToArray();
+            Assert.Equal(2, entries.Length);
+            Assert.DoesNotContain(entries, entry =>
+                entry.GetProperty("releaseId").GetString() == privateReleaseId);
+
+            var exact = Assert.Single(entries, entry =>
+                entry.GetProperty("releaseId").GetString() == releaseId);
+            Assert.Equal(workId, exact.GetProperty("workId").GetString());
+            Assert.Equal("downloading", exact.GetProperty("state").GetString());
+            var metadata = exact.GetProperty("release");
+            Assert.Equal(releaseId, metadata.GetProperty("releaseId").GetString());
+            Assert.Equal("Exact.Owner.S01E02.2160p.WEB-DL-GROUP", metadata.GetProperty("title").GetString());
+            Assert.Equal("exact-indexer", metadata.GetProperty("indexer").GetString());
+            Assert.Equal(4_294_967_296, metadata.GetProperty("sizeBytes").GetInt64());
+            Assert.Equal("2160p", metadata.GetProperty("quality").GetProperty("resolution").GetString());
+            Assert.Equal("GROUP", metadata.GetProperty("releaseGroup").GetString());
+            Assert.Equal(934, metadata.GetProperty("score").GetInt32());
+            Assert.False(metadata.GetProperty("addScoreToName").GetBoolean());
+            Assert.Equal("ready", metadata.GetProperty("health").GetString());
+            Assert.False(metadata.TryGetProperty("nzbUrl", out _));
+
+            var missing = Assert.Single(entries, entry =>
+                entry.GetProperty("releaseId").GetString() == missingReleaseId);
+            Assert.Equal(JsonValueKind.Null, missing.GetProperty("release").ValueKind);
+        }
+        finally
+        {
+            foreach (var token in tokens)
+                sessions.PurgeSession(token);
+            await general.UpdateAsync(
+                new GeneralConfigWrite { AddReleaseScoreToName = originalScoreSetting },
+                CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task LocalReleaseAvailability_BoundsFullMetadataPerWorkDeterministically()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var workId = $"availability-bound-{suffix}";
+        var sessions = _factory.Services.GetRequiredService<SessionManager>();
+        var workspace = _factory.Services.GetRequiredService<PreDownloadWorkspace>();
+        var releaseStore = _factory.Services.GetRequiredService<IReleaseStore>();
+        var tokens = new List<string>();
+
+        try
+        {
+            for (var index = 20; index >= 0; index--)
+            {
+                var releaseId = $"availability-{suffix}-{index:D2}";
+                releaseStore.Register(workId, new Release
+                {
+                    ReleaseId = releaseId,
+                    Title = $"Bounded.Show.S01E02.1080p-GROUP-{index:D2}",
+                    Indexer = "bounded-indexer",
+                    SizeBytes = 4,
+                    Score = index,
+                });
+                var session = sessions.GetOrCreateOpeningSession(
+                    releaseId,
+                    workId,
+                    new ResolvedMediaFile
+                    {
+                        FileName = "episode.mkv",
+                        Container = "mkv",
+                        SizeBytes = 4,
+                        OpenStream = _ => new MemoryStream([1, 2, 3, 4]),
+                    },
+                    "ready",
+                    "jellyfin",
+                    "user-bound").Session;
+                Assert.True(session.AttachPreDownload(
+                    new PreDownloadCacheFile(workspace, session.Token, 4),
+                    $"job-{index:D2}",
+                    "nextEpisode",
+                    "test",
+                    null));
+                tokens.Add(session.Token);
+            }
+
+            using var machine = MachineClient();
+            var response = await machine.PostAsJsonAsync("/api/v1/releases/local-availability", new
+            {
+                workIds = new[] { workId },
+                client = "jellyfin",
+                requestedById = "user-bound",
+            });
+
+            response.EnsureSuccessStatusCode();
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var entries = body.GetProperty("releases").EnumerateArray().ToArray();
+            Assert.Equal(20, entries.Length);
+            Assert.Equal(
+                Enumerable.Range(0, 20).Select(index => $"availability-{suffix}-{index:D2}"),
+                entries.Select(entry => entry.GetProperty("releaseId").GetString()));
+            Assert.All(entries, entry => Assert.Equal(
+                entry.GetProperty("releaseId").GetString(),
+                entry.GetProperty("release").GetProperty("releaseId").GetString()));
+        }
+        finally
+        {
+            foreach (var token in tokens)
+                sessions.PurgeSession(token);
+        }
+    }
+
     // ---- auth ------------------------------------------------------------------------
 
     [Fact]
@@ -808,6 +1061,7 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
                 ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
                 ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
                 ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
+                ["Streamarr:PreDownload:CachePath"] = Path.Combine(_dir, "pre-download"),
                 ["Streamarr:LoginAttemptsPerMinute"] = "1000",
             }));
 

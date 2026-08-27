@@ -112,6 +112,28 @@ public class MediaSourceOfferStoreTests
     }
 
     [Fact]
+    public void Only_explicitly_trusted_local_extras_can_extend_the_regular_twenty_release_cap()
+    {
+        var store = new MediaSourceOfferStore();
+        var regular = Enumerable.Range(1, 21).Select(index => $"release-{index}").ToArray();
+        var persisted = regular.Take(20).ToHashSet(StringComparer.Ordinal);
+
+        var regularOnly = store.CreateOffers(Guid.NewGuid(), Guid.NewGuid(), "work-regular", regular);
+        var withTrustedExtra = store.CreateOffers(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "work-local",
+            regular,
+            regular.ToHashSet(StringComparer.Ordinal),
+            persistedReleaseIds: persisted);
+
+        Assert.Equal(20, regularOnly.Count);
+        Assert.DoesNotContain("release-21", regularOnly.Keys);
+        Assert.Equal(21, withTrustedExtra.Count);
+        Assert.Contains("release-21", withTrustedExtra.Keys);
+    }
+
+    [Fact]
     public void Core_auto_fallback_is_accepted_only_with_same_work_and_matching_attribution()
     {
         var allowed = new HashSet<string>(["release-dead", "release-ready"], StringComparer.Ordinal);

@@ -254,6 +254,8 @@ public sealed class PreDownloadOptions
     public const int MaxCurrentFileThresholdSeconds = 3_600;
     public const int MinNextEpisodeThresholdPercent = 1;
     public const int MaxNextEpisodeThresholdPercent = 100;
+    public const int MinNextEpisodeReleaseSimilarityThresholdPercent = 0;
+    public const int MaxNextEpisodeReleaseSimilarityThresholdPercent = 100;
     public const int MinimumConcurrentDownloads = 1;
     public const int MaximumConcurrentDownloads = 8;
 
@@ -262,6 +264,8 @@ public sealed class PreDownloadOptions
     public int CurrentFileThresholdSeconds { get; set; } = 10;
     public bool DownloadNextEpisode { get; set; } = true;
     public int NextEpisodeThresholdPercent { get; set; } = 75;
+    public bool PreferSimilarNextEpisodeRelease { get; set; }
+    public int NextEpisodeReleaseSimilarityThresholdPercent { get; set; } = 75;
     public int MaxConcurrentDownloads { get; set; } = 1;
 
     /// <summary>Workspace root for completed and partial pre-download files.</summary>

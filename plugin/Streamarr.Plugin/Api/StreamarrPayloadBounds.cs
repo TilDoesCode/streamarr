@@ -11,6 +11,10 @@ internal static class StreamarrPayloadBounds
     internal const int MaxMediaStreams = 64;
     internal const int MaxSeasonsPerSeries = 250;
     internal const int MaxEpisodesPerSeason = 1_000;
+    internal const int MaxLocalAvailabilityWorkIds = 200;
+    internal const int MaxTransientLocalReleasesPerWork = MaxReleasesPerWork;
+    internal const int MaxLocalAvailabilityReleases =
+        MaxLocalAvailabilityWorkIds * MaxReleasesPerWork;
 
     internal static SearchResponse Normalize(SearchResponse response) => response with
     {
@@ -197,6 +201,46 @@ internal static class StreamarrPayloadBounds
                 : null,
             Resolve = Normalize(response.Resolve),
             Error = BoundedText(response.Error, 256),
+        };
+    }
+
+    internal static LocalReleaseAvailabilityResponse Normalize(LocalReleaseAvailabilityResponse response)
+        => response with
+        {
+            Releases = (response.Releases ?? [])
+                .Take(MaxLocalAvailabilityReleases)
+                .Select(Normalize)
+                .Where(release => release is not null)
+                .Cast<LocalReleaseAvailabilityDto>()
+                .ToArray(),
+        };
+
+    private static LocalReleaseAvailabilityDto? Normalize(LocalReleaseAvailabilityDto? availability)
+    {
+        if (availability is null
+            || !TryIdentifier(availability.WorkId, 256, out var workId)
+            || !TryIdentifier(availability.ReleaseId, 256, out var releaseId))
+        {
+            return null;
+        }
+
+        var state = BoundedText(availability.State, 32)?.ToLowerInvariant();
+        if (state is not ("ready" or "downloading"))
+            return null;
+
+        var metadata = Normalize(availability.Release);
+        if (metadata is not null
+            && !string.Equals(metadata.ReleaseId, releaseId, StringComparison.Ordinal))
+        {
+            metadata = null;
+        }
+
+        return availability with
+        {
+            WorkId = workId,
+            ReleaseId = releaseId,
+            State = state,
+            Release = metadata,
         };
     }
 

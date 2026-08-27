@@ -157,6 +157,21 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public async Task OpenStream_RecordsOnlyTheInitialMediaByteAcrossRangeRequests()
+    {
+        var manager = Manager();
+        var timeline = TtffTimeline.Start("rel-1");
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), "web", timeline: timeline);
+
+        await using (var first = manager.OpenStream(session))
+            Assert.True(await first.ReadAsync(new byte[1]) > 0);
+        await using (var range = manager.OpenStream(session))
+            Assert.True(await range.ReadAsync(new byte[1]) > 0);
+
+        Assert.Single(timeline.Snapshot(), span => span.Name == "stream-first-byte");
+    }
+
+    [Fact]
     public async Task MissingArticleDuringStreaming_MarksReleaseDeadAndInvalidatesSession()
     {
         var healthCache = new ReleaseHealthCache(TimeSpan.FromMinutes(5));
@@ -495,7 +510,11 @@ public class SessionManagerTests
         Assert.True(first.Created);
         Assert.False(second.Created);
         Assert.Same(first.Session, second.Session);
-        Assert.Contains(history.Finalized, f => f.AttemptId == secondAttempt && f.Finalize.FinalState == "reused");
+        Assert.Contains(history.Finalized, f =>
+            f.AttemptId == secondAttempt
+            && f.Finalize.FinalState == "reused"
+            && f.Finalize.ResolvedReleaseId == "rel-1"
+            && f.Finalize.ResolvedTitle == "video.mkv");
         Assert.DoesNotContain(history.Finalized, f => f.AttemptId == firstAttempt);
     }
 
@@ -509,7 +528,11 @@ public class SessionManagerTests
 
         Assert.True(manager.CloseSession(session.Token));
 
-        Assert.Contains(history.Finalized, f => f.AttemptId == attemptId && f.Finalize.FinalState == "closed");
+        Assert.Contains(history.Finalized, f =>
+            f.AttemptId == attemptId
+            && f.Finalize.FinalState == "closed"
+            && f.Finalize.ResolvedReleaseId == "rel-1"
+            && f.Finalize.ResolvedTitle == "video.mkv");
     }
 
     [Fact]

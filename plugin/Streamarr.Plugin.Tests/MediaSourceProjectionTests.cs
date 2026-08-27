@@ -119,6 +119,182 @@ public class MediaSourceProjectionTests
         Assert.Empty(sources);
     }
 
+    [Fact]
+    public void Local_sources_are_stably_ordered_ready_then_downloading_then_remote()
+    {
+        var work = Work("work-a") with
+        {
+            Releases =
+            [
+                new ReleaseDto { ReleaseId = "remote-1", Title = "Remote 1", Indexer = "demo" },
+                new ReleaseDto { ReleaseId = "downloading", Title = "Downloading", Indexer = "demo" },
+                new ReleaseDto { ReleaseId = "ready", Title = "Ready", Indexer = "demo" },
+                new ReleaseDto { ReleaseId = "remote-2", Title = "Remote 2", Indexer = "demo" },
+            ],
+        };
+        var availability = new LocalReleaseAvailabilitySnapshot(
+        [
+            new LocalReleaseAvailabilityDto { WorkId = "work-a", ReleaseId = "downloading", State = "downloading" },
+            new LocalReleaseAvailabilityDto { WorkId = "work-a", ReleaseId = "ready", State = "ready" },
+        ]);
+
+        var ordered = StreamarrMediaSourceProjection.OrderReleases(
+            work.WorkId,
+            work.Releases,
+            availability);
+
+        Assert.Equal(
+        [
+            "ready",
+            "downloading",
+            "remote-1",
+            "remote-2",
+        ], ordered.Select(release => release.ReleaseId));
+    }
+
+    [Fact]
+    public void Local_state_for_the_same_release_id_on_another_work_is_ignored()
+    {
+        var work = Work("episode-a");
+        var availability = new LocalReleaseAvailabilitySnapshot(
+        [
+            new LocalReleaseAvailabilityDto
+            {
+                WorkId = "episode-b",
+                ReleaseId = "episode-a-r2",
+                State = "ready",
+            },
+        ]);
+
+        var ordered = StreamarrMediaSourceProjection.OrderReleases(
+            work.WorkId,
+            work.Releases,
+            availability);
+
+        Assert.Equal(["episode-a-r1", "episode-a-r2"], ordered.Select(release => release.ReleaseId));
+    }
+
+    [Fact]
+    public void Local_rank_21_is_merged_offered_and_resolvable_without_raising_the_regular_cap()
+    {
+        var store = new EphemeralReleaseStore();
+        var itemId = Guid.NewGuid();
+        var persisted = Enumerable.Range(1, 20)
+            .Select(index => new ReleaseDto
+            {
+                ReleaseId = $"rank-{index}",
+                Title = $"Show.S01E02.Rank.{index:D2}-REMOTE",
+                Indexer = "demo",
+            })
+            .ToArray();
+        store.Put(itemId, Work("episode-a") with { Releases = persisted });
+        var offers = new MediaSourceOfferStore();
+        var projection = new StreamarrMediaSourceProjection(
+            store,
+            offers,
+            NullLogger<StreamarrMediaSourceProjection>.Instance);
+        var local = new ReleaseDto
+        {
+            ReleaseId = "rank-21-local",
+            Title = "Show.S01E02.German.DL.1080p.WEB-DL-D3GI",
+            Indexer = "demo",
+            Score = 41,
+            AddScoreToName = true,
+        };
+        var availability = new LocalReleaseAvailabilitySnapshot(
+        [
+            new LocalReleaseAvailabilityDto
+            {
+                WorkId = "episode-a",
+                ReleaseId = local.ReleaseId,
+                State = "ready",
+                Release = local,
+            },
+            new LocalReleaseAvailabilityDto
+            {
+                WorkId = "another-episode",
+                ReleaseId = "cross-scope",
+                State = "ready",
+                Release = local with { ReleaseId = "cross-scope" },
+            },
+        ]);
+        var offerOwner = Guid.NewGuid();
+        var persistedWork = store.Peek(itemId)!.Work;
+
+        var ordered = StreamarrMediaSourceProjection.OrderReleases(
+            persistedWork.WorkId,
+            persistedWork.Releases,
+            availability);
+        var capabilities = offers.CreateOffers(
+            itemId,
+            offerOwner,
+            persistedWork.WorkId,
+            ordered.Select(release => release.ReleaseId).ToArray(),
+            availability.GetTrustedReleaseIds(persistedWork.WorkId),
+            ordered.ToDictionary(release => release.ReleaseId, release => release.Title, StringComparer.Ordinal),
+            persistedWork.Releases.Select(release => release.ReleaseId).ToHashSet(StringComparer.Ordinal));
+
+        Assert.Equal(21, ordered.Count);
+        Assert.Equal(local.ReleaseId, ordered[0].ReleaseId);
+        Assert.StartsWith(
+            "[D] ",
+            MediaSourceMapper.FormatVersionName(ordered[0], availability.GetState("episode-a", local.ReleaseId)),
+            StringComparison.Ordinal);
+        Assert.Equal(
+            Enumerable.Range(1, 20).Select(index => $"rank-{index}"),
+            ordered.Skip(1).Select(release => release.ReleaseId));
+
+        Assert.Equal(21, capabilities.Count);
+        Assert.True(offers.TryAcquire(capabilities[local.ReleaseId], offerOwner, out var localLease));
+        Assert.False(offers.TryAcquire(capabilities[local.ReleaseId], Guid.NewGuid(), out _));
+        var offer = localLease!.Offer;
+        Assert.Contains(local.ReleaseId, offer.TrustedLocalReleaseIds);
+        Assert.Equal(local.Title, offer.ReleaseTitles[local.ReleaseId]);
+        Assert.True(StreamarrMediaSourceProvider.OfferMatchesMaterializedWork(
+            offer,
+            persistedWork,
+            local.ReleaseId));
+        Assert.False(StreamarrMediaSourceProvider.OfferMatchesMaterializedWork(
+            offer,
+            persistedWork with { WorkId = "another-episode" },
+            local.ReleaseId));
+
+        var localSourceGuid = StreamarrMediaSourceProjection.ReleaseSourceGuid("episode-a", local.ReleaseId);
+        Assert.True(projection.TryResolveReleaseSource(localSourceGuid, out var resolvedItemId));
+        Assert.Equal(itemId, resolvedItemId);
+        localLease.Dispose();
+    }
+
+    [Fact]
+    public void Local_metadata_forms_a_release_set_when_the_persisted_work_has_no_releases()
+    {
+        var local = new ReleaseDto
+        {
+            ReleaseId = "local-only",
+            Title = "Show.S01E02.1080p.WEB-DL-D3GI",
+            Indexer = "demo",
+        };
+        var availability = new LocalReleaseAvailabilitySnapshot(
+        [
+            new LocalReleaseAvailabilityDto
+            {
+                WorkId = "episode-a",
+                ReleaseId = local.ReleaseId,
+                State = "ready",
+                Release = local,
+            },
+        ]);
+
+        var ordered = StreamarrMediaSourceProjection.OrderReleases("episode-a", [], availability);
+
+        var release = Assert.Single(ordered);
+        Assert.Equal(local.ReleaseId, release.ReleaseId);
+        Assert.StartsWith(
+            "[D] ",
+            MediaSourceMapper.FormatVersionName(release, availability.GetState("episode-a", release.ReleaseId)),
+            StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Pins the exact shape official clients require to treat an owned, non-Virtual item as
     /// "navigable but unplayable": a single <c>MediaSourceType.Placeholder</c> source, never an

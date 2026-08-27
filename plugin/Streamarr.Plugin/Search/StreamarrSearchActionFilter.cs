@@ -48,6 +48,7 @@ public sealed class StreamarrSearchActionFilter(
     HierarchyLoadCoordinator hierarchyLoads,
     StreamarrMediaSourceProjection projection,
     EphemeralReleaseRefresher refresher,
+    LocalReleaseAvailabilityService localAvailability,
     IDtoService dtoService,
     IImageProcessor imageProcessor,
     IUserManager userManager,
@@ -1009,9 +1010,6 @@ public sealed class StreamarrSearchActionFilter(
     /// </summary>
     private async Task ProjectOwnedSourcesAsync(IReadOnlyList<BaseItemDto> dtos, HttpContext http, CancellationToken ct)
     {
-        User? user = null;
-        var offerOwnerId = Guid.Empty;
-        var resolved = false;
         var candidates = dtos
             .Where(dto => dto is not null && dto.Id != Guid.Empty && dto.MediaSources is not null && projection.Owns(dto.Id))
             .ToArray();
@@ -1024,20 +1022,18 @@ public sealed class StreamarrSearchActionFilter(
         // episodes cannot serialize into N × the single-item refresh timeout.
         await Task.WhenAll(candidates.Select(dto => refresher.RefreshIfStaleAsync(dto.Id, ct))).ConfigureAwait(false);
 
+        var user = ResolveUser(http);
+        var offerOwnerId = AuthenticatedUserId(http);
+        if (user is null || offerOwnerId == Guid.Empty)
+            return;
+        var availability = await localAvailability
+            .GetForItemsAsync(candidates.Select(dto => dto.Id), offerOwnerId, ct)
+            .ConfigureAwait(false);
+
         foreach (var dto in candidates)
         {
-            if (!resolved)
-            {
-                resolved = true;
-                user = ResolveUser(http);
-                offerOwnerId = AuthenticatedUserId(http);
-            }
-
-            if (user is null || offerOwnerId == Guid.Empty)
-                return;
-
             if (libraryManager.GetItemById(dto.Id) is not { } item
-                || !projection.TryProject(item, user, offerOwnerId, out var sources))
+                || !projection.TryProject(item, user, offerOwnerId, out var sources, availability))
             {
                 continue;
             }

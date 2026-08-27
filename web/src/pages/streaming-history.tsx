@@ -170,7 +170,7 @@ function aggregate(events: StreamingHistoryResponse[], titles: Map<string, strin
       key,
       releaseId: last.releaseId ?? "unknown release",
       workId: last.workId ?? "unknown work",
-      title: titles.get(last.releaseId ?? "") || last.workId || last.releaseId || "Unknown release",
+      title: last.title || titles.get(last.releaseId ?? "") || "Release name unavailable",
       source: last.source ?? "unknown",
       userId: last.externalUserId ?? undefined,
       userName: last.externalUserName ?? undefined,
