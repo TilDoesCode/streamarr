@@ -122,27 +122,29 @@ provider credentials and a real client). Run this once end to end.
 
 - [ ] Searching a movie title in a native Jellyfin client (web/mobile/TV) surfaces the Usenet
       work **alongside** local library results.
-- [ ] The injected item lives under the private, hidden Streamarr implementation folder;
-      neither the folder nor the item appears in normal browsing, "Latest Media", or
-      recommendations. The item is tagged `usenet-ephemeral` and eligible only when the
-      user can see a compatible ordinary Jellyfin library.
+- [ ] A fresh injected item remains in plugin-owned staging and does not appear in normal
+      browsing or "Latest Media" before engagement. It is tagged `usenet-ephemeral` and
+      eligible only when the user can see a compatible ordinary Jellyfin library.
 - [ ] Selecting the injected result and pressing play resolves + plays it (the M5 playback path:
       version picker, `/resolve`, session appears in admin-authenticated
       `GET /api/v1/sessions`).
+- [ ] Playing, favoriting, or marking the item watched promotes it into the visible
+      Streamarr library so normal Jellyfin surfaces such as Continue Watching can use it;
+      removing all engagement demotes it back to staging.
 - [ ] **Repeat the same search** — the work updates in place; **no duplicate** item appears
       (stable GUID derived from `workId`).
 - [ ] **Kill the Core Server** (or toggle interception off) and search again — native library
       search is **fully intact**; no errors surface in the client. CI exercises the HTTP
       fall-through contract; this client check still confirms the end-user presentation.
 - [ ] **TTL cleanup:** set a short `EphemeralTtlMinutes`, run **Dashboard → Scheduled Tasks →
-      "Streamarr: clean up ephemeral items"**, and confirm stale ephemeral items are removed via
-      `ILibraryManager` while native items are untouched.
+      "Streamarr: clean up ephemeral items"**, and confirm stale unengaged items are removed via
+      `ILibraryManager` while native and engaged Streamarr items are untouched.
 
 ### Notes
 
 - Ephemeral retention is authoritative on the Core Server (decoded-size LRU plus hard TTL,
   BRIEF §6.1); Jellyfin `CloseLiveStream` releases plugin attribution only.
-- TV works materialize as a bare `Episode` (season/episode index set); movies as `Movie`. Both
-  share the identical lazy-resolve/playback path.
+- TV works materialize as a lazy `Series` → `Season` → `Episode` hierarchy; movies materialize
+  as `Movie`. Both share the same Core-owned resolve/playback path.
 - The plugin still contains zero domain logic — the Core Server does all searching/ranking/
   health/fallback; the filter only materializes what the server returned and merges it in.

@@ -6,7 +6,7 @@ them in later milestones without the project owner's sign-off.
 | # | Decision | Outcome |
 |---|---|---|
 | 1 | **Licensing** | **GPL-3.0 accepted for the whole project.** Radarr/Sonarr parser regexes, quality definitions, and scoring logic MAY be ported directly (shallow clones in `refs/` for reference). `server/` and `web/` are GPL-3.0 (see `LICENSE`). nzbdav (MIT) is vendored with attribution — MIT is GPL-compatible. Attribute every ported file in a header comment (source repo + path). |
-| 2 | **Jellyfin target version** | **10.10.x stable.** Pin the exact patch release in `docs/jellyfin-compatibility.md` when M5 starts; integration-test the action filter against it. |
+| 2 | **Jellyfin target version** | **Jellyfin 10.11.11.** The plugin is ABI-pinned and host-load tested against this exact release; re-test and update `docs/jellyfin-compatibility.md` before changing it. |
 | 3 | **Ephemeral item isolation** | ~~Dedicated hidden virtual folder / collection, excluded from Latest & recommendations (brief default).~~ **Revised 2026-07-17 (owner request): library integration.** The plugin folder is a `BasePluginFolder` below the user root that surfaces as its own "Streamarr" library; items are materialized as built-in `Movie`/`Series`/`Season`/`Episode` types so they participate in Continue Watching, Next Up, Favorites and per-library Latest. Access mirrors the compatible-library rule (plus native EnabledFolders/BlockedMediaFolders controls); a `LibraryEnabled=false` plugin setting restores the fully isolated placement. Engaged items (resume position, favorite, watched) are exempt from TTL cleanup and evicted last at the capacity bound. |
 | 4 | **Materialization** | Real persisted ephemeral items with stable GUIDs derived from `workId` — not pure request interception (brief default). |
 | 5 | **Watch state** | Plugin reports playback events to `POST /api/v1/events` from day one. No user-facing watch-state feature in v1 (brief default). |
@@ -32,4 +32,3 @@ them in later milestones without the project owner's sign-off.
   fixtures, and the real-provider measurement is tracked as an open checklist item in
   `docs/m1-latency.md`. Configure real credentials via `appsettings.Local.json` or
   the Management UI once available.
-- Exact Jellyfin 10.10.x patch version the owner runs (needed at M5).

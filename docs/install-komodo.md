@@ -84,7 +84,7 @@ you set).
 
 | Variable | Default | Use it to… |
 |---|---|---|
-| `STREAMARR_IMAGE` | `…/streamarr:latest` | Pin a specific version, e.g. `ghcr.io/tildoescode/streamarr:0.3.0` |
+| `STREAMARR_IMAGE` | `…/streamarr:latest` | Pin a specific version, e.g. `ghcr.io/tildoescode/streamarr:0.14.0` |
 | `STREAMARR_BIND_ADDRESS` | `0.0.0.0` | Lock the port to one LAN address, e.g. `192.168.1.20` |
 | `STREAMARR_PORT` | `8080` | Publish on a different host port |
 | `INDEXER_PROXY` | empty | Route Newznab searches/caps and NZB retrieval through an HTTP proxy such as `http://gluetun:8888`; TMDB and NNTP remain direct. |
@@ -105,7 +105,9 @@ You do **not** need to copy any files. Streamarr publishes a Jellyfin plugin cat
 4. **Restart Jellyfin** when it asks (in Komodo, just redeploy/restart your Jellyfin
    stack).
 
-Jellyfin will keep the plugin up to date from this repository going forward.
+Future plugin releases appear in this catalog. Automatic updates are intentionally
+disabled; install the version matching your Core from Jellyfin's catalog and restart
+Jellyfin.
 
 > The plugin targets **Jellyfin 10.11.11**. If the catalog shows no installable
 > version, your Jellyfin is on a different release — see
@@ -130,6 +132,9 @@ Server versions.
    - **Core Server URL:** `http://<your-docker-host-ip>:8080`
      (the IP of the machine where the Komodo `streamarr` stack runs — the same IP you
      used to open the Management UI).
+   - **Public stream URL:** the LAN or HTTPS base URL that every phone, TV, and browser
+     can reach, for example `http://<your-docker-host-ip>:8080` on a trusted home LAN
+     or `https://streamarr.example.com` behind your reverse proxy.
    - **API key:** the exact `STREAMARR_API_KEY` value you set in Step 1.
 3. Click **Test connection**. It should succeed. A wrong key fails the test even when
    the server is up.
@@ -137,8 +142,9 @@ Server versions.
 
 If Jellyfin and Streamarr run on the **same Docker host** and you would rather keep the
 traffic off the LAN, put both on a shared Docker network and use
-`http://streamarr:8080` as the Core Server URL instead — but the host‑IP URL above is
-the simplest and works in every layout.
+`http://streamarr:8080` as the Core Server URL instead. Keep **Public stream URL** set
+to the separate LAN or HTTPS address; playback devices cannot resolve the internal
+`streamarr` hostname. The host-IP Core URL above is the simplest layout.
 
 ---
 
@@ -153,10 +159,11 @@ in this order — each has a **Test** button:
    Token (required for semantic discovery and Jellyfin injection).
 4. **Quality profile** — start from the default and tune later.
 
-Before involving Jellyfin, use **Search → Release diagnostics → Resolve → Preview** and
-confirm a video plays in the browser. That proves the whole pipeline works. Then search
-in Jellyfin — Usenet results appear alongside your normal library and play through
-Jellyfin's transcoding.
+Before involving Jellyfin, use **Search → Release diagnostics → Resolve → Preview** on
+a browser-compatible release and confirm playback. Preview does not transcode, so an
+unsupported MKV or codec can fail in the browser even when Jellyfin could transcode it.
+Then search in Jellyfin — Usenet results appear alongside your normal library and play
+through Jellyfin's transcoding.
 
 ---
 
@@ -164,11 +171,11 @@ Jellyfin's transcoding.
 
 - **Streamarr Core:** in Komodo, redeploy the stack to pull the newest image (or pin
   `STREAMARR_IMAGE` to a version and bump it when you want).
-- **Plugin:** Jellyfin auto‑updates it from the repository you added. Keep the plugin
-  and Core Server on matching versions.
+- **Plugin:** install the matching update from Jellyfin's plugin catalog and restart
+  Jellyfin. Automatic plugin updates are disabled.
 - **Back up** the `streamarr-data` and `streamarr-keys` volumes together while the
   stack is stopped — the database holds your encrypted provider/indexer secrets and the
   key volume is required to decrypt them.
 
-The full non‑Komodo installation, reverse‑proxy, and backup reference lives in the
-[repository README](../README.md).
+The full non-Komodo networking, upgrade, and backup reference lives in
+[`operations.md`](operations.md).

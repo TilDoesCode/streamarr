@@ -1,9 +1,9 @@
 # Architecture
 
 > Streamarr searches Usenet, picks the best release, verifies it is still there, and
-> streams it as a seekable HTTP byte range — no download, no watch, no delete. This
-> document explains how the pieces fit and, more importantly, **why the boundaries
-> between them are where they are.**
+> streams it as a seekable HTTP byte range without a traditional download, import, and
+> cleanup workflow. This document explains how the pieces fit and, more importantly,
+> **why the boundaries between them are where they are.**
 
 Read this alongside the canonical spec ([`BRIEF.md`](./BRIEF.md), especially §3, §5,
 §6, §7, §11) and the settled [`DECISIONS.md`](./DECISIONS.md). Where they disagree,
@@ -173,9 +173,10 @@ The same three calls, wrapped by the plugin's translation to Jellyfin's data mod
    creates its season directory without an indexer call. Opening one season through
    `/Shows/{id}/Episodes` lazily creates every canonical `Episode` and stores any ranked
    release offers returned by the single season search. All nodes use stable work-derived
-   GUIDs and live below the private hidden implementation folder. The requesting user's
-   compatible-library visibility policy still applies. **Any error/timeout falls through
-   to the unmodified native response** (BRIEF §11).
+   GUIDs. Fresh search materialization stays in plugin-owned staging; played, favorited,
+   or watched items can be promoted into the visible Streamarr library. The requesting
+   user's compatible-library visibility policy still applies. **Any error/timeout falls
+   through to the unmodified native response** (BRIEF §11).
 4. Play → Jellyfin requests `PlaybackInfo`. The plugin's `IMediaSourceProvider`
    returns one `MediaSourceInfo` per release (`RequiresOpening = true`,
    opaque, bounded, replay-safe `OpenToken` tied to that authenticated user,

@@ -1,8 +1,10 @@
 # Setup guide
 
-How to run Streamarr, configure it, verify it end-to-end **before** touching Jellyfin,
-and then bolt Jellyfin on. Pairs with [`architecture.md`](./architecture.md) (what the
-pieces are) and [`api.md`](./api.md) (what they expose).
+This is the advanced source-development and option reference. For a normal release
+installation, start with [`installation.md`](./installation.md),
+[`configuration.md`](./configuration.md), and [`operations.md`](./operations.md).
+The sections below cover the development stack, exhaustive settings, and implementation
+details. Pair them with [`architecture.md`](./architecture.md) and [`api.md`](./api.md).
 
 > **Prerequisite reality check (DECISIONS.md open items):** Streamarr needs real Usenet
 > provider credentials and at least one Newznab indexer API key to resolve and stream
@@ -84,11 +86,12 @@ Data Protection keys persist at `/app/keys`, and the image runs as the unprivile
 decryptable. The NZB and repair directories are reconstructible caches and can be
 excluded from space-conscious backups.
 
-The application port is intentionally HTTP-only inside the container. A production
-installation **must** terminate HTTPS at a trusted reverse proxy/VPN ingress and proxy
-to this loopback/private port. Do not change the example to `-p 8080:8080` on an
-internet-facing host. Configure the proxy to redact capability- or admission-bearing
-paths (`/api/v1/stream/*`, `/api/v1/sessions/*`, `/api/v1/playback-sessions/*`, and
+The application port is intentionally HTTP-only inside the container. Access outside
+the Docker host or a trusted private LAN **must** terminate HTTPS at a trusted reverse
+proxy/VPN ingress and proxy to this loopback/private port. Do not change the example to
+`-p 8080:8080` on an internet-facing host. Configure the proxy to redact capability-
+or admission-bearing paths (`/api/v1/stream/*`, `/api/v1/sessions/*`,
+`/api/v1/playback-sessions/*`, and
 `/api/v1/ephemeral-files/*`) and all query strings from access logs. Limit request/body
 sizes at the edge as a second layer of defense.
 
@@ -215,7 +218,8 @@ Open the Management UI and configure, **in this order**:
 2. **Indexers** — Newznab base URL + API key per indexer. Hit **Test** → a `t=caps`
    roundtrip showing caps + latency. Enable/disable and order by priority.
 3. **TMDB credential** — enter either the short v3 API key or the API Read Access Token
-   (JWT) under **Settings** → General, or as `TMDB_API_KEY` in the Compose `.env` file.
+   (JWT) under **Settings** → General. The source-development Compose stack also maps
+   `TMDB_API_KEY` from its `.env`; the release Compose flow uses the UI by default.
    It is required for public semantic discovery, canonical metadata, artwork, and Jellyfin
    injection. Without it, raw/rejected indexer hits remain available only in the
    **Release diagnostics** tab and `/debug/search`.
@@ -239,7 +243,8 @@ This is the step that proves the Core is sound and the abstraction has not leake
 
 If preview-play works, the Core is doing the whole job (search → rank → resolve →
 health-check → stream) with no Jellyfin in the loop. If it breaks, treat it as a build
-failure, not a UI bug.
+failure rather than a UI bug only after ruling out an MKV/container or codec the browser
+cannot decode; this preview path does not transcode, while Jellyfin can.
 
 ---
 
@@ -263,10 +268,10 @@ Usenet results now appear alongside your local library and play through Jellyfin
 transcoding pipeline. Movie results are availability-filtered immediately. TV results
 appear as series folders (at most three TMDB matches); seasons load when the series is
 opened, and one season-wide indexer search populates all canonical episodes when that
-season is opened. Synthetic items live under a private, hidden implementation folder
-and are returned only through eligible intercepted searches; they do not appear in
-normal library browsing. The plugin is **pinned to Jellyfin 10.11.11** and the search
-interception is version-fragile — see
+season is opened. Fresh search results stay in plugin-owned staging; playback,
+favoriting, or watched state can promote an item into the visible Streamarr library.
+The plugin is **pinned to Jellyfin 10.11.11** and the search interception is
+version-fragile — see
 [`jellyfin-compatibility.md`](./jellyfin-compatibility.md) and the manual acceptance
 checklist in [`m5-acceptance.md`](./m5-acceptance.md).
 
@@ -431,7 +436,7 @@ streams never touch this pipeline (no PAR2 index download, no workspace I/O).
 | Key | Default | Meaning |
 |---|---|---|
 | `Enabled` | `true` | Master switch for the repair pipeline. |
-| `Policy` | `WhenNoFallback` | `WhenNoFallback`: a healthy sibling release still wins before playback; repair engages only when no healthy way out exists. `PreferRepair`: the originally chosen release is repaired instead of falling back. Mid-stream there is never a release switch — the same release is repaired. |
+| `Policy` | `WhenNoFallback` | `WhenNoFallback`: a healthy sibling release still wins before playback; repair engages only when no healthy way out exists. `PreferRepair`: the originally chosen release is repaired instead of falling back. A client-directed release switch supersedes the prior session cleanly; an active repair remains scoped to the release that triggered it. |
 | `ProgressiveEnabled` | `false` | Allows resolve to admit a *progressive* session on an origin-dead release when the damage sits far behind an intact prefix; reads that reach the hole wait on the shared job. |
 | `ProgressiveMinIntactPrefixBytes` | `32 MiB` | Conservative eligibility floor for progressive admission. |
 | `MaxConcurrentJobs` | `1` | Repair jobs running at once; more jobs queue. |
