@@ -1,4 +1,5 @@
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Dlna;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
@@ -104,7 +105,37 @@ public class PlaybackInfoGuardTests
         public string? LiveStreamId { get; set; }
 
         public bool? AutoOpenLiveStream { get; set; }
+
+        public DeviceProfile? DeviceProfile { get; set; }
     }
+
+    private sealed class FakeOpenLiveStreamDto
+    {
+        public Guid? ItemId { get; set; }
+
+        public DeviceProfile? DeviceProfile { get; set; }
+    }
+
+    /// <summary>Faithful shape of Streamyfin's MPV profile, including its malformed "h264, hevc".</summary>
+    private static DeviceProfile MalformedStreamyfinProfile() => new()
+    {
+        DirectPlayProfiles =
+        [
+            new DirectPlayProfile { Container = "mp4 ,mkv", VideoCodec = "h264,hevc", AudioCodec = "aac, mp3" },
+        ],
+        TranscodingProfiles =
+        [
+            new TranscodingProfile { Container = "ts", VideoCodec = "h264, hevc", AudioCodec = "aac,mp3,ac3,dts" },
+        ],
+        CodecProfiles =
+        [
+            new CodecProfile { Codec = "hevc, h265" },
+        ],
+        ContainerProfiles =
+        [
+            new ContainerProfile { Container = " avi" },
+        ],
+    };
 
     [Fact]
     public async Task Stale_query_live_stream_id_is_cleared()
@@ -248,6 +279,66 @@ public class PlaybackInfoGuardTests
         Assert.Equal(StaleId, context.ActionArguments[StreamarrPlaybackInfoGuard.LiveStreamArgument]);
     }
 
+    [Fact]
+    public async Task Malformed_codec_lists_in_the_posted_profile_are_normalized()
+    {
+        // Streamyfin's real MPV profile declares "h264, hevc"; Jellyfin's untrimmed split plus
+        // the HLS codec filter silently evicted hevc, turning every HEVC remux into a full
+        // H.264 re-encode. The guard must repair exactly these lists and nothing else.
+        var (guard, itemId, _) = await CreateGuardAsync();
+        var context = PlaybackInfoContext(itemId);
+        var profile = MalformedStreamyfinProfile();
+        context.ActionArguments[StreamarrPlaybackInfoGuard.BodyArgument] =
+            new FakePlaybackInfoDto { DeviceProfile = profile };
+
+        await RunAsync(guard, context);
+
+        Assert.Equal("h264,hevc", profile.TranscodingProfiles[0].VideoCodec);
+        Assert.Equal("aac,mp3,ac3,dts", profile.TranscodingProfiles[0].AudioCodec);
+        Assert.Equal("mp4,mkv", profile.DirectPlayProfiles[0].Container);
+        Assert.Equal("aac,mp3", profile.DirectPlayProfiles[0].AudioCodec);
+        Assert.Equal("hevc,h265", profile.CodecProfiles[0].Codec);
+        Assert.Equal("avi", profile.ContainerProfiles[0].Container);
+    }
+
+    [Fact]
+    public void Well_formed_profiles_are_left_untouched()
+    {
+        var profile = MalformedStreamyfinProfile();
+        Assert.Equal(5, StreamarrPlaybackInfoGuard.NormalizeDeviceProfileLists(profile));
+        Assert.Equal(0, StreamarrPlaybackInfoGuard.NormalizeDeviceProfileLists(profile));
+    }
+
+    [Fact]
+    public async Task Open_live_stream_profile_is_normalized_for_owned_items()
+    {
+        var (guard, itemId, _) = await CreateGuardAsync();
+        var context = PlaybackInfoContext(itemId, path: "/LiveStreams/Open");
+        var profile = MalformedStreamyfinProfile();
+        context.ActionArguments[StreamarrPlaybackInfoGuard.OpenBodyArgument] =
+            new FakeOpenLiveStreamDto { ItemId = itemId, DeviceProfile = profile };
+
+        await RunAsync(guard, context);
+
+        Assert.Equal("h264,hevc", profile.TranscodingProfiles[0].VideoCodec);
+        // The open route gets profile normalization only — no auto-open defaulting.
+        Assert.False(context.ActionArguments.ContainsKey(StreamarrPlaybackInfoGuard.AutoOpenArgument));
+    }
+
+    [Fact]
+    public async Task Open_live_stream_profile_for_foreign_items_is_untouched()
+    {
+        var (guard, _, _) = await CreateGuardAsync();
+        var context = PlaybackInfoContext(Guid.NewGuid(), path: "/LiveStreams/Open");
+        var profile = MalformedStreamyfinProfile();
+        context.ActionArguments[StreamarrPlaybackInfoGuard.OpenBodyArgument] =
+            new FakeOpenLiveStreamDto { ItemId = Guid.NewGuid(), DeviceProfile = profile };
+
+        await RunAsync(guard, context);
+
+        Assert.Equal("h264, hevc", profile.TranscodingProfiles[0].VideoCodec);
+    }
+
     [Theory]
     [InlineData("/Items/00000000000000000000000000000000/PlaybackInfo", false)] // empty guid
     [InlineData("/Items/Latest/PlaybackInfo", false)]
@@ -261,5 +352,15 @@ public class PlaybackInfoGuardTests
             expected,
             StreamarrPlaybackInfoGuard.TryGetPlaybackInfoItemId(new PathString(path), out var itemId));
         Assert.Equal(expected, itemId != Guid.Empty);
+    }
+
+    [Theory]
+    [InlineData("/LiveStreams/Open", true)]
+    [InlineData("/livestreams/open", true)]
+    [InlineData("/LiveStreams/Close", false)]
+    [InlineData("/LiveStreams/Open/Extra", false)]
+    public void Open_route_matching_is_exact(string path, bool expected)
+    {
+        Assert.Equal(expected, StreamarrPlaybackInfoGuard.IsLiveStreamOpenPath(new PathString(path)));
     }
 }

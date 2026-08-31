@@ -1,4 +1,5 @@
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Dlna;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -30,9 +31,19 @@ namespace Streamarr.Plugin.Playback;
 /// <c>false</c> from a client that intends the two-step open flow is always honored.
 /// </para>
 /// <para>
-/// This is deliberately not client-sniffing: both rules apply to every client, are no-ops
-/// whenever the request already expresses a workable intent, and encode no assumptions about
-/// any player's URL choices. Play-method steering lives in <see cref="MediaSourceMapper"/>
+/// It finally normalizes whitespace inside the comma-separated codec/container lists of a
+/// posted <see cref="DeviceProfile"/> (here and on <c>POST /LiveStreams/Open</c>). Jellyfin
+/// splits these lists without trimming, and its HLS codec filter
+/// (<c>StreamBuilder.BuildStreamVideoItem</c>) silently drops entries that then fail to match
+/// — Streamyfin's MPV profile declares <c>"h264, hevc"</c>, so the stray space evicted hevc
+/// from the transcoding target list and every HEVC release was fully re-encoded to H.264
+/// instead of stream-copied. <c>"h264, hevc"</c> can only mean <c>["h264","hevc"]</c>;
+/// trimming is semantics-preserving and idempotent for well-formed profiles.
+/// </para>
+/// <para>
+/// This is deliberately not client-sniffing: all three rules apply to every client, are no-ops
+/// whenever the request is already well-formed, and encode no assumptions about any player's
+/// URL choices. Play-method steering lives in <see cref="MediaSourceMapper"/>
 /// (direct play is never advertised), not here.
 /// </para>
 /// <para>
@@ -53,8 +64,12 @@ public sealed class StreamarrPlaybackInfoGuard(
     internal const string LiveStreamArgument = "liveStreamId";
     internal const string AutoOpenArgument = "autoOpenLiveStream";
     internal const string BodyArgument = "playbackInfoDto";
+    internal const string OpenBodyArgument = "openLiveStreamDto";
+    internal const string OpenItemArgument = "itemId";
     internal const string BodyLiveStreamProperty = "LiveStreamId";
     internal const string BodyAutoOpenProperty = "AutoOpenLiveStream";
+    internal const string BodyDeviceProfileProperty = "DeviceProfile";
+    internal const string BodyItemIdProperty = "ItemId";
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
@@ -76,15 +91,23 @@ public sealed class StreamarrPlaybackInfoGuard(
     private void HardenRequest(ActionExecutingContext context)
     {
         var request = context.HttpContext.Request;
-        if (!HttpMethods.IsPost(request.Method)
-            || !TryGetPlaybackInfoItemId(request.Path, out var itemId)
-            || !projection.Owns(itemId))
+        if (!HttpMethods.IsPost(request.Method))
+            return;
+
+        if (TryGetPlaybackInfoItemId(request.Path, out var itemId) && projection.Owns(itemId))
         {
+            DropStaleLiveStreamId(context, itemId);
+            DefaultAutoOpen(context, itemId);
+            NormalizeDeviceProfile(context, BodyArgument, itemId);
             return;
         }
 
-        DropStaleLiveStreamId(context, itemId);
-        DefaultAutoOpen(context, itemId);
+        if (IsLiveStreamOpenPath(request.Path)
+            && RequestedOpenItemId(context) is { } openItemId
+            && projection.Owns(openItemId))
+        {
+            NormalizeDeviceProfile(context, OpenBodyArgument, openItemId);
+        }
     }
 
     private void DropStaleLiveStreamId(ActionExecutingContext context, Guid itemId)
@@ -140,6 +163,76 @@ public sealed class StreamarrPlaybackInfoGuard(
             itemId);
     }
 
+    private void NormalizeDeviceProfile(ActionExecutingContext context, string bodyArgument, Guid itemId)
+    {
+        // Same-assembly type as the host's dto property; ABI drift makes this pattern-match
+        // fail and the guard falls through untouched.
+        if (BodyProperty(context, bodyArgument, BodyDeviceProfileProperty) is not DeviceProfile profile)
+            return;
+
+        var repaired = NormalizeDeviceProfileLists(profile);
+        if (repaired > 0)
+        {
+            logger.LogDebug(
+                "Normalized {Count} malformed codec/container list(s) in the posted device profile for Streamarr item {ItemId}",
+                repaired,
+                itemId);
+        }
+    }
+
+    /// <summary>
+    /// Trims whitespace inside every comma-separated list field of the profile, in place.
+    /// Returns how many fields were repaired; well-formed fields are left untouched.
+    /// </summary>
+    internal static int NormalizeDeviceProfileLists(DeviceProfile profile)
+    {
+        var repaired = 0;
+
+        foreach (var direct in profile.DirectPlayProfiles ?? [])
+        {
+            direct.Container = Repair(direct.Container, ref repaired) ?? string.Empty;
+            direct.VideoCodec = Repair(direct.VideoCodec, ref repaired);
+            direct.AudioCodec = Repair(direct.AudioCodec, ref repaired);
+        }
+
+        foreach (var transcode in profile.TranscodingProfiles ?? [])
+        {
+            transcode.Container = Repair(transcode.Container, ref repaired) ?? string.Empty;
+            transcode.VideoCodec = Repair(transcode.VideoCodec, ref repaired) ?? string.Empty;
+            transcode.AudioCodec = Repair(transcode.AudioCodec, ref repaired) ?? string.Empty;
+        }
+
+        foreach (var codec in profile.CodecProfiles ?? [])
+        {
+            codec.Codec = Repair(codec.Codec, ref repaired);
+            codec.Container = Repair(codec.Container, ref repaired);
+            codec.SubContainer = Repair(codec.SubContainer, ref repaired);
+        }
+
+        foreach (var container in profile.ContainerProfiles ?? [])
+        {
+            container.Container = Repair(container.Container, ref repaired);
+            container.SubContainer = Repair(container.SubContainer, ref repaired);
+        }
+
+        return repaired;
+    }
+
+    private static string? Repair(string? value, ref int repaired)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        var normalized = string.Join(
+            ',',
+            value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+        if (string.Equals(normalized, value, StringComparison.Ordinal))
+            return value;
+
+        repaired++;
+        return normalized;
+    }
+
     /// <summary>The id the request references: query argument first (controller precedence), then the posted dto.</summary>
     private static string? RequestedLiveStreamId(ActionExecutingContext context)
     {
@@ -150,7 +243,7 @@ public sealed class StreamarrPlaybackInfoGuard(
             return queryId;
         }
 
-        return BodyProperty(context, BodyLiveStreamProperty) as string;
+        return BodyProperty(context, BodyArgument, BodyLiveStreamProperty) as string;
     }
 
     /// <summary>The opening preference the request expresses, if any.</summary>
@@ -159,22 +252,47 @@ public sealed class StreamarrPlaybackInfoGuard(
         if (context.ActionArguments.TryGetValue(AutoOpenArgument, out var bound) && bound is bool queryValue)
             return queryValue;
 
-        return BodyProperty(context, BodyAutoOpenProperty) as bool?;
+        return BodyProperty(context, BodyArgument, BodyAutoOpenProperty) as bool?;
+    }
+
+    /// <summary>The item an open-live-stream request targets: query argument first, then the posted dto.</summary>
+    private static Guid? RequestedOpenItemId(ActionExecutingContext context)
+    {
+        if (context.ActionArguments.TryGetValue(OpenItemArgument, out var bound)
+            && bound is Guid queryId
+            && queryId != Guid.Empty)
+        {
+            return queryId;
+        }
+
+        return BodyProperty(context, OpenBodyArgument, BodyItemIdProperty) is Guid bodyId && bodyId != Guid.Empty
+            ? bodyId
+            : null;
     }
 
     /// <summary>
-    /// The plugin does not compile against Jellyfin.Api, so the PlaybackInfoDto body is read
+    /// The plugin does not compile against Jellyfin.Api, so posted body dtos are read
     /// reflectively; a missing parameter or renamed property simply reads as "not supplied".
     /// </summary>
-    private static object? BodyProperty(ActionExecutingContext context, string propertyName)
-        => context.ActionArguments.TryGetValue(BodyArgument, out var dto) && dto is not null
+    private static object? BodyProperty(ActionExecutingContext context, string argumentName, string propertyName)
+        => context.ActionArguments.TryGetValue(argumentName, out var dto) && dto is not null
             ? dto.GetType().GetProperty(propertyName)?.GetValue(dto)
             : null;
 
     private static bool DeclaresParameter(IEnumerable<ParameterDescriptor> parameters, string name)
         => parameters.Any(parameter => string.Equals(parameter.Name, name, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Matches exactly <c>/Items/{itemId}/PlaybackInfo</c> — the only action this guard touches.</summary>
+    /// <summary>Matches exactly <c>/LiveStreams/Open</c> — profile normalization only.</summary>
+    internal static bool IsLiveStreamOpenPath(PathString path)
+    {
+        var parts = (path.Value ?? string.Empty)
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 2
+               && string.Equals(parts[0], "LiveStreams", StringComparison.OrdinalIgnoreCase)
+               && string.Equals(parts[1], "Open", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Matches exactly <c>/Items/{itemId}/PlaybackInfo</c> — all three rules apply.</summary>
     internal static bool TryGetPlaybackInfoItemId(PathString path, out Guid itemId)
     {
         itemId = Guid.Empty;

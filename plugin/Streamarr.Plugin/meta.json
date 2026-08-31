@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.15.0.0",
+    "version": "0.15.1.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Add a Files page with a unified storage overview (disk, segment cache, pre-downloads, NZB cache, ephemeral sessions) alongside cached-release and ephemeral-file management. Add per-scope playback-range tracking that folds front-end watch heartbeats into watched/buffered timeline data, surfaced through a new segmented timeline rail in the Sessions view. Add rotating, revocable admin refresh-token sessions for browser auth instead of long-lived cookies. Harden Jellyfin PlaybackInfo handling against clients that resend a closed LiveStreamId (observed with Swiftfin's rebuilt player), clearing only truly-dead stream ids and defaulting AutoOpenLiveStream when a client expresses no preference. Rework the Sessions page into a dedicated module with grid and table views."
+    "changelog": "Fix HEVC releases being fully re-encoded to H.264 instead of stream-copied for clients whose device profile has whitespace inside its comma-separated codec/container lists (observed with Streamyfin's MPV profile, e.g. \"h264, hevc\"): Jellyfin splits these lists without trimming and silently drops the unmatched entry from its HLS codec filter. The playback guard now normalizes whitespace in the posted DeviceProfile in place, on both PlaybackInfo and LiveStreams/Open, so well-matched HEVC direct-stream-copy is restored."
 }

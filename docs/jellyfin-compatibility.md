@@ -195,7 +195,8 @@ ffmpeg and the download proxy.
 
 `Playback/StreamarrPlaybackInfoGuard.cs` is the one remaining HTTP-pipeline filter on the
 playback path. It is **client-agnostic** — no client names, no auth-claim sniffing — and
-applies two rules to `POST /Items/{itemId}/PlaybackInfo` for Streamarr-owned items:
+applies three rules to `POST /Items/{itemId}/PlaybackInfo` for Streamarr-owned items (rule 3
+also covers `POST /LiveStreams/Open`):
 
 1. **Drop closed live-stream ids.** Streamarr streams close aggressively, and rebuilding
    players (Swiftfin's rewritten player on an audio/subtitle switch) resend the previous
@@ -209,6 +210,17 @@ applies two rules to `POST /Items/{itemId}/PlaybackInfo` for Streamarr-owned ite
    preference-less PlaybackInfo would otherwise return an unopenable offer to clients that
    never call `/LiveStreams/Open` themselves (pre-rewrite Swiftfin 1.x). An explicit
    `false` from a two-step opener is always honored.
+3. **Normalize whitespace in the posted `DeviceProfile`'s codec/container lists.** Jellyfin
+   splits these comma-separated lists **without trimming**
+   (`StreamingHelpers`/`ContainerHelper.Split`), and `StreamBuilder.BuildStreamVideoItem`'s
+   HLS codec filter silently drops entries that then fail to match. Streamyfin's MPV profile
+   declares the transcoding target `VideoCodec: "h264, hevc"` — the stray space evicted
+   `hevc`, the remux URL requested `VideoCodec=h264` only, `EncodingHelper.CanStreamCopyVideo`
+   refused the copy, and every HEVC release was fully re-encoded to H.264 in software (slow
+   first frame, "Transcoding" in the client stats). `"h264, hevc"` can only mean
+   `["h264","hevc"]`, so trimming is semantics-preserving; well-formed profiles pass through
+   bit-identical, and the repair is applied in place so Jellyfin's auto-open path sees the
+   same corrected instance.
 
 The guard binds to these 10.11.x contracts (verified against Jellyfin 10.11.11 source):
 
@@ -218,8 +230,10 @@ The guard binds to these 10.11.x contracts (verified against Jellyfin 10.11.11 s
   `autoOpenLiveStream` arguments take precedence over the posted `PlaybackInfoDto` body
   (`liveStreamId ??= playbackInfoDto?.LiveStreamId`), which is what lets the guard override
   them without referencing `Jellyfin.Api` types;
-- the body parameter name `playbackInfoDto` and its public `LiveStreamId` /
-  `AutoOpenLiveStream` properties (read reflectively);
+- the body parameter names `playbackInfoDto` / `openLiveStreamDto` and their public
+  `LiveStreamId` / `AutoOpenLiveStream` / `DeviceProfile` / `ItemId` properties (read
+  reflectively; `DeviceProfile` is the shared `MediaBrowser.Model.Dlna` type, so a moved
+  type fails the pattern match and the guard falls through);
 - `MediaInfoHelper.SetDeviceSpecificData` building the transcoding URL via
   `StreamInfo.ToUrl`, which appends `&LiveStreamId=`.
 

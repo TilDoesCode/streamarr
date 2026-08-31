@@ -1208,6 +1208,12 @@ close_live_stream \
 streamyfin_auth='MediaBrowser Client="Streamyfin", Device="iPad", DeviceId="streamarr-streamyfin-ci", Version="0.51.0"'
 streamyfin_token="$(auth_token streamarr-allowed "$user_password" "$streamyfin_auth" "$tmp_dir/streamyfin-auth.json")"
 streamyfin_header="Authorization: $streamyfin_auth, Token=\"$streamyfin_token\""
+# The profile is byte-faithful to Streamyfin's generateDeviceProfile (utils/profiles/native.ts)
+# INCLUDING its malformed transcoding VideoCodec "h264, hevc": Jellyfin splits codec lists
+# without trimming and its HLS filter drops the unmatched " hevc", which turned every HEVC
+# release into a full H.264 software re-encode (slow TTFF, "Transcoding" in the client stats).
+# The guard's profile normalization must repair the list so hevc survives into the remux URL
+# and ffmpeg stream-copies the video.
 jq -n --arg uid "$allowed_id" --arg source "$episode_source_id" '
   {
     UserId: $uid,
@@ -1223,7 +1229,14 @@ jq -n --arg uid "$allowed_id" --arg source "$episode_source_id" '
       }],
       TranscodingProfiles: [{
         Type: "Video", Container: "ts", Protocol: "hls",
-        VideoCodec: "h264,hevc", AudioCodec: "aac,mp3,ac3,dts", Context: "Streaming"
+        VideoCodec: "h264, hevc", AudioCodec: "aac,mp3,ac3,dts", Context: "Streaming"
+      }],
+      CodecProfiles: [{
+        Type: "Video", Codec: "hevc,h265",
+        Conditions: [
+          {Condition: "LessThanEqual", Property: "VideoLevel", Value: "153", IsRequired: false},
+          {Condition: "NotEquals", Property: "VideoRangeType", Value: "DOVI", IsRequired: true}
+        ]
       }]
     }
   }
@@ -1242,8 +1255,10 @@ jq -e --arg sourceId "$episode_source_id" '
         and $opened.RequiresOpening == false
         and ($opened.LiveStreamId | type == "string" and length > 0)
         and $opened.SupportsDirectPlay == false
-        and ($opened.TranscodingUrl | type == "string" and contains("LiveStreamId=")))
+        and ($opened.TranscodingUrl | type == "string" and contains("LiveStreamId=")
+          and contains("VideoCodec=h264,hevc")))
 ' "$tmp_dir/streamyfin-playback-result.json" >/dev/null
+echo "streamyfin malformed-profile normalization: hevc kept in the remux target list"
 assert_last_resolve "$episode_release_id" "ci-smoke-series-s01e01"
 streamyfin_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
   "$tmp_dir/streamyfin-playback-result.json")"
