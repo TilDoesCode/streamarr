@@ -25,12 +25,6 @@
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="PublicStreamUrl">Public stream URL (optional)</label>
-                        <input is="emby-input" type="url" id="PublicStreamUrl" name="PublicStreamUrl" maxlength="2048" autocomplete="off" />
-                        <div class="fieldDescription">HTTPS reverse-proxy or LAN base URL reachable by player devices, e.g. https://streamarr.example. Required when the Core Server URL is a private container hostname. Leave blank only when that URL is already reachable by clients.</div>
-                    </div>
-
-                    <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="ApiKey">Machine API key</label>
                         <input is="emby-input" type="password" id="ApiKey" name="ApiKey" maxlength="1024" autocomplete="new-password" />
                         <div class="fieldDescription">A machine API key issued by the Core Server (Bearer).</div>
@@ -61,11 +55,6 @@
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="LibraryEnabled" name="LibraryEnabled" />
                         <span>Show the "Streamarr" library — a library holding only items you deliberately engaged with (played, favorited or marked watched). Search results stay hidden until first engagement; engaged items remain as a permanent history and can be removed by unfavoriting + marking unwatched. Integrates with Continue Watching, Next Up and Favorites (on by default)</span>
-                    </label>
-
-                    <label class="checkboxContainer">
-                        <input is="emby-checkbox" type="checkbox" id="SwiftfinCompatibilityEnabled" name="SwiftfinCompatibilityEnabled" />
-                        <span>Swiftfin compatibility — serve Streamarr items to Swiftfin via a server-side remux stream, since Swiftfin cannot open remote on-demand sources itself (on by default; other clients are never affected)</span>
                     </label>
 
                     <label class="checkboxContainer">
@@ -113,14 +102,12 @@
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     var page = document.querySelector('#StreamarrConfigPage');
                     page.querySelector('#ServerUrl').value = config.ServerUrl || '';
-                    page.querySelector('#PublicStreamUrl').value = config.PublicStreamUrl || '';
                     page.querySelector('#ApiKey').value = config.ApiKey || '';
                     page.querySelector('#EphemeralTtlMinutes').value = config.EphemeralTtlMinutes || 720;
                     page.querySelector('#ReleaseCacheTtlMinutes').value = config.ReleaseCacheTtlMinutes || 30;
                     page.querySelector('#ProfileId').value = config.ProfileId || '';
                     page.querySelector('#InterceptionEnabled').checked = !!config.InterceptionEnabled;
                     page.querySelector('#LibraryEnabled').checked = config.LibraryEnabled !== false;
-                    page.querySelector('#SwiftfinCompatibilityEnabled').checked = config.SwiftfinCompatibilityEnabled !== false;
                     page.querySelector('#RepairNotificationsEnabled').checked = config.RepairNotificationsEnabled !== false;
                     page.querySelector('#PinnedWorkQuery').value = config.PinnedWorkQuery || '';
                     Dashboard.hideLoadingMsg();
@@ -133,14 +120,12 @@
                 var page = document.querySelector('#StreamarrConfigPage');
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     config.ServerUrl = page.querySelector('#ServerUrl').value;
-                    config.PublicStreamUrl = page.querySelector('#PublicStreamUrl').value;
                     config.ApiKey = page.querySelector('#ApiKey').value;
                     config.EphemeralTtlMinutes = parseInt(page.querySelector('#EphemeralTtlMinutes').value, 10) || 720;
                     config.ReleaseCacheTtlMinutes = parseInt(page.querySelector('#ReleaseCacheTtlMinutes').value, 10) || 30;
                     config.ProfileId = page.querySelector('#ProfileId').value;
                     config.InterceptionEnabled = page.querySelector('#InterceptionEnabled').checked;
                     config.LibraryEnabled = page.querySelector('#LibraryEnabled').checked;
-                    config.SwiftfinCompatibilityEnabled = page.querySelector('#SwiftfinCompatibilityEnabled').checked;
                     config.RepairNotificationsEnabled = page.querySelector('#RepairNotificationsEnabled').checked;
                     config.PinnedWorkQuery = page.querySelector('#PinnedWorkQuery').value;
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {

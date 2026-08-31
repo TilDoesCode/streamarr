@@ -146,6 +146,46 @@ public sealed class StreamHistoryRecorderTests
         Assert.False(await db.StreamEvents.AnyAsync(e => e.StreamRecordId == prunedRecord.Id));
     }
 
+    [Fact]
+    public async Task Startup_FinalizesPriorOpenRowsThenPrunesWithoutTouchingCurrentAttempts()
+    {
+        await using var fixture = await Fixture.CreateAsync(
+            maxRetainedStreams: 2,
+            seed: async db =>
+            {
+                for (var index = 1; index <= 3; index++)
+                {
+                    db.StreamRecords.Add(new StreamRecordEntity
+                    {
+                        AttemptId = $"attempt-prior-{index}",
+                        ReleaseId = $"prior-{index}",
+                        WorkId = "work",
+                        CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-index),
+                    });
+                }
+                await db.SaveChangesAsync();
+            });
+
+        var recovered = await fixture.WaitForAsync(async () =>
+        {
+            var records = await fixture.Recorder.ListAsync(50, default);
+            return records.Count == 2 && records.All(record => record.FinalState == "interrupted")
+                ? records
+                : null;
+        });
+        Assert.DoesNotContain(recovered, record => record.ReleaseId == "prior-1");
+        Assert.All(recovered, record =>
+        {
+            Assert.NotNull(record.ClosedAt);
+            Assert.Equal("server process ended before stream history was finalized", record.CloseReason);
+        });
+
+        var currentAttempt = fixture.Recorder.BeginAttempt(new StreamAttemptBegin { ReleaseId = "current" });
+        var current = await fixture.WaitForAsync(() => fixture.Recorder.GetAsync(currentAttempt, default));
+        Assert.Null(current.FinalState);
+        Assert.Null(current.ClosedAt);
+    }
+
     private static void BeginAndClose(IStreamHistoryRecorder recorder, string releaseId)
     {
         var attemptId = recorder.BeginAttempt(new StreamAttemptBegin { ReleaseId = releaseId });
@@ -168,7 +208,9 @@ public sealed class StreamHistoryRecorderTests
         public StreamHistoryRecorder Recorder { get; }
         public IDbContextFactory<StreamarrDbContext> DbFactory => _provider.GetRequiredService<IDbContextFactory<StreamarrDbContext>>();
 
-        public static async Task<Fixture> CreateAsync(int maxRetainedStreams = 50)
+        public static async Task<Fixture> CreateAsync(
+            int maxRetainedStreams = 50,
+            Func<StreamarrDbContext, Task>? seed = null)
         {
             var directory = Directory.CreateTempSubdirectory("streamarr-stream-history-").FullName;
             var services = new ServiceCollection();
@@ -181,7 +223,11 @@ public sealed class StreamHistoryRecorderTests
             var provider = services.BuildServiceProvider();
 
             await using (var db = await provider.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync())
+            {
                 await db.Database.EnsureCreatedAsync();
+                if (seed is not null)
+                    await seed(db);
+            }
 
             var recorder = provider.GetRequiredService<StreamHistoryRecorder>();
             await recorder.StartAsync(CancellationToken.None);

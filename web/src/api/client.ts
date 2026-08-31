@@ -1,5 +1,6 @@
 import type { components } from "./schema";
-import { clearSession, getSession } from "./token";
+import { clearSession, getSession, setSession, type Session } from "./token";
+import type { LoginResponse } from "./types";
 
 /** The server's typed error envelope (BRIEF §9.2): `{ error: { code, message } }`. */
 export type ErrorEnvelope = components["schemas"]["ErrorResponse"];
@@ -23,6 +24,7 @@ export class ApiError extends Error {
 // fetch layer importing the router (BRIEF §9: "401 → redirect to login").
 let onUnauthorized: (() => void) | null = null;
 let authenticatedRequestController = new AbortController();
+let sessionRefresh: Promise<Session> | null = null;
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
@@ -41,6 +43,42 @@ export async function requestAdminLogout(): Promise<void> {
     credentials: "same-origin",
     keepalive: true,
   });
+}
+
+/** Rotate the HttpOnly refresh cookie and publish the new non-secret session deadlines. */
+export function refreshAdminSession(): Promise<Session> {
+  if (sessionRefresh) return sessionRefresh;
+
+  const sessionAtStart = getSession();
+  if (!sessionAtStart) return Promise.reject(new Error("No browser session is available to refresh."));
+
+  sessionRefresh = (async () => {
+    const res = await fetch(buildUrl("/auth/refresh"), {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    });
+    if (!res.ok) throw await toApiError(res);
+
+    const refreshed = JSON.parse(await res.text()) as LoginResponse;
+    const current = getSession();
+    if (current !== sessionAtStart) {
+      if (current) return current;
+      throw new DOMException("Session refresh was superseded", "AbortError");
+    }
+
+    const next: Session = {
+      username: refreshed.username ?? sessionAtStart.username,
+      role: refreshed.role ?? sessionAtStart.role,
+      expiresAt: refreshed.expiresAt,
+      refreshExpiresAt: refreshed.refreshExpiresAt,
+    };
+    setSession(next);
+    return next;
+  })().finally(() => {
+    sessionRefresh = null;
+  });
+  return sessionRefresh;
 }
 
 export interface RequestOptions {
@@ -83,7 +121,7 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
 /**
  * Thin typed fetch wrapper over the Core Server API (BRIEF §9.2). Uses the same-origin HttpOnly
  * admin cookie, serializes/deserializes JSON, normalizes the typed error envelope into
- * {@link ApiError}, and triggers the login redirect on 401.
+ * {@link ApiError}, and refreshes once before treating a 401 as a signed-out session.
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, query, signal } = options;
@@ -97,13 +135,24 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     : null;
   let res: Response;
   try {
-    res = await fetch(buildUrl(path, query), {
+    const request = () => fetch(buildUrl(path, query), {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       credentials: "same-origin",
       signal: linkedSignal?.signal ?? (hasSession ? authenticatedRequestController.signal : signal),
     });
+    res = await request();
+    if (res.status === 401 && hasSession && canRefresh(path)) {
+      try {
+        await refreshAdminSession();
+        res = await request();
+      } catch {
+        clearSession();
+        onUnauthorized?.();
+        throw await toApiError(res);
+      }
+    }
   } finally {
     linkedSignal?.dispose();
   }
@@ -123,6 +172,13 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const text = await res.text();
   if (!text) return undefined as T;
   return JSON.parse(text) as T;
+}
+
+function canRefresh(path: string): boolean {
+  const normalized = path.startsWith("/api/v1") ? path.slice("/api/v1".length) : path;
+  return normalized !== "/auth/login" &&
+    normalized !== "/auth/refresh" &&
+    normalized !== "/auth/logout";
 }
 
 async function toApiError(res: Response): Promise<ApiError> {

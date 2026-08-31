@@ -185,6 +185,76 @@ public class PlaybackAdmissionTests(StreamarrServerFixture fixture)
     }
 
     [Fact]
+    public async Task ReusedAdmissions_NeverRetireTheBorrowedCapabilityDuringCleanup()
+    {
+        var resolve = fixture.GetRequiredService<ResolveService>();
+        var sessions = fixture.GetRequiredService<SessionManager>();
+        var time = new ManualTimeProvider();
+        using var admissions = new PlaybackAdmissionService(
+            resolve,
+            sessions,
+            NullLogger<PlaybackAdmissionService>.Instance,
+            time,
+            completedLifetime: TimeSpan.FromSeconds(1));
+        var requester = "borrowed-capability-" + Guid.NewGuid().ToString("N");
+        var request = new ResolveRequest
+        {
+            ReleaseId = StreamarrServerFixture.DirectReleaseId,
+            Client = "tests",
+            RequestedById = requester,
+        };
+        string? token = null;
+
+        try
+        {
+            var owner = await Admit(request);
+            Assert.Equal("ready", owner.Phase);
+            Assert.Equal(
+                PlaybackAdmissionClaimOutcome.Claimed,
+                admissions.TryClaim(owner.AdmissionId, out var claimedOwner));
+            token = claimedOwner!.Resolve!.StreamUrl!.Split('/').Last();
+
+            // Cancelling an unclaimed borrower must preserve the owner's capability.
+            var cancelledBorrower = await Admit(request);
+            Assert.Equal(claimedOwner.Resolve.StreamUrl, cancelledBorrower.Resolve!.StreamUrl);
+            admissions.Cancel(cancelledBorrower.AdmissionId);
+            Assert.True(sessions.TryGetSession(token, out _));
+
+            // Claim-response cleanup must not create a destructive handle for a borrower.
+            var claimedBorrower = await Admit(request);
+            Assert.Equal(
+                PlaybackAdmissionClaimOutcome.Claimed,
+                admissions.TryClaim(claimedBorrower.AdmissionId, out var borrowedResponse));
+            Assert.Equal(claimedOwner.Resolve.StreamUrl, borrowedResponse!.Resolve!.StreamUrl);
+            admissions.Cancel(claimedBorrower.AdmissionId);
+            Assert.True(sessions.TryGetSession(token, out _));
+
+            // Periodic expiry must preserve a borrowed capability as well.
+            var expiredBorrower = await Admit(request);
+            Assert.Equal(claimedOwner.Resolve.StreamUrl, expiredBorrower.Resolve!.StreamUrl);
+            time.Advance(TimeSpan.FromSeconds(2));
+            admissions.Sweep();
+            Assert.Null(admissions.GetStatus(expiredBorrower.AdmissionId));
+            Assert.True(sessions.TryGetSession(token, out _));
+        }
+        finally
+        {
+            if (token is not null)
+                sessions.CloseSession(token);
+        }
+
+        Task<PlaybackAdmissionResponse> Admit(ResolveRequest admissionRequest)
+            => admissions.AdmitAsync(
+                admissionRequest,
+                requestedById: requester,
+                requestedByName: null,
+                capability => $"/api/v1/stream/{capability}",
+                capability => $"{fixture.BaseUrl}/api/v1/stream/{capability}",
+                TimeSpan.FromSeconds(10),
+                CancellationToken.None);
+    }
+
+    [Fact]
     public async Task BackgroundSweep_ExpiresUnclaimedCapabilityWithoutMoreAdmissionTraffic()
     {
         var resolve = fixture.GetRequiredService<ResolveService>();

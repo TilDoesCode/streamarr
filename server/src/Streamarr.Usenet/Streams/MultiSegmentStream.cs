@@ -56,7 +56,9 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         bool progressiveFirstSegment = false,
         bool disableReadAhead = false,
         SegmentMetadataCache? segmentMetadata = null,
-        Action<SegmentTransferEvent>? onTransfer = null
+        Action<SegmentTransferEvent>? onTransfer = null,
+        int transientRetryCount = 0,
+        Func<int, TimeSpan>? transientRetryDelay = null
     )
     {
         return articleBufferSize == 0
@@ -82,7 +84,9 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 progressiveFirstSegment,
                 disableReadAhead,
                 segmentMetadata,
-                onTransfer);
+                onTransfer,
+                transientRetryCount,
+                transientRetryDelay);
     }
 
     private MultiSegmentStream
@@ -100,7 +104,9 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         bool progressiveFirstSegment,
         bool disableReadAhead,
         SegmentMetadataCache? segmentMetadata = null,
-        Action<SegmentTransferEvent>? onTransfer = null
+        Action<SegmentTransferEvent>? onTransfer = null,
+        int transientRetryCount = 0,
+        Func<int, TimeSpan>? transientRetryDelay = null
     )
     {
         _segmentIds = segmentIds;
@@ -110,6 +116,12 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         _retryCount = retryCount is >= 0 and <= 10
             ? retryCount
             : throw new ArgumentOutOfRangeException(nameof(retryCount));
+        _transientRetryCount = transientRetryCount is >= 0 and <= 10
+            ? transientRetryCount
+            : throw new ArgumentOutOfRangeException(nameof(transientRetryCount));
+        _transientRetryDelay = transientRetryCount == 0
+            ? transientRetryDelay
+            : transientRetryDelay ?? throw new ArgumentNullException(nameof(transientRetryDelay));
         _onSegmentRequested = onSegmentRequested;
         _onTransfer = onTransfer;
         _steadyReadAhead = articleBufferSize;
@@ -131,6 +143,8 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
 
     private Stream? _openedFirstSegment;
     private readonly bool _progressiveFirstSegment;
+    private readonly int _transientRetryCount;
+    private readonly Func<int, TimeSpan>? _transientRetryDelay;
 
     private static readonly bool Trace = Environment.GetEnvironmentVariable("STREAMARR_NNTP_TRACE") == "1";
     private static int _instanceCounter;
@@ -360,6 +374,7 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
         var initialStream = openedStream;
         var started = Stopwatch.GetTimestamp();
         long partialBytes = 0;
+        var attemptsMade = 0;
         Notify(segmentId, SegmentTransferStage.Downloading);
         try
         {
@@ -368,49 +383,30 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    Stream body;
-                    if (initialStream is not null)
-                    {
-                        body = initialStream;
-                        initialStream = null;
-                    }
-                    else
-                    {
-                        var bodyResponse = await _usenetClient
-                            .DecodedBodyAsync(segmentId, cancellationToken)
-                            .ConfigureAwait(false);
-                        body = bodyResponse.Stream;
-                    }
+                    attemptsMade++;
+                    return await DownloadOnce().ConfigureAwait(false);
+                }
+                catch (Exception e) when (e is not OperationCanceledException and not UsenetArticleNotFoundException)
+                {
+                    lastFailure = e;
+                }
+            }
 
-                    await using (body.ConfigureAwait(false))
-                    {
-                        var headers = body is YencStream yencStream
-                            ? await yencStream.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false)
-                            : null;
-                        if (headers is not null)
-                            _segmentMetadata?.Store(segmentId, headers.PartOffset, headers.PartSize);
-                        var capacity = headers?.PartSize is > 0 and <= int.MaxValue
-                            ? checked((int)headers.PartSize)
-                            : 0;
-                        using var output = capacity > 0 ? new MemoryStream(capacity) : new MemoryStream();
-                        try
-                        {
-                            await body.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-                        }
-                        finally
-                        {
-                            partialBytes = Math.Max(partialBytes, output.Length);
-                        }
-                        var bytes = output.TryGetBuffer(out var buffer) && output.Length == buffer.Count
-                            ? buffer.Array!
-                            : output.ToArray();
-                        Notify(
-                            segmentId,
-                            SegmentTransferStage.Downloaded,
-                            bytes.LongLength,
-                            Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                        return bytes;
-                    }
+            for (var delayedAttempt = 1;
+                 delayedAttempt <= _transientRetryCount && IsDelayedRetryable(lastFailure);
+                 delayedAttempt++)
+            {
+                var delay = _transientRetryDelay!(delayedAttempt);
+                if (delay < TimeSpan.Zero)
+                    throw new ArgumentOutOfRangeException(
+                        nameof(_transientRetryDelay),
+                        "The delayed retry function returned a negative delay.");
+
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    attemptsMade++;
+                    return await DownloadOnce().ConfigureAwait(false);
                 }
                 catch (Exception e) when (e is not OperationCanceledException and not UsenetArticleNotFoundException)
                 {
@@ -419,8 +415,55 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
             }
 
             throw new IOException(
-                $"NNTP article <{SegmentId.Normalize(segmentId)}> failed after {_retryCount + 1} attempts.",
+                $"NNTP article <{SegmentId.Normalize(segmentId)}> failed after {attemptsMade} attempts.",
                 lastFailure);
+
+            async Task<byte[]> DownloadOnce()
+            {
+                Stream body;
+                if (initialStream is not null)
+                {
+                    body = initialStream;
+                    initialStream = null;
+                }
+                else
+                {
+                    var bodyResponse = await _usenetClient
+                        .DecodedBodyAsync(segmentId, cancellationToken)
+                        .ConfigureAwait(false);
+                    body = bodyResponse.Stream;
+                }
+
+                await using (body.ConfigureAwait(false))
+                {
+                    var headers = body is YencStream yencStream
+                        ? await yencStream.GetYencHeadersAsync(cancellationToken).ConfigureAwait(false)
+                        : null;
+                    if (headers is not null)
+                        _segmentMetadata?.Store(segmentId, headers.PartOffset, headers.PartSize);
+                    var capacity = headers?.PartSize is > 0 and <= int.MaxValue
+                        ? checked((int)headers.PartSize)
+                        : 0;
+                    using var output = capacity > 0 ? new MemoryStream(capacity) : new MemoryStream();
+                    try
+                    {
+                        await body.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        partialBytes = Math.Max(partialBytes, output.Length);
+                    }
+                    var bytes = output.TryGetBuffer(out var buffer) && output.Length == buffer.Count
+                        ? buffer.Array!
+                        : output.ToArray();
+                    Notify(
+                        segmentId,
+                        SegmentTransferStage.Downloaded,
+                        bytes.LongLength,
+                        Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                    return bytes;
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -442,6 +485,14 @@ public class MultiSegmentStream : FastReadOnlyNonSeekableStream
                 await initialStream.DisposeAsync().ConfigureAwait(false);
         }
     }
+
+    private static bool IsDelayedRetryable(Exception? exception)
+        => exception is TimeoutException
+            or IOException
+            or UsenetConnectionException
+            or UsenetProtocolException
+            or UsenetNotConnectedException
+            or CouldNotConnectToUsenetException;
 
     private void Notify(
         string segmentId,

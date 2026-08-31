@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import type { SessionResponse } from "@/api/types";
+import type { TimelineRange } from "@/components/timeline-rail";
 import { cn } from "@/lib/utils";
 import { formatRate, formatRateCompact } from "./format";
 
@@ -92,24 +93,49 @@ export function FinalStateBadge({ state }: { state?: string | null }) {
   );
 }
 
-export function SegmentRail({ percent: value, cachedPercent }: { percent: number; cachedPercent: number }) {
+/**
+ * 48-cell payload rail lit from real byte intervals: a cell fills when the client actually
+ * pulled those bytes (delivered) and outlines when they are buffered locally from Usenet —
+ * a viewer who seeks to the middle lights the middle, not a fake prefix.
+ */
+export function SegmentRail({
+  delivered,
+  buffered,
+  label,
+}: {
+  delivered: TimelineRange[];
+  buffered: TimelineRange[];
+  label: string;
+}) {
+  const cells = 48;
   return (
-    <div className="grid h-7 grid-cols-[repeat(48,minmax(0,1fr))] gap-1 rounded-lg border bg-muted/30 p-1.5" aria-label={`${value.toFixed(1)} percent delivered`}>
-      {Array.from({ length: 48 }, (_, index) => {
-        const marker = ((index + 1) / 48) * 100;
+    <div className="grid h-7 grid-cols-[repeat(48,minmax(0,1fr))] gap-1 rounded-lg border bg-muted/30 p-1.5" role="img" aria-label={label}>
+      {Array.from({ length: cells }, (_, index) => {
+        const start = index / cells;
+        const end = (index + 1) / cells;
         return (
           <span
             key={index}
             className={cn(
               "rounded-[2px] bg-muted-foreground/15 transition-colors duration-700",
-              marker <= cachedPercent && "border border-primary/35",
-              marker <= value && "border-transparent bg-primary",
+              coverageWithin(buffered, start, end) >= 0.35 && "border border-primary/35",
+              coverageWithin(delivered, start, end) >= 0.35 && "border-transparent bg-primary",
             )}
           />
         );
       })}
     </div>
   );
+}
+
+function coverageWithin(ranges: TimelineRange[], start: number, end: number) {
+  const width = end - start;
+  if (width <= 0) return 0;
+  let covered = 0;
+  for (const range of ranges) {
+    covered += Math.max(0, Math.min(end, range.end) - Math.max(start, range.start));
+  }
+  return covered / width;
 }
 
 interface RateSample {

@@ -121,7 +121,7 @@ public sealed class ResolveService(
         CancellationToken ct)
         => ResolveAsync(releaseId, workId, client, null, null, autoFallback, streamUrlForToken, localStreamUrlForToken, ct);
 
-    public async Task<ResolveResponse> ResolveAsync(
+    public Task<ResolveResponse> ResolveAsync(
         string releaseId,
         string? workId,
         string? client,
@@ -129,6 +129,28 @@ public sealed class ResolveService(
         string? requestedByName,
         bool autoFallback,
         Func<string, string> streamUrlForToken,
+        Func<string, string> localStreamUrlForToken,
+        CancellationToken ct)
+        => ResolveAsync(
+            releaseId,
+            workId,
+            client,
+            requestedById,
+            requestedByName,
+            autoFallback,
+            (token, _) => streamUrlForToken(token),
+            localStreamUrlForToken,
+            ct);
+
+    /// <summary>Ownership-aware resolve surface used by playback-admission cleanup.</summary>
+    internal async Task<ResolveResponse> ResolveAsync(
+        string releaseId,
+        string? workId,
+        string? client,
+        string? requestedById,
+        string? requestedByName,
+        bool autoFallback,
+        Func<string, bool, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         CancellationToken ct)
     {
@@ -174,9 +196,7 @@ public sealed class ResolveService(
                 streamAttemptId,
                 ct);
 
-            // A session was minted somewhere along the way (fresh or reused): SessionManager
-            // owns finalizing that row when the session itself eventually closes. No session at
-            // all means this attempt never got a capability — finalize it here, now.
+            // Reused attempts finalize at reuse; fresh sessions finalize at close; no capability finalizes here.
             if (streamAttemptId is not null && response.StreamUrl is null)
             {
                 historyRecorder!.Finalize(streamAttemptId, new StreamRecordFinalize
@@ -239,7 +259,7 @@ public sealed class ResolveService(
         string? requestedById,
         string? requestedByName,
         bool autoFallback,
-        Func<string, string> streamUrlForToken,
+        Func<string, bool, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         string? streamAttemptId,
         CancellationToken ct)
@@ -397,7 +417,7 @@ public sealed class ResolveService(
         string? client,
         string? requestedById,
         string? requestedByName,
-        Func<string, string> streamUrlForToken,
+        Func<string, bool, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         string? streamAttemptId,
         CancellationToken ct)
@@ -433,7 +453,20 @@ public sealed class ResolveService(
         {
             var reused = await TryBuildReuseResponseAsync(retained, streamUrlForToken, ct);
             if (reused is not null)
+            {
+                // The fast reuse path bypasses GetOrCreateOpeningSession, so finalize its synthetic attempt here.
+                if (streamAttemptId is not null)
+                {
+                    historyRecorder?.Finalize(streamAttemptId, new StreamRecordFinalize
+                    {
+                        FinalState = "reused",
+                        CloseReason = $"reused session {retained.Token[..8]} for release {releaseId}",
+                        ResolvedReleaseId = retained.Session.ReleaseId,
+                        ResolvedTitle = retained.Title,
+                    });
+                }
                 return new SingleResolve(registered.WorkId, reused);
+            }
         }
 
         // Request→first-frame timeline (BRIEF §11 diagnostics). t0 is the moment resolve begins;
@@ -606,7 +639,7 @@ public sealed class ResolveService(
             {
                 ReleaseId = releaseId,
                 Status = health.StatusLabel,
-                StreamUrl = streamUrlForToken(session.Token),
+                StreamUrl = streamUrlForToken(session.Token, true),
                 Container = media.Container,
                 SizeBytes = media.SizeBytes,
                 RunTimeTicks = probe?.RunTimeTicks,
@@ -643,7 +676,7 @@ public sealed class ResolveService(
         string? client,
         string? requestedById,
         string? requestedByName,
-        Func<string, string> streamUrlForToken,
+        Func<string, bool, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         string? streamAttemptId,
         CancellationToken ct)
@@ -770,7 +803,7 @@ public sealed class ResolveService(
             {
                 ReleaseId = releaseId,
                 Status = "ready",
-                StreamUrl = streamUrlForToken(session.Token),
+                StreamUrl = streamUrlForToken(session.Token, true),
                 Container = media.Container,
                 SizeBytes = media.SizeBytes,
                 RunTimeTicks = probe?.RunTimeTicks,
@@ -809,7 +842,7 @@ public sealed class ResolveService(
         string? client,
         string? requestedById,
         string? requestedByName,
-        Func<string, string> streamUrlForToken,
+        Func<string, bool, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         RepairStatusInfo repairInfo,
         string? streamAttemptId,
@@ -903,7 +936,7 @@ public sealed class ResolveService(
             {
                 ReleaseId = releaseId,
                 Status = "degraded",
-                StreamUrl = streamUrlForToken(session.Token),
+                StreamUrl = streamUrlForToken(session.Token, true),
                 Container = media.Container,
                 SizeBytes = media.SizeBytes,
                 RunTimeTicks = probe?.RunTimeTicks,
@@ -1002,7 +1035,7 @@ public sealed class ResolveService(
 
     private async Task<ResolveResponse?> TryBuildReuseResponseAsync(
         ActiveSession session,
-        Func<string, string> streamUrlForToken,
+        Func<string, bool, string> streamUrlForToken,
         CancellationToken ct)
     {
         if (!await session.WaitUntilReadyAsync(ct))
@@ -1029,7 +1062,7 @@ public sealed class ResolveService(
         {
             ReleaseId = retained.Session.ReleaseId,
             Status = retained.Status,
-            StreamUrl = streamUrlForToken(retained.Token),
+            StreamUrl = streamUrlForToken(retained.Token, false),
             Container = retained.File.Container,
             SizeBytes = retained.File.SizeBytes,
             RunTimeTicks = probe?.RunTimeTicks,

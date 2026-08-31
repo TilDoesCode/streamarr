@@ -115,12 +115,14 @@ limits before changing its defaults.
 
 ## Jellyfin plugin settings
 
-The plugin needs three values:
+The plugin needs two values:
 
-- **Core Server URL** — reachable by the Jellyfin server itself;
-- **Public stream URL** — reachable by every playback device when the Core URL is an
-  internal container hostname; and
+- **Core Server URL** — reachable by the Jellyfin server itself; and
 - **API key** — the machine key, not the administrator password.
+
+Playback devices never contact Core directly: every stream is served by Jellyfin itself
+(a server-side remux of the opened Core stream), so Core can stay on a private network
+that only the Jellyfin host reaches.
 
 Search interception is opt-in. When enabled, failures and timeouts deliberately fall
 back to Jellyfin's native results. Keep the plugin and Core versions matched and check

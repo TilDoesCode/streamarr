@@ -85,6 +85,16 @@ public sealed class SegmentCache : IDisposable
         return (count, bytes);
     }
 
+    /// <summary>Whole-cache occupancy for operator dashboards.</summary>
+    public (int Entries, long UsedBytes) GetGlobalStats()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return (_entries.Count, _sizeBytes);
+        }
+    }
+
     public Task<byte[]> GetOrAddAsync(
         string segmentId,
         Func<CancellationToken, Task<byte[]>> factory,

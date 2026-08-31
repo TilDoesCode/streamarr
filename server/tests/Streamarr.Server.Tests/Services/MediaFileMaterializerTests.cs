@@ -85,6 +85,60 @@ public class MediaFileMaterializerTests
     }
 
     [Fact]
+    public void PreDownloadTransientRetrySchedule_UsesFiveIncreasingWaits()
+    {
+        Assert.Equal(5, MediaFileMaterializer.PreDownloadTransientRetryCount);
+        Assert.Equal(
+            [60, 90, 120, 150, 180],
+            Enumerable.Range(1, MediaFileMaterializer.PreDownloadTransientRetryCount)
+                .Select(retry => (int)MediaFileMaterializer.PreDownloadTransientRetryDelay(retry).TotalSeconds));
+    }
+
+    [Fact]
+    public async Task DirectMedia_EnablesDelayedRetriesOnlyForPreDownloadStream()
+    {
+        var file = new NzbFile { Subject = "\"video.mkv\" yEnc" };
+        file.Segments.Add(new NzbSegment
+        {
+            Number = 1,
+            Bytes = 1_000,
+            MessageId = "timeout@test",
+        });
+        var candidate = new MediaFileCandidate
+        {
+            DisplayName = "video.mkv",
+            IsRarWrapped = false,
+            Files = [file],
+        };
+        using var client = new BodyTimeoutNntpClient(1_000);
+        var materializer = new MediaFileMaterializer(
+            client,
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions
+            {
+                ArticleDownloadRetryCount = 0,
+            }));
+        var media = await materializer.MaterializeAsync(candidate, CancellationToken.None);
+
+        await using (var playback = media.OpenStream(client))
+        {
+            await Assert.ThrowsAsync<IOException>(
+                () => playback.ReadAsync(new byte[1]).AsTask());
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        await using var preDownload = media.OpenPreDownloadStream!(client, null, null);
+        var read = preDownload.ReadAsync(new byte[1], cancellation.Token).AsTask();
+        await client.SecondBodyCall.WaitAsync(TimeSpan.FromSeconds(1));
+        await Task.Delay(25);
+        Assert.False(read.IsCompleted);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => read.WaitAsync(TimeSpan.FromSeconds(1)));
+        Assert.Equal(2, client.CallCount);
+    }
+
+    [Fact]
     public async Task NzbWithoutMedia_HasNoCandidate()
     {
         var junk = YencTestEncoder.LcgBytes(3, 5_000);
@@ -278,6 +332,57 @@ public class MediaFileMaterializerTests
         public override void Dispose()
         {
         }
+    }
+
+    private sealed class BodyTimeoutNntpClient(long size) : NntpClientBase
+    {
+        private int _callCount;
+        private readonly TaskCompletionSource _secondBodyCall = NewCompletion();
+
+        public int CallCount => Volatile.Read(ref _callCount);
+        public Task SecondBodyCall => _secondBodyCall.Task;
+
+        public override Task<long> GetFileSizeAsync(NzbFile file, CancellationToken ct)
+            => Task.FromResult(size);
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _callCount) == 2)
+                _secondBodyCall.TrySetResult();
+            return Task.FromException<NntpDecodedBodyResponse>(
+                new TimeoutException("Synthetic NNTP read timeout."));
+        }
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            Action<ArticleBodyResult>? onConnectionReadyAgain,
+            CancellationToken cancellationToken)
+            => DecodedBodyAsync(segmentId, cancellationToken);
+
+        public override Task ConnectAsync(string host, int port, bool useSsl, CancellationToken ct)
+            => throw new NotSupportedException();
+        public override Task<NntpResponse> AuthenticateAsync(string user, string pass, CancellationToken ct)
+            => throw new NotSupportedException();
+        public override Task<NntpStatResponse> StatAsync(SegmentId id, CancellationToken ct)
+            => throw new NotSupportedException();
+        public override Task<NntpHeadResponse> HeadAsync(SegmentId id, CancellationToken ct)
+            => throw new NotSupportedException();
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(SegmentId id, CancellationToken ct)
+            => throw new NotSupportedException();
+        public override Task<NntpDecodedArticleResponse> DecodedArticleAsync(
+            SegmentId id,
+            Action<ArticleBodyResult>? callback,
+            CancellationToken ct) => throw new NotSupportedException();
+        public override Task<NntpDateResponse> DateAsync(CancellationToken ct)
+            => throw new NotSupportedException();
+        public override void Dispose()
+        {
+        }
+
+        private static TaskCompletionSource NewCompletion()
+            => new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     private sealed class TrackingYencStream() : YencStream(Stream.Null)

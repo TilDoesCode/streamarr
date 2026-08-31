@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { apiFetch, requestAdminLogout } from "@/api/client";
+import { ApiError, apiFetch, refreshAdminSession, requestAdminLogout } from "@/api/client";
 import { clearSession, getSession, setSession, subscribe, type Session } from "@/api/token";
 import type { LoginRequest, LoginResponse } from "@/api/types";
 
@@ -35,25 +35,44 @@ export function AuthProvider({
     [onSignedOut],
   );
 
-  // The cookie expires independently in the browser, but an idle tab may not make another
-  // request that would surface a 401. Expire the local session metadata on the same deadline so
-  // route guards and active players tear down even when the tab is otherwise idle. Long-lived
-  // sessions are scheduled in safe setTimeout-sized chunks.
+  // Refresh shortly before the access cookie expires. An idle or newly reopened tab refreshes
+  // immediately when its access deadline has passed but its refresh session is still valid.
   useEffect(() => {
     if (!session) return;
 
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const expireWhenDue = () => {
-      const remaining = Date.parse(session.expiresAt) - Date.now();
-      if (!Number.isFinite(remaining) || remaining <= 0) {
+    let cancelled = false;
+    const refreshWhenDue = async () => {
+      const now = Date.now();
+      const refreshDeadline = Date.parse(session.refreshExpiresAt ?? session.expiresAt);
+      if (!Number.isFinite(refreshDeadline) || refreshDeadline <= now) {
         clearSession();
         return;
       }
-      timer = setTimeout(expireWhenDue, Math.min(remaining, 2_147_483_647));
+      const refreshIn = Date.parse(session.expiresAt) - now - 5 * 60_000;
+      if (Number.isFinite(refreshIn) && refreshIn > 0) {
+        timer = setTimeout(() => void refreshWhenDue(), Math.min(refreshIn, 2_147_483_647));
+        return;
+      }
+
+      try {
+        await refreshAdminSession();
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 401) {
+          clearSession();
+          return;
+        }
+        timer = setTimeout(
+          () => void refreshWhenDue(),
+          Math.min(60_000, Math.max(1, refreshDeadline - Date.now())),
+        );
+      }
     };
 
-    expireWhenDue();
+    void refreshWhenDue();
     return () => {
+      cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
     };
   }, [session]);
@@ -71,6 +90,7 @@ export function AuthProvider({
           username: res.username ?? credentials.username ?? "",
           role: res.role ?? "",
           expiresAt: res.expiresAt,
+          refreshExpiresAt: res.refreshExpiresAt,
         };
         setSession(next);
         return next;

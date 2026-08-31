@@ -92,13 +92,34 @@ function notFoundResponse(): Promise<Response> {
   } as unknown as Response);
 }
 
+const watchedScope = {
+  workId: liveSession.workId,
+  title: "Asterion Station — The Quiet Array",
+  source: "jellyfin",
+  playbackSessionId: "play-1",
+  externalUserId: liveSession.requestedById,
+  externalUserName: liveSession.requestedByName,
+  deviceName: "Apple TV",
+  durationTicks: 24_000_000_000,
+  positionTicks: 21_600_000_000,
+  lastSessionToken: token,
+  lastReleaseId: liveSession.releaseId,
+  startedAt: new Date(now - 20 * 60_000).toISOString(),
+  updatedAt: new Date(now - 5_000).toISOString(),
+  ranges: [
+    { startTicks: 12_000_000_000, endTicks: 21_600_000_000, sessionToken: token, releaseId: liveSession.releaseId },
+  ],
+};
+
 function installFetch(
   sessions: unknown[] = [liveSession],
   files: unknown[] = [liveFile],
   streamRecord: unknown | "not-found" = "not-found",
+  playbackRanges: unknown[] = [],
 ) {
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.includes("/playback-ranges")) return response(playbackRanges);
     if (url.includes("/ephemeral-files")) return response(files);
     if (url.includes("/pre-downloads")) return response([]);
     if (url.includes(`/sessions/${token}/articles`)) return notFoundResponse();
@@ -182,6 +203,29 @@ describe("StreamStatsPage", () => {
 
     await user.click(screen.getByRole("tab", { name: "Events" }));
     expect(screen.getByText(/no correlated playback events/i)).toBeInTheDocument();
+  });
+
+  it("renders the watched timeline from jellyfin playback time, not payload", async () => {
+    installFetch([liveSession], [liveFile], "not-found", [watchedScope]);
+    renderWithProviders(<StreamStatsPage sessionToken={token} />);
+
+    expect(await screen.findByText("Watched · jellyfin time")).toBeInTheDocument();
+    // 9.6 of 24 minutes watched → 40%, playhead at 90% — a mid-file entry stays mid-file.
+    expect(
+      await screen.findByRole("img", { name: /watched 40% of the timeline, playhead at 90%/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/buffered from usenet/i)).toBeInTheDocument();
+    expect(screen.getByText(/delivered to client/i)).toBeInTheDocument();
+  });
+
+  it("keeps the watched timeline on the historical console after the session is gone", async () => {
+    installFetch([], [], historicalRecord, [watchedScope]);
+    renderWithProviders(<StreamStatsPage sessionToken={token} />);
+
+    expect(await screen.findByText(/watched via this stream/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("img", { name: /watched 40% of the timeline via this stream/i }),
+    ).toBeInTheDocument();
   });
 
   it("falls back to the permanent stream-history record once the live session is gone", async () => {

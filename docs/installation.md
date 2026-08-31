@@ -151,10 +151,9 @@ Open **Dashboard → Plugins → Streamarr** and set:
 - **Core Server URL** — the private address Jellyfin itself can reach. Use
   `http://streamarr:8080` when both containers share a Compose network,
   `http://127.0.0.1:8080` for a native Jellyfin process on the same host, or the
-  server's private address for another host.
-- **Public stream URL** — an HTTPS or private-LAN base URL reachable by phones, TVs,
-  browsers, and every other playback device. This is required when the Core URL uses a
-  container-only hostname such as `streamarr`.
+  server's private address for another host. Playback devices never contact this
+  address — every stream is served by Jellyfin itself — so a container-only hostname
+  is fine.
 - **API key** — the exact `STREAMARR_API_KEY` from `.env`.
 
 Select **Test connection**, then enable search interception. The test verifies both

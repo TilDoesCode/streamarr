@@ -186,6 +186,15 @@ public sealed class StreamHistoryRecorder(
     {
         try
         {
+            try
+            {
+                await FinalizeInterruptedFromPriorProcessAsync(stoppingToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(exception, "Stream history startup recovery failed ({FailureType})", exception.GetType().Name);
+            }
+
             await foreach (var op in _queue.Reader.ReadAllAsync(stoppingToken))
             {
                 try
@@ -206,6 +215,24 @@ public sealed class StreamHistoryRecorder(
         {
             // ReadAllAsync observes host shutdown before a queued item reaches the loop body.
         }
+    }
+
+    private async Task FinalizeInterruptedFromPriorProcessAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var interrupted = await db.StreamRecords.Where(record => record.FinalState == null).ToListAsync(ct);
+        var interruptedAt = time.GetUtcNow();
+        foreach (var record in interrupted)
+        {
+            record.FinalState = "interrupted";
+            record.CloseReason = "server process ended before stream history was finalized";
+            record.ClosedAt = interruptedAt;
+        }
+        if (interrupted.Count > 0)
+            await db.SaveChangesAsync(ct);
+        await PruneAsync(db, ct);
+        if (interrupted.Count > 0)
+            logger.LogInformation("Recovered {Count} interrupted stream-history rows from a prior process", interrupted.Count);
     }
 
     private async Task ApplyAsync(StreamHistoryOp op, CancellationToken ct)

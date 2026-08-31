@@ -50,10 +50,6 @@ public sealed class StreamarrApiClient
 
     private string BaseUrl => Config.ServerUrl.TrimEnd('/');
 
-    private string PublicStreamUrl => string.IsNullOrWhiteSpace(Config.PublicStreamUrl)
-        ? BaseUrl
-        : Config.PublicStreamUrl.TrimEnd('/');
-
     private TransportSnapshot CaptureTransport()
     {
         var config = Config;
@@ -466,11 +462,11 @@ public sealed class StreamarrApiClient
 
     /// <summary>
     /// Opens the full-speed, unpaced download capability for a live Core session — the
-    /// <c>GET /api/v1/download/{token}</c> sibling of the paced playback stream. Always
-    /// targets the internal/configured Core base URL, never the public stream URL: the
-    /// caller proxies these bytes itself (BRIEF client-agnostic download) rather than
-    /// redirecting a client to Core directly. The returned response has its headers read but
-    /// its content left unbuffered so the caller can copy the body straight through.
+    /// <c>GET /api/v1/download/{token}</c> sibling of the paced playback stream. Targets the
+    /// configured Core base URL: the caller proxies these bytes itself (BRIEF client-agnostic
+    /// download) rather than redirecting a client to Core directly. The returned response has
+    /// its headers read but its content left unbuffered so the caller can copy the body
+    /// straight through.
     /// </summary>
     public async Task<HttpResponseMessage> OpenDownloadAsync(
         string token,
@@ -515,21 +511,15 @@ public sealed class StreamarrApiClient
             .ConfigureAwait(false);
 
     /// <summary>
-    /// Resolves Core's session-capability path against the client-reachable stream base URL.
-    /// Core API traffic may use a private origin while the returned media path uses an HTTPS/LAN
-    /// origin reachable by Streamyfin and other direct remote-source clients. Absolute URLs from
-    /// Core are accepted only for backward compatibility and must remain on a configured origin.
+    /// Resolves Core's capability against the configured Core base URL. The result is consumed
+    /// only on the Jellyfin host (ffmpeg remux input, download proxy) — clients are never
+    /// handed this URL, so it needs no separately reachable public address. Absolute Core URLs
+    /// remain supported only for backward compatibility and must use the configured origin.
     /// </summary>
     public string ResolveStreamUrl(string? streamUrl)
-        => ResolveStreamUrl(BaseUrl, PublicStreamUrl, streamUrl);
+        => ResolveStreamUrl(BaseUrl, streamUrl);
 
     internal static string ResolveStreamUrl(string configuredBaseUrl, string? streamUrl)
-        => ResolveStreamUrl(configuredBaseUrl, configuredBaseUrl, streamUrl);
-
-    internal static string ResolveStreamUrl(
-        string configuredBaseUrl,
-        string configuredPublicStreamUrl,
-        string? streamUrl)
     {
         if (!Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var baseUri)
             || !IsHttpScheme(baseUri.Scheme)
@@ -538,39 +528,20 @@ public sealed class StreamarrApiClient
             throw new InvalidOperationException("The configured Streamarr Core Server URL is invalid.");
         }
 
-        if (!Uri.TryCreate(configuredPublicStreamUrl, UriKind.Absolute, out var publicUri)
-            || !IsHttpScheme(publicUri.Scheme)
-            || !string.IsNullOrEmpty(publicUri.UserInfo)
-            || !string.IsNullOrEmpty(publicUri.Query)
-            || !string.IsNullOrEmpty(publicUri.Fragment))
-        {
-            throw new InvalidOperationException("The configured public Streamarr stream URL is invalid.");
-        }
-
         if (string.IsNullOrWhiteSpace(streamUrl)
             || !Uri.TryCreate(baseUri, streamUrl, out var returnedUri)
             || !IsHttpScheme(returnedUri.Scheme)
             || !string.IsNullOrEmpty(returnedUri.UserInfo)
             || !string.IsNullOrEmpty(returnedUri.Fragment)
             || !string.IsNullOrEmpty(returnedUri.Query)
-            || !IsConfiguredOrigin(returnedUri, baseUri, publicUri)
+            || !SameOrigin(returnedUri, baseUri)
             || !IsCapabilityPath(returnedUri.AbsolutePath))
         {
             throw new InvalidOperationException("Core returned an invalid or cross-origin stream capability URL.");
         }
 
-        var publicBase = configuredPublicStreamUrl.TrimEnd('/');
-        if (!Uri.TryCreate(publicBase + returnedUri.AbsolutePath, UriKind.Absolute, out var resolved)
-            || !SameOrigin(resolved, publicUri))
-        {
-            throw new InvalidOperationException("The public Streamarr capability URL could not be constructed.");
-        }
-
-        return resolved.AbsoluteUri;
+        return returnedUri.AbsoluteUri;
     }
-
-    private static bool IsConfiguredOrigin(Uri candidate, Uri baseUri, Uri publicUri)
-        => SameOrigin(candidate, baseUri) || SameOrigin(candidate, publicUri);
 
     private static bool SameOrigin(Uri left, Uri right)
         => string.Equals(left.Scheme, right.Scheme, StringComparison.OrdinalIgnoreCase)
@@ -645,9 +616,31 @@ public sealed class StreamarrApiClient
             {
                 await WaitToRetryAsync(method, path, attempt, maxAttempts, ex.RetryAfter, ct).ConfigureAwait(false);
             }
+            catch (StreamarrApiException ex)
+            {
+                _logger.LogWarning(
+                    "Streamarr API {Method} {Path} failed after {Attempts} attempt(s): {Status} {Detail}",
+                    method,
+                    SafeLogPath(path),
+                    attempt,
+                    (int)ex.StatusCode,
+                    ex.Detail);
+                throw;
+            }
             catch (HttpRequestException) when (retryTransient && attempt < maxAttempts)
             {
                 await WaitToRetryAsync(method, path, attempt, maxAttempts, retryAfter: null, ct).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Streamarr API {Method} {Path} failed after {Attempts} attempt(s) ({FailureType})",
+                    method,
+                    SafeLogPath(path),
+                    attempt,
+                    ex.GetType().Name);
+                throw;
             }
         }
     }
@@ -691,9 +684,6 @@ public sealed class StreamarrApiClient
             var detail = capabilityRequest
                 ? "capability_request_failed"
                 : await ReadErrorAsync(response, ct).ConfigureAwait(false);
-            _logger.LogWarning(
-                "Streamarr API {Method} {Path} failed: {Status} {Detail}",
-                method, SafeLogPath(path), (int)response.StatusCode, detail);
             throw new StreamarrApiException(response.StatusCode, detail, RetryAfter(response));
         }
 
@@ -839,6 +829,8 @@ public sealed class StreamarrApiException(
     : Exception($"Streamarr Core Server returned {(int)statusCode}: {detail}")
 {
     public System.Net.HttpStatusCode StatusCode { get; } = statusCode;
+
+    public string Detail { get; } = detail;
 
     /// <summary>Core's advertised Retry-After delay, when present on a transient (429/503) response.</summary>
     public TimeSpan? RetryAfter { get; } = retryAfter;

@@ -22,6 +22,7 @@ import type {
   IndexerResponse,
   IndexerTestResult,
   IndexerWrite,
+  PlaybackRangeResponse,
   LogFeedResponse,
   MetricsResponse,
   ProviderResponse,
@@ -39,6 +40,7 @@ import type {
   ResolveResponse,
   SearchResponse,
   SessionResponse,
+  StorageResponse,
   StreamingHistoryResponse,
   StreamRecordResponse,
   StreamRecordSummaryResponse,
@@ -61,6 +63,8 @@ export const queryKeys = {
   preDownloads: (sessionToken?: string) => ["pre-downloads", sessionToken ?? null] as const,
   sessionArticles: (token: string) => ["sessions", token, "articles"] as const,
   metrics: ["metrics"] as const,
+  storage: ["storage"] as const,
+  playbackRanges: ["playback-ranges"] as const,
   repairs: ["repairs"] as const,
   cachedReleases: ["library", "cached-releases"] as const,
   ephemeralFiles: ["ephemeral-files"] as const,
@@ -345,6 +349,24 @@ export function useEphemeralFiles({ refetchInterval = 3_000 } = {}) {
   return useQuery({
     queryKey: queryKeys.ephemeralFiles,
     queryFn: ({ signal }) => apiFetch<EphemeralFileResponse[]>("/ephemeral-files", { signal }),
+    refetchInterval,
+  });
+}
+
+/** Watched-time intervals per playback scope, folded server-side from Jellyfin heartbeats. */
+export function usePlaybackRanges(limit = 200, { refetchInterval = 5_000 } = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.playbackRanges, limit],
+    queryFn: ({ signal }) =>
+      apiFetch<PlaybackRangeResponse[]>("/playback-ranges", { query: { limit }, signal }),
+    refetchInterval,
+  });
+}
+
+export function useStorage({ refetchInterval = 10_000 } = {}) {
+  return useQuery({
+    queryKey: queryKeys.storage,
+    queryFn: ({ signal }) => apiFetch<StorageResponse>("/storage", { signal }),
     refetchInterval,
   });
 }

@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.14.0.0",
+    "version": "0.15.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Add season pack support: rank multi-episode and full-season releases correctly, resolve the right episode from a pack, and prefer a next-episode release from a similar pack when pre-downloading ahead. Add mid-stream release switching so a session can move to a better-matched release without dropping playback, with race-safe pre-download coordination and clearer failure reporting. Surface locally available and in-progress releases from Core to the Jellyfin plugin so search results reflect what's already downloading or ready. Consolidate the web dashboard's Ephemeral Files, Streaming History, and Stream Stats pages into a single tabbed Sessions view, and rename the Sessions nav item to Streams."
+    "changelog": "Add a Files page with a unified storage overview (disk, segment cache, pre-downloads, NZB cache, ephemeral sessions) alongside cached-release and ephemeral-file management. Add per-scope playback-range tracking that folds front-end watch heartbeats into watched/buffered timeline data, surfaced through a new segmented timeline rail in the Sessions view. Add rotating, revocable admin refresh-token sessions for browser auth instead of long-lived cookies. Harden Jellyfin PlaybackInfo handling against clients that resend a closed LiveStreamId (observed with Swiftfin's rebuilt player), clearing only truly-dead stream ids and defaulting AutoOpenLiveStream when a client expresses no preference. Rework the Sessions page into a dedicated module with grid and table views."
 }

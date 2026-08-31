@@ -150,9 +150,9 @@ Streamarr is currently tested against **Jellyfin 10.11.11**.
 1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add:
    `https://raw.githubusercontent.com/TilDoesCode/streamarr/main/manifest.json`
 2. Install **Streamarr** from the catalog and restart Jellyfin.
-3. In the plugin settings, enter the Core URL, the exact `STREAMARR_API_KEY`, and a
-   client-reachable public stream URL when the Core URL is container-only. Test the
-   connection, then enable search interception.
+3. In the plugin settings, enter the Core URL and the exact `STREAMARR_API_KEY`. Test
+   the connection, then enable search interception. Playback devices always stream
+   from Jellyfin itself, so the Core URL only needs to be reachable by Jellyfin.
 
 Keep the plugin and Core on matching Streamarr versions. Read the
 [Jellyfin setup](docs/installation.md#connect-jellyfin) and

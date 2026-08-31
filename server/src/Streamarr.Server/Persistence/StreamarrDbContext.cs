@@ -17,9 +17,11 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<PreDownloadConfigEntity> PreDownloadConfig => Set<PreDownloadConfigEntity>();
     public DbSet<NotificationConfigEntity> NotificationConfig => Set<NotificationConfigEntity>();
     public DbSet<WatchEventEntity> WatchEvents => Set<WatchEventEntity>();
+    public DbSet<PlaybackRangeEntity> PlaybackRanges => Set<PlaybackRangeEntity>();
     public DbSet<CachedReleaseEntity> CachedReleases => Set<CachedReleaseEntity>();
     public DbSet<ApiKeyEntity> ApiKeys => Set<ApiKeyEntity>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
+    public DbSet<AdminRefreshSessionEntity> AdminRefreshSessions => Set<AdminRefreshSessionEntity>();
     public DbSet<StreamRecordEntity> StreamRecords => Set<StreamRecordEntity>();
     public DbSet<StreamEventEntity> StreamEvents => Set<StreamEventEntity>();
 
@@ -55,6 +57,14 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.HasIndex(x => x.PlaybackSessionId);
         });
 
+        model.Entity<PlaybackRangeEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ScopeKey).IsUnique();
+            e.HasIndex(x => x.WorkId);
+            e.HasIndex(x => x.UpdatedAt);
+        });
+
         model.Entity<CachedReleaseEntity>(e =>
         {
             e.HasKey(x => x.ReleaseId);
@@ -74,6 +84,13 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.HasKey(x => x.Id);
             e.Property(x => x.Username).IsRequired();
             e.HasIndex(x => x.Username).IsUnique();
+        });
+
+        model.Entity<AdminRefreshSessionEntity>(e =>
+        {
+            e.HasKey(x => x.TokenHash);
+            e.HasIndex(x => x.UserId);
+            e.HasIndex(x => x.ExpiresAt);
         });
 
         model.Entity<StreamRecordEntity>(e =>

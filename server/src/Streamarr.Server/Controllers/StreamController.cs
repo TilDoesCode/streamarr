@@ -6,7 +6,7 @@ using Streamarr.Server.Services;
 namespace Streamarr.Server.Controllers;
 
 /// <summary>
-/// GET /api/v1/stream/{token} — a capability-authorized, Range-capable HTTP byte
+/// GET/HEAD /api/v1/stream/{token} — a capability-authorized, Range-capable HTTP byte
 /// stream (BRIEF §3.3): honors <c>Range: bytes=…</c> with 206 + Content-Range +
 /// Accept-Ranges, serves the full body otherwise, and seeks anywhere — including
 /// inside RAR-wrapped files. Player-agnostic by contract; no Jellyfin-specific
@@ -15,6 +15,28 @@ namespace Streamarr.Server.Controllers;
 [ApiController]
 public class StreamController(SessionManager sessionManager) : ControllerBase
 {
+    [HttpHead("api/v1/stream/{token}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public IActionResult HeadStream(string token)
+    {
+        SetCapabilityResponseHeaders();
+
+        if (!sessionManager.TryGetSession(token, out var session))
+        {
+            return NotFound(ErrorResponse.Of(
+                "unknown_stream", "No live session exists for this token (closed or expired)."));
+        }
+
+        // HEAD uses immutable metadata and never opens the NNTP-backed payload.
+        Response.StatusCode = StatusCodes.Status200OK;
+        Response.ContentType = session.ContentType;
+        Response.ContentLength = session.File.SizeBytes;
+        Response.Headers.AcceptRanges = "bytes";
+        return new EmptyResult();
+    }
+
     [HttpGet("api/v1/stream/{token}")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]

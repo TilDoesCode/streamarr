@@ -101,6 +101,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // Ensures the visible "Streamarr" library placement at startup (Continue Watching /
         // Next Up / Favorites integration).
         serviceCollection.AddHostedService<LibraryIntegrationEntryPoint>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<EphemeralReleaseRefresher>());
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<HierarchyEnrichmentDispatcher>());
 
         // Engagement-gated visibility: search hits stay in the hidden staging root until a user
@@ -116,13 +117,11 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.Configure<MvcOptions>(options =>
             options.Filters.Add<StreamarrSearchActionFilter>());
 
-        // Swiftfin playback compatibility (docs/jellyfin-compatibility.md): rewrites only
-        // Swiftfin's PlaybackInfo requests for Streamarr-owned items so the host opens the
-        // Core-backed live stream itself and answers with a remux TranscodingUrl — the one
-        // playback path Swiftfin implements for remote non-channel sources. Fail-open and
-        // scoped by client + item; every other client keeps its native behavior.
+        // Client-agnostic PlaybackInfo hardening: drops live-stream ids Jellyfin no longer has
+        // open so rebuilding players fall back to fresh discovery instead of a hard failure;
+        // fails open for every unrelated client or item (docs/jellyfin-compatibility.md).
         serviceCollection.Configure<MvcOptions>(options =>
-            options.Filters.Add<StreamarrPlaybackCompatibilityFilter>());
+            options.Filters.Add<StreamarrPlaybackInfoGuard>());
 
         // Client-agnostic file download (docs/jellyfin-compatibility.md): rewrites Jellyfin's
         // built-in GET /Items/{id}/Download for Streamarr-owned items into a full-speed proxy

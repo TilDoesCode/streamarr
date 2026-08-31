@@ -39,6 +39,7 @@ public sealed class PlaybackAdmissionService(
     private sealed class CapabilityHolder
     {
         public string? Token;
+        public int OwnedByAdmission;
     }
 
     private sealed record ClaimedAdmission(string Token, DateTimeOffset ExpiresAt);
@@ -82,8 +83,9 @@ public sealed class PlaybackAdmissionService(
                 requestedById,
                 requestedByName,
                 request.AutoFallback,
-                token =>
+                (token, createdByResolve) =>
                 {
+                    Volatile.Write(ref capability.OwnedByAdmission, createdByResolve ? 1 : 0);
                     Volatile.Write(ref capability.Token, token);
                     return streamUrlForToken(token);
                 },
@@ -158,14 +160,15 @@ public sealed class PlaybackAdmissionService(
             ? Ready(admission, admission.Work.Result)
             : Failed(admission);
         var token = Volatile.Read(ref admission.Capability.Token);
-        if (response.Phase == "ready" && !string.IsNullOrEmpty(token))
+        var ownsCapability = Volatile.Read(ref admission.Capability.OwnedByAdmission) != 0;
+        if (response.Phase == "ready" && ownsCapability && !string.IsNullOrEmpty(token))
         {
             // Retain a brief cleanup handle in case the successful claim response is lost.
             _claimed[admissionId] = new ClaimedAdmission(
                 token,
                 _time.GetUtcNow() + ClaimedCleanupGrace);
         }
-        else if (!string.IsNullOrEmpty(token))
+        else if (ownsCapability && !string.IsNullOrEmpty(token))
         {
             sessionManager.CloseSession(token);
         }
@@ -232,7 +235,8 @@ public sealed class PlaybackAdmissionService(
         if (Interlocked.Exchange(ref admission.CleanupCompleted, 1) != 0)
             return;
         var token = Volatile.Read(ref admission.Capability.Token);
-        if (!string.IsNullOrEmpty(token))
+        var ownsCapability = Volatile.Read(ref admission.Capability.OwnedByAdmission) != 0;
+        if (ownsCapability && !string.IsNullOrEmpty(token))
             sessionManager.CloseSession(token);
         DisposeLifetime(admission);
     }

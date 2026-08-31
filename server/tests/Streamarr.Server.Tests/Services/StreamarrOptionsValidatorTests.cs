@@ -29,6 +29,7 @@ public sealed class StreamarrOptionsValidatorTests
             ApiKey = "too short",
             MaxConcurrentResolves = 0,
             MaxConcurrentSearches = 0,
+            SearchTimeoutSeconds = 0,
             MaxWatchEvents = 0,
             EphemeralCacheSizeMb = 0,
             PreDownload = new PreDownloadOptions
@@ -56,6 +57,7 @@ public sealed class StreamarrOptionsValidatorTests
         Assert.Contains("MaxConcurrentResolves", errors);
         Assert.Contains("ApiKey", errors);
         Assert.Contains("MaxConcurrentSearches", errors);
+        Assert.Contains("SearchTimeoutSeconds", errors);
         Assert.Contains("MaxWatchEvents", errors);
         Assert.Contains("EphemeralCacheSizeMb", errors);
         Assert.Contains("PreDownload.CurrentFileThresholdSeconds", errors);
@@ -72,6 +74,22 @@ public sealed class StreamarrOptionsValidatorTests
         Assert.Contains("Tmdb.MaxResponseBytes", errors);
         Assert.Contains("Tmdb.RequestTimeoutSeconds", errors);
         Assert.Contains("Tmdb.MaxConcurrentRequests", errors);
+    }
+
+    [Fact]
+    public void RefreshSessionMustCoverAccessSession()
+    {
+        var options = new StreamarrOptions
+        {
+            AdminSessionTtlSeconds = 2 * 86_400,
+            AdminRefreshTokenTtlSeconds = 86_400,
+        };
+
+        var result = new StreamarrOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure =>
+            failure.Contains("AdminRefreshTokenTtlSeconds", StringComparison.Ordinal));
     }
 
     [Fact]

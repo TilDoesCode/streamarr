@@ -37,10 +37,7 @@ public sealed class StreamarrMediaSourceProvider(
 {
     public async Task<IEnumerable<MediaSourceInfo>> GetMediaSources(BaseItem item, CancellationToken cancellationToken)
     {
-        // Self-heals a "0 releases" or stale cache entry (e.g. materialized while an indexer bug
-        // was still live) before answering, so a fixed Core no longer requires re-opening the
-        // season page to be reflected — see EphemeralReleaseRefresher.
-        await refresher.RefreshIfStaleAsync(item.Id, cancellationToken).ConfigureAwait(false);
+        refresher.QueueIfStale(item.Id);
 
         var userId = CurrentUserId();
         var user = userId == Guid.Empty ? null : userManager.GetUserById(userId);
@@ -304,11 +301,11 @@ public sealed class StreamarrMediaSourceProvider(
                 releaseId,
                 offer.WorkId);
 
-            var refreshed = await api.RefreshWorkAsync(work, ct).ConfigureAwait(false);
-            var releaseRestored = refreshed?.Results.Any(result =>
-                string.Equals(result.WorkId, offer.WorkId, StringComparison.Ordinal)
-                && result.Releases.Any(release =>
-                    string.Equals(release.ReleaseId, releaseId, StringComparison.Ordinal))) == true;
+            var refreshed = await refresher.RefreshForPlaybackAsync(offer.ItemId, ct).ConfigureAwait(false);
+            var releaseRestored = refreshed is not null
+                                  && string.Equals(refreshed.WorkId, offer.WorkId, StringComparison.Ordinal)
+                                  && refreshed.Releases.Any(release =>
+                                      string.Equals(release.ReleaseId, releaseId, StringComparison.Ordinal));
             if (!releaseRestored)
                 throw new InvalidOperationException(
                     $"Release {releaseId} is no longer available for persisted work {offer.WorkId}.",

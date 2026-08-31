@@ -26,7 +26,10 @@ public class NzbFileStream(
     int startupReadAheadSegments = 0,
     Stream? openedFirstSegment = null,
     SegmentMetadataCache? segmentMetadata = null,
-    Action<SegmentTransferEvent>? onTransfer = null
+    Action<SegmentTransferEvent>? onTransfer = null,
+    int transientRetryCount = 0,
+    Func<int, TimeSpan>? transientRetryDelay = null,
+    bool disableReadAhead = false
 ) : FastReadOnlyStream
 {
     private readonly bool _validated = ValidateArguments(
@@ -267,8 +270,11 @@ public class NzbFileStream(
             initialOpen ? startupReadAheadSegments : 0,
             openedFirstSegment,
             progressiveFirstSegment: false,
+            disableReadAhead: disableReadAhead,
             segmentMetadata: segmentMetadata,
-            onTransfer: onTransfer);
+            onTransfer: onTransfer,
+            transientRetryCount: transientRetryCount,
+            transientRetryDelay: transientRetryDelay);
     }
 
     protected override void Dispose(bool disposing)

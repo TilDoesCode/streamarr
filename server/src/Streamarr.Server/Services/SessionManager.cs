@@ -141,6 +141,9 @@ public sealed class ActiveSession
         }
     }
     public int ChunksQueried => _queriedChunks.Count;
+
+    /// <summary>Segment ids the client actually pulled through this session (for delivered ranges).</summary>
+    public IEnumerable<string> QueriedChunkIds => _queriedChunks.Keys;
     public double EstimatedStreamedPercent => File.SegmentIds.Count == 0
         ? 0
         : Math.Min(100, ChunksQueried * 100d / File.SegmentIds.Count);

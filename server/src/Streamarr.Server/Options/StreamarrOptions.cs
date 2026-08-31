@@ -31,8 +31,11 @@ public sealed class StreamarrOptions
     /// </summary>
     public AdminBootstrapOptions Admin { get; set; } = new();
 
-    /// <summary>Lifetime of an admin session JWT issued by <c>POST /api/v1/auth/login</c>.</summary>
-    public int AdminSessionTtlSeconds { get; set; } = 3600;
+    /// <summary>Lifetime of an admin access JWT and browser cookie.</summary>
+    public int AdminSessionTtlSeconds { get; set; } = 86_400;
+
+    /// <summary>Sliding lifetime of the rotating browser refresh token.</summary>
+    public int AdminRefreshTokenTtlSeconds { get; set; } = 30 * 24 * 3600;
 
     /// <summary>Per-client fixed-window limit for anonymous login attempts.</summary>
     public int LoginAttemptsPerMinute { get; set; } = 5;
@@ -94,6 +97,9 @@ public sealed class StreamarrOptions
 
     /// <summary>Maximum number of concurrent indexer fan-out searches.</summary>
     public int MaxConcurrentSearches { get; set; } = 4;
+
+    /// <summary>Hard deadline for one admitted search pipeline.</summary>
+    public int SearchTimeoutSeconds { get; set; } = 120;
 
     /// <summary>
     /// Optional HTTP proxy used only for Newznab requests and NZB retrieval. The

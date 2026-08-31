@@ -59,7 +59,10 @@ public sealed class TvCatalogController(
         if (tmdbId <= 0 || seasonNumber < 0 || profileId?.Length > 128)
             return NotFound(ErrorResponse.Of("season_not_found", "The TV season was not found."));
 
-        if (!await searchGate.TryEnterAsync(cancellationToken))
+        using var admission = await searchGate.TryEnterAsync(
+            SearchOperation.TvSeason,
+            cancellationToken);
+        if (admission is null)
         {
             Response.Headers.RetryAfter = "1";
             return StatusCode(
@@ -73,7 +76,7 @@ public sealed class TvCatalogController(
                 tmdbId,
                 seasonNumber,
                 profileId,
-                cancellationToken);
+                admission.CancellationToken);
             if (result is not null
                 && result.Indexers.Count > 0
                 && result.Indexers.All(indexer => indexer.Status != "succeeded"))
@@ -87,9 +90,14 @@ public sealed class TvCatalogController(
                 ? NotFound(ErrorResponse.Of("season_not_found", "The TV season was not found."))
                 : Ok(result);
         }
-        finally
+        catch (OperationCanceledException) when (
+            admission.DeadlineExceeded
+            && !cancellationToken.IsCancellationRequested)
         {
-            searchGate.Exit();
+            Response.Headers.RetryAfter = "1";
+            return StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                ErrorResponse.Of("search_temporarily_unavailable", "Search exceeded its server deadline; retry shortly."));
         }
     }
 }

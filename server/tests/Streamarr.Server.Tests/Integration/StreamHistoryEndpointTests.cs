@@ -138,6 +138,48 @@ public class StreamHistoryEndpointTests(StreamarrServerFixture fixture)
     }
 
     [Fact]
+    public async Task ReusedResolve_FinalizesItsSyntheticAttemptInsteadOfLeavingPlaybackOpen()
+    {
+        using var client = fixture.CreateClient();
+        var requester = "history-reuse-" + Guid.NewGuid().ToString("N");
+        var request = new ResolveRequest
+        {
+            ReleaseId = StreamarrServerFixture.DirectReleaseId,
+            Client = "tests",
+            RequestedById = requester,
+        };
+
+        using var firstResponse = await client.PostAsJsonAsync("/api/v1/resolve", request);
+        firstResponse.EnsureSuccessStatusCode();
+        var first = (await firstResponse.Content.ReadFromJsonAsync<ResolveResponse>())!;
+
+        using var secondResponse = await client.PostAsJsonAsync("/api/v1/resolve", request);
+        secondResponse.EnsureSuccessStatusCode();
+        var second = (await secondResponse.Content.ReadFromJsonAsync<ResolveResponse>())!;
+        Assert.Equal(first.StreamUrl, second.StreamUrl);
+
+        var token = first.StreamUrl!.Split('/').Last();
+        (await client.PostAsync($"/api/v1/sessions/{token}/close", content: null)).EnsureSuccessStatusCode();
+        await client.AuthenticateAsAdminAsync();
+
+        var records = await WaitForAsync(async () =>
+        {
+            var all = await client.GetFromJsonAsync<List<StreamRecordSummaryResponse>>("/api/v1/streams?limit=200");
+            var matches = all!.Where(record => record.RequestedById == requester).ToList();
+            return matches.Count == 2 && matches.All(record => record.FinalState is not null)
+                ? matches
+                : null;
+        });
+
+        Assert.Contains(records, record => record.FinalState == "closed" && record.Token == token);
+        Assert.Contains(records, record =>
+            record.FinalState == "reused"
+            && record.Token.StartsWith("attempt-", StringComparison.Ordinal)
+            && record.ResolvedReleaseId == StreamarrServerFixture.DirectReleaseId);
+        Assert.DoesNotContain(records, record => record.FinalState is null);
+    }
+
+    [Fact]
     public async Task Streams_RequireAuthentication()
     {
         using var anonymous = fixture.CreateClient(authenticated: false);

@@ -17,7 +17,8 @@ public sealed class WatchEventService(
     IOptions<StreamarrOptions> options,
     IReleaseStore releaseStore,
     Services.PushoverNotificationService? notifications = null,
-    Services.PreDownloadCoordinator? preDownloads = null)
+    Services.PreDownloadCoordinator? preDownloads = null,
+    Services.PlaybackRangeRecorder? playbackRanges = null)
 {
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
@@ -60,6 +61,8 @@ public sealed class WatchEventService(
                     existing.DeviceName = write.DeviceName ?? string.Empty;
                     await db.SaveChangesAsync(ct);
                     await PruneAsync(db, ct);
+                    if (playbackRanges is not null)
+                        await playbackRanges.RecordAsync(db, write, workId, title, receivedAt, ct);
                     Notify(write);
                     preDownloads?.Enqueue(write);
                     return existing;
@@ -86,6 +89,8 @@ public sealed class WatchEventService(
             await db.SaveChangesAsync(ct);
 
             await PruneAsync(db, ct);
+            if (playbackRanges is not null)
+                await playbackRanges.RecordAsync(db, write, workId, title, receivedAt, ct);
             Notify(write);
             preDownloads?.Enqueue(write);
 

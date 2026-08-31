@@ -687,12 +687,17 @@ function ProviderStrip({ providers }: { providers: ArticleProviderSummaryRespons
           <div key={`${provider.provider ?? "provider"}-${index}`} className="min-w-0 rounded-lg border bg-card/80 px-3 py-2.5" role="listitem">
             <div className="flex items-center justify-between gap-3">
               <p className="truncate font-mono text-[11px] font-medium" title={provider.provider ?? undefined}>{provider.provider || "Unknown provider"}</p>
-              <span className="shrink-0 font-mono text-[9px] text-muted-foreground">{formatMs(provider.averageDurationMs)} avg</span>
+              <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
+                {provider.bytesPerSecond != null ? `${formatBytes(provider.bytesPerSecond)}/s · ` : ""}{formatMs(provider.averageDurationMs)} avg
+              </span>
             </div>
             <div className="mt-2 flex gap-3 font-mono text-[9px] uppercase tracking-wider">
               <span className="text-emerald-700 dark:text-emerald-300">{provider.successes ?? 0} ok</span>
               <span className="text-amber-800 dark:text-amber-300">{provider.missing ?? 0} missing</span>
               <span className="text-rose-700 dark:text-rose-300">{provider.errors ?? 0} errors</span>
+              {(provider.bytesDownloaded ?? 0) > 0 && (
+                <span className="text-muted-foreground">{formatBytes(provider.bytesDownloaded)}</span>
+              )}
             </div>
           </div>
         ))}

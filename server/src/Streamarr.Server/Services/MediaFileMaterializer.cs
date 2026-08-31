@@ -55,6 +55,14 @@ public class MediaFileMaterializer(
     SegmentCache? segmentCache = null,
     SegmentMetadataCache? segmentMetadata = null)
 {
+    internal const int PreDownloadTransientRetryCount = 5;
+
+    internal static TimeSpan PreDownloadTransientRetryDelay(int retryNumber)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(retryNumber, 1);
+        return TimeSpan.FromSeconds(30 * (retryNumber + 1));
+    }
+
     public Task<ResolvedMediaFile> MaterializeAsync(MediaFileCandidate candidate, CancellationToken ct)
         => MaterializeAsync(candidate, target: null, strictEpisodeMatch: false, ct);
 
@@ -130,7 +138,10 @@ public class MediaFileMaterializer(
                 startupArticleBufferSize: 1,
                 startupReadAheadSegments: 1,
                 segmentMetadata: segmentMetadata,
-                onTransfer: onTransfer),
+                onTransfer: onTransfer,
+                transientRetryCount: PreDownloadTransientRetryCount,
+                transientRetryDelay: PreDownloadTransientRetryDelay,
+                disableReadAhead: true),
         };
     }
 
@@ -280,7 +291,10 @@ public class MediaFileMaterializer(
                         startupArticleBufferSize: 1,
                         startupReadAheadSegments: 1,
                         segmentMetadata: segmentMetadata,
-                        onTransfer: onTransfer)),
+                        onTransfer: onTransfer,
+                        transientRetryCount: PreDownloadTransientRetryCount,
+                        transientRetryDelay: PreDownloadTransientRetryDelay,
+                        disableReadAhead: true)),
                 candidate.Password),
         };
     }

@@ -301,7 +301,11 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
 
   // Every live stream drills into a real observability view backed by the same session,
   // ephemeral-file, metrics and playback-event APIs.
-  await peer.getByRole("link", { name: /inspect stream/i }).last().click();
+  const liveLane = peer
+    .locator("article")
+    .filter({ has: peer.getByRole("button", { name: /force-close session/i }) })
+    .first();
+  await liveLane.getByRole("link", { name: /inspect stream/i }).click();
   await expect(peer).toHaveURL(/\/sessions\/[^/]+$/);
   await expect(peer.getByText(/^live signal$/i)).toBeVisible();
   // The stream-details screen is now split into sub screens (tabs) so nothing forces a long
@@ -346,12 +350,12 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
 
   const systemLoad = peer.getByRole("region", { name: "Current system load" });
   await expect(systemLoad).toBeVisible();
-  await expect(systemLoad.getByRole("group", { name: /Stream cache:/i })).toBeVisible();
-  const streamOutput = systemLoad.getByRole("group", { name: /Stream output:/i });
+  await expect(systemLoad.getByRole("group", { name: /Provider ingest:/i })).toBeVisible();
+  const streamOutput = systemLoad.getByRole("group", { name: /Client output:/i });
   await expect(streamOutput).toBeVisible();
   await expect(streamOutput).not.toHaveAccessibleName(/Measuring/i);
   await expect(systemLoad.getByRole("group", { name: /Streaming now:/i })).toBeVisible();
-  await expect(systemLoad.getByRole("group", { name: /NNTP pressure:/i })).toBeVisible();
+  await expect(systemLoad.getByRole("group", { name: /NNTP in use:/i })).toBeVisible();
   await expect(systemLoad.getByText("mock", { exact: true })).toBeVisible();
   expect(await peer.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 

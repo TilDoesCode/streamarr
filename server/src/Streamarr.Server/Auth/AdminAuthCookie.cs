@@ -4,6 +4,7 @@ namespace Streamarr.Server.Auth;
 public static class AdminAuthCookie
 {
     public const string Name = "streamarr_admin";
+    public const string RefreshName = "streamarr_admin_refresh";
     public const string MethodClaim = "streamarr_auth_method";
     public const string MethodValue = "cookie";
 
@@ -13,6 +14,17 @@ public static class AdminAuthCookie
         Secure = secure,
         SameSite = SameSiteMode.Strict,
         Path = "/",
+        IsEssential = true,
+        Expires = expires,
+        MaxAge = expires is { } until ? until - DateTimeOffset.UtcNow : null,
+    };
+
+    public static CookieOptions RefreshOptions(bool secure, DateTimeOffset? expires = null) => new()
+    {
+        HttpOnly = true,
+        Secure = secure,
+        SameSite = SameSiteMode.Strict,
+        Path = "/api/v1/auth",
         IsEssential = true,
         Expires = expires,
         MaxAge = expires is { } until ? until - DateTimeOffset.UtcNow : null,

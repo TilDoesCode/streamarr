@@ -1016,11 +1016,8 @@ public sealed class StreamarrSearchActionFilter(
         if (candidates.Length == 0)
             return;
 
-        // A "0 releases" or stale entry (e.g. materialized while Core had a search bug) must
-        // not stay wrong forever just because a season page happens not to be re-opened — see
-        // EphemeralReleaseRefresher. Bounded and run in parallel so a whole season of stale
-        // episodes cannot serialize into N × the single-item refresh timeout.
-        await Task.WhenAll(candidates.Select(dto => refresher.RefreshIfStaleAsync(dto.Id, ct))).ConfigureAwait(false);
+        foreach (var dto in candidates)
+            refresher.QueueIfStale(dto.Id);
 
         var user = ResolveUser(http);
         var offerOwnerId = AuthenticatedUserId(http);

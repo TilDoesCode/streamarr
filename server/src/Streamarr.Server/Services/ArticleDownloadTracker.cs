@@ -31,6 +31,8 @@ public sealed class ArticleDownloadTracker
     private const int MaxTrackedProviders = 64;
     private const int MaxProviderAttemptsPerRecord = 128;
     private const double MaxDurationMs = 2_592_000_000d;
+    private const int IngestBucketCount = 16;
+    private const int IngestWindowSeconds = 10;
     private static readonly TimeSpan ActiveSnapshotRefreshInterval = TimeSpan.FromSeconds(1);
 
     private readonly string _releaseId;
@@ -41,6 +43,9 @@ public sealed class ArticleDownloadTracker
     private readonly int _maxAttemptsPerArticle;
     private readonly object _providerGate = new();
     private readonly object _snapshotGate = new();
+    private readonly object _ingestGate = new();
+    private readonly long[] _ingestBucketBytes = new long[IngestBucketCount];
+    private readonly long[] _ingestBucketSeconds = new long[IngestBucketCount];
     private readonly Dictionary<string, ProviderAggregate> _providers = new(StringComparer.OrdinalIgnoreCase);
     private long _updatedAtUtcTicks;
     private long _version;
@@ -149,6 +154,7 @@ public sealed class ArticleDownloadTracker
     {
         var safeProvider = Sanitize(provider, MaxProviderChars);
         var safeDuration = NormalizeDuration(durationMs);
+        RecordIngest(bytes);
         return Update(messageId, (article, now) =>
             article.MarkCompleted(
                 ArticleState.Downloaded,
@@ -212,7 +218,10 @@ public sealed class ArticleDownloadTracker
                 ErrorMessage = Sanitize(attempt.ErrorMessage, MaxErrorMessageChars),
             };
             safeAttempts.Add(response);
-            RecordProvider(response);
+            var transferBytes = response.Outcome == "success" && safeOperation is "BODY" or "ARTICLE"
+                ? articles.First.ExpectedBytes
+                : 0;
+            RecordProvider(response, transferBytes);
         }
 
         if (safeAttempts.Count == 0)
@@ -262,19 +271,35 @@ public sealed class ArticleDownloadTracker
         var downloaded = 0;
         var cached = 0;
         var failed = 0;
+        var missing = 0;
         long downloadedBytes = 0;
         double totalDurationMs = 0;
         var durationCount = 0;
         double transferDurationMs = 0;
+        long byteOffset = 0;
+        long bufferedBytes = 0;
+        var bufferedIntervals = new List<(long Start, long End)>();
 
         for (var i = 0; i < _articles.Length; i++)
         {
             var article = _articles[i].Snapshot(now);
             articles[i] = article;
+            var weight = ArticleWeight(article);
+            if (article.State is "downloaded" or "cached")
+            {
+                bufferedBytes = SaturatingAdd(bufferedBytes, weight);
+                if (bufferedIntervals.Count > 0 && bufferedIntervals[^1].End == byteOffset)
+                    bufferedIntervals[^1] = (bufferedIntervals[^1].Start, byteOffset + weight);
+                else
+                    bufferedIntervals.Add((byteOffset, byteOffset + weight));
+            }
+            byteOffset = SaturatingAdd(byteOffset, weight);
             switch (article.State)
             {
                 case "failed":
                     failed++;
+                    if (LooksMissing(article))
+                        missing++;
                     break;
                 case "queued":
                 case "downloading":
@@ -325,13 +350,127 @@ public sealed class ArticleDownloadTracker
             DownloadedArticles = downloaded,
             CachedArticles = cached,
             FailedArticles = failed,
+            MissingArticles = missing,
             DownloadedBytes = downloadedBytes,
             AverageDurationMs = durationCount == 0 ? null : totalDurationMs / durationCount,
             EffectiveBytesPerSecond = effectiveRate,
+            RecentBytesPerSecond = RecentDownloadBytesPerSecond,
             UpdatedAt = UpdatedAt,
+            TotalExpectedBytes = byteOffset,
+            BufferedBytes = bufferedBytes,
+            BufferedRanges = ToFractionRanges(bufferedIntervals, byteOffset, maxRanges: 128),
             Articles = articles,
             Providers = ProviderSnapshots(),
         };
+    }
+
+    /// <summary>Byte weight used for timeline mapping; falls back so zero-size manifests still map.</summary>
+    private static long ArticleWeight(ArticleTelemetryResponse article)
+        => article.ExpectedBytes > 0 ? article.ExpectedBytes : Math.Max(article.Bytes, 1);
+
+    /// <summary>Byte intervals → payload fractions, coarsened by joining the smallest gaps.</summary>
+    internal static IReadOnlyList<ByteRangeResponse> ToFractionRanges(
+        List<(long Start, long End)> intervals,
+        long totalBytes,
+        int maxRanges)
+    {
+        if (totalBytes <= 0 || intervals.Count == 0)
+            return [];
+        while (intervals.Count > maxRanges)
+        {
+            var victim = 1;
+            var smallest = long.MaxValue;
+            for (var i = 1; i < intervals.Count; i++)
+            {
+                var gap = intervals[i].Start - intervals[i - 1].End;
+                if (gap < smallest)
+                {
+                    smallest = gap;
+                    victim = i;
+                }
+            }
+            intervals[victim - 1] = (intervals[victim - 1].Start, Math.Max(intervals[victim - 1].End, intervals[victim].End));
+            intervals.RemoveAt(victim);
+        }
+        return intervals
+            .Select(interval => new ByteRangeResponse
+            {
+                Start = Math.Clamp(interval.Start / (double)totalBytes, 0, 1),
+                End = Math.Clamp(interval.End / (double)totalBytes, 0, 1),
+            })
+            .Where(range => range.End > range.Start)
+            .ToList();
+    }
+
+    /// <summary>Coarsen fraction ranges for compact list payloads (e.g. the sessions overview).</summary>
+    public static IReadOnlyList<ByteRangeResponse> Coarsen(IReadOnlyList<ByteRangeResponse> ranges, int maxRanges)
+    {
+        if (ranges.Count <= maxRanges)
+            return ranges;
+        const long Scale = 1_000_000;
+        var intervals = ranges
+            .Select(range => ((long)(range.Start * Scale), (long)(range.End * Scale)))
+            .ToList();
+        return ToFractionRanges(intervals, Scale, maxRanges);
+    }
+
+    /// <summary>
+    /// Recent network ingest rate: bytes of completed article downloads over a rolling
+    /// 10-second window. Null when nothing finished downloading inside the window.
+    /// </summary>
+    public double? RecentDownloadBytesPerSecond
+    {
+        get
+        {
+            var nowSecond = _time.GetUtcNow().ToUnixTimeSeconds();
+            long total = 0;
+            var any = false;
+            lock (_ingestGate)
+            {
+                for (var i = 0; i < IngestBucketCount; i++)
+                {
+                    var age = nowSecond - _ingestBucketSeconds[i];
+                    if (age is >= 0 and < IngestWindowSeconds && _ingestBucketBytes[i] > 0)
+                    {
+                        total = SaturatingAdd(total, _ingestBucketBytes[i]);
+                        any = true;
+                    }
+                }
+            }
+            return any ? total / (double)IngestWindowSeconds : null;
+        }
+    }
+
+    private void RecordIngest(long bytes)
+    {
+        if (bytes <= 0)
+            return;
+        var second = _time.GetUtcNow().ToUnixTimeSeconds();
+        var slot = (int)((second % IngestBucketCount + IngestBucketCount) % IngestBucketCount);
+        lock (_ingestGate)
+        {
+            if (_ingestBucketSeconds[slot] != second)
+            {
+                _ingestBucketSeconds[slot] = second;
+                _ingestBucketBytes[slot] = 0;
+            }
+            _ingestBucketBytes[slot] = SaturatingAdd(_ingestBucketBytes[slot], bytes);
+        }
+    }
+
+    private static bool LooksMissing(ArticleTelemetryResponse article)
+    {
+        if (article.ErrorType is { } errorType
+            && errorType.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        foreach (var attempt in article.Attempts)
+        {
+            if (attempt.Outcome == "missing" || attempt.ResponseCode == 430)
+                return true;
+        }
+        return false;
     }
 
     private DateTimeOffset UpdatedAt
@@ -358,7 +497,7 @@ public sealed class ArticleDownloadTracker
         return _articlesByMessageId.TryGetValue(messageId, out articles!);
     }
 
-    private void RecordProvider(ArticleProviderAttemptResponse attempt)
+    private void RecordProvider(ArticleProviderAttemptResponse attempt, long transferBytes)
     {
         lock (_providerGate)
         {
@@ -373,7 +512,7 @@ public sealed class ArticleDownloadTracker
                     _providers.Add(key, aggregate);
                 }
             }
-            aggregate.Record(attempt.Outcome, attempt.DurationMs);
+            aggregate.Record(attempt.Outcome, attempt.DurationMs, transferBytes);
         }
     }
 
@@ -479,6 +618,8 @@ public sealed class ArticleDownloadTracker
         private string? _errorType;
         private string? _errorMessage;
         private long _providerAttemptCount;
+
+        public long ExpectedBytes => expectedBytes;
 
         public void MarkQueued(DateTimeOffset now)
         {
@@ -642,10 +783,12 @@ public sealed class ArticleDownloadTracker
         private long _errors;
         private long _durationCount;
         private double _durationTotalMs;
+        private long _bytesDownloaded;
+        private double _transferDurationMs;
 
         public string Provider { get; } = provider;
 
-        public void Record(string outcome, double durationMs)
+        public void Record(string outcome, double durationMs, long transferBytes)
         {
             if (outcome == "success")
                 _successes++;
@@ -655,6 +798,11 @@ public sealed class ArticleDownloadTracker
                 _errors++;
             _durationCount++;
             _durationTotalMs += durationMs;
+            if (transferBytes > 0)
+            {
+                _bytesDownloaded = SaturatingAdd(_bytesDownloaded, transferBytes);
+                _transferDurationMs += durationMs;
+            }
         }
 
         public ArticleProviderSummaryResponse Snapshot() => new()
@@ -664,6 +812,10 @@ public sealed class ArticleDownloadTracker
             Missing = _missing,
             Errors = _errors,
             AverageDurationMs = _durationCount == 0 ? null : _durationTotalMs / _durationCount,
+            BytesDownloaded = _bytesDownloaded,
+            BytesPerSecond = _transferDurationMs > 0 && _bytesDownloaded > 0
+                ? _bytesDownloaded / (_transferDurationMs / 1_000d)
+                : null,
         };
     }
 }

@@ -47,6 +47,18 @@ export function formatMs(ms?: number | null): string {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
+/** ISO timestamp in the future → coarse countdown, e.g. "in 22m", "in 3h". */
+export function futureTime(value: string, now = Date.now()): string {
+  const difference = Date.parse(value) - now;
+  if (!Number.isFinite(difference)) return "time unavailable";
+  if (difference <= 0) return "due now";
+  const minutes = Math.ceil(difference / 60_000);
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  return `in ${Math.ceil(hours / 24)}d`;
+}
+
 /** ISO timestamp → coarse relative age, e.g. "12s ago", "3m ago". */
 export function timeAgo(iso?: string | null, now = Date.now()): string {
   if (!iso) return "—";

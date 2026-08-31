@@ -17,6 +17,21 @@ describe("token store", () => {
     expect(sessionStorage).toHaveLength(0);
   });
 
+  it("keeps an expired access record while its refresh session is still valid", () => {
+    const refreshExpiresAt = farFuture();
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: "streamarr.session",
+      newValue: JSON.stringify({
+        username: "admin",
+        role: "admin",
+        expiresAt: new Date(Date.now() - 1_000).toISOString(),
+        refreshExpiresAt,
+      }),
+    }));
+
+    expect(getSession()).toMatchObject({ username: "admin", refreshExpiresAt });
+  });
+
   it("clearSession wipes metadata and storage", () => {
     const cleared = vi.fn();
     window.addEventListener("streamarr:session-cleared", cleared, { once: true });

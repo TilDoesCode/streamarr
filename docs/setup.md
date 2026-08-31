@@ -255,11 +255,10 @@ cannot decode; this preview path does not transcode, while Jellyfin can.
    `Streamarr.Plugin.dll` (+ `meta.json`) into `/config/plugins/Streamarr` (read-write).
 2. In Jellyfin → **Dashboard → Plugins**, confirm **Streamarr** is listed and Active.
 3. Open its (deliberately minimal) config page. Set **Core Server URL** to the private
-   control URL Jellyfin can reach (`http://streamarr:8080` in compose), set **Public
-   stream URL** to an HTTPS reverse-proxy or private-LAN base URL reachable by every
-   playback device, and enter the **machine API key**. The public URL is required when
-   the control URL uses a container-only hostname; leave it blank only when the control
-   URL itself is client-reachable. Hit **Test connection**. This calls anonymous shallow
+   control URL Jellyfin can reach (`http://streamarr:8080` in compose) and enter the
+   **machine API key**. Playback devices never contact Core — every stream is served by
+   Jellyfin as a server-side remux of the opened Core stream — so a container-only
+   hostname is fine. Hit **Test connection**. This calls anonymous shallow
    `GET /api/v1/health?deep=false` and then authenticated `GET /api/v1/caps`; both must
    succeed, so the test validates the control URL and key rather than liveness alone.
 4. Turn on **Enable search interception**.
@@ -289,7 +288,8 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 |---|---|---|
 | `ApiKey` | `""` | Static bootstrap machine API key for bearer auth. Empty disables it; when enabled it must be 32–4096 characters without whitespace/control characters. Keys minted via the config API still work. |
 | `ConnectionString` | `""` | SQLite connection string. Empty → `streamarr.db` next to the app. |
-| `AdminSessionTtlSeconds` | `3600` | Lifetime of the admin session cookie/JWT from `POST /auth/login`. |
+| `AdminSessionTtlSeconds` | `86400` | Lifetime of the admin access cookie/JWT (24 hours). The Web UI refreshes it automatically. |
+| `AdminRefreshTokenTtlSeconds` | `2592000` | Sliding lifetime of the rotating HttpOnly browser refresh token (30 days). Each successful refresh restarts the window. |
 | `LoginAttemptsPerMinute` | `5` | Fixed-window login-attempt limit per client IP. |
 | `DataProtectionKeysPath` | `""` | Directory the secret-encryption key ring persists to. Empty → a `keys` folder next to the app. |
 | `NzbCachePath` | `""` | Persistent NZB cache directory. Empty → `cache/nzb` below the Core content root. Container images default to `/app/data/nzb`. |
@@ -303,6 +303,7 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `MaxConcurrentStreams` | `128` | Hard cap on concurrently open HTTP stream bodies. |
 | `MaxConcurrentResolves` | `4` | Hard cap on full NZB/health/materialization resolve pipelines in flight. |
 | `MaxConcurrentSearches` | `4` | Hard cap on concurrent indexer fan-out searches. |
+| `SearchTimeoutSeconds` | `120` | Hard deadline for one admitted search pipeline, including catalog-driven searches. |
 | `IndexerProxy` | `""` | HTTP proxy used only for Newznab searches/caps and NZB retrieval. `INDEXER_PROXY` is the preferred deployment alias and takes precedence. Empty means explicitly direct. |
 | `MaxFallbackHops` | `3` | **(M7)** Max automatic fallback hops when a release resolves dead, so a fully-dead work fails fast. |
 | `HealthCacheTtlSeconds` | `1800` | **(M7)** How long a dead classification is remembered and fed back into ranking + fallback selection. `0` disables the health cache. |

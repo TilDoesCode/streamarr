@@ -23,7 +23,6 @@ public class PluginConfiguration : BasePluginConfiguration
     private int _releaseCacheTtlMinutes = 30;
     private string _pinnedWorkQuery = "Big Buck Bunny";
     private string _serverUrl = "http://streamarr:8080";
-    private string _publicStreamUrl = string.Empty;
     private string _apiKey = string.Empty;
     private string _profileId = string.Empty;
 
@@ -37,29 +36,6 @@ public class PluginConfiguration : BasePluginConfiguration
             if (!IsValidServerUrl(candidate))
                 throw new ArgumentException("Core Server URL must be a bounded absolute HTTP(S) URL without credentials.", nameof(value));
             _serverUrl = candidate;
-        }
-    }
-
-    /// <summary>
-    /// Client-reachable base URL used only for the capability URL placed in opened media
-    /// sources. This may differ from <see cref="ServerUrl"/> when Jellyfin talks to Core over a
-    /// private container network but mobile/TV players reach it through a LAN address or HTTPS
-    /// reverse proxy. Empty preserves the legacy behavior of using <see cref="ServerUrl"/>.
-    /// </summary>
-    public string PublicStreamUrl
-    {
-        get => _publicStreamUrl;
-        set
-        {
-            var candidate = (value ?? string.Empty).Trim().TrimEnd('/');
-            if (candidate.Length > 0 && !IsValidServerUrl(candidate))
-            {
-                throw new ArgumentException(
-                    "Public stream URL must be empty or a bounded absolute HTTP(S) URL without credentials.",
-                    nameof(value));
-            }
-
-            _publicStreamUrl = candidate;
         }
     }
 
@@ -113,16 +89,6 @@ public class PluginConfiguration : BasePluginConfiguration
     /// below the hidden aggregate root, restoring the fully isolated legacy behavior.
     /// </summary>
     public bool LibraryEnabled { get; set; } = true;
-
-    /// <summary>
-    /// Compatibility shim for Swiftfin (iOS/tvOS). Swiftfin cannot play remote
-    /// <c>RequiresOpening</c> media sources on movies/episodes — it requests a static file
-    /// stream instead of opening the live stream — so its PlaybackInfo requests for
-    /// Streamarr items are rewritten to auto-open the stream server-side and answer with a
-    /// remux (stream-copy) transcoding URL. Scoped to Swiftfin clients and Streamarr items
-    /// only; every other client keeps its native direct-play behavior. On by default.
-    /// </summary>
-    public bool SwiftfinCompatibilityEnabled { get; set; } = true;
 
     /// <summary>
     /// Best-effort repair notifications: while a Core PAR2 repair stalls an active playback

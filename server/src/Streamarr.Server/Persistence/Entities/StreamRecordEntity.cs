@@ -37,7 +37,7 @@ public sealed class StreamRecordEntity
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? ClosedAt { get; set; }
 
-    /// <summary>Null while the attempt/session is still open. "ready"|"degraded"|"dead"|"closed"|"expired"|"evicted"|"purged"|"invalidated"|"error".</summary>
+    /// <summary>Null while open; terminal values include closed, interrupted, expired, evicted, purged, invalidated, reused, dead, and error.</summary>
     public string? FinalState { get; set; }
 
     /// <summary>Operator-facing close reason — never a raw exception message (BRIEF: no secrets/paths/ids in logs).</summary>

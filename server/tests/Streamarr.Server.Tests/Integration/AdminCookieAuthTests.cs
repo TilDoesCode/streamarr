@@ -32,14 +32,58 @@ public sealed class AdminCookieAuthTests : IClassFixture<AdminCookieAuthTests.Fa
         var payload = await login.Content.ReadFromJsonAsync<LoginResponse>();
         Assert.NotNull(payload);
 
-        var setCookie = Assert.Single(login.Headers.GetValues("Set-Cookie"));
+        var setCookies = login.Headers.GetValues("Set-Cookie").ToArray();
+        var setCookie = Assert.Single(setCookies, value =>
+            value.StartsWith("streamarr_admin=", StringComparison.OrdinalIgnoreCase));
+        var refreshCookie = Assert.Single(setCookies, value =>
+            value.StartsWith("streamarr_admin_refresh=", StringComparison.OrdinalIgnoreCase));
         var lower = setCookie.ToLowerInvariant();
         Assert.Contains("streamarr_admin=", lower);
         Assert.Contains("httponly", lower);
         Assert.Contains("samesite=strict", lower);
         Assert.Contains("secure", lower);
         Assert.Contains("path=/", lower);
+        var refreshLower = refreshCookie.ToLowerInvariant();
+        Assert.Contains("httponly", refreshLower);
+        Assert.Contains("samesite=strict", refreshLower);
+        Assert.Contains("secure", refreshLower);
+        Assert.Contains("path=/api/v1/auth", refreshLower);
+        Assert.True(payload!.RefreshExpiresAt > payload.ExpiresAt);
         Assert.Contains("no-store", login.Headers.CacheControl!.ToString());
+        var originalRefreshToken = CookieValue(refreshCookie, "streamarr_admin_refresh");
+
+        using var refreshRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        refreshRequest.Headers.Add("Origin", "https://localhost");
+        using var refresh = await browser.SendAsync(refreshRequest);
+        Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
+        var refreshedPayload = await refresh.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.NotNull(refreshedPayload);
+        Assert.NotEqual(payload.Token, refreshedPayload.Token);
+        Assert.True(refreshedPayload.RefreshExpiresAt > refreshedPayload.ExpiresAt);
+        Assert.Contains(refresh.Headers.GetValues("Set-Cookie"), value =>
+            value.StartsWith("streamarr_admin_refresh=", StringComparison.OrdinalIgnoreCase));
+        var rotatedRefreshToken = CookieValue(
+            refresh.Headers.GetValues("Set-Cookie").Single(value =>
+                value.StartsWith("streamarr_admin_refresh=", StringComparison.OrdinalIgnoreCase)),
+            "streamarr_admin_refresh");
+
+        // Two tabs can cross the access deadline together. A replay during the short rotation
+        // grace receives the same replacement instead of invalidating the newly refreshed tab.
+        using var concurrentTab = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = false,
+        });
+        using var concurrentRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        concurrentRequest.Headers.Add("Origin", "https://localhost");
+        concurrentRequest.Headers.Add("Cookie", $"streamarr_admin_refresh={originalRefreshToken}");
+        using var concurrentRefresh = await concurrentTab.SendAsync(concurrentRequest);
+        Assert.Equal(HttpStatusCode.OK, concurrentRefresh.StatusCode);
+        var concurrentRefreshToken = CookieValue(
+            concurrentRefresh.Headers.GetValues("Set-Cookie").Single(value =>
+                value.StartsWith("streamarr_admin_refresh=", StringComparison.OrdinalIgnoreCase)),
+            "streamarr_admin_refresh");
+        Assert.Equal(rotatedRefreshToken, concurrentRefreshToken);
 
         // The browser authenticates without exposing the JWT to application code.
         using var config = await browser.GetAsync("/api/v1/config/general");
@@ -72,12 +116,18 @@ public sealed class AdminCookieAuthTests : IClassFixture<AdminCookieAuthTests.Fa
 
         // Conservative key rotation makes a copied bearer from that session unusable.
         using var replay = _factory.CreateClient();
-        replay.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", payload!.Token);
+        replay.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", refreshedPayload!.Token);
         using var replayResponse = await replay.GetAsync("/api/v1/auth/me");
         Assert.Equal(HttpStatusCode.Unauthorized, replayResponse.StatusCode);
 
         using var afterPasswordChange = await browser.GetAsync("/api/v1/config/general");
         Assert.Equal(HttpStatusCode.Unauthorized, afterPasswordChange.StatusCode);
+
+        using var revokedRefreshRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        revokedRefreshRequest.Headers.Add("Origin", "https://localhost");
+        revokedRefreshRequest.Headers.Add("Cookie", $"streamarr_admin_refresh={rotatedRefreshToken}");
+        using var revokedRefresh = await concurrentTab.SendAsync(revokedRefreshRequest);
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedRefresh.StatusCode);
 
         using var relogin = await browser.PostAsJsonAsync("/api/v1/auth/login", new
         {
@@ -93,6 +143,19 @@ public sealed class AdminCookieAuthTests : IClassFixture<AdminCookieAuthTests.Fa
         Assert.Contains(logout.Headers.GetValues("Set-Cookie"), value =>
             value.Contains("streamarr_admin=", StringComparison.OrdinalIgnoreCase) &&
             value.Contains("expires=", StringComparison.OrdinalIgnoreCase));
+
+        using var refreshAfterLogoutRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        refreshAfterLogoutRequest.Headers.Add("Origin", "https://localhost");
+        using var refreshAfterLogout = await browser.SendAsync(refreshAfterLogoutRequest);
+        Assert.Equal(HttpStatusCode.Unauthorized, refreshAfterLogout.StatusCode);
+    }
+
+    private static string CookieValue(string setCookie, string name)
+    {
+        var prefix = name + "=";
+        Assert.StartsWith(prefix, setCookie, StringComparison.OrdinalIgnoreCase);
+        var end = setCookie.IndexOf(';', prefix.Length);
+        return setCookie[prefix.Length..(end < 0 ? setCookie.Length : end)];
     }
 
     public sealed class Factory : WebApplicationFactory<Program>, IDisposable

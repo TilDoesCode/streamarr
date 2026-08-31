@@ -312,7 +312,11 @@ close_live_stream() {
   expect_code 204 "$code" "Live stream close"
 }
 
-assert_streamyfin_opened_source() {
+# The opened source as a profile-less API consumer sees it: direct play is never advertised
+# (playback always routes through Jellyfin's remux), the capability Path stays on the
+# Jellyfin-host-internal Core origin, and no auth material leaks via headers. Requests that
+# post a DeviceProfile additionally receive the remux TranscodingUrl (asserted per scenario).
+assert_opened_guarded_source() {
   local file="$1"
   local expected_path="$2"
   jq -e --arg path "$expected_path" '
@@ -322,15 +326,14 @@ assert_streamyfin_opened_source() {
         | $source.IsRemote == true
           and $source.Protocol == "Http"
           and $source.Path == $path
+          and $source.SupportsDirectPlay == false
+          and $source.SupportsDirectStream == false
+          and $source.SupportsTranscoding == true
           and $source.TranscodingUrl == null
           and $source.RequiresOpening == false
           and ($source.LiveStreamId | type == "string" and length > 0)
           and (($source.RequiredHttpHeaders // {}) | length) == 0)
   ' "$file" >/dev/null
-
-  # Streamyfin hands this Path directly to MPV and deliberately adds no Jellyfin auth header for
-  # an HTTP remote source. Prove the advertised capability is reachable on exactly that basis.
-  curl -fsS "$expected_path" >/dev/null
 }
 
 command -v curl >/dev/null || fail "curl is required."
@@ -478,16 +481,16 @@ curl -fsS "$base_url/Plugins/$plugin_id/Configuration" \
   -o "$tmp_dir/plugin-config-original.json"
 jq \
   --arg server "http://host.docker.internal:$fake_core_port" \
-  --arg publicStream "http://127.0.0.1:$fake_core_port" \
   --arg key "$machine_key" '
   .ServerUrl = $server
-  | .PublicStreamUrl = $publicStream
   | .ApiKey = $key
   | .PinnedWorkQuery = "CI Smoke Movie"
   | .InterceptionEnabled = false
 ' "$tmp_dir/plugin-config-original.json" >"$tmp_dir/plugin-config-valid.json"
 post_plugin_config "$tmp_dir/plugin-config-valid.json"
-public_stream_base="http://127.0.0.1:$fake_core_port"
+# Clients never receive this base: the capability URL stays private to the Jellyfin host
+# (ffmpeg remux input / download proxy). Only Jellyfin needs to reach it.
+core_stream_base="http://host.docker.internal:$fake_core_port"
 
 code="$(curl -sS -o "$tmp_dir/connection-valid.json" -w '%{http_code}' \
   "$base_url/Streamarr/TestConnection" -H "$admin_header")"
@@ -1079,9 +1082,9 @@ jq -e --arg sourceId "$episode_source_id" '
         and $opened.Id == $sourceId
         and $opened.RequiresOpening == false)
 ' "$tmp_dir/episode-card-playback-result.json" >/dev/null
-assert_streamyfin_opened_source \
+assert_opened_guarded_source \
   "$tmp_dir/episode-card-playback-result.json" \
-  "$public_stream_base/api/v1/stream/ci-smoke-session-$episode_release_id"
+  "$core_stream_base/api/v1/stream/ci-smoke-session-$episode_release_id"
 assert_last_resolve "$episode_release_id" "ci-smoke-series-s01e01"
 card_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
   "$tmp_dir/episode-card-playback-result.json")"
@@ -1108,20 +1111,20 @@ jq -e --arg sourceId "$episode_alt_source_id" '
         and $opened.Id == $sourceId
         and $opened.RequiresOpening == false)
 ' "$tmp_dir/episode-selected-playback-result.json" >/dev/null
-assert_streamyfin_opened_source \
+assert_opened_guarded_source \
   "$tmp_dir/episode-selected-playback-result.json" \
-  "$public_stream_base/api/v1/stream/ci-smoke-session-$episode_alt_release_id"
+  "$core_stream_base/api/v1/stream/ci-smoke-session-$episode_alt_release_id"
 assert_last_resolve "$episode_alt_release_id" "ci-smoke-series-s01e01"
 selected_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
   "$tmp_dir/episode-selected-playback-result.json")"
 close_live_stream "$selected_live_stream_id" "$tmp_dir/episode-selected-close-result.json"
 
-# Reproduce Swiftfin (App Store 1.x): it neither auto-opens the live stream nor disables
-# direct play, and its VLC-based profile direct-plays every container — so without the plugin's
-# compatibility filter Jellyfin answers with a direct-play offer whose static stream URL cannot
-# be satisfied for a RequiresOpening source ("Unable to load this item"). The filter must
-# rewrite the request so the response advertises the opened stream's remux TranscodingUrl
-# (carrying the LiveStreamId) under the stable release-source id Swiftfin matches against.
+# Reproduce Swiftfin (App Store 1.x): it neither auto-opens the live stream nor expresses any
+# opening preference, and its VLC-based profile direct-plays every container. Structurally the
+# mapper never advertises direct play, and the client-agnostic guard defaults AutoOpenLiveStream
+# for preference-less requests — so the response must advertise the opened stream's remux
+# TranscodingUrl (carrying the LiveStreamId) under the stable release-source id Swiftfin
+# matches against, with no client-specific handling anywhere.
 swiftfin_auth='MediaBrowser Client="Swiftfin iOS", Device="CI", DeviceId="streamarr-swiftfin-ci", Version="1.0"'
 swiftfin_token="$(auth_token streamarr-allowed "$user_password" "$swiftfin_auth" "$tmp_dir/swiftfin-auth.json")"
 swiftfin_header="Authorization: $swiftfin_auth, Token=\"$swiftfin_token\""
@@ -1161,10 +1164,11 @@ swiftfin_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
   "$tmp_dir/swiftfin-playback-result.json")"
 close_live_stream "$swiftfin_live_stream_id" "$tmp_dir/swiftfin-close-result.json"
 
-# Reproduce Swiftfin's rewritten-player track rebuild. It stops the current transcoded item,
-# then posts PlaybackInfo again with the selected source, new audio index, and the previous
-# LiveStreamId. That id is stale after the stop; the compatibility shim must force Jellyfin to
-# discover and open a fresh source instead of trying to reuse the closed live stream.
+# Reproduce a rebuilding player's track switch (Swiftfin's rewritten player does exactly this):
+# it stops the current transcoded item, then posts PlaybackInfo again with the selected source,
+# new audio index, and the previous LiveStreamId. That id is stale after the stop; the guard
+# must drop it so Jellyfin discovers and opens a fresh source instead of failing on the closed
+# live stream.
 jq \
   --arg liveStreamId "$swiftfin_live_stream_id" \
   '. + {LiveStreamId:$liveStreamId, AudioStreamIndex:2, AutoOpenLiveStream:true}' \
@@ -1197,9 +1201,56 @@ close_live_stream \
   "$swiftfin_switched_live_stream_id" \
   "$tmp_dir/swiftfin-audio-switch-close-result.json"
 
-# The same request from a fully protocol-compliant client (Streamyfin-style, no Swiftfin
-# client name) must remain untouched by the filter: direct play stays offered and no
-# transcoding URL is forced.
+# Streamyfin (every released build) consumes TranscodingUrl first and otherwise falls back to
+# routes that cannot serve a RequiresOpening source (static /Videos/{id}/stream without the
+# live-stream id on ≤0.51, direct MediaSource.Path on 0.54.x). The remux URL must therefore be
+# present structurally — direct play is never advertised — with no client sniffing involved.
+streamyfin_auth='MediaBrowser Client="Streamyfin", Device="iPad", DeviceId="streamarr-streamyfin-ci", Version="0.51.0"'
+streamyfin_token="$(auth_token streamarr-allowed "$user_password" "$streamyfin_auth" "$tmp_dir/streamyfin-auth.json")"
+streamyfin_header="Authorization: $streamyfin_auth, Token=\"$streamyfin_token\""
+jq -n --arg uid "$allowed_id" --arg source "$episode_source_id" '
+  {
+    UserId: $uid,
+    MediaSourceId: $source,
+    AutoOpenLiveStream: true,
+    DeviceProfile: {
+      Name: "1. MPV",
+      MaxStaticBitrate: 999999999,
+      MaxStreamingBitrate: 999999999,
+      DirectPlayProfiles: [{
+        Type: "Video", Container: "mp4,mkv,avi,mov,flv,ts,m2ts,webm,ogv,3gp,hls",
+        VideoCodec: "h264,hevc,h265,vp8,vp9,av1", AudioCodec: "aac,mp3,ac3,eac3,dts"
+      }],
+      TranscodingProfiles: [{
+        Type: "Video", Container: "ts", Protocol: "hls",
+        VideoCodec: "h264,hevc", AudioCodec: "aac,mp3,ac3,dts", Context: "Streaming"
+      }]
+    }
+  }
+' >"$tmp_dir/streamyfin-playback-request.json"
+code="$(curl -sS -o "$tmp_dir/streamyfin-playback-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$streamyfin_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/streamyfin-playback-request.json")"
+expect_code 200 "$code" "Streamyfin-shaped PlaybackInfo"
+jq -e --arg sourceId "$episode_source_id" '
+  .ErrorCode == null
+    and (.MediaSources | length) == 1
+    and (.MediaSources[0] as $opened
+      | $opened.Id == $sourceId
+        and $opened.RequiresOpening == false
+        and ($opened.LiveStreamId | type == "string" and length > 0)
+        and $opened.SupportsDirectPlay == false
+        and ($opened.TranscodingUrl | type == "string" and contains("LiveStreamId=")))
+' "$tmp_dir/streamyfin-playback-result.json" >/dev/null
+assert_last_resolve "$episode_release_id" "ci-smoke-series-s01e01"
+streamyfin_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/streamyfin-playback-result.json")"
+close_live_stream "$streamyfin_live_stream_id" "$tmp_dir/streamyfin-close-result.json"
+
+# A profile-less API consumer sees the honest source shape: opened, transcoding-capable,
+# direct play never advertised, and the capability Path on the Jellyfin-internal Core origin.
 jq -n --arg uid "$allowed_id" --arg source "$episode_source_id" '
   {UserId:$uid, MediaSourceId:$source, AutoOpenLiveStream:true}
 ' >"$tmp_dir/compliant-playback-request.json"
@@ -1208,13 +1259,98 @@ code="$(curl -sS -o "$tmp_dir/compliant-playback-result.json" -w '%{http_code}' 
   -H "$allowed_header" \
   -H 'Content-Type: application/json' \
   --data-binary "@$tmp_dir/compliant-playback-request.json")"
-expect_code 200 "$code" "Protocol-compliant PlaybackInfo remains untouched"
-assert_streamyfin_opened_source \
+expect_code 200 "$code" "Profile-less PlaybackInfo"
+assert_opened_guarded_source \
   "$tmp_dir/compliant-playback-result.json" \
-  "$public_stream_base/api/v1/stream/ci-smoke-session-$episode_release_id"
+  "$core_stream_base/api/v1/stream/ci-smoke-session-$episode_release_id"
 compliant_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
   "$tmp_dir/compliant-playback-result.json")"
 close_live_stream "$compliant_live_stream_id" "$tmp_dir/compliant-close-result.json"
+
+# ---------------------------------------------------------------------------
+# Regression repros for the structural "everything through Jellyfin" model. Direct play
+# (client -> Core) is never advertised, so no configuration or client identity can put a
+# released player onto a route it cannot consume.
+# ---------------------------------------------------------------------------
+
+# (a) Sentinel: the static stream route without a live-stream id (what Streamyfin <=0.51 and
+# Swiftfin build as their non-transcode fallback) still cannot serve a RequiresOpening source.
+# No released client reaches it anymore -- every profiled PlaybackInfo carries a TranscodingUrl.
+old_static_url="$base_url/Videos/$available_episode_id/stream?static=true&container=mp4&mediaSourceId=$episode_source_id&deviceId=streamarr-streamyfin-ci&api_key=$streamyfin_token&userId=$allowed_id&startTimeTicks=0"
+old_static_code="$(curl -sS -o "$tmp_dir/repro-old-static.bin" -w '%{http_code}' \
+  --max-time 20 "$old_static_url" || echo "curl-failed")"
+old_static_bytes="$(stat -f %z "$tmp_dir/repro-old-static.bin" 2>/dev/null \
+  || stat -c %s "$tmp_dir/repro-old-static.bin" 2>/dev/null || echo 0)"
+echo "repro(a) static route without live-stream id: HTTP $old_static_code, $old_static_bytes bytes"
+if [[ "$old_static_code" == "200" ]] \
+  && grep -q "streamarr-smoke-media" "$tmp_dir/repro-old-static.bin" 2>/dev/null; then
+  fail "The static stream route unexpectedly served the Streamarr media (repro invalid)."
+fi
+
+# (b) Anti-duplicate-session: a PlaybackInfo that references a still-open live stream must be
+# honored unchanged -- same live-stream id back, and no new Core resolve. This pins the guard's
+# "only drop ids Jellyfin no longer knows" boundary from the open side.
+code="$(curl -sS -o "$tmp_dir/repro-reuse-open-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$streamyfin_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/streamyfin-playback-request.json")"
+expect_code 200 "$code" "Reuse-scenario opening PlaybackInfo"
+reuse_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/repro-reuse-open-result.json")"
+resolve_before_reuse="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.resolve')"
+jq --arg liveStreamId "$reuse_live_stream_id" '. + {LiveStreamId:$liveStreamId}' \
+  "$tmp_dir/streamyfin-playback-request.json" >"$tmp_dir/repro-reuse-request.json"
+code="$(curl -sS -o "$tmp_dir/repro-reuse-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$streamyfin_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/repro-reuse-request.json")"
+expect_code 200 "$code" "Still-open live-stream reuse PlaybackInfo"
+jq -e --arg liveStreamId "$reuse_live_stream_id" '
+  .ErrorCode == null
+    and (.MediaSources | length) == 1
+    and .MediaSources[0].LiveStreamId == $liveStreamId
+' "$tmp_dir/repro-reuse-result.json" >/dev/null
+resolve_after_reuse="$(curl -fsS "http://127.0.0.1:$fake_core_port/__smoke/state" | jq -er '.resolve')"
+[[ "$resolve_before_reuse" == "$resolve_after_reuse" ]] \
+  || fail "Reusing a still-open live stream triggered a new Core resolve (duplicate session)."
+echo "repro(b) still-open live-stream id honored: same stream, no new Core session"
+close_live_stream "$reuse_live_stream_id" "$tmp_dir/repro-reuse-close-result.json"
+
+# (c) No client sniffing: an arbitrary unknown client with a direct-play-everything profile
+# still receives the remux TranscodingUrl -- the steering is structural, not per-client.
+jq -n --arg uid "$allowed_id" --arg source "$episode_source_id" '
+  {
+    UserId: $uid,
+    MediaSourceId: $source,
+    AutoOpenLiveStream: true,
+    DeviceProfile: {
+      Name: "UnknownClientCI",
+      MaxStreamingBitrate: 999999999,
+      DirectPlayProfiles: [{Type: "Video"}],
+      TranscodingProfiles: [{
+        Type: "Video", Container: "ts", Protocol: "hls",
+        VideoCodec: "h264,hevc", AudioCodec: "aac,mp3,ac3", Context: "Streaming"
+      }]
+    }
+  }
+' >"$tmp_dir/repro-unknown-client-request.json"
+code="$(curl -sS -o "$tmp_dir/repro-unknown-client-result.json" -w '%{http_code}' \
+  -X POST "$base_url/Items/$available_episode_id/PlaybackInfo" \
+  -H "$allowed_header" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$tmp_dir/repro-unknown-client-request.json")"
+expect_code 200 "$code" "Unknown-client PlaybackInfo"
+jq -e '
+  (.MediaSources[0].SupportsDirectPlay == false)
+    and (.MediaSources[0].SupportsDirectStream == false)
+    and (.MediaSources[0].TranscodingUrl | type == "string" and contains("LiveStreamId="))
+' "$tmp_dir/repro-unknown-client-result.json" >/dev/null
+echo "repro(c) unknown direct-play-capable client steered onto Jellyfin's remux URL"
+unknown_live_stream_id="$(jq -er '.MediaSources[0].LiveStreamId' \
+  "$tmp_dir/repro-unknown-client-result.json")"
+close_live_stream "$unknown_live_stream_id" "$tmp_dir/repro-unknown-client-close-result.json"
 
 # Exercise Jellyfin's explicit two-step client flow with an offer taken from the projected item
 # DTO rather than from PlaybackInfo: detail-route tokens bypass the host's provider-prefixing,

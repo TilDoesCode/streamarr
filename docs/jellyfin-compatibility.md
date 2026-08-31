@@ -120,10 +120,12 @@ however, enforce the boundary around its machine-authenticated Core client:
   `suggestedFallbackReleaseId` is followed at most once and under the same checks.
 - **Media auth is session-scoped.** The opened source carries only Core's short-lived
   stream capability in its `Path`; `RequiredHttpHeaders` contains no machine key or
-  admin credential. Direct remote-source clients such as Streamyfin use this `Path`
-  verbatim when `IsRemote = true` and `Protocol = Http`, so the plugin rebases the
-  capability onto its separately configured client-reachable public stream URL instead
-  of leaking a container-only Core control hostname.
+  admin credential. That `Path` is consumed only on the Jellyfin host: the mapper never
+  advertises direct play (`SupportsDirectPlay`/`SupportsDirectStream` are always
+  `false`), so every client receives Jellyfin's own remux `TranscodingUrl` and streams
+  from Jellyfin. Clients need to reach Jellyfin, never Core. The capability URL still
+  appears verbatim in the PlaybackInfo response body; it is session-scoped, expires
+  with the stream, and is typically not routable from client networks.
 - **The connection budget is global.** Concurrent Jellyfin streams share the same
   `Streamarr:ConnectionBudget` gate as every other client; the plugin does no
   connection accounting of its own. Per-provider/​budget state is observable at
@@ -160,53 +162,77 @@ Server with real indexer/provider credentials and a real client — that is the 
 dedup and TTL-expiry logic themselves are unit-tested (`SearchInjectionTests`,
 `EphemeralCleanupTests`).
 
-## ⚠️ Known-fragile: Swiftfin playback compatibility
+## Playback always routes through Jellyfin (no direct play)
 
-Swiftfin (iOS/tvOS, both the shipped 1.x app and the rewritten player) only implements
-remote/live media sources for **Live TV channels** (`isLiveStream` is literally
-`channelType == .tv`). For a movie/episode backed by a Streamarr `RequiresOpening` source it
-requests `/Videos/{itemId}/stream?static=true` — which the server cannot satisfy, because the
-bytes exist only behind an opened live stream. The result is the generic "Unable to load this
-item" alert, while Jellyfin Web (always transcodes → `TranscodingUrl` carries the
-`LiveStreamId`) and Streamyfin (plays `MediaSource.Path` verbatim) work.
+The mapper (`MediaSources/MediaSourceMapper.cs`) never advertises direct play:
+`SupportsDirectPlay` and `SupportsDirectStream` are always `false` on both unopened and
+opened sources, `SupportsTranscoding` is `true`. With those flags,
+`MediaInfoHelper.SetDeviceSpecificData` answers every profiled PlaybackInfo with a
+`TranscodingUrl` carrying the `LiveStreamId` — an HLS **remux** (ffmpeg stream-copy from the
+Core capability URL; no re-encode while the codecs fit the client profile). This is
+structural, not client-sniffing, and it is the only URL shape every released client consumes
+reliably (verified against client sources):
 
-The shim is isolated in a **single file**, `Playback/StreamarrPlaybackCompatibilityFilter.cs`,
-and rewrites only `POST /Items/{itemId}/PlaybackInfo` requests that pass **all** guards —
-`SwiftfinCompatibilityEnabled` (on by default), a `Jellyfin-Client` auth claim starting with
-`Swiftfin`, and a Streamarr-owned item — to `AutoOpenLiveStream = true` +
-`EnableDirectPlay = false` + an empty query-bound `LiveStreamId`. Jellyfin then opens the Core
-session itself and answers with a `TranscodingUrl` that carries the new `LiveStreamId` — an HLS
-**remux** (ffmpeg stream-copy from the Core capability URL; no re-encode while the codecs fit
-the client profile), so plugin-side open/close attribution is unchanged. Swiftfin's rewritten
-player stops the current HLS item before rebuilding
-`PlaybackInfo` for an audio/subtitle change, but carries the just-closed live-stream id into that
-request; forcing fresh source discovery prevents Jellyfin from looking up the stale id and opens
-a new stream with the requested track index. Those transient stop/close callbacks are never used
-to purge the Core capability: Core owns retention through its file-size LRU and hard TTL. Clients
-that implement the protocol fully are never touched.
+- **Jellyfin Web** honors the flags and plays the `TranscodingUrl` (it cannot direct-play
+  these containers anyway).
+- **Streamyfin** (all released builds, `getStreamUrl.ts`) prefers `TranscodingUrl`; its
+  fallbacks are broken for `RequiresOpening` sources — ≤0.51 builds a static
+  `/Videos/{id}/stream` URL **without** the live-stream id (server-side
+  `ArgumentNullException`), 0.54.x plays the remote `MediaSource.Path` directly, which
+  makes client→Core reachability a hidden second network prerequisite. With the remux URL
+  always present, neither fallback is ever reached.
+- **Swiftfin** (`MediaPlayerItem+Build.swift`) prefers `transcodingURL`; its non-transcode
+  fallback is the same static route without the live-stream id. The current player sends
+  `isAutoOpenLiveStream = true` itself.
 
-The filter binds to these 10.11.x contracts (verified against Jellyfin 10.11.11 source):
+Two consequences: every playback costs one ffmpeg stream-copy on the Jellyfin host
+(codec-compatible profiles copy, no re-encode), and Core never needs to be reachable by any
+playback device — only by the Jellyfin host. There is no "public stream URL" configuration
+anymore; the session-scoped capability URL in `Path` is consumed exclusively by Jellyfin's
+ffmpeg and the download proxy.
+
+## ⚠️ Known-fragile: PlaybackInfo request hardening
+
+`Playback/StreamarrPlaybackInfoGuard.cs` is the one remaining HTTP-pipeline filter on the
+playback path. It is **client-agnostic** — no client names, no auth-claim sniffing — and
+applies two rules to `POST /Items/{itemId}/PlaybackInfo` for Streamarr-owned items:
+
+1. **Drop closed live-stream ids.** Streamarr streams close aggressively, and rebuilding
+   players (Swiftfin's rewritten player on an audio/subtitle switch) resend the previous
+   source's `LiveStreamId`. Jellyfin resolves a supplied id before anything else and fails
+   the whole request when it is gone. The guard checks the id against the host's
+   open-stream registry (`IMediaSourceManager.GetLiveStreamInfo`) and clears it **only when
+   Jellyfin no longer knows it** — a still-open id is always honored, so clients reusing an
+   open stream keep it and no duplicate session is created.
+2. **Default `AutoOpenLiveStream = true` when the request expresses no preference** in
+   either the query or the body. Every Streamarr source requires opening, so a
+   preference-less PlaybackInfo would otherwise return an unopenable offer to clients that
+   never call `/LiveStreams/Open` themselves (pre-rewrite Swiftfin 1.x). An explicit
+   `false` from a two-step opener is always honored.
+
+The guard binds to these 10.11.x contracts (verified against Jellyfin 10.11.11 source):
 
 - the `POST /Items/{itemId}/PlaybackInfo` route shape
   (`MediaInfoController.GetPostedPlaybackInfo`);
 - that controller's parameter merge order: the **query-bound** `liveStreamId` /
-  `autoOpenLiveStream` / `enableDirectPlay` arguments take precedence over the posted
-  `PlaybackInfoDto` body, which is what lets the filter override them without referencing
-  `Jellyfin.Api` types;
-- the `Jellyfin-Client` authorization claim (`InternalClaimTypes.Client`);
-- `MediaInfoHelper.SetDeviceSpecificData` disabling HTTP direct-stream and building the
-  transcoding URL via `StreamInfo.ToUrl`, which appends `&LiveStreamId=`.
+  `autoOpenLiveStream` arguments take precedence over the posted `PlaybackInfoDto` body
+  (`liveStreamId ??= playbackInfoDto?.LiveStreamId`), which is what lets the guard override
+  them without referencing `Jellyfin.Api` types;
+- the body parameter name `playbackInfoDto` and its public `LiveStreamId` /
+  `AutoOpenLiveStream` properties (read reflectively);
+- `MediaInfoHelper.SetDeviceSpecificData` building the transcoding URL via
+  `StreamInfo.ToUrl`, which appends `&LiveStreamId=`.
 
 Related: the opened `MediaSourceInfo` keeps the **stable release-source id** of the redeemed
 offer (`StreamarrMediaSourceProjection.ReleaseSourceId`) instead of the per-open live-stream
 id — Swiftfin matches the PlaybackInfo response against the media-source id it selected and
 rejects the response on a mismatch. Attribution stays keyed on `LiveStreamId` via the
-session tracker.
+session tracker. Transient stop/close callbacks are never used to purge the Core capability:
+Core owns retention through its file-size LRU and hard TTL.
 
 **Fail-safe contract:** every path is try/catch-wrapped and every guard fails open — any
-error, missing claim, or renamed controller parameter leaves the request untouched (native
-behavior), never a broken one. Unchecking the plugin's "Swiftfin compatibility" toggle makes
-the filter inert.
+error, renamed controller parameter, or registry drift leaves the request untouched (native
+behavior), never a broken one.
 
 ## Automated host-load verification
 
@@ -316,9 +342,9 @@ every Jellyfin release** (BRIEF §11, §13). To move to a new patch/minor:
    Run `bash plugin/scripts/smoke-jellyfin.sh` for the automated host-load portion.
 4. **Re-check the bound interfaces** against the new `Jellyfin.Controller` (the two
    lists above). If a signature moved, the fix is confined to `MediaSources/`,
-   `Playback/` (including `Playback/StreamarrPlaybackCompatibilityFilter.cs` and its
+   `Playback/` (including `Playback/StreamarrPlaybackInfoGuard.cs` and its
    PlaybackInfo parameter names), or the single `Search/StreamarrSearchActionFilter.cs`
    file.
 5. **Run the manual acceptance** in [`m5-acceptance.md`](./m5-acceptance.md) once with a
-   real client + real credentials (Direct Play, forced transcode, session teardown,
+   real client + real credentials (remux playback, forced transcode, session teardown,
    events, and search injection).

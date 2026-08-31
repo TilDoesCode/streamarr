@@ -56,15 +56,16 @@ public class SearchController(
             ProfileId = profileId,
         };
 
-        if (!await searchGate.TryEnterAsync(cancellationToken))
+        using var admission = await searchGate.TryEnterAsync(SearchOperation.PublicSearch, cancellationToken);
+        if (admission is null)
             return SearchCapacityReached();
 
         try
         {
-            var aggregation = await searchService.SearchAsync(query, cancellationToken);
+            var aggregation = await searchService.SearchAsync(query, admission.CancellationToken);
             if (AllIndexersUnavailable(aggregation.Outcomes))
                 return SearchDependenciesUnavailable();
-            var config = await generalConfig.GetAsync(cancellationToken);
+            var config = await generalConfig.GetAsync(admission.CancellationToken);
             var addStreamarrBadge = config.AddStreamarrBadge;
             var addReleaseScoreToName = config.AddReleaseScoreToName;
             return Ok(new SearchResponse
@@ -79,9 +80,11 @@ public class SearchController(
                     .ToArray(),
             });
         }
-        finally
+        catch (OperationCanceledException) when (
+            admission.DeadlineExceeded
+            && !cancellationToken.IsCancellationRequested)
         {
-            searchGate.Exit();
+            return SearchDeadlineExceeded();
         }
     }
 
@@ -116,19 +119,22 @@ public class SearchController(
             PreserveDiagnosticBuckets = true,
         };
 
-        if (!await searchGate.TryEnterAsync(cancellationToken))
+        using var admission = await searchGate.TryEnterAsync(SearchOperation.DebugSearch, cancellationToken);
+        if (admission is null)
             return SearchCapacityReached();
 
         try
         {
-            var aggregation = await searchService.SearchAsync(query, cancellationToken);
+            var aggregation = await searchService.SearchAsync(query, admission.CancellationToken);
             if (AllIndexersUnavailable(aggregation.Outcomes))
                 return SearchDependenciesUnavailable();
             return Ok(ToDebugResponse(aggregation));
         }
-        finally
+        catch (OperationCanceledException) when (
+            admission.DeadlineExceeded
+            && !cancellationToken.IsCancellationRequested)
         {
-            searchGate.Exit();
+            return SearchDeadlineExceeded();
         }
     }
 
@@ -146,6 +152,14 @@ public class SearchController(
         return StatusCode(
             StatusCodes.Status503ServiceUnavailable,
             ErrorResponse.Of("search_temporarily_unavailable", "Every configured indexer is temporarily unavailable; retry shortly."));
+    }
+
+    private ObjectResult SearchDeadlineExceeded()
+    {
+        Response.Headers.RetryAfter = "1";
+        return StatusCode(
+            StatusCodes.Status503ServiceUnavailable,
+            ErrorResponse.Of("search_temporarily_unavailable", "Search exceeded its server deadline; retry shortly."));
     }
 
     internal static bool AllIndexersUnavailable(IReadOnlyList<IndexerOutcome> outcomes)

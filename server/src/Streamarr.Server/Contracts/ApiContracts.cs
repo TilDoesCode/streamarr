@@ -167,6 +167,36 @@ public sealed record SessionResponse
     public double PreDownloadPercent { get; init; }
     public bool LocalCacheReady { get; init; }
 
+    /// <summary>True while at least one HTTP stream is open over this session's file.</summary>
+    public bool IsStreaming { get; init; }
+
+    /// <summary>Probed media duration in ticks, once ffprobe has run. Null when unknown.</summary>
+    public long? RunTimeTicks { get; init; }
+
+    /// <summary>
+    /// Average byte rate the media needs for realtime playback (SizeBytes / duration).
+    /// Null until the duration has been probed.
+    /// </summary>
+    public double? RequiredBytesPerSecond { get; init; }
+
+    /// <summary>Recent NNTP ingest rate for this session (rolling window). Null when idle.</summary>
+    public double? DownloadBytesPerSecond { get; init; }
+
+    /// <summary>Articles currently failed for this session's release (0 when untracked).</summary>
+    public int FailedArticles { get; init; }
+
+    /// <summary>Failed articles with missing-article evidence (NNTP 430), a subset of FailedArticles.</summary>
+    public int MissingArticles { get; init; }
+
+    /// <summary>Articles currently queued or downloading (0 when untracked).</summary>
+    public int ActiveArticles { get; init; }
+
+    /// <summary>Share of the release payload buffered from Usenet; 100 once fully on disk.</summary>
+    public double? BufferedPercent { get; init; }
+
+    /// <summary>Compact buffered payload intervals (fractions), for overview timeline rails.</summary>
+    public IReadOnlyList<ByteRangeResponse> BufferedRanges { get; init; } = [];
+
     /// <summary>Wall-clock instant of timeline t0 (resolve start), for aligning client spans.</summary>
     public DateTimeOffset? TimelineStartedAt { get; init; }
 
@@ -333,7 +363,7 @@ public sealed record StreamRecordSummaryResponse
     public required DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? ClosedAt { get; init; }
 
-    /// <summary>Null while still open/live. "ready"|"degraded"|"dead"|"closed"|"expired"|"evicted"|"purged"|"invalidated"|"reused"|"error".</summary>
+    /// <summary>Null while open; terminal values include closed, interrupted, expired, evicted, purged, invalidated, reused, dead, and error.</summary>
     public string? FinalState { get; init; }
     public string? CloseReason { get; init; }
     public string? FailureKind { get; init; }
@@ -401,9 +431,27 @@ public sealed record ArticleMapResponse
     public int DownloadedArticles { get; init; }
     public int CachedArticles { get; init; }
     public int FailedArticles { get; init; }
+
+    /// <summary>Failed articles with missing-article evidence (NNTP 430), a subset of FailedArticles.</summary>
+    public int MissingArticles { get; init; }
     public long DownloadedBytes { get; init; }
     public double? AverageDurationMs { get; init; }
     public double? EffectiveBytesPerSecond { get; init; }
+
+    /// <summary>Recent NNTP ingest rate over a rolling window. Null when nothing arrived recently.</summary>
+    public double? RecentBytesPerSecond { get; init; }
+
+    /// <summary>Sum of per-article expected byte weights — the denominator for the fraction ranges.</summary>
+    public long TotalExpectedBytes { get; init; }
+
+    /// <summary>Bytes currently buffered from Usenet (downloaded or cache-resident articles).</summary>
+    public long BufferedBytes { get; init; }
+
+    /// <summary>Merged payload intervals buffered from Usenet, as fractions of TotalExpectedBytes.</summary>
+    public IReadOnlyList<ByteRangeResponse> BufferedRanges { get; init; } = [];
+
+    /// <summary>Merged payload intervals actually served to the client (queried chunks).</summary>
+    public IReadOnlyList<ByteRangeResponse> DeliveredRanges { get; init; } = [];
     public DateTimeOffset UpdatedAt { get; init; }
     public IReadOnlyList<ArticleTelemetryResponse> Articles { get; init; } = [];
     public IReadOnlyList<ArticleProviderSummaryResponse> Providers { get; init; } = [];
@@ -451,6 +499,12 @@ public sealed record ArticleProviderSummaryResponse
     public long Missing { get; init; }
     public long Errors { get; init; }
     public double? AverageDurationMs { get; init; }
+
+    /// <summary>Bytes credited to this provider from successful body transfers.</summary>
+    public long BytesDownloaded { get; init; }
+
+    /// <summary>Per-connection transfer rate: credited bytes over their summed transfer time.</summary>
+    public double? BytesPerSecond { get; init; }
 }
 
 /// <summary>Typed error envelope rendered consistently by every endpoint.</summary>

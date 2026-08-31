@@ -276,22 +276,67 @@
         }
       }
     },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Rotate the browser refresh token and issue a fresh access session.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/logout": {
       "post": {
         "tags": [
           "Auth"
         ],
-        "summary": "Expire the browser admin-session cookie.",
+        "summary": "Revoke and expire the browser admin session.",
         "responses": {
           "204": {
             "description": "No Content"
           }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/auth/me": {
@@ -1808,6 +1853,60 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/playback-ranges": {
+      "get": {
+        "tags": [
+          "PlaybackRanges"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybackRangeResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybackRangeResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybackRangeResponse"
+                  }
                 }
               }
             }
@@ -4407,7 +4506,81 @@
         }
       }
     },
+    "/api/v1/storage": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/stream/{token}": {
+      "head": {
+        "tags": [
+          "Stream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "Stream"
@@ -4912,6 +5085,11 @@
             "type": "integer",
             "format": "int32"
           },
+          "missingArticles": {
+            "type": "integer",
+            "description": "Failed articles with missing-article evidence (NNTP 430), a subset of FailedArticles.",
+            "format": "int32"
+          },
           "downloadedBytes": {
             "type": "integer",
             "format": "int64"
@@ -4924,6 +5102,38 @@
           "effectiveBytesPerSecond": {
             "type": "number",
             "format": "double",
+            "nullable": true
+          },
+          "recentBytesPerSecond": {
+            "type": "number",
+            "description": "Recent NNTP ingest rate over a rolling window. Null when nothing arrived recently.",
+            "format": "double",
+            "nullable": true
+          },
+          "totalExpectedBytes": {
+            "type": "integer",
+            "description": "Sum of per-article expected byte weights — the denominator for the fraction ranges.",
+            "format": "int64"
+          },
+          "bufferedBytes": {
+            "type": "integer",
+            "description": "Bytes currently buffered from Usenet (downloaded or cache-resident articles).",
+            "format": "int64"
+          },
+          "bufferedRanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ByteRangeResponse"
+            },
+            "description": "Merged payload intervals buffered from Usenet, as fractions of TotalExpectedBytes.",
+            "nullable": true
+          },
+          "deliveredRanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ByteRangeResponse"
+            },
+            "description": "Merged payload intervals actually served to the client (queried chunks).",
             "nullable": true
           },
           "updatedAt": {
@@ -5013,6 +5223,17 @@
           },
           "averageDurationMs": {
             "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "bytesDownloaded": {
+            "type": "integer",
+            "description": "Bytes credited to this provider from successful body transfers.",
+            "format": "int64"
+          },
+          "bytesPerSecond": {
+            "type": "number",
+            "description": "Per-connection transfer rate: credited bytes over their summed transfer time.",
             "format": "double",
             "nullable": true
           }
@@ -5105,6 +5326,21 @@
         },
         "additionalProperties": false,
         "description": "Current transfer state and diagnostic evidence for one ordered release article."
+      },
+      "ByteRangeResponse": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "number",
+            "format": "double"
+          },
+          "end": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "A byte-space interval expressed as fractions [0..1] of the release payload."
       },
       "CachedReleaseResponse": {
         "required": [
@@ -6399,6 +6635,7 @@
         "required": [
           "expiresAt",
           "expiresInSeconds",
+          "refreshExpiresAt",
           "role",
           "token",
           "username"
@@ -6418,6 +6655,10 @@
             "format": "int32"
           },
           "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "refreshExpiresAt": {
             "type": "string",
             "format": "date-time"
           },
@@ -6893,6 +7134,102 @@
         },
         "additionalProperties": false,
         "description": "Two-phase playback admission (POST/GET /api/v1/playback-sessions): the POST answers\r\nwithin a hard budget; \"preparing\" answers carry a pollable admission id while health\r\ncheck, materialization, ffprobe and repair analysis continue server-side."
+      },
+      "PlaybackRangeResponse": {
+        "required": [
+          "source",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "playbackSessionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalUserName": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationTicks": {
+            "type": "integer",
+            "description": "Largest media duration reported for this scope, in 100 ns ticks.",
+            "format": "int64"
+          },
+          "positionTicks": {
+            "type": "integer",
+            "description": "Latest playhead position, in 100 ns ticks.",
+            "format": "int64"
+          },
+          "lastSessionToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastReleaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackRangeSpanResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Merged watched-time intervals for one playback scope (work × playback session × user),\r\nfolded from progress heartbeats. Spans survive session close, so failed attempts keep\r\nshowing where the viewer actually spent time. GET /api/v1/playback-ranges."
+      },
+      "PlaybackRangeSpanResponse": {
+        "type": "object",
+        "properties": {
+          "startTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "endTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessionToken": {
+            "type": "string",
+            "description": "Capability token this span was watched through; null when the front-end sent none.",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One watched span of the media timeline, in 100 ns ticks."
       },
       "PreDownloadConfigResponse": {
         "required": [
@@ -8557,6 +8894,57 @@
           "localCacheReady": {
             "type": "boolean"
           },
+          "isStreaming": {
+            "type": "boolean",
+            "description": "True while at least one HTTP stream is open over this session's file."
+          },
+          "runTimeTicks": {
+            "type": "integer",
+            "description": "Probed media duration in ticks, once ffprobe has run. Null when unknown.",
+            "format": "int64",
+            "nullable": true
+          },
+          "requiredBytesPerSecond": {
+            "type": "number",
+            "description": "Average byte rate the media needs for realtime playback (SizeBytes / duration).\r\nNull until the duration has been probed.",
+            "format": "double",
+            "nullable": true
+          },
+          "downloadBytesPerSecond": {
+            "type": "number",
+            "description": "Recent NNTP ingest rate for this session (rolling window). Null when idle.",
+            "format": "double",
+            "nullable": true
+          },
+          "failedArticles": {
+            "type": "integer",
+            "description": "Articles currently failed for this session's release (0 when untracked).",
+            "format": "int32"
+          },
+          "missingArticles": {
+            "type": "integer",
+            "description": "Failed articles with missing-article evidence (NNTP 430), a subset of FailedArticles.",
+            "format": "int32"
+          },
+          "activeArticles": {
+            "type": "integer",
+            "description": "Articles currently queued or downloading (0 when untracked).",
+            "format": "int32"
+          },
+          "bufferedPercent": {
+            "type": "number",
+            "description": "Share of the release payload buffered from Usenet; 100 once fully on disk.",
+            "format": "double",
+            "nullable": true
+          },
+          "bufferedRanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ByteRangeResponse"
+            },
+            "description": "Compact buffered payload intervals (fractions), for overview timeline rails.",
+            "nullable": true
+          },
           "timelineStartedAt": {
             "type": "string",
             "description": "Wall-clock instant of timeline t0 (resolve start), for aligning client spans.",
@@ -8610,6 +8998,140 @@
         },
         "additionalProperties": false,
         "description": "POST /api/v1/repairs — idempotent manual start for a registered release."
+      },
+      "StorageDisk": {
+        "type": "object",
+        "properties": {
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "freeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "minimumFreeBytes": {
+            "type": "integer",
+            "description": "Pre-downloads pause below this free-space floor (PreDownload.MinimumFreeDiskBytes).",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Volume hosting the pre-download workspace (the only disk-heavy cache Streamarr writes)."
+      },
+      "StorageEphemeral": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "usedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "budgetBytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Logical ephemeral-cache occupancy (capability files counted against the LRU byte budget)."
+      },
+      "StorageNzbLibrary": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxEntries": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "usedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "budgetBytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Persistent NZB cache (SQLite metadata + .nzb files on disk)."
+      },
+      "StoragePreDownload": {
+        "required": [
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "usedBytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Materialized pre-download files currently on disk."
+      },
+      "StorageResponse": {
+        "required": [
+          "disk",
+          "ephemeral",
+          "nzbLibrary",
+          "preDownload",
+          "segmentCache"
+        ],
+        "type": "object",
+        "properties": {
+          "disk": {
+            "$ref": "#/components/schemas/StorageDisk"
+          },
+          "segmentCache": {
+            "$ref": "#/components/schemas/StorageSegmentCache"
+          },
+          "preDownload": {
+            "$ref": "#/components/schemas/StoragePreDownload"
+          },
+          "nzbLibrary": {
+            "$ref": "#/components/schemas/StorageNzbLibrary"
+          },
+          "ephemeral": {
+            "$ref": "#/components/schemas/StorageEphemeral"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Operator-facing storage overview for the Files screen (GET /api/v1/storage): what Streamarr\r\ncurrently keeps in memory and on disk, against which budgets, and how much disk is left."
+      },
+      "StorageSegmentCache": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "usedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "capacityBytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false,
+        "description": "In-memory decoded-article LRU shared by all sessions."
       },
       "StreamEventResponse": {
         "required": [
@@ -8842,7 +9364,7 @@
           },
           "finalState": {
             "type": "string",
-            "description": "Null while still open/live. \"ready\"|\"degraded\"|\"dead\"|\"closed\"|\"expired\"|\"evicted\"|\"purged\"|\"invalidated\"|\"reused\"|\"error\".",
+            "description": "Null while open; terminal values include closed, interrupted, expired, evicted, purged, invalidated, reused, dead, and error.",
             "nullable": true
           },
           "closeReason": {
@@ -9507,6 +10029,10 @@
       "description": "GET /api/v1/metrics (BRIEF §10-M7 observability): a JSON snapshot of sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency. Admin-only, like session\r\nlisting, because provider/indexer names and circuit state are operational inventory."
     },
     {
+      "name": "PlaybackRanges",
+      "description": "GET /api/v1/playback-ranges — watched-time intervals per playback scope, folded from\r\nfront-end heartbeats. The debugging complement to /api/v1/events: not \"where is the\r\nplayhead\" but \"which parts of the timeline were actually watched, via which release\"."
+    },
+    {
       "name": "PlaybackSessions",
       "description": "Two-phase playback admission keeps slow preparation off the initial HTTP request.\r\nJellyfin's global live-stream lock remains held while OpenMediaSource polls it.\r\nUses the same machine-auth posture and validation as POST /api/v1/resolve."
     },
@@ -9535,8 +10061,12 @@
       "description": "GET /api/v1/sessions + POST /api/v1/sessions/{token}/close (BRIEF §6.2)."
     },
     {
+      "name": "Storage",
+      "description": "GET /api/v1/storage — operator storage overview for the Files screen."
+    },
+    {
       "name": "Stream",
-      "description": "GET /api/v1/stream/{token} — a capability-authorized, Range-capable HTTP byte\r\nstream (BRIEF §3.3): honors `Range: bytes=…` with 206 + Content-Range +\r\nAccept-Ranges, serves the full body otherwise, and seeks anywhere — including\r\ninside RAR-wrapped files. Player-agnostic by contract; no Jellyfin-specific\r\nbehavior may ever be added here."
+      "description": "GET/HEAD /api/v1/stream/{token} — a capability-authorized, Range-capable HTTP byte\r\nstream (BRIEF §3.3): honors `Range: bytes=…` with 206 + Content-Range +\r\nAccept-Ranges, serves the full body otherwise, and seeks anywhere — including\r\ninside RAR-wrapped files. Player-agnostic by contract; no Jellyfin-specific\r\nbehavior may ever be added here."
     },
     {
       "name": "StreamHistory",

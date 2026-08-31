@@ -79,9 +79,13 @@ export type ArticleTelemetryResponse = S["ArticleTelemetryResponse"];
 export type ArticleProviderAttemptResponse = S["ArticleProviderAttemptResponse"];
 export type ArticleProviderSummaryResponse = S["ArticleProviderSummaryResponse"];
 export type MetricsResponse = S["MetricsResponse"];
+export type StorageResponse = S["StorageResponse"];
 export type CachedReleaseResponse = S["CachedReleaseResponse"];
 export type EphemeralFileResponse = S["EphemeralFileResponse"];
 export type StreamingHistoryResponse = S["StreamingHistoryResponse"];
+export type PlaybackRangeResponse = S["PlaybackRangeResponse"];
+export type PlaybackRangeSpanResponse = S["PlaybackRangeSpanResponse"];
+export type ByteRangeResponse = S["ByteRangeResponse"];
 export type ReachabilityStatus = S["ReachabilityStatus"];
 
 export type StreamRecordSummaryResponse = S["StreamRecordSummaryResponse"];

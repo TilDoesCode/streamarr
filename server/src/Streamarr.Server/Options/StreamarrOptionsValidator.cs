@@ -34,6 +34,9 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
             failures.Add("Admin.Password must be 12-1024 characters without control characters when configured.");
 
         Range(o.AdminSessionTtlSeconds, 60, 30 * 24 * 3600, nameof(o.AdminSessionTtlSeconds));
+        Range(o.AdminRefreshTokenTtlSeconds, 24 * 3600, 180 * 24 * 3600, nameof(o.AdminRefreshTokenTtlSeconds));
+        if (o.AdminRefreshTokenTtlSeconds < o.AdminSessionTtlSeconds)
+            failures.Add("AdminRefreshTokenTtlSeconds must be at least AdminSessionTtlSeconds.");
         Range(o.LoginAttemptsPerMinute, 1, 1_000, nameof(o.LoginAttemptsPerMinute));
         if (o.TrustedProxies.Count > 32 ||
             o.TrustedProxies.Any(value => !IPAddress.TryParse(value, out _)))
@@ -66,6 +69,7 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.MaxConcurrentStreams, 1, 1_000, nameof(o.MaxConcurrentStreams));
         Range(o.MaxConcurrentResolves, 1, 64, nameof(o.MaxConcurrentResolves));
         Range(o.MaxConcurrentSearches, 1, 64, nameof(o.MaxConcurrentSearches));
+        Range(o.SearchTimeoutSeconds, 5, 600, nameof(o.SearchTimeoutSeconds));
         if (!IsHttpProxyUrl(o.IndexerProxy))
         {
             failures.Add(

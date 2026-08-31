@@ -19,6 +19,7 @@ namespace Streamarr.Server.Controllers;
 public class AuthController(
     UserService users,
     JwtTokenService jwt,
+    AdminRefreshSessionService refreshSessions,
     IOptions<StreamarrOpts> options) : ControllerBase
 {
     /// <summary>Exchange admin credentials for a short-lived session token.</summary>
@@ -38,28 +39,64 @@ public class AuthController(
         if (user is null)
             return Unauthorized(ErrorResponse.Of("invalid_credentials", "Incorrect username or password."));
 
+        var refreshSession = await refreshSessions.IssueAsync(user, ct);
         var (token, expiresAt) = jwt.CreateToken(user);
         Response.Headers.CacheControl = "private, no-store, max-age=0";
         Response.Cookies.Append(AdminAuthCookie.Name, token, AdminAuthCookie.Options(Request.IsHttps, expiresAt));
-        return Ok(new LoginResponse
-        {
-            Token = token,
-            ExpiresInSeconds = Math.Max(60, options.Value.AdminSessionTtlSeconds),
-            ExpiresAt = expiresAt,
-            Username = user.Username,
-            Role = user.Role,
-        });
+        Response.Cookies.Append(
+            AdminAuthCookie.RefreshName,
+            refreshSession.Token,
+            AdminAuthCookie.RefreshOptions(Request.IsHttps, refreshSession.ExpiresAt));
+        return Ok(SessionResponse(user.Username, user.Role, token, expiresAt, refreshSession.ExpiresAt));
     }
 
-    /// <summary>Expire the browser admin-session cookie.</summary>
-    [Authorize(Policy = AuthRoles.AdminPolicy)]
-    [HttpPost("logout")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public IActionResult Logout()
+    /// <summary>Rotate the browser refresh token and issue a fresh access session.</summary>
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<LoginResponse>> Refresh(CancellationToken ct)
     {
         Response.Headers.CacheControl = "private, no-store, max-age=0";
-        jwt.RevokeAll();
-        Response.Cookies.Delete(AdminAuthCookie.Name, AdminAuthCookie.Options(Request.IsHttps));
+        if (!Request.Cookies.TryGetValue(AdminAuthCookie.RefreshName, out var refreshToken))
+        {
+            DeleteSessionCookies();
+            return Unauthorized(ErrorResponse.Of("refresh_session_expired", "The refresh session is missing or expired."));
+        }
+
+        var refreshSession = await refreshSessions.RotateAsync(refreshToken, ct);
+        if (refreshSession is null)
+        {
+            DeleteSessionCookies();
+            return Unauthorized(ErrorResponse.Of("refresh_session_expired", "The refresh session is missing or expired."));
+        }
+
+        var (token, expiresAt) = jwt.CreateToken(refreshSession.User);
+        Response.Cookies.Append(AdminAuthCookie.Name, token, AdminAuthCookie.Options(Request.IsHttps, expiresAt));
+        Response.Cookies.Append(
+            AdminAuthCookie.RefreshName,
+            refreshSession.Token,
+            AdminAuthCookie.RefreshOptions(Request.IsHttps, refreshSession.ExpiresAt));
+        return Ok(SessionResponse(
+            refreshSession.User.Username,
+            refreshSession.User.Role,
+            token,
+            expiresAt,
+            refreshSession.ExpiresAt));
+    }
+
+    /// <summary>Revoke and expire the browser admin session.</summary>
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Logout(CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "private, no-store, max-age=0";
+        Request.Cookies.TryGetValue(AdminAuthCookie.RefreshName, out var refreshToken);
+        var revokedRefreshSession = await refreshSessions.RevokeAsync(refreshToken, ct);
+        if (revokedRefreshSession || User.IsInRole(AuthRoles.Admin))
+            jwt.RevokeAll();
+        DeleteSessionCookies();
         return NoContent();
     }
 
@@ -94,9 +131,32 @@ public class AuthController(
             return BadRequest(ErrorResponse.Of("invalid_credentials", "The current password is incorrect."));
 
         await users.ChangePasswordAsync(user.Id, request.NewPassword, ct);
+        await refreshSessions.RevokeAllForUserAsync(user.Id, ct);
         jwt.RevokeAll();
         Response.Headers.CacheControl = "private, no-store, max-age=0";
-        Response.Cookies.Delete(AdminAuthCookie.Name, AdminAuthCookie.Options(Request.IsHttps));
+        DeleteSessionCookies();
         return NoContent();
+    }
+
+    private LoginResponse SessionResponse(
+        string username,
+        string role,
+        string token,
+        DateTimeOffset expiresAt,
+        DateTimeOffset refreshExpiresAt)
+        => new()
+        {
+            Token = token,
+            ExpiresInSeconds = Math.Max(60, options.Value.AdminSessionTtlSeconds),
+            ExpiresAt = expiresAt,
+            RefreshExpiresAt = refreshExpiresAt,
+            Username = username,
+            Role = role,
+        };
+
+    private void DeleteSessionCookies()
+    {
+        Response.Cookies.Delete(AdminAuthCookie.Name, AdminAuthCookie.Options(Request.IsHttps));
+        Response.Cookies.Delete(AdminAuthCookie.RefreshName, AdminAuthCookie.RefreshOptions(Request.IsHttps));
     }
 }

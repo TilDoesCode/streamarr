@@ -14,6 +14,7 @@ public sealed record LoginResponse
     public string TokenType { get; init; } = "Bearer";
     public required int ExpiresInSeconds { get; init; }
     public required DateTimeOffset ExpiresAt { get; init; }
+    public required DateTimeOffset RefreshExpiresAt { get; init; }
     public required string Username { get; init; }
     public required string Role { get; init; }
 }

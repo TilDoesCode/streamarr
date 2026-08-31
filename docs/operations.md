@@ -60,9 +60,11 @@ ports:
   - "192.168.1.20:8080:8080"
 ```
 
-Allow the port only from trusted LAN clients in the host firewall. If Jellyfin uses an
-internal Core URL, set the plugin's **Public stream URL** to this client-reachable LAN
-address. Do not use a public interface as a shortcut.
+Allow the port only from trusted LAN clients in the host firewall. Jellyfin playback
+devices never need this address — they always stream from Jellyfin itself, which
+remuxes the opened Core stream server-side — so exposing Core on the LAN is only for
+the Management UI and the built-in browser preview. Do not use a public interface as a
+shortcut.
 
 ### Reverse proxy and HTTPS
 
@@ -222,7 +224,7 @@ An existing Jellyfin plugin must be uninstalled separately from Jellyfin's dashb
 | Core is healthy but searches are empty | Test the indexer, check its categories, and verify the TMDB credential |
 | Provider test fails | Confirm NNTP host, TLS/port, credentials, account connection limit, and outbound firewall access |
 | Jellyfin cannot test the Core connection | Use an address reachable from the Jellyfin server; `127.0.0.1` inside a Jellyfin container points to Jellyfin itself, not Streamarr |
-| Jellyfin finds an item but a TV/phone cannot play it | Set **Public stream URL** to the HTTPS or private-LAN Core address reachable by that device |
+| Jellyfin finds an item but a TV/phone cannot play it | The device streams from Jellyfin, not Core — verify the device reaches Jellyfin itself and that the Jellyfin host can reach the **Core Server URL** (ffmpeg reads the stream from there) |
 | Browser changes fail with `403 csrf_rejected` behind a proxy | Configure the exact trusted proxy IP and browser-visible trusted origin through the proxy overlay |
 | Native Jellyfin search works but Streamarr results disappear | Check Core/plugin versions and Core reachability; interception intentionally falls back when its deadline or compatibility guard is hit |
 | Playback is slow or seeks stall | Compare releases, inspect stream diagnostics, provider failures, connection limits, and cache activity; performance varies by provider and RAR/NZB layout |

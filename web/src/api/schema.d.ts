@@ -202,6 +202,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the browser refresh token and issue a fresh access session. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["LoginResponse"];
+                        "application/json": components["schemas"]["LoginResponse"];
+                        "text/json": components["schemas"]["LoginResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/logout": {
         parameters: {
             query?: never;
@@ -211,7 +260,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Expire the browser admin-session cookie. */
+        /** Revoke and expire the browser admin session. */
         post: {
             parameters: {
                 query?: never;
@@ -1412,6 +1461,45 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playback-ranges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackRangeResponse"][];
+                        "application/json": components["schemas"]["PlaybackRangeResponse"][];
+                        "text/json": components["schemas"]["PlaybackRangeResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3231,6 +3319,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["StorageResponse"];
+                        "application/json": components["schemas"]["StorageResponse"];
+                        "text/json": components["schemas"]["StorageResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stream/{token}": {
         parameters: {
             query?: never;
@@ -3280,7 +3405,37 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        head: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
         patch?: never;
         trace?: never;
     };
@@ -3584,12 +3739,36 @@ export interface components {
             cachedArticles?: number;
             /** Format: int32 */
             failedArticles?: number;
+            /**
+             * Format: int32
+             * @description Failed articles with missing-article evidence (NNTP 430), a subset of FailedArticles.
+             */
+            missingArticles?: number;
             /** Format: int64 */
             downloadedBytes?: number;
             /** Format: double */
             averageDurationMs?: number | null;
             /** Format: double */
             effectiveBytesPerSecond?: number | null;
+            /**
+             * Format: double
+             * @description Recent NNTP ingest rate over a rolling window. Null when nothing arrived recently.
+             */
+            recentBytesPerSecond?: number | null;
+            /**
+             * Format: int64
+             * @description Sum of per-article expected byte weights — the denominator for the fraction ranges.
+             */
+            totalExpectedBytes?: number;
+            /**
+             * Format: int64
+             * @description Bytes currently buffered from Usenet (downloaded or cache-resident articles).
+             */
+            bufferedBytes?: number;
+            /** @description Merged payload intervals buffered from Usenet, as fractions of TotalExpectedBytes. */
+            bufferedRanges?: components["schemas"]["ByteRangeResponse"][] | null;
+            /** @description Merged payload intervals actually served to the client (queried chunks). */
+            deliveredRanges?: components["schemas"]["ByteRangeResponse"][] | null;
             /** Format: date-time */
             updatedAt?: string;
             articles?: components["schemas"]["ArticleTelemetryResponse"][] | null;
@@ -3618,6 +3797,16 @@ export interface components {
             errors?: number;
             /** Format: double */
             averageDurationMs?: number | null;
+            /**
+             * Format: int64
+             * @description Bytes credited to this provider from successful body transfers.
+             */
+            bytesDownloaded?: number;
+            /**
+             * Format: double
+             * @description Per-connection transfer rate: credited bytes over their summed transfer time.
+             */
+            bytesPerSecond?: number | null;
         };
         /** @description Current transfer state and diagnostic evidence for one ordered release article. */
         ArticleTelemetryResponse: {
@@ -3647,6 +3836,13 @@ export interface components {
             providerAttemptCount?: number;
             attemptsTruncated?: boolean;
             attempts?: components["schemas"]["ArticleProviderAttemptResponse"][] | null;
+        };
+        /** @description A byte-space interval expressed as fractions [0..1] of the release payload. */
+        ByteRangeResponse: {
+            /** Format: double */
+            start?: number;
+            /** Format: double */
+            end?: number;
         };
         /** @description One release whose source NZB is available from Core's persistent cache. */
         CachedReleaseResponse: {
@@ -4066,6 +4262,8 @@ export interface components {
             expiresInSeconds: number;
             /** Format: date-time */
             expiresAt: string;
+            /** Format: date-time */
+            refreshExpiresAt: string;
             username: string | null;
             role: string | null;
         };
@@ -4233,6 +4431,47 @@ export interface components {
             resolve?: components["schemas"]["ResolveResponse"];
             /** @description Redacted failure classification when phase is "failed". */
             error?: string | null;
+        };
+        /**
+         * @description Merged watched-time intervals for one playback scope (work × playback session × user),
+         *     folded from progress heartbeats. Spans survive session close, so failed attempts keep
+         *     showing where the viewer actually spent time. GET /api/v1/playback-ranges.
+         */
+        PlaybackRangeResponse: {
+            workId: string | null;
+            title?: string | null;
+            source: string | null;
+            playbackSessionId?: string | null;
+            externalUserId?: string | null;
+            externalUserName?: string | null;
+            deviceName?: string | null;
+            /**
+             * Format: int64
+             * @description Largest media duration reported for this scope, in 100 ns ticks.
+             */
+            durationTicks?: number;
+            /**
+             * Format: int64
+             * @description Latest playhead position, in 100 ns ticks.
+             */
+            positionTicks?: number;
+            lastSessionToken?: string | null;
+            lastReleaseId?: string | null;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            ranges?: components["schemas"]["PlaybackRangeSpanResponse"][] | null;
+        };
+        /** @description One watched span of the media timeline, in 100 ns ticks. */
+        PlaybackRangeSpanResponse: {
+            /** Format: int64 */
+            startTicks?: number;
+            /** Format: int64 */
+            endTicks?: number;
+            /** @description Capability token this span was watched through; null when the front-end sent none. */
+            sessionToken?: string | null;
+            releaseId?: string | null;
         };
         /** @description Effective low-priority pre-download policy. */
         PreDownloadConfigResponse: {
@@ -4835,6 +5074,46 @@ export interface components {
             /** Format: double */
             preDownloadPercent?: number;
             localCacheReady?: boolean;
+            /** @description True while at least one HTTP stream is open over this session's file. */
+            isStreaming?: boolean;
+            /**
+             * Format: int64
+             * @description Probed media duration in ticks, once ffprobe has run. Null when unknown.
+             */
+            runTimeTicks?: number | null;
+            /**
+             * Format: double
+             * @description Average byte rate the media needs for realtime playback (SizeBytes / duration).
+             *     Null until the duration has been probed.
+             */
+            requiredBytesPerSecond?: number | null;
+            /**
+             * Format: double
+             * @description Recent NNTP ingest rate for this session (rolling window). Null when idle.
+             */
+            downloadBytesPerSecond?: number | null;
+            /**
+             * Format: int32
+             * @description Articles currently failed for this session's release (0 when untracked).
+             */
+            failedArticles?: number;
+            /**
+             * Format: int32
+             * @description Failed articles with missing-article evidence (NNTP 430), a subset of FailedArticles.
+             */
+            missingArticles?: number;
+            /**
+             * Format: int32
+             * @description Articles currently queued or downloading (0 when untracked).
+             */
+            activeArticles?: number;
+            /**
+             * Format: double
+             * @description Share of the release payload buffered from Usenet; 100 once fully on disk.
+             */
+            bufferedPercent?: number | null;
+            /** @description Compact buffered payload intervals (fractions), for overview timeline rails. */
+            bufferedRanges?: components["schemas"]["ByteRangeResponse"][] | null;
             /**
              * Format: date-time
              * @description Wall-clock instant of timeline t0 (resolve start), for aligning client spans.
@@ -4853,6 +5132,66 @@ export interface components {
         StartRepairRequest: {
             releaseId: string | null;
             workId?: string | null;
+        };
+        /** @description Volume hosting the pre-download workspace (the only disk-heavy cache Streamarr writes). */
+        StorageDisk: {
+            /** Format: int64 */
+            totalBytes?: number | null;
+            /** Format: int64 */
+            freeBytes?: number | null;
+            /**
+             * Format: int64
+             * @description Pre-downloads pause below this free-space floor (PreDownload.MinimumFreeDiskBytes).
+             */
+            minimumFreeBytes?: number;
+        };
+        /** @description Logical ephemeral-cache occupancy (capability files counted against the LRU byte budget). */
+        StorageEphemeral: {
+            /** Format: int32 */
+            files?: number;
+            /** Format: int64 */
+            usedBytes?: number;
+            /** Format: int64 */
+            budgetBytes?: number;
+        };
+        /** @description Persistent NZB cache (SQLite metadata + .nzb files on disk). */
+        StorageNzbLibrary: {
+            /** Format: int32 */
+            entries?: number;
+            /** Format: int32 */
+            maxEntries?: number;
+            /** Format: int64 */
+            usedBytes?: number;
+            /** Format: int64 */
+            budgetBytes?: number;
+        };
+        /** @description Materialized pre-download files currently on disk. */
+        StoragePreDownload: {
+            path: string | null;
+            /** Format: int32 */
+            fileCount?: number;
+            /** Format: int64 */
+            usedBytes?: number;
+        };
+        /**
+         * @description Operator-facing storage overview for the Files screen (GET /api/v1/storage): what Streamarr
+         *     currently keeps in memory and on disk, against which budgets, and how much disk is left.
+         */
+        StorageResponse: {
+            disk: components["schemas"]["StorageDisk"];
+            segmentCache: components["schemas"]["StorageSegmentCache"];
+            preDownload: components["schemas"]["StoragePreDownload"];
+            nzbLibrary: components["schemas"]["StorageNzbLibrary"];
+            ephemeral: components["schemas"]["StorageEphemeral"];
+        };
+        /** @description In-memory decoded-article LRU shared by all sessions. */
+        StorageSegmentCache: {
+            /** Format: int32 */
+            entries?: number;
+            /** Format: int64 */
+            usedBytes?: number;
+            /** Format: int64 */
+            capacityBytes?: number;
         };
         /** @description One chronological diagnostic log entry for a Streamarr.Server.Contracts.StreamRecordResponse. */
         StreamEventResponse: {
@@ -4931,7 +5270,7 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             closedAt?: string | null;
-            /** @description Null while still open/live. "ready"|"degraded"|"dead"|"closed"|"expired"|"evicted"|"purged"|"invalidated"|"reused"|"error". */
+            /** @description Null while open; terminal values include closed, interrupted, expired, evicted, purged, invalidated, reused, dead, and error. */
             finalState?: string | null;
             closeReason?: string | null;
             failureKind?: string | null;

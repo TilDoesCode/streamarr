@@ -111,17 +111,25 @@ const streamStatsRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/stream-stats"), "StreamStatsPage"),
 });
 
+const filesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/files",
+  component: lazyRouteComponent(() => import("@/pages/files"), "FilesPage"),
+});
+
 const libraryRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/library",
-  component: lazyRouteComponent(() => import("@/pages/library"), "LibraryPage"),
+  beforeLoad: () => {
+    throw redirect({ to: "/files" });
+  },
 });
 
 const ephemeralRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/ephemeral",
   beforeLoad: () => {
-    throw redirect({ to: "/sessions" });
+    throw redirect({ to: "/files" });
   },
 });
 
@@ -156,6 +164,7 @@ const routeTree = rootRoute.addChildren([
     searchRoute,
     playbackRoute,
     sessionsRoute,
+    filesRoute,
     streamStatsRoute,
     libraryRoute,
     ephemeralRoute,

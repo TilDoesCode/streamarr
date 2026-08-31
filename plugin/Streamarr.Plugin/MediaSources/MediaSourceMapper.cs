@@ -18,7 +18,10 @@ public static class MediaSourceMapper
     /// <summary>
     /// The pre-open "version" for a release: <c>RequiresOpening = true</c>,
     /// an opaque short-lived offer capability in <c>OpenToken</c>, and no Usenet contact yet
-    /// (BRIEF §8.4).
+    /// (BRIEF §8.4). Direct play is deliberately never advertised: playback always routes
+    /// through Jellyfin's server-side remux of the opened stream, so clients need to reach
+    /// only Jellyfin and Core stays private to the Jellyfin host
+    /// (docs/jellyfin-compatibility.md).
     /// </summary>
     public static MediaSourceInfo ToUnopenedSource(
         ReleaseDto release,
@@ -33,8 +36,8 @@ public static class MediaSourceMapper
         RequiresOpening = true,
         RequiresClosing = true,
         SupportsProbing = false,
-        SupportsDirectPlay = true,
-        SupportsDirectStream = true,
+        SupportsDirectPlay = false,
+        SupportsDirectStream = false,
         SupportsTranscoding = true,
         RunTimeTicks = null,
         Size = release.SizeBytes,
@@ -70,8 +73,12 @@ public static class MediaSourceMapper
             RequiresOpening = false,
             RequiresClosing = true,
             SupportsProbing = false,
-            SupportsDirectPlay = true,
-            SupportsDirectStream = true,
+            // Never offered directly to clients: with direct play off, Jellyfin's
+            // MediaInfoHelper answers every profiled PlaybackInfo with a TranscodingUrl
+            // (an ffmpeg remux of this Path), which is the only URL shape all released
+            // clients — web, Swiftfin, Streamyfin — consume reliably.
+            SupportsDirectPlay = false,
+            SupportsDirectStream = false,
             SupportsTranscoding = true,
             Container = resolve.Container,
             Size = resolve.SizeBytes,

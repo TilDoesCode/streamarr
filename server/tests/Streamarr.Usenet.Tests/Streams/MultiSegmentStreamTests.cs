@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Streamarr.Tests.Shared;
+using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Streams;
@@ -76,6 +77,127 @@ public class MultiSegmentStreamTests
 
         Assert.Equal(expected, await ReadAllAsync(stream));
         Assert.Equal(2, client.CallCount);
+    }
+
+    [Fact]
+    public async Task TransientFailure_ExhaustsImmediateRetriesBeforeDelayedRetrySucceeds()
+    {
+        var expected = YencTestEncoder.LcgBytes(54, 20_000);
+        var client = new TransientFailureNntpClient(expected, failuresBeforeSuccess: 3);
+        var delayedRetryNumbers = new List<int>();
+        var bodyCallsAtDelay = new List<int>();
+
+        await using var stream = MultiSegmentStream.Create(
+            new[] { "delayed-retry@test" },
+            client,
+            articleBufferSize: 1,
+            CancellationToken.None,
+            retryCount: 2,
+            transientRetryCount: 1,
+            transientRetryDelay: retryNumber =>
+            {
+                delayedRetryNumbers.Add(retryNumber);
+                bodyCallsAtDelay.Add(client.CallCount);
+                return TimeSpan.Zero;
+            });
+
+        Assert.Equal(expected, await ReadAllAsync(stream));
+        Assert.Equal(4, client.CallCount);
+        Assert.Equal([1], delayedRetryNumbers);
+        Assert.Equal([3], bodyCallsAtDelay);
+    }
+
+    [Fact]
+    public async Task DelayedRetry_WithReadAheadDisabled_PausesBeforeFollowingArticle()
+    {
+        var expected = YencTestEncoder.LcgBytes(56, 8_000);
+        var client = new TransientFailureNntpClient(expected, failuresBeforeSuccess: 1);
+        var delayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var stream = MultiSegmentStream.Create(
+            new[] { "first@test", "second@test" },
+            client,
+            articleBufferSize: 1,
+            CancellationToken.None,
+            retryCount: 0,
+            transientRetryCount: 1,
+            transientRetryDelay: _ =>
+            {
+                delayEntered.TrySetResult();
+                return TimeSpan.FromMilliseconds(150);
+            },
+            disableReadAhead: true);
+
+        var read = ReadAllAsync(stream);
+        await delayEntered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await Task.Delay(25);
+        Assert.Equal(1, client.CallCount);
+
+        Assert.Equal(expected.Concat(expected).ToArray(), await read);
+        Assert.Equal(3, client.CallCount);
+    }
+
+    [Fact]
+    public async Task MissingArticle_DoesNotUseImmediateOrDelayedRetries()
+    {
+        var client = new MissingNntpClient();
+        var delayCalls = 0;
+        await using var stream = MultiSegmentStream.Create(
+            new[] { "missing@test" },
+            client,
+            articleBufferSize: 1,
+            CancellationToken.None,
+            retryCount: 2,
+            transientRetryCount: 5,
+            transientRetryDelay: _ =>
+            {
+                Interlocked.Increment(ref delayCalls);
+                return TimeSpan.Zero;
+            });
+
+        await Assert.ThrowsAsync<UsenetArticleNotFoundException>(() => ReadAllAsync(stream));
+
+        Assert.Equal(1, client.CallCount);
+        Assert.Equal(0, delayCalls);
+    }
+
+    [Fact]
+    public async Task CancellationDuringTransientRetryDelay_StopsWithoutAnotherBodyAndReportsPartial()
+    {
+        var client = new TransientFailureNntpClient(
+            YencTestEncoder.LcgBytes(55, 20_000),
+            failuresBeforeSuccess: int.MaxValue);
+        using var cancellation = new CancellationTokenSource();
+        var delayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retryNumber = 0;
+        var events = new ConcurrentQueue<SegmentTransferEvent>();
+        await using var stream = MultiSegmentStream.Create(
+            new[] { "cancel-delayed-retry@test" },
+            client,
+            articleBufferSize: 1,
+            cancellation.Token,
+            retryCount: 0,
+            transientRetryCount: 3,
+            transientRetryDelay: attempt =>
+            {
+                retryNumber = attempt;
+                delayEntered.TrySetResult();
+                return TimeSpan.FromMinutes(5);
+            },
+            onTransfer: events.Enqueue);
+
+        var read = ReadAllAsync(stream);
+        await delayEntered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, client.CallCount);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => read.WaitAsync(TimeSpan.FromSeconds(1)));
+
+        Assert.Equal(1, retryNumber);
+        Assert.Equal(1, client.CallCount);
+        Assert.Single(events, transfer => transfer.Stage == SegmentTransferStage.Partial);
+        Assert.DoesNotContain(events, transfer => transfer.Stage == SegmentTransferStage.Failed);
     }
 
     [Fact]
@@ -591,6 +713,50 @@ public class MultiSegmentStreamTests
         public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
             SegmentId id, Action<ArticleBodyResult>? callback, CancellationToken ct)
             => DecodedBodyAsync(id, ct);
+    }
+
+    private sealed class TransientFailureNntpClient(
+        byte[] bytes,
+        int failuresBeforeSuccess) : TestNntpClient
+    {
+        private int _callCount;
+        public int CallCount => Volatile.Read(ref _callCount);
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken)
+        {
+            var attempt = Interlocked.Increment(ref _callCount);
+            return attempt <= failuresBeforeSuccess
+                ? Task.FromException<NntpDecodedBodyResponse>(
+                    new TimeoutException("Synthetic NNTP read timeout."))
+                : Task.FromResult(Response(segmentId, bytes));
+        }
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId id,
+            Action<ArticleBodyResult>? callback,
+            CancellationToken ct) => DecodedBodyAsync(id, ct);
+    }
+
+    private sealed class MissingNntpClient : TestNntpClient
+    {
+        private int _callCount;
+        public int CallCount => Volatile.Read(ref _callCount);
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId segmentId,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _callCount);
+            return Task.FromException<NntpDecodedBodyResponse>(
+                new UsenetArticleNotFoundException(segmentId));
+        }
+
+        public override Task<NntpDecodedBodyResponse> DecodedBodyAsync(
+            SegmentId id,
+            Action<ArticleBodyResult>? callback,
+            CancellationToken ct) => DecodedBodyAsync(id, ct);
     }
 
     private sealed class ProgressiveNntpClient(byte[] first, byte[] second) : TestNntpClient

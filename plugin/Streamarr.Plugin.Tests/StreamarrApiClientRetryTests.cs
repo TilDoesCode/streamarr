@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Streamarr.Plugin.Api;
 using Streamarr.Plugin.Configuration;
@@ -122,6 +123,48 @@ public class StreamarrApiClientRetryTests
         Assert.Equal(TimeSpan.FromMilliseconds(500), observedDelays[1]);
     }
 
+    [Fact]
+    public async Task Successful_retry_does_not_emit_a_warning_for_the_rejected_attempt()
+    {
+        var attempts = 0;
+        var logger = new CollectingLogger<StreamarrApiClient>();
+        var api = new StreamarrApiClient(
+            new HttpClient(new CallbackHandler(_ => ++attempts == 1
+                ? new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+                : Json(HttpStatusCode.OK, "{\"results\":[]}"))),
+            logger,
+            () => new PluginConfiguration { ServerUrl = "https://core.example" },
+            retryDelay: (_, _) => Task.CompletedTask);
+
+        _ = await api.SearchAsync("dune", CancellationToken.None);
+
+        Assert.Equal(2, attempts);
+        Assert.DoesNotContain(logger.Events, entry => entry.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Exhausted_retries_emit_one_final_warning()
+    {
+        var attempts = 0;
+        var logger = new CollectingLogger<StreamarrApiClient>();
+        var api = new StreamarrApiClient(
+            new HttpClient(new CallbackHandler(_ =>
+            {
+                attempts++;
+                return new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            })),
+            logger,
+            () => new PluginConfiguration { ServerUrl = "https://core.example" },
+            retryDelay: (_, _) => Task.CompletedTask);
+
+        await Assert.ThrowsAsync<StreamarrApiException>(
+            () => api.SearchAsync("dune", CancellationToken.None));
+
+        Assert.Equal(3, attempts);
+        var warning = Assert.Single(logger.Events, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains("after 3 attempt(s)", warning.Message, StringComparison.Ordinal);
+    }
+
     private static HttpResponseMessage Json(HttpStatusCode status, string body) => new(status)
     {
         Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
@@ -133,5 +176,22 @@ public class StreamarrApiClientRetryTests
             HttpRequestMessage request,
             CancellationToken cancellationToken)
             => Task.FromResult(callback(request));
+    }
+
+    private sealed class CollectingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Events { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Events.Add((logLevel, formatter(state, exception)));
     }
 }

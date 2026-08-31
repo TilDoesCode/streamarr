@@ -44,6 +44,16 @@ describe("AuthProvider cookie session", () => {
             username: "admin",
             role: "admin",
             expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+            refreshExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+          });
+        }
+        if (url.endsWith("/auth/refresh") && init?.method === "POST") {
+          return response(200, {
+            token: "rotated-jwt-must-never-be-persisted",
+            username: "admin",
+            role: "admin",
+            expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+            refreshExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
           });
         }
         if (url.endsWith("/auth/logout") && init?.method === "POST") return response(204);
@@ -78,13 +88,15 @@ describe("AuthProvider cookie session", () => {
     );
   });
 
-  it("tears down an idle tab when its admin session metadata expires", async () => {
+  it("automatically refreshes an idle tab before its access session expires", async () => {
     vi.useFakeTimers();
     try {
+      const oldAccessExpiry = new Date(Date.now() + 5 * 60_000 + 1_000).toISOString();
       setSession({
         username: "admin",
         role: "admin",
-        expiresAt: new Date(Date.now() + 1_000).toISOString(),
+        expiresAt: oldAccessExpiry,
+        refreshExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
       });
       renderWithProviders(<AuthProbe />);
       expect(screen.getByText("admin")).toBeInTheDocument();
@@ -93,10 +105,33 @@ describe("AuthProvider cookie session", () => {
         await vi.advanceTimersByTimeAsync(1_001);
       });
 
-      expect(screen.getByText("signed out")).toBeInTheDocument();
-      expect(window.localStorage.getItem("streamarr.session")).toBeNull();
+      expect(screen.getByText("admin")).toBeInTheDocument();
+      const stored = JSON.parse(window.localStorage.getItem("streamarr.session") ?? "{}") as {
+        expiresAt?: string;
+      };
+      expect(stored.expiresAt).not.toBe(oldAccessExpiry);
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/auth/refresh",
+        expect.objectContaining({ method: "POST", credentials: "same-origin" }),
+      );
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("signs out when the refresh session has expired", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => response(401, {
+      error: { code: "refresh_session_expired", message: "expired" },
+    })));
+    setSession({
+      username: "admin",
+      role: "admin",
+      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      refreshExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    renderWithProviders(<AuthProbe />);
+    await waitFor(() => expect(screen.getByText("signed out")).toBeInTheDocument());
+    expect(window.localStorage.getItem("streamarr.session")).toBeNull();
   });
 });

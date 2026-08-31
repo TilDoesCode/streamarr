@@ -84,8 +84,9 @@ npm run generate:api   # ../server/openapi/v1.json → src/api/schema.d.ts
 (`.github/workflows/ci.yml`), so the client can never drift from the spec. Everything in
 `src/api/types.ts` re-exports `components["schemas"][...]`; the thin `apiFetch` wrapper
 (`src/api/client.ts`) uses the server's same-origin HttpOnly admin cookie, normalizes the typed
-error envelope into `ApiError`, and redirects to login on 401. JavaScript persists only
-non-secret username/role/expiry metadata; it never stores or sends the admin JWT.
+error envelope into `ApiError`, refreshes the rotating HttpOnly browser session before access
+expiry (and once on 401), then redirects to login only if refresh fails. JavaScript persists only
+non-secret username/role/expiry metadata; it never stores or sends access or refresh tokens.
 
 ## Why TanStack Router + openapi-typescript (DECISIONS.md #7)
 

@@ -77,6 +77,45 @@ public class StreamingIntegrationTests(StreamarrServerFixture fixture)
         Assert.Equal(fixture.Video, body);
     }
 
+    [Fact]
+    public async Task Stream_Head_ReturnsGetMetadataWithoutOpeningPayload_ThenRangeGetStillWorks()
+    {
+        using var client = fixture.CreateClient();
+        using var admin = fixture.CreateClient(authenticated: false);
+        await admin.AuthenticateAsAdminAsync();
+        var resolved = await ResolveAsync(client, StreamarrServerFixture.DirectReleaseId);
+        var token = resolved.StreamUrl!.Split('/').Last();
+
+        var sessionsBefore = await admin.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
+        var before = Assert.Single(sessionsBefore!, session => session.Token == token);
+
+        using var request = new HttpRequestMessage(HttpMethod.Head, resolved.StreamUrl);
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("bytes", response.Headers.AcceptRanges.Single());
+        Assert.Equal("video/x-matroska", response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(fixture.Video.Length, response.Content.Headers.ContentLength);
+        Assert.Empty(await response.Content.ReadAsByteArrayAsync());
+
+        var sessionsAfterHead = await admin.GetFromJsonAsync<List<SessionResponse>>("/api/v1/sessions");
+        var afterHead = Assert.Single(sessionsAfterHead!, session => session.Token == token);
+        Assert.Equal(before.BytesServed, afterHead.BytesServed);
+        Assert.Equal(before.NntpCommandsTotal, afterHead.NntpCommandsTotal);
+        Assert.False(afterHead.IsStreaming);
+
+        const int rangeStart = 100_000;
+        const int rangeLength = 256;
+        using var rangeRequest = new HttpRequestMessage(HttpMethod.Get, resolved.StreamUrl);
+        rangeRequest.Headers.Range = new RangeHeaderValue(rangeStart, rangeStart + rangeLength - 1);
+        using var rangeResponse = await client.SendAsync(rangeRequest);
+
+        Assert.Equal(HttpStatusCode.PartialContent, rangeResponse.StatusCode);
+        Assert.Equal(
+            fixture.Video[rangeStart..(rangeStart + rangeLength)],
+            await rangeResponse.Content.ReadAsByteArrayAsync());
+    }
+
     // ---------------------------------------------------------------- ranged reads
 
     public static TheoryData<long, long> Ranges()

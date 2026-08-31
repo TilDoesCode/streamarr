@@ -63,17 +63,22 @@ Content-Type: application/json
 {
   "token": "eyJhbGciOi…",
   "tokenType": "Bearer",
-  "expiresInSeconds": 3600,
-  "expiresAt": "2026-07-13T12:00:00Z",
+  "expiresInSeconds": 86400,
+  "expiresAt": "2026-07-14T11:00:00Z",
+  "refreshExpiresAt": "2026-08-12T11:00:00Z",
   "username": "admin",
   "role": "admin"
 }
 ```
-`401` on bad credentials. Lifetime is `Streamarr:AdminSessionTtlSeconds` (default
-3600). The response also sets the browser cookie; the returned bearer token is for
-non-browser clients. Related: `GET /auth/me` (identity behind the current credential),
-`POST /auth/logout` (`204`), and `POST /auth/password` (admin self-service change;
-`204`).
+`401` on bad credentials. The access JWT and HttpOnly browser cookie live for
+`Streamarr:AdminSessionTtlSeconds` (default 86400 / 24 hours). Browser logins also receive a
+Strict, HttpOnly refresh cookie with a sliding `Streamarr:AdminRefreshTokenTtlSeconds`
+window (default 2592000 / 30 days); its opaque value is never returned in JSON. The Management
+UI calls `POST /auth/refresh` before access expiry, which rotates the refresh token and restarts
+that 30-day window. The returned bearer token remains available for non-browser clients.
+Related: `GET /auth/me` (identity behind the current credential), `POST /auth/logout` (`204`),
+and `POST /auth/password` (admin self-service change; `204`). Logout and password changes
+revoke the affected refresh session(s).
 
 ---
 
@@ -318,7 +323,7 @@ skipped as a future fallback (see [`architecture.md`](./architecture.md) §5.3).
 
 ## 5. Stream
 
-### `GET /api/v1/stream/{token}`
+### `GET|HEAD /api/v1/stream/{token}`
 
 A plain, capability-authorized, **Range-capable** HTTP byte stream (BRIEF §3.3). Player-
 agnostic by contract — ffmpeg, mpv, VLC, `<video>`, ExoPlayer, AVPlayer. **No
@@ -326,6 +331,8 @@ Jellyfin-specific behavior may ever be added here.**
 
 - Honors `Range: bytes=…` → `206 Partial Content` with a correct `Content-Range` and
   `Accept-Ranges: bytes`. No `Range` header → `200` with the full body.
+- `HEAD` returns the same immutable `Content-Length`, `Content-Type`, and range support
+  without opening the payload or consuming a stream-capacity lease.
 - Supports open-ended (`bytes=N-`) and suffix (`bytes=-N`) ranges, and seeking to
   **anywhere** in the file — including across RAR volume boundaries, since the streaming
   core does random access over the RAR-wrapped payload.

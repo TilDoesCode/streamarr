@@ -88,6 +88,35 @@ describe("apiFetch", () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
+  it("refreshes the cookie once and retries a request that receives 401", async () => {
+    const refreshExpiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    setSession({ username: "a", role: "admin", expiresAt: future(), refreshExpiresAt });
+    const onUnauthorized = vi.fn();
+    setUnauthorizedHandler(onUnauthorized);
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(mockFetch({ status: 401 }))
+      .mockImplementationOnce(mockFetch({
+        status: 200,
+        body: {
+          username: "a",
+          role: "admin",
+          expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+          refreshExpiresAt,
+        },
+      }))
+      .mockImplementationOnce(mockFetch({ status: 200, body: { ok: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiFetch<{ ok: boolean }>("/config/general")).resolves.toEqual({ ok: true });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/config/general",
+      "/api/v1/auth/refresh",
+      "/api/v1/config/general",
+    ]);
+    expect(getSession()?.refreshExpiresAt).toBe(refreshExpiresAt);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
   it("returns undefined for 204 No Content", async () => {
     vi.stubGlobal("fetch", mockFetch({ status: 204 }));
     await expect(apiFetch("/config/apikeys/x", { method: "DELETE" })).resolves.toBeUndefined();

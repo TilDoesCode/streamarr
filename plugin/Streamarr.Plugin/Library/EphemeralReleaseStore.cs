@@ -83,6 +83,30 @@ public sealed class EphemeralReleaseStore
     }
 
     /// <summary>
+    /// Replaces an entry only when it is still the exact snapshot a caller previously observed.
+    /// This keeps delayed background refreshes from resurrecting removed items or overwriting a
+    /// newer materialization between their read and write phases.
+    /// </summary>
+    internal bool TryUpdateIfCurrent(Entry expected, WorkDto work)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        var boundedWork = BoundWork(work);
+        lock (_entryGate)
+        {
+            if (!_byItem.TryGetValue(expected.ItemId, out var current)
+                || !ReferenceEquals(current, expected))
+            {
+                return false;
+            }
+
+            _byItem[expected.ItemId] = new Entry(expected.ItemId, boundedWork);
+        }
+
+        Persist();
+        return true;
+    }
+
+    /// <summary>
     /// Updates a hierarchy page as one cache transaction and writes at most one persistence
     /// snapshot. The cancellation token bounds the file write used by a cold season request.
     /// </summary>

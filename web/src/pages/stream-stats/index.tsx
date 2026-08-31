@@ -17,10 +17,12 @@ import {
   Zap,
 } from "lucide-react";
 import { ApiError, errorMessage } from "@/api/client";
-import { useEphemeralFiles, useMetrics, usePreDownloads, useSessionArticles, useSessions, useStreamingHistory, useStreamRecord } from "@/api/queries";
-import type { SessionResponse, StreamingHistoryResponse, StreamRecordResponse } from "@/api/types";
+import { useEphemeralFiles, useMetrics, usePlaybackRanges, usePreDownloads, useSessionArticles, useSessions, useStreamingHistory, useStreamRecord } from "@/api/queries";
+import type { ByteRangeResponse, SessionResponse, StreamingHistoryResponse, StreamRecordResponse } from "@/api/types";
+import { TimelineRail, type TimelineRange } from "@/components/timeline-rail";
 import { Button } from "@/components/ui/button";
-import { formatBytes, timeAgo } from "@/lib/utils";
+import { formatBytes, formatTicks, timeAgo } from "@/lib/utils";
+import { formatPercent, watchProgressForToken, type WatchProgress } from "@/pages/sessions/model";
 import { ArticleMapPanel, type ArticleMapQueryState } from "./articles-tab";
 import { EventLog, EventTimeline } from "./events-tab";
 import { formatCountdown, formatDuration, formatRate, formatTimestamp, mimeFor, percent } from "./format";
@@ -58,8 +60,14 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
   // Live-only telemetry (below) needs the live session; once it's gone, fall back to the
   // permanent stream-history record so this page keeps working after the fact (BRIEF §11).
   const record = useStreamRecord(token, { enabled: token.length > 0 && !session && !sessions.isLoading });
+  const playbackRanges = usePlaybackRanges(200, { refetchInterval: 5_000 });
   const [now, setNow] = useState(() => Date.now());
   const rates = useTransferRate(session);
+  const watchedReleaseId = session?.releaseId ?? record.data?.resolvedReleaseId ?? record.data?.releaseId;
+  const watched = useMemo(
+    () => watchProgressForToken(playbackRanges.data ?? [], token, watchedReleaseId ?? undefined),
+    [playbackRanges.data, token, watchedReleaseId],
+  );
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -86,7 +94,7 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
 
   if (!session) {
     if (record.isLoading) return <StreamStatsSkeleton />;
-    if (record.data) return <HistoricalStreamConsole record={record.data} articleMap={articleMap} preDownloads={preDownloads} />;
+    if (record.data) return <HistoricalStreamConsole record={record.data} articleMap={articleMap} preDownloads={preDownloads} watched={watched} />;
 
     const notFound = record.error instanceof ApiError && record.error.status === 404;
     return (
@@ -108,6 +116,13 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
   const payloadPercent = percent(served, size);
   const chunkPercent = Math.max(0, Math.min(100, file?.estimatedStreamedPercent ?? 0));
   const cachedPercent = percent(file?.cachedChunks ?? 0, file?.totalChunks ?? 0);
+  // Real byte intervals when the article tracker answers; prefix-shaped fallbacks otherwise.
+  const deliveredRanges = fractionRanges(articleMap.data?.deliveredRanges)
+    ?? (payloadPercent > 0 ? [{ start: 0, end: payloadPercent / 100 }] : []);
+  const bufferedRanges = fractionRanges(articleMap.data?.bufferedRanges)
+    ?? fractionRanges(session.bufferedRanges)
+    ?? (cachedPercent > 0 ? [{ start: 0, end: cachedPercent / 100 }] : []);
+  const bufferedPercent = session.bufferedPercent;
   const ageSeconds = Math.max(1, (now - Date.parse(session.createdAt ?? "")) / 1_000);
   const averageRate = served / ageSeconds;
   const currentRate = rates.at(-1)?.rate ?? 0;
@@ -167,20 +182,43 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
             <div className="mt-9">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.17em] text-muted-foreground">Payload delivered</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.17em] text-muted-foreground">Watched · jellyfin time</p>
                   <p className="mt-1 font-mono text-3xl font-medium tabular-nums text-foreground">
-                    {payloadPercent.toFixed(payloadPercent < 10 ? 1 : 0)}<span className="ml-1 text-base text-muted-foreground">%</span>
+                    {watched ? formatPercent(watched.coverage * 100).replace("%", "") : "0"}
+                    <span className="ml-1 text-base text-muted-foreground">%</span>
                   </p>
                 </div>
                 <div className="font-mono text-xs text-muted-foreground sm:text-right">
-                  <p><span className="text-foreground">{formatBytes(served)}</span> served</p>
-                  <p>{formatBytes(Math.max(0, size - served))} remaining of {formatBytes(size)}</p>
+                  <p>
+                    <span className="text-foreground">{watched ? formatTicks(watched.coverage * watched.durationTicks) : "nothing"}</span>
+                    {watched ? ` of ${formatTicks(watched.durationTicks)} watched` : " reported by the player yet"}
+                  </p>
+                  <p>
+                    {bufferedPercent != null ? `${formatPercent(bufferedPercent)} buffered` : "buffer state unknown"}
+                    {" · "}{formatBytes(served)} served
+                  </p>
                 </div>
               </div>
-              <SegmentRail percent={payloadPercent} cachedPercent={cachedPercent} />
+              <TimelineRail
+                size="lg"
+                watched={watched?.ranges}
+                buffered={bufferedRanges}
+                playhead={watched?.playhead}
+                label={watched
+                  ? `Watched ${formatPercent(watched.coverage * 100)} of the timeline, playhead at ${formatPercent((watched.playhead ?? 0) * 100)}`
+                  : "No playback time reported yet"}
+              />
+              <div className="mt-4">
+                <SegmentRail
+                  delivered={deliveredRanges}
+                  buffered={bufferedRanges}
+                  label={`${payloadPercent.toFixed(1)} percent delivered · ${formatBytes(served)} of ${formatBytes(size)}`}
+                />
+              </div>
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
-                <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-primary" /> delivered bytes</span>
-                <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full border border-primary/60" /> cache resident</span>
+                <span className="flex items-center gap-1.5"><span className="h-1.5 w-3 rounded-full bg-cyan-500" /> watched (time)</span>
+                <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-primary" /> delivered to client</span>
+                <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full border border-primary/60" /> buffered from usenet</span>
                 <span>{(file?.chunksQueried ?? 0).toLocaleString()} unique chunks touched</span>
               </div>
             </div>
@@ -208,6 +246,7 @@ export function StreamStatsPage({ sessionToken }: { sessionToken?: string } = {}
               <MiniMetric label="Peak" value={formatRate(peakRate)} className="pl-4" />
               <MiniMetric label="ETA" value={formatDuration(etaSeconds)} className="pl-4" />
             </div>
+            <RealtimeHeadroom session={session} />
           </div>
         </section>
 
@@ -293,10 +332,12 @@ function HistoricalStreamConsole({
   record,
   articleMap,
   preDownloads,
+  watched,
 }: {
   record: StreamRecordResponse;
   articleMap: ArticleMapQueryState;
   preDownloads: PreDownloadQueryState;
+  watched?: WatchProgress;
 }) {
   const title = record.resolvedTitle || record.title || "Release name unavailable";
   const resolvedReleaseId = record.resolvedReleaseId || record.releaseId;
@@ -357,6 +398,23 @@ function HistoricalStreamConsole({
                 </span>
               </div>
             </div>
+            {watched && (
+              <div className="mt-7 max-w-3xl">
+                <div className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.17em] text-muted-foreground">
+                  <span>Watched via this stream · jellyfin time</span>
+                  <span className="tabular-nums normal-case">
+                    {formatPercent(watched.coverage * 100)} of {formatTicks(watched.durationTicks)}
+                  </span>
+                </div>
+                <TimelineRail
+                  size="lg"
+                  className="mt-2"
+                  watched={watched.ranges}
+                  playhead={watched.playhead}
+                  label={`Watched ${formatPercent(watched.coverage * 100)} of the timeline via this stream`}
+                />
+              </div>
+            )}
           </div>
         </section>
 
@@ -444,6 +502,56 @@ function HistoricalStreamConsole({
           }
         />
       </main>
+    </div>
+  );
+}
+
+function fractionRanges(ranges?: ByteRangeResponse[] | null): TimelineRange[] | undefined {
+  if (!ranges?.length) return undefined;
+  return ranges
+    .map((range) => ({ start: range.start ?? 0, end: range.end ?? 0 }))
+    .filter((range) => range.end > range.start);
+}
+
+/**
+ * Required-vs-actual byte rates: what the media needs for realtime playback against what is
+ * currently arriving from the providers. The verdict only judges while articles are actively
+ * downloading — a fully cached playback legitimately ingests nothing.
+ */
+function RealtimeHeadroom({ session }: { session: SessionResponse }) {
+  const required = session.requiredBytesPerSecond ?? null;
+  const ingest = session.downloadBytesPerSecond ?? null;
+  const missing = session.missingArticles ?? 0;
+  if (required == null && ingest == null && missing === 0) return null;
+  const activelyDownloading = (session.activeArticles ?? 0) > 0;
+  const ratio = activelyDownloading && required != null && required > 0 ? (ingest ?? 0) / required : null;
+  const slow = ratio != null && ratio < 1;
+
+  return (
+    <div
+      className={
+        slow
+          ? "mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 font-mono text-[11px] text-amber-900 dark:text-amber-200"
+          : "mt-4 rounded-lg border bg-background/50 px-3 py-2.5 font-mono text-[11px] text-muted-foreground"
+      }
+      role="status"
+      aria-label="Realtime headroom"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[9px] uppercase tracking-[0.16em]">Realtime headroom</span>
+        {ratio != null && (
+          <span className={slow ? "font-semibold" : "font-semibold text-emerald-700 dark:text-emerald-300"}>
+            {ratio.toFixed(1)}×
+          </span>
+        )}
+      </div>
+      <p className="mt-1 tabular-nums">
+        ingest {ingest == null ? "idle" : formatRate(ingest)} · media needs {required == null ? "unknown" : formatRate(required)}
+      </p>
+      {slow && <p className="mt-1 font-medium">Provider is too slow for realtime playback right now.</p>}
+      {missing > 0 && (
+        <p className="mt-1 font-medium text-destructive">{missing} article{missing === 1 ? "" : "s"} missing (NNTP 430)</p>
+      )}
     </div>
   );
 }

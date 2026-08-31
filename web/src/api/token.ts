@@ -8,7 +8,10 @@ export const SESSION_CLEARED_EVENT = "streamarr:session-cleared";
 export interface Session {
   username: string;
   role: string;
+  /** Access-cookie deadline; the client refreshes before this point. */
   expiresAt: string;
+  /** Sliding browser-session deadline. Optional only for records from older releases. */
+  refreshExpiresAt?: string;
 }
 
 type Listener = (session: Session | null) => void;
@@ -44,13 +47,22 @@ function parse(raw: string): Session | null {
       typeof parsed.role !== "string" ||
       typeof parsed.expiresAt !== "string"
     ) return null;
-    // Drop obviously-expired sessions so we start at the login screen instead of 401-looping.
+    // New sessions remain usable past the access-cookie deadline while the refresh cookie is
+    // alive. Legacy records have no refresh deadline and retain their old expiry behavior.
     const expiresAt = Date.parse(parsed.expiresAt);
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+    const refreshExpiresAt = typeof parsed.refreshExpiresAt === "string"
+      ? Date.parse(parsed.refreshExpiresAt)
+      : expiresAt;
+    if (!Number.isFinite(expiresAt) || !Number.isFinite(refreshExpiresAt) || refreshExpiresAt <= Date.now()) {
+      return null;
+    }
     return {
       username: parsed.username,
       role: parsed.role ?? "",
       expiresAt: parsed.expiresAt,
+      ...(typeof parsed.refreshExpiresAt === "string"
+        ? { refreshExpiresAt: parsed.refreshExpiresAt }
+        : {}),
     };
   } catch {
     return null;

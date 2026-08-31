@@ -245,16 +245,18 @@ test("captures the pre-download settings, session diagnostics, and mobile backgr
     contentType: "image/png",
   });
 
-  // 4. Mobile operational view for a lower-retention target with a cancelled partial file.
+  // 4. Mobile operational view for a lower-retention target with a cancelled partial file —
+  // retention reasons (stream vs pre-download, since/until) now live on the Files screen.
   ephemeralFiles = [backgroundTargetFile];
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/sessions");
-  const target = page.getByRole("heading", { name: "Asterion Station — Signal in the Dust" }).locator("xpath=ancestor::article[1]");
+  await page.goto("/files");
+  await expect(page.getByRole("heading", { name: "Held right now" })).toBeVisible();
+  const target = page.locator("li").filter({ hasText: "Asterion Station — Signal in the Dust" }).first();
   await expect(target).toBeVisible();
-  await expect(target.getByText("background retention")).toBeVisible();
-  await expect(target.getByText("cancelled", { exact: true })).toBeVisible();
-  await expect(target.getByText("42%", { exact: true })).toBeVisible();
-  await expect(target.getByRole("progressbar", { name: /payload delivered/i })).toHaveAttribute("aria-valuenow", "0");
+  await expect(target.getByText("Pre-download · next episode")).toBeVisible();
+  await expect(target.getByText("Watch progress reached 75%")).toBeVisible();
+  await expect(target.getByText(/since \d+/)).toBeVisible();
+  await expect(target.getByText(/until in \d+/)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await settle(page);
   await page.screenshot({

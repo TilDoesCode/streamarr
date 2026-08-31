@@ -132,19 +132,16 @@ Server versions.
    - **Core Server URL:** `http://<your-docker-host-ip>:8080`
      (the IP of the machine where the Komodo `streamarr` stack runs — the same IP you
      used to open the Management UI).
-   - **Public stream URL:** the LAN or HTTPS base URL that every phone, TV, and browser
-     can reach, for example `http://<your-docker-host-ip>:8080` on a trusted home LAN
-     or `https://streamarr.example.com` behind your reverse proxy.
    - **API key:** the exact `STREAMARR_API_KEY` value you set in Step 1.
 3. Click **Test connection**. It should succeed. A wrong key fails the test even when
    the server is up.
 4. Enable **search interception** and save.
 
-If Jellyfin and Streamarr run on the **same Docker host** and you would rather keep the
-traffic off the LAN, put both on a shared Docker network and use
-`http://streamarr:8080` as the Core Server URL instead. Keep **Public stream URL** set
-to the separate LAN or HTTPS address; playback devices cannot resolve the internal
-`streamarr` hostname. The host-IP Core URL above is the simplest layout.
+Only Jellyfin itself talks to Core: playback devices always stream from Jellyfin (a
+server-side remux of the opened Core stream), so Core never needs to be reachable by
+phones or TVs. If Jellyfin and Streamarr run on the **same Docker host**, you can put
+both on a shared Docker network and use `http://streamarr:8080` as the Core Server URL
+to keep the traffic off the LAN entirely.
 
 ---
 

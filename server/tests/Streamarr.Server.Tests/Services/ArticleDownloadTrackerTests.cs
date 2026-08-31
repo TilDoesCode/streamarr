@@ -348,6 +348,115 @@ public sealed class ArticleDownloadTrackerTests
         Assert.Equal(0, provider.Errors);
     }
 
+    [Fact]
+    public void RecentDownloadRate_ReflectsRollingWindowAndExpires()
+    {
+        var time = new ManualTimeProvider(Start);
+        var tracker = new ArticleDownloadTracker("release-1", [
+            new ArticleManifestEntry("one@example", ExpectedBytes: 1_000),
+            new ArticleManifestEntry("two@example", ExpectedBytes: 2_000),
+        ], time);
+
+        Assert.Null(tracker.RecentDownloadBytesPerSecond);
+
+        tracker.MarkDownloaded("one@example", 1_000);
+        time.Advance(TimeSpan.FromSeconds(2));
+        tracker.MarkDownloaded("two@example", 2_000);
+
+        Assert.Equal(300d, tracker.RecentDownloadBytesPerSecond);
+        Assert.Equal(300d, tracker.Snapshot().RecentBytesPerSecond);
+
+        time.Advance(TimeSpan.FromSeconds(20));
+        Assert.Null(tracker.RecentDownloadBytesPerSecond);
+    }
+
+    [Fact]
+    public void Snapshot_CountsMissingEvidenceSeparatelyFromOtherFailures()
+    {
+        var time = new ManualTimeProvider(Start);
+        var tracker = new ArticleDownloadTracker("release-1", [
+            new ArticleManifestEntry("missing@example", ExpectedBytes: 1_000),
+            new ArticleManifestEntry("broken@example", ExpectedBytes: 1_000),
+        ], time);
+
+        tracker.RecordProviderAttempts("missing@example", "BODY", [
+            new NntpProviderAttempt("Primary", "missing", 10, 430),
+        ]);
+        tracker.MarkFailed("missing@example", "UsenetArticleNotFoundException", "430 no such article");
+        tracker.MarkFailed("broken@example", "YencCrcMismatchException", "crc mismatch");
+
+        var snapshot = tracker.Snapshot();
+        Assert.Equal(2, snapshot.FailedArticles);
+        Assert.Equal(1, snapshot.MissingArticles);
+    }
+
+    [Fact]
+    public void Snapshot_ReportsBufferedByteRangesAsPayloadFractions()
+    {
+        var time = new ManualTimeProvider(Start);
+        var tracker = new ArticleDownloadTracker("release-1", [
+            new ArticleManifestEntry("a@example", ExpectedBytes: 250),
+            new ArticleManifestEntry("b@example", ExpectedBytes: 250),
+            new ArticleManifestEntry("c@example", ExpectedBytes: 250),
+            new ArticleManifestEntry("d@example", ExpectedBytes: 250),
+        ], time);
+
+        tracker.MarkDownloaded("a@example", 250);
+        tracker.MarkCached("c@example", 250);
+
+        var snapshot = tracker.Snapshot();
+        Assert.Equal(1_000, snapshot.TotalExpectedBytes);
+        Assert.Equal(500, snapshot.BufferedBytes);
+        Assert.Collection(snapshot.BufferedRanges,
+            first =>
+            {
+                Assert.Equal(0d, first.Start);
+                Assert.Equal(0.25d, first.End);
+            },
+            second =>
+            {
+                Assert.Equal(0.5d, second.Start);
+                Assert.Equal(0.75d, second.End);
+            });
+    }
+
+    [Fact]
+    public void Coarsen_JoinsSmallestGapsUntilBounded()
+    {
+        var ranges = Enumerable.Range(0, 10)
+            .Select(i => new Streamarr.Server.Contracts.ByteRangeResponse { Start = i * 0.1, End = i * 0.1 + 0.05 })
+            .ToList();
+        var coarse = ArticleDownloadTracker.Coarsen(ranges, 3);
+        Assert.Equal(3, coarse.Count);
+        Assert.Equal(0d, coarse[0].Start);
+        Assert.Equal(0.95d, coarse[^1].End, 3);
+    }
+
+    [Fact]
+    public void ProviderSummaries_CreditBytesOnlyForSuccessfulBodyTransfers()
+    {
+        var time = new ManualTimeProvider(Start);
+        var tracker = new ArticleDownloadTracker("release-1", [
+            new ArticleManifestEntry("one@example", ExpectedBytes: 750_000),
+        ], time);
+
+        tracker.RecordProviderAttempts("one@example", "STAT", [
+            new NntpProviderAttempt("Primary", "success", 5),
+        ]);
+        tracker.RecordProviderAttempts("one@example", "BODY", [
+            new NntpProviderAttempt("Backup", "error", 40, ErrorType: "timeout"),
+            new NntpProviderAttempt("Primary", "success", 500),
+        ]);
+
+        var snapshot = tracker.Snapshot();
+        var primary = Assert.Single(snapshot.Providers, provider => provider.Provider == "Primary");
+        Assert.Equal(750_000, primary.BytesDownloaded);
+        Assert.Equal(1_500_000d, primary.BytesPerSecond);
+        var backup = Assert.Single(snapshot.Providers, provider => provider.Provider == "Backup");
+        Assert.Equal(0, backup.BytesDownloaded);
+        Assert.Null(backup.BytesPerSecond);
+    }
+
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
     {
         private DateTimeOffset _now = now;

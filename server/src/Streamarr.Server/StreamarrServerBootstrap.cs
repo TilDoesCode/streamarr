@@ -154,6 +154,7 @@ public static class StreamarrServerBootstrap
         // authenticated principal on every endpoint, and AdminPolicy gates /config + /debug.
         services.AddSingleton<UserService>();
         services.AddSingleton<JwtTokenService>();
+        services.AddSingleton<AdminRefreshSessionService>();
         services.AddSingleton<AdminBootstrap>();
 
         services.AddAuthentication(AuthRoles.Scheme)
@@ -215,6 +216,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<GeneralConfigService>();
         services.AddSingleton<PreDownloadConfigService>();
         services.AddSingleton<NotificationConfigService>();
+        services.AddSingleton<PlaybackRangeRecorder>();
         services.AddSingleton<WatchEventService>();
         services.AddSingleton<StreamHistoryRecorder>();
         services.AddSingleton<IStreamHistoryRecorder>(sp => sp.GetRequiredService<StreamHistoryRecorder>());
@@ -546,7 +548,8 @@ public static class StreamarrServerBootstrap
                                !HttpMethods.IsTrace(context.Request.Method);
             var cookieAuthenticated = context.User.HasClaim(
                 AdminAuthCookie.MethodClaim,
-                AdminAuthCookie.MethodValue);
+                AdminAuthCookie.MethodValue) ||
+                context.Request.Cookies.ContainsKey(AdminAuthCookie.RefreshName);
 
             if (unsafeMethod && cookieAuthenticated && !HasSameOrigin(context.Request, trustedOrigins))
             {
