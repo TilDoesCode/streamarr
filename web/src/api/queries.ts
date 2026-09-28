@@ -47,6 +47,26 @@ import type {
   TvSeasonDetailsResponse,
   TvSeriesDetailsResponse,
   TvSeriesSearchResponse,
+  BenchmarkCreateRequest,
+  BenchmarkResponse,
+  TranscodeSessionCreateRequest,
+  TranscodeSessionCreatedResponse,
+  TranscodeSessionResponse,
+  TranscodingCapabilitiesResponse,
+  TranscodingConfigResponse,
+  TranscodingConfigWrite,
+  TranscodingSampleResponse,
+  ViewerAdminResponse,
+  ViewerCreateRequest,
+  ViewerCreatedResponse,
+  ViewerDeviceSessionResponse,
+  ViewerOutboxMessageResponse,
+  ViewerSetPasswordRequest,
+  ViewerSetPasswordResponse,
+  ViewerSettingsResponse,
+  ViewerSettingsWrite,
+  ViewerUpdateRequest,
+  WatchHistoryResponse,
 } from "./types";
 
 // One place for every query key so cache invalidation stays consistent (BRIEF §9.2).
@@ -76,6 +96,19 @@ export const queryKeys = {
     ["resolve", releaseId, workId ?? null] as const,
   tvSeries: (tmdbId: number) => ["tv", tmdbId] as const,
   tvSeason: (tmdbId: number, seasonNumber: number) => ["tv", tmdbId, "season", seasonNumber] as const,
+  transcodingConfig: ["transcoding", "config"] as const,
+  transcodingCapabilities: ["transcoding", "capabilities"] as const,
+  transcodingSamples: ["transcoding", "samples"] as const,
+  transcodingBenchmarks: ["transcoding", "benchmarks"] as const,
+  transcodingBenchmark: (id: string) => ["transcoding", "benchmarks", id] as const,
+  transcodeSessions: ["transcoding", "sessions"] as const,
+  viewerSettings: ["config", "viewers", "settings"] as const,
+  viewerOutbox: ["config", "viewers", "outbox"] as const,
+  viewers: ["config", "viewers", "accounts"] as const,
+  viewerSessions: (id: string) => ["config", "viewers", "accounts", id, "sessions"] as const,
+  viewerWatchState: (id: string) => ["config", "viewers", "accounts", id, "watch-state"] as const,
+  // Data fetched by the viewer test harness with its own viewer tokens (never the admin cookie).
+  viewerHarness: ["viewer-harness"] as const,
 };
 
 // Search is read-only (including debug ranking preview), so transient failures are safe to
@@ -835,5 +868,332 @@ export function useDebugSearch() {
       apiFetch<DebugSearchResponse>("/debug/search", { method: "POST", body }),
     retry: retrySearchRequest,
     retryDelay: searchRetryDelay,
+  });
+}
+
+// ---- Server-side transcoding (ffmpeg → HLS) -------------------------------------------
+
+const BENCHMARK_ACTIVE_STATES = new Set(["queued", "preparingsample", "running"]);
+
+/** Benchmark states arrive as e.g. "preparing-sample"; compare them case- and separator-insensitively. */
+export function isBenchmarkActive(state?: string | null): boolean {
+  return BENCHMARK_ACTIVE_STATES.has((state ?? "").toLowerCase().replace(/[^a-z]/g, ""));
+}
+
+export function useTranscodingConfig({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.transcodingConfig,
+    queryFn: ({ signal }) => apiFetch<TranscodingConfigResponse>("/transcoding/config", { signal }),
+    enabled,
+  });
+}
+
+export function useUpdateTranscodingConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (write: TranscodingConfigWrite) =>
+      apiFetch<TranscodingConfigResponse>("/transcoding/config", { method: "PUT", body: write }),
+    onSuccess: (data, write) => {
+      qc.setQueryData(queryKeys.transcodingConfig, data);
+      // Changing the backend or device re-runs detection server-side.
+      if (write.acceleration !== undefined || write.vaapiDevice !== undefined) {
+        void qc.invalidateQueries({ queryKey: queryKeys.transcodingCapabilities });
+      }
+    },
+  });
+}
+
+/** Detected ffmpeg + hardware capabilities; polls while a detection (with real self-tests) runs. */
+export function useTranscodingCapabilities({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.transcodingCapabilities,
+    queryFn: ({ signal }) =>
+      apiFetch<TranscodingCapabilitiesResponse>("/transcoding/capabilities", { signal }),
+    enabled,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data && (data.detecting || !data.detected) ? 1_500 : false;
+    },
+  });
+}
+
+export function useRefreshTranscodingCapabilities() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<TranscodingCapabilitiesResponse>("/transcoding/capabilities/refresh", { method: "POST" }),
+    onSuccess: (data) => qc.setQueryData(queryKeys.transcodingCapabilities, data),
+  });
+}
+
+/** Built-in synthetic test media; polls while any sample is being generated. */
+export function useTranscodingSamples({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.transcodingSamples,
+    queryFn: ({ signal }) => apiFetch<TranscodingSampleResponse[]>("/transcoding/samples", { signal }),
+    enabled,
+    refetchInterval: (query) =>
+      query.state.data?.some((sample) => sample.state === "generating") ? 1_000 : false,
+  });
+}
+
+export function useGenerateTranscodingSample() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sampleId: string) =>
+      apiFetch<TranscodingSampleResponse>(
+        `/transcoding/samples/${encodeURIComponent(sampleId)}/generate`,
+        { method: "POST" },
+      ),
+    onSuccess: (sample) => {
+      qc.setQueryData<TranscodingSampleResponse[]>(queryKeys.transcodingSamples, (old) =>
+        old?.map((item) => (item.id === sample.id ? sample : item)),
+      );
+    },
+  });
+}
+
+/** Benchmark history (latest first); polls while any run is queued, preparing or running. */
+export function useTranscodingBenchmarks({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.transcodingBenchmarks,
+    queryFn: ({ signal }) => apiFetch<BenchmarkResponse[]>("/transcoding/benchmarks", { signal }),
+    enabled,
+    refetchInterval: (query) =>
+      query.state.data?.some((run) => isBenchmarkActive(run.state)) ? 2_000 : false,
+  });
+}
+
+export function useTranscodingBenchmark(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.transcodingBenchmark(id ?? ""),
+    queryFn: ({ signal }) =>
+      apiFetch<BenchmarkResponse>(`/transcoding/benchmarks/${encodeURIComponent(id ?? "")}`, { signal }),
+    enabled: !!id,
+    refetchInterval: (query) => (isBenchmarkActive(query.state.data?.state) ? 1_000 : false),
+  });
+}
+
+export function useStartBenchmark() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BenchmarkCreateRequest) =>
+      apiFetch<BenchmarkResponse>("/transcoding/benchmarks", { method: "POST", body }),
+    onSuccess: (run) => {
+      if (run.id) qc.setQueryData(queryKeys.transcodingBenchmark(run.id), run);
+      qc.setQueryData<BenchmarkResponse[]>(queryKeys.transcodingBenchmarks, (old) =>
+        [run, ...(old ?? []).filter((item) => item.id !== run.id)],
+      );
+    },
+  });
+}
+
+/** Live transcode sessions with their ffmpeg job state (administrators only). */
+export function useTranscodeSessions({ enabled = true, refetchInterval = 2_000 }: { enabled?: boolean; refetchInterval?: number | false } = {}) {
+  return useQuery({
+    queryKey: queryKeys.transcodeSessions,
+    queryFn: ({ signal }) => apiFetch<TranscodeSessionResponse[]>("/transcoding/sessions", { signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+export function useStopTranscodeSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (handle: string) =>
+      apiFetch<void>(`/transcoding/sessions/${encodeURIComponent(handle)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transcodeSessions }),
+  });
+}
+
+/** Start an HLS transcode of a resolved stream token (or, for administrators, a test sample). */
+export function useCreateTranscodeSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TranscodeSessionCreateRequest) =>
+      apiFetch<TranscodeSessionCreatedResponse>("/transcoding/sessions", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transcodeSessions }),
+  });
+}
+
+/** `/api/v1/transcode/{capability}/master.m3u8` → `/api/v1/transcode/{capability}`. */
+export function transcodeCapabilityUrl(playlistUrl: string): string | null {
+  try {
+    const url = new URL(playlistUrl, "http://localhost");
+    const match = url.pathname.match(/^(.*\/transcode\/[^/]+)\/[^/]+$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stop a transcode through its playlist capability (no admin credentials involved). Uses
+ * `keepalive` so the request survives page navigation and tab close.
+ */
+export async function stopTranscodePlayback(playlistUrl: string): Promise<void> {
+  const url = transcodeCapabilityUrl(playlistUrl);
+  if (!url) return;
+  try {
+    await fetch(url, { method: "DELETE", credentials: "same-origin", keepalive: true });
+  } catch {
+    // The session expires on its own when idle.
+  }
+}
+
+// ---- Viewer accounts module (admin side) ----------------------------------------------
+
+export function useViewerSettings({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.viewerSettings,
+    queryFn: ({ signal }) => apiFetch<ViewerSettingsResponse>("/config/viewers/settings", { signal }),
+    enabled,
+  });
+}
+
+export function useUpdateViewerSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (write: ViewerSettingsWrite) =>
+      apiFetch<ViewerSettingsResponse>("/config/viewers/settings", { method: "PUT", body: write }),
+    onSuccess: (data) => {
+      qc.setQueryData(queryKeys.viewerSettings, data);
+      // Module switch and sign-in options change what the viewer API answers.
+      void qc.invalidateQueries({ queryKey: queryKeys.viewerHarness });
+    },
+  });
+}
+
+export function useSendViewerTestEmail() {
+  return useMutation({
+    mutationFn: (to: string) =>
+      apiFetch<void>("/config/viewers/settings/test-email", { method: "POST", body: { to } }),
+  });
+}
+
+/** Mails captured while email delivery runs in test-outbox mode (newest first). */
+export function useViewerOutbox({ enabled = true, refetchInterval }: { enabled?: boolean; refetchInterval?: number | false } = {}) {
+  return useQuery({
+    queryKey: queryKeys.viewerOutbox,
+    queryFn: ({ signal }) => apiFetch<ViewerOutboxMessageResponse[]>("/config/viewers/outbox", { signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+export function useClearViewerOutbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<void>("/config/viewers/outbox", { method: "DELETE" }),
+    onSuccess: () => qc.setQueryData<ViewerOutboxMessageResponse[]>(queryKeys.viewerOutbox, []),
+  });
+}
+
+export function useViewers({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.viewers,
+    queryFn: ({ signal }) => apiFetch<ViewerAdminResponse[]>("/config/viewers", { signal }),
+    enabled,
+  });
+}
+
+function useInvalidateViewers() {
+  const qc = useQueryClient();
+  return (id?: string) => {
+    void qc.invalidateQueries({ queryKey: queryKeys.viewers, exact: true });
+    if (id) void qc.invalidateQueries({ queryKey: [...queryKeys.viewers, id] });
+    // The settings response carries the account count.
+    void qc.invalidateQueries({ queryKey: queryKeys.viewerSettings });
+  };
+}
+
+export function useCreateViewer() {
+  const invalidate = useInvalidateViewers();
+  return useMutation({
+    mutationFn: (body: ViewerCreateRequest) =>
+      apiFetch<ViewerCreatedResponse>("/config/viewers", { method: "POST", body }),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useUpdateViewer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ViewerUpdateRequest }) =>
+      apiFetch<ViewerAdminResponse>(`/config/viewers/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+    onSuccess: (viewer) => {
+      qc.setQueryData<ViewerAdminResponse[]>(queryKeys.viewers, (old) =>
+        old?.map((item) => (item.id === viewer.id ? viewer : item)),
+      );
+      // Disabling an account ends its sessions server-side.
+      if (viewer.id) void qc.invalidateQueries({ queryKey: queryKeys.viewerSessions(viewer.id) });
+    },
+  });
+}
+
+export function useDeleteViewer() {
+  const invalidate = useInvalidateViewers();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/config/viewers/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useSetViewerPassword() {
+  const invalidate = useInvalidateViewers();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ViewerSetPasswordRequest }) =>
+      apiFetch<ViewerSetPasswordResponse>(`/config/viewers/${encodeURIComponent(id)}/password`, { method: "POST", body }),
+    onSuccess: (_data, { id }) => invalidate(id),
+  });
+}
+
+export function useResetViewerTwoFactor() {
+  const invalidate = useInvalidateViewers();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/config/viewers/${encodeURIComponent(id)}/two-factor/reset`, { method: "POST" }),
+    onSuccess: (_data, id) => invalidate(id),
+  });
+}
+
+export function useViewerSessions(id: string, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.viewerSessions(id),
+    queryFn: ({ signal }) =>
+      apiFetch<ViewerDeviceSessionResponse[]>(`/config/viewers/${encodeURIComponent(id)}/sessions`, { signal }),
+    enabled: enabled && !!id,
+  });
+}
+
+/** Revoke one device session, or every session of the viewer when `sessionId` is omitted. */
+export function useRevokeViewerSessions() {
+  const invalidate = useInvalidateViewers();
+  return useMutation({
+    mutationFn: ({ id, sessionId }: { id: string; sessionId?: string }) =>
+      apiFetch<void>(
+        `/config/viewers/${encodeURIComponent(id)}/sessions${sessionId ? `/${encodeURIComponent(sessionId)}` : ""}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: (_data, { id }) => invalidate(id),
+  });
+}
+
+export function useViewerWatchState(id: string, { enabled = true, limit = 100 } = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.viewerWatchState(id), limit],
+    queryFn: ({ signal }) =>
+      apiFetch<WatchHistoryResponse>(`/config/viewers/${encodeURIComponent(id)}/watch-state`, { query: { limit }, signal }),
+    enabled: enabled && !!id,
+  });
+}
+
+export function useClearViewerWatchState() {
+  const invalidate = useInvalidateViewers();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/config/viewers/${encodeURIComponent(id)}/watch-state`, { method: "DELETE" }),
+    onSuccess: (_data, id) => invalidate(id),
   });
 }

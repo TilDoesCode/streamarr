@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Streamarr.Server.Persistence.Entities;
 
 namespace Streamarr.Server.Persistence;
@@ -16,6 +17,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<GeneralConfigEntity> GeneralConfig => Set<GeneralConfigEntity>();
     public DbSet<PreDownloadConfigEntity> PreDownloadConfig => Set<PreDownloadConfigEntity>();
     public DbSet<NotificationConfigEntity> NotificationConfig => Set<NotificationConfigEntity>();
+    public DbSet<TranscodingConfigEntity> TranscodingConfig => Set<TranscodingConfigEntity>();
     public DbSet<WatchEventEntity> WatchEvents => Set<WatchEventEntity>();
     public DbSet<PlaybackRangeEntity> PlaybackRanges => Set<PlaybackRangeEntity>();
     public DbSet<CachedReleaseEntity> CachedReleases => Set<CachedReleaseEntity>();
@@ -24,9 +26,17 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<AdminRefreshSessionEntity> AdminRefreshSessions => Set<AdminRefreshSessionEntity>();
     public DbSet<StreamRecordEntity> StreamRecords => Set<StreamRecordEntity>();
     public DbSet<StreamEventEntity> StreamEvents => Set<StreamEventEntity>();
+    public DbSet<ViewerConfigEntity> ViewerConfig => Set<ViewerConfigEntity>();
+    public DbSet<ViewerEntity> Viewers => Set<ViewerEntity>();
+    public DbSet<ViewerSessionEntity> ViewerSessions => Set<ViewerSessionEntity>();
+    public DbSet<ViewerOneTimeCodeEntity> ViewerOneTimeCodes => Set<ViewerOneTimeCodeEntity>();
+    public DbSet<ViewerRecoveryCodeEntity> ViewerRecoveryCodes => Set<ViewerRecoveryCodeEntity>();
+    public DbSet<ViewerWatchStateEntity> ViewerWatchStates => Set<ViewerWatchStateEntity>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
+        ConfigureViewers(model);
+
         model.Entity<IndexerEntity>(e =>
         {
             e.HasKey(x => x.Id);
@@ -48,6 +58,11 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
         model.Entity<GeneralConfigEntity>(e => e.HasKey(x => x.Id));
         model.Entity<PreDownloadConfigEntity>(e => e.HasKey(x => x.Id));
         model.Entity<NotificationConfigEntity>(e => e.HasKey(x => x.Id));
+        model.Entity<TranscodingConfigEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SettingsJson).IsRequired();
+        });
 
         model.Entity<WatchEventEntity>(e =>
         {
@@ -112,5 +127,75 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.StreamRecordId);
         });
+    }
+
+    private static void ConfigureViewers(ModelBuilder model)
+    {
+        model.Entity<ViewerConfigEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SettingsJson).IsRequired();
+        });
+
+        model.Entity<ViewerEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Username).IsRequired();
+            e.Property(x => x.NormalizedUsername).IsRequired();
+            e.HasIndex(x => x.NormalizedUsername).IsUnique();
+            e.HasIndex(x => x.NormalizedEmail).IsUnique();
+        });
+
+        model.Entity<ViewerSessionEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.AccessTokenHash).IsUnique();
+            e.HasIndex(x => x.RefreshTokenHash).IsUnique();
+            e.HasIndex(x => x.PreviousRefreshTokenHash);
+            e.HasIndex(x => x.ViewerId);
+            e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ViewerOneTimeCodeEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.ViewerId, x.Purpose });
+            e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ViewerRecoveryCodeEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ViewerId);
+            e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ViewerWatchStateEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.WorkId).IsRequired();
+            e.HasIndex(x => new { x.ViewerId, x.WorkId }).IsUnique();
+            e.HasIndex(x => new { x.ViewerId, x.LastPlayedAt });
+            e.HasIndex(x => new { x.ViewerId, x.SeriesWorkId });
+            e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Unix milliseconds keep expiry and ordering predicates translatable on SQLite.
+        var unixMilliseconds = new ValueConverter<DateTimeOffset, long>(
+            value => value.ToUnixTimeMilliseconds(),
+            value => DateTimeOffset.FromUnixTimeMilliseconds(value));
+        Type[] viewerTables =
+        [
+            typeof(ViewerConfigEntity), typeof(ViewerEntity), typeof(ViewerSessionEntity),
+            typeof(ViewerOneTimeCodeEntity), typeof(ViewerRecoveryCodeEntity), typeof(ViewerWatchStateEntity),
+        ];
+        foreach (var table in viewerTables)
+        {
+            foreach (var property in model.Entity(table).Metadata.GetProperties()
+                         .Where(p => p.ClrType == typeof(DateTimeOffset) || p.ClrType == typeof(DateTimeOffset?)))
+            {
+                property.SetValueConverter(unixMilliseconds);
+            }
+        }
     }
 }

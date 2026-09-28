@@ -52,6 +52,12 @@ works independently through its browser preview.
   of the next episode are built in.
 - **Explains itself** — the management UI shows searches, rejections, active streams,
   cache use, repairs, history, logs, and per-stream diagnostics.
+- **Transcodes on its own** — an optional ffmpeg → HLS path with VideoToolbox, VA-API,
+  and NVENC support, hardware self-tests, and a benchmark lab plays streams that a
+  browser cannot decode, independent of Jellyfin ([details](docs/transcoding.md)).
+- **Knows who is watching** — optional viewer accounts, fully separate from the admin
+  account, with authenticator-app 2FA, email codes, age limits, resume positions, and
+  next-up suggestions ([details](docs/viewers.md)).
 
 No Sonarr, Radarr, or Prowlarr is required. Streamarr replaces the parts needed for
 on-demand playback; it is not a general download manager or media-file organizer.
@@ -165,6 +171,8 @@ Keep the plugin and Core on matching Streamarr versions. Read the
 | [Installation](docs/installation.md) | Release bundles, Docker, Jellyfin, Komodo, and first playback |
 | [Configuration](docs/configuration.md) | Providers, indexers, TMDB, profiles, and optional features |
 | [Operations](docs/operations.md) | Networking, upgrades, backups, logs, and troubleshooting |
+| [Server-side transcoding](docs/transcoding.md) | Hardware acceleration, the test lab, and benchmarks |
+| [Viewer accounts](docs/viewers.md) | Viewer sign-in, permissions, watch state, and the test harness |
 | [All documentation](docs/README.md) | Architecture, API, ranker tuning, compatibility, and development |
 
 Komodo users can go directly to the [copy-paste Komodo guide](docs/install-komodo.md).

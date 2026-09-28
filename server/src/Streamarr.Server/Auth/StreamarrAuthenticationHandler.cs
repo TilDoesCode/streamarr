@@ -39,6 +39,10 @@ public sealed class StreamarrAuthenticationHandler(
             if (IsMachineKey(bearer))
                 return Task.FromResult(Success(MachinePrincipal()));
 
+            // Viewer tokens belong to the separate viewer scheme and never unlock admin or machine scope.
+            if (bearer.StartsWith(Viewers.Auth.ViewerAuth.AccessTokenPrefix, StringComparison.Ordinal))
+                return Task.FromResult(AuthenticateResult.Fail("Viewer tokens are not valid for this endpoint."));
+
             // 2) admin session JWT.
             var bearerPrincipal = jwt.Validate(bearer);
             if (bearerPrincipal is not null)

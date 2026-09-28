@@ -40,6 +40,9 @@ public sealed class StreamarrOptions
     /// <summary>Per-client fixed-window limit for anonymous login attempts.</summary>
     public int LoginAttemptsPerMinute { get; set; } = 5;
 
+    /// <summary>Per-client fixed-window limit for viewer sign-in, code and password-reset requests.</summary>
+    public int ViewerAuthAttemptsPerMinute { get; set; } = 20;
+
     /// <summary>
     /// Exact reverse-proxy IP addresses permitted to supply forwarded client and
     /// protocol headers. Loopback proxies remain trusted by the framework defaults.

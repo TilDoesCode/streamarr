@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Streamarr.Server\Streamarr.Server.csproj" />
     <ProjectReference Include="..\Streamarr.Tests.Shared\Streamarr.Tests.Shared.csproj" />
+    <ProjectReference Include="..\..\tools\hlssim\Streamarr.Tools.HlsSim.csproj" />
   </ItemGroup>
 
 </Project>

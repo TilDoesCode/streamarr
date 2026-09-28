@@ -128,6 +128,7 @@ The modules (BRIEF §6.1):
 | **Health cache** (new in M7) | `Core/Media` (`ReleaseHealthCache`) | Remembers dead classifications for `HealthCacheTtlSeconds` so they demote/reject the release on later searches and are skipped in fallback. |
 | **Config store** | `Server/Config` | SQLite-backed CRUD of indexers, providers, profiles, general config, API keys. Secrets encrypted at rest via ASP.NET Data Protection. |
 | **Watch-event store** | `Server/Config` (`WatchEventService`) | Ingests playback events from any front-end into SQLite. Not user-facing in v1; future-proofing. |
+| **Viewer module** (optional) | `Server/Viewers` | Viewer accounts separate from admins (own table, auth scheme, opaque rotating tokens, TOTP, email codes), per-viewer watch state, continue watching, TMDB-based next up, and an age gate. Switched off by default; `Server/Modules` gates its endpoints. See [`viewers.md`](./viewers.md). |
 
 ---
 
@@ -396,11 +397,11 @@ container-negotiation logic to the stream endpoint.
 
 | Jellyfin gives us for free | Future client's plan |
 |---|---|
-| Transcoding / remux, device profiles | ffmpeg transcode layer **in front of** `/stream`; the Core stays generic. |
+| Transcoding / remux, device profiles | **Started:** a separate ffmpeg → HLS module reads `/stream` over loopback like any player ([`transcoding.md`](./transcoding.md)); `/stream` stays generic. Remux and ABR are follow-ups. |
 | Client apps (TV, mobile, cast) | Generate from the OpenAPI spec; the generated client is the on-ramp. |
-| Watch state, resume, favorites | **Already mitigated:** `/events` accumulates watch state server-side. |
+| Watch state, resume, favorites | **Started:** the optional viewer module keeps per-viewer resume, played, history, and next up ([`viewers.md`](./viewers.md)); `/events` still accumulates front-end telemetry. Favorites are a follow-up. |
 | Metadata & artwork | **Already ours** (TMDB). Never rely on Jellyfin's fetcher. |
-| User management & auth | Core admin auth is designed to grow into multi-user. |
+| User management & auth | **Started:** viewer accounts are a separate, switchable module with their own sign-in (password, TOTP, email codes); admins stay a distinct account type. |
 
 ---
 

@@ -606,6 +606,24 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.ToTable("StreamRecords");
                 });
 
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.TranscodingConfigEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TranscodingConfig");
+                });
+
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.UserEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -636,6 +654,345 @@ namespace Streamarr.Server.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerConfigEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SmtpPasswordEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ViewerConfig");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AllowTranscoding")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("BlockUnrated")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("EmailVerifiedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FailedLoginCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsDisabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("LastLoginAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("LockoutEndsAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MaxAge")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MaxConcurrentStreams")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("NormalizedEmail")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedUsername")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("PasswordChangedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PasswordSalt")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingEmail")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingTotpSecretEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("TotpEnabledAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("TotpLastUsedStep")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TotpSecretEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique();
+
+                    b.HasIndex("NormalizedUsername")
+                        .IsUnique();
+
+                    b.ToTable("Viewers");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerOneTimeCodeEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ConsumedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ExpiresAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Salt")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Target")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ViewerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ViewerId", "Purpose");
+
+                    b.ToTable("ViewerOneTimeCodes");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerRecoveryCodeEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("UsedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ViewerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ViewerId");
+
+                    b.ToTable("ViewerRecoveryCodes");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerSessionEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("AccessExpiresAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AccessTokenHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthMethod")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("CookieMode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DeviceName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IpAddress")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastSeenAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PreviousRefreshTokenHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RefreshExpiresAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RefreshTokenHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("RevokedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RevokedReason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("RotatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RotatedTokensEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ViewerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccessTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("PreviousRefreshTokenHash");
+
+                    b.HasIndex("RefreshTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("ViewerId");
+
+                    b.ToTable("ViewerSessions");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerWatchStateEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CountedPlaybackId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("DurationTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("EpisodeNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastPlaybackId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastPlayedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastReleaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PlayCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Played")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("PlayedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("PositionTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SeasonNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SeriesWorkId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TmdbId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ViewerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ViewerId", "LastPlayedAt");
+
+                    b.HasIndex("ViewerId", "SeriesWorkId");
+
+                    b.HasIndex("ViewerId", "WorkId")
+                        .IsUnique();
+
+                    b.ToTable("ViewerWatchStates");
                 });
 
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.WatchEventEntity", b =>
@@ -709,6 +1066,42 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.HasOne("Streamarr.Server.Persistence.Entities.StreamRecordEntity", null)
                         .WithMany("Events")
                         .HasForeignKey("StreamRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerOneTimeCodeEntity", b =>
+                {
+                    b.HasOne("Streamarr.Server.Persistence.Entities.ViewerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ViewerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerRecoveryCodeEntity", b =>
+                {
+                    b.HasOne("Streamarr.Server.Persistence.Entities.ViewerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ViewerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerSessionEntity", b =>
+                {
+                    b.HasOne("Streamarr.Server.Persistence.Entities.ViewerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ViewerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerWatchStateEntity", b =>
+                {
+                    b.HasOne("Streamarr.Server.Persistence.Entities.ViewerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ViewerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Menu, LogOut, Play } from "lucide-react";
+import { Menu, LogOut, Play, ShieldCheck } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
 import { ThemeToggle } from "./theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -63,7 +63,7 @@ export function AppShell() {
   // needs the full viewport width. Let those breathe instead of the comfortable-reading cap.
   const wideLayout = useRouterState({
     select: (s) =>
-      ["/search", "/files", "/logs", "/sessions"].some((path) =>
+      ["/search", "/files", "/logs", "/sessions", "/transcoding", "/viewers"].some((path) =>
         s.location.pathname.startsWith(path),
       ),
   });
@@ -132,9 +132,14 @@ function SidebarFooter({
 }) {
   return (
     <div className="border-t p-3">
-      <div className="mb-2 px-2">
+      <div className="mb-2 px-2" title="Signed in to the management console">
         <p className="truncate text-sm font-medium">{username ?? "—"}</p>
-        <p className={cn("text-xs capitalize text-muted-foreground")}>{role ?? ""}</p>
+        {role !== undefined && (
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <ShieldCheck className="size-3 shrink-0" aria-hidden />
+            {roleLabel(role)}
+          </p>
+        )}
       </div>
       <Button variant="ghost" size="sm" className="w-full justify-start" onClick={onLogout}>
         <LogOut className="size-4" />
@@ -142,4 +147,10 @@ function SidebarFooter({
       </Button>
     </div>
   );
+}
+
+// This console only admits administrators; viewer (watch) accounts sign in elsewhere.
+function roleLabel(role: string): string {
+  if (!role || role.toLowerCase() === "admin") return "Administrator";
+  return role.charAt(0).toUpperCase() + role.slice(1);
 }

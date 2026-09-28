@@ -21,10 +21,14 @@ using Streamarr.Core.Tmdb;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Logging;
+using Streamarr.Server.Modules;
 using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Security;
 using Streamarr.Server.Services;
+using Streamarr.Server.Transcoding;
+using Streamarr.Server.Viewers;
+using Streamarr.Server.Viewers.Auth;
 using Streamarr.Usenet.Nntp;
 using Streamarr.Usenet.Nntp.Pooling;
 
@@ -392,6 +396,9 @@ public static class StreamarrServerBootstrap
                 maxConnectionsPerServer: 8))
             .RemoveAllLoggers();
 
+        services.AddStreamarrTranscoding(builder.Configuration);
+        services.AddStreamarrViewers();
+
         return builder;
     }
 
@@ -537,6 +544,7 @@ public static class StreamarrServerBootstrap
             .ToHashSet(StringComparer.Ordinal);
 
         app.UseRouting();
+        app.UseMiddleware<ModuleGateMiddleware>();
         app.UseMiddleware<StreamLogContextMiddleware>();
         app.UseRateLimiter();
         app.UseAuthentication();
@@ -549,7 +557,9 @@ public static class StreamarrServerBootstrap
             var cookieAuthenticated = context.User.HasClaim(
                 AdminAuthCookie.MethodClaim,
                 AdminAuthCookie.MethodValue) ||
-                context.Request.Cookies.ContainsKey(AdminAuthCookie.RefreshName);
+                context.Request.Cookies.ContainsKey(AdminAuthCookie.RefreshName) ||
+                context.Request.Cookies.ContainsKey(ViewerAuth.CookieName) ||
+                context.Request.Cookies.ContainsKey(ViewerAuth.RefreshCookieName);
 
             if (unsafeMethod && cookieAuthenticated && !HasSameOrigin(context.Request, trustedOrigins))
             {
@@ -599,7 +609,8 @@ public static class StreamarrServerBootstrap
         if (status >= StatusCodes.Status400BadRequest)
             return LogEventLevel.Debug;
 
-        var streaming = path.StartsWithSegments("/api/v1/stream", StringComparison.OrdinalIgnoreCase);
+        var streaming = path.StartsWithSegments("/api/v1/stream", StringComparison.OrdinalIgnoreCase)
+                        || path.StartsWithSegments("/api/v1/transcode", StringComparison.OrdinalIgnoreCase);
         if (!streaming && elapsedMilliseconds >= 10_000)
             return LogEventLevel.Warning;
         if (!streaming && elapsedMilliseconds >= 2_000)
@@ -616,7 +627,8 @@ public static class StreamarrServerBootstrap
         var redacted = RedactChild(path, "/api/v1/sessions", "capability")
                        ?? RedactChild(path, "/api/v1/playback-sessions", "admission")
                        ?? RedactChild(path, "/api/v1/ephemeral-files", "capability")
-                       ?? RedactChild(path, "/api/v1/streams", "stream");
+                       ?? RedactChild(path, "/api/v1/streams", "stream")
+                       ?? RedactChild(path, "/api/v1/transcode", "capability");
         if (redacted is not null)
             return redacted;
 

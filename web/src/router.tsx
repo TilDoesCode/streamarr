@@ -147,6 +147,24 @@ const historyRoute = createRoute({
   },
 });
 
+const transcodingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/transcoding",
+  validateSearch: (search: Record<string, unknown>): { tab?: string } => ({
+    tab: typeof search.tab === "string" && search.tab.length <= 32 ? search.tab : undefined,
+  }),
+  component: lazyRouteComponent(() => import("@/pages/transcoding"), "TranscodingPage"),
+});
+
+const viewersRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/viewers",
+  validateSearch: (search: Record<string, unknown>): { tab?: string } => ({
+    tab: typeof search.tab === "string" && search.tab.length <= 32 ? search.tab : undefined,
+  }),
+  component: lazyRouteComponent(() => import("@/pages/viewers"), "ViewersPage"),
+});
+
 const logsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/logs",
@@ -170,6 +188,8 @@ const routeTree = rootRoute.addChildren([
     ephemeralRoute,
     repairsRoute,
     historyRoute,
+    transcodingRoute,
+    viewersRoute,
     logsRoute,
   ]),
 ]);

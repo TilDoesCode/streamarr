@@ -91,3 +91,12 @@ Sonarr
 
 SharpCompress (https://github.com/adamhathcock/sharpcompress, MIT) is used
 as a NuGet package dependency for RAR header parsing.
+
+Otp.NET (https://github.com/kspearrin/Otp.NET, MIT) is used as a NuGet package
+dependency for RFC 6238 TOTP two-factor authentication of viewer accounts.
+
+MailKitLite and MimeKitLite (https://github.com/jstedfast/MailKit, MIT) are used
+as NuGet package dependencies for SMTP delivery of viewer emails.
+
+qrcode.react (https://github.com/zpao/qrcode.react, ISC) is used as an npm
+dependency of the management UI to render authenticator setup QR codes.

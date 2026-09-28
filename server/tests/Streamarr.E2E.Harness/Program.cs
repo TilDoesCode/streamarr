@@ -55,6 +55,8 @@ builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
     ["Streamarr:ApiKey"] = "e2e-api-key-0123456789abcdef-xyz",
     ["Streamarr:Admin:Username"] = "admin",
     ["Streamarr:Admin:Password"] = adminPassword,
+    // Every spec signs in through the real login form; the production limit of 5/min would throttle the suite.
+    ["Streamarr:LoginAttemptsPerMinute"] = "60",
     ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(tempDir, "streamarr.db")}",
     ["Streamarr:DataProtectionKeysPath"] = Path.Combine(tempDir, "keys"),
     ["Streamarr:ConnectionBudget"] = "12",
@@ -73,6 +75,10 @@ builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
     ["Streamarr:Providers:0:Username"] = nntp.Username,
     ["Streamarr:Providers:0:Password"] = nntp.Password,
     ["Streamarr:Providers:0:MaxConnections"] = "8",
+    ["Streamarr:Transcoding:WorkspacePath"] = Path.Combine(tempDir, "transcode"),
+    ["Streamarr:Transcoding:SamplesPath"] = Environment.GetEnvironmentVariable("E2E_TRANSCODING_SAMPLES") is { Length: > 0 } samples
+        ? samples
+        : Path.Combine(tempDir, "samples"),
 });
 
 builder.AddStreamarrServer();
@@ -139,7 +145,7 @@ file sealed class CannedNewznabClient(string nzbPath) : INewznabClient
         => Task.FromResult(new NewznabSearchResponse { Items = _items, Total = _items.Length });
 }
 
-/// <summary>Resolves every movie search to a single fixed TMDB work with a runtime.</summary>
+/// <summary>Resolves every movie search to a single fixed TMDB work; also serves a small TV catalog for the viewer pages.</summary>
 file sealed class CannedTmdbClient : ITmdbClient
 {
     private static readonly TmdbMatch ExampleMovie = new()
@@ -154,6 +160,30 @@ file sealed class CannedTmdbClient : ITmdbClient
         Overview = "A canned fixture work used by the Streamarr Playwright smoke E2E.",
     };
 
+    private static readonly Dictionary<int, TmdbMatch> RatedMovies = new()
+    {
+        [603] = new() { MediaType = Streamarr.Core.Media.MediaType.Movie, TmdbId = 603, Title = "The Matrix", Year = 1999, OfficialRating = "R", RuntimeMinutes = 136 },
+        [27205] = new() { MediaType = Streamarr.Core.Media.MediaType.Movie, TmdbId = 27205, Title = "Inception", Year = 2010, OfficialRating = "PG-13", RuntimeMinutes = 148 },
+    };
+
+    private static readonly Dictionary<int, (TmdbMatch Series, Dictionary<int, TmdbEpisode[]> Seasons)> Shows = new()
+    {
+        [1396] = (
+            new() { MediaType = Streamarr.Core.Media.MediaType.Tv, TmdbId = 1396, Title = "Breaking Bad", Year = 2008, OfficialRating = "TV-MA" },
+            new()
+            {
+                [1] = Episodes("2008-01-20", 7, ["Pilot", "Cat's in the Bag...", "...And the Bag's in the River", "Cancer Man", "Gray Matter", "Crazy Handful of Nothin'", "A No-Rough-Stuff-Type Deal"]),
+                [2] = Episodes("2009-03-08", 13, []),
+            }),
+        [66732] = (
+            new() { MediaType = Streamarr.Core.Media.MediaType.Tv, TmdbId = 66732, Title = "Stranger Things", Year = 2016, OfficialRating = "TV-14" },
+            new()
+            {
+                [1] = Episodes("2016-07-15", 8, []),
+                [2] = [.. Episodes("2017-10-27", 1, []), .. Episodes("2099-01-01", 8, [])[1..]],
+            }),
+    };
+
     public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
         => Task.FromResult<TmdbMatch?>(ExampleMovie);
 
@@ -164,11 +194,37 @@ file sealed class CannedTmdbClient : ITmdbClient
         => Task.FromResult<TmdbMatch?>(null);
 
     public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
-        => Task.FromResult<TmdbMatch?>(ExampleMovie);
+        => Task.FromResult<TmdbMatch?>(RatedMovies.GetValueOrDefault(tmdbId) ?? ExampleMovie);
 
     public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken)
-        => Task.FromResult<TmdbMatch?>(null);
+        => Task.FromResult(Shows.TryGetValue(tmdbId, out var show) ? show.Series : null);
+
+    public Task<TmdbTvSeriesCatalog?> GetTvSeriesCatalogAsync(int tmdbId, CancellationToken cancellationToken)
+        => Task.FromResult(Shows.TryGetValue(tmdbId, out var show)
+            ? new TmdbTvSeriesCatalog
+            {
+                Series = show.Series,
+                Seasons = show.Seasons.Select(s => new TmdbSeasonSummary { SeasonNumber = s.Key, Title = $"Season {s.Key}", EpisodeCount = s.Value.Length }).ToList(),
+            }
+            : null);
+
+    public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken)
+        => Task.FromResult(Shows.TryGetValue(tmdbId, out var show) && show.Seasons.TryGetValue(seasonNumber, out var episodes)
+            ? new TmdbTvSeasonCatalog { TmdbId = tmdbId, SeasonNumber = seasonNumber, Title = $"Season {seasonNumber}", Episodes = episodes }
+            : null);
 
     public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken)
         => Task.FromResult<TmdbMatch?>(ExampleMovie);
+
+    private static TmdbEpisode[] Episodes(string firstAirDate, int count, string[] titles)
+    {
+        var first = DateOnly.Parse(firstAirDate, System.Globalization.CultureInfo.InvariantCulture);
+        return Enumerable.Range(1, count).Select(n => new TmdbEpisode
+        {
+            EpisodeNumber = n,
+            Title = n <= titles.Length ? titles[n - 1] : $"Episode {n}",
+            AirDate = first.AddDays(7 * (n - 1)).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            RuntimeMinutes = 47,
+        }).ToArray();
+    }
 }

@@ -22,7 +22,8 @@ browsable at `/swagger`.
 ## 1. Authentication
 
 Administrative and machine API endpoints use one authentication scheme with three
-credential transports, resolved by
+credential transports (viewer accounts use a separate scheme, see
+[§ 12](#12-viewer-accounts-and-watch-state)), resolved by
 ([`StreamarrAuthenticationHandler`](../server/src/Streamarr.Server/Auth/StreamarrAuthenticationHandler.cs)):
 
 | Mode | Token | Scope |
@@ -744,6 +745,131 @@ ownership deterministic. Older Core versions remain supported through a direct
 
 ---
 
+## 11. Server-side transcoding
+
+A separate ffmpeg → HLS path ([`transcoding.md`](./transcoding.md)). It consumes a stream
+token like any other player and never changes `/stream`, sessions, or the Jellyfin flow.
+
+### `POST /api/v1/transcoding/sessions`
+
+Admin **or machine key**. Starts an HLS rendition of a live stream capability (or, admin
+only, a built-in test sample) and returns a new, unguessable playlist capability.
+
+```json
+// TranscodeSessionCreateRequest — exactly one of streamToken / sampleId
+{ "streamToken": "abc123", "maxHeight": 1080, "maxBitrateKbps": 8000,
+  "audioStreamIndex": 1, "startPositionSeconds": 0, "clientName": "my-tv-app",
+  "client": { "videoCodecs": ["h264"], "audioCodecs": ["aac"], "containers": ["mp4"],
+              "maxAudioChannels": 2, "supportsHdr": false, "supports10Bit": false } }
+```
+```json
+// 201 TranscodeSessionCreatedResponse
+{ "handle": "a53f5b44829f",
+  "playlistUrl": "/api/v1/transcode/<capability>/master.m3u8",
+  "mediaPlaylistUrl": "/api/v1/transcode/<capability>/main.m3u8",
+  "durationSeconds": 7201.5, "segmentLengthSeconds": 4, "segmentCount": 1801,
+  "plan": { "directPlayPossible": false, "directPlayBlockers": ["Audio codec 'ac3' is not supported by the player."],
+            "target": { "videoCodec": "h264", "width": 1920, "height": 1080, "codecs": "avc1.640029,mp4a.40.2", … },
+            "hardwareDecode": true, "hardwareDecodeReason": "…", "encoder": "h264_vaapi", "toneMap": "notneeded", … } }
+```
+
+Errors: `404 unknown_stream`, `409 transcoding_disabled`, `422` planning errors
+(`no_video_stream`, `unknown_duration`, …), `502 probe_failed`, `503 ffmpeg_unavailable`,
+`503 transcode_capacity`, `503 too_many_sessions`. `POST /api/v1/transcoding/plan` takes
+the same body and returns only the `plan` without starting ffmpeg.
+
+### `GET /api/v1/transcode/{capability}/…`
+
+Anonymous; the path capability is the credential (like `/stream`), so hls.js, Safari,
+and TV players need no headers. `Cache-Control: private, no-store`.
+
+| Path | Result |
+|---|---|
+| `master.m3u8` | One variant with `BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE=SDR`. |
+| `main.m3u8` | Complete VOD playlist (fMP4, `#EXT-X-MAP`, fixed segment grid, `#EXT-X-ENDLIST`). |
+| `init.mp4` | Initialization segment; identical across ffmpeg restarts. |
+| `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. `503`/`504` carry `Retry-After: 1`. |
+| `DELETE` on the capability root | Ends the session and its ffmpeg process (`204`). |
+
+### Admin endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET/PUT /api/v1/transcoding/config` | Settings (`PUT` is a partial update; `hardwareDecodingAuto: true` follows the self-tests). |
+| `GET /api/v1/transcoding/capabilities` · `POST …/refresh` | ffmpeg version, encoders, filters, platform, and per-backend self-test results with setup notes. `detecting` is true while a detection runs. |
+| `GET /api/v1/transcoding/samples` · `POST …/samples/{id}/generate` | Synthetic test media and its generation state. |
+| `GET/POST /api/v1/transcoding/benchmarks` · `GET …/{id}` | Queue a benchmark (`sampleId`, `maxHeight`, `bitrateKbps`, optional `acceleration` override) and read its graded result. |
+| `GET /api/v1/transcoding/sessions` · `DELETE …/{handle}` | Live sessions with plan, ffmpeg job state, redacted command and log tail; stop by public handle. |
+
+## 12. Viewer accounts and watch state
+
+An optional, separately authenticated module ([`viewers.md`](./viewers.md)). While it is
+disabled (the default), every `/api/v1/viewer/*` endpoint answers `404 module_disabled`.
+Viewer credentials never unlock admin or machine endpoints, and admin/machine credentials
+never unlock viewer endpoints.
+
+### Viewer authentication — `/api/v1/viewer/auth`
+
+| Endpoint | Purpose |
+|---|---|
+| `GET …/options` | Anonymous. Which sign-in methods the server offers (`emailCodeLogin`, `passwordReset`, `twoFactor`, `passwordMinLength`). |
+| `POST …/login` | `{ login, password, deviceName, clientName, useCookies }` → `ViewerAuthResponse`. |
+| `POST …/login/second-factor` | `{ mfaToken, code }` with a 6-digit authenticator code or a recovery code. |
+| `POST …/email-code` · `POST …/email-code/verify` | Request (always `202`) and redeem an emailed sign-in code. |
+| `POST …/password/forgot` · `POST …/password/reset` | Request (always `202`) and redeem a reset code with a new password (`204`, ends all sessions). |
+| `POST …/refresh` | `{ refreshToken }` or the refresh cookie → rotated tokens. `401 refresh_token_reused` ends a replayed session. |
+| `POST …/logout` | Ends the current session (bearer, refresh token, or cookies). |
+
+```json
+// ViewerAuthResponse
+{ "status": "authenticated",            // or "mfa_required" with mfaToken + mfaExpiresAt
+  "session": { "sessionId": "…", "tokenType": "Bearer",
+               "accessToken": "sva_…", "accessExpiresAt": "…",
+               "refreshToken": "svr_…", "refreshExpiresAt": "…", "cookieMode": false },
+  "viewer": { "accountType": "viewer", "id": "…", "username": "anna", "displayName": "Anna",
+              "mustChangePassword": false, "twoFactorEnabled": true,
+              "permissions": { "maxAge": 12, "blockUnrated": true, "allowTranscoding": true, "maxConcurrentStreams": null } } }
+```
+
+Errors: `401 invalid_credentials`, `401 invalid_code`, `401 mfa_expired`,
+`403 account_disabled`, `423 account_locked`, `403 email_login_unavailable` /
+`password_reset_unavailable`, `429 rate_limited`.
+
+### The signed-in viewer — `/api/v1/viewer/me`
+
+`GET` / `PATCH` (display name), `POST …/password`, `POST …/email` +
+`POST …/email/verify`, `POST …/two-factor/setup` · `…/enable` · `…/disable` ·
+`…/recovery-codes`, `GET …/sessions`, `DELETE …/sessions/{id}`. While an admin-assigned
+password must be changed, other viewer endpoints answer `403 password_change_required`.
+
+### Watch state — `/api/v1/viewer/watch`
+
+| Endpoint | Purpose |
+|---|---|
+| `POST …/progress` | `{ event: start\|progress\|stop, workId, positionTicks, durationTicks, playbackId, releaseId?, streamToken?, title? }` → the updated `WatchStateResponse`. |
+| `GET …/resume` · `DELETE …/resume/{workId}` | Continue watching, and hiding an entry from it. |
+| `GET …/next-up?seriesWorkId=` | `{ items, incomplete }` — the next aired, unplayed episode per recently watched series. |
+| `GET …/history?limit&offset` | `{ items, total }`, most recent first. |
+| `POST …/state` | `{ workIds }` → one state per id (unknown ids come back unplayed). |
+| `GET …/series/{seriesWorkId}` | Every recorded episode state of one series. |
+| `POST …/played` · `POST …/unplayed` | `{ workIds }`; season and series ids expand to their aired episodes. |
+| `GET /api/v1/viewer/access/{workId}` | Age gate: `{ allowed, reason, rating, minimumAge, viewerMaxAge }`. |
+
+### Admin management — `/api/v1/config/viewers` (admin only)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET/PUT …/settings` | Module switch, session/security policy, self-service switches, watch thresholds, email delivery (`PUT` is partial; `email.smtpPassword` is write-only). |
+| `POST …/settings/test-email` | Synchronous test message; `502 email_delivery_failed` carries the transport error. |
+| `GET/DELETE …/outbox` | Messages captured in test-outbox mode. |
+| `GET` · `POST` · `GET/PATCH/DELETE …/{id}` | List, create (an omitted password is generated and returned once), read, update (a `permissions` object replaces all permissions), delete. |
+| `POST …/{id}/password` | Assign or generate a password; ends all sessions. |
+| `POST …/{id}/two-factor/reset` | Remove a lost authenticator. |
+| `GET/DELETE …/{id}/sessions` · `DELETE …/{id}/sessions/{sessionId}` | Devices and revocation. |
+| `GET/DELETE …/{id}/watch-state` | Read or clear a viewer's watch state. |
+
+---
+
 ## See also
 
 - [`architecture.md`](./architecture.md) — how these endpoints compose into the
@@ -752,3 +878,4 @@ ownership deterministic. Older Core versions remain supported through a direct
   rules, and rejection `code` values that `/debug/search` exposes.
 - [`setup.md`](./setup.md) — how to configure indexers/providers/profiles that these
   endpoints read.
+- [`viewers.md`](./viewers.md) — viewer accounts, sign-in security, and watch-state rules.

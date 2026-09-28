@@ -1,0 +1,511 @@
+using System.Collections.Concurrent;
+using Microsoft.Extensions.Options;
+
+namespace Streamarr.Server.Transcoding;
+
+public sealed class TranscodeException(string code, string message, int statusCode) : Exception(message)
+{
+    public string Code { get; } = code;
+    public int StatusCode { get; } = statusCode;
+}
+
+/// <summary>
+/// Owns live transcode sessions and their ffmpeg runs: serves segments that exist, waits for the ones being produced,
+/// restarts ffmpeg on seeks, throttles runs that race ahead, and reaps idle work.
+/// </summary>
+public sealed class TranscodeSessionManager(
+    TranscodingSettingsService settingsService,
+    FfmpegCapabilityService capabilityService,
+    SourceMediaProber prober,
+    TranscodingWorkspace workspace,
+    IOptions<TranscodingOptions> options,
+    ILogger<TranscodeSessionManager> logger) : BackgroundService
+{
+    private const double SeekGapSeconds = 24;
+    private const long MinimumFreeBytes = 2L * 1024 * 1024 * 1024;
+    private static readonly TimeSpan ProbeCacheTtl = TimeSpan.FromMinutes(10);
+
+    private readonly ConcurrentDictionary<string, TranscodeSession> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (DateTimeOffset At, SourceMediaInfo Media)> _probeCache = new(StringComparer.Ordinal);
+    private long _ticks;
+
+    public IReadOnlyCollection<TranscodeSession> Sessions => _sessions.Values.ToList();
+
+    public bool TryGet(string id, out TranscodeSession session)
+    {
+        if (id.Length is > 0 and <= 96 && _sessions.TryGetValue(id, out var found) && !found.Closed)
+        {
+            session = found;
+            return true;
+        }
+        session = null!;
+        return false;
+    }
+
+    public TranscodeSession? FindByHandle(string handle)
+        => _sessions.Values.FirstOrDefault(s => string.Equals(s.Handle, handle, StringComparison.Ordinal));
+
+    public int RunningJobs => _sessions.Values.Count(s => s.Job is { HasExited: false });
+
+    public async Task<(SourceMediaInfo Media, TranscodePlan Plan, TranscodingSettings Settings, FfmpegCapabilities Capabilities)> PlanAsync(
+        TranscodeSource source, ClientProfile client, TranscodeLimits limits, CancellationToken ct)
+    {
+        var planned = await PlanTimedAsync(source, client, limits, ct);
+        return (planned.Media, planned.Plan, planned.Settings, planned.Capabilities);
+    }
+
+    private sealed record TimedPlan(
+        SourceMediaInfo Media, TranscodePlan Plan, TranscodingSettings Settings, FfmpegCapabilities Capabilities,
+        double CapabilitiesMs, double ProbeMs, bool ProbeCached, double PlanMs);
+
+    private async Task<TimedPlan> PlanTimedAsync(TranscodeSource source, ClientProfile client, TranscodeLimits limits, CancellationToken ct)
+    {
+        var settings = settingsService.Current;
+        if (!settings.Enabled)
+            throw new TranscodeException("transcoding_disabled", "Server-side transcoding is disabled in the settings.", 409);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var capabilities = await capabilityService.GetAsync(ct);
+        var capabilitiesMs = clock.Elapsed.TotalMilliseconds;
+        if (!capabilities.Usable)
+        {
+            throw new TranscodeException("ffmpeg_unavailable",
+                capabilities.Error ?? "The installed ffmpeg cannot transcode (needs ffmpeg ≥ 5 with libx264 and aac).", 503);
+        }
+
+        var cached = IsProbeCached(source);
+        var media = await ProbeAsync(source, ct);
+        var probeMs = clock.Elapsed.TotalMilliseconds - capabilitiesMs;
+        try
+        {
+            var plan = TranscodePlanner.Plan(media, client, limits, settings, capabilities);
+            var planMs = clock.Elapsed.TotalMilliseconds - capabilitiesMs - probeMs;
+            return new TimedPlan(media, plan, settings, capabilities, capabilitiesMs, probeMs, cached, planMs);
+        }
+        catch (TranscodePlanningException e)
+        {
+            throw new TranscodeException(e.Code, e.Message, 422);
+        }
+    }
+
+    public async Task<TranscodeSession> CreateAsync(
+        TranscodeSource source,
+        string title,
+        ClientProfile client,
+        TranscodeLimits limits,
+        string clientLabel,
+        double startPositionSeconds,
+        CancellationToken ct)
+    {
+        var requestedAt = DateTimeOffset.UtcNow;
+        var planned = await PlanTimedAsync(source, client, limits, ct);
+        var (media, plan, settings, capabilities) = (planned.Media, planned.Plan, planned.Settings, planned.Capabilities);
+        EnsureDiskSpace();
+        await EnsureSessionSlotAsync();
+
+        var timeline = SegmentTimeline.Create(plan.DurationSeconds, settings.SegmentLengthSeconds);
+        var id = TranscodeSession.NewId();
+        var session = new TranscodeSession(
+            id, source, media, plan, timeline, settings, capabilities,
+            workspace.CreateSessionDirectory(id), clientLabel, title);
+        _sessions[id] = session;
+        logger.LogInformation(
+            "Transcode session {Handle} created for {Client}: {SourceCodec} {SourceHeight}p → {Codec} {Height}p @ {Bitrate} kbps via {Encoder} (hw decode {HwDecode}, tone map {ToneMap})",
+            session.Handle, clientLabel, plan.SourceVideo.Codec, plan.SourceVideo.Height, plan.Video.Codec, plan.Video.Height,
+            plan.Video.BitrateKbps, plan.Encoder, plan.HardwareDecode, plan.ToneMap);
+
+        var start = Math.Clamp((int)Math.Floor(Math.Max(0, startPositionSeconds) / timeline.SegmentLength), 0, timeline.Count - 1);
+        await session.Gate.WaitAsync(ct);
+        var spawnClock = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await StartJobLockedAsync(session, start);
+            session.Startup = new TranscodeStartup(
+                requestedAt, planned.CapabilitiesMs, planned.ProbeMs, planned.ProbeCached, planned.PlanMs,
+                spawnClock.Elapsed.TotalMilliseconds);
+        }
+        catch
+        {
+            session.Gate.Release();
+            await CloseAsync(session, "failed to start");
+            throw;
+        }
+        session.Gate.Release();
+        return session;
+    }
+
+    public async Task<string> GetSegmentAsync(TranscodeSession session, int index, CancellationToken ct)
+    {
+        if (index < 0 || index >= session.Timeline.Count)
+            throw new TranscodeException("unknown_segment", "The segment is outside this rendition.", 404);
+        session.NoteRequested(index);
+        var path = session.SegmentPath(index);
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            if (File.Exists(path))
+            {
+                NoteFirstSegment(session);
+                ResumeIfNeeded(session);
+                return path;
+            }
+
+            TranscodeJob job;
+            await session.Gate.WaitAsync(ct);
+            try
+            {
+                if (session.Closed)
+                    throw new TranscodeException("session_closed", "The transcode session was closed.", 410);
+                if (File.Exists(path))
+                    return path;
+                job = await EnsureJobForSegmentLockedAsync(session, index);
+            }
+            finally
+            {
+                session.Gate.Release();
+            }
+
+            if (await WaitForAsync(session, job, () => File.Exists(path), ct))
+                return path;
+        }
+        throw new TranscodeException("segment_unavailable", "The segment could not be produced.", 503);
+    }
+
+    public async Task<byte[]> GetInitAsync(TranscodeSession session, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 4 && session.InitSegment is null; attempt++)
+        {
+            TranscodeJob job;
+            await session.Gate.WaitAsync(ct);
+            try
+            {
+                if (session.Closed)
+                    throw new TranscodeException("session_closed", "The transcode session was closed.", 410);
+                if (session.InitSegment is not null)
+                    break;
+                job = session.Job is { } current && !current.Failed && (!current.HasExited || current.InitReady())
+                    ? current
+                    : await StartJobLockedAsync(session, Math.Max(0, session.LastRequestedSegment));
+            }
+            finally
+            {
+                session.Gate.Release();
+            }
+
+            if (await WaitForAsync(session, job, job.InitReady, ct))
+            {
+                NoteFirstSegment(session);
+                var bytes = await File.ReadAllBytesAsync(Path.Combine(session.Directory, job.InitFileName), ct);
+                if (bytes.Length > 0)
+                    session.InitSegment ??= Fmp4.NormalizeInit(bytes);
+            }
+        }
+        session.Touch();
+        return session.InitSegment ?? throw new TranscodeException("init_unavailable", "The initialization segment could not be produced.", 503);
+    }
+
+    public async Task CloseAsync(TranscodeSession session, string reason)
+    {
+        if (!_sessions.TryRemove(session.Id, out _))
+            return;
+        session.Closed = true;
+        await session.Gate.WaitAsync();
+        try
+        {
+            if (session.Job is { } job)
+                await job.KillAsync();
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+        TranscodingWorkspace.TryDelete(session.Directory);
+        logger.LogInformation("Transcode session {Handle} closed ({Reason})", session.Handle, reason);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            workspace.ResetVolatileState();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            logger.LogWarning(e, "Could not prepare the transcoding workspace at {Path}", workspace.Root);
+        }
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(Math.Max(100, options.Value.MaintenanceIntervalMilliseconds)));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                try
+                {
+                    await MaintainAsync();
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    logger.LogWarning(e, "Transcode maintenance pass failed");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        foreach (var session in _sessions.Values.ToList())
+            await CloseAsync(session, "server stopping");
+    }
+
+    internal async Task MaintainAsync()
+    {
+        var settings = settingsService.Current;
+        var now = DateTimeOffset.UtcNow;
+        var retentionPass = Interlocked.Increment(ref _ticks) % 15 == 0;
+
+        foreach (var session in _sessions.Values.ToList())
+        {
+            var idle = now - session.LastAccessAt;
+            if (idle > TimeSpan.FromSeconds(settings.SessionIdleTimeoutSeconds))
+            {
+                await CloseAsync(session, "idle");
+                continue;
+            }
+
+            if (session.Job is { HasExited: false } job)
+            {
+                job.SampleCpu();
+                if (idle > TimeSpan.FromSeconds(settings.JobIdleTimeoutSeconds))
+                {
+                    await KillJobAsync(session, job, "no segment requests");
+                }
+                else if (settings.ThrottleEnabled)
+                {
+                    var ahead = SecondsAhead(session, job);
+                    if (!job.Paused && ahead > settings.ThrottleBufferSeconds && job.Pause())
+                        logger.LogDebug("Transcode {Handle} paused {Ahead:0}s ahead of the player", session.Handle, ahead);
+                    else if (job.Paused && ahead < settings.ThrottleBufferSeconds / 2d && job.Resume())
+                        logger.LogDebug("Transcode {Handle} resumed {Ahead:0}s ahead of the player", session.Handle, ahead);
+                }
+            }
+
+            if (retentionPass)
+                ApplyRetention(session, settings);
+        }
+        PruneProbeCache(now);
+    }
+
+    private async Task<TranscodeJob> EnsureJobForSegmentLockedAsync(TranscodeSession session, int index)
+    {
+        var job = session.Job;
+        if (job is not null && !job.HasExited && index >= job.StartSegment)
+        {
+            var front = job.Front();
+            var gap = Math.Max(2, (int)Math.Ceiling(SeekGapSeconds / session.Timeline.SegmentLength));
+            if (index <= front + gap)
+            {
+                ResumeIfNeeded(session);
+                return job;
+            }
+        }
+
+        if (job is { Failed: true } failed && failed.StartSegment == index && (DateTimeOffset.UtcNow - failed.StartedAt) < TimeSpan.FromSeconds(30))
+        {
+            session.LastError = failed.ErrorSummary();
+            throw new TranscodeException("transcode_failed", $"ffmpeg failed: {session.LastError}", 500);
+        }
+        return await StartJobLockedAsync(session, index);
+    }
+
+    private async Task<TranscodeJob> StartJobLockedAsync(TranscodeSession session, int startSegment)
+    {
+        if (session.Job is { } previous)
+        {
+            await previous.KillAsync();
+            session.NoteRestart();
+        }
+        await EnsureCapacityAsync(session);
+
+        session.JobSequence++;
+        var spec = new FfmpegJobSpec
+        {
+            Plan = session.Plan,
+            Source = session.Source,
+            Settings = session.Settings,
+            Capabilities = session.Capabilities,
+            OutputDirectory = session.Directory,
+            JobTag = session.JobSequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            SegmentLength = session.Timeline.SegmentLength,
+            StartSegment = startSegment,
+        };
+        var job = TranscodeJob.Start(options.Value.FfmpegPath, FfmpegArgumentBuilder.Build(spec), session.Directory, spec.JobTag, startSegment);
+        session.Job = job;
+        logger.LogDebug("Transcode {Handle} run {Run} started at segment {Segment}", session.Handle, spec.JobTag, startSegment);
+        return job;
+    }
+
+    private async Task<bool> WaitForAsync(TranscodeSession session, TranscodeJob job, Func<bool> ready, CancellationToken ct)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(Math.Max(5, options.Value.SegmentWaitTimeoutSeconds));
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (ready())
+                return true;
+            if (!ReferenceEquals(session.Job, job) || session.Closed)
+                return false;
+            if (job.HasExited)
+            {
+                await Task.Delay(50, ct);
+                if (ready())
+                    return true;
+                if (job.Killed)
+                    return false;
+                if (job.ExitCode == 0)
+                    throw new TranscodeException("end_of_stream", "The source ended before this segment.", 404);
+                session.LastError = job.ErrorSummary();
+                logger.LogWarning("Transcode {Handle} ffmpeg exited with {ExitCode}: {Error}", session.Handle, job.ExitCode, session.LastError);
+                throw new TranscodeException("transcode_failed", $"ffmpeg failed: {session.LastError}", 500);
+            }
+            if (job.Paused)
+                job.Resume();
+            await Task.Delay(10, ct);
+        }
+        throw new TranscodeException("segment_timeout", "The transcoder did not produce the segment in time.", 504);
+    }
+
+    private void ResumeIfNeeded(TranscodeSession session)
+    {
+        if (session.Job is { Paused: true } job && SecondsAhead(session, job) < settingsService.Current.ThrottleBufferSeconds / 2d)
+            job.Resume();
+    }
+
+    private static double SecondsAhead(TranscodeSession session, TranscodeJob job)
+    {
+        var reference = Math.Max(session.LastRequestedSegment, job.StartSegment - 1);
+        return (job.Front() - reference - 1) * session.Timeline.SegmentLength;
+    }
+
+    private async Task KillJobAsync(TranscodeSession session, TranscodeJob job, string reason)
+    {
+        if (!await session.Gate.WaitAsync(0))
+            return;
+        try
+        {
+            if (ReferenceEquals(session.Job, job) && !job.HasExited)
+            {
+                await job.KillAsync();
+                logger.LogDebug("Transcode {Handle} run stopped ({Reason})", session.Handle, reason);
+            }
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
+    private async Task EnsureCapacityAsync(TranscodeSession requester)
+    {
+        var limit = settingsService.Current.MaxConcurrentTranscodes;
+        var running = _sessions.Values.Where(s => !ReferenceEquals(s, requester) && s.Job is { HasExited: false }).ToList();
+        if (running.Count < limit)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        var victims = running
+            .OrderByDescending(s => s.Job!.Paused)
+            .ThenBy(s => s.LastAccessAt)
+            .Where(s => s.Job!.Paused || now - s.LastAccessAt > TimeSpan.FromSeconds(15));
+        foreach (var victim in victims)
+        {
+            if (victim.Job is { } job)
+                await KillJobAsync(victim, job, "capacity reclaimed");
+            if (_sessions.Values.Count(s => !ReferenceEquals(s, requester) && s.Job is { HasExited: false }) < limit)
+                return;
+        }
+        throw new TranscodeException("transcode_capacity",
+            $"All {limit} transcode slots are busy; raise 'maxConcurrentTranscodes' or stop another stream.", 503);
+    }
+
+    private async Task EnsureSessionSlotAsync()
+    {
+        var max = Math.Max(1, options.Value.MaxSessions);
+        if (_sessions.Count < max)
+            return;
+        var oldest = _sessions.Values.OrderBy(s => s.LastAccessAt).First();
+        if (DateTimeOffset.UtcNow - oldest.LastAccessAt < TimeSpan.FromSeconds(60))
+            throw new TranscodeException("too_many_sessions", $"At most {max} transcode sessions may exist at once.", 503);
+        await CloseAsync(oldest, "evicted for a new session");
+    }
+
+    private void EnsureDiskSpace()
+    {
+        try
+        {
+            Directory.CreateDirectory(workspace.SessionsRoot);
+            var free = new DriveInfo(workspace.SessionsRoot).AvailableFreeSpace;
+            if (free < MinimumFreeBytes)
+            {
+                throw new TranscodeException("insufficient_disk",
+                    $"Only {free / (1024 * 1024)} MiB are free under the transcoding workspace; at least 2 GiB are required.", 507);
+            }
+        }
+        catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            logger.LogDebug(e, "Could not determine free space for the transcoding workspace");
+        }
+    }
+
+    private static void ApplyRetention(TranscodeSession session, TranscodingSettings settings)
+    {
+        var keep = (int)Math.Ceiling(settings.SegmentRetentionSeconds / session.Timeline.SegmentLength);
+        var below = session.LastRequestedSegment - keep;
+        if (below <= 0 || !Directory.Exists(session.Directory))
+            return;
+        foreach (var file in Directory.EnumerateFiles(session.Directory, "*.m4s"))
+        {
+            if (int.TryParse(Path.GetFileNameWithoutExtension(file), out var index) && index < below)
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (IOException)
+                {
+                }
+            }
+        }
+    }
+
+    private static void NoteFirstSegment(TranscodeSession session)
+    {
+        if (session.FirstRunFirstSegmentAt is not null || session.Job is not { } job)
+            return;
+        job.Front();
+        session.FirstRunFirstSegmentAt = job.FirstSegmentAt;
+    }
+
+    private bool IsProbeCached(TranscodeSource source)
+        => _probeCache.TryGetValue(source.Input, out var cached) && DateTimeOffset.UtcNow - cached.At < ProbeCacheTtl;
+
+    private async Task<SourceMediaInfo> ProbeAsync(TranscodeSource source, CancellationToken ct)
+    {
+        if (_probeCache.TryGetValue(source.Input, out var cached) && DateTimeOffset.UtcNow - cached.At < ProbeCacheTtl)
+            return cached.Media;
+        var media = await prober.ProbeAsync(source, ct)
+                    ?? throw new TranscodeException("probe_failed", "ffprobe could not read the source media.", 502);
+        _probeCache[source.Input] = (DateTimeOffset.UtcNow, media);
+        return media;
+    }
+
+    private void PruneProbeCache(DateTimeOffset now)
+    {
+        foreach (var (key, value) in _probeCache)
+        {
+            if (now - value.At > ProbeCacheTtl)
+                _probeCache.TryRemove(key, out _);
+        }
+    }
+}

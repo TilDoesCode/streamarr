@@ -13,6 +13,7 @@ import type { ResolveResponse } from "@/api/types";
 import { errorMessage, streamUrlForPlayback } from "@/api/client";
 import { SESSION_CLEARED_EVENT } from "@/api/token";
 import { formatMs } from "@/lib/utils";
+import { PlaybackModeSwitch, TranscodePreview, type PlaybackMode } from "./playback-transcode";
 
 export function PlaybackPage() {
   // Decoupled from the router (avoids a page↔router import cycle); the playback route
@@ -35,6 +36,7 @@ export function PlaybackPage() {
     ? `${initialReleaseId}\u0000${initialWorkId ?? ""}`
     : null;
   const autoResolveAttempt = useRef<string | null>(cached ? initialResolveKey : null);
+  const [mode, setMode] = useState<PlaybackMode>("direct");
 
   // Search stores the resolve result in the shared query cache. Reusing it here preserves the
   // already-open session; direct links still resolve once, including under React StrictMode.
@@ -83,7 +85,8 @@ export function PlaybackPage() {
         <p className="text-sm text-muted-foreground">
           Direct-play a resolved stream in a plain HTML5 <code>&lt;video&gt;</code> element. This is
           the <strong>architectural canary</strong> (BRIEF §3.1 rule 4): it plays with Jellyfin
-          absent — proving the API is truly interface-agnostic.
+          absent — proving the API is truly interface-agnostic. Streams the browser cannot decode
+          can be played through the server-side transcoder instead.
         </p>
       </div>
 
@@ -132,7 +135,14 @@ export function PlaybackPage() {
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-4">
             {resolved.streamUrl ? (
-              <Player streamUrl={resolved.streamUrl} />
+              <>
+                <PlaybackModeSwitch mode={mode} onChange={setMode} />
+                {mode === "transcode" && streamTokenFromUrl(resolved.streamUrl) ? (
+                  <TranscodePreview key={resolved.streamUrl} streamToken={streamTokenFromUrl(resolved.streamUrl)!} />
+                ) : (
+                  <Player streamUrl={resolved.streamUrl} onUnplayable={() => setMode("transcode")} />
+                )}
+              </>
             ) : (
               <Card>
                 <CardContent className="flex items-center gap-2 pt-6 text-sm text-muted-foreground">
@@ -157,7 +167,7 @@ export function PlaybackPage() {
   );
 }
 
-function Player({ streamUrl }: { streamUrl: string }) {
+function Player({ streamUrl, onUnplayable }: { streamUrl: string; onUnplayable?: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const loadStart = useRef<number | null>(null);
   const seekStart = useRef<number | null>(null);
@@ -235,9 +245,14 @@ function Player({ streamUrl }: { streamUrl: string }) {
         />
 
         {error && (
-          <p className="flex items-center gap-2 text-sm text-destructive">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
             <AlertTriangle className="size-4" /> {error}
-          </p>
+            {onUnplayable && (
+              <Button type="button" size="sm" variant="outline" onClick={onUnplayable}>
+                Play through the server transcoder
+              </Button>
+            )}
+          </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -256,8 +271,8 @@ function Player({ streamUrl }: { streamUrl: string }) {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Direct play only — no transcode. The opaque path token grants access only to this
-          playback session; administrator credentials are never placed in the media URL.
+          Direct play — the original bytes, no transcode. The opaque path token grants access only
+          to this playback session; administrator credentials are never placed in the media URL.
         </p>
       </CardContent>
     </Card>

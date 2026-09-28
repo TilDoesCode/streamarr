@@ -19,6 +19,8 @@ If you already manage containers with Komodo, use the dedicated
 | Guide | Subject |
 |---|---|
 | [Architecture](architecture.md) | The Core, management UI, Jellyfin plugin, and playback lifecycle |
+| [Server-side transcoding](transcoding.md) | ffmpeg → HLS without Jellyfin, hardware acceleration, test lab, and benchmarks |
+| [Viewer accounts and watch state](viewers.md) | Optional viewer accounts separate from admins, sign-in security, resume, next up, and the test harness |
 | [Ranker tuning](ranker-tuning.md) | Release scores, rejection reasons, and custom quality profiles |
 | [Jellyfin compatibility](jellyfin-compatibility.md) | Supported Jellyfin version and upgrade checks |
 | [API reference](api.md) | Authentication and the `/api/v1` contract for other clients |

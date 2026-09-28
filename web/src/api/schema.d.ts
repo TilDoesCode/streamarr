@@ -3528,6 +3528,833 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transcode/{token}/master.m3u8": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcode/{token}/main.m3u8": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcode/{token}/init.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcode/{token}/{segment}.m4s": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                    segment: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcode/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Ends the session and its ffmpeg run; any holder of the playlist capability may stop it. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodingConfigResponse"];
+                        "application/json": components["schemas"]["TranscodingConfigResponse"];
+                        "text/json": components["schemas"]["TranscodingConfigResponse"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TranscodingConfigWrite"];
+                    "text/json": components["schemas"]["TranscodingConfigWrite"];
+                    "application/*+json": components["schemas"]["TranscodingConfigWrite"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodingConfigResponse"];
+                        "application/json": components["schemas"]["TranscodingConfigResponse"];
+                        "text/json": components["schemas"]["TranscodingConfigResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodingCapabilitiesResponse"];
+                        "application/json": components["schemas"]["TranscodingCapabilitiesResponse"];
+                        "text/json": components["schemas"]["TranscodingCapabilitiesResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/capabilities/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-runs detection including the real hardware encode/decode self-tests; poll GET until `detecting` is false. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodingCapabilitiesResponse"];
+                        "application/json": components["schemas"]["TranscodingCapabilitiesResponse"];
+                        "text/json": components["schemas"]["TranscodingCapabilitiesResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodingSampleResponse"][];
+                        "application/json": components["schemas"]["TranscodingSampleResponse"][];
+                        "text/json": components["schemas"]["TranscodingSampleResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/samples/{sampleId}/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    sampleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodingSampleResponse"];
+                        "application/json": components["schemas"]["TranscodingSampleResponse"];
+                        "text/json": components["schemas"]["TranscodingSampleResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/benchmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BenchmarkResponse"][];
+                        "application/json": components["schemas"]["BenchmarkResponse"][];
+                        "text/json": components["schemas"]["BenchmarkResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Queues a flat-out transcode of a test sample with the live pipeline; runs execute one at a time. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BenchmarkCreateRequest"];
+                    "text/json": components["schemas"]["BenchmarkCreateRequest"];
+                    "application/*+json": components["schemas"]["BenchmarkCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BenchmarkResponse"];
+                        "application/json": components["schemas"]["BenchmarkResponse"];
+                        "text/json": components["schemas"]["BenchmarkResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/benchmarks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BenchmarkResponse"];
+                        "application/json": components["schemas"]["BenchmarkResponse"];
+                        "text/json": components["schemas"]["BenchmarkResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodeSessionResponse"][];
+                        "application/json": components["schemas"]["TranscodeSessionResponse"][];
+                        "text/json": components["schemas"]["TranscodeSessionResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Starts an HLS transcode of a live stream capability (or a test sample) and returns its playlist capability. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TranscodeSessionCreateRequest"];
+                    "text/json": components["schemas"]["TranscodeSessionCreateRequest"];
+                    "application/*+json": components["schemas"]["TranscodeSessionCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodeSessionCreatedResponse"];
+                        "application/json": components["schemas"]["TranscodeSessionCreatedResponse"];
+                        "text/json": components["schemas"]["TranscodeSessionCreatedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/sessions/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    handle: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcoding/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Explains what a transcode of this source would do for this client, without starting ffmpeg. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TranscodeSessionCreateRequest"];
+                    "text/json": components["schemas"]["TranscodeSessionCreateRequest"];
+                    "application/*+json": components["schemas"]["TranscodeSessionCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TranscodePlanResponse"];
+                        "application/json": components["schemas"]["TranscodePlanResponse"];
+                        "text/json": components["schemas"]["TranscodePlanResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tv/search": {
         parameters: {
             query?: never;
@@ -3704,10 +4531,2214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config/viewers/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerSettingsResponse"];
+                        "application/json": components["schemas"]["ViewerSettingsResponse"];
+                        "text/json": components["schemas"]["ViewerSettingsResponse"];
+                    };
+                };
+            };
+        };
+        /** Partial update; switching `enabled` off makes every viewer endpoint answer 404 `module_disabled`. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerSettingsWrite"];
+                    "text/json": components["schemas"]["ViewerSettingsWrite"];
+                    "application/*+json": components["schemas"]["ViewerSettingsWrite"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerSettingsResponse"];
+                        "application/json": components["schemas"]["ViewerSettingsResponse"];
+                        "text/json": components["schemas"]["ViewerSettingsResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/settings/test-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sends a test message synchronously and reports transport errors. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerTestEmailRequest"];
+                    "text/json": components["schemas"]["ViewerTestEmailRequest"];
+                    "application/*+json": components["schemas"]["ViewerTestEmailRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/outbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Messages captured while email delivery runs in test-outbox mode (newest first). */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerOutboxMessageResponse"][];
+                        "application/json": components["schemas"]["ViewerOutboxMessageResponse"][];
+                        "text/json": components["schemas"]["ViewerOutboxMessageResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerAdminResponse"][];
+                        "application/json": components["schemas"]["ViewerAdminResponse"][];
+                        "text/json": components["schemas"]["ViewerAdminResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a viewer; an omitted password is generated and returned exactly once. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerCreateRequest"];
+                    "text/json": components["schemas"]["ViewerCreateRequest"];
+                    "application/*+json": components["schemas"]["ViewerCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerCreatedResponse"];
+                        "application/json": components["schemas"]["ViewerCreatedResponse"];
+                        "text/json": components["schemas"]["ViewerCreatedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerAdminResponse"];
+                        "application/json": components["schemas"]["ViewerAdminResponse"];
+                        "text/json": components["schemas"]["ViewerAdminResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerUpdateRequest"];
+                    "text/json": components["schemas"]["ViewerUpdateRequest"];
+                    "application/*+json": components["schemas"]["ViewerUpdateRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerAdminResponse"];
+                        "application/json": components["schemas"]["ViewerAdminResponse"];
+                        "text/json": components["schemas"]["ViewerAdminResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/config/viewers/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign a password (or generate one); signs the viewer out everywhere. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerSetPasswordRequest"];
+                    "text/json": components["schemas"]["ViewerSetPasswordRequest"];
+                    "application/*+json": components["schemas"]["ViewerSetPasswordRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerSetPasswordResponse"];
+                        "application/json": components["schemas"]["ViewerSetPasswordResponse"];
+                        "text/json": components["schemas"]["ViewerSetPasswordResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/{id}/two-factor/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove a lost authenticator and its recovery codes. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/{id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerDeviceSessionResponse"][];
+                        "application/json": components["schemas"]["ViewerDeviceSessionResponse"][];
+                        "text/json": components["schemas"]["ViewerDeviceSessionResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/{id}/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    sessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/{id}/watch-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchHistoryResponse"];
+                        "application/json": components["schemas"]["WatchHistoryResponse"];
+                        "text/json": components["schemas"]["WatchHistoryResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which sign-in methods a viewer client should offer. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerAuthOptionsResponse"];
+                        "application/json": components["schemas"]["ViewerAuthOptionsResponse"];
+                        "text/json": components["schemas"]["ViewerAuthOptionsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in with username (or verified email) and password; may answer with a second-factor challenge. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerLoginRequest"];
+                    "text/json": components["schemas"]["ViewerLoginRequest"];
+                    "application/*+json": components["schemas"]["ViewerLoginRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerAuthResponse"];
+                        "application/json": components["schemas"]["ViewerAuthResponse"];
+                        "text/json": components["schemas"]["ViewerAuthResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Locked */
+                423: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/login/second-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish a sign-in with an authenticator or recovery code. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerSecondFactorRequest"];
+                    "text/json": components["schemas"]["ViewerSecondFactorRequest"];
+                    "application/*+json": components["schemas"]["ViewerSecondFactorRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerAuthResponse"];
+                        "application/json": components["schemas"]["ViewerAuthResponse"];
+                        "text/json": components["schemas"]["ViewerAuthResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/email-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email a one-time sign-in code. Always 202 so the response does not reveal whether the account exists. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerCodeRequest"];
+                    "text/json": components["schemas"]["ViewerCodeRequest"];
+                    "application/*+json": components["schemas"]["ViewerCodeRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/email-code/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in with an emailed one-time code; may answer with a second-factor challenge. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerCodeLoginRequest"];
+                    "text/json": components["schemas"]["ViewerCodeLoginRequest"];
+                    "application/*+json": components["schemas"]["ViewerCodeLoginRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerAuthResponse"];
+                        "application/json": components["schemas"]["ViewerAuthResponse"];
+                        "text/json": components["schemas"]["ViewerAuthResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/password/forgot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email a password-reset code. Always 202 so the response does not reveal whether the account exists. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerCodeRequest"];
+                    "text/json": components["schemas"]["ViewerCodeRequest"];
+                    "application/*+json": components["schemas"]["ViewerCodeRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/password/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set a new password with an emailed reset code; signs the viewer out everywhere. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerPasswordResetRequest"];
+                    "text/json": components["schemas"]["ViewerPasswordResetRequest"];
+                    "application/*+json": components["schemas"]["ViewerPasswordResetRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the refresh token (body or cookie) and receive a fresh access token. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerRefreshRequest"];
+                    "text/json": components["schemas"]["ViewerRefreshRequest"];
+                    "application/*+json": components["schemas"]["ViewerRefreshRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerSessionTokensResponse"];
+                        "application/json": components["schemas"]["ViewerSessionTokensResponse"];
+                        "text/json": components["schemas"]["ViewerSessionTokensResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End the current viewer session (access token, refresh token, or cookies). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerRefreshRequest"];
+                    "text/json": components["schemas"]["ViewerRefreshRequest"];
+                    "application/*+json": components["schemas"]["ViewerRefreshRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerProfileResponse"];
+                        "application/json": components["schemas"]["ViewerProfileResponse"];
+                        "text/json": components["schemas"]["ViewerProfileResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerProfileUpdateRequest"];
+                    "text/json": components["schemas"]["ViewerProfileUpdateRequest"];
+                    "application/*+json": components["schemas"]["ViewerProfileUpdateRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerProfileResponse"];
+                        "application/json": components["schemas"]["ViewerProfileResponse"];
+                        "text/json": components["schemas"]["ViewerProfileResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/viewer/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change the password; every other device is signed out. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerChangePasswordRequest"];
+                    "text/json": components["schemas"]["ViewerChangePasswordRequest"];
+                    "application/*+json": components["schemas"]["ViewerChangePasswordRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set, change or remove the email address; a new address is confirmed with an emailed code. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerEmailChangeRequest"];
+                    "text/json": components["schemas"]["ViewerEmailChangeRequest"];
+                    "application/*+json": components["schemas"]["ViewerEmailChangeRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerEmailChangeResponse"];
+                        "application/json": components["schemas"]["ViewerEmailChangeResponse"];
+                        "text/json": components["schemas"]["ViewerEmailChangeResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/email/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerCodeConfirmRequest"];
+                    "text/json": components["schemas"]["ViewerCodeConfirmRequest"];
+                    "application/*+json": components["schemas"]["ViewerCodeConfirmRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerProfileResponse"];
+                        "application/json": components["schemas"]["ViewerProfileResponse"];
+                        "text/json": components["schemas"]["ViewerProfileResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/two-factor/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start authenticator-app enrolment; returns the secret and an otpauth:// URI for a QR code. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                    "text/json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                    "application/*+json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerTotpSetupResponse"];
+                        "application/json": components["schemas"]["ViewerTotpSetupResponse"];
+                        "text/json": components["schemas"]["ViewerTotpSetupResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/two-factor/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm enrolment with a first code; returns the one-time recovery codes. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerCodeConfirmRequest"];
+                    "text/json": components["schemas"]["ViewerCodeConfirmRequest"];
+                    "application/*+json": components["schemas"]["ViewerCodeConfirmRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerRecoveryCodesResponse"];
+                        "application/json": components["schemas"]["ViewerRecoveryCodesResponse"];
+                        "text/json": components["schemas"]["ViewerRecoveryCodesResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/two-factor/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                    "text/json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                    "application/*+json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/two-factor/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                    "text/json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                    "application/*+json": components["schemas"]["ViewerPasswordConfirmRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerRecoveryCodesResponse"];
+                        "application/json": components["schemas"]["ViewerRecoveryCodesResponse"];
+                        "text/json": components["schemas"]["ViewerRecoveryCodesResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerDeviceSessionResponse"][];
+                        "application/json": components["schemas"]["ViewerDeviceSessionResponse"][];
+                        "text/json": components["schemas"]["ViewerDeviceSessionResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    sessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report playback of a movie or episode (start, periodic progress, stop). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["WatchProgressRequest"];
+                    "text/json": components["schemas"]["WatchProgressRequest"];
+                    "application/*+json": components["schemas"]["WatchProgressRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchStateResponse"];
+                        "application/json": components["schemas"]["WatchStateResponse"];
+                        "text/json": components["schemas"]["WatchStateResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/played": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark works played; season and series ids expand to all aired episodes via TMDB. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["WatchWorkIdsRequest"];
+                    "text/json": components["schemas"]["WatchWorkIdsRequest"];
+                    "application/*+json": components["schemas"]["WatchWorkIdsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchMarkResponse"];
+                        "application/json": components["schemas"]["WatchMarkResponse"];
+                        "text/json": components["schemas"]["WatchMarkResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/unplayed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark works unplayed (clears position, played flag and play count). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["WatchWorkIdsRequest"];
+                    "text/json": components["schemas"]["WatchWorkIdsRequest"];
+                    "application/*+json": components["schemas"]["WatchWorkIdsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchMarkResponse"];
+                        "application/json": components["schemas"]["WatchMarkResponse"];
+                        "text/json": components["schemas"]["WatchMarkResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Continue watching: works with a resume position, most recent first. */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchStateResponse"][];
+                        "application/json": components["schemas"]["WatchStateResponse"][];
+                        "text/json": components["schemas"]["WatchStateResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/resume/{workId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Hide a work from continue watching without changing its played state. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/next-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The next episode to watch for each recently watched series. */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    seriesWorkId?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["NextUpResponse"];
+                        "application/json": components["schemas"]["NextUpResponse"];
+                        "text/json": components["schemas"]["NextUpResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everything the viewer has played or started, most recent first. */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchHistoryResponse"];
+                        "application/json": components["schemas"]["WatchHistoryResponse"];
+                        "text/json": components["schemas"]["WatchHistoryResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Watch state for specific movie/episode ids; unknown ids come back unplayed. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["WatchWorkIdsRequest"];
+                    "text/json": components["schemas"]["WatchWorkIdsRequest"];
+                    "application/*+json": components["schemas"]["WatchWorkIdsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchStateResponse"][];
+                        "application/json": components["schemas"]["WatchStateResponse"][];
+                        "text/json": components["schemas"]["WatchStateResponse"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/watch/series/{seriesWorkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** All recorded episode states of one series. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    seriesWorkId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["WatchStateResponse"][];
+                        "application/json": components["schemas"]["WatchStateResponse"][];
+                        "text/json": components["schemas"]["WatchStateResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/access/{workId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the viewer's age limit allows a work, based on its TMDB certification. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ContentAccessResponse"];
+                        "application/json": components["schemas"]["ContentAccessResponse"];
+                        "text/json": components["schemas"]["ContentAccessResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AcceleratorResponse: {
+            id: string | null;
+            label: string | null;
+            status: string | null;
+            platformSupported: boolean;
+            compiledIn: boolean;
+            devicePresent?: boolean | null;
+            device?: string | null;
+            h264Encode: components["schemas"]["CapabilityCheckResponse"];
+            hevcEncode: components["schemas"]["CapabilityCheckResponse"];
+            decode: components["schemas"]["DecodeCheckResponse"][] | null;
+            toneMapping: components["schemas"]["CapabilityCheckResponse"];
+            notes: string[] | null;
+            /** @description Another GPU that passed this backend's encode test while the configured one failed or is missing. */
+            alternativeDevice?: string | null;
+        };
         ApiKeyResponse: {
             id: string | null;
             name: string | null;
@@ -3837,6 +6868,79 @@ export interface components {
             attemptsTruncated?: boolean;
             attempts?: components["schemas"]["ArticleProviderAttemptResponse"][] | null;
         };
+        BenchmarkCreateRequest: {
+            sampleId: string;
+            /** Format: int32 */
+            maxHeight?: number | null;
+            /** Format: int32 */
+            bitrateKbps?: number | null;
+            /** @description Override the configured backend for this run only (none, videotoolbox, vaapi, qsv, nvenc). */
+            acceleration?: string | null;
+        };
+        BenchmarkResponse: {
+            id: string | null;
+            sampleId: string | null;
+            sampleTitle: string | null;
+            /** Format: int32 */
+            maxHeight: number;
+            /** Format: int32 */
+            bitrateKbps: number;
+            acceleration: string | null;
+            state: string | null;
+            /** Format: double */
+            progress: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            finishedAt?: string | null;
+            error?: string | null;
+            /** Format: int32 */
+            activeTranscodesAtStart?: number;
+            plan?: components["schemas"]["TranscodePlanResponse"];
+            result?: components["schemas"]["BenchmarkResultResponse"];
+        };
+        BenchmarkResultResponse: {
+            verdict: string | null;
+            summary: string | null;
+            /** Format: double */
+            mediaSeconds?: number;
+            /** Format: double */
+            wallSeconds?: number;
+            /** Format: double */
+            speed?: number;
+            /** Format: double */
+            fps?: number;
+            /** Format: double */
+            cpuSeconds?: number;
+            /** Format: double */
+            averageCpuCores?: number;
+            /** Format: double */
+            cpuSharePercent?: number | null;
+            /** Format: double */
+            timeToFirstSegmentMs?: number | null;
+            /** Format: double */
+            seekTimeToFirstSegmentMs?: number | null;
+            /** Format: int32 */
+            segments?: number;
+            /** Format: int32 */
+            expectedSegments?: number;
+            keyframesAligned?: boolean;
+            /** Format: double */
+            maxDriftMs?: number;
+            /** Format: int32 */
+            outputBitrateKbps?: number | null;
+            /** Format: int32 */
+            outputWidth?: number | null;
+            /** Format: int32 */
+            outputHeight?: number | null;
+            hardwareFallbackDetected?: boolean;
+            segmentChecks: components["schemas"]["SegmentCheckResponse"][] | null;
+            warnings: string[] | null;
+            command: string[] | null;
+            log?: string | null;
+        };
         /** @description A byte-space interval expressed as fractions [0..1] of the release payload. */
         ByteRangeResponse: {
             /** Format: double */
@@ -3865,6 +6969,10 @@ export interface components {
             /** Format: date-time */
             lastAccessedAt?: string;
         };
+        CapabilityCheckResponse: {
+            passed?: boolean | null;
+            detail?: string | null;
+        };
         CapsCategory: {
             /** Format: int32 */
             id: number;
@@ -3886,6 +6994,15 @@ export interface components {
         ChangePasswordRequest: {
             currentPassword?: string | null;
             newPassword?: string | null;
+        };
+        ClientProfileRequest: {
+            videoCodecs?: string[] | null;
+            audioCodecs?: string[] | null;
+            containers?: string[] | null;
+            /** Format: int32 */
+            maxAudioChannels?: number | null;
+            supportsHdr?: boolean | null;
+            supports10Bit?: boolean | null;
         };
         ClientSpan: {
             name: string | null;
@@ -3915,6 +7032,17 @@ export interface components {
              */
             inUse?: number;
             providers?: components["schemas"]["ProviderConnectionMetric"][] | null;
+        };
+        ContentAccessResponse: {
+            workId: string | null;
+            allowed: boolean;
+            /** @description unrestricted, within_age_limit, above_age_limit, unrated_allowed, unrated_blocked or rating_unavailable. */
+            reason: string | null;
+            rating?: string | null;
+            /** Format: int32 */
+            minimumAge?: number | null;
+            /** Format: int32 */
+            viewerMaxAge?: number | null;
         };
         CreateApiKeyRequest: {
             name: string | null;
@@ -4000,6 +7128,16 @@ export interface components {
             /** Format: int32 */
             episode?: number | null;
             releases: components["schemas"]["DebugReleaseDto"][] | null;
+        };
+        DecodeCheckResponse: {
+            codec?: string | null;
+            passed?: boolean | null;
+            detail?: string | null;
+        };
+        DeviceCheckResponse: {
+            backend?: string | null;
+            passed?: boolean | null;
+            detail?: string | null;
         };
         /**
          * @description Operational view of one server-managed ephemeral file. SizeBytes counts toward the logical
@@ -4126,6 +7264,21 @@ export interface components {
             connectionBudget?: number | null;
             addStreamarrBadge?: boolean | null;
             addReleaseScoreToName?: boolean | null;
+        };
+        /** @description A GPU visible to the server: a DRM render node (VA-API/QSV) or an NVIDIA GPU (NVENC) in nvidia-smi numbering. */
+        GpuDeviceResponse: {
+            id: string | null;
+            kind: string | null;
+            label: string | null;
+            vendor?: string | null;
+            vendorId?: string | null;
+            deviceId?: string | null;
+            driver?: string | null;
+            name?: string | null;
+            pciSlot?: string | null;
+            /** Format: int32 */
+            index?: number | null;
+            checks: components["schemas"]["DeviceCheckResponse"][] | null;
         };
         HealthResponse: {
             status: string | null;
@@ -4304,6 +7457,33 @@ export interface components {
             indexers?: components["schemas"]["IndexerLatencyMetric"][] | null;
             repairs?: components["schemas"]["RepairMetrics"];
         };
+        NextUpItemResponse: {
+            workId: string | null;
+            seriesWorkId: string | null;
+            seriesTitle: string | null;
+            seriesPosterUrl?: string | null;
+            /** Format: int32 */
+            seasonNumber: number;
+            /** Format: int32 */
+            episodeNumber: number;
+            episodeTitle: string | null;
+            airDate?: string | null;
+            stillUrl?: string | null;
+            /** Format: int32 */
+            runtimeMinutes?: number | null;
+            /** Format: int64 */
+            positionTicks?: number;
+            /** Format: int64 */
+            durationTicks?: number | null;
+            lastWatchedWorkId: string | null;
+            /** Format: date-time */
+            lastActivityAt: string;
+        };
+        NextUpResponse: {
+            items: components["schemas"]["NextUpItemResponse"][] | null;
+            /** @description True when some series could not be checked (e.g. TMDB unavailable). */
+            incomplete: boolean;
+        };
         NotificationConfigResponse: {
             enabled?: boolean;
             appToken?: string | null;
@@ -4416,6 +7596,14 @@ export interface components {
             absoluteEpisodes?: number[] | null;
             seasonPack?: boolean;
             airDate?: string | null;
+        };
+        PlatformResponse: {
+            os?: string | null;
+            architecture?: string | null;
+            inContainer?: boolean;
+            cpuModel?: string | null;
+            /** Format: int32 */
+            logicalCores?: number;
         };
         /**
          * @description Two-phase playback admission (POST/GET /api/v1/playback-sessions): the POST answers
@@ -5019,6 +8207,17 @@ export interface components {
         SearchResponse: {
             results: components["schemas"]["WorkDto"][] | null;
         };
+        SegmentCheckResponse: {
+            /** Format: int32 */
+            index?: number;
+            /** Format: double */
+            startSeconds?: number;
+            /** Format: double */
+            durationSeconds?: number;
+            startsWithKeyframe?: boolean;
+            /** Format: double */
+            driftMs?: number;
+        };
         SessionMetrics: {
             /**
              * Format: int32
@@ -5127,6 +8326,16 @@ export interface components {
             minBytesPerMinute: number;
             /** Format: int64 */
             maxBytesPerMinute: number;
+        };
+        SourceAudioResponse: {
+            /** Format: int32 */
+            index?: number;
+            codec?: string | null;
+            /** Format: int32 */
+            channels?: number;
+            language?: string | null;
+            title?: string | null;
+            isDefault?: boolean;
         };
         /** @description POST /api/v1/repairs — idempotent manual start for a registered release. */
         StartRepairRequest: {
@@ -5307,6 +8516,302 @@ export interface components {
             tmdbId?: number | null;
             profileUrl?: string | null;
         };
+        TranscodeJobResponse: {
+            /** Format: int32 */
+            startSegment: number;
+            /** Format: int32 */
+            front: number;
+            running: boolean;
+            paused: boolean;
+            /** Format: double */
+            fps: number;
+            /** Format: double */
+            speed: number;
+            /** Format: int64 */
+            frames: number;
+            /** Format: double */
+            cpuSeconds: number;
+            /** Format: int32 */
+            exitCode?: number | null;
+            /** @description True when Streamarr stopped the run on purpose (idle player, session closed), so a non-zero exit code is expected. */
+            stoppedByServer?: boolean;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: double */
+            timeToFirstSegmentMs?: number | null;
+            log: string[] | null;
+            command: string[] | null;
+        };
+        TranscodePlanResponse: {
+            directPlayPossible: boolean;
+            directPlayBlockers: string[] | null;
+            source: components["schemas"]["TranscodeSourceResponse"];
+            target: components["schemas"]["TranscodeTargetResponse"];
+            acceleration: string | null;
+            accelerationLabel: string | null;
+            hardwareDecode: boolean;
+            hardwareDecodeReason: string | null;
+            hardwareEncode: boolean;
+            hardwareEncodeReason: string | null;
+            encoder: string | null;
+            toneMap: string | null;
+            deinterlace: boolean;
+            videoFilters: string | null;
+            warnings: string[] | null;
+        };
+        TranscodeSessionCreateRequest: {
+            /** @description A live stream capability returned by /resolve (the path token of `/api/v1/stream/{token}`). */
+            streamToken?: string | null;
+            /** @description A built-in test sample id (administrators only). */
+            sampleId?: string | null;
+            client?: components["schemas"]["ClientProfileRequest"];
+            /** Format: int32 */
+            maxHeight?: number | null;
+            /** Format: int32 */
+            maxBitrateKbps?: number | null;
+            /** Format: int32 */
+            audioStreamIndex?: number | null;
+            /** Format: double */
+            startPositionSeconds?: number | null;
+            clientName?: string | null;
+        };
+        TranscodeSessionCreatedResponse: {
+            handle: string | null;
+            playlistUrl: string | null;
+            mediaPlaylistUrl: string | null;
+            /** Format: double */
+            durationSeconds: number;
+            /** Format: double */
+            segmentLengthSeconds: number;
+            /** Format: int32 */
+            segmentCount: number;
+            plan: components["schemas"]["TranscodePlanResponse"];
+        };
+        TranscodeSessionResponse: {
+            handle: string | null;
+            title: string | null;
+            client: string | null;
+            sourceKind: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastAccessAt: string;
+            /** Format: int32 */
+            segmentCount: number;
+            /** Format: double */
+            segmentLengthSeconds: number;
+            /** Format: int32 */
+            lastRequestedSegment: number;
+            /** Format: int64 */
+            segmentsServed: number;
+            /** Format: int64 */
+            bytesServed: number;
+            /** Format: int32 */
+            restarts: number;
+            /** Format: double */
+            timeToFirstSegmentMs?: number | null;
+            startup?: components["schemas"]["TranscodeStartupResponse"];
+            lastError?: string | null;
+            job?: components["schemas"]["TranscodeJobResponse"];
+            plan: components["schemas"]["TranscodePlanResponse"];
+        };
+        TranscodeSourceResponse: {
+            container?: string | null;
+            /** Format: double */
+            durationSeconds: number;
+            /** Format: int32 */
+            bitrateKbps?: number | null;
+            videoCodec: string | null;
+            videoProfile?: string | null;
+            /** Format: int32 */
+            width: number;
+            /** Format: int32 */
+            height: number;
+            /** Format: int32 */
+            bitDepth: number;
+            /** Format: double */
+            frameRate?: number | null;
+            hdr: string | null;
+            interlaced: boolean;
+            audio: components["schemas"]["SourceAudioResponse"][] | null;
+        };
+        /** @description Where a session's time to first segment went, measured on the server from the create request. */
+        TranscodeStartupResponse: {
+            /** Format: double */
+            capabilitiesMs: number;
+            /** Format: double */
+            probeMs: number;
+            probeCached: boolean;
+            /** Format: double */
+            planMs: number;
+            /** Format: double */
+            spawnMs: number;
+            /**
+             * Format: double
+             * @description Create request → first segment written by ffmpeg.
+             */
+            firstSegmentReadyMs?: number | null;
+            /**
+             * Format: double
+             * @description Create request → first segment delivered to the player.
+             */
+            firstSegmentServedMs?: number | null;
+        };
+        TranscodeTargetResponse: {
+            videoCodec: string | null;
+            /** Format: int32 */
+            width: number;
+            /** Format: int32 */
+            height: number;
+            /** Format: int32 */
+            videoBitrateKbps: number;
+            /** Format: double */
+            frameRate: number;
+            level: string | null;
+            codecs: string | null;
+            /** Format: int32 */
+            audioStreamIndex?: number | null;
+            audioSourceCodec?: string | null;
+            audioCopy?: boolean;
+            /** Format: int32 */
+            audioChannels?: number | null;
+            /** Format: int32 */
+            audioBitrateKbps?: number | null;
+        };
+        TranscodingCapabilitiesResponse: {
+            detecting: boolean;
+            detected: boolean;
+            /** Format: date-time */
+            detectedAt?: string | null;
+            /** Format: double */
+            durationSeconds?: number;
+            ffmpegFound?: boolean;
+            ffmpegPath?: string | null;
+            version?: string | null;
+            /** Format: int32 */
+            majorVersion?: number | null;
+            meetsMinimumVersion?: boolean;
+            ffprobeFound?: boolean;
+            ffprobeVersion?: string | null;
+            error?: string | null;
+            usable?: boolean;
+            softwareToneMapping?: boolean;
+            relativeKeyframeExpressions?: boolean;
+            recommended?: string | null;
+            platform?: components["schemas"]["PlatformResponse"];
+            accelerators?: components["schemas"]["AcceleratorResponse"][] | null;
+            devices?: components["schemas"]["GpuDeviceResponse"][] | null;
+            videoEncoders?: string[] | null;
+            audioEncoders?: string[] | null;
+            hwAccels?: string[] | null;
+            filters?: string[] | null;
+        };
+        TranscodingConfigResponse: {
+            enabled: boolean;
+            acceleration: string | null;
+            vaapiDevice: string | null;
+            /** Format: int32 */
+            nvencDevice: number;
+            hardwareDecoding: boolean;
+            hardwareDecodingAuto: boolean;
+            hardwareDecodingCodecs: string[] | null;
+            hardwareEncoding: boolean;
+            toneMapping: boolean;
+            allowHevcOutput: boolean;
+            encoderPreset: string | null;
+            /** Format: int32 */
+            crf: number;
+            /** Format: int32 */
+            maxBitrateKbps: number;
+            /** Format: int32 */
+            maxHeight: number;
+            /** Format: int32 */
+            audioBitrateKbps: number;
+            allowSurroundAudio: boolean;
+            /** Format: int32 */
+            segmentLengthSeconds: number;
+            throttleEnabled: boolean;
+            /** Format: int32 */
+            throttleBufferSeconds: number;
+            /** Format: int32 */
+            maxConcurrentTranscodes: number;
+            /** Format: int32 */
+            jobIdleTimeoutSeconds: number;
+            /** Format: int32 */
+            sessionIdleTimeoutSeconds: number;
+            /** Format: int32 */
+            segmentRetentionSeconds: number;
+            /** Format: int32 */
+            threads: number;
+            /** @description Host-level paths; only configurable through environment/appsettings. */
+            ffmpegPath: string | null;
+            ffprobePath: string | null;
+            workspacePath: string | null;
+            samplesPath: string | null;
+            /** Format: int64 */
+            workspaceBytes: number;
+            throttleSupported: boolean;
+            accelerations: string[] | null;
+            encoderPresets: string[] | null;
+            decodeCodecs: string[] | null;
+        };
+        /** @description Partial update; omitted fields keep their value. */
+        TranscodingConfigWrite: {
+            enabled?: boolean | null;
+            acceleration?: string | null;
+            vaapiDevice?: string | null;
+            /**
+             * Format: int32
+             * @description NVIDIA GPU index for NVENC/NVDEC in nvidia-smi (PCI bus) order.
+             */
+            nvencDevice?: number | null;
+            hardwareDecoding?: boolean | null;
+            hardwareDecodingAuto?: boolean | null;
+            hardwareDecodingCodecs?: string[] | null;
+            hardwareEncoding?: boolean | null;
+            toneMapping?: boolean | null;
+            allowHevcOutput?: boolean | null;
+            encoderPreset?: string | null;
+            /** Format: int32 */
+            crf?: number | null;
+            /** Format: int32 */
+            maxBitrateKbps?: number | null;
+            /** Format: int32 */
+            maxHeight?: number | null;
+            /** Format: int32 */
+            audioBitrateKbps?: number | null;
+            allowSurroundAudio?: boolean | null;
+            /** Format: int32 */
+            segmentLengthSeconds?: number | null;
+            throttleEnabled?: boolean | null;
+            /** Format: int32 */
+            throttleBufferSeconds?: number | null;
+            /** Format: int32 */
+            maxConcurrentTranscodes?: number | null;
+            /** Format: int32 */
+            jobIdleTimeoutSeconds?: number | null;
+            /** Format: int32 */
+            sessionIdleTimeoutSeconds?: number | null;
+            /** Format: int32 */
+            segmentRetentionSeconds?: number | null;
+            /** Format: int32 */
+            threads?: number | null;
+        };
+        TranscodingSampleResponse: {
+            id: string | null;
+            title: string | null;
+            description: string | null;
+            video: string | null;
+            audio: string | null;
+            /** Format: double */
+            durationSeconds: number;
+            state: string | null;
+            /** Format: double */
+            progress: number;
+            /** Format: int64 */
+            sizeBytes?: number | null;
+            error?: string | null;
+        };
         /** @description One measured stage on the request→first-frame timeline (flamegraph on the stream page). */
         TtffSpanResponse: {
             name: string | null;
@@ -5403,6 +8908,349 @@ export interface components {
         /** @description TMDB-ranked TV series candidates. The endpoint is intentionally capped at three. */
         TvSeriesSearchResponse: {
             results: components["schemas"]["TvSeriesDto"][] | null;
+        };
+        ViewerAdminResponse: {
+            accountType?: string | null;
+            id: string | null;
+            username: string | null;
+            displayName: string | null;
+            email?: string | null;
+            emailVerified?: boolean;
+            pendingEmail?: string | null;
+            disabled?: boolean;
+            /** Format: date-time */
+            lockedUntil?: string | null;
+            mustChangePassword?: boolean;
+            twoFactorEnabled?: boolean;
+            permissions: components["schemas"]["ViewerPermissionsDto"];
+            /** Format: int32 */
+            activeSessions?: number;
+            /** Format: int32 */
+            playedCount?: number;
+            /** Format: int32 */
+            inProgressCount?: number;
+            /** Format: date-time */
+            lastPlayedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            lastLoginAt?: string | null;
+        };
+        ViewerAuthOptionsResponse: {
+            serverName: string | null;
+            passwordLogin: boolean;
+            emailCodeLogin: boolean;
+            passwordReset: boolean;
+            twoFactor: boolean;
+            /** Format: int32 */
+            passwordMinLength: number;
+        };
+        /** @description Either a second-factor challenge or a signed-in session. */
+        ViewerAuthResponse: {
+            /** @description "authenticated" or "mfa_required". */
+            status: string | null;
+            mfaToken?: string | null;
+            /** Format: date-time */
+            mfaExpiresAt?: string | null;
+            session?: components["schemas"]["ViewerSessionTokensResponse"];
+            viewer?: components["schemas"]["ViewerProfileResponse"];
+        };
+        ViewerChangePasswordRequest: {
+            currentPassword?: string | null;
+            newPassword?: string | null;
+        };
+        ViewerCodeConfirmRequest: {
+            code?: string | null;
+        };
+        ViewerCodeLoginRequest: {
+            login?: string | null;
+            code?: string | null;
+            deviceName?: string | null;
+            clientName?: string | null;
+            useCookies?: boolean;
+        };
+        ViewerCodeRequest: {
+            login?: string | null;
+        };
+        ViewerCreateRequest: {
+            username?: string | null;
+            displayName?: string | null;
+            email?: string | null;
+            /** @description Leave empty to generate a password that is returned once. */
+            password?: string | null;
+            /** @description Defaults to true for generated passwords. */
+            mustChangePassword?: boolean | null;
+            permissions?: components["schemas"]["ViewerPermissionsDto"];
+            disabled?: boolean;
+        };
+        ViewerCreatedResponse: {
+            viewer: components["schemas"]["ViewerAdminResponse"];
+            generatedPassword?: string | null;
+        };
+        ViewerDeviceSessionResponse: {
+            id: string | null;
+            deviceName: string | null;
+            clientName: string | null;
+            authMethod: string | null;
+            cookieMode?: boolean;
+            ipAddress?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            lastSeenAt?: string;
+            /** Format: date-time */
+            refreshExpiresAt?: string;
+            current?: boolean;
+        };
+        ViewerEmailChangeRequest: {
+            /** @description New address; empty removes the email from the account. */
+            email?: string | null;
+            currentPassword?: string | null;
+        };
+        ViewerEmailChangeResponse: {
+            verificationSent: boolean;
+            pendingEmail?: string | null;
+        };
+        ViewerEmailSettingsDto: {
+            /** @description disabled, smtp or outbox (test mode: messages are only captured, never sent). */
+            mode?: string | null;
+            smtpHost?: string | null;
+            /** Format: int32 */
+            smtpPort?: number | null;
+            /** @description auto, none, startTls or sslOnConnect. */
+            smtpSecurity?: string | null;
+            smtpUsername?: string | null;
+            /** @description Write-only; reads return a mask when set. Omit or send the mask to keep it, empty string clears it. */
+            smtpPassword?: string | null;
+            fromAddress?: string | null;
+            fromName?: string | null;
+        };
+        ViewerLoginRequest: {
+            /** @description Username or verified email address. */
+            login?: string | null;
+            password?: string | null;
+            deviceName?: string | null;
+            clientName?: string | null;
+            /** @description Browser clients: keep tokens in HttpOnly cookies instead of the response body. */
+            useCookies?: boolean;
+        };
+        ViewerOutboxMessageResponse: {
+            id: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            to: string | null;
+            subject: string | null;
+            kind: string | null;
+            text: string | null;
+        };
+        ViewerPasswordConfirmRequest: {
+            currentPassword?: string | null;
+        };
+        ViewerPasswordResetRequest: {
+            login?: string | null;
+            code?: string | null;
+            newPassword?: string | null;
+        };
+        ViewerPermissionsDto: {
+            /**
+             * Format: int32
+             * @description Highest allowed minimum age (0, 6, 12, 16, 18); null = unrestricted.
+             */
+            maxAge?: number | null;
+            blockUnrated?: boolean;
+            allowTranscoding?: boolean;
+            /**
+             * Format: int32
+             * @description Null = unlimited.
+             */
+            maxConcurrentStreams?: number | null;
+        };
+        ViewerProfileResponse: {
+            accountType?: string | null;
+            id: string | null;
+            username: string | null;
+            displayName: string | null;
+            email?: string | null;
+            emailVerified?: boolean;
+            pendingEmail?: string | null;
+            mustChangePassword?: boolean;
+            twoFactorEnabled?: boolean;
+            /** Format: int32 */
+            recoveryCodesRemaining?: number;
+            permissions: components["schemas"]["ViewerPermissionsDto"];
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            lastLoginAt?: string | null;
+        };
+        ViewerProfileUpdateRequest: {
+            displayName?: string | null;
+        };
+        ViewerRecoveryCodesResponse: {
+            recoveryCodes: string[] | null;
+        };
+        ViewerRefreshRequest: {
+            refreshToken?: string | null;
+        };
+        ViewerSecondFactorRequest: {
+            mfaToken?: string | null;
+            /** @description 6-digit authenticator code or a recovery code. */
+            code?: string | null;
+            deviceName?: string | null;
+            clientName?: string | null;
+            useCookies?: boolean;
+        };
+        ViewerSessionTokensResponse: {
+            sessionId: string | null;
+            tokenType?: string | null;
+            /** @description Omitted in cookie mode. */
+            accessToken?: string | null;
+            /** Format: date-time */
+            accessExpiresAt: string;
+            /** @description Omitted in cookie mode. */
+            refreshToken?: string | null;
+            /** Format: date-time */
+            refreshExpiresAt: string;
+            cookieMode: boolean;
+        };
+        ViewerSetPasswordRequest: {
+            /** @description Leave empty to generate one. */
+            password?: string | null;
+            mustChangePassword?: boolean;
+        };
+        ViewerSetPasswordResponse: {
+            generatedPassword?: string | null;
+        };
+        ViewerSettingsResponse: {
+            enabled: boolean;
+            serverName: string | null;
+            /** Format: int32 */
+            accessTokenMinutes: number;
+            /** Format: int32 */
+            refreshTokenDays: number;
+            /** Format: int32 */
+            maxSessionsPerViewer: number;
+            /** Format: int32 */
+            passwordMinLength: number;
+            /** Format: int32 */
+            lockoutThreshold: number;
+            /** Format: int32 */
+            lockoutMinutes: number;
+            allowPasswordReset: boolean;
+            allowEmailLogin: boolean;
+            allowTotp: boolean;
+            /** Format: int32 */
+            minResumePercent: number;
+            /** Format: int32 */
+            playedPercent: number;
+            /** Format: int32 */
+            minResumeDurationSeconds: number;
+            /** Format: int32 */
+            nextUpCutoffDays: number;
+            email: components["schemas"]["ViewerEmailSettingsDto"];
+            emailDeliveryReady: boolean;
+            /** Format: int32 */
+            viewerCount: number;
+        };
+        ViewerSettingsWrite: {
+            enabled?: boolean | null;
+            serverName?: string | null;
+            /** Format: int32 */
+            accessTokenMinutes?: number | null;
+            /** Format: int32 */
+            refreshTokenDays?: number | null;
+            /** Format: int32 */
+            maxSessionsPerViewer?: number | null;
+            /** Format: int32 */
+            passwordMinLength?: number | null;
+            /** Format: int32 */
+            lockoutThreshold?: number | null;
+            /** Format: int32 */
+            lockoutMinutes?: number | null;
+            allowPasswordReset?: boolean | null;
+            allowEmailLogin?: boolean | null;
+            allowTotp?: boolean | null;
+            /** Format: int32 */
+            minResumePercent?: number | null;
+            /** Format: int32 */
+            playedPercent?: number | null;
+            /** Format: int32 */
+            minResumeDurationSeconds?: number | null;
+            /** Format: int32 */
+            nextUpCutoffDays?: number | null;
+            email?: components["schemas"]["ViewerEmailSettingsDto"];
+        };
+        ViewerTestEmailRequest: {
+            to?: string | null;
+        };
+        ViewerTotpSetupResponse: {
+            secret: string | null;
+            otpAuthUri: string | null;
+            issuer: string | null;
+            accountName: string | null;
+        };
+        ViewerUpdateRequest: {
+            displayName?: string | null;
+            /** @description New address (trusted as verified); empty string removes it; null keeps it. */
+            email?: string | null;
+            disabled?: boolean | null;
+            mustChangePassword?: boolean | null;
+            /** @description Clears an active lockout and the failed-attempt counter. */
+            unlock?: boolean;
+            permissions?: components["schemas"]["ViewerPermissionsDto"];
+        };
+        WatchHistoryResponse: {
+            items: components["schemas"]["WatchStateResponse"][] | null;
+            /** Format: int32 */
+            total: number;
+        };
+        WatchMarkResponse: {
+            workIds: string[] | null;
+            played: boolean;
+        };
+        WatchProgressRequest: {
+            /** @description "start", "progress" or "stop". */
+            event?: string | null;
+            /** @description Canonical movie or episode work id, e.g. `tmdb-movie-603` or `tmdb-tv-1396-s01e01`. */
+            workId?: string | null;
+            /** Format: int64 */
+            positionTicks?: number;
+            /** Format: int64 */
+            durationTicks?: number | null;
+            /** @description Client-chosen id of one playback, used to count a completed play exactly once. */
+            playbackId?: string | null;
+            /** @description Optional: forwards the report to the shared event stream (pre-download, notifications). */
+            releaseId?: string | null;
+            streamToken?: string | null;
+            title?: string | null;
+        };
+        WatchStateResponse: {
+            workId: string | null;
+            kind: string | null;
+            seriesWorkId?: string | null;
+            /** Format: int32 */
+            seasonNumber?: number | null;
+            /** Format: int32 */
+            episodeNumber?: number | null;
+            title?: string | null;
+            /** Format: int64 */
+            positionTicks?: number;
+            /** Format: int64 */
+            durationTicks?: number | null;
+            /** Format: double */
+            progressPercent?: number | null;
+            played?: boolean;
+            /** Format: int32 */
+            playCount?: number;
+            lastReleaseId?: string | null;
+            /** Format: date-time */
+            lastPlayedAt?: string | null;
+            /** Format: date-time */
+            playedAt?: string | null;
+        };
+        WatchWorkIdsRequest: {
+            /** @description Movie/episode ids; for played/unplayed also season (`tmdb-tv-1-s02`) or series (`tmdb-tv-1`) ids. */
+            workIds?: string[] | null;
         };
         /** @description One aggregated work with its ranked releases (BRIEF §6.2 / §7.4). */
         WorkDto: {

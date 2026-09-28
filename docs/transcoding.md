@@ -1,0 +1,275 @@
+# Server-side transcoding
+
+Streamarr can convert a stream that a player cannot decode — MKV, AC-3/E-AC-3/TrueHD
+audio, HEVC or AV1, 10-bit, HDR10/HLG, interlaced MPEG-2 — into browser-safe
+**H.264 + AAC HLS** (fragmented MP4) on the server. It is the first building block for
+standalone clients that do not rely on Jellyfin's transcoder.
+
+The feature is a **separate path**:
+
+- It lives in its own module (`server/src/Streamarr.Server/Transcoding/`) and its own
+  endpoints (`/api/v1/transcoding/*`, `/api/v1/transcode/{capability}/*`).
+- It reads a resolved stream exactly like any other player: over loopback HTTP from
+  `/api/v1/stream/{token}`. Direct play, the Jellyfin plugin, resolve, sessions, and the
+  byte-range stream endpoint are unchanged; stopping a transcode never closes the stream
+  session it reads from.
+- Its settings are stored in their own table and never affect Jellyfin.
+
+```text
+ Usenet ──► /api/v1/stream/{token} ──► (direct play: browser, Jellyfin, mpv …)
+                     │
+                     └─ loopback HTTP ─► ffmpeg ─► fMP4 segments ─► /api/v1/transcode/{capability}/master.m3u8
+                                         ▲                              (hls.js, Safari, TVs)
+                          plan + hardware self-tests
+```
+
+## Quick start
+
+1. Open **Transcoding** in the management UI. The **Overview** tab detects ffmpeg,
+   lists its encoders and filters, and runs a real one-second encode, per-codec decode,
+   and tone-mapping test for every hardware backend on this machine. It tells you in one
+   line whether transcoding works, whether it is hardware accelerated, and — when a
+   working GPU backend is not enabled — offers a one-click switch.
+2. In **Test lab**, run a **benchmark**. Missing test media is generated with ffmpeg on
+   first use (nothing is shipped in the image), then transcoded flat-out with the live
+   pipeline. The result grades speed (× realtime and an estimate of concurrent streams),
+   CPU use, time to first segment, seek-restart latency, keyframe alignment per segment,
+   and whether ffmpeg silently fell back from the GPU to software.
+3. Use the **test player** in the same tab to watch a sample through the real HLS path
+   (hls.js, or native HLS on Safari) with live time-to-first-frame, buffer, dropped-frame,
+   and seek-latency readouts.
+4. In **Playback Preview**, resolve a release and switch the mode from *Direct play* to
+   *Server transcode (HLS)*. If direct play fails, the player offers the switch itself.
+
+### Test samples
+
+| Sample | What it proves |
+|---|---|
+| 1080p H.264 · AC-3 5.1 (MKV) | The common WEB-DL shape; audio and container need the server. |
+| 720p H.264 · AAC (MP4) | A browser-compatible baseline for comparing direct play. |
+| 1080p HEVC Main10 · E-AC-3 5.1 | 10-bit HEVC hardware decode and 10 → 8-bit conversion. |
+| 4K HEVC HDR10 · E-AC-3 5.1 | The worst case: 4K 10-bit decode, downscale, HDR → SDR tone mapping. |
+| 576i MPEG-2 · AC-3 | Deinterlacing and SD scaling. |
+| 1080p AV1 10-bit · Opus 5.1 | AV1 decode (hardware only on recent GPUs). |
+
+Samples are cached in `Streamarr:Transcoding:SamplesPath`; generating the 4K HDR sample
+takes one to two minutes on a small machine.
+
+## Hardware acceleration
+
+| Backend | Platforms | What to do |
+|---|---|---|
+| **VideoToolbox** | macOS (native install, not Docker) | Works with Homebrew ffmpeg. Select *Apple VideoToolbox*. HDR is tone-mapped on the GPU. |
+| **VA-API** | Linux, Intel (Broadwell+) and AMD | Pass the render node into the container and add the host's `render` group (see below). The image ships `intel-media-va-driver-non-free` (amd64) and `mesa-va-drivers`. |
+| **NVENC / NVDEC** | Linux, NVIDIA | Install the NVIDIA Container Toolkit and request the GPU. |
+| **Quick Sync (QSV)** | Linux, Intel | The Ubuntu ffmpeg in the image has no QSV encoders — use VA-API (same hardware), or point `FfmpegPath` at a build with libvpl such as jellyfin-ffmpeg. |
+| Software | everywhere | libx264. Run a benchmark: it reports × realtime and how many similar streams the CPU sustains. |
+
+Docker Compose, Intel/AMD:
+
+```yaml
+services:
+  streamarr:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${RENDER_GID:-105}"   # getent group render | cut -d: -f3 on the host
+```
+
+Docker Compose, NVIDIA:
+
+```yaml
+services:
+  streamarr:
+    gpus: all
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+```
+
+After changing devices, restart the container and press **Re-run hardware detection**.
+Every failed check shows ffmpeg's own error line, and each backend lists concrete setup
+hints (missing device node, missing driver, missing encoder in this ffmpeg build).
+
+Hardware decode is used only for codecs that passed the self-test (or the list you pin
+manually in Settings). Anything the device cannot do falls back to software for that
+stage, and the plan explains why.
+
+### Multiple GPUs
+
+Hosts with more than one GPU (an Intel iGPU plus an NVIDIA card, two NVIDIA cards, Intel
+plus AMD) are common, and the wrong device usually fails silently. Streamarr therefore
+lists every GPU it can see under **Overview → Graphics devices** — DRM render nodes with
+vendor, driver and PCI slot from sysfs, NVIDIA GPUs from `nvidia-smi` — and runs a quick
+H.264 encode on each one in addition to the full self-test on the selected device.
+
+- **VA-API / QSV** use the render node chosen in *Settings → VA-API device*. The dropdown
+  shows every node with its test result; nodes owned by the NVIDIA driver are marked,
+  because they have no VA-API. The render-node order is not stable across hardware: a
+  dedicated card is often `renderD128` and the iGPU `renderD129`.
+- **NVENC / NVDEC** use the GPU chosen in *Settings → NVIDIA GPU*, numbered like
+  `nvidia-smi` (PCI bus order). ffmpeg is pinned to it with `-init_hw_device cuda=cu:N` and
+  `-gpu N`, and every ffmpeg child runs with `CUDA_DEVICE_ORDER=PCI_BUS_ID` so CUDA's
+  numbering matches `nvidia-smi` instead of "fastest first".
+- If the selected device fails but another one passes, the backend card names the working
+  device and offers a one-click switch.
+- **VideoToolbox** always uses the Mac's GPU; macOS does not let ffmpeg choose between GPUs.
+- In Docker you can also expose only one GPU: `devices: ["/dev/dri/renderD129:/dev/dri/renderD129"]`
+  or `NVIDIA_VISIBLE_DEVICES=1` (inside the container that GPU then becomes index 0).
+
+## Time to first frame
+
+The transcoder reads the same stream as direct play, after the same resolve (health
+check, NZB, probe, startup read-ahead). What it adds is: probing the source, starting
+ffmpeg, and encoding the **first whole segment** before anything can be served. The
+Sessions tab shows this split per session (*Startup = probe + ffmpeg start + first segment
+encoded + delivered*); the test player's time to first frame includes creating the session.
+
+Measured with `TranscodingTtffTests` (cold release, simulated provider: 40 ms per command,
+0.25 s per article per connection; 1080p source → 720p with libx264 on an Apple M2 and in
+Docker with Ubuntu's ffmpeg 6.1). *Direct play* is ffmpeg acting as a player (probe, seek
+via the MKV index, first decoded frame):
+
+| After resolve (~4 s in this model, identical for both) | Direct play | Transcode, 3 s segments | 4 s segments |
+|---|---|---|---|
+| Start at 0 s | 0.3 s | 0.33 s | 0.37 s (0.56 s in Docker) |
+| Resume/seek into a cold part at 120 s | 1.2 s | 1.75 s | 1.85 s |
+
+On fast hardware the transcode path adds **0.05–0.3 s at the start and ~0.5 s on a seek
+into data that is not downloaded yet**, almost all of it the first segment: ffmpeg has to
+download and encode 3 s of media past the target before the first byte is servable. The
+server's own overhead is small (probe ~50 ms, ffmpeg start ~20 ms, delivery ~10 ms).
+
+Encoding the first segment dominates on heavy content or weak hardware. Local benchmark,
+first 4 s segment ready (Apple M2):
+
+| Source → output | CPU (libx264 veryfast) | VideoToolbox |
+|---|---|---|
+| 1080p H.264 → 720p | 0.41 s | 0.51 s |
+| 1080p HEVC 10-bit → 1080p | 0.71 s | 0.68 s |
+| 4K HDR10 → 1080p SDR | 1.85 s (no tone mapping available) | 0.72 s |
+| 4K HDR10 → 4K | 3.68 s | 2.01 s |
+
+Levers, in order of effect: hardware acceleration for 4K/HDR, a lower *Max height*, a
+shorter *Segment length* (each second less saves roughly 1/speed seconds per start and
+seek), and a faster preset. The **Test lab benchmark** reports *time to first segment* and
+*seek to first segment* for your hardware. The first transcode right after a server start
+no longer waits for detection: capability detection starts immediately at startup.
+
+## How a transcode works
+
+- **Plan.** ffprobe reads the source once. The planner decides output size (never
+  upscaled, even dimensions), bitrate (capped by settings and the source), H.264 level
+  and RFC 6381 `CODECS`, audio (copy AAC stereo, otherwise AAC stereo or 5.1), hardware
+  decode/encode, tone mapping, and deinterlacing — and records *why* for each decision
+  (`POST /api/v1/transcoding/plan` returns it without starting ffmpeg).
+- **Playlist up front.** The media playlist is a complete VOD playlist computed from the
+  runtime on a fixed segment grid (default 3 s, like Jellyfin), so a player can seek anywhere before
+  anything was transcoded — the same approach as Jellyfin's dynamic HLS.
+- **Keyframe grid.** Video is encoded with `-force_key_frames expr:gte(t,n_forced*L)` (plus a
+  matching GOP for VideoToolbox, QSV, and NVENC), so every segment starts with a keyframe within
+  one frame of `N × L`. On ffmpeg < 6 the expression uses absolute times after a seek.
+- **fMP4 timing.** `-copyts -start_at_zero -avoid_negative_ts make_non_negative` plus
+  `movflags=+frag_discont` keep segment timestamps on the original timeline, so segments
+  of a restarted run line up with the earlier ones. The served `init.mp4` is normalized
+  and identical across restarts.
+- **Segment requests.** A finished segment is served immediately. A segment ffmpeg is
+  about to produce is awaited. A request more than ~24 s beyond the encoder, or before
+  the current run started, restarts ffmpeg with an input seek at that segment
+  (`-ss N×L -start_number N`). ffmpeg writes segments via `temp_file`, so a file that
+  exists is always complete.
+- **Throttling.** When ffmpeg is more than *throttle buffer* seconds ahead of the player
+  it is paused with `SIGSTOP` and resumed with `SIGCONT` when the player catches up
+  (Linux and macOS).
+- **Cleanup.** ffmpeg is stopped after *job idle timeout* without segment requests, the
+  whole session after *session idle timeout*; segments older than *segment retention*
+  behind the playhead are deleted. Sessions never survive a restart.
+- **Capacity.** At most *concurrent transcodes* ffmpeg processes run; a new session beyond
+  that gets `503 transcode_capacity` instead of starving the running ones.
+
+## Settings
+
+Editable in **Transcoding → Settings** (stored in the database):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Enable server transcoding | on | When off, new sessions get `409 transcoding_disabled`. |
+| Acceleration | Software | `none`, `videotoolbox`, `vaapi`, `qsv`, `nvenc`. |
+| VA-API device | `/dev/dri/renderD128` | Render node for VA-API and QSV; picked from the detected GPUs. |
+| NVIDIA GPU | 0 | NVENC/NVDEC GPU in `nvidia-smi` numbering. |
+| Hardware decoding / codecs | on / every validated codec | Pin a manual list to avoid a buggy driver. |
+| Hardware encoding | on | Off keeps GPU decode but encodes with libx264. |
+| HDR tone mapping | on | GPU tone mapping on VideoToolbox and VA-API; CPU tone mapping needs ffmpeg with `zscale`. |
+| Allow HEVC output | off | Only for clients that declare HEVC support. |
+| Encoder preset / CRF | `veryfast` / 23 | libx264/libx265 only. |
+| Max height / max bitrate | 2160 / 20 000 kbps | Clients may request less, never more. |
+| Audio bitrate / allow surround | 192 kbps / off | AAC; 5.1 only for clients that accept it. |
+| Segment length | 3 s | 2–10 s. Shorter segments start and seek faster; see *Time to first frame*. |
+| Concurrent transcodes | 2 | Running ffmpeg processes across all users. |
+| Throttle / buffer | on / 120 s | Pause ffmpeg this far ahead of the player. |
+| ffmpeg threads | 0 (auto) | Limits encoder threads for software encodes. |
+| Job idle / session idle / retention | 60 s / 30 min / 15 min | See *Cleanup*. |
+
+Host-level options (appsettings or environment only):
+
+| Option | Default | Meaning |
+|---|---|---|
+| `Streamarr:Transcoding:FfmpegPath` / `FfprobePath` | `ffmpeg` / `ffprobe` | Binaries to run, e.g. `/usr/lib/jellyfin-ffmpeg/ffmpeg`. |
+| `Streamarr:Transcoding:WorkspacePath` | `cache/transcode` (`/app/data/transcode` in Docker) | Live segments and scratch files. Needs a few hundred MB per active stream. |
+| `Streamarr:Transcoding:SamplesPath` | `cache/transcoding-samples` (`/app/data/transcoding-samples`) | Generated test media (about 100 MB for all samples). |
+| `Streamarr:Transcoding:LocalSourceBaseUrl` | derived from the listen address | Loopback origin ffmpeg uses to read `/api/v1/stream`. Set it if the server only listens on a non-loopback address. |
+| `Streamarr:Transcoding:MaxSessions` | 16 | Sessions (running or idle) kept at once. |
+| `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` | 90 | Longest a segment request waits before `504 segment_timeout`. |
+
+## API
+
+Admin endpoints under `/api/v1/transcoding` manage config, capabilities, samples,
+benchmarks and sessions; `POST /api/v1/transcoding/sessions` (admin **or machine key**)
+starts an HLS rendition of a stream token and returns a playlist capability. Details in
+the [API reference](api.md#11-server-side-transcoding).
+
+## Test harness (development)
+
+| Layer | Where | What it covers |
+|---|---|---|
+| Unit | `server/tests/Streamarr.Server.Tests/Transcoding/*Tests.cs` | Planner decisions, the exact ffmpeg argv per backend, playlist math, ffprobe/`-encoders`/`-filters` parsing for ffmpeg 6–8, settings validation, culture-independent output. |
+| Multi-GPU | `TranscodingMultiGpuTests` | GPU enumeration from fake sysfs/`/dev` trees and `nvidia-smi` output, per-device detection with a scripted ffmpeg (a failing and a working GPU per backend), device pinning in the argv. |
+| TTFF | `TranscodingTtffTests` | Cold-release time to first frame for direct play vs. transcode, start and resume, against a mock provider with realistic latency and throughput; prints the per-stage breakdown. `STREAMARR_TTFF_SEGMENT_SECONDS` compares segment lengths. |
+| Integration | `TranscodingIntegrationTests` | Real server + mock Usenet + **real ffmpeg**: a 3-minute H.264/AC-3 release is transcoded and validated segment by segment (keyframes, timestamps, A/V alignment, continuity across restarts), forward/backward seeks, throttling, idle stop, capacity, capability security, the special samples (10-bit, HDR, interlaced), benchmarks, and that stopping a transcode leaves the direct stream alone. |
+| Player simulator | `server/tools/hlssim` | Plays a rendition like hls.js (buffer target, realtime or faster playhead, scripted seeks, parallel players) against any running server and reports stalls, latencies and segment validation. |
+| UI | `web/src/**/*.test.tsx`, `web/e2e/transcoding-ui.spec.ts` | Component tests plus a Playwright run that detects ffmpeg, benchmarks, plays HLS in Chromium, and switches Playback Preview. |
+
+```bash
+# All transcoding tests (needs ffmpeg on PATH)
+dotnet test server/tests/Streamarr.Server.Tests --filter "FullyQualifiedName~Transcoding"
+
+# The same suite on Linux with Ubuntu's ffmpeg 6.1
+docker run --rm -v "$PWD/server:/src:ro" mcr.microsoft.com/dotnet/sdk:8.0-noble bash -c \
+  'apt-get update -qq && apt-get install -y -qq ffmpeg rsync >/dev/null &&
+   rsync -a --exclude bin --exclude obj /src/ /work/ && cd /work &&
+   dotnet test tests/Streamarr.Server.Tests --filter "FullyQualifiedName~Transcoding"'
+
+# Drive a running server: realtime playback with two seeks, three parallel players
+dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:8080 --password '<admin>' \
+  --sample h264-1080p-ac3 --max-height 720 --rate 1 --seek 6:22,26:2 --concurrency 3 --decode
+```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Overview says *Software fallback — … is not working* | The selected backend failed its self-test. Open its card: each failed check shows ffmpeg's error and the card lists setup hints. |
+| *No /dev/dri devices are visible* | Add `devices` and `group_add` (above) and recreate the container. |
+| HDR looks grey or washed out | Tone mapping is off or unavailable: enable it, use a GPU backend, or an ffmpeg with `zscale` (the Docker image has it). |
+| Hardware passes but the wrong GPU is busy (multi-GPU host) | Check *Overview → Graphics devices*; select the intended render node or NVIDIA GPU in Settings. |
+| Slow start or seeks | Compare *Startup* in the Sessions tab with the benchmark's *time to first segment*; enable hardware acceleration, lower *Max height* or *Segment length*. |
+| `503 transcode_capacity` | All transcode slots are busy; raise *Concurrent transcodes* or stop a session in the *Sessions* tab. |
+| `504 segment_timeout` | ffmpeg could not keep up or the source stalled; check the session's ffmpeg log and the benchmark speed for similar media. |
+| Benchmark verdict *Marginal* or *Too slow* | Enable hardware acceleration, lower *Max height*, or use a faster preset. |
+
+## Current limits
+
+- Video is always re-encoded; stream-copy remuxing (e.g. H.264 in MKV with AC-3 audio)
+  is a planned follow-up.
+- One rendition per session (no adaptive bitrate ladder) and no subtitle tracks yet.
+- The Jellyfin plugin keeps using Jellyfin's own transcoder; this path is for
+  Streamarr's own clients and the management UI.

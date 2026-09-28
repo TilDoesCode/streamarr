@@ -4743,6 +4743,1023 @@
         ]
       }
     },
+    "/api/v1/transcode/{token}/master.m3u8": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcode/{token}/main.m3u8": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcode/{token}/init.mp4": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcode/{token}/{segment}.m4s": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcode/{token}": {
+      "delete": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "summary": "Ends the session and its ffmpeg run; any holder of the playlist capability may stop it.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcoding/config": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingConfigResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingConfigResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Transcoding"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodingConfigWrite"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodingConfigWrite"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodingConfigWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingConfigResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingConfigResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/capabilities": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingCapabilitiesResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingCapabilitiesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingCapabilitiesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/capabilities/refresh": {
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "summary": "Re-runs detection including the real hardware encode/decode self-tests; poll GET until `detecting` is false.",
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingCapabilitiesResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingCapabilitiesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingCapabilitiesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/samples": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TranscodingSampleResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TranscodingSampleResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TranscodingSampleResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/samples/{sampleId}/generate": {
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "parameters": [
+          {
+            "name": "sampleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingSampleResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingSampleResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodingSampleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/benchmarks": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BenchmarkResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BenchmarkResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BenchmarkResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "summary": "Queues a flat-out transcode of a test sample with the live pipeline; runs execute one at a time.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkCreateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkCreateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/benchmarks/{id}": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/sessions": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TranscodeSessionResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TranscodeSessionResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TranscodeSessionResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "summary": "Starts an HLS transcode of a live stream capability (or a test sample) and returns its playlist capability.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodeSessionCreateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodeSessionCreateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodeSessionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodeSessionCreatedResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodeSessionCreatedResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodeSessionCreatedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/sessions/{handle}": {
+      "delete": {
+        "tags": [
+          "Transcoding"
+        ],
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/plan": {
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "summary": "Explains what a transcode of this source would do for this client, without starting ffmpeg.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodeSessionCreateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodeSessionCreateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscodeSessionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodePlanResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodePlanResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscodePlanResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/tv/search": {
       "get": {
         "tags": [
@@ -5000,10 +6017,2906 @@
           }
         ]
       }
+    },
+    "/api/v1/config/viewers/settings": {
+      "get": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettingsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettingsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettingsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "summary": "Partial update; switching `enabled` off makes every viewer endpoint answer 404 `module_disabled`.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSettingsWrite"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSettingsWrite"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSettingsWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettingsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettingsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/settings/test-email": {
+      "post": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "summary": "Sends a test message synchronously and reports transport errors.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerTestEmailRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerTestEmailRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerTestEmailRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/outbox": {
+      "get": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "summary": "Messages captured while email delivery runs in test-outbox mode (newest first).",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerOutboxMessageResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerOutboxMessageResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerOutboxMessageResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers": {
+      "get": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerAdminResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerAdminResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerAdminResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "summary": "Create a viewer; an omitted password is generated and returned exactly once.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCreateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCreateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerCreatedResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerCreatedResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerCreatedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/{id}": {
+      "get": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAdminResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAdminResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAdminResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerUpdateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerUpdateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAdminResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAdminResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAdminResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/{id}/password": {
+      "post": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "summary": "Assign a password (or generate one); signs the viewer out everywhere.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSetPasswordRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSetPasswordRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSetPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSetPasswordResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSetPasswordResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSetPasswordResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/{id}/two-factor/reset": {
+      "post": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "summary": "Remove a lost authenticator and its recovery codes.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/{id}/sessions": {
+      "get": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerDeviceSessionResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerDeviceSessionResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerDeviceSessionResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/{id}/sessions/{sessionId}": {
+      "delete": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/{id}/watch-state": {
+      "get": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "ViewerAdmin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/auth/options": {
+      "get": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Which sign-in methods a viewer client should offer.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthOptionsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthOptionsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthOptionsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/login": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Sign in with username (or verified email) and password; may answer with a second-factor challenge.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerLoginRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerLoginRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Locked",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/login/second-factor": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Finish a sign-in with an authenticator or recovery code.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSecondFactorRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSecondFactorRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerSecondFactorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/email-code": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Email a one-time sign-in code. Always 202 so the response does not reveal whether the account exists.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/email-code/verify": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Sign in with an emailed one-time code; may answer with a second-factor challenge.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeLoginRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeLoginRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerAuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/password/forgot": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Email a password-reset code. Always 202 so the response does not reveal whether the account exists.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/password/reset": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Set a new password with an emailed reset code; signs the viewer out everywhere.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordResetRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordResetRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordResetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/refresh": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "Rotate the refresh token (body or cookie) and receive a fresh access token.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRefreshRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRefreshRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSessionTokensResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSessionTokensResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSessionTokensResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/auth/logout": {
+      "post": {
+        "tags": [
+          "ViewerAuth"
+        ],
+        "summary": "End the current viewer session (access token, refresh token, or cookies).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRefreshRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRefreshRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/viewer/me": {
+      "get": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerProfileUpdateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerProfileUpdateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerProfileUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/password": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "Change the password; every other device is signed out.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerChangePasswordRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerChangePasswordRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerChangePasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/email": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "Set, change or remove the email address; a new address is confirmed with an emailed code.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerEmailChangeRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerEmailChangeRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerEmailChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerEmailChangeResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerEmailChangeResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerEmailChangeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/email/verify": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeConfirmRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeConfirmRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerProfileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/two-factor/setup": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "Start authenticator-app enrolment; returns the secret and an otpauth:// URI for a QR code.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerTotpSetupResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerTotpSetupResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerTotpSetupResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/two-factor/enable": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "Confirm enrolment with a first code; returns the one-time recovery codes.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeConfirmRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeConfirmRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerCodeConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRecoveryCodesResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRecoveryCodesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRecoveryCodesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/two-factor/disable": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/two-factor/recovery-codes": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerPasswordConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRecoveryCodesResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRecoveryCodesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRecoveryCodesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/sessions": {
+      "get": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerDeviceSessionResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerDeviceSessionResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ViewerDeviceSessionResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/sessions/{sessionId}": {
+      "delete": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/progress": {
+      "post": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Report playback of a movie or episode (start, periodic progress, stop).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchProgressRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchProgressRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchProgressRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchStateResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchStateResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchStateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/played": {
+      "post": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Mark works played; season and series ids expand to all aired episodes via TMDB.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchMarkResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchMarkResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchMarkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/unplayed": {
+      "post": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Mark works unplayed (clears position, played flag and play count).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchMarkResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchMarkResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchMarkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/resume": {
+      "get": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Continue watching: works with a resume position, most recent first.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/resume/{workId}": {
+      "delete": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Hide a work from continue watching without changing its played state.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/next-up": {
+      "get": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "The next episode to watch for each recently watched series.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          },
+          {
+            "name": "seriesWorkId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextUpResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextUpResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextUpResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/history": {
+      "get": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Everything the viewer has played or started, most recent first.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/state": {
+      "post": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Watch state for specific movie/episode ids; unknown ids come back unplayed.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchWorkIdsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/watch/series/{seriesWorkId}": {
+      "get": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "All recorded episode states of one series.",
+        "parameters": [
+          {
+            "name": "seriesWorkId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchStateResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/access/{workId}": {
+      "get": {
+        "tags": [
+          "ViewerWatch"
+        ],
+        "summary": "Whether the viewer's age limit allows a work, based on its TMDB certification.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAccessResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAccessResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "AcceleratorResponse": {
+        "required": [
+          "compiledIn",
+          "decode",
+          "h264Encode",
+          "hevcEncode",
+          "id",
+          "label",
+          "notes",
+          "platformSupported",
+          "status",
+          "toneMapping"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "platformSupported": {
+            "type": "boolean"
+          },
+          "compiledIn": {
+            "type": "boolean"
+          },
+          "devicePresent": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "device": {
+            "type": "string",
+            "nullable": true
+          },
+          "h264Encode": {
+            "$ref": "#/components/schemas/CapabilityCheckResponse"
+          },
+          "hevcEncode": {
+            "$ref": "#/components/schemas/CapabilityCheckResponse"
+          },
+          "decode": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecodeCheckResponse"
+            },
+            "nullable": true
+          },
+          "toneMapping": {
+            "$ref": "#/components/schemas/CapabilityCheckResponse"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "alternativeDevice": {
+            "type": "string",
+            "description": "Another GPU that passed this backend's encode test while the configured one failed or is missing.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ApiKeyResponse": {
         "required": [
           "id",
@@ -5327,6 +9240,231 @@
         "additionalProperties": false,
         "description": "Current transfer state and diagnostic evidence for one ordered release article."
       },
+      "BenchmarkCreateRequest": {
+        "required": [
+          "sampleId"
+        ],
+        "type": "object",
+        "properties": {
+          "sampleId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxHeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "bitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "acceleration": {
+            "maxLength": 16,
+            "type": "string",
+            "description": "Override the configured backend for this run only (none, videotoolbox, vaapi, qsv, nvenc).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BenchmarkResponse": {
+        "required": [
+          "acceleration",
+          "bitrateKbps",
+          "createdAt",
+          "id",
+          "maxHeight",
+          "progress",
+          "sampleId",
+          "sampleTitle",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "sampleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sampleTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "maxHeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "bitrateKbps": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "acceleration": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "progress": {
+            "type": "number",
+            "format": "double"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "activeTranscodesAtStart": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/TranscodePlanResponse"
+          },
+          "result": {
+            "$ref": "#/components/schemas/BenchmarkResultResponse"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BenchmarkResultResponse": {
+        "required": [
+          "command",
+          "segmentChecks",
+          "summary",
+          "verdict",
+          "warnings"
+        ],
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "nullable": true
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "mediaSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "wallSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "speed": {
+            "type": "number",
+            "format": "double"
+          },
+          "fps": {
+            "type": "number",
+            "format": "double"
+          },
+          "cpuSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "averageCpuCores": {
+            "type": "number",
+            "format": "double"
+          },
+          "cpuSharePercent": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "timeToFirstSegmentMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "seekTimeToFirstSegmentMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "segments": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "expectedSegments": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "keyframesAligned": {
+            "type": "boolean"
+          },
+          "maxDriftMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "outputBitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "outputWidth": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "outputHeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "hardwareFallbackDetected": {
+            "type": "boolean"
+          },
+          "segmentChecks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SegmentCheckResponse"
+            },
+            "nullable": true
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "log": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ByteRangeResponse": {
         "type": "object",
         "properties": {
@@ -5398,6 +9536,20 @@
         },
         "additionalProperties": false,
         "description": "One release whose source NZB is available from Core's persistent cache."
+      },
+      "CapabilityCheckResponse": {
+        "type": "object",
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "CapsCategory": {
         "required": [
@@ -5482,6 +9634,49 @@
         "additionalProperties": false,
         "description": "Body of POST /api/v1/auth/password — admin self-service password change."
       },
+      "ClientProfileRequest": {
+        "type": "object",
+        "properties": {
+          "videoCodecs": {
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "audioCodecs": {
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "containers": {
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "maxAudioChannels": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "supportsHdr": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "supports10Bit": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ClientSpan": {
         "required": [
           "durationMs",
@@ -5545,6 +9740,43 @@
             "items": {
               "$ref": "#/components/schemas/ProviderConnectionMetric"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContentAccessResponse": {
+        "required": [
+          "allowed",
+          "reason",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "allowed": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "description": "unrestricted, within_age_limit, above_age_limit, unrated_allowed, unrated_blocked or rating_unavailable.",
+            "nullable": true
+          },
+          "rating": {
+            "type": "string",
+            "nullable": true
+          },
+          "minimumAge": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "viewerMaxAge": {
+            "type": "integer",
+            "format": "int32",
             "nullable": true
           }
         },
@@ -5836,6 +10068,42 @@
             "items": {
               "$ref": "#/components/schemas/DebugReleaseDto"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecodeCheckResponse": {
+        "type": "object",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "passed": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeviceCheckResponse": {
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string",
+            "nullable": true
+          },
+          "passed": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -6178,6 +10446,67 @@
         },
         "additionalProperties": false,
         "description": "Write model for general config. Secret Streamarr.Server.Config.GeneralConfigWrite.TmdbApiKey is write-only."
+      },
+      "GpuDeviceResponse": {
+        "required": [
+          "checks",
+          "id",
+          "kind",
+          "label"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendor": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "driver": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "pciSlot": {
+            "type": "string",
+            "nullable": true
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceCheckResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A GPU visible to the server: a DRM render node (VA-API/QSV) or an NVIDIA GPU (NVENC) in nvidia-smi numbering."
       },
       "HealthResponse": {
         "required": [
@@ -6770,6 +11099,101 @@
         "additionalProperties": false,
         "description": "Snapshot returned by GET /api/v1/metrics (BRIEF §10-M7 observability): live sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency."
       },
+      "NextUpItemResponse": {
+        "required": [
+          "episodeNumber",
+          "episodeTitle",
+          "lastActivityAt",
+          "lastWatchedWorkId",
+          "seasonNumber",
+          "seriesTitle",
+          "seriesWorkId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesPosterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episodeNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episodeTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "stillUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "positionTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lastWatchedWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NextUpResponse": {
+        "required": [
+          "incomplete",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NextUpItemResponse"
+            },
+            "nullable": true
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "True when some series could not be checked (e.g. TMDB unavailable)."
+          }
+        },
+        "additionalProperties": false
+      },
       "NotificationConfigResponse": {
         "type": "object",
         "properties": {
@@ -7101,6 +11525,31 @@
         },
         "additionalProperties": false,
         "description": "The raw parser output for a release (BRIEF §7.1), surfaced for tuning."
+      },
+      "PlatformResponse": {
+        "type": "object",
+        "properties": {
+          "os": {
+            "type": "string",
+            "nullable": true
+          },
+          "architecture": {
+            "type": "string",
+            "nullable": true
+          },
+          "inContainer": {
+            "type": "boolean"
+          },
+          "cpuModel": {
+            "type": "string",
+            "nullable": true
+          },
+          "logicalCores": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
       },
       "PlaybackAdmissionResponse": {
         "required": [
@@ -8739,6 +13188,31 @@
         "additionalProperties": false,
         "description": "Response of GET /api/v1/search — only works with at least one accepted release;\r\nrejected releases remain available exclusively through the debug contract."
       },
+      "SegmentCheckResponse": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "startSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "durationSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "startsWithKeyframe": {
+            "type": "boolean"
+          },
+          "driftMs": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "SessionMetrics": {
         "type": "object",
         "properties": {
@@ -8977,6 +13451,35 @@
           "maxBytesPerMinute": {
             "type": "integer",
             "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceAudioResponse": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "channels": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -9489,6 +13992,994 @@
         },
         "additionalProperties": false
       },
+      "TranscodeJobResponse": {
+        "required": [
+          "command",
+          "cpuSeconds",
+          "fps",
+          "frames",
+          "front",
+          "log",
+          "paused",
+          "running",
+          "speed",
+          "startedAt",
+          "startSegment"
+        ],
+        "type": "object",
+        "properties": {
+          "startSegment": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "front": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "fps": {
+            "type": "number",
+            "format": "double"
+          },
+          "speed": {
+            "type": "number",
+            "format": "double"
+          },
+          "frames": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cpuSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "stoppedByServer": {
+            "type": "boolean",
+            "description": "True when Streamarr stopped the run on purpose (idle player, session closed), so a non-zero exit code is expected."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeToFirstSegmentMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "log": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodePlanResponse": {
+        "required": [
+          "acceleration",
+          "accelerationLabel",
+          "deinterlace",
+          "directPlayBlockers",
+          "directPlayPossible",
+          "encoder",
+          "hardwareDecode",
+          "hardwareDecodeReason",
+          "hardwareEncode",
+          "hardwareEncodeReason",
+          "source",
+          "target",
+          "toneMap",
+          "videoFilters",
+          "warnings"
+        ],
+        "type": "object",
+        "properties": {
+          "directPlayPossible": {
+            "type": "boolean"
+          },
+          "directPlayBlockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "source": {
+            "$ref": "#/components/schemas/TranscodeSourceResponse"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TranscodeTargetResponse"
+          },
+          "acceleration": {
+            "type": "string",
+            "nullable": true
+          },
+          "accelerationLabel": {
+            "type": "string",
+            "nullable": true
+          },
+          "hardwareDecode": {
+            "type": "boolean"
+          },
+          "hardwareDecodeReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "hardwareEncode": {
+            "type": "boolean"
+          },
+          "hardwareEncodeReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "encoder": {
+            "type": "string",
+            "nullable": true
+          },
+          "toneMap": {
+            "type": "string",
+            "nullable": true
+          },
+          "deinterlace": {
+            "type": "boolean"
+          },
+          "videoFilters": {
+            "type": "string",
+            "nullable": true
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodeSessionCreateRequest": {
+        "type": "object",
+        "properties": {
+          "streamToken": {
+            "maxLength": 128,
+            "type": "string",
+            "description": "A live stream capability returned by /resolve (the path token of `/api/v1/stream/{token}`).",
+            "nullable": true
+          },
+          "sampleId": {
+            "maxLength": 64,
+            "type": "string",
+            "description": "A built-in test sample id (administrators only).",
+            "nullable": true
+          },
+          "client": {
+            "$ref": "#/components/schemas/ClientProfileRequest"
+          },
+          "maxHeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxBitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "audioStreamIndex": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "startPositionSeconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "clientName": {
+            "maxLength": 64,
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodeSessionCreatedResponse": {
+        "required": [
+          "durationSeconds",
+          "handle",
+          "mediaPlaylistUrl",
+          "plan",
+          "playlistUrl",
+          "segmentCount",
+          "segmentLengthSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string",
+            "nullable": true
+          },
+          "playlistUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "mediaPlaylistUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "segmentLengthSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "segmentCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/TranscodePlanResponse"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodeSessionResponse": {
+        "required": [
+          "bytesServed",
+          "client",
+          "createdAt",
+          "handle",
+          "lastAccessAt",
+          "lastRequestedSegment",
+          "plan",
+          "restarts",
+          "segmentCount",
+          "segmentLengthSeconds",
+          "segmentsServed",
+          "sourceKind",
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "client": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAccessAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "segmentCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segmentLengthSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "lastRequestedSegment": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segmentsServed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "bytesServed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "restarts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "timeToFirstSegmentMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "startup": {
+            "$ref": "#/components/schemas/TranscodeStartupResponse"
+          },
+          "lastError": {
+            "type": "string",
+            "nullable": true
+          },
+          "job": {
+            "$ref": "#/components/schemas/TranscodeJobResponse"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/TranscodePlanResponse"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodeSourceResponse": {
+        "required": [
+          "audio",
+          "bitDepth",
+          "durationSeconds",
+          "hdr",
+          "height",
+          "interlaced",
+          "videoCodec",
+          "width"
+        ],
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "bitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "videoCodec": {
+            "type": "string",
+            "nullable": true
+          },
+          "videoProfile": {
+            "type": "string",
+            "nullable": true
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "bitDepth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameRate": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "hdr": {
+            "type": "string",
+            "nullable": true
+          },
+          "interlaced": {
+            "type": "boolean"
+          },
+          "audio": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceAudioResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodeStartupResponse": {
+        "required": [
+          "capabilitiesMs",
+          "planMs",
+          "probeCached",
+          "probeMs",
+          "spawnMs"
+        ],
+        "type": "object",
+        "properties": {
+          "capabilitiesMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "probeMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "probeCached": {
+            "type": "boolean"
+          },
+          "planMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "spawnMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "firstSegmentReadyMs": {
+            "type": "number",
+            "description": "Create request → first segment written by ffmpeg.",
+            "format": "double",
+            "nullable": true
+          },
+          "firstSegmentServedMs": {
+            "type": "number",
+            "description": "Create request → first segment delivered to the player.",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Where a session's time to first segment went, measured on the server from the create request."
+      },
+      "TranscodeTargetResponse": {
+        "required": [
+          "codecs",
+          "frameRate",
+          "height",
+          "level",
+          "videoBitrateKbps",
+          "videoCodec",
+          "width"
+        ],
+        "type": "object",
+        "properties": {
+          "videoCodec": {
+            "type": "string",
+            "nullable": true
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "videoBitrateKbps": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "level": {
+            "type": "string",
+            "nullable": true
+          },
+          "codecs": {
+            "type": "string",
+            "nullable": true
+          },
+          "audioStreamIndex": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "audioSourceCodec": {
+            "type": "string",
+            "nullable": true
+          },
+          "audioCopy": {
+            "type": "boolean"
+          },
+          "audioChannels": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "audioBitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodingCapabilitiesResponse": {
+        "required": [
+          "detected",
+          "detecting"
+        ],
+        "type": "object",
+        "properties": {
+          "detecting": {
+            "type": "boolean"
+          },
+          "detected": {
+            "type": "boolean"
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "durationSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "ffmpegFound": {
+            "type": "boolean"
+          },
+          "ffmpegPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "version": {
+            "type": "string",
+            "nullable": true
+          },
+          "majorVersion": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "meetsMinimumVersion": {
+            "type": "boolean"
+          },
+          "ffprobeFound": {
+            "type": "boolean"
+          },
+          "ffprobeVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "usable": {
+            "type": "boolean"
+          },
+          "softwareToneMapping": {
+            "type": "boolean"
+          },
+          "relativeKeyframeExpressions": {
+            "type": "boolean"
+          },
+          "recommended": {
+            "type": "string",
+            "nullable": true
+          },
+          "platform": {
+            "$ref": "#/components/schemas/PlatformResponse"
+          },
+          "accelerators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcceleratorResponse"
+            },
+            "nullable": true
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GpuDeviceResponse"
+            },
+            "nullable": true
+          },
+          "videoEncoders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "audioEncoders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "hwAccels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodingConfigResponse": {
+        "required": [
+          "acceleration",
+          "accelerations",
+          "allowHevcOutput",
+          "allowSurroundAudio",
+          "audioBitrateKbps",
+          "crf",
+          "decodeCodecs",
+          "enabled",
+          "encoderPreset",
+          "encoderPresets",
+          "ffmpegPath",
+          "ffprobePath",
+          "hardwareDecoding",
+          "hardwareDecodingAuto",
+          "hardwareDecodingCodecs",
+          "hardwareEncoding",
+          "jobIdleTimeoutSeconds",
+          "maxBitrateKbps",
+          "maxConcurrentTranscodes",
+          "maxHeight",
+          "nvencDevice",
+          "samplesPath",
+          "segmentLengthSeconds",
+          "segmentRetentionSeconds",
+          "sessionIdleTimeoutSeconds",
+          "threads",
+          "throttleBufferSeconds",
+          "throttleEnabled",
+          "throttleSupported",
+          "toneMapping",
+          "vaapiDevice",
+          "workspaceBytes",
+          "workspacePath"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "acceleration": {
+            "type": "string",
+            "nullable": true
+          },
+          "vaapiDevice": {
+            "type": "string",
+            "nullable": true
+          },
+          "nvencDevice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hardwareDecoding": {
+            "type": "boolean"
+          },
+          "hardwareDecodingAuto": {
+            "type": "boolean"
+          },
+          "hardwareDecodingCodecs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "hardwareEncoding": {
+            "type": "boolean"
+          },
+          "toneMapping": {
+            "type": "boolean"
+          },
+          "allowHevcOutput": {
+            "type": "boolean"
+          },
+          "encoderPreset": {
+            "type": "string",
+            "nullable": true
+          },
+          "crf": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxBitrateKbps": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxHeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "audioBitrateKbps": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allowSurroundAudio": {
+            "type": "boolean"
+          },
+          "segmentLengthSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "throttleEnabled": {
+            "type": "boolean"
+          },
+          "throttleBufferSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxConcurrentTranscodes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "jobIdleTimeoutSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sessionIdleTimeoutSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segmentRetentionSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "threads": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ffmpegPath": {
+            "type": "string",
+            "description": "Host-level paths; only configurable through environment/appsettings.",
+            "nullable": true
+          },
+          "ffprobePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "workspacePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "samplesPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "workspaceBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "throttleSupported": {
+            "type": "boolean"
+          },
+          "accelerations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "encoderPresets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "decodeCodecs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TranscodingConfigWrite": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "acceleration": {
+            "type": "string",
+            "nullable": true
+          },
+          "vaapiDevice": {
+            "maxLength": 64,
+            "type": "string",
+            "nullable": true
+          },
+          "nvencDevice": {
+            "maximum": 15,
+            "minimum": 0,
+            "type": "integer",
+            "description": "NVIDIA GPU index for NVENC/NVDEC in nvidia-smi (PCI bus) order.",
+            "format": "int32",
+            "nullable": true
+          },
+          "hardwareDecoding": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "hardwareDecodingAuto": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "hardwareDecodingCodecs": {
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "hardwareEncoding": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "toneMapping": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "allowHevcOutput": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "encoderPreset": {
+            "maxLength": 16,
+            "type": "string",
+            "nullable": true
+          },
+          "crf": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxBitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxHeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "audioBitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "allowSurroundAudio": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "segmentLengthSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "throttleEnabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "throttleBufferSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxConcurrentTranscodes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "jobIdleTimeoutSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "sessionIdleTimeoutSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "segmentRetentionSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "threads": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Partial update; omitted fields keep their value."
+      },
+      "TranscodingSampleResponse": {
+        "required": [
+          "audio",
+          "description",
+          "durationSeconds",
+          "id",
+          "progress",
+          "state",
+          "title",
+          "video"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "video": {
+            "type": "string",
+            "nullable": true
+          },
+          "audio": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "progress": {
+            "type": "number",
+            "format": "double"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "TtffSpanResponse": {
         "required": [
           "category",
@@ -9846,6 +15337,1097 @@
         "additionalProperties": false,
         "description": "TMDB-ranked TV series candidates. The endpoint is intentionally capped at three."
       },
+      "ViewerAdminResponse": {
+        "required": [
+          "displayName",
+          "id",
+          "permissions",
+          "username"
+        ],
+        "type": "object",
+        "properties": {
+          "accountType": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "pendingEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "lockedUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "mustChangePassword": {
+            "type": "boolean"
+          },
+          "twoFactorEnabled": {
+            "type": "boolean"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/ViewerPermissionsDto"
+          },
+          "activeSessions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "playedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inProgressCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastPlayedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerAuthOptionsResponse": {
+        "required": [
+          "emailCodeLogin",
+          "passwordLogin",
+          "passwordMinLength",
+          "passwordReset",
+          "serverName",
+          "twoFactor"
+        ],
+        "type": "object",
+        "properties": {
+          "serverName": {
+            "type": "string",
+            "nullable": true
+          },
+          "passwordLogin": {
+            "type": "boolean"
+          },
+          "emailCodeLogin": {
+            "type": "boolean"
+          },
+          "passwordReset": {
+            "type": "boolean"
+          },
+          "twoFactor": {
+            "type": "boolean"
+          },
+          "passwordMinLength": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerAuthResponse": {
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "\"authenticated\" or \"mfa_required\".",
+            "nullable": true
+          },
+          "mfaToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "mfaExpiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "session": {
+            "$ref": "#/components/schemas/ViewerSessionTokensResponse"
+          },
+          "viewer": {
+            "$ref": "#/components/schemas/ViewerProfileResponse"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Either a second-factor challenge or a signed-in session."
+      },
+      "ViewerChangePasswordRequest": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "nullable": true
+          },
+          "newPassword": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerCodeConfirmRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerCodeLoginRequest": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "clientName": {
+            "type": "string",
+            "nullable": true
+          },
+          "useCookies": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerCodeRequest": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerCreateRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "password": {
+            "type": "string",
+            "description": "Leave empty to generate a password that is returned once.",
+            "nullable": true
+          },
+          "mustChangePassword": {
+            "type": "boolean",
+            "description": "Defaults to true for generated passwords.",
+            "nullable": true
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/ViewerPermissionsDto"
+          },
+          "disabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerCreatedResponse": {
+        "required": [
+          "viewer"
+        ],
+        "type": "object",
+        "properties": {
+          "viewer": {
+            "$ref": "#/components/schemas/ViewerAdminResponse"
+          },
+          "generatedPassword": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerDeviceSessionResponse": {
+        "required": [
+          "authMethod",
+          "clientName",
+          "deviceName",
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "clientName": {
+            "type": "string",
+            "nullable": true
+          },
+          "authMethod": {
+            "type": "string",
+            "nullable": true
+          },
+          "cookieMode": {
+            "type": "boolean"
+          },
+          "ipAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "refreshExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerEmailChangeRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "New address; empty removes the email from the account.",
+            "nullable": true
+          },
+          "currentPassword": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerEmailChangeResponse": {
+        "required": [
+          "verificationSent"
+        ],
+        "type": "object",
+        "properties": {
+          "verificationSent": {
+            "type": "boolean"
+          },
+          "pendingEmail": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerEmailSettingsDto": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "disabled, smtp or outbox (test mode: messages are only captured, never sent).",
+            "nullable": true
+          },
+          "smtpHost": {
+            "type": "string",
+            "nullable": true
+          },
+          "smtpPort": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "smtpSecurity": {
+            "type": "string",
+            "description": "auto, none, startTls or sslOnConnect.",
+            "nullable": true
+          },
+          "smtpUsername": {
+            "type": "string",
+            "nullable": true
+          },
+          "smtpPassword": {
+            "type": "string",
+            "description": "Write-only; reads return a mask when set. Omit or send the mask to keep it, empty string clears it.",
+            "nullable": true
+          },
+          "fromAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "fromName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerLoginRequest": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string",
+            "description": "Username or verified email address.",
+            "nullable": true
+          },
+          "password": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "clientName": {
+            "type": "string",
+            "nullable": true
+          },
+          "useCookies": {
+            "type": "boolean",
+            "description": "Browser clients: keep tokens in HttpOnly cookies instead of the response body."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerOutboxMessageResponse": {
+        "required": [
+          "createdAt",
+          "id",
+          "kind",
+          "subject",
+          "text",
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerPasswordConfirmRequest": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerPasswordResetRequest": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "newPassword": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerPermissionsDto": {
+        "type": "object",
+        "properties": {
+          "maxAge": {
+            "type": "integer",
+            "description": "Highest allowed minimum age (0, 6, 12, 16, 18); null = unrestricted.",
+            "format": "int32",
+            "nullable": true
+          },
+          "blockUnrated": {
+            "type": "boolean"
+          },
+          "allowTranscoding": {
+            "type": "boolean"
+          },
+          "maxConcurrentStreams": {
+            "type": "integer",
+            "description": "Null = unlimited.",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerProfileResponse": {
+        "required": [
+          "displayName",
+          "id",
+          "permissions",
+          "username"
+        ],
+        "type": "object",
+        "properties": {
+          "accountType": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "pendingEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "mustChangePassword": {
+            "type": "boolean"
+          },
+          "twoFactorEnabled": {
+            "type": "boolean"
+          },
+          "recoveryCodesRemaining": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/ViewerPermissionsDto"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerProfileUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerRecoveryCodesResponse": {
+        "required": [
+          "recoveryCodes"
+        ],
+        "type": "object",
+        "properties": {
+          "recoveryCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerRefreshRequest": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerSecondFactorRequest": {
+        "type": "object",
+        "properties": {
+          "mfaToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "description": "6-digit authenticator code or a recovery code.",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "clientName": {
+            "type": "string",
+            "nullable": true
+          },
+          "useCookies": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerSessionTokensResponse": {
+        "required": [
+          "accessExpiresAt",
+          "cookieMode",
+          "refreshExpiresAt",
+          "sessionId"
+        ],
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "tokenType": {
+            "type": "string",
+            "nullable": true
+          },
+          "accessToken": {
+            "type": "string",
+            "description": "Omitted in cookie mode.",
+            "nullable": true
+          },
+          "accessExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "Omitted in cookie mode.",
+            "nullable": true
+          },
+          "refreshExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cookieMode": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerSetPasswordRequest": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Leave empty to generate one.",
+            "nullable": true
+          },
+          "mustChangePassword": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerSetPasswordResponse": {
+        "type": "object",
+        "properties": {
+          "generatedPassword": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerSettingsResponse": {
+        "required": [
+          "accessTokenMinutes",
+          "allowEmailLogin",
+          "allowPasswordReset",
+          "allowTotp",
+          "email",
+          "emailDeliveryReady",
+          "enabled",
+          "lockoutMinutes",
+          "lockoutThreshold",
+          "maxSessionsPerViewer",
+          "minResumeDurationSeconds",
+          "minResumePercent",
+          "nextUpCutoffDays",
+          "passwordMinLength",
+          "playedPercent",
+          "refreshTokenDays",
+          "serverName",
+          "viewerCount"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "serverName": {
+            "type": "string",
+            "nullable": true
+          },
+          "accessTokenMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "refreshTokenDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxSessionsPerViewer": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "passwordMinLength": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lockoutThreshold": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lockoutMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allowPasswordReset": {
+            "type": "boolean"
+          },
+          "allowEmailLogin": {
+            "type": "boolean"
+          },
+          "allowTotp": {
+            "type": "boolean"
+          },
+          "minResumePercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "playedPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "minResumeDurationSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nextUpCutoffDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "email": {
+            "$ref": "#/components/schemas/ViewerEmailSettingsDto"
+          },
+          "emailDeliveryReady": {
+            "type": "boolean"
+          },
+          "viewerCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerSettingsWrite": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "serverName": {
+            "type": "string",
+            "nullable": true
+          },
+          "accessTokenMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "refreshTokenDays": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxSessionsPerViewer": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "passwordMinLength": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "lockoutThreshold": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "lockoutMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "allowPasswordReset": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "allowEmailLogin": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "allowTotp": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "minResumePercent": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "playedPercent": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "minResumeDurationSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "nextUpCutoffDays": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "email": {
+            "$ref": "#/components/schemas/ViewerEmailSettingsDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerTestEmailRequest": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerTotpSetupResponse": {
+        "required": [
+          "accountName",
+          "issuer",
+          "otpAuthUri",
+          "secret"
+        ],
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "nullable": true
+          },
+          "otpAuthUri": {
+            "type": "string",
+            "nullable": true
+          },
+          "issuer": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "description": "New address (trusted as verified); empty string removes it; null keeps it.",
+            "nullable": true
+          },
+          "disabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "mustChangePassword": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "unlock": {
+            "type": "boolean",
+            "description": "Clears an active lockout and the failed-attempt counter."
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/ViewerPermissionsDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchHistoryResponse": {
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchStateResponse"
+            },
+            "nullable": true
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchMarkResponse": {
+        "required": [
+          "played",
+          "workIds"
+        ],
+        "type": "object",
+        "properties": {
+          "workIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "played": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchProgressRequest": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string",
+            "description": "\"start\", \"progress\" or \"stop\".",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "description": "Canonical movie or episode work id, e.g. `tmdb-movie-603` or `tmdb-tv-1396-s01e01`.",
+            "nullable": true
+          },
+          "positionTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "playbackId": {
+            "type": "string",
+            "description": "Client-chosen id of one playback, used to count a completed play exactly once.",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "description": "Optional: forwards the report to the shared event stream (pre-download, notifications).",
+            "nullable": true
+          },
+          "streamToken": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchStateResponse": {
+        "required": [
+          "kind",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "episodeNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "progressPercent": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "played": {
+            "type": "boolean"
+          },
+          "playCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastReleaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastPlayedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "playedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchWorkIdsRequest": {
+        "type": "object",
+        "properties": {
+          "workIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Movie/episode ids; for played/unplayed also season (`tmdb-tv-1-s02`) or series (`tmdb-tv-1`) ids.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "WorkDto": {
         "required": [
           "mediaType",
@@ -9984,6 +16566,30 @@
     }
   },
   "tags": [
+    {
+      "name": "ViewerAdmin",
+      "description": "Admin management of viewer (watch) accounts and the viewer module. Viewers never reach these endpoints."
+    },
+    {
+      "name": "ViewerAuth",
+      "description": "Viewer sign-in, token refresh and sign-out. Separate from the admin `/api/v1/auth` endpoints."
+    },
+    {
+      "name": "ViewerMe",
+      "description": "The signed-in viewer's own account: profile, password, email, two-factor and devices."
+    },
+    {
+      "name": "ViewerWatch",
+      "description": "The signed-in viewer's watch state: progress reports, continue watching, next up, history and played flags."
+    },
+    {
+      "name": "TranscodeStream",
+      "description": "Capability-authorized HLS rendition of a transcode session. Like `/api/v1/stream`, the unguessable path token is the\r\nonly credential, so plain players (hls.js, Safari, TVs) can fetch playlists and segments without auth headers."
+    },
+    {
+      "name": "Transcoding",
+      "description": "Server-side transcoding: settings, hardware diagnostics, test media, benchmarks and HLS session creation."
+    },
     {
       "name": "ApiKeys",
       "description": "Machine API key management (BRIEF §6.4 / §9.1). The plaintext token is returned only\r\nonce, at creation; thereafter only its prefix and metadata are visible. Keys are\r\nrevoked (soft-deleted), not hard-deleted, so past issuance stays auditable.\r\nAdmin session required — machine keys cannot mint or revoke keys (BRIEF §6.4)."

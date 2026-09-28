@@ -25,10 +25,12 @@ RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
 
 # ---- 3. runtime ---------------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:d72743fde6e26a853eaa5dd58a6e30cfbedf17186fe2aed6ff283b82efee9249 AS runtime
-# ffmpeg supplies ffprobe, which /resolve runs against the stream (BRIEF §6.2);
-# curl backs the compose healthcheck (GET /api/v1/health).
+ARG TARGETARCH
+# ffmpeg supplies ffprobe for /resolve and the server-side transcoder; the VA-API drivers let
+# a passed-through /dev/dri (Intel iHD, AMD radeonsi) accelerate it. curl backs the healthcheck.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg curl \
+    && apt-get install -y --no-install-recommends ffmpeg curl mesa-va-drivers \
+    && if [ "$TARGETARCH" = "amd64" ]; then apt-get install -y --no-install-recommends intel-media-va-driver-non-free; fi \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 RUN mkdir -p /app/data /app/keys \
@@ -41,6 +43,8 @@ ENV Streamarr__DataProtectionKeysPath=/app/keys
 ENV Streamarr__NzbCachePath=/app/data/nzb
 ENV Streamarr__Repair__WorkspacePath=/app/data/repair
 ENV Streamarr__PreDownload__CachePath=/app/data/predownload
+ENV Streamarr__Transcoding__WorkspacePath=/app/data/transcode
+ENV Streamarr__Transcoding__SamplesPath=/app/data/transcoding-samples
 EXPOSE 8080
 USER app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

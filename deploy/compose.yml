@@ -22,6 +22,12 @@ services:
     volumes:
       - streamarr-data:/app/data
       - streamarr-keys:/app/keys
+    # Optional GPU for server-side transcoding (docs/transcoding.md). Intel/AMD:
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "${RENDER_GID:-105}"
+    # NVIDIA (Container Toolkit): gpus: all
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
     healthcheck:

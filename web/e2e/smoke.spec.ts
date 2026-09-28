@@ -174,9 +174,10 @@ test("login → add indexer → search → resolve → preview-play, with Jellyf
   await page.getByRole("button", { name: /discover/i }).click();
   await expect(page.getByRole("heading", { name: "Movies" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Example Movie" })).toBeVisible();
+  // The fixture host never resolves, so the poster may already carry its retry marker (`?_r=N`).
   await expect(page.getByRole("img", { name: /example movie poster/i })).toHaveAttribute(
     "src",
-    "https://image.example/poster/12345.jpg",
+    /^https:\/\/image\.example\/poster\/12345\.jpg(\?_r=\d+)?$/,
   );
   await page.getByRole("button", { name: /example movie, 1 release, expand details/i }).click();
   await expect(page.getByText(RELEASE_TITLE)).toBeVisible();

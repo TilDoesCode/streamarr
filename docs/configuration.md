@@ -143,6 +143,14 @@ Under **Settings → Notifications**, add a Pushover application token and user/
 then send a test. Notifications for playback, failures, outages, and recovery are
 individually configurable and are delivered outside the playback request path.
 
+### Viewer accounts
+
+Streamarr can manage its own viewer accounts with watch state (resume, played, next up)
+for a future Streamarr-native viewer app. The module is off by default; switch it on in
+**Viewers → Settings**. Viewer accounts are separate from the administrator and cannot
+sign in to the management UI. For password reset and sign-in codes, configure SMTP or use
+the in-memory test outbox. See [Viewer accounts and watch state](viewers.md).
+
 ### Jellyfin logs in Streamarr
 
 The Logs view always includes a bounded, sanitized Core feed. It can optionally merge
