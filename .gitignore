@@ -48,3 +48,9 @@ TestResults/
 playwright-report/
 test-results/
 coverage/
+
+# Client build: mirrored raw workflow journals
+docs/client/runs/
+
+# Dev World generated media and state
+server/tests/Streamarr.DevWorld/cache/

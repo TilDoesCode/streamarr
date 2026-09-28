@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr Client – Bauplan</title>
+<style>
+:root{
+  --bg: var(--cc-bg, #ffffff); --fg: var(--cc-fg, #14161a); --muted: var(--cc-muted, #f3f4f6);
+  --muted-fg: var(--cc-muted-fg, #5b6270); --border: var(--cc-border, #e3e5ea);
+  --primary: var(--cc-primary, #6d4aff); --primary-fg: var(--cc-primary-fg, #ffffff);
+  --radius: var(--cc-radius, 10px); --sans: var(--cc-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif);
+  --mono: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  --ok:#1f9d63; --warn:#c7861a; --bad:#d64545; --info:#2f7de1;
+  --card: color-mix(in srgb, var(--muted) 55%, var(--bg));
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg: var(--cc-bg, #0e1014); --fg: var(--cc-fg, #e8eaef); --muted: var(--cc-muted, #1a1d24);
+    --muted-fg: var(--cc-muted-fg, #9aa1ad); --border: var(--cc-border, #2a2e37);
+    --primary: var(--cc-primary, #8b72ff); --ok:#3ecf8e; --warn:#f0b041; --bad:#ff6b6b; --info:#5aa2ff;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.5;font-size:15px}
+main{max-width:1120px;margin:0 auto;padding:32px 24px 80px}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:21px;margin:44px 0 12px;letter-spacing:-.01em;display:flex;gap:10px;align-items:center}
+h2 .n{font:600 12px var(--mono);background:var(--primary);color:var(--primary-fg);border-radius:6px;padding:2px 7px}
+h3{font-size:16px;margin:18px 0 8px}
+p{margin:6px 0 10px}
+.lead{color:var(--muted-fg);font-size:16px;max-width:820px}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.card h4{margin:0 0 6px;font-size:14.5px}
+.card p,.card li{font-size:13.5px;color:var(--muted-fg)}
+.card ul{margin:4px 0 0;padding-left:18px}
+.tag{display:inline-block;font:600 11px var(--mono);padding:2px 7px;border-radius:999px;border:1px solid var(--border);margin:0 4px 4px 0;white-space:nowrap}
+.p1{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.p2{color:var(--info);border-color:color-mix(in srgb,var(--info) 45%,transparent)}
+.p3{color:var(--muted-fg)}
+.new{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.risk{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:8px 0}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-weight:600;color:var(--muted-fg);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+code{font-family:var(--mono);font-size:12.5px;background:var(--muted);padding:1px 5px;border-radius:5px}
+.callout{border-left:3px solid var(--primary);background:color-mix(in srgb,var(--primary) 9%,var(--bg));padding:12px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:12px 0}
+.callout.warn{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--bg))}
+.arch{display:grid;grid-template-columns:1fr 60px 1fr 60px 1fr;align-items:stretch;gap:0;margin:10px 0}
+.arch .col{display:flex;flex-direction:column;gap:8px}
+.arch .box{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--card);font-size:13px}
+.arch .box b{display:block;font-size:13.5px;margin-bottom:2px}
+.arch .box.hl{border-color:var(--warn);box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 40%,transparent) inset}
+.arch .box.pri{border-color:var(--primary)}
+.arrow{display:flex;align-items:center;justify-content:center;color:var(--muted-fg);font-size:22px}
+.steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0}
+.step{border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-size:13px;background:var(--card)}
+.step.err{border-color:var(--bad);color:var(--bad)}
+.step.ok{border-color:var(--ok);color:var(--ok)}
+.step.warn{border-color:var(--warn);color:var(--warn)}
+.chev{color:var(--muted-fg)}
+.ms{display:grid;grid-template-columns:86px 1fr;gap:12px;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin:10px 0;background:var(--card)}
+.ms .id{font:700 20px var(--mono);color:var(--primary)}
+.ms .id small{display:block;font:500 11px var(--sans);color:var(--muted-fg);margin-top:4px}
+.ms h4{margin:0 0 4px;font-size:15px}
+.ms ul{margin:4px 0 0;padding-left:18px;font-size:13.5px}
+.ms .acc{margin-top:8px;font-size:12.5px;color:var(--muted-fg)}
+.ms .acc b{color:var(--fg)}
+.remote{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px}
+.remote div{display:flex;gap:10px;align-items:baseline;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.remote kbd{font:600 11.5px var(--mono);background:var(--muted);border:1px solid var(--border);border-radius:5px;padding:1px 6px;white-space:nowrap}
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 0}
+.toc a{font-size:12.5px;color:var(--fg);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px;background:var(--card)}
+.toc a:hover{border-color:var(--primary)}
+@media (max-width:760px){.arch{grid-template-columns:1fr}.arrow{transform:rotate(90deg);height:34px}.ms{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<h1>Streamarr Client — Bauplan</h1>
+<p class="lead">Eine eigene Viewer-App (Expo SDK 57 / React Native 0.86) für <b>Android TV, iPhone/iPad, Web (inkl. iPad-Safari)</b>, dazu Apple TV und Android-Phones. Sie ersetzt Jellyfin als Wiedergabe-Oberfläche. Der Fokus liegt auf dem Kern-Loop <b>Einloggen → Suchen → Finden → Schauen → später Weiterschauen</b> und auf einem Player, der auf dem Fernseher wirklich gut funktioniert.</p>
+<div class="toc">
+  <a href="#gap">1 · Backend-Lücke</a><a href="#arch">2 · Architektur</a><a href="#platforms">3 · Plattformen</a>
+  <a href="#player">4 · Player</a><a href="#states">5 · Sichtbare Zustände</a><a href="#api">6 · Neue Endpunkte</a>
+  <a href="#stack">7 · Tech-Stack</a><a href="#world">8 · Fake-Usenet-Welt</a><a href="#milestones">9 · Meilensteine</a>
+  <a href="#journal">10 · Ultracode &amp; Journal</a><a href="#risks">11 · Risiken</a><a href="#later">12 · Später</a><a href="#need">13 · Was ich brauche</a>
+</div>
+
+<h2 id="gap"><span class="n">1</span>Die Lücke im Backend</h2>
+<div class="callout warn">
+<b>Viewer-Tokens erreichen heute nur <code>/api/v1/viewer/*</code>.</b> Das sind Auth, Profil, Watch-State und Altersfreigabe. Suche, Katalog, Versionen (Releases), Resolve und Transcoding laufen über Admin- oder Maschinen-Credentials, und die darf eine App niemals mitbringen. Die Doku sagt selbst, dass <i>„Allow transcoding“</i> und <i>„Max. concurrent streams“</i> nur <i>„für die Viewer-Playback-API gespeichert“</i> werden. Diese API existiert noch nicht. <b>Sie ist Voraussetzung für die App und Teil dieses Plans (M1).</b>
+</div>
+<div class="grid g3">
+  <div class="card"><h4>Schon vorhanden ✓</h4><ul><li>Viewer-Accounts, Sessions, Refresh, 2FA, E-Mail-Codes</li><li>Watch-State: Resume, Played, Next Up, History</li><li>Altersfreigabe pro Work</li><li>Server-Transcoding → HLS (fMP4) mit Plan und Direct-Play-Blockern</li><li><code>/stream/{token}</code>: Range-fähig, spielerneutral</li></ul></div>
+  <div class="card"><h4>Fehlt für Viewer ✗</h4><ul><li>Katalog: Suche, Discover/Trending, Film-, Serien- und Staffel-Details</li><li>Versionen eines Works mit allen Qualitätsinfos</li><li>Playback-Start: Resolve → Fallback → Plan → Direct/Transcode</li><li>Durchsetzung von <code>allowTranscoding</code>, <code>maxConcurrentStreams</code> und Alter</li><li>CORS für die Web-App</li></ul></div>
+  <div class="card"><h4>Prinzip</h4><ul><li>Alle Domain-Logik bleibt im Core Server (BRIEF §1.1)</li><li><code>/stream</code> bleibt unverändert generisch</li><li>Neue Endpunkte liegen im Viewer-Modul, hinter dem Modul-Gate, mit Tests und OpenAPI</li><li>Die App generiert ihre Typen aus <code>v1.json</code></li></ul></div>
+</div>
+
+<h2 id="arch"><span class="n">2</span>Architektur</h2>
+<div class="arch">
+  <div class="col">
+    <div class="box pri"><b>Streamarr Client</b><code>client/</code> · Expo Router</div>
+    <div class="box">Konten und Profile (mehrere pro Gerät)</div>
+    <div class="box">React Query + generierter API-Client</div>
+    <div class="box">Player-Shell (eigenes UI, eine Engine-Schnittstelle)</div>
+    <div class="box">Fokus-System (D-Pad) · i18n · Design-System</div>
+  </div>
+  <div class="arrow">⇄</div>
+  <div class="col">
+    <div class="box hl"><b>Viewer Catalog API</b><span class="tag new">NEU</span> Suche · Discover · Details · Versionen</div>
+    <div class="box hl"><b>Viewer Playback API</b><span class="tag new">NEU</span> Start → Zustände abfragen → Stopp</div>
+    <div class="box"><b>Viewer Auth / Me / Watch</b> vorhanden</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="col">
+    <div class="box"><b>Search + Ranker + TMDB</b> vorhanden</div>
+    <div class="box"><b>Resolve + Health + Fallback + PAR2</b> vorhanden</div>
+    <div class="box"><b>Transcoder → HLS</b> <code>/transcode/{cap}</code></div>
+    <div class="box"><b>/stream/{token}</b> Range-Bytes</div>
+  </div>
+</div>
+<p style="font-size:13px;color:var(--muted-fg)">Die Medien-URLs (<code>/stream/…</code>, <code>/transcode/…</code>) bleiben Capability-URLs ohne wiederverwendbaren Token. Dadurch können VLC, AVPlayer, ExoPlayer und <code>&lt;video&gt;</code> sie ohne eigene Header abspielen.</p>
+
+<h2 id="platforms"><span class="n">3</span>Plattformen und Priorität</h2>
+<table>
+<tr><th>Ziel</th><th>Prio</th><th>Navigation</th><th>Eingabe</th><th>Player (nativ → Fallback)</th><th>Test mit Argent</th></tr>
+<tr><td><b>Android TV / Google TV</b></td><td><span class="tag p1">P1</span></td><td>Linke Navigationsleiste (einklappbar), Zeilen-Shelves</td><td>D-Pad, Back, Media-Tasten</td><td>ExoPlayer (Media3) → libVLC</td><td>Google-TV-Emulator (Android 16) ✓</td></tr>
+<tr><td><b>iPhone</b></td><td><span class="tag p1">P1</span></td><td>NativeTabs (Liquid-Glass-Tab-Bar), native Stacks</td><td>Touch, Gesten</td><td>AVPlayer (+ Server-Remux) → VLCKit 4</td><td>iOS-Simulator</td></tr>
+<tr><td><b>iPad</b></td><td><span class="tag p1">P1</span></td><td>NativeTabs → Sidebar-adaptiv, mehrspaltige Grids</td><td>Touch, Tastatur, Trackpad</td><td>wie iPhone</td><td>iPad-Simulator</td></tr>
+<tr><td><b>Web</b> (inkl. iPad-Safari)</td><td><span class="tag p1">P1</span></td><td>Top-Navigation / Sidebar, responsiv</td><td>Maus, Tastatur, Touch</td><td><code>&lt;video&gt;</code> → hls.js (Remux/Transcode)</td><td>Chromium über CDP</td></tr>
+<tr><td><b>Apple TV</b></td><td><span class="tag p2">P2</span></td><td>Tab-Bar oben (native tvOS)</td><td>Siri Remote (Klick, Swipe)</td><td>AVPlayer (+ Server-Remux) → VLCKit 4</td><td>tvOS-Simulator</td></tr>
+<tr><td><b>Android Phone / Tablet</b></td><td><span class="tag p3">P3</span></td><td>NativeTabs (Material)</td><td>Touch</td><td>ExoPlayer → libVLC</td><td>Pixel-Emulator ✓</td></tr>
+</table>
+<p style="font-size:13px;color:var(--muted-fg)">Eine Codebasis: <code>react-native</code> wird auf <code>react-native-tvos@0.86.x</code> gemappt (unterstützt Phone und TV), TV-Builds entstehen per <code>EXPO_TV=1</code> und <code>@react-native-tvos/config-tv</code>. Theme fest auf Dark. Sprachen Deutsch und Englisch von Anfang an, alle Texte über i18n-Keys.</p>
+
+<h2 id="player"><span class="n">4</span>Player-Strategie</h2>
+<div class="callout"><b>Entschieden: nativ zuerst, VLC als Fallback.</b> Die native Plattform-Engine (AVPlayer bzw. Media3 ExoPlayer) liefert die beste Hardware-Dekodierung, HDR/Dolby Vision, Audio-Passthrough, PiP, AirPlay und System-Integration. VLC springt nur ein, wenn nativ nicht geht.</div>
+<table>
+<tr><th>Rang</th><th>Methode</th><th>Android / Android TV</th><th>iPhone · iPad · Apple TV</th><th>Web</th></tr>
+<tr><td>1</td><td><b>Native Direct Play</b><br><small>Originaldatei von <code>/stream</code></small></td><td>ExoPlayer spielt MKV/MP4 mit HEVC, AV1, VP9, H.264; AC3/EAC3; DTS/TrueHD per HDMI-Passthrough, wenn das Gerät es kann</td><td>nur MP4/MOV mit H.264/HEVC + AAC/AC3/EAC3 (AVPlayer kann <b>kein MKV</b>)</td><td>MP4/WebM mit Browser-Codecs</td></tr>
+<tr><td>2</td><td><b>Native über Server-Remux</b> <span class="tag new">NEU</span><br><small>Video kopiert → HLS/fMP4</small></td><td>selten nötig</td><td><b>Normalfall für MKV:</b> Video 1:1 kopiert (HEVC/HDR10 bleibt), Audio kopiert oder DTS/TrueHD → EAC3/AAC, Text-Untertitel → WebVTT</td><td>häufig: z. B. H.264-MKV + AC3 → fMP4 + AAC über hls.js</td></tr>
+<tr><td>3</td><td><b>VLC Direct Play</b><br><small><code>expo-libvlc-player</code></small></td><td>exotische Audio-/Untertitelformate ohne Passthrough, schwere ASS-Styles</td><td>wenn Remux scheitert oder nicht passt; manuell wählbar</td><td>—</td></tr>
+<tr><td>4</td><td><b>Server-Transcode</b><br><small>volle Neukodierung → HLS</small></td><td colspan="3">letzter Ausweg, oder bewusst gewählte Qualitätsstufe (Bandbreite, unterwegs)</td></tr>
+</table>
+<div class="callout"><b>Wer entscheidet:</b> Ein kleines lokales Expo-Modul (<code>media-caps</code>) fragt das Gerät ab: MediaCodecList, HDR-Fähigkeiten des Displays und Audio-Passthrough auf Android; VideoToolbox-HW-Decode, HDR-Modi und Audio-Route auf Apple; <code>MediaCapabilities</code> im Web. Die App schickt dieses Profil beim Start. Der Server wählt nach der Tabelle und gibt den <b>Grund</b> mit („Remux: AVPlayer kann kein MKV“, „Audio DTS → EAC3“). Im Player-Menü lässt sich die Engine manuell umstellen: <i>Automatisch · Nativ · VLC</i>. Alle Engines stecken hinter <b>einer</b> TypeScript-Schnittstelle, das eigene Overlay ist überall gleich.</div>
+<div class="callout warn"><b>Risiko zuerst:</b> M3 ist ein früher <b>Spike auf echten Emulatoren</b>. Dabei wird <code>expo-video</code> gegen <code>react-native-video</code> als native Engine verglichen (Media3-Optionen, Spurwahl, tvOS, Fehlerereignisse, Buffer-Kontrolle), und <code>expo-libvlc-player</code> (VLCKit 4 Alpha) wird als Fallback geprüft. Gemessen werden HW-Decode, Seek, Spurwechsel, Remote-Tasten und 4K-HEVC-10-bit. Fällt eine Bibliothek durch, bauen wir mit dem Expo-Modules-API eine eigene schlanke Anbindung.</div>
+<h3>Player-UX (eigenes Overlay, für D-Pad gebaut)</h3>
+<div class="remote">
+  <div><kbd>OK / Play-Pause</kbd> Pause/Play, Overlay einblenden</div>
+  <div><kbd>◀ ▶</kbd> −10 s / +30 s, Halten beschleunigt das Scrubben</div>
+  <div><kbd>⏪ ⏩</kbd> Medientasten wie ◀ ▶</div>
+  <div><kbd>▲</kbd> Panel: Audio · Untertitel · Version · Qualität · Info</div>
+  <div><kbd>▼</kbd> Fortschrittsleiste und Kapitel</div>
+  <div><kbd>Back</kbd> Overlay schließen → zweites Back beendet (Position gespeichert)</div>
+</div>
+<div class="grid g3" style="margin-top:10px">
+  <div class="card"><h4>Beim Start</h4><ul><li>Frage „Fortsetzen bei 42:13“ oder „Von vorne“</li><li>Schrittanzeige statt endlosem Spinner (siehe §5)</li><li>Hinweis, falls auf eine andere Version ausgewichen wurde</li></ul></div>
+  <div class="card"><h4>Während der Wiedergabe</h4><ul><li>Spur- und Versionswechsel ohne Positionsverlust</li><li>„Stats for nerds“: Engine, Direct/Transcode samt Grund, Codecs, Bitrate, HW-Decode, Puffer, Release-Name</li><li>Fortschritt alle 10 s an den Server, auch bei Pause, Hintergrund und Beenden (Offline-Queue)</li></ul></div>
+  <div class="card"><h4>Am Ende</h4><ul><li>Next-Episode-Karte mit Countdown und Autoplay</li><li>Bei 90 % als gesehen markiert (Serverregel)</li><li>Mobile: Doppeltipp zum Springen, Pinch zum Füllen, PiP und AirPlay (HLS)</li></ul></div>
+</div>
+
+<h2 id="states"><span class="n">5</span>Sichtbare Zustände statt Black Box</h2>
+<p>Was Jellyfin verschluckt, zeigen wir an. Der Playback-Start ist ein asynchroner Job, den die App abfragt:</p>
+<div class="steps">
+  <span class="step">Version wählen</span><span class="chev">›</span>
+  <span class="step">Verfügbarkeit prüfen</span><span class="chev">›</span>
+  <span class="step warn">Ausweichen auf Version 2 (Version 1 tot)</span><span class="chev">›</span>
+  <span class="step warn">Reparatur 27 % · ~3 min</span><span class="chev">›</span>
+  <span class="step">Wiedergabe planen</span><span class="chev">›</span>
+  <span class="step">Transcoder starten</span><span class="chev">›</span>
+  <span class="step ok">Bereit</span>
+</div>
+<div class="steps"><span class="step err">Fehler: Code → übersetzte Meldung + passende Aktion (Erneut versuchen · Andere Version · Qualität senken)</span></div>
+<div class="grid g2">
+  <div class="card"><h4>Versionen sinnvoll darstellen</h4><p>Jede Version als klare Karte: <span class="tag">2160p</span><span class="tag">HDR10 / DV</span><span class="tag">HEVC 10-bit</span><span class="tag">TrueHD Atmos 7.1</span><span class="tag">DE · EN</span><span class="tag">WEB-DL</span><span class="tag">18,4 GB · ~24 Mbit/s</span><span class="tag p1">bereit (lokal)</span><span class="tag">empfohlen</span>. Dazu Gesundheitsstatus und die Info, ob Direct Play voraussichtlich klappt. Gruppiert, standardmäßig die empfohlene Version.</p></div>
+  <div class="card"><h4>Fehler kurz und richtig</h4><p>Alle Server-Fehlercodes (<code>age_restricted</code>, <code>too_many_streams</code>, <code>transcoding_not_allowed</code>, <code>no_playable_file</code>, <code>usenet_unreachable</code>, <code>transcode_capacity</code>, …) bekommen eine übersetzte Kurzmeldung, eine Detailansicht und eine konkrete nächste Aktion. Kein „Playback failed“.</p></div>
+</div>
+
+<h2 id="api"><span class="n">6</span>Neue Server-Endpunkte (M1)</h2>
+<table>
+<tr><th>Endpunkt</th><th>Zweck</th><th>Kosten</th></tr>
+<tr><td><code>GET /viewer/catalog/search?q&amp;type</code></td><td>Filme und Serien über TMDB, schnell und ohne Indexer-Anfrage; Altersfilter</td><td>1 TMDB-Aufruf (gecacht)</td></tr>
+<tr><td><code>GET /viewer/catalog/discover</code></td><td>Startseiten-Zeilen: Trending und Beliebt, Filme und Serien</td><td>TMDB, stundenweise gecacht</td></tr>
+<tr><td><code>GET /viewer/catalog/movies/{tmdbId}</code></td><td>Details, Watch-State, Zugriff</td><td>TMDB</td></tr>
+<tr><td><code>GET /viewer/catalog/series/{id}</code> · <code>…/seasons/{n}</code></td><td>Staffeln und Episoden inkl. Watch-State pro Episode</td><td>TMDB, Indexer nur bei Bedarf</td></tr>
+<tr><td><code>GET /viewer/catalog/works/{workId}/versions</code></td><td>Gerankte Versionen mit allen Qualitätsdaten, Gesundheit, lokaler Verfügbarkeit und Empfehlung</td><td>Indexer-Fan-out (langsam → Skeleton + Status in der UI)</td></tr>
+<tr><td><code>POST /viewer/playback</code></td><td>Start (Work, optional Release, Geräteprofil, Startposition, Spuren, Qualität) → <code>202 {playbackId}</code></td><td>asynchron</td></tr>
+<tr><td><code>GET /viewer/playback/{id}</code></td><td>Zustand und Stufen (s. §5); wenn bereit: Methode, URL, Media-Info, Plan, Version</td><td>Polling ~500 ms</td></tr>
+<tr><td><code>PATCH</code> · <code>POST …/{id}/stop</code></td><td>Neu planen (Spur/Qualität bei HLS) · beenden (Transcoder stoppen, Stream-Slot freigeben)</td><td>—</td></tr>
+</table>
+<p style="font-size:13px;color:var(--muted-fg)">Durchgesetzt werden Modul-Gate, Altersfreigabe, <code>allowTranscoding</code> und <code>maxConcurrentStreams</code>. Dazu kommen xUnit-Tests, aktualisierte <code>openapi/v1.json</code>, <code>docs/api.md</code> §13 und CORS für konfigurierte Web-Origins.</p>
+<h3>Server-Remux („Direct Stream“) <span class="tag new">NEU, Voraussetzung für nativ zuerst auf Apple</span></h3>
+<div class="grid g3">
+  <div class="card"><h4>Was</h4><ul><li>Neuer Modus im Transcoder: Video <code>-c:v copy</code> → HLS fMP4 (<code>hvc1</code>/<code>avc1</code>, HDR10-Metadaten bleiben)</li><li>Audio kopieren, wenn das Ziel es kann, sonst EAC3 5.1 oder AAC</li><li>Text-Untertitel (SRT/ASS) → WebVTT-Rendition, Bild-Untertitel (PGS) → VLC-Fallback oder Burn-in beim Transcode</li></ul></div>
+  <div class="card"><h4>Wie</h4><ul><li>Keyframe-Index aus MKV-Cues bzw. MP4-<code>stss</code>, günstig über Range-Requests</li><li>VOD-Playlist mit echten Segmentgrenzen an Keyframes, sodass Seeken sofort und exakt funktioniert</li><li>Planner-Stufen: <code>direct</code> → <code>remux</code> → <code>transcode</code>, jeweils mit Grund</li></ul></div>
+  <div class="card"><h4>Nutzen</h4><ul><li>Apple-Geräte spielen MKV nativ mit HW-Decode, HDR, PiP und AirPlay</li><li>Web spielt viele Releases ohne Video-Neukodierung</li><li>Die CPU/GPU-Last auf dem Server sinkt drastisch gegenüber Volltranscode</li></ul></div>
+</div>
+
+<h2 id="stack"><span class="n">7</span>Tech-Stack (aktuell stabile Versionen)</h2>
+<div class="grid g3">
+  <div class="card"><h4>Fundament</h4><ul><li>Expo SDK 57 · React 19.2 · RN 0.86 (<code>react-native-tvos</code>)</li><li>Expo Router (typisierte Routen, NativeTabs)</li><li>TypeScript strict · Hermes · New Architecture</li></ul></div>
+  <div class="card"><h4>UI</h4><ul><li>NativeWind 4.2 + Tailwind 3.4</li><li>React Native Reusables (shadcn-Stil) + lucide</li><li><code>expo-glass-effect</code> / <code>@expo/ui</code> (SwiftUI) für Liquid Glass auf iOS 26+</li><li>Reanimated 4 · expo-image · FlashList</li></ul></div>
+  <div class="card"><h4>Daten und Plattform</h4><ul><li>TanStack Query 5 + <code>openapi-fetch</code> (Typen aus <code>v1.json</code>)</li><li>i18next + expo-localization (DE/EN)</li><li>expo-secure-store (Tokens) · MMKV (Cache/Einstellungen)</li><li>Tests: jest-expo + Argent-Flows</li></ul></div>
+</div>
+
+<h2 id="world"><span class="n">8</span>Fake-Usenet-Welt zum Entwickeln und Testen</h2>
+<p>Lokal ist weder ein TMDB-Key noch ein Indexer oder Usenet-Provider konfiguriert. Deshalb bauen wir den vorhandenen E2E-Harness zu einer <b>Dev-Welt</b> aus: echter Core Server, Mock-NNTP und Fixture-Indexer mit festem TMDB-Datensatz. Ein Kommando startet sie, sie wird auch eine Codecraft-Action.</p>
+<div class="grid g3">
+  <div class="card"><h4>Inhalte</h4><ul><li>Mehrere Filme (z. B. Blender Open Movies mit echten TMDB-IDs und Artwork) und 2 Serien mit Staffeln</li><li>Pro Titel mehrere Versionen: H.264/AAC MP4 · HEVC 10-bit HDR10 + EAC3 5.1 MKV · AV1/Opus · mehrere Audiospuren und Untertitel</li></ul></div>
+  <div class="card"><h4>Fehlerfälle gezielt</h4><ul><li>Tote Version → Auto-Fallback sichtbar</li><li>Degradierte oder reparierbare Version</li><li>Altersbeschränkter Titel</li><li>Zu viele Streams, Transkodierung verboten</li></ul></div>
+  <div class="card"><h4>Konten</h4><ul><li><code>anna</code> (Erwachsene), <code>ben</code> (2FA), <code>kind</code> (ab 12)</li><li>Watch-Schwellen für schnelle Tests gesenkt</li><li>Medien per ffmpeg erzeugt und gecacht (Timecode eingebrannt)</li></ul></div>
+</div>
+
+<h2 id="milestones"><span class="n">9</span>Meilensteine</h2>
+<div class="ms"><div class="id">M0<small>jetzt</small></div><div><h4>Toolchain und Fundament</h4><ul><li>✓ Expo-Skills (offiziell, <code>expo/skills</code>) · ✓ Argent 0.26 · ✓ watchman, CocoaPods, JDK 17 · ✓ Android SDK · ✓ Google-TV- und Phone-Emulator (per Argent-D-Pad getestet)</li><li><b>Xcode installieren (du, siehe §13)</b> → iOS- und tvOS-Simulatoren</li><li>Persistentes Journal (§10) · Commits direkt auf <code>main</code></li></ul><div class="acc"><b>Fertig, wenn:</b> Argent listet iPhone-, iPad-, Apple-TV- und Google-TV-Geräte und kann jeweils einen Screenshot machen.</div></div></div>
+<div class="ms"><div class="id">M1<small>Backend</small></div><div><h4>Viewer Catalog + Playback API · Server-Remux · Dev-Welt</h4><ul><li>Dev-Welt-Harness (§8) mit Seed-Konten und Codec-Matrix, zuerst, weil alles andere darauf testet</li><li>Endpunkte aus §6 im Viewer-Modul, Policies, Tests, OpenAPI, Doku</li><li>Remux-Modus im Transcoder (Keyframe-Index, Copy-HLS, Audio-Konvertierung, WebVTT) und Planner-Stufen direct → remux → transcode</li></ul><div class="acc"><b>Fertig, wenn:</b> <code>dotnet test</code> grün ist und per curl der ganze Loop läuft: Login → Suche → Versionen → Playback (Direct, Remux, Transcode) → Progress → Continue Watching. Die Remux-Playlists müssen in Safari/AVPlayer abspielbar sein (<code>mediastreamvalidator</code>, sobald Xcode da ist).</div></div></div>
+<div class="ms"><div class="id">M2<small>App-Basis</small></div><div><h4>Scaffold, Design-System, Daten, Auth, Navigation</h4><ul><li><code>client/</code>: Expo 57 + tvOS-Alias + config-tv, NativeWind + RNR, Dark-Tokens, i18n DE/EN</li><li>Generierter API-Client, Query-Keys pro Konto, Token-Refresh mit Retry</li><li>Server verbinden, Login (Passwort, 2FA, E-Mail-Code), „Wer schaut?“-Auswahl, mehrere Konten</li><li>Navigations-Shells: Phone/Tablet (NativeTabs), TV (Fokus-Rail), Web</li><li>Fokus-Primitive für TV: fokussierbare Karte/Button, Fokusgruppen, Zeilen-Scroll, Back-Handling</li></ul><div class="acc"><b>Fertig, wenn:</b> auf allen Zielen Login und leere Home-Shell laufen, TV komplett per D-Pad bedienbar ist und Typecheck, Lint und Unit-Tests grün sind.</div></div></div>
+<div class="ms"><div class="id">M3<small>Risiko</small></div><div><h4>Player-Spike (parallel zu M2)</h4><ul><li>Native Engine: <code>expo-video</code> gegen <code>react-native-video</code> auf Google TV, iOS und tvOS (Direct MKV auf Android, Remux-HLS auf Apple)</li><li>VLC-Fallback (<code>expo-libvlc-player</code>) · Web <code>&lt;video&gt;</code> + hls.js</li><li><code>media-caps</code>-Modul: Codec-, HDR- und Passthrough-Erkennung</li><li>Messen: Startzeit, Seek, HW-Decode, 4K-HEVC-10-bit, Spurwechsel, Remote-Events</li></ul><div class="acc"><b>Fertig, wenn:</b> jede Codec-Variante aus der Dev-Welt auf jedem P1-Ziel über die automatisch gewählte Methode abspielt, mit Screenshots und Messwerten im Journal und einer begründeten Engine-Entscheidung.</div></div></div>
+<div class="ms"><div class="id">M4<small>Kern-Loop</small></div><div><h4>Screens und Player</h4><ul><li>Home (Weiterschauen, Next Up, Trending) · Suche · Film- und Serien-Detail · Staffel/Episoden · Versionswahl</li><li>Playback-Start mit Stufen · Player-Overlay · Spuren, Version, Qualität · Stats · Resume · Next Episode · Progress-Reporting</li><li>Fehlermeldungen mit übersetzten Codes und Aktionen</li></ul><div class="acc"><b>Fertig, wenn:</b> auf Google TV, iPhone, iPad und Web der ganze Loop läuft und „später weiterschauen“ nach App-Neustart funktioniert.</div></div></div>
+<div class="ms"><div class="id">M5<small>Politur</small></div><div><h4>Plattform-Feinschliff</h4><ul><li>Android TV zuerst: Fokus-Animationen, Zeilen-Memory, Long-Press, Media-Tasten, Overscan</li><li>Apple TV: Top-Tab-Bar, Siri-Remote-Swipe-Scrubbing · iPad: Sidebar, Multitasking-Größen · iOS: Liquid Glass</li><li>Web und iPad-Safari: Tastatur-Shortcuts, responsive Layouts</li><li>Barrierefreiheit (Labels, Größen), i18n-Vollständigkeitsprüfung</li></ul></div></div>
+<div class="ms"><div class="id">M6<small>Abnahme</small></div><div><h4>Verifikation und Übergabe</h4><ul><li>Argent-Flows (aufgezeichnet, wiederholbar) für den Loop auf jedem Ziel</li><li>Adversariales Review (Korrektheit, Sicherheit, UX-Zustände, i18n)</li><li>Screenshots aller Screens pro Formfaktor, Doku, Codecraft-Actions</li></ul></div></div>
+
+<h2 id="journal"><span class="n">10</span>Ultracode-Orchestrierung und persistentes Journal</h2>
+<div class="grid g2">
+  <div class="card"><h4>Ablauf</h4><ul><li>Ein Workflow pro Meilenstein, jeweils unter 10 Agenten und <b>höchstens 2–3 gleichzeitig</b> (Usage-Limit)</li><li>Jeder Bau-Agent: Aufgabe → selbst verifizieren (Build, Tests, Argent-Screenshot) → Journal-Eintrag</li><li>Danach unabhängige Prüfer-Agenten (adversarial), bevor etwas als fertig gilt</li><li>Zwischen den Workflows prüfe ich selbst, zeige dir Screenshots und committe einen Checkpoint</li></ul></div>
+  <div class="card"><h4>Journal im Repo statt im Temp-Ordner</h4><ul><li><code>docs/client/JOURNAL.md</code>: nur anhängen, jede Aufgabe mit Start, Ergebnis, Belegen, offenen Punkten</li><li><code>docs/client/state.json</code>: maschinenlesbarer Status pro Aufgaben-ID; Workflows überspringen erledigte Aufgaben</li><li><code>docs/client/PLAN.md</code>: Aufgaben-IDs und Abnahmekriterien</li><li>Zusätzlich wird das rohe Workflow-Journal laufend nach <code>docs/client/runs/</code> gespiegelt (gitignored)</li><li>Fortsetzen in einer neuen Session: „Lies <code>docs/client/JOURNAL.md</code> und mach weiter“</li></ul></div>
+</div>
+
+<h2 id="risks"><span class="n">11</span>Risiken</h2>
+<table>
+<tr><th>Risiko</th><th>Gegenmaßnahme</th></tr>
+<tr><td><span class="tag risk">hoch</span> Server-Remux für AVPlayer (Keyframe-genaue Segmente, HEVC-Tagging, HDR-Metadaten)</td><td>Eigener M1-Arbeitsblock mit Tests gegen echtes ffmpeg und Fixture-Medien; bis er steht, fällt Apple auf VLC zurück</td></tr>
+<tr><td><span class="tag risk">hoch</span> VLC-Fallback-Bibliothek unreif (VLCKit 4 Alpha, eine Person pflegt sie)</td><td>Nur Fallback, früher Spike (M3), Plan B: eigenes Expo-Modul</td></tr>
+<tr><td><span class="tag new">mittel</span> Geräte-Fähigkeiten falsch erkannt → falsche Methode</td><td><code>media-caps</code>-Modul, konservative Defaults, bei Wiedergabefehler automatisch die nächste Stufe nehmen, manueller Engine-Schalter</td></tr>
+<tr><td><span class="tag new">mittel</span> TV-Fokus mit virtualisierten Listen (Android TV)</td><td>Eigene Fokus-Primitive, TVFocusGuideView, feste Zeilenhöhen, früh auf dem Emulator testen</td></tr>
+<tr><td><span class="tag new">mittel</span> NativeWind, RNR und Liquid Glass auf tvOS und Android TV</td><td>Plattformdateien (<code>.tv.tsx</code>, <code>.ios.tsx</code>), Glass nur wo verfügbar, sonst Blur oder Fläche</td></tr>
+<tr><td><span class="tag new">mittel</span> Emulatoren zeigen keine echte HW-Decode- und HDR-Leistung</td><td>Messwerte als Richtwert; finale Abnahme auf echter Hardware durch dich (Shield / Google TV / Apple TV)</td></tr>
+<tr><td><span class="tag p3">niedrig</span> Web: Tokens im Browser</td><td>v1 Bearer + Refresh im Storage; später Cookie-Modus bei Same-Origin-Hosting durch den Core Server</td></tr>
+</table>
+
+<h2 id="later"><span class="n">12</span>Bewusst nicht in v1</h2>
+<p><span class="tag">Downloads / Offline</span><span class="tag">Quick-Connect-Login per Handy</span><span class="tag">Favoriten / Watchlist</span><span class="tag">Chromecast</span><span class="tag">Trickplay-Vorschaubilder</span><span class="tag">Remux / ABR im Server</span><span class="tag">Light-Theme</span><span class="tag">Store-Release / EAS</span></p>
+
+<h2 id="need"><span class="n">13</span>Was ich von dir brauche</h2>
+<div class="callout warn"><b>Xcode</b> fehlt, es gibt nur die Command Line Tools. Ohne Xcode gibt es keine iOS-, iPadOS- oder tvOS-Builds und keine Simulatoren. Die Installation braucht deine Apple-ID und sudo. Bis dahin arbeite ich an Backend, Web und Android TV weiter, blockiert ist also nichts.</div>
+<p><b>Entschieden:</b> alles direkt auf <code>main</code> committen (Checkpoint nach jedem Meilenstein, kein Push) · Player nativ zuerst, VLC als Fallback.</p>
+</main>
+</body>
+</html>
