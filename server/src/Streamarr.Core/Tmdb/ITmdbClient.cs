@@ -77,4 +77,12 @@ public interface ITmdbClient
 
     /// <summary>Resolve a movie or TV work from an IMDb id (<c>tt…</c>).</summary>
     Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken);
+
+    /// <summary>TMDB's trending titles of the week for one media type (discovery rows); empty by default.</summary>
+    Task<IReadOnlyList<TmdbMatch>> GetTrendingAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<TmdbMatch>>([]);
+
+    /// <summary>TMDB's currently popular titles for one media type (discovery rows); empty by default.</summary>
+    Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<TmdbMatch>>([]);
 }

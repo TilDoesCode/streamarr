@@ -1,0 +1,28 @@
+Verifier round 1 probes (Dev World 39310).
+
+Single flight on a fresh snapshot instance (12 concurrent GET works/{id}/versions, anna/gast/kind):
+tmdb-movie-10378 fromCache: [True, True, False, True, True, True, True, True, True, True, True, True] distinct checkedAt: 1 versions {3}
+tmdb-tv-19885-s02e01 fromCache: [True, True, True, True, True, True, False, True, True, True, True, True] distinct checkedAt: 1 versions {2}
+season 2 availability after the episode lookup: fromCache True, indexer requests +0
+
+Indexer metrics (/api/v1/metrics indexers[0].requests) before/after anna + kind calling search x2, discover,
+movies x2, series x2, seasons x3 (no availability): 16 -> 16 (unchanged); one versions?refresh=true: 16 -> 17.
+
+Local availability (pre-download on, admin resolve BBB WEB-DL with client streamarr-viewer + anna's id, anna progress with releaseId + token):
+anna: 2160p None, 1080p BluRay None, 1080p WEB-DL 'ready'; gast: all None.
+
+Edge cases: seasons/0 -> 404 season_not_found; s09e01 versions -> 404 season_not_found; s03e01 versions -> 200 []; type=series alias works;
+q with NUL -> 400 invalid_query; 300 x 'a,' device list -> 400 invalid_device_profile; maxAudioChannels=99 clamps; CORS preflight 204 '*'.
+
+Series watch summary: whole Pioneer One marked played -> nextEpisode null, 6/6; e04 unplayed -> nextEpisode null (next-up rule: only after the furthest played).
+
+CachingTmdbClient probe (throwaway xunit test in a /tmp copy): an inner client throwing TmdbTransientException gives
+GetMovieAsync null, GetTvSeriesCatalogAsync null, SearchCandidatesAsync [] and GetTrendingAsync [] -> passed (1/1).
+
+Mutations in a /tmp copy (--filter ViewerCatalog, 31 tests): list age filter off -> Lists_HideTitles... fails;
+season + episode-version gates removed -> AgeGate_BlocksDetailsSeasonsAndVersions... fails; refresh ignored in
+ViewerVersionCache -> MovieVersions_AreRankedParsedAndCached_UntilRefreshed fails.
+
+Latency (n=20, median/max ms) tree: search 0.7/0.8, discover 0.7/1.7, movie 0.8/1.2, series 0.9/1.7, season 0.8/1.6,
+versions cached 0.6/0.7, discover as kind 0.7/0.8; snapshot: 0.6/3.1, 0.6/0.7, 0.7/4.4, 0.8/1.8, 0.7/0.8, 0.6/1.6, 0.6/0.7.
+Dev World footprint after the full run: 428 MB (peak 433 MB).

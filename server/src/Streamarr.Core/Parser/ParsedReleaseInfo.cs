@@ -41,6 +41,12 @@ public sealed record ParsedReleaseInfo
     /// <summary>HDR flavor: <c>DV | HDR10+ | HDR10 | HLG | SDR</c> (null when not indicated).</summary>
     public string? Hdr { get; init; }
 
+    /// <summary>Every HDR flavor named, dominant first (e.g. <c>DV</c>, <c>HDR10</c>); empty when none.</summary>
+    public IReadOnlyList<string> HdrFormats { get; init; } = [];
+
+    /// <summary>Video bit depth when the name states it (<c>10bit</c>, <c>Hi10P</c>, <c>Main10</c>), else null.</summary>
+    public int? BitDepth { get; init; }
+
     /// <summary>Audio codec, e.g. <c>TrueHD | DTS-HD MA | DTS-X | DTS | DDP | DD | AAC | FLAC | Opus | MP3</c>.</summary>
     public string? AudioCodec { get; init; }
 
@@ -71,6 +77,12 @@ public sealed record ParsedReleaseInfo
 
     /// <summary>Explicit dual-audio marker present (anime / German DL).</summary>
     public bool DualAudio { get; init; }
+
+    /// <summary>Subtitle markers: <c>subbed</c>, <c>multi</c>, <c>hardcoded</c> (empty = the name says nothing).</summary>
+    public IReadOnlyList<string> SubtitleHints { get; init; } = [];
+
+    /// <summary>ISO 639-1 codes of subtitle languages the name mentions.</summary>
+    public IReadOnlyList<string> SubtitleLanguages { get; init; } = [];
 
     // ---- TV (BRIEF §7.1) ----
 

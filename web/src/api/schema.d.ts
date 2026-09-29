@@ -5803,6 +5803,546 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/catalog/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** TMDB movie/series candidates for a query (no indexer search); titles the viewer may not watch are hidden. */
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                    type?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogSearchResponse"];
+                        "application/json": components["schemas"]["CatalogSearchResponse"];
+                        "text/json": components["schemas"]["CatalogSearchResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/catalog/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Home rows (trending and popular movies and series) from TMDB, cached for hours. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogDiscoverResponse"];
+                        "application/json": components["schemas"]["CatalogDiscoverResponse"];
+                        "text/json": components["schemas"]["CatalogDiscoverResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/catalog/movies/{tmdbId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Movie details with the viewer's watch state and age-gate decision. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tmdbId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogMovieResponse"];
+                        "application/json": components["schemas"]["CatalogMovieResponse"];
+                        "text/json": components["schemas"]["CatalogMovieResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/catalog/series/{tmdbId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Series details, season summaries and the viewer's progress (next episode, played counts). */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tmdbId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogSeriesResponse"];
+                        "application/json": components["schemas"]["CatalogSeriesResponse"];
+                        "text/json": components["schemas"]["CatalogSeriesResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Season episodes with watch state; `availability=true` adds version counts (cached indexer search, `refresh=true` repeats it). */
+        get: {
+            parameters: {
+                query?: {
+                    availability?: boolean;
+                    refresh?: boolean;
+                };
+                header?: never;
+                path: {
+                    tmdbId: number;
+                    seasonNumber: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogSeasonResponse"];
+                        "application/json": components["schemas"]["CatalogSeasonResponse"];
+                        "text/json": components["schemas"]["CatalogSeasonResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/catalog/works/{workId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod`. */
+        get: {
+            parameters: {
+                query?: {
+                    refresh?: boolean;
+                    videoCodecs?: string;
+                    audioCodecs?: string;
+                    containers?: string;
+                    hdrFormats?: string;
+                    supports10Bit?: boolean;
+                    maxAudioChannels?: number;
+                    maxHeight?: number;
+                    maxBitrateKbps?: number;
+                };
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogVersionsResponse"];
+                        "application/json": components["schemas"]["CatalogVersionsResponse"];
+                        "text/json": components["schemas"]["CatalogVersionsResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/me": {
         parameters: {
             query?: never;
@@ -7086,6 +7626,207 @@ export interface components {
             categories?: components["schemas"]["CapsCategory"][] | null;
             providers?: components["schemas"]["CapsProvider"][] | null;
         };
+        /** @description How fresh the version overlay is. */
+        CatalogAvailabilityDto: {
+            /** Format: date-time */
+            checkedAt?: string | null;
+            fromCache?: boolean;
+            /** @description True when at least one indexer failed, so counts may be too low. */
+            incomplete?: boolean;
+            /** @description Why the overlay is missing (`capacity_reached`, `search_temporarily_unavailable`); null on success. */
+            error?: string | null;
+        };
+        CatalogDiscoverResponse: {
+            /** @description Rows in display order; rows without any title the viewer may watch are omitted. */
+            rows: components["schemas"]["CatalogRowDto"][] | null;
+        };
+        CatalogEpisodeDto: {
+            /** @description `tmdb-tv-{id}-s{nn}e{nn}`. */
+            workId: string | null;
+            /** Format: int32 */
+            episodeNumber: number;
+            title: string | null;
+            overview?: string | null;
+            airDate?: string | null;
+            /** @description False for announced episodes whose air date is unknown or in the future. */
+            aired?: boolean;
+            /** Format: int32 */
+            runtimeMinutes?: number | null;
+            stillUrl?: string | null;
+            /** Format: float */
+            voteAverage?: number | null;
+            watch: components["schemas"]["WatchStateResponse"];
+            /**
+             * Format: int32
+             * @description Playable versions (season packs included); null unless availability was requested and checked.
+             */
+            versionCount?: number | null;
+        };
+        /** @description A movie or series card for search results and home rows (TMDB data only, no availability). */
+        CatalogItemDto: {
+            /** @description `tmdb-movie-{id}` or `tmdb-tv-{id}`. */
+            workId: string | null;
+            /** @description "movie" or "series". */
+            mediaType: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            title: string | null;
+            originalTitle?: string | null;
+            /** Format: int32 */
+            year?: number | null;
+            overview?: string | null;
+            posterUrl?: string | null;
+            backdropUrl?: string | null;
+            /**
+             * Format: float
+             * @description TMDB vote average (0–10).
+             */
+            voteAverage?: number | null;
+        };
+        CatalogMovieResponse: {
+            workId: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            imdbId?: string | null;
+            title: string | null;
+            originalTitle?: string | null;
+            /** Format: int32 */
+            year?: number | null;
+            overview?: string | null;
+            tagline?: string | null;
+            genres?: string[] | null;
+            /** Format: int32 */
+            runtimeMinutes?: number | null;
+            /** @description The TMDB certification the age gate uses (e.g. `PG-13`, `12`). */
+            certification?: string | null;
+            /** Format: float */
+            voteAverage?: number | null;
+            posterUrl?: string | null;
+            backdropUrl?: string | null;
+            logoUrl?: string | null;
+            trailerUrl?: string | null;
+            people?: components["schemas"]["TmdbPerson"][] | null;
+            watch: components["schemas"]["WatchStateResponse"];
+            access: components["schemas"]["ContentAccessResponse"];
+        };
+        CatalogNextEpisodeDto: {
+            workId: string | null;
+            /** Format: int32 */
+            seasonNumber: number;
+            /** Format: int32 */
+            episodeNumber: number;
+            title?: string | null;
+            airDate?: string | null;
+            stillUrl?: string | null;
+            /** Format: int32 */
+            runtimeMinutes?: number | null;
+            /** Format: int64 */
+            positionTicks?: number;
+            /** Format: int64 */
+            durationTicks?: number | null;
+            /** @description `resume` (in progress), `next` (after the furthest played) or `start` (nothing watched yet). */
+            reason: string | null;
+        };
+        /** @description One home row. */
+        CatalogRowDto: {
+            /** @description Stable id: `trending-movies`, `trending-series`, `popular-movies`, `popular-series`. */
+            id: string | null;
+            /** @description "trending" or "popular". */
+            kind: string | null;
+            /** @description "movie" or "series". */
+            mediaType: string | null;
+            items: components["schemas"]["CatalogItemDto"][] | null;
+        };
+        CatalogSearchResponse: {
+            items: components["schemas"]["CatalogItemDto"][] | null;
+        };
+        CatalogSeasonResponse: {
+            seriesWorkId: string | null;
+            seriesTitle: string | null;
+            /** @description `tmdb-tv-{id}-s{nn}`. */
+            workId: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            /** Format: int32 */
+            seasonNumber: number;
+            title: string | null;
+            overview?: string | null;
+            airDate?: string | null;
+            posterUrl?: string | null;
+            episodes: components["schemas"]["CatalogEpisodeDto"][] | null;
+            availability?: components["schemas"]["CatalogAvailabilityDto"];
+        };
+        CatalogSeasonSummaryDto: {
+            /** @description `tmdb-tv-{id}-s{nn}`. */
+            workId: string | null;
+            /**
+             * Format: int32
+             * @description 0 = specials.
+             */
+            seasonNumber: number;
+            title: string | null;
+            overview?: string | null;
+            airDate?: string | null;
+            posterUrl?: string | null;
+            /** Format: int32 */
+            episodeCount?: number;
+            /** Format: int32 */
+            playedCount?: number;
+            /** Format: int32 */
+            inProgressCount?: number;
+        };
+        CatalogSeriesResponse: {
+            workId: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            imdbId?: string | null;
+            title: string | null;
+            originalTitle?: string | null;
+            /** Format: int32 */
+            year?: number | null;
+            overview?: string | null;
+            tagline?: string | null;
+            genres?: string[] | null;
+            /**
+             * Format: int32
+             * @description Typical episode runtime.
+             */
+            runtimeMinutes?: number | null;
+            certification?: string | null;
+            /** Format: float */
+            voteAverage?: number | null;
+            posterUrl?: string | null;
+            backdropUrl?: string | null;
+            logoUrl?: string | null;
+            trailerUrl?: string | null;
+            people?: components["schemas"]["TmdbPerson"][] | null;
+            /**
+             * Format: int32
+             * @description Regular seasons (specials excluded).
+             */
+            seasonCount?: number;
+            /**
+             * Format: int32
+             * @description Episodes of the regular seasons as TMDB lists them (may include announced ones).
+             */
+            episodeCount?: number;
+            seasons: components["schemas"]["CatalogSeasonSummaryDto"][] | null;
+            watch: components["schemas"]["SeriesWatchSummaryDto"];
+            access: components["schemas"]["ContentAccessResponse"];
+        };
+        CatalogVersionsResponse: {
+            workId: string | null;
+            /** @description "movie" or "episode". */
+            mediaType: string | null;
+            /** @description Ranked best first; only versions the server would play (rejected and known-dead ones are left out). */
+            versions: components["schemas"]["VersionDto"][] | null;
+            /** Format: date-time */
+            checkedAt: string;
+            /** @description True when this list was not searched for this request (see `?refresh=true`). */
+            fromCache?: boolean;
+            /** @description True when at least one indexer failed; such lists are not cached. */
+            incomplete?: boolean;
+        };
         /** @description Body of POST /api/v1/auth/password — admin self-service password change. */
         ChangePasswordRequest: {
             currentPassword?: string | null;
@@ -7297,6 +8038,10 @@ export interface components {
             host?: string | null;
             /** @description Populated only for the `nzb_host_not_allowed` error: the owning indexer's id. */
             indexerId?: string | null;
+            /** @description Machine-readable values for localized messages (e.g. `reason`, `rating`); omitted when empty. */
+            params?: {
+                [key: string]: string;
+            } | null;
         };
         /** @description Typed error envelope rendered consistently by every endpoint. */
         ErrorResponse: {
@@ -7856,6 +8601,12 @@ export interface components {
             errorCode?: string | null;
             errorMessage?: string | null;
         };
+        PredictionReasonDto: {
+            code: string | null;
+            params?: {
+                [key: string]: string;
+            } | null;
+        };
         ProfileImportCandidate: {
             /** Format: int32 */
             externalId?: number;
@@ -8338,6 +9089,21 @@ export interface components {
             startsWithKeyframe?: boolean;
             /** Format: double */
             driftMs?: number;
+        };
+        /** @description The viewer's progress through a series. */
+        SeriesWatchSummaryDto: {
+            /** Format: int32 */
+            playedEpisodes?: number;
+            /** Format: int32 */
+            inProgressEpisodes?: number;
+            /**
+             * Format: int32
+             * @description Episodes of the regular seasons (same basis as Streamarr.Server.Viewers.Catalog.CatalogSeriesResponse.EpisodeCount).
+             */
+            totalEpisodes?: number;
+            nextEpisode?: components["schemas"]["CatalogNextEpisodeDto"];
+            /** @description True when TMDB could not be asked for the next episode. */
+            incomplete?: boolean;
         };
         SessionMetrics: {
             /**
@@ -9078,6 +9844,76 @@ export interface components {
         /** @description TMDB-ranked TV series candidates. The endpoint is intentionally capped at three. */
         TvSeriesSearchResponse: {
             results: components["schemas"]["TvSeriesDto"][] | null;
+        };
+        /** @description One playable version, derived from the parsed release name plus server state; codes are lower-case, null = not stated. */
+        VersionDto: {
+            releaseId: string | null;
+            /** @description The raw release name. */
+            name: string | null;
+            /**
+             * Format: int32
+             * @description 1 = best.
+             */
+            rank: number;
+            /** @description The version the server picks when the client does not choose one (rank 1). */
+            recommended?: boolean;
+            /** @description `2160p`, `1080p`, `720p`, `576p`, `540p`, `480p`, `360p` or `SD`. */
+            resolution?: string | null;
+            /** @description e.g. `BluRay`, `Remux`, `WEB-DL`, `WEBRip`, `HDTV`, `DVD`. */
+            source?: string | null;
+            /** @description `h264`, `hevc`, `av1`, `vc1`, `mpeg2`, `xvid` or `divx`. */
+            videoCodec?: string | null;
+            /**
+             * Format: int32
+             * @description Stated in the name, or 10 when it names an HDR format (HDR needs at least 10 bits).
+             */
+            bitDepth?: number | null;
+            /** @description Headline HDR format: `dolbyvision`, `hdr10plus`, `hdr10` or `hlg`; null = SDR or not stated. */
+            hdr?: string | null;
+            /** @description Every HDR format named, headline first (Dolby Vision releases often carry an `hdr10` base layer). */
+            hdrFormats?: string[] | null;
+            /** @description `truehd`, `dts-hd-ma`, `dts-hd`, `dts-x`, `dts-es`, `dts`, `eac3`, `ac3`, `flac`, `opus`, `aac`, `mp3` or `pcm`. */
+            audioCodec?: string | null;
+            /** @description Layout such as `7.1`, `5.1`, `2.0`. */
+            audioChannels?: string | null;
+            atmos?: boolean;
+            /** @description Spoken languages (ISO 639-1) the name mentions. */
+            languages?: string[] | null;
+            /** @description MULTi / dual-audio marker present. */
+            multiLanguage?: boolean;
+            /** @description `subbed`, `multi`, `hardcoded`; empty = the name says nothing about subtitles. */
+            subtitleHints?: string[] | null;
+            /** @description Subtitle languages (ISO 639-1) the name mentions. */
+            subtitleLanguages?: string[] | null;
+            edition?: string | null;
+            releaseGroup?: string | null;
+            proper?: boolean;
+            repack?: boolean;
+            /** @description A whole-season release; Streamarr.Server.Viewers.Catalog.VersionDto.SizeBytes is the full pack. */
+            seasonPack?: boolean;
+            /**
+             * Format: int64
+             * @description Size the indexer reports.
+             */
+            sizeBytes?: number;
+            /**
+             * Format: int32
+             * @description Size ÷ TMDB runtime (per episode for season packs); null when the runtime is unknown.
+             */
+            estimatedBitrateKbps?: number | null;
+            /**
+             * Format: int32
+             * @description Days since the release was posted.
+             */
+            ageDays?: number;
+            /** @description `unknown` (not checked yet), `ready` or `degraded` (last resolve found missing articles). */
+            health: string | null;
+            /** @description `ready` or `downloading` when a pre-download of this version exists for the viewer; else null. */
+            local?: string | null;
+            /** @description Prediction only (`direct`, `remux`, `transcode`, `unknown`) from the name and the sent device profile; the server decides at playback. */
+            predictedMethod?: string | null;
+            /** @description Why, plus every assumption the prediction made (e.g. `container_assumed`). */
+            predictionReasons?: components["schemas"]["PredictionReasonDto"][] | null;
         };
         ViewerAdminResponse: {
             accountType?: string | null;

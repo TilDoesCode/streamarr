@@ -1,0 +1,6 @@
+Viewer local availability on the Dev World working tree (39310): pre-download enabled (currentFile, threshold 0 s),
+admin resolve of the release with client 'streamarr-viewer' and anna's viewer id, two progress reports from anna with releaseId + streamToken.
+release: Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD
+before: [["Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD", null], ["Big.Buck.Bunny.2008.1080p.BluRay.DDP5.1.x264-DEVWORLD", null], ["Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD", null]]
+after (anna): [["Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD", null], ["Big.Buck.Bunny.2008.1080p.BluRay.DDP5.1.x264-DEVWORLD", null], ["Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD", "ready"]]
+gast (other viewer) sees local=null for all versions (scoped by client + requester).

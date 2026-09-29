@@ -1,0 +1,12 @@
+Viewer catalog latency, Dev World working tree on 127.0.0.1:39310, 2026-09-29 05:59 (canned TMDB/indexer, so these are server overhead)
+search?q=s (anna)                                        status 200  median    0.6 ms  p95    1.1 ms  (n=20)
+search?q=s (kind, age-filtered)                          status 200  median    0.5 ms  p95    0.7 ms  (n=20)
+discover (anna)                                          status 200  median    0.6 ms  p95    0.8 ms  (n=20)
+discover (kind, age-filtered)                            status 200  median    0.6 ms  p95    0.6 ms  (n=20)
+movies/10378 (anna)                                      status 200  median    0.6 ms  p95    0.7 ms  (n=20)
+series/19885 (anna)                                      status 200  median    0.7 ms  p95    0.9 ms  (n=20)
+series/19885/seasons/1 (no availability)                 status 200  median    0.7 ms  p95    0.8 ms  (n=20)
+series/19885/seasons/2?availability=true (cached)        status 200  median    0.7 ms  p95    0.7 ms  (n=20)
+works/tmdb-movie-45745/versions (cached)                 status 200  median    0.5 ms  p95    0.6 ms  (n=20)
+works/tmdb-movie-45745/versions?refresh=true (fan-out)   status 200  12.4 ms  fromCache=False
+series/19885/seasons/1?availability=true&refresh=true   status 200  2.2 ms  counts=[2, 2, 2] fromCache=False

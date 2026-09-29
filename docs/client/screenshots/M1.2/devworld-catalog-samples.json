@@ -1,0 +1,1208 @@
+{
+ "discover-anna": {
+  "request": "GET /api/v1/viewer/catalog/discover",
+  "status": 200,
+  "body": {
+   "rows": [
+    {
+     "id": "trending-movies",
+     "kind": "trending",
+     "mediaType": "movie",
+     "items": [
+      {
+       "workId": "tmdb-movie-891761",
+       "mediaType": "movie",
+       "tmdbId": 891761,
+       "title": "Sprite Fright",
+       "originalTitle": "Sprite Fright",
+       "year": 2024,
+       "overview": "Set in 80’s-Britain, when a group of rowdy teenagers trek into an isolated forest, they discover peaceful mushroom creatures that turn out to be an unexpected force of nature.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/AjWJQOogG4Irpff6K49tzrUTb1s.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/aCMT1okuiKFnyKHdCOez66rJKyT.jpg",
+       "voteAverage": 7.8
+      },
+      {
+       "workId": "tmdb-movie-10378",
+       "mediaType": "movie",
+       "tmdbId": 10378,
+       "title": "Big Buck Bunny",
+       "originalTitle": "Big Buck Bunny",
+       "year": 2008,
+       "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/i9jJzvoXET4D9pOkoEwncSdNNER.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/xtdybjRRZ15mCrPOvEld305myys.jpg",
+       "voteAverage": 6.5
+      },
+      {
+       "workId": "tmdb-movie-358332",
+       "mediaType": "movie",
+       "tmdbId": 358332,
+       "title": "Cosmos Laundromat",
+       "originalTitle": "Cosmos Laundromat",
+       "year": 2015,
+       "overview": "On a desolate island, a suicidal sheep named Franck meets his fate…in the form of a quirky salesman named Victor, who offers him the gift of a lifetime. The gift is many lifetimes, actually, in many different worlds – each lasting just a few minutes. In the sequel to the pilot, Franck will find a new reason to live…in the form of a bewitching female adventurer named Tara, who awakens his long-lost lust for life. But can Franck keep up with her?",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/5ZXi0oitpEgAdoJglFTc5SZF9nt.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/f2wABsgj2lIR2dkDEfBZX8p4Iyk.jpg",
+       "voteAverage": 6.3
+      },
+      {
+       "workId": "tmdb-movie-45745",
+       "mediaType": "movie",
+       "tmdbId": 45745,
+       "title": "Sintel",
+       "originalTitle": "Sintel",
+       "year": 2010,
+       "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+       "voteAverage": 7.3
+      },
+      {
+       "workId": "tmdb-movie-457784",
+       "mediaType": "movie",
+       "tmdbId": 457784,
+       "title": "Agent 327: Operation Barbershop",
+       "originalTitle": "Agent 327: Operation Barbershop",
+       "year": 2017,
+       "overview": "Agent 327 is investigating a clue that leads him to a shady barbershop in Amsterdam. Little does he know that he is being tailed by mercenary Boris Kloris.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/tSIMZK9XZSIb1dL3iQeTESEZvHw.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/aupI9kV5CawUp02XWnI2l7Ym9SH.jpg",
+       "voteAverage": 7
+      },
+      {
+       "workId": "tmdb-movie-133701",
+       "mediaType": "movie",
+       "tmdbId": 133701,
+       "title": "Tears of Steel",
+       "originalTitle": "Tears of Steel",
+       "year": 2012,
+       "overview": "The film’s premise is about a group of warriors and scientists, who gathered at the “Oude Kerk” in Amsterdam to stage a crucial event from the past, in a desperate attempt to rescue the world from destructive robots.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/8qy3jRmaHR7f8VZh3iXCqCWfFsH.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/fOy6SL5Zs2PFcNXwqEPIDPrLB1q.jpg",
+       "voteAverage": 5.7
+      },
+      {
+       "workId": "tmdb-movie-10331",
+       "mediaType": "movie",
+       "tmdbId": 10331,
+       "title": "Night of the Living Dead",
+       "originalTitle": "Night of the Living Dead",
+       "year": 1968,
+       "overview": "A ragtag group barricade themselves in an old Pennsylvania farmhouse to remain safe from a horde of flesh-eating ghouls ravaging the Northeast.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/rb2NWyb008u1EcKCOyXs2Nmj0ra.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/5KtmBSqFtHY3I9t8lgH27Mc0bqY.jpg",
+       "voteAverage": 7.6
+      }
+     ]
+    },
+    {
+     "id": "trending-series",
+     "kind": "trending",
+     "mediaType": "series",
+     "items": [
+      {
+       "workId": "tmdb-tv-19885",
+       "mediaType": "series",
+       "tmdbId": 19885,
+       "title": "Sherlock",
+       "originalTitle": "Sherlock",
+       "year": 2010,
+       "overview": "A modern update finds the famous sleuth and his doctor partner solving crime in 21st century London.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+       "voteAverage": 8.5
+      },
+      {
+       "workId": "tmdb-tv-33050",
+       "mediaType": "series",
+       "tmdbId": 33050,
+       "title": "Pioneer One",
+       "originalTitle": "Pioneer One",
+       "year": 2010,
+       "overview": "A Cold War relic returns amid fears of terrorism but turns out to be a forgotten Soviet space mission. What it brings back will have implications for the entire world.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/p53wbsukyhJ8TieisoeU1zZr9iA.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/aMUc1h3nXYZnou7P9HRdJgW2zw2.jpg",
+       "voteAverage": 6.3
+      }
+     ]
+    },
+    {
+     "id": "popular-movies",
+     "kind": "popular",
+     "mediaType": "movie",
+     "items": [
+      {
+       "workId": "tmdb-movie-10378",
+       "mediaType": "movie",
+       "tmdbId": 10378,
+       "title": "Big Buck Bunny",
+       "originalTitle": "Big Buck Bunny",
+       "year": 2008,
+       "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/i9jJzvoXET4D9pOkoEwncSdNNER.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/xtdybjRRZ15mCrPOvEld305myys.jpg",
+       "voteAverage": 6.5
+      },
+      {
+       "workId": "tmdb-movie-45745",
+       "mediaType": "movie",
+       "tmdbId": 45745,
+       "title": "Sintel",
+       "originalTitle": "Sintel",
+       "year": 2010,
+       "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+       "voteAverage": 7.3
+      },
+      {
+       "workId": "tmdb-movie-133701",
+       "mediaType": "movie",
+       "tmdbId": 133701,
+       "title": "Tears of Steel",
+       "originalTitle": "Tears of Steel",
+       "year": 2012,
+       "overview": "The film’s premise is about a group of warriors and scientists, who gathered at the “Oude Kerk” in Amsterdam to stage a crucial event from the past, in a desperate attempt to rescue the world from destructive robots.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/8qy3jRmaHR7f8VZh3iXCqCWfFsH.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/fOy6SL5Zs2PFcNXwqEPIDPrLB1q.jpg",
+       "voteAverage": 5.7
+      },
+      {
+       "workId": "tmdb-movie-9761",
+       "mediaType": "movie",
+       "tmdbId": 9761,
+       "title": "Elephants Dream",
+       "originalTitle": "Elephants Dream",
+       "year": 2006,
+       "overview": "Elephants Dream is the story of two strange characters exploring a capricious and seemingly infinite machine. The elder, Proog, acts as a tour-guide and protector, happily showing off the sights and dangers of the machine to his initially curious but increasingly skeptical protege Emo. As their journey unfolds we discover signs that the machine is not all Proog thinks it is, and his guiding takes on a more desperate aspect. Elephants Dream is a story about communication and fiction, made purposefully open-ended as the world’s first 3D animated “Open movie”. The film itself is released under the Creative Commons license, along with the entirety of the production files used to make it (roughly 7 Gigabytes of data). The software used to make the movie is the free/open source animation suite Blender along with other open source software, thus allowing the movie to be remade, remixed and re-purposed with only a computer and the data on the DVD or download.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/9zROtU9TkpZQrOuEaMAp68FOWLK.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/9bJDwuhza19HQcYA99FeslLYmUm.jpg",
+       "voteAverage": 5.8
+      },
+      {
+       "workId": "tmdb-movie-1177628",
+       "mediaType": "movie",
+       "tmdbId": 1177628,
+       "title": "Wing It!",
+       "originalTitle": "Wing It!",
+       "year": 2023,
+       "overview": "Blender Studio’s 15th Open Movie: An uptight engineer gets an unwelcome visit from a enthusiastic wannabe-pilot, causing both of them to be launched into the air inside an out-of-control space shuttle.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/kVRGAgqUC2u75pLsXgDj14tOsRJ.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/o2G1kW9pCcRo7NmiZhJBm5LcVpH.jpg",
+       "voteAverage": 7.5
+      },
+      {
+       "workId": "tmdb-movie-358332",
+       "mediaType": "movie",
+       "tmdbId": 358332,
+       "title": "Cosmos Laundromat",
+       "originalTitle": "Cosmos Laundromat",
+       "year": 2015,
+       "overview": "On a desolate island, a suicidal sheep named Franck meets his fate…in the form of a quirky salesman named Victor, who offers him the gift of a lifetime. The gift is many lifetimes, actually, in many different worlds – each lasting just a few minutes. In the sequel to the pilot, Franck will find a new reason to live…in the form of a bewitching female adventurer named Tara, who awakens his long-lost lust for life. But can Franck keep up with her?",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/5ZXi0oitpEgAdoJglFTc5SZF9nt.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/f2wABsgj2lIR2dkDEfBZX8p4Iyk.jpg",
+       "voteAverage": 6.3
+      },
+      {
+       "workId": "tmdb-movie-891761",
+       "mediaType": "movie",
+       "tmdbId": 891761,
+       "title": "Sprite Fright",
+       "originalTitle": "Sprite Fright",
+       "year": 2024,
+       "overview": "Set in 80’s-Britain, when a group of rowdy teenagers trek into an isolated forest, they discover peaceful mushroom creatures that turn out to be an unexpected force of nature.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/AjWJQOogG4Irpff6K49tzrUTb1s.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/aCMT1okuiKFnyKHdCOez66rJKyT.jpg",
+       "voteAverage": 7.8
+      },
+      {
+       "workId": "tmdb-movie-10331",
+       "mediaType": "movie",
+       "tmdbId": 10331,
+       "title": "Night of the Living Dead",
+       "originalTitle": "Night of the Living Dead",
+       "year": 1968,
+       "overview": "A ragtag group barricade themselves in an old Pennsylvania farmhouse to remain safe from a horde of flesh-eating ghouls ravaging the Northeast.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/rb2NWyb008u1EcKCOyXs2Nmj0ra.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/5KtmBSqFtHY3I9t8lgH27Mc0bqY.jpg",
+       "voteAverage": 7.6
+      }
+     ]
+    },
+    {
+     "id": "popular-series",
+     "kind": "popular",
+     "mediaType": "series",
+     "items": [
+      {
+       "workId": "tmdb-tv-33050",
+       "mediaType": "series",
+       "tmdbId": 33050,
+       "title": "Pioneer One",
+       "originalTitle": "Pioneer One",
+       "year": 2010,
+       "overview": "A Cold War relic returns amid fears of terrorism but turns out to be a forgotten Soviet space mission. What it brings back will have implications for the entire world.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/p53wbsukyhJ8TieisoeU1zZr9iA.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/aMUc1h3nXYZnou7P9HRdJgW2zw2.jpg",
+       "voteAverage": 6.3
+      },
+      {
+       "workId": "tmdb-tv-19885",
+       "mediaType": "series",
+       "tmdbId": 19885,
+       "title": "Sherlock",
+       "originalTitle": "Sherlock",
+       "year": 2010,
+       "overview": "A modern update finds the famous sleuth and his doctor partner solving crime in 21st century London.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+       "voteAverage": 8.5
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "discover-kind": {
+  "request": "GET /api/v1/viewer/catalog/discover",
+  "status": 200,
+  "body": {
+   "rows": [
+    {
+     "id": "trending-movies",
+     "kind": "trending",
+     "mediaType": "movie",
+     "items": [
+      {
+       "workId": "tmdb-movie-10378",
+       "mediaType": "movie",
+       "tmdbId": 10378,
+       "title": "Big Buck Bunny",
+       "originalTitle": "Big Buck Bunny",
+       "year": 2008,
+       "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/i9jJzvoXET4D9pOkoEwncSdNNER.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/xtdybjRRZ15mCrPOvEld305myys.jpg",
+       "voteAverage": 6.5
+      },
+      {
+       "workId": "tmdb-movie-358332",
+       "mediaType": "movie",
+       "tmdbId": 358332,
+       "title": "Cosmos Laundromat",
+       "originalTitle": "Cosmos Laundromat",
+       "year": 2015,
+       "overview": "On a desolate island, a suicidal sheep named Franck meets his fate…in the form of a quirky salesman named Victor, who offers him the gift of a lifetime. The gift is many lifetimes, actually, in many different worlds – each lasting just a few minutes. In the sequel to the pilot, Franck will find a new reason to live…in the form of a bewitching female adventurer named Tara, who awakens his long-lost lust for life. But can Franck keep up with her?",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/5ZXi0oitpEgAdoJglFTc5SZF9nt.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/f2wABsgj2lIR2dkDEfBZX8p4Iyk.jpg",
+       "voteAverage": 6.3
+      },
+      {
+       "workId": "tmdb-movie-45745",
+       "mediaType": "movie",
+       "tmdbId": 45745,
+       "title": "Sintel",
+       "originalTitle": "Sintel",
+       "year": 2010,
+       "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+       "voteAverage": 7.3
+      }
+     ]
+    },
+    {
+     "id": "trending-series",
+     "kind": "trending",
+     "mediaType": "series",
+     "items": [
+      {
+       "workId": "tmdb-tv-19885",
+       "mediaType": "series",
+       "tmdbId": 19885,
+       "title": "Sherlock",
+       "originalTitle": "Sherlock",
+       "year": 2010,
+       "overview": "A modern update finds the famous sleuth and his doctor partner solving crime in 21st century London.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+       "voteAverage": 8.5
+      }
+     ]
+    },
+    {
+     "id": "popular-movies",
+     "kind": "popular",
+     "mediaType": "movie",
+     "items": [
+      {
+       "workId": "tmdb-movie-10378",
+       "mediaType": "movie",
+       "tmdbId": 10378,
+       "title": "Big Buck Bunny",
+       "originalTitle": "Big Buck Bunny",
+       "year": 2008,
+       "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/i9jJzvoXET4D9pOkoEwncSdNNER.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/xtdybjRRZ15mCrPOvEld305myys.jpg",
+       "voteAverage": 6.5
+      },
+      {
+       "workId": "tmdb-movie-45745",
+       "mediaType": "movie",
+       "tmdbId": 45745,
+       "title": "Sintel",
+       "originalTitle": "Sintel",
+       "year": 2010,
+       "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+       "voteAverage": 7.3
+      },
+      {
+       "workId": "tmdb-movie-358332",
+       "mediaType": "movie",
+       "tmdbId": 358332,
+       "title": "Cosmos Laundromat",
+       "originalTitle": "Cosmos Laundromat",
+       "year": 2015,
+       "overview": "On a desolate island, a suicidal sheep named Franck meets his fate…in the form of a quirky salesman named Victor, who offers him the gift of a lifetime. The gift is many lifetimes, actually, in many different worlds – each lasting just a few minutes. In the sequel to the pilot, Franck will find a new reason to live…in the form of a bewitching female adventurer named Tara, who awakens his long-lost lust for life. But can Franck keep up with her?",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/5ZXi0oitpEgAdoJglFTc5SZF9nt.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/f2wABsgj2lIR2dkDEfBZX8p4Iyk.jpg",
+       "voteAverage": 6.3
+      }
+     ]
+    },
+    {
+     "id": "popular-series",
+     "kind": "popular",
+     "mediaType": "series",
+     "items": [
+      {
+       "workId": "tmdb-tv-19885",
+       "mediaType": "series",
+       "tmdbId": 19885,
+       "title": "Sherlock",
+       "originalTitle": "Sherlock",
+       "year": 2010,
+       "overview": "A modern update finds the famous sleuth and his doctor partner solving crime in 21st century London.",
+       "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
+       "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+       "voteAverage": 8.5
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "search-anna-sher": {
+  "request": "GET /api/v1/viewer/catalog/search?q=sher",
+  "status": 200,
+  "body": {
+   "items": [
+    {
+     "workId": "tmdb-tv-19885",
+     "mediaType": "series",
+     "tmdbId": 19885,
+     "title": "Sherlock",
+     "originalTitle": "Sherlock",
+     "year": 2010,
+     "overview": "A modern update finds the famous sleuth and his doctor partner solving crime in 21st century London.",
+     "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
+     "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+     "voteAverage": 8.5
+    }
+   ]
+  }
+ },
+ "movie-sintel": {
+  "request": "GET /api/v1/viewer/catalog/movies/45745",
+  "status": 200,
+  "body": {
+   "workId": "tmdb-movie-45745",
+   "tmdbId": 45745,
+   "imdbId": "tt1727587",
+   "title": "Sintel",
+   "originalTitle": "Sintel",
+   "year": 2010,
+   "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+   "tagline": null,
+   "genres": [
+    "Animation",
+    "Fantasy"
+   ],
+   "runtimeMinutes": 14,
+   "certification": "PG",
+   "voteAverage": 7.3,
+   "posterUrl": "https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+   "backdropUrl": "https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+   "logoUrl": "https://image.tmdb.org/t/p/w500/p3NwyW8Jf5AGmKk5B0K69MhiMWv.png",
+   "trailerUrl": null,
+   "people": [],
+   "watch": {
+    "workId": "tmdb-movie-45745",
+    "kind": "movie",
+    "seriesWorkId": null,
+    "seasonNumber": null,
+    "episodeNumber": null,
+    "title": null,
+    "positionTicks": 0,
+    "durationTicks": null,
+    "progressPercent": null,
+    "played": false,
+    "playCount": 0,
+    "lastReleaseId": null,
+    "lastPlayedAt": null,
+    "playedAt": null
+   },
+   "access": {
+    "workId": "tmdb-movie-45745",
+    "allowed": true,
+    "reason": "unrestricted",
+    "rating": "PG",
+    "minimumAge": 10,
+    "viewerMaxAge": null
+   }
+  }
+ },
+ "series-sherlock": {
+  "request": "GET /api/v1/viewer/catalog/series/19885",
+  "status": 200,
+  "body": {
+   "workId": "tmdb-tv-19885",
+   "tmdbId": 19885,
+   "imdbId": "tt1475582",
+   "title": "Sherlock",
+   "originalTitle": "Sherlock",
+   "year": 2010,
+   "overview": "A modern update finds the famous sleuth and his doctor partner solving crime in 21st century London.",
+   "tagline": "A new sleuth for the 21st century.",
+   "genres": [
+    "Crime",
+    "Drama",
+    "Mystery"
+   ],
+   "runtimeMinutes": 89,
+   "certification": "12",
+   "voteAverage": 8.5,
+   "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
+   "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+   "logoUrl": "https://image.tmdb.org/t/p/w500/5cTbld1BphDXeT2uyN6bMQ4wwGh.png",
+   "trailerUrl": null,
+   "people": [],
+   "seasonCount": 3,
+   "episodeCount": 9,
+   "seasons": [
+    {
+     "workId": "tmdb-tv-19885-s01",
+     "seasonNumber": 1,
+     "title": "Season 1",
+     "overview": null,
+     "airDate": "2010-07-25",
+     "posterUrl": "https://image.tmdb.org/t/p/w780/wQczbo7IKtHjmO49pVWTc2u5pSt.jpg",
+     "episodeCount": 3,
+     "playedCount": 1,
+     "inProgressCount": 0
+    },
+    {
+     "workId": "tmdb-tv-19885-s02",
+     "seasonNumber": 2,
+     "title": "Season 2",
+     "overview": null,
+     "airDate": "2012-01-01",
+     "posterUrl": "https://image.tmdb.org/t/p/w780/hSf2frcLiEWAPUZ6wbOMTTNZ7b0.jpg",
+     "episodeCount": 3,
+     "playedCount": 0,
+     "inProgressCount": 0
+    },
+    {
+     "workId": "tmdb-tv-19885-s03",
+     "seasonNumber": 3,
+     "title": "Season 3",
+     "overview": null,
+     "airDate": "2014-01-01",
+     "posterUrl": "https://image.tmdb.org/t/p/w780/z9ljxwZUQA2349ZBZAssBXpd0i6.jpg",
+     "episodeCount": 3,
+     "playedCount": 0,
+     "inProgressCount": 0
+    }
+   ],
+   "watch": {
+    "playedEpisodes": 1,
+    "inProgressEpisodes": 0,
+    "totalEpisodes": 9,
+    "nextEpisode": {
+     "workId": "tmdb-tv-19885-s01e02",
+     "seasonNumber": 1,
+     "episodeNumber": 2,
+     "title": "The Blind Banker",
+     "airDate": "2010-08-01",
+     "stillUrl": "https://image.tmdb.org/t/p/w1280/cp1mf1pwb8F7NcuCJkzcfxIkZw2.jpg",
+     "runtimeMinutes": 89,
+     "positionTicks": 0,
+     "durationTicks": null,
+     "reason": "next"
+    },
+    "incomplete": false
+   },
+   "access": {
+    "workId": "tmdb-tv-19885",
+    "allowed": true,
+    "reason": "unrestricted",
+    "rating": "12",
+    "minimumAge": 12,
+    "viewerMaxAge": null
+   }
+  }
+ },
+ "season-pioneer-one-s01-availability": {
+  "request": "GET /api/v1/viewer/catalog/series/33050/seasons/1?availability=true",
+  "status": 200,
+  "body": {
+   "seriesWorkId": "tmdb-tv-33050",
+   "seriesTitle": "Pioneer One",
+   "workId": "tmdb-tv-33050-s01",
+   "tmdbId": 33050,
+   "seasonNumber": 1,
+   "title": "Season 1",
+   "overview": null,
+   "airDate": "2010-06-16",
+   "posterUrl": null,
+   "episodes": [
+    {
+     "workId": "tmdb-tv-33050-s01e01",
+     "episodeNumber": 1,
+     "title": "Earthfall",
+     "overview": "An object from space spreads radiation over North America. Fearing terrorism, U.S. Homeland Security agents are dispatched to investigate and contain the damage. What they discover is a forgotten relic of the old Soviet space program, whose return to Earth will have implications for the entire world.",
+     "airDate": "2010-06-16",
+     "aired": true,
+     "runtimeMinutes": 35,
+     "stillUrl": null,
+     "voteAverage": null,
+     "watch": {
+      "workId": "tmdb-tv-33050-s01e01",
+      "kind": "episode",
+      "seriesWorkId": "tmdb-tv-33050",
+      "seasonNumber": 1,
+      "episodeNumber": 1,
+      "title": null,
+      "positionTicks": 0,
+      "durationTicks": null,
+      "progressPercent": null,
+      "played": false,
+      "playCount": 0,
+      "lastReleaseId": null,
+      "lastPlayedAt": null,
+      "playedAt": null
+     },
+     "versionCount": 3
+    },
+    {
+     "workId": "tmdb-tv-33050-s01e02",
+     "episodeNumber": 2,
+     "title": "The Man From Mars",
+     "overview": "Hired Mars expert Dr. Zachary Walzer (Jack Haley) fights to prove the validity of the Mars story. Can he convince the government to mount a manned mission to Mars? Agent in charge Tom Taylor (James Rich) faces pressure from both the Canadians and his own superiors, and has to make a call.",
+     "airDate": "2010-06-25",
+     "aired": true,
+     "runtimeMinutes": 35,
+     "stillUrl": null,
+     "voteAverage": null,
+     "watch": {
+      "workId": "tmdb-tv-33050-s01e02",
+      "kind": "episode",
+      "seriesWorkId": "tmdb-tv-33050",
+      "seasonNumber": 1,
+      "episodeNumber": 2,
+      "title": null,
+      "positionTicks": 0,
+      "durationTicks": null,
+      "progressPercent": null,
+      "played": false,
+      "playCount": 0,
+      "lastReleaseId": null,
+      "lastPlayedAt": null,
+      "playedAt": null
+     },
+     "versionCount": 3
+    },
+    {
+     "workId": "tmdb-tv-33050-s01e03",
+     "episodeNumber": 3,
+     "title": "Alone in the Night",
+     "overview": "Now quarantined to the Calgary base for two weeks, Taylor and his team have bought time to get answers from the supposed Martian cosmonaut. But who can get him to talk?",
+     "airDate": "2011-03-28",
+     "aired": true,
+     "runtimeMinutes": 35,
+     "stillUrl": null,
+     "voteAverage": null,
+     "watch": {
+      "workId": "tmdb-tv-33050-s01e03",
+      "kind": "episode",
+      "seriesWorkId": "tmdb-tv-33050",
+      "seasonNumber": 1,
+      "episodeNumber": 3,
+      "title": null,
+      "positionTicks": 0,
+      "durationTicks": null,
+      "progressPercent": null,
+      "played": false,
+      "playCount": 0,
+      "lastReleaseId": null,
+      "lastPlayedAt": null,
+      "playedAt": null
+     },
+     "versionCount": 3
+    },
+    {
+     "workId": "tmdb-tv-33050-s01e04",
+     "episodeNumber": 4,
+     "title": "Triangular Diplomacy",
+     "overview": "As the media begins to question the story about the crashed satellite, Secretary McClellan (Einar Gunn) starts to play hardball with the Russians in pursuit of his own truth. But everything hinges on what Yuri (Aleksandr Evtushenko), the frightened boy at the center of it all, might have to say...",
+     "airDate": "2011-04-28",
+     "aired": true,
+     "runtimeMinutes": 35,
+     "stillUrl": null,
+     "voteAverage": null,
+     "watch": {
+      "workId": "tmdb-tv-33050-s01e04",
+      "kind": "episode",
+      "seriesWorkId": "tmdb-tv-33050",
+      "seasonNumber": 1,
+      "episodeNumber": 4,
+      "title": null,
+      "positionTicks": 0,
+      "durationTicks": null,
+      "progressPercent": null,
+      "played": false,
+      "playCount": 0,
+      "lastReleaseId": null,
+      "lastPlayedAt": null,
+      "playedAt": null
+     },
+     "versionCount": 3
+    },
+    {
+     "workId": "tmdb-tv-33050-s01e05",
+     "episodeNumber": 5,
+     "title": "Sea Change",
+     "overview": "When an unannounced visitor breaks in to the Calgary base with just days left in the Quarantine, tensions are higher than ever. The fate of Yuri and everyone on Tom Taylor’s team is about to be decided in this, the penultimate episode of the first season.",
+     "airDate": "2011-10-05",
+     "aired": true,
+     "runtimeMinutes": 35,
+     "stillUrl": null,
+     "voteAverage": null,
+     "watch": {
+      "workId": "tmdb-tv-33050-s01e05",
+      "kind": "episode",
+      "seriesWorkId": "tmdb-tv-33050",
+      "seasonNumber": 1,
+      "episodeNumber": 5,
+      "title": null,
+      "positionTicks": 0,
+      "durationTicks": null,
+      "progressPercent": null,
+      "played": false,
+      "playCount": 0,
+      "lastReleaseId": null,
+      "lastPlayedAt": null,
+      "playedAt": null
+     },
+     "versionCount": 3
+    },
+    {
+     "workId": "tmdb-tv-33050-s01e06",
+     "episodeNumber": 6,
+     "title": "War of the World",
+     "overview": "Taylor prepares to go to the public with Yuri's story, and everyone discovers the consequences of their actions in the conclusion to Pioneer One's first season.",
+     "airDate": "2011-12-13",
+     "aired": true,
+     "runtimeMinutes": 35,
+     "stillUrl": null,
+     "voteAverage": null,
+     "watch": {
+      "workId": "tmdb-tv-33050-s01e06",
+      "kind": "episode",
+      "seriesWorkId": "tmdb-tv-33050",
+      "seasonNumber": 1,
+      "episodeNumber": 6,
+      "title": null,
+      "positionTicks": 0,
+      "durationTicks": null,
+      "progressPercent": null,
+      "played": false,
+      "playCount": 0,
+      "lastReleaseId": null,
+      "lastPlayedAt": null,
+      "playedAt": null
+     },
+     "versionCount": 3
+    }
+   ],
+   "availability": {
+    "checkedAt": "2026-09-29T03:57:12.562812+00:00",
+    "fromCache": true,
+    "incomplete": false,
+    "error": null
+   }
+  }
+ },
+ "versions-sintel-predicted-androidtv": {
+  "request": "GET /api/v1/viewer/catalog/works/tmdb-movie-45745/versions?videoCodecs=h264,hevc,av1&audioCodecs=aac,ac3,eac3,opus&containers=mkv,mp4&hdrFormats=hdr10,hlg&supports10Bit=true&maxAudioChannels=6",
+  "status": 200,
+  "body": {
+   "workId": "tmdb-movie-45745",
+   "mediaType": "movie",
+   "versions": [
+    {
+     "releaseId": "1ac24a9aa5a568f402a4bf4c34f1260138638a62d3e55fabae085fae21dffc2d",
+     "name": "Sintel.2010.1080p.BluRay.DTS.5.1.HDR10.10bit.x265-DEVWORLD",
+     "rank": 1,
+     "recommended": true,
+     "resolution": "1080p",
+     "source": "BluRay",
+     "videoCodec": "hevc",
+     "bitDepth": 10,
+     "hdr": "hdr10",
+     "hdrFormats": [
+      "hdr10"
+     ],
+     "audioCodec": "dts",
+     "audioChannels": "5.1",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 840000000,
+     "estimatedBitrateKbps": 8000,
+     "ageDays": 1500,
+     "health": "unknown",
+     "local": null,
+     "predictedMethod": "remux",
+     "predictionReasons": [
+      {
+       "code": "container_assumed",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "audio_codec_unsupported",
+       "params": {
+        "codec": "dts"
+       }
+      },
+      {
+       "code": "audio_converted",
+       "params": {
+        "from": "dts",
+        "to": "aac",
+        "channels": "2"
+       }
+      }
+     ]
+    },
+    {
+     "releaseId": "1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687",
+     "name": "Sintel.2010.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+     "rank": 2,
+     "recommended": false,
+     "resolution": "1080p",
+     "source": "BluRay",
+     "videoCodec": "h264",
+     "bitDepth": null,
+     "hdr": null,
+     "hdrFormats": [],
+     "audioCodec": "ac3",
+     "audioChannels": "5.1",
+     "atmos": false,
+     "languages": [
+      "de"
+     ],
+     "multiLanguage": true,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 1260000000,
+     "estimatedBitrateKbps": 12000,
+     "ageDays": 800,
+     "health": "unknown",
+     "local": null,
+     "predictedMethod": "direct",
+     "predictionReasons": [
+      {
+       "code": "container_assumed",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "direct_play",
+       "params": null
+      }
+     ]
+    },
+    {
+     "releaseId": "8389ae40289b5f88c8e4196947636fdb493a14ffa35a90f4be02c281e10ab15c",
+     "name": "Sintel.2010.1080p.WEB-DL.Opus.5.1.AV1-DEVWORLD",
+     "rank": 3,
+     "recommended": false,
+     "resolution": "1080p",
+     "source": "WEB-DL",
+     "videoCodec": "av1",
+     "bitDepth": null,
+     "hdr": null,
+     "hdrFormats": [],
+     "audioCodec": "opus",
+     "audioChannels": "5.1",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 420000000,
+     "estimatedBitrateKbps": 4000,
+     "ageDays": 60,
+     "health": "unknown",
+     "local": null,
+     "predictedMethod": "direct",
+     "predictionReasons": [
+      {
+       "code": "container_assumed",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "bit_depth_assumed",
+       "params": {
+        "bitDepth": "8"
+       }
+      },
+      {
+       "code": "direct_play",
+       "params": null
+      }
+     ]
+    }
+   ],
+   "checkedAt": "2026-09-29T03:59:16.184012+00:00",
+   "fromCache": true,
+   "incomplete": false
+  }
+ },
+ "versions-bbb-predicted-safari": {
+  "request": "GET /api/v1/viewer/catalog/works/tmdb-movie-10378/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,eac3&containers=mp4&hdrFormats=hdr10&supports10Bit=true&maxAudioChannels=2",
+  "status": 200,
+  "body": {
+   "workId": "tmdb-movie-10378",
+   "mediaType": "movie",
+   "versions": [
+    {
+     "releaseId": "f29ed808cabfd41df60c0baabe89c1cd42549c585f87b3d968ae56aa17b00a9d",
+     "name": "Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD",
+     "rank": 1,
+     "recommended": true,
+     "resolution": "2160p",
+     "source": "BluRay",
+     "videoCodec": "hevc",
+     "bitDepth": 10,
+     "hdr": "hdr10",
+     "hdrFormats": [
+      "hdr10"
+     ],
+     "audioCodec": "truehd",
+     "audioChannels": "5.1",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 2400000000,
+     "estimatedBitrateKbps": 40000,
+     "ageDays": 300,
+     "health": "ready",
+     "local": null,
+     "predictedMethod": "remux",
+     "predictionReasons": [
+      {
+       "code": "container_assumed",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "container_unsupported",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "audio_codec_unsupported",
+       "params": {
+        "codec": "truehd"
+       }
+      },
+      {
+       "code": "audio_converted",
+       "params": {
+        "from": "truehd",
+        "to": "aac",
+        "channels": "2"
+       }
+      }
+     ]
+    },
+    {
+     "releaseId": "f008c88196a25a3755f424a574b2b579ba3579e1e2856fdc97f6960d1e385c8b",
+     "name": "Big.Buck.Bunny.2008.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+     "rank": 2,
+     "recommended": false,
+     "resolution": "1080p",
+     "source": "BluRay",
+     "videoCodec": "h264",
+     "bitDepth": null,
+     "hdr": null,
+     "hdrFormats": [],
+     "audioCodec": "eac3",
+     "audioChannels": "5.1",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 600000000,
+     "estimatedBitrateKbps": 10000,
+     "ageDays": 900,
+     "health": "ready",
+     "local": null,
+     "predictedMethod": "remux",
+     "predictionReasons": [
+      {
+       "code": "container_assumed",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "container_unsupported",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "audio_converted",
+       "params": {
+        "from": "eac3",
+        "to": "aac",
+        "channels": "2"
+       }
+      }
+     ]
+    },
+    {
+     "releaseId": "e86659d514d5e52880f9515c76f4523e2356b5776071685989ed48ef6a4dd460",
+     "name": "Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+     "rank": 3,
+     "recommended": false,
+     "resolution": "1080p",
+     "source": "WEB-DL",
+     "videoCodec": "h264",
+     "bitDepth": null,
+     "hdr": null,
+     "hdrFormats": [],
+     "audioCodec": "aac",
+     "audioChannels": "2.0",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 360000000,
+     "estimatedBitrateKbps": 6000,
+     "ageDays": 400,
+     "health": "ready",
+     "local": null,
+     "predictedMethod": "remux",
+     "predictionReasons": [
+      {
+       "code": "container_assumed",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "container_unsupported",
+       "params": {
+        "container": "mkv"
+       }
+      },
+      {
+       "code": "audio_copied",
+       "params": {
+        "codec": "aac",
+        "channels": "2"
+       }
+      }
+     ]
+    }
+   ],
+   "checkedAt": "2026-09-29T03:57:12.507692+00:00",
+   "fromCache": true,
+   "incomplete": false
+  }
+ },
+ "versions-pioneer-one-s01e02": {
+  "request": "GET /api/v1/viewer/catalog/works/tmdb-tv-33050-s01e02/versions",
+  "status": 200,
+  "body": {
+   "workId": "tmdb-tv-33050-s01e02",
+   "mediaType": "episode",
+   "versions": [
+    {
+     "releaseId": "d791668a8838b75a48ced74f6ff4d6fc082658bd9d2445eccea15269f0ea68b8",
+     "name": "Pioneer.One.S01.1080p.BluRay.DDP5.1.x264-DEVPACK",
+     "rank": 1,
+     "recommended": true,
+     "resolution": "1080p",
+     "source": "BluRay",
+     "videoCodec": "h264",
+     "bitDepth": null,
+     "hdr": null,
+     "hdrFormats": [],
+     "audioCodec": "eac3",
+     "audioChannels": "5.1",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVPACK",
+     "proper": false,
+     "repack": false,
+     "seasonPack": true,
+     "sizeBytes": 15750000000,
+     "estimatedBitrateKbps": 10000,
+     "ageDays": 1000,
+     "health": "ready",
+     "local": null,
+     "predictedMethod": null,
+     "predictionReasons": null
+    },
+    {
+     "releaseId": "91dd9086aa76f18e31d49ef5a4f109d9f286b799598d363b0989b74162f5cedd",
+     "name": "Pioneer.One.S01E02.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+     "rank": 2,
+     "recommended": false,
+     "resolution": "1080p",
+     "source": "BluRay",
+     "videoCodec": "h264",
+     "bitDepth": null,
+     "hdr": null,
+     "hdrFormats": [],
+     "audioCodec": "eac3",
+     "audioChannels": "5.1",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 2625000000,
+     "estimatedBitrateKbps": 10000,
+     "ageDays": 1140,
+     "health": "unknown",
+     "local": null,
+     "predictedMethod": null,
+     "predictionReasons": null
+    },
+    {
+     "releaseId": "f74124e842e356a63b7553887b71b3955bde1bfd8d08e582a7eed824d5cbda08",
+     "name": "Pioneer.One.S01E02.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+     "rank": 3,
+     "recommended": false,
+     "resolution": "720p",
+     "source": "WEB-DL",
+     "videoCodec": "h264",
+     "bitDepth": null,
+     "hdr": null,
+     "hdrFormats": [],
+     "audioCodec": "aac",
+     "audioChannels": "2.0",
+     "atmos": false,
+     "languages": [],
+     "multiLanguage": false,
+     "subtitleHints": [],
+     "subtitleLanguages": [],
+     "edition": null,
+     "releaseGroup": "DEVWORLD",
+     "proper": false,
+     "repack": false,
+     "seasonPack": false,
+     "sizeBytes": 787500000,
+     "estimatedBitrateKbps": 3000,
+     "ageDays": 840,
+     "health": "unknown",
+     "local": null,
+     "predictedMethod": null,
+     "predictionReasons": null
+    }
+   ],
+   "checkedAt": "2026-09-29T03:57:12.562812+00:00",
+   "fromCache": true,
+   "incomplete": false
+  }
+ },
+ "age-restricted-kind-sprite-fright": {
+  "request": "GET /api/v1/viewer/catalog/movies/891761",
+  "status": 403,
+  "body": {
+   "error": {
+    "code": "age_restricted",
+    "message": "This title is not available for this profile (above_age_limit).",
+    "host": null,
+    "indexerId": null,
+    "params": {
+     "reason": "above_age_limit",
+     "rating": "PG-13",
+     "minimumAge": "13",
+     "viewerMaxAge": "12"
+    }
+   }
+  }
+ }
+}

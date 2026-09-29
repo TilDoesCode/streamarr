@@ -1,0 +1,370 @@
+PASS ben: TOTP second factor signs in
+PASS all four viewers signed in
+kind allowed: ['Big Buck Bunny', 'Cosmos Laundromat', 'Sherlock', 'Sintel'] blocked: ['Agent 327: Operation Barbershop', 'Elephants Dream', 'Night of the Living Dead', 'Pioneer One', 'Sprite Fright', 'Tears of Steel', 'Wing It!']
+PASS anna: search Sintel 200 + movie card
+PASS no internal fields in anna search
+PASS ben: search Sintel 200 + movie card
+PASS no internal fields in ben search
+PASS kind: search Sintel 200 + movie card
+PASS no internal fields in kind search
+PASS gast: search Sintel 200 + movie card
+PASS no internal fields in gast search
+PASS search type=tv finds Sherlock as series
+PASS search type=movie excludes series
+PASS search limit=2 caps results
+PASS anna finds NOTLD
+PASS kind does not find NOTLD (16)
+PASS kind does not find Pioneer One (NR, unrated blocked)
+PASS kind finds Sherlock (12)
+PASS search '' -> 400 missing_query
+PASS search '?q=x&type=music' -> 400 invalid_query
+PASS search '?q=x&limit=0' -> 400 invalid_query
+PASS search '?q=x&limit=abc' -> 400 invalid_request
+PASS search '?q=aaaaaaaaaaaaaaaaa' -> 400 invalid_query
+PASS anna: discover 200
+PASS no internal fields in anna discover
+PASS ben: discover 200
+PASS no internal fields in ben discover
+PASS kind: discover 200
+PASS no internal fields in kind discover
+PASS gast: discover 200
+PASS no internal fields in gast discover
+PASS anna discover rows = fixture lists
+PASS discover row order
+PASS discover row kind/mediaType
+PASS kind discover shows only kind-allowed titles
+PASS kind discover hides every blocked title
+PASS kind discover still shows the allowed ones
+PASS ben (unrestricted) discover equals anna's
+PASS gast (unrestricted) discover equals anna's
+PASS card fields present
+PASS anna: movie Big Buck Bunny details
+PASS no internal fields in anna movie 10378
+PASS ben: movie Big Buck Bunny details
+PASS no internal fields in ben movie 10378
+PASS kind: movie Big Buck Bunny details
+PASS no internal fields in kind movie 10378
+PASS gast: movie Big Buck Bunny details
+PASS no internal fields in gast movie 10378
+PASS anna: movie Sintel details
+PASS no internal fields in anna movie 45745
+PASS ben: movie Sintel details
+PASS no internal fields in ben movie 45745
+PASS kind: movie Sintel details
+PASS no internal fields in kind movie 45745
+PASS gast: movie Sintel details
+PASS no internal fields in gast movie 45745
+PASS anna: movie Tears of Steel details
+PASS no internal fields in anna movie 133701
+PASS ben: movie Tears of Steel details
+PASS no internal fields in ben movie 133701
+PASS kind: movie Tears of Steel 403 age_restricted
+FAIL no internal fields in kind movie 133701 - ['"indexer']
+PASS gast: movie Tears of Steel details
+PASS no internal fields in gast movie 133701
+PASS anna: movie Elephants Dream details
+PASS no internal fields in anna movie 9761
+PASS ben: movie Elephants Dream details
+PASS no internal fields in ben movie 9761
+PASS kind: movie Elephants Dream 403 age_restricted
+FAIL no internal fields in kind movie 9761 - ['"indexer']
+PASS gast: movie Elephants Dream details
+PASS no internal fields in gast movie 9761
+PASS anna: movie Cosmos Laundromat details
+PASS no internal fields in anna movie 358332
+PASS ben: movie Cosmos Laundromat details
+PASS no internal fields in ben movie 358332
+PASS kind: movie Cosmos Laundromat details
+PASS no internal fields in kind movie 358332
+PASS gast: movie Cosmos Laundromat details
+PASS no internal fields in gast movie 358332
+PASS anna: movie Sprite Fright details
+PASS no internal fields in anna movie 891761
+PASS ben: movie Sprite Fright details
+PASS no internal fields in ben movie 891761
+PASS kind: movie Sprite Fright 403 age_restricted
+FAIL no internal fields in kind movie 891761 - ['"indexer']
+PASS gast: movie Sprite Fright details
+PASS no internal fields in gast movie 891761
+PASS anna: movie Night of the Living Dead details
+PASS no internal fields in anna movie 10331
+PASS ben: movie Night of the Living Dead details
+PASS no internal fields in ben movie 10331
+PASS kind: movie Night of the Living Dead 403 age_restricted
+FAIL no internal fields in kind movie 10331 - ['"indexer']
+PASS gast: movie Night of the Living Dead details
+PASS no internal fields in gast movie 10331
+PASS anna: movie Agent 327: Operation Barbershop details
+PASS no internal fields in anna movie 457784
+PASS ben: movie Agent 327: Operation Barbershop details
+PASS no internal fields in ben movie 457784
+PASS kind: movie Agent 327: Operation Barbershop 403 age_restricted
+FAIL no internal fields in kind movie 457784 - ['"indexer']
+PASS gast: movie Agent 327: Operation Barbershop details
+PASS no internal fields in gast movie 457784
+PASS anna: movie Wing It! details
+PASS no internal fields in anna movie 1177628
+PASS ben: movie Wing It! details
+PASS no internal fields in ben movie 1177628
+PASS kind: movie Wing It! 403 age_restricted
+FAIL no internal fields in kind movie 1177628 - ['"indexer']
+PASS gast: movie Wing It! details
+PASS no internal fields in gast movie 1177628
+PASS movie details carry every spec field
+PASS access has allowed + reason
+PASS gast progress on Sintel accepted
+PASS gast Sintel watch position 70 s
+PASS anna Sintel watch untouched by gast
+PASS gast marks Sherlock s01e01-02 played
+PASS gast progress on s01e03
+PASS gast Sherlock nextEpisode = s01e03 resume
+PASS gast Sherlock played/inProgress counts 2/1
+PASS season summary S1 played=2 inProgress=1
+PASS season episode watch: e1/e2 played, e3 at 65 s
+PASS season without availability: versionCount null, availability null
+PASS after s01e03 played -> next is s02e01 (next)
+PASS ben Pioneer One nextEpisode start s01e01
+PASS anna: series Pioneer One 200
+PASS anna: Pioneer One S1 200
+PASS anna: Pioneer One S1 availability counts [3, 3, 3, 3, 3, 3]
+PASS no internal fields in anna season 33050/1 availability
+PASS ben: series Pioneer One 200
+PASS ben: Pioneer One S1 200
+PASS ben: Pioneer One S1 availability counts [3, 3, 3, 3, 3, 3]
+PASS no internal fields in ben season 33050/1 availability
+PASS kind: series Pioneer One 403
+PASS kind: Pioneer One S1 403
+PASS kind: Pioneer One S1?availability 403
+PASS gast: series Pioneer One 200
+PASS gast: Pioneer One S1 200
+PASS gast: Pioneer One S1 availability counts [3, 3, 3, 3, 3, 3]
+PASS no internal fields in gast season 33050/1 availability
+PASS anna: series Sherlock 200
+PASS anna: Sherlock S1 200
+PASS anna: Sherlock S1 availability counts [2, 2, 2]
+PASS no internal fields in anna season 19885/1 availability
+PASS anna: Sherlock S2 200
+PASS anna: Sherlock S2 availability counts [2, 2, 2]
+PASS no internal fields in anna season 19885/2 availability
+PASS anna: Sherlock S3 200
+PASS anna: Sherlock S3 availability counts [0, 0, 0]
+PASS no internal fields in anna season 19885/3 availability
+PASS ben: series Sherlock 200
+PASS ben: Sherlock S1 200
+PASS ben: Sherlock S1 availability counts [2, 2, 2]
+PASS no internal fields in ben season 19885/1 availability
+PASS ben: Sherlock S2 200
+PASS ben: Sherlock S2 availability counts [2, 2, 2]
+PASS no internal fields in ben season 19885/2 availability
+PASS ben: Sherlock S3 200
+PASS ben: Sherlock S3 availability counts [0, 0, 0]
+PASS no internal fields in ben season 19885/3 availability
+PASS kind: series Sherlock 200
+PASS kind: Sherlock S1 200
+PASS kind: Sherlock S1 availability counts [2, 2, 2]
+PASS no internal fields in kind season 19885/1 availability
+PASS kind: Sherlock S2 200
+PASS kind: Sherlock S2 availability counts [2, 2, 2]
+PASS no internal fields in kind season 19885/2 availability
+PASS kind: Sherlock S3 200
+PASS kind: Sherlock S3 availability counts [0, 0, 0]
+PASS no internal fields in kind season 19885/3 availability
+PASS gast: series Sherlock 200
+PASS gast: Sherlock S1 200
+PASS gast: Sherlock S1 availability counts [2, 2, 2]
+PASS no internal fields in gast season 19885/1 availability
+PASS gast: Sherlock S2 200
+PASS gast: Sherlock S2 availability counts [2, 2, 2]
+PASS no internal fields in gast season 19885/2 availability
+PASS gast: Sherlock S3 200
+PASS gast: Sherlock S3 availability counts [0, 0, 0]
+PASS no internal fields in gast season 19885/3 availability
+PASS anna: versions Big Buck Bunny (3)
+PASS no internal fields in anna versions tmdb-movie-10378
+PASS ben: versions Big Buck Bunny (3)
+PASS no internal fields in ben versions tmdb-movie-10378
+PASS kind: versions Big Buck Bunny (3)
+PASS no internal fields in kind versions tmdb-movie-10378
+PASS gast: versions Big Buck Bunny (3)
+PASS no internal fields in gast versions tmdb-movie-10378
+PASS anna: versions Sintel (3)
+PASS no internal fields in anna versions tmdb-movie-45745
+PASS ben: versions Sintel (3)
+PASS no internal fields in ben versions tmdb-movie-45745
+PASS kind: versions Sintel (3)
+PASS no internal fields in kind versions tmdb-movie-45745
+PASS gast: versions Sintel (3)
+PASS no internal fields in gast versions tmdb-movie-45745
+PASS anna: versions Tears of Steel (3)
+PASS no internal fields in anna versions tmdb-movie-133701
+PASS ben: versions Tears of Steel (3)
+PASS no internal fields in ben versions tmdb-movie-133701
+PASS kind: versions Tears of Steel 403
+PASS gast: versions Tears of Steel (3)
+PASS no internal fields in gast versions tmdb-movie-133701
+PASS anna: versions Elephants Dream (2)
+PASS no internal fields in anna versions tmdb-movie-9761
+PASS ben: versions Elephants Dream (2)
+PASS no internal fields in ben versions tmdb-movie-9761
+PASS kind: versions Elephants Dream 403
+PASS gast: versions Elephants Dream (2)
+PASS no internal fields in gast versions tmdb-movie-9761
+PASS anna: versions Cosmos Laundromat (2)
+PASS no internal fields in anna versions tmdb-movie-358332
+PASS ben: versions Cosmos Laundromat (2)
+PASS no internal fields in ben versions tmdb-movie-358332
+PASS kind: versions Cosmos Laundromat (2)
+PASS no internal fields in kind versions tmdb-movie-358332
+PASS gast: versions Cosmos Laundromat (2)
+PASS no internal fields in gast versions tmdb-movie-358332
+PASS anna: versions Sprite Fright (3)
+PASS no internal fields in anna versions tmdb-movie-891761
+PASS ben: versions Sprite Fright (3)
+PASS no internal fields in ben versions tmdb-movie-891761
+PASS kind: versions Sprite Fright 403
+PASS gast: versions Sprite Fright (3)
+PASS no internal fields in gast versions tmdb-movie-891761
+PASS anna: versions Night of the Living Dead (2)
+PASS no internal fields in anna versions tmdb-movie-10331
+PASS ben: versions Night of the Living Dead (2)
+PASS no internal fields in ben versions tmdb-movie-10331
+PASS kind: versions Night of the Living Dead 403
+PASS gast: versions Night of the Living Dead (2)
+PASS no internal fields in gast versions tmdb-movie-10331
+PASS anna: versions Agent 327: Operation Barbershop (0)
+PASS no internal fields in anna versions tmdb-movie-457784
+PASS ben: versions Agent 327: Operation Barbershop (0)
+PASS no internal fields in ben versions tmdb-movie-457784
+PASS kind: versions Agent 327: Operation Barbershop 403
+PASS gast: versions Agent 327: Operation Barbershop (0)
+PASS no internal fields in gast versions tmdb-movie-457784
+PASS anna: versions Wing It! (0)
+PASS no internal fields in anna versions tmdb-movie-1177628
+PASS ben: versions Wing It! (0)
+PASS no internal fields in ben versions tmdb-movie-1177628
+PASS kind: versions Wing It! 403
+PASS gast: versions Wing It! (0)
+PASS no internal fields in gast versions tmdb-movie-1177628
+PASS VersionDto has every spec field
+BBB versions: [
+{
+"name": "Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD",
+"resolution": "2160p",
+"videoCodec": "hevc",
+"bitDepth": 10,
+"hdr": "hdr10",
+"audioCodec": "truehd",
+"audioChannels": "5.1",
+"atmos": false,
+"languages": [],
+"subtitleHints": [],
+"estimatedBitrateKbps": 40000,
+"health": "ready"
+},
+{
+"name": "Big.Buck.Bunny.2008.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+"resolution": "1080p",
+"videoCodec": "h264",
+"bitDepth": null,
+"hdr": null,
+"audioCodec": "eac3",
+"audioChannels": "5.1",
+"atmos": false,
+"languages": [],
+"subtitleHints": [],
+"estimatedBitrateKbps": 10000,
+"health": "ready"
+},
+{
+"name": "Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+"resolution": "1080p",
+"videoCodec": "h264",
+"bitDepth": null,
+"hdr": null,
+"audioCodec": "aac",
+"audioChannels": "2.0",
+"atmos": false,
+"languages": [],
+"subtitleHints": [],
+"estimatedBitrateKbps": 6000,
+"health": "ready"
+}
+]
+PASS anna episode versions tmdb-tv-33050-s01e01 200 (3)
+PASS no internal fields in episode versions tmdb-tv-33050-s01e01
+PASS anna episode versions tmdb-tv-19885-s01e01 200 (2)
+PASS no internal fields in episode versions tmdb-tv-19885-s01e01
+PASS anna episode versions tmdb-tv-19885-s02e01 200 (2)
+PASS no internal fields in episode versions tmdb-tv-19885-s02e01
+PASS anna episode versions tmdb-tv-19885-s03e01 200 (0)
+PASS no internal fields in episode versions tmdb-tv-19885-s03e01
+PASS kind Pioneer One episode versions 403
+PASS kind Sherlock episode versions 200
+gast ToS predictions: [('Tears.of.Steel.2012.1080p.BluRay.DDP5.1.x264-FLAKY', 'remux', ['container_assumed', 'container_unsupported', 'audio_copied']), ('Tears.of.Steel.2012.720p.WEB-DL.AAC2.0.H.264-DEVWORLD', 'remux', ['container_assumed', 'container_unsupported', 'audio_copied']), ('Tears.of.Steel.2012.576p.PAL.DVD.MPEG-2.DD2.0-DEVWORLD', 'transcode', ['container_assumed', 'video_codec_not_remuxable', 'transcoding_not_allowed'])]
+PASS gast: legacy MPEG-2 predicted transcode + transcoding_not_allowed
+PASS anna: legacy MPEG-2 transcode without transcoding_not_allowed
+PASS refresh=true fromCache false; next call (other viewer) fromCache true, same checkedAt
+PASS 8 concurrent cold requests share one search (exactly one fromCache=false or all from warm cache)
+PASS movies/abc -> 400 invalid_request
+PASS movies/999999999 -> 404 title_not_found
+PASS movies/19885 -> 404 title_not_found
+PASS series/10378 -> 404 title_not_found
+PASS series/19885/seasons/9 -> 404 season_not_found
+PASS series/19885/seasons/-1 -> 404 season_not_found
+PASS works/tmdb-tv-19885/versions -> 400 invalid_work_id
+PASS works/tmdb-tv-19885-s09e01/versions -> 404 None
+PASS works/tmdb-tv-19885-s01e09/versions -> 404 episode_not_found
+PASS works/tmdb-movie-999999/versions -> 404 title_not_found
+PASS works/garbage/versions -> 400 invalid_work_id
+PASS works/tmdb-movie-10378/versions?refresh=maybe -> 400 invalid_request
+PASS works/tmdb-movie-10378/versions?maxHeight=abc&videoCodecs=h264 -> 400 invalid_request
+PASS movies/99999999999 -> 400 invalid_request
+PASS series/19885/seasons/1?availability=yes -> 400 invalid_request
+PASS admin JWT on search?q=Sintel -> 401
+PASS machine key on search?q=Sintel -> 401
+PASS anonymous on search?q=Sintel -> 401
+PASS admin JWT on discover -> 401
+PASS machine key on discover -> 401
+PASS anonymous on discover -> 401
+PASS admin JWT on movies/10378 -> 401
+PASS machine key on movies/10378 -> 401
+PASS anonymous on movies/10378 -> 401
+PASS admin JWT on series/19885 -> 401
+PASS machine key on series/19885 -> 401
+PASS anonymous on series/19885 -> 401
+PASS admin JWT on series/19885/seasons/1 -> 401
+PASS machine key on series/19885/seasons/1 -> 401
+PASS anonymous on series/19885/seasons/1 -> 401
+PASS admin JWT on works/tmdb-movie-10378/versions -> 401
+PASS machine key on works/tmdb-movie-10378/versions -> 401
+PASS anonymous on works/tmdb-movie-10378/versions -> 401
+PASS X-Api-Key header on discover -> 401
+LATENCY search: median 0.6 ms, max 3.1 ms
+LATENCY discover: median 0.6 ms, max 0.7 ms
+LATENCY movie: median 0.7 ms, max 4.4 ms
+LATENCY series: median 0.8 ms, max 1.8 ms
+LATENCY season: median 0.7 ms, max 0.8 ms
+LATENCY versions-cached: median 0.6 ms, max 1.6 ms
+LATENCY discover-kind: median 0.6 ms, max 0.7 ms
+LATENCY versions-refresh: median 0.9 ms, max 1.1 ms
+PASS non-indexer endpoints median < 50 ms
+PASS live /openapi/v1.json equals frozen file
+PASS OpenAPI has the six catalog paths
+PASS OpenAPI ErrorDetail.params
+PASS admin disables viewer module
+PASS module off: search?q=Sintel -> 404 module_disabled
+PASS module off: discover -> 404 module_disabled
+PASS module off: movies/10378 -> 404 module_disabled
+PASS module off: series/19885 -> 404 module_disabled
+PASS module off: series/19885/seasons/1 -> 404 module_disabled
+PASS module off: works/tmdb-movie-10378/versions -> 404 module_disabled
+PASS admin re-enables viewer module
+PASS module on again: discover 200
+
+302 passed, 6 failed
+  FAILED: no internal fields in kind movie 133701
+  FAILED: no internal fields in kind movie 9761
+  FAILED: no internal fields in kind movie 891761
+  FAILED: no internal fields in kind movie 10331
+  FAILED: no internal fields in kind movie 457784
+  FAILED: no internal fields in kind movie 1177628

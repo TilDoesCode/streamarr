@@ -70,6 +70,11 @@ ids are stable (sha256 of indexer id + guid), so ids from one instance are valid
 `missingArtwork` covers Pioneer One S01, which has no season poster and no episode stills on
 TMDB (`null`, kept on purpose as a client edge case). Sherlock has both.
 
+`discover` lists the work ids of the viewer home rows (`GET /api/v1/viewer/catalog/discover`)
+in order, and `scenarios.noVersions` the titles that exist only as metadata (Agent 327:
+Operation Barbershop and Wing It!: no releases, so their versions list is empty). Titles carry
+`logoUrl` when TMDB has a logo (Pioneer One and Wing It! have none).
+
 ## Catalog and media matrix
 
 `fixtures/catalog.json` holds titles (TMDB/IMDb ids, EN/DE texts, genres, certifications,
@@ -79,6 +84,13 @@ the `variants` (container, codecs, tracks, bitrates) and per title the releases
 `nominalMbps`). To extend: add a variant and/or releases, keep names honest — boot fails when a
 release name does not parse to its variant's resolution/codec/audio/HDR/languages or when the
 generated file does not probe as the variant.
+
+`discover` holds the title keys of the canned TMDB trending/popular lists behind the viewer home
+rows (`trendingMovies`, `trendingSeries`, `popularMovies`, `popularSeries`). They must name catalog
+titles of the right type, and at most two listed titles may have no release (the build fails
+otherwise), so the rows only show what the Dev World can play plus the empty-versions case. Like
+real TMDB list results, the canned lists carry card fields only, so the viewer age gate has to look
+up each certification.
 
 - `dead`: every second article is missing (health check finds 430s) -> auto-fallback.
 - `degraded`: small parts (> 80 articles); STAT of the last article drops the connection, so

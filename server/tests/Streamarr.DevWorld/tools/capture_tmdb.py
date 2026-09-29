@@ -71,6 +71,16 @@ def page_common(s):
     }
 
 
+def logo_path(kind, tmdb_id):
+    """First English title logo, else the first textless one (like include_image_language=en,null)."""
+    for language in ("en", "xx"):
+        s = fetch(f"/{kind}/{tmdb_id}/images/logos", f"en-US&image_language={language}")
+        path = first(r'<a class="image" href="https://image.tmdb.org/t/p/original(/[^"]+)"', s)
+        if path:
+            return re.sub(r"\.svg$", ".png", path)
+    return None
+
+
 def movie(tmdb_id):
     en = fetch(f"/movie/{tmdb_id}", "en-US")
     de = fetch(f"/movie/{tmdb_id}", "de-DE")
@@ -84,7 +94,7 @@ def movie(tmdb_id):
                 break
     e, d = page_common(en), page_common(de)
     return {
-        "kind": "movie", "tmdbId": tmdb_id, **e,
+        "kind": "movie", "tmdbId": tmdb_id, **e, "logoPath": logo_path("movie", tmdb_id),
         "de": {"title": d["title"], "overview": d["overview"], "tagline": d["tagline"], "genres": d["genres"]},
         "certifications": certs,
     }
@@ -120,7 +130,7 @@ def tv(tmdb_id, seasons):
     de = fetch(f"/tv/{tmdb_id}", "de-DE")
     e, d = page_common(en), page_common(de)
     result = {
-        "kind": "tv", "tmdbId": tmdb_id, **e,
+        "kind": "tv", "tmdbId": tmdb_id, **e, "logoPath": logo_path("tv", tmdb_id),
         "de": {"title": d["title"], "overview": d["overview"], "tagline": d["tagline"], "genres": d["genres"]},
         "seasons": [],
     }

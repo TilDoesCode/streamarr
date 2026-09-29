@@ -533,4 +533,8 @@ public sealed record ErrorDetail
 
     /// <summary>Populated only for the <c>nzb_host_not_allowed</c> error: the owning indexer's id.</summary>
     public string? IndexerId { get; init; }
+
+    /// <summary>Machine-readable values for localized messages (e.g. <c>reason</c>, <c>rating</c>); omitted when empty.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? Params { get; init; }
 }

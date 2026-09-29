@@ -41,6 +41,7 @@ public static class ReleaseParser
         var languages = LanguageParser.Parse(releaseName);
         var releaseGroup = ReleaseGroupParser.Parse(releaseName);
         var episode = EpisodeParser.Parse(releaseName);
+        var subtitles = SubtitleParser.Parse(releaseName);
 
         string? title;
         int? year;
@@ -71,6 +72,8 @@ public static class ReleaseParser
             Source = quality.Source,
             VideoCodec = quality.VideoCodec,
             Hdr = hdr,
+            HdrFormats = HdrParser.ParseAll(releaseName),
+            BitDepth = BitDepthParser.Parse(releaseName),
             AudioCodec = audio.Codec,
             AudioChannels = audio.Channels,
             Atmos = audio.Atmos,
@@ -82,6 +85,8 @@ public static class ReleaseParser
             Languages = languages.Languages,
             MultiLanguage = languages.Multi,
             DualAudio = languages.DualAudio,
+            SubtitleHints = subtitles.Hints,
+            SubtitleLanguages = subtitles.Languages,
             Season = episode?.Season,
             Episodes = episode?.Episodes ?? [],
             AbsoluteEpisodes = episode?.AbsoluteEpisodes ?? [],

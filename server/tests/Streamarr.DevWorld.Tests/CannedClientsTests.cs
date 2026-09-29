@@ -68,6 +68,32 @@ public class CannedClientsTests(FakeWorld world) : IClassFixture<FakeWorld>
         Assert.Equal(tmdbId, candidates[0].TmdbId);
     }
 
+    [Fact]
+    public async Task DiscoverLists_FollowTheCatalogOrder_WithCardFieldsOnly()
+    {
+        var discover = world.Plan.Catalog.Discover;
+
+        var trending = await Tmdb.GetTrendingAsync(MediaType.Movie, CancellationToken.None);
+        var popular = await Tmdb.GetPopularAsync(MediaType.Tv, CancellationToken.None);
+
+        Assert.Equal(discover.TrendingMovies, trending.Select(m => world.Plan.Catalog.Movies.Single(e => e.TmdbId == m.TmdbId).Key));
+        Assert.Equal(discover.PopularSeries, popular.Select(m => world.Plan.Catalog.Series.Single(e => e.TmdbId == m.TmdbId).Key));
+        Assert.All(trending, m => Assert.Equal(MediaType.Movie, m.MediaType));
+        Assert.All(trending.Concat(popular), m =>
+        {
+            Assert.Null(m.OfficialRating);
+            Assert.False(string.IsNullOrEmpty(m.PosterUrl));
+        });
+    }
+
+    [Fact]
+    public async Task MovieDetails_CarryTheCapturedLogo()
+    {
+        var bunny = await Tmdb.GetMovieAsync(10378, CancellationToken.None);
+
+        Assert.StartsWith("https://image.tmdb.org/t/p/w500/", bunny!.LogoUrl);
+    }
+
     [Theory]
     [InlineData("   ", null)]
     [InlineData("sherlock", MediaType.Movie)]

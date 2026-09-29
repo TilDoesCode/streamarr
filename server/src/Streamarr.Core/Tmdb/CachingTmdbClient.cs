@@ -14,8 +14,10 @@ public sealed class CachingTmdbClient(
     int maxEntries = 5_000,
     int maxConcurrentUpstream = 4,
     TimeSpan? upstreamTimeout = null,
-    Func<long>? credentialRevision = null) : ITmdbClient
+    Func<long>? credentialRevision = null,
+    TimeSpan? listTtl = null) : ITmdbClient
 {
+    private readonly TimeSpan _listTtl = listTtl is { } configuredList && configuredList < ttl ? configuredList : ttl;
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ConcurrentDictionary<string, IEntry> _cache = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _upstreamGate = new(Math.Max(1, maxConcurrentUpstream));
@@ -68,17 +70,35 @@ public sealed class CachingTmdbClient(
     public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken)
         => GetOrAddAsync($"imdb|{imdbId.ToLowerInvariant()}", ct => inner.FindByImdbAsync(imdbId, ct), null, cancellationToken);
 
+    public Task<IReadOnlyList<TmdbMatch>> GetTrendingAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => GetOrAddAsync(
+            $"trending|{mediaType.ToString().ToLowerInvariant()}",
+            ct => inner.GetTrendingAsync(mediaType, ct),
+            Array.Empty<TmdbMatch>(),
+            cancellationToken,
+            _listTtl);
+
+    public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => GetOrAddAsync(
+            $"popular|{mediaType.ToString().ToLowerInvariant()}",
+            ct => inner.GetPopularAsync(mediaType, ct),
+            Array.Empty<TmdbMatch>(),
+            cancellationToken,
+            _listTtl);
+
     private Task<T> GetOrAddAsync<T>(
         string key,
         Func<CancellationToken, Task<T>> factory,
         T timeoutFallback,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? lifetime = null)
     {
         // Credential replacements must not reuse a cached miss (or result) produced with
         // the prior credential. The revision contains no secret material.
         key = $"{credentialRevision?.Invoke() ?? 0}|{key}";
+        var entryTtl = lifetime ?? ttl;
 
-        if (ttl <= TimeSpan.Zero)
+        if (entryTtl <= TimeSpan.Zero)
             return RunUncachedAsync(factory, timeoutFallback, cancellationToken);
 
         while (true)
@@ -97,7 +117,7 @@ public sealed class CachingTmdbClient(
             }
 
             Prune(now);
-            var created = CreateEntry(factory, now + ttl);
+            var created = CreateEntry(factory, now + entryTtl);
             var actual = _cache.GetOrAdd(key, created);
             if (!ReferenceEquals(actual, created))
                 created.Retire();

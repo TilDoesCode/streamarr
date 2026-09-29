@@ -7646,6 +7646,896 @@
         }
       }
     },
+    "/api/v1/viewer/catalog/search": {
+      "get": {
+        "tags": [
+          "ViewerCatalog"
+        ],
+        "summary": "TMDB movie/series candidates for a query (no indexer search); titles the viewer may not watch are hidden.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSearchResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSearchResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSearchResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/catalog/discover": {
+      "get": {
+        "tags": [
+          "ViewerCatalog"
+        ],
+        "summary": "Home rows (trending and popular movies and series) from TMDB, cached for hours.",
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDiscoverResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDiscoverResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDiscoverResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/catalog/movies/{tmdbId}": {
+      "get": {
+        "tags": [
+          "ViewerCatalog"
+        ],
+        "summary": "Movie details with the viewer's watch state and age-gate decision.",
+        "parameters": [
+          {
+            "name": "tmdbId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMovieResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMovieResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMovieResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/catalog/series/{tmdbId}": {
+      "get": {
+        "tags": [
+          "ViewerCatalog"
+        ],
+        "summary": "Series details, season summaries and the viewer's progress (next episode, played counts).",
+        "parameters": [
+          {
+            "name": "tmdbId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSeriesResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSeriesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSeriesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}": {
+      "get": {
+        "tags": [
+          "ViewerCatalog"
+        ],
+        "summary": "Season episodes with watch state; `availability=true` adds version counts (cached indexer search, `refresh=true` repeats it).",
+        "parameters": [
+          {
+            "name": "tmdbId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "seasonNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "availability",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSeasonResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSeasonResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSeasonResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/catalog/works/{workId}/versions": {
+      "get": {
+        "tags": [
+          "ViewerCatalog"
+        ],
+        "summary": "Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod`.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "videoCodecs",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "audioCodecs",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "containers",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hdrFormats",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "supports10Bit",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "maxAudioChannels",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "maxHeight",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "maxBitrateKbps",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogVersionsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogVersionsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogVersionsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/me": {
       "get": {
         "tags": [
@@ -9734,6 +10624,635 @@
         },
         "additionalProperties": false
       },
+      "CatalogAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "fromCache": {
+            "type": "boolean"
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "True when at least one indexer failed, so counts may be too low."
+          },
+          "error": {
+            "type": "string",
+            "description": "Why the overlay is missing (`capacity_reached`, `search_temporarily_unavailable`); null on success.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "How fresh the version overlay is."
+      },
+      "CatalogDiscoverResponse": {
+        "required": [
+          "rows"
+        ],
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogRowDto"
+            },
+            "description": "Rows in display order; rows without any title the viewer may watch are omitted.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogEpisodeDto": {
+        "required": [
+          "episodeNumber",
+          "title",
+          "watch",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "`tmdb-tv-{id}-s{nn}e{nn}`.",
+            "nullable": true
+          },
+          "episodeNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "aired": {
+            "type": "boolean",
+            "description": "False for announced episodes whose air date is unknown or in the future."
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "stillUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "voteAverage": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "watch": {
+            "$ref": "#/components/schemas/WatchStateResponse"
+          },
+          "versionCount": {
+            "type": "integer",
+            "description": "Playable versions (season packs included); null unless availability was requested and checked.",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogItemDto": {
+        "required": [
+          "mediaType",
+          "title",
+          "tmdbId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "`tmdb-movie-{id}` or `tmdb-tv-{id}`.",
+            "nullable": true
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "\"movie\" or \"series\".",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "originalTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "backdropUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "voteAverage": {
+            "type": "number",
+            "description": "TMDB vote average (0–10).",
+            "format": "float",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A movie or series card for search results and home rows (TMDB data only, no availability)."
+      },
+      "CatalogMovieResponse": {
+        "required": [
+          "access",
+          "title",
+          "tmdbId",
+          "watch",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "imdbId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "originalTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "tagline": {
+            "type": "string",
+            "nullable": true
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "certification": {
+            "type": "string",
+            "description": "The TMDB certification the age gate uses (e.g. `PG-13`, `12`).",
+            "nullable": true
+          },
+          "voteAverage": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "backdropUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "trailerUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TmdbPerson"
+            },
+            "nullable": true
+          },
+          "watch": {
+            "$ref": "#/components/schemas/WatchStateResponse"
+          },
+          "access": {
+            "$ref": "#/components/schemas/ContentAccessResponse"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogNextEpisodeDto": {
+        "required": [
+          "episodeNumber",
+          "reason",
+          "seasonNumber",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episodeNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "stillUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "positionTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "description": "`resume` (in progress), `next` (after the furthest played) or `start` (nothing watched yet).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogRowDto": {
+        "required": [
+          "id",
+          "items",
+          "kind",
+          "mediaType"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable id: `trending-movies`, `trending-series`, `popular-movies`, `popular-series`.",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "description": "\"trending\" or \"popular\".",
+            "nullable": true
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "\"movie\" or \"series\".",
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogItemDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One home row."
+      },
+      "CatalogSearchResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogItemDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogSeasonResponse": {
+        "required": [
+          "episodes",
+          "seasonNumber",
+          "seriesTitle",
+          "seriesWorkId",
+          "title",
+          "tmdbId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "description": "`tmdb-tv-{id}-s{nn}`.",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEpisodeDto"
+            },
+            "nullable": true
+          },
+          "availability": {
+            "$ref": "#/components/schemas/CatalogAvailabilityDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogSeasonSummaryDto": {
+        "required": [
+          "seasonNumber",
+          "title",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "`tmdb-tv-{id}-s{nn}`.",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "description": "0 = specials.",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "episodeCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "playedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inProgressCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogSeriesResponse": {
+        "required": [
+          "access",
+          "seasons",
+          "title",
+          "tmdbId",
+          "watch",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "imdbId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "originalTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "overview": {
+            "type": "string",
+            "nullable": true
+          },
+          "tagline": {
+            "type": "string",
+            "nullable": true
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "description": "Typical episode runtime.",
+            "format": "int32",
+            "nullable": true
+          },
+          "certification": {
+            "type": "string",
+            "nullable": true
+          },
+          "voteAverage": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "backdropUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "trailerUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TmdbPerson"
+            },
+            "nullable": true
+          },
+          "seasonCount": {
+            "type": "integer",
+            "description": "Regular seasons (specials excluded).",
+            "format": "int32"
+          },
+          "episodeCount": {
+            "type": "integer",
+            "description": "Episodes of the regular seasons as TMDB lists them (may include announced ones).",
+            "format": "int32"
+          },
+          "seasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogSeasonSummaryDto"
+            },
+            "nullable": true
+          },
+          "watch": {
+            "$ref": "#/components/schemas/SeriesWatchSummaryDto"
+          },
+          "access": {
+            "$ref": "#/components/schemas/ContentAccessResponse"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogVersionsResponse": {
+        "required": [
+          "checkedAt",
+          "mediaType",
+          "versions",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "\"movie\" or \"episode\".",
+            "nullable": true
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionDto"
+            },
+            "description": "Ranked best first; only versions the server would play (rejected and known-dead ones are left out).",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fromCache": {
+            "type": "boolean",
+            "description": "True when this list was not searched for this request (see `?refresh=true`)."
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "True when at least one indexer failed; such lists are not cached."
+          }
+        },
+        "additionalProperties": false
+      },
       "ChangePasswordRequest": {
         "type": "object",
         "properties": {
@@ -10404,6 +11923,14 @@
           "indexerId": {
             "type": "string",
             "description": "Populated only for the `nzb_host_not_allowed` error: the owning indexer's id.",
+            "nullable": true
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Machine-readable values for localized messages (e.g. `reason`, `rating`); omitted when empty.",
             "nullable": true
           }
         },
@@ -12093,6 +13620,26 @@
         "additionalProperties": false,
         "description": "Live or recently completed background materialization visible to operators."
       },
+      "PredictionReasonDto": {
+        "required": [
+          "code"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ProfileImportCandidate": {
         "required": [
           "name",
@@ -13402,6 +14949,33 @@
           }
         },
         "additionalProperties": false
+      },
+      "SeriesWatchSummaryDto": {
+        "type": "object",
+        "properties": {
+          "playedEpisodes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inProgressEpisodes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalEpisodes": {
+            "type": "integer",
+            "description": "Episodes of the regular seasons (same basis as Streamarr.Server.Viewers.Catalog.CatalogSeriesResponse.EpisodeCount).",
+            "format": "int32"
+          },
+          "nextEpisode": {
+            "$ref": "#/components/schemas/CatalogNextEpisodeDto"
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "True when TMDB could not be asked for the next episode."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The viewer's progress through a series."
       },
       "SessionMetrics": {
         "type": "object",
@@ -15671,6 +17245,169 @@
         "additionalProperties": false,
         "description": "TMDB-ranked TV series candidates. The endpoint is intentionally capped at three."
       },
+      "VersionDto": {
+        "required": [
+          "health",
+          "name",
+          "rank",
+          "releaseId"
+        ],
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "The raw release name.",
+            "nullable": true
+          },
+          "rank": {
+            "type": "integer",
+            "description": "1 = best.",
+            "format": "int32"
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "The version the server picks when the client does not choose one (rank 1)."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "`2160p`, `1080p`, `720p`, `576p`, `540p`, `480p`, `360p` or `SD`.",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "e.g. `BluRay`, `Remux`, `WEB-DL`, `WEBRip`, `HDTV`, `DVD`.",
+            "nullable": true
+          },
+          "videoCodec": {
+            "type": "string",
+            "description": "`h264`, `hevc`, `av1`, `vc1`, `mpeg2`, `xvid` or `divx`.",
+            "nullable": true
+          },
+          "bitDepth": {
+            "type": "integer",
+            "description": "Stated in the name, or 10 when it names an HDR format (HDR needs at least 10 bits).",
+            "format": "int32",
+            "nullable": true
+          },
+          "hdr": {
+            "type": "string",
+            "description": "Headline HDR format: `dolbyvision`, `hdr10plus`, `hdr10` or `hlg`; null = SDR or not stated.",
+            "nullable": true
+          },
+          "hdrFormats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every HDR format named, headline first (Dolby Vision releases often carry an `hdr10` base layer).",
+            "nullable": true
+          },
+          "audioCodec": {
+            "type": "string",
+            "description": "`truehd`, `dts-hd-ma`, `dts-hd`, `dts-x`, `dts-es`, `dts`, `eac3`, `ac3`, `flac`, `opus`, `aac`, `mp3` or `pcm`.",
+            "nullable": true
+          },
+          "audioChannels": {
+            "type": "string",
+            "description": "Layout such as `7.1`, `5.1`, `2.0`.",
+            "nullable": true
+          },
+          "atmos": {
+            "type": "boolean"
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Spoken languages (ISO 639-1) the name mentions.",
+            "nullable": true
+          },
+          "multiLanguage": {
+            "type": "boolean",
+            "description": "MULTi / dual-audio marker present."
+          },
+          "subtitleHints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`subbed`, `multi`, `hardcoded`; empty = the name says nothing about subtitles.",
+            "nullable": true
+          },
+          "subtitleLanguages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subtitle languages (ISO 639-1) the name mentions.",
+            "nullable": true
+          },
+          "edition": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "proper": {
+            "type": "boolean"
+          },
+          "repack": {
+            "type": "boolean"
+          },
+          "seasonPack": {
+            "type": "boolean",
+            "description": "A whole-season release; Streamarr.Server.Viewers.Catalog.VersionDto.SizeBytes is the full pack."
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "description": "Size the indexer reports.",
+            "format": "int64"
+          },
+          "estimatedBitrateKbps": {
+            "type": "integer",
+            "description": "Size ÷ TMDB runtime (per episode for season packs); null when the runtime is unknown.",
+            "format": "int32",
+            "nullable": true
+          },
+          "ageDays": {
+            "type": "integer",
+            "description": "Days since the release was posted.",
+            "format": "int32"
+          },
+          "health": {
+            "type": "string",
+            "description": "`unknown` (not checked yet), `ready` or `degraded` (last resolve found missing articles).",
+            "nullable": true
+          },
+          "local": {
+            "type": "string",
+            "description": "`ready` or `downloading` when a pre-download of this version exists for the viewer; else null.",
+            "nullable": true
+          },
+          "predictedMethod": {
+            "type": "string",
+            "description": "Prediction only (`direct`, `remux`, `transcode`, `unknown`) from the name and the sent device profile; the server decides at playback.",
+            "nullable": true
+          },
+          "predictionReasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PredictionReasonDto"
+            },
+            "description": "Why, plus every assumption the prediction made (e.g. `container_assumed`).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One playable version, derived from the parsed release name plus server state; codes are lower-case, null = not stated."
+      },
       "ViewerAdminResponse": {
         "required": [
           "displayName",
@@ -16907,6 +18644,10 @@
     {
       "name": "ViewerAuth",
       "description": "Viewer sign-in, token refresh and sign-out. Separate from the admin `/api/v1/auth` endpoints."
+    },
+    {
+      "name": "ViewerCatalog",
+      "description": "What a viewer can watch: TMDB search and home rows, title details with watch state, and ranked versions."
     },
     {
       "name": "ViewerMe",

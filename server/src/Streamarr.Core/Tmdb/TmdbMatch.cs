@@ -18,6 +18,9 @@ public sealed record TmdbMatch
     public string? Overview { get; init; }
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
+
+    /// <summary>Transparent title logo (PNG rendition), when TMDB has one.</summary>
+    public string? LogoUrl { get; init; }
     public string? OriginalTitle { get; init; }
     public string? Tagline { get; init; }
     public string? OfficialRating { get; init; }

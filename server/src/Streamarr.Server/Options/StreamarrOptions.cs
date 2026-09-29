@@ -222,6 +222,9 @@ public sealed class StreamarrOptions
     public int ReleaseStoreMaxEntries { get; set; } = 10_000;
     public int TmdbCacheMaxEntries { get; set; } = 5_000;
 
+    /// <summary>How long the viewer catalog reuses a ranked version list before searching the indexers again (0 = never).</summary>
+    public int ViewerVersionsCacheSeconds { get; set; } = 600;
+
     /// <summary>Maximum retained playback-event rows; oldest rows are pruned on write.</summary>
     public int MaxWatchEvents { get; set; } = 10_000;
 

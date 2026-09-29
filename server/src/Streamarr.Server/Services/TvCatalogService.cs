@@ -56,6 +56,62 @@ public sealed class TvCatalogService(
         string? profileId,
         CancellationToken cancellationToken)
     {
+        var overlay = await GetSeasonReleasesAsync(tmdbId, seasonNumber, profileId, cancellationToken);
+        if (overlay is null)
+            return null;
+        var config = await generalConfig.GetAsync(cancellationToken);
+        var addStreamarrBadge = config.AddStreamarrBadge;
+        var addReleaseScoreToName = config.AddReleaseScoreToName;
+        var seriesCatalog = overlay.Series;
+        var seasonCatalog = overlay.Season;
+
+        var seasonSummary = seriesCatalog.Seasons
+            .FirstOrDefault(season => season.SeasonNumber == seasonNumber)
+            ?? new TmdbSeasonSummary
+            {
+                SeasonNumber = seasonNumber,
+                Title = seasonCatalog.Title,
+                Overview = seasonCatalog.Overview,
+                AirDate = seasonCatalog.AirDate,
+                PosterUrl = seasonCatalog.PosterUrl,
+                EpisodeCount = seasonCatalog.Episodes.Count,
+            };
+
+        return new TvSeasonDetailsResponse
+        {
+            Series = ToSeriesDto(seriesCatalog.Series, seriesCatalog.Seasons, addStreamarrBadge),
+            Season = ToSeasonDto(tmdbId, seasonSummary),
+            Episodes = seasonCatalog.Episodes.Select(episode => new TvEpisodeDto
+            {
+                WorkId = EpisodeWorkId(tmdbId, seasonNumber, episode.EpisodeNumber),
+                MediaType = "episode",
+                TmdbId = tmdbId,
+                SeriesTitle = seriesCatalog.Series.Title,
+                SeasonNumber = seasonNumber,
+                EpisodeNumber = episode.EpisodeNumber,
+                Title = episode.Title,
+                Overview = episode.Overview,
+                AirDate = episode.AirDate,
+                RuntimeMinutes = episode.RuntimeMinutes ?? seriesCatalog.Series.RuntimeMinutes,
+                StillUrl = episode.StillUrl,
+                CommunityRating = episode.CommunityRating,
+                People = episode.People,
+                AddStreamarrBadge = addStreamarrBadge,
+                Releases = overlay.EpisodeReleases.GetValueOrDefault(episode.EpisodeNumber, [])
+                    .Select(release => ToReleaseDto(release, addReleaseScoreToName))
+                    .ToArray(),
+            }).ToArray(),
+            Indexers = overlay.Outcomes.Select(ToDiagnosticDto).ToArray(),
+        };
+    }
+
+    /// <summary>Accepted releases per canonical episode from one season fan-out; season packs are merged in and registered per episode.</summary>
+    public async Task<SeasonReleaseOverlay?> GetSeasonReleasesAsync(
+        int tmdbId,
+        int seasonNumber,
+        string? profileId,
+        CancellationToken cancellationToken)
+    {
         var seriesTask = tmdb.GetTvSeriesCatalogAsync(tmdbId, cancellationToken);
         var seasonTask = tmdb.GetTvSeasonCatalogAsync(tmdbId, seasonNumber, cancellationToken);
         await Task.WhenAll(seriesTask, seasonTask);
@@ -64,9 +120,6 @@ public sealed class TvCatalogService(
         var seasonCatalog = await seasonTask;
         if (seriesCatalog is null || seasonCatalog is null)
             return null;
-        var config = await generalConfig.GetAsync(cancellationToken);
-        var addStreamarrBadge = config.AddStreamarrBadge;
-        var addReleaseScoreToName = config.AddReleaseScoreToName;
 
         var aggregation = await searchService.SearchAsync(
             new SearchQuery
@@ -112,46 +165,18 @@ public sealed class TvCatalogService(
                 })));
         }
 
-        var seasonSummary = seriesCatalog.Seasons
-            .FirstOrDefault(season => season.SeasonNumber == seasonNumber)
-            ?? new TmdbSeasonSummary
-            {
-                SeasonNumber = seasonNumber,
-                Title = seasonCatalog.Title,
-                Overview = seasonCatalog.Overview,
-                AirDate = seasonCatalog.AirDate,
-                PosterUrl = seasonCatalog.PosterUrl,
-                EpisodeCount = seasonCatalog.Episodes.Count,
-            };
-
-        return new TvSeasonDetailsResponse
-        {
-            Series = ToSeriesDto(seriesCatalog.Series, seriesCatalog.Seasons, addStreamarrBadge),
-            Season = ToSeasonDto(tmdbId, seasonSummary),
-            Episodes = seasonCatalog.Episodes.Select(episode => new TvEpisodeDto
-            {
-                WorkId = EpisodeWorkId(tmdbId, seasonNumber, episode.EpisodeNumber),
-                MediaType = "episode",
-                TmdbId = tmdbId,
-                SeriesTitle = seriesCatalog.Series.Title,
-                SeasonNumber = seasonNumber,
-                EpisodeNumber = episode.EpisodeNumber,
-                Title = episode.Title,
-                Overview = episode.Overview,
-                AirDate = episode.AirDate,
-                RuntimeMinutes = episode.RuntimeMinutes ?? seriesCatalog.Series.RuntimeMinutes,
-                StillUrl = episode.StillUrl,
-                CommunityRating = episode.CommunityRating,
-                People = episode.People,
-                AddStreamarrBadge = addStreamarrBadge,
-                Releases = MergeEpisodeReleases(
-                        availableByEpisode.GetValueOrDefault(episode.EpisodeNumber, []),
-                        packReleases)
-                    .Select(release => ToReleaseDto(release, addReleaseScoreToName))
-                    .ToArray(),
-            }).ToArray(),
-            Indexers = aggregation.Outcomes.Select(ToDiagnosticDto).ToArray(),
-        };
+        return new SeasonReleaseOverlay(
+            seriesCatalog,
+            seasonCatalog,
+            seasonCatalog.Episodes
+                .GroupBy(episode => episode.EpisodeNumber)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<Release>)MergeEpisodeReleases(
+                        availableByEpisode.GetValueOrDefault(group.Key, []),
+                        packReleases).ToArray()),
+            packReleases.Select(release => release.ReleaseId).ToHashSet(StringComparer.Ordinal),
+            aggregation.Outcomes);
     }
 
     private static TvSeriesDetailsResponse ToSeriesDetails(
@@ -286,3 +311,11 @@ public sealed class TvCatalogService(
     public static string EpisodeWorkId(int tmdbId, int seasonNumber, int episodeNumber)
         => $"tmdb-tv-{tmdbId}-s{seasonNumber:D2}e{episodeNumber:D2}";
 }
+
+/// <summary>One season's canonical TMDB directory with ranked, accepted releases per episode number.</summary>
+public sealed record SeasonReleaseOverlay(
+    TmdbTvSeriesCatalog Series,
+    TmdbTvSeasonCatalog Season,
+    IReadOnlyDictionary<int, IReadOnlyList<Release>> EpisodeReleases,
+    IReadOnlySet<string> SeasonPackReleaseIds,
+    IReadOnlyList<Streamarr.Core.Indexers.IndexerOutcome> Outcomes);

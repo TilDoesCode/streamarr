@@ -218,6 +218,8 @@ def main():
         perms = (me or {}).get("permissions", {})
         check("gast permissions (no transcoding, 1 stream)", perms.get("allowTranscoding") is False and perms.get("maxConcurrentStreams") == 1, str(perms))
 
+    verify_catalog(manifest, sessions, token)
+
     status, _, _ = http("POST", "/api/v1/viewer/auth/email-code", {"login": "anna@devworld.example"})
     time.sleep(0.5)
     _, _, outbox = http("GET", "/devworld/outbox")
@@ -227,6 +229,88 @@ def main():
     print(f"\n{'OK' if not failures else 'FAILED'}: {len(failures)} failure(s)")
     if failures:
         sys.exit(1)
+
+
+def verify_catalog(manifest, sessions, admin_token):
+    """Viewer catalog (M1.2): rows, search, details, versions, season overlay, age gate, credentials."""
+    cat = "/api/v1/viewer/catalog"
+    movies = [t for t in manifest["titles"] if t["type"] == "movie"]
+    series = [t for t in manifest["titles"] if t["type"] == "tv"]
+    leaks = (".nzb", "Dev World", "devworld-indexer-key", '"indexer', '"score"', '"grabs"', "state-")
+    if "anna" in sessions:
+        anna = sessions["anna"]
+        status, _, discover = http("GET", f"{cat}/discover", token=anna)
+        rows = {r["id"]: [i["workId"] for i in r["items"]] for r in (discover or {}).get("rows", [])}
+        want = manifest["discover"]
+        check("catalog discover rows follow the fixture lists", status == 200 and rows == {
+            "trending-movies": want["trendingMovies"], "trending-series": want["trendingSeries"],
+            "popular-movies": want["popularMovies"], "popular-series": want["popularSeries"]}, str(rows))
+        status, _, found = http("GET", f"{cat}/search?q=sintel", token=anna)
+        check("catalog search finds Sintel", status == 200 and [i["workId"] for i in found["items"]][:1] == ["tmdb-movie-45745"], str(found))
+
+        first = movies[0]
+        status, _, details = http("GET", f"{cat}/movies/{first['tmdbId']}", token=anna)
+        check(f"catalog details of {first['title']} (logo, certification, watch position)",
+              status == 200 and details.get("logoUrl") == first["logoUrl"]
+              and details.get("certification") == first["access"]["officialRating"]
+              and details["watch"]["positionTicks"] > 0 and details["access"]["reason"] == "unrestricted",
+              str(details)[:300] if status != 200 else f"position {details['watch']['positionTicks']}")
+
+        for title in movies:
+            status, _, body = http("GET", f"{cat}/works/{title['workId']}/versions", token=anna)
+            got = [v["releaseId"] for v in (body or {}).get("versions", [])]
+            want_all = [r["releaseId"] for r in title["releases"]]
+            alive = [r["releaseId"] for r in title["releases"] if r["health"] != "dead"]
+            raw = json.dumps(body)
+            ok = status == 200 and got in (want_all, alive) and not any(leak in raw for leak in leaks)
+            if got:
+                ok = ok and body["versions"][0]["recommended"] and [v["rank"] for v in body["versions"]] == list(range(1, len(got) + 1))
+            check(f"catalog versions of {title['title']} ({len(got)}) match the fixture ranking without internal fields", ok,
+                  f"{status} got {got} want {want_all}")
+        status, _, again = http("GET", f"{cat}/works/{first['workId']}/versions", token=anna)
+        check("catalog versions come from the cache on a repeat", status == 200 and again.get("fromCache") is True, str(again)[:200])
+        for scenario in manifest["scenarios"]["noVersions"]:
+            status, _, body = http("GET", f"{cat}/works/{scenario['workId']}/versions", token=anna)
+            check(f"catalog: {scenario['title']} has no versions", status == 200 and body["versions"] == [], str(status))
+
+        mp4 = next((t, r) for t in movies for r in t["releases"] if r["variant"].startswith("mp4-") and r["health"] == "ready")
+        query = "videoCodecs=h264&audioCodecs=aac&containers=mp4,mkv&maxAudioChannels=2"
+        status, _, body = http("GET", f"{cat}/works/{mp4[0]['workId']}/versions?{query}", token=anna)
+        version = next((v for v in (body or {}).get("versions", []) if v["releaseId"] == mp4[1]["releaseId"]), {})
+        check(f"catalog predicts direct play of {mp4[1]['name']} for an H.264/AAC player",
+              status == 200 and version.get("predictedMethod") == "direct", str(version.get("predictionReasons")))
+
+        for title in series:
+            status, _, body = http("GET", f"{cat}/series/{title['tmdbId']}", token=anna)
+            next_episode = (body or {}).get("watch", {}).get("nextEpisode") or {}
+            played = [e["workId"] for s in title["seasons"] for e in s["episodes"]][:1]
+            check(f"catalog series {title['title']} suggests a next episode", status == 200 and next_episode.get("reason") in ("start", "next", "resume"),
+                  f"{next_episode.get('workId')} ({next_episode.get('reason')}), first episode {played}")
+            for season in title["seasons"]:
+                status, _, body = http("GET", f"{cat}/series/{title['tmdbId']}/seasons/{season['seasonNumber']}?availability=true", token=anna)
+                counts = {e["workId"]: e["versionCount"] for e in (body or {}).get("episodes", [])}
+                expected = {e["workId"]: (len(e["releases"]), len([r for r in e["releases"] if r["health"] != "dead"])) for e in season["episodes"]}
+                ok = status == 200 and all(counts.get(w) in pair for w, pair in expected.items()) and not any(leak in json.dumps(body) for leak in leaks)
+                check(f"catalog season {title['title']} S{season['seasonNumber']:02d} overlays version counts", ok, str(counts))
+
+    if "kind" in sessions:
+        kid = sessions["kind"]
+        gate = manifest["scenarios"]["ageGate"]
+        blocked = {t["title"] for t in gate["blocked"]}
+        status, _, discover = http("GET", f"{cat}/discover", token=kid)
+        titles = {i["title"] for r in (discover or {}).get("rows", []) for i in r["items"]}
+        check("catalog hides age-restricted and unrated titles from kind", status == 200 and titles and not titles & blocked,
+              f"visible {sorted(titles)}")
+        adult = next(t for t in movies if (t["access"].get("minimumAge") or 0) > 12)
+        status, _, body = http("GET", f"{cat}/movies/{adult['tmdbId']}", token=kid)
+        error = (body or {}).get("error", {})
+        check(f"catalog details of {adult['title']} are age_restricted for kind",
+              status == 403 and error.get("code") == "age_restricted" and error.get("params", {}).get("reason") == "above_age_limit", str(body))
+        status, _, body = http("GET", f"{cat}/works/{adult['workId']}/versions", token=kid)
+        check(f"catalog versions of {adult['title']} are age_restricted for kind", status == 403, str(status))
+
+    status, _, body = http("GET", f"{cat}/discover", token=admin_token)
+    check("catalog rejects the admin token", status == 401 and body["error"]["code"] == "unauthorized", str(status))
 
 
 if __name__ == "__main__":

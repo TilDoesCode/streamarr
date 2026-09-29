@@ -324,7 +324,8 @@ public static class StreamarrServerBootstrap
                 sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.TmdbCacheMaxEntries,
                 tmdbOptions.MaxConcurrentRequests,
                 tmdbOptions.RequestTimeout,
-                () => tmdbOptions.CredentialRevision);
+                () => tmdbOptions.CredentialRevision,
+                tmdbOptions.DiscoverCacheTtl);
         });
 
         // Parse → reject → rank → aggregate to works (BRIEF §7).

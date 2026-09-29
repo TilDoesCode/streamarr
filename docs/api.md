@@ -96,6 +96,11 @@ UI renders this consistently (toasts + inline field errors). Representative code
 `missing_query`, `release_not_found`, `no_playable_file`, `invalid_release`,
 `usenet_unreachable`, `nzb_fetch_failed`, `unknown_stream`.
 
+Some errors add an optional `params` object of string values for localized messages, for
+example `403 age_restricted` from the viewer catalog
+(`"params": { "reason": "above_age_limit", "rating": "R", "minimumAge": "17", "viewerMaxAge": "12" }`).
+The key is omitted when an error has no parameters.
+
 ---
 
 ## 3. Search
@@ -835,8 +840,9 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 
 ## 12. Viewer accounts and watch state
 
-An optional, separately authenticated module ([`viewers.md`](./viewers.md)). While it is
-disabled (the default), every `/api/v1/viewer/*` endpoint answers `404 module_disabled`.
+An optional, separately authenticated module ([`viewers.md`](./viewers.md)); its catalog is
+§ 13. While it is disabled (the default), every `/api/v1/viewer/*` endpoint answers
+`404 module_disabled`.
 Viewer credentials never unlock admin or machine endpoints, and admin/machine credentials
 never unlock viewer endpoints.
 
@@ -902,6 +908,122 @@ password must be changed, other viewer endpoints answer `403 password_change_req
 
 ---
 
+## 13. Viewer catalog
+
+`/api/v1/viewer/catalog/*` is what a viewer app browses: TMDB search and home rows, title
+details with the viewer's watch state, and the ranked **versions** of a movie or episode. It
+belongs to the viewer module (§ 12) and behaves like the other viewer endpoints:
+
+- **Auth:** only viewer sessions (bearer `sva_…` or the viewer cookie). Admin JWTs, admin cookies,
+  machine API keys and anonymous calls get `401 unauthorized`.
+- **Module gate:** while the module is off, every catalog endpoint answers `404 module_disabled`.
+- **Password change:** while an admin-assigned password must be changed, `403 password_change_required`.
+- **Age policy:** lists (search, discover) silently leave out titles the viewer may not watch.
+  Details, seasons and versions of such a title answer `403 age_restricted` with `params`
+  (`reason`: `above_age_limit`, `unrated_blocked` or `rating_unavailable`; plus `rating`,
+  `minimumAge`, `viewerMaxAge` when known). For a restricted viewer, every list item needs its TMDB
+  certification, so each item costs one cached TMDB detail lookup; unrestricted viewers cost none.
+- **Errors:** the standard envelope (§ 2). `429 capacity_reached` and `503 …` carry `Retry-After: 1`.
+
+| Endpoint | Returns | External cost on a cache miss |
+|---|---|---|
+| `GET …/search?q&type=movie\|tv\|any&limit` | `{ items: CatalogItem[] }`, TMDB relevance order, `limit` 1–20 (default 20) | One TMDB search; **no indexer call** |
+| `GET …/discover` | `{ rows: [{ id, kind, mediaType, items }] }` | TMDB trending/popular lists (cached `Tmdb:DiscoverCacheTtlHours`, default 6 h); **no indexer call** |
+| `GET …/movies/{tmdbId}` | Movie details + `watch` + `access` | One TMDB detail call (cached); **no indexer call** |
+| `GET …/series/{tmdbId}` | Series details, season summaries, `watch` summary + `access` | TMDB series detail (+ up to a few season lists for the next episode); **no indexer call** |
+| `GET …/series/{tmdbId}/seasons/{n}` | TMDB episodes with per-episode `watch` | One TMDB season call; **no indexer call** |
+| `GET …/series/{tmdbId}/seasons/{n}?availability=true` | The same plus `versionCount` per episode and `availability` | One season-wide indexer fan-out, shared with the episode versions cache |
+| `GET …/works/{workId}/versions` | `{ workId, mediaType, versions: VersionDto[], checkedAt, fromCache, incomplete }` | One indexer fan-out (movie) or one season fan-out (episode) |
+
+**Items and rows.** A `CatalogItem` is a card: `workId` (`tmdb-movie-603` or `tmdb-tv-1396`),
+`mediaType` (`movie` or `series`), `tmdbId`, `title`, `originalTitle`, `year`, `overview`,
+`posterUrl`, `backdropUrl`, `voteAverage`. `search` accepts `type=movie`, `tv` (alias `series`)
+or `any`. `discover` rows are `trending-movies`, `trending-series`, `popular-movies`,
+`popular-series` (in that order; a row without any title the viewer may watch is left out).
+Rows are TMDB data only: a title in a row may have no versions.
+
+**Details.** `movies/{id}`: `title`, `originalTitle`, `year`, `overview`, `tagline`, `genres`,
+`runtimeMinutes`, `certification` (the value the age gate uses), `voteAverage`, `posterUrl`,
+`backdropUrl`, `logoUrl` (transparent title logo when TMDB has one), `trailerUrl`, `people`, the
+viewer's `watch` state (a `WatchStateResponse`, empty when never played) and `access`
+(`{ allowed, reason, rating, minimumAge, viewerMaxAge }`). `series/{id}` adds `seasonCount`,
+`episodeCount` (regular seasons), `seasons[]` (`workId`, `seasonNumber` — 0 = specials —, `title`,
+`airDate`, `posterUrl`, `episodeCount`, `playedCount`, `inProgressCount`) and `watch`:
+
+```json
+{ "playedEpisodes": 1, "inProgressEpisodes": 1, "totalEpisodes": 5, "incomplete": false,
+  "nextEpisode": { "workId": "tmdb-tv-600-s01e02", "seasonNumber": 1, "episodeNumber": 2,
+                   "title": "Episode 2", "runtimeMinutes": 46, "positionTicks": 9000000000,
+                   "durationTicks": 27600000000, "reason": "resume" } }
+```
+
+`nextEpisode.reason` is `next` (the first aired, unplayed episode after the furthest played one —
+the same rule as `/viewer/watch/next-up`), `resume` (that episode or, failing that, the most
+recently played episode has a resume position) or `start` (nothing watched yet: the first aired
+episode of the first regular season). It is `null` once everything aired is played.
+Season episodes carry `workId`, `episodeNumber`, `title`, `overview`, `airDate`, `aired`,
+`runtimeMinutes`, `stillUrl`, `voteAverage`, `watch` and `versionCount` (only with
+`availability=true`). `availability` is `{ checkedAt, fromCache, incomplete, error }`; when the
+season search cannot run (`capacity_reached`, `search_temporarily_unavailable`) the episodes still
+come back, `versionCount` stays `null` and `error` names the reason.
+
+**Versions.** `workId` must be a TMDB movie or episode id (`400 invalid_work_id` otherwise; unknown
+episodes are `404 episode_not_found`). Versions are the releases the server would play, best
+first: rejected releases and releases the health cache currently knows as dead are left out. The
+ranking is the normal search ranking (default quality profile); episodes include season packs.
+
+```json
+{ "releaseId": "…", "name": "Movie.2021.2160p.UHD.BluRay.TrueHD.Atmos.7.1.DV.HDR10.x265-GRP",
+  "rank": 1, "recommended": true, "resolution": "2160p", "source": "BluRay",
+  "videoCodec": "hevc", "bitDepth": 10, "hdr": "dolbyvision", "hdrFormats": ["dolbyvision", "hdr10"],
+  "audioCodec": "truehd", "audioChannels": "7.1", "atmos": true, "languages": [], "multiLanguage": false,
+  "subtitleHints": [], "subtitleLanguages": [], "edition": null, "releaseGroup": "GRP",
+  "proper": false, "repack": false, "seasonPack": false, "sizeBytes": 40000000000,
+  "estimatedBitrateKbps": 44444, "ageDays": 3, "health": "unknown", "local": null,
+  "predictedMethod": null, "predictionReasons": null }
+```
+
+- Every attribute comes from the parsed release name. Codes are lower-case and stable:
+  `videoCodec` `h264|hevc|av1|vc1|mpeg2|xvid|divx`; `hdr`/`hdrFormats`
+  `dolbyvision|hdr10plus|hdr10|hlg` (`null` = SDR or not stated); `audioCodec`
+  `truehd|dts-hd-ma|dts-hd|dts-x|dts-es|dts|eac3|ac3|flac|opus|aac|mp3|pcm`. `bitDepth` is the
+  stated depth (`10bit`, `Hi10P`, `Main10` …) or 10 when the name names an HDR format.
+  `subtitleHints` (`subbed`, `multi`, `hardcoded`) and `subtitleLanguages` only reflect what the
+  name says; empty means unknown.
+- `rank` 1 is `recommended`: the version the server picks when the client does not choose.
+- `estimatedBitrateKbps` = size ÷ TMDB runtime (per episode for season packs; `null` without a runtime).
+- `health`: `unknown` until a resolve checked it, then `ready` or `degraded` (current health cache).
+- `local`: `ready` or `downloading` when a pre-download of this version exists for this viewer
+  (sessions resolved with client `streamarr-viewer` and the viewer id as requester).
+- Never included: NZB URLs, indexer names or ids, API keys, scores, grabs.
+- **Caching:** lists are cached per movie and per season for `Streamarr:ViewerVersionsCacheSeconds`
+  (default 600); concurrent requests share one search; `fromCache` says whether this request
+  reused it and `checkedAt` when it was searched. `?refresh=true` searches again (the indexer's own
+  60-second response cache still applies). Lists with a failed indexer are marked `incomplete` and
+  not cached; when every indexer fails the endpoint answers `503 search_temporarily_unavailable`,
+  and `429 capacity_reached` when the server-wide search capacity is in use.
+
+**Predicted method (optional).** Sending a compact device profile adds a prediction per version:
+`videoCodecs` (required to enable it), `audioCodecs`, `containers`, `hdrFormats` (comma-separated,
+the codec/container names of `/transcoding` `client`), `supports10Bit`, `maxAudioChannels`,
+`maxHeight`, `maxBitrateKbps`. Missing lists use the transcoding defaults (`aac,mp3`, `mp4`, 2 channels).
+
+```
+GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,eac3&containers=mp4&hdrFormats=hdr10&supports10Bit=true&maxAudioChannels=6
+```
+
+`predictedMethod` is `direct`, `remux`, `transcode` or `unknown`. It is **only a prediction**: the
+server runs the transcoding planner (§ 11) on a source made up from the release name, because
+nothing has been downloaded yet. `predictionReasons` lists the planner's reason codes (with
+`params`) plus every assumption: `container_assumed` (names rarely say MKV or MP4; MKV is assumed
+unless the name says MP4), `audio_codec_unknown`, `resolution_assumed`, `bit_depth_assumed`,
+`dolby_vision_profile_unknown` (a Dolby Vision name without an HDR10/HLG base layer),
+`video_codec_unknown` (→ `unknown`), and `transcoding_not_allowed` / `transcoding_disabled` when the
+viewer or server could not do what the prediction needs. The real decision (with the probed file)
+happens when playback starts.
+
+---
+
 ## See also
 
 - [`architecture.md`](./architecture.md) — how these endpoints compose into the
@@ -910,4 +1032,4 @@ password must be changed, other viewer endpoints answer `403 password_change_req
   rules, and rejection `code` values that `/debug/search` exposes.
 - [`setup.md`](./setup.md) — how to configure indexers/providers/profiles that these
   endpoints read.
-- [`viewers.md`](./viewers.md) — viewer accounts, sign-in security, and watch-state rules.
+- [`viewers.md`](./viewers.md) — viewer accounts, sign-in security, watch-state rules, and the catalog.

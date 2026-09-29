@@ -94,7 +94,7 @@ public sealed class TmdbClient(
             return null;
 
         using var doc = await GetAsync(
-            $"movie/{tmdbId}?append_to_response=credits,release_dates,videos",
+            $"movie/{tmdbId}?append_to_response=credits,release_dates,videos,images&include_image_language={ImageLanguages()}",
             cancellationToken);
         if (doc is null)
             return null;
@@ -111,6 +111,7 @@ public sealed class TmdbClient(
             Overview = NullIfEmpty(GetBoundedString(root, "overview", 8_192)),
             PosterUrl = Image(GetBoundedString(root, "poster_path", 1_024), options.PosterSize),
             BackdropUrl = Image(GetBoundedString(root, "backdrop_path", 1_024), options.BackdropSize),
+            LogoUrl = Logo(root),
             RuntimeMinutes = RuntimeOrNull(GetInt(root, "runtime")),
             OriginalTitle = NullIfEmpty(GetBoundedString(root, "original_title", 512)),
             Tagline = NullIfEmpty(GetBoundedString(root, "tagline", 2_048)),
@@ -135,7 +136,7 @@ public sealed class TmdbClient(
             return null;
 
         using var doc = await GetAsync(
-            $"tv/{tmdbId}?append_to_response=external_ids,credits,content_ratings,videos",
+            $"tv/{tmdbId}?append_to_response=external_ids,credits,content_ratings,videos,images&include_image_language={ImageLanguages()}",
             cancellationToken);
         if (doc is null)
             return null;
@@ -152,6 +153,7 @@ public sealed class TmdbClient(
             Overview = NullIfEmpty(GetBoundedString(root, "overview", 8_192)),
             PosterUrl = Image(GetBoundedString(root, "poster_path", 1_024), options.PosterSize),
             BackdropUrl = Image(GetBoundedString(root, "backdrop_path", 1_024), options.BackdropSize),
+            LogoUrl = Logo(root),
             RuntimeMinutes = FirstEpisodeRuntime(root),
             OriginalTitle = NullIfEmpty(GetBoundedString(root, "original_name", 512)),
             Tagline = NullIfEmpty(GetBoundedString(root, "tagline", 2_048)),
@@ -253,6 +255,22 @@ public sealed class TmdbClient(
 
         return null;
     }
+
+    public Task<IReadOnlyList<TmdbMatch>> GetTrendingAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => ListAsync($"trending/{Route(mediaType)}/week", mediaType, cancellationToken);
+
+    public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => ListAsync($"{Route(mediaType)}/popular", mediaType, cancellationToken);
+
+    private async Task<IReadOnlyList<TmdbMatch>> ListAsync(string route, MediaType mediaType, CancellationToken cancellationToken)
+    {
+        if (!HasCredential)
+            return [];
+        using var doc = await GetAsync(route, cancellationToken);
+        return DiscoveryResults(doc, mediaType);
+    }
+
+    private static string Route(MediaType mediaType) => mediaType == MediaType.Tv ? "tv" : "movie";
 
     private async Task<JsonDocument?> GetAsync(string relativeUrl, CancellationToken cancellationToken)
     {
@@ -484,6 +502,10 @@ public sealed class TmdbClient(
                 MediaType = type.Value,
                 TmdbId = id.Value,
                 Title = title,
+                OriginalTitle = NullIfEmpty(type == MediaType.Movie
+                    ? GetBoundedString(result, "original_title", 512)
+                    : GetBoundedString(result, "original_name", 512)),
+                CommunityRating = RatingOrNull(GetFloat(result, "vote_average")),
                 Year = YearOf(date),
                 Overview = NullIfEmpty(GetBoundedString(result, "overview", 8_192)),
                 PosterUrl = Image(GetBoundedString(result, "poster_path", 1_024), options.PosterSize),
@@ -564,6 +586,48 @@ public sealed class TmdbClient(
         => string.IsNullOrWhiteSpace(path) || !path.StartsWith("/", StringComparison.Ordinal)
             ? null
             : $"{options.ImageBaseUrl.TrimEnd('/')}/{size}{path}";
+
+    /// <summary>Best title logo: the configured language first, then English, then textless; highest rated within.</summary>
+    private string? Logo(JsonElement root)
+    {
+        if (!root.TryGetProperty("images", out var images)
+            || images.ValueKind != JsonValueKind.Object
+            || !images.TryGetProperty("logos", out var logos)
+            || logos.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var preferred = PreferredImageLanguage();
+        var path = logos.EnumerateArray()
+            .Take(100)
+            .Where(logo => logo.ValueKind == JsonValueKind.Object)
+            .Select(logo => (
+                Path: GetBoundedString(logo, "file_path", 1_024),
+                Language: GetBoundedString(logo, "iso_639_1", 8),
+                Vote: GetFloat(logo, "vote_average") ?? 0))
+            .Where(logo => logo.Path is not null)
+            .OrderBy(logo => preferred is not null && logo.Language == preferred ? 0 : logo.Language == "en" ? 1 : logo.Language is null ? 2 : 3)
+            .ThenByDescending(logo => logo.Vote)
+            .Select(logo => logo.Path)
+            .FirstOrDefault();
+        // TMDB serves sized renditions of SVG logos as PNG.
+        if (path is not null && path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+            path = path[..^4] + ".png";
+        return Image(path, options.LogoSize);
+    }
+
+    private string? PreferredImageLanguage()
+    {
+        var language = options.Language?.Trim();
+        if (string.IsNullOrEmpty(language))
+            return null;
+        var code = language.Split('-', 2)[0].ToLowerInvariant();
+        return code.Length is 2 or 3 && code.All(char.IsAsciiLetterLower) ? code : null;
+    }
+
+    private string ImageLanguages()
+        => PreferredImageLanguage() is { } preferred && preferred != "en" ? $"{preferred},en,null" : "en,null";
 
     private static int? YearOf(string? date)
         => date is { Length: >= 4 } && int.TryParse(date.AsSpan(0, 4), out var year) &&

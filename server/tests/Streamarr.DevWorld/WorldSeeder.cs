@@ -256,6 +256,9 @@ public static class WorldSeeder
             };
         }
 
+        List<string> MovieIds(IEnumerable<string> keys) => [.. keys.Select(k => $"tmdb-movie-{plan.Catalog.Movies.Single(m => m.Key == k).TmdbId}")];
+        List<string> SeriesIds(IEnumerable<string> keys) => [.. keys.Select(k => $"tmdb-tv-{plan.Catalog.Series.Single(m => m.Key == k).TmdbId}")];
+
         object Access(TitleEntry title) => new
         {
             officialRating = title.OfficialRating,
@@ -272,7 +275,7 @@ public static class WorldSeeder
             {
                 key = movie.Key, type = "movie", tmdbId = movie.TmdbId, imdbId = movie.ImdbId, title = movie.Title,
                 year = movie.Year, workId, runtimeMinutes = movie.RuntimeMinutes, access = Access(movie),
-                posterUrl = movie.PosterUrl, backdropUrl = movie.BackdropUrl, license = movie.License,
+                posterUrl = movie.PosterUrl, backdropUrl = movie.BackdropUrl, logoUrl = movie.LogoUrl, license = movie.License,
                 releases = store.Releases.Where(r => r.Plan.WorkId == workId)
                     .OrderBy(r => ranks.GetValueOrDefault($"{workId}|{r.ReleaseId}")?.Rank ?? 99)
                     .Select(r => ReleaseJson(r, workId)).ToList(),
@@ -285,7 +288,7 @@ public static class WorldSeeder
             {
                 key = series.Key, type = "tv", tmdbId = series.TmdbId, imdbId = series.ImdbId, title = series.Title,
                 year = series.Year, seriesWorkId = $"tmdb-tv-{series.TmdbId}", access = Access(series),
-                posterUrl = series.PosterUrl, backdropUrl = series.BackdropUrl, license = series.License,
+                posterUrl = series.PosterUrl, backdropUrl = series.BackdropUrl, logoUrl = series.LogoUrl, license = series.License,
                 seasons = series.Seasons.Select(season => new
                 {
                     seasonNumber = season.SeasonNumber,
@@ -370,6 +373,8 @@ public static class WorldSeeder
                     .Select(r => new { workId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name }),
                 seasonPacks = store.Releases.Where(r => r.Plan.IsSeasonPack)
                     .Select(r => new { seasonWorkId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name }),
+                noVersions = plan.Catalog.Movies.Where(m => m.Releases.Count == 0)
+                    .Select(m => new { workId = $"tmdb-movie-{m.TmdbId}", title = m.Title }),
                 missingArtwork = plan.Catalog.Series
                     .SelectMany(s => s.Seasons.Select(season => (Series: s, Season: season)))
                     .Where(x => x.Season.PosterUrl is null || x.Season.Episodes.Any(e => e.StillUrl is null))
@@ -389,6 +394,14 @@ public static class WorldSeeder
                     allowed = plan.Catalog.Movies.Cast<TitleEntry>().Concat(plan.Catalog.Series)
                         .Where(t => IsAllowed(t, kid)).Select(t => new { t.Title, t.OfficialRating }).ToList(),
                 },
+            },
+            discover = new
+            {
+                endpoint = $"{options.LocalUrl}/api/v1/viewer/catalog/discover",
+                trendingMovies = MovieIds(plan.Catalog.Discover.TrendingMovies),
+                trendingSeries = SeriesIds(plan.Catalog.Discover.TrendingSeries),
+                popularMovies = MovieIds(plan.Catalog.Discover.PopularMovies),
+                popularSeries = SeriesIds(plan.Catalog.Discover.PopularSeries),
             },
             variants = plan.Catalog.Variants.ToDictionary(v => v.Key, v => new
             {

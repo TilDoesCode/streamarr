@@ -5,7 +5,8 @@
     "officialRating = DE certification when TMDB has one, else US, else the first captured country.",
     "Release names must parse to the attributes of their variant; the harness fails fast on a mismatch.",
     "Indexer-reported sizes are nominal (variant/release nominalMbps x TMDB runtime); the generated clips are short.",
-    "health: ready (default) | dead (missing articles) | degraded (STAT probes drop the connection)."
+    "health: ready (default) | dead (missing articles) | degraded (STAT probes drop the connection).",
+    "discover: title keys of the canned TMDB trending/popular lists (viewer home rows). Titles without releases (agent-327, wing-it: metadata only) exercise the empty-versions state; at most two are allowed."
   ],
   "defaults": {
     "movieDurationSeconds": 180,
@@ -326,6 +327,7 @@
       "communityRating": 6.5,
       "posterUrl": "https://image.tmdb.org/t/p/w780/i9jJzvoXET4D9pOkoEwncSdNNER.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/xtdybjRRZ15mCrPOvEld305myys.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/fW0heBZpksNXSNAeLl0wT2N7cD3.png",
       "license": "CC BY 3.0 (Blender Foundation)",
       "accentColor": "#f4a261",
       "fps": "24",
@@ -385,6 +387,7 @@
       "communityRating": 7.3,
       "posterUrl": "https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/p3NwyW8Jf5AGmKk5B0K69MhiMWv.png",
       "license": "CC BY 3.0 (Blender Foundation)",
       "accentColor": "#e63946",
       "fps": "24",
@@ -440,6 +443,7 @@
       "communityRating": 5.7,
       "posterUrl": "https://image.tmdb.org/t/p/w780/8qy3jRmaHR7f8VZh3iXCqCWfFsH.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/fOy6SL5Zs2PFcNXwqEPIDPrLB1q.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/z189jjuLnQ77QyipJ0i33mGEjiS.png",
       "license": "CC BY 3.0 (Blender Foundation)",
       "accentColor": "#457b9d",
       "fps": "24",
@@ -493,6 +497,7 @@
       "communityRating": 5.8,
       "posterUrl": "https://image.tmdb.org/t/p/w780/9zROtU9TkpZQrOuEaMAp68FOWLK.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/9bJDwuhza19HQcYA99FeslLYmUm.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/p4CLZiCe3GQIOXoY4U4NCwV0f6B.png",
       "license": "CC BY 2.5 (Blender Foundation)",
       "accentColor": "#2a9d8f",
       "fps": "24",
@@ -540,6 +545,7 @@
       "communityRating": 6.3,
       "posterUrl": "https://image.tmdb.org/t/p/w780/5ZXi0oitpEgAdoJglFTc5SZF9nt.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/f2wABsgj2lIR2dkDEfBZX8p4Iyk.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/kJL8smUGlQ29mPLcook393vYt4X.png",
       "license": "CC BY 4.0 (Blender Institute)",
       "accentColor": "#9b5de5",
       "fps": "24",
@@ -597,6 +603,7 @@
       "communityRating": 7.8,
       "posterUrl": "https://image.tmdb.org/t/p/w780/AjWJQOogG4Irpff6K49tzrUTb1s.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/aCMT1okuiKFnyKHdCOez66rJKyT.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/eHUj6cIvrKH0bDIDnpOeYS1qCHY.png",
       "license": "CC BY 4.0 (Blender Studio)",
       "accentColor": "#80b918",
       "fps": "24",
@@ -652,6 +659,7 @@
       "communityRating": 7.6,
       "posterUrl": "https://image.tmdb.org/t/p/w780/rb2NWyb008u1EcKCOyXs2Nmj0ra.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/5KtmBSqFtHY3I9t8lgH27Mc0bqY.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/dfqAfoQJiDQlDthddcVYn2z3jF7.png",
       "license": "Public domain",
       "accentColor": "#6c757d",
       "fps": "24000/1001",
@@ -691,6 +699,72 @@
           "ageDays": 4000
         }
       ]
+    },
+    {
+      "key": "agent-327",
+      "tmdbId": 457784,
+      "imdbId": "tt6914802",
+      "title": "Agent 327: Operation Barbershop",
+      "titleDe": "Agent 327: Operation Friseur",
+      "originalTitle": "Agent 327: Operation Barbershop",
+      "year": 2017,
+      "overview": "Agent 327 is investigating a clue that leads him to a shady barbershop in Amsterdam. Little does he know that he is being tailed by mercenary Boris Kloris.",
+      "overviewDe": "Agent 327 geht einem Hinweis nach, der ihn zu einem zwielichtigen Friseursalon in Amsterdam führt. Er ahnt nicht, dass er vom Söldner Boris Kloris verfolgt wird.",
+      "tagline": null,
+      "taglineDe": null,
+      "genres": [
+        "Action",
+        "Animation",
+        "Comedy"
+      ],
+      "genresDe": [
+        "Action",
+        "Animation",
+        "Komödie"
+      ],
+      "communityRating": 7.0,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/tSIMZK9XZSIb1dL3iQeTESEZvHw.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/aupI9kV5CawUp02XWnI2l7Ym9SH.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/c9Puk467fgOfxpI7inWjcCpd3Lg.png",
+      "license": "CC BY (Blender Animation Studio)",
+      "accentColor": "#c0392b",
+      "fps": "24",
+      "runtimeMinutes": 4,
+      "certifications": {},
+      "officialRating": null,
+      "releases": []
+    },
+    {
+      "key": "wing-it",
+      "tmdbId": 1177628,
+      "imdbId": null,
+      "title": "Wing It!",
+      "titleDe": null,
+      "originalTitle": "Wing It!",
+      "year": 2023,
+      "overview": "Blender Studio’s 15th Open Movie: An uptight engineer gets an unwelcome visit from a enthusiastic wannabe-pilot, causing both of them to be launched into the air inside an out-of-control space shuttle.",
+      "overviewDe": null,
+      "tagline": "A Pet Project",
+      "taglineDe": null,
+      "genres": [
+        "Comedy",
+        "Animation"
+      ],
+      "genresDe": [
+        "Komödie",
+        "Animation"
+      ],
+      "communityRating": 7.5,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/kVRGAgqUC2u75pLsXgDj14tOsRJ.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/o2G1kW9pCcRo7NmiZhJBm5LcVpH.jpg",
+      "logoUrl": null,
+      "license": "CC BY (Blender Studio)",
+      "accentColor": "#2a9d8f",
+      "fps": "24",
+      "runtimeMinutes": 4,
+      "certifications": {},
+      "officialRating": null,
+      "releases": []
     }
   ],
   "series": [
@@ -719,6 +793,7 @@
       "communityRating": 6.3,
       "posterUrl": "https://image.tmdb.org/t/p/w780/p53wbsukyhJ8TieisoeU1zZr9iA.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/aMUc1h3nXYZnou7P9HRdJgW2zw2.jpg",
+      "logoUrl": null,
       "license": "CC BY-NC-SA 3.0 (Bitlove / Josh Bernhard, Bracey Smith)",
       "accentColor": "#e9c46a",
       "fps": "24000/1001",
@@ -915,6 +990,7 @@
       "communityRating": 8.5,
       "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
       "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+      "logoUrl": "https://image.tmdb.org/t/p/w500/5cTbld1BphDXeT2uyN6bMQ4wwGh.png",
       "license": "Proprietary (BBC) - metadata and artwork URLs only; media is generated",
       "accentColor": "#264653",
       "fps": "25",
@@ -1133,5 +1209,34 @@
       ],
       "seasonPacks": []
     }
-  ]
+  ],
+  "discover": {
+    "trendingMovies": [
+      "sprite-fright",
+      "big-buck-bunny",
+      "cosmos-laundromat",
+      "sintel",
+      "agent-327",
+      "tears-of-steel",
+      "night-of-the-living-dead"
+    ],
+    "trendingSeries": [
+      "sherlock",
+      "pioneer-one"
+    ],
+    "popularMovies": [
+      "big-buck-bunny",
+      "sintel",
+      "tears-of-steel",
+      "elephants-dream",
+      "wing-it",
+      "cosmos-laundromat",
+      "sprite-fright",
+      "night-of-the-living-dead"
+    ],
+    "popularSeries": [
+      "pioneer-one",
+      "sherlock"
+    ]
+  }
 }

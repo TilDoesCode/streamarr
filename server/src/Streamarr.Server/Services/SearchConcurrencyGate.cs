@@ -142,4 +142,5 @@ public enum SearchOperation
     PublicSearch,
     DebugSearch,
     TvSeason,
+    ViewerVersions,
 }

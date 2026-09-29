@@ -29,6 +29,38 @@ public static class HdrParser
         @"\bSDR\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    /// <summary>Every HDR flavor the name indicates, dominant first (e.g. <c>DV</c> + its <c>HDR10</c> base layer).</summary>
+    public static IReadOnlyList<string> ParseAll(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return [];
+        }
+
+        var formats = new List<string>(3);
+        if (DolbyVisionRegex.IsMatch(name))
+        {
+            formats.Add("DV");
+        }
+
+        var hdr10Plus = Hdr10PlusRegex.IsMatch(name);
+        if (hdr10Plus)
+        {
+            formats.Add("HDR10+");
+        }
+        else if (Hdr10Regex.IsMatch(name))
+        {
+            formats.Add("HDR10");
+        }
+
+        if (HlgRegex.IsMatch(name))
+        {
+            formats.Add("HLG");
+        }
+
+        return formats;
+    }
+
     /// <summary>Returns the dominant HDR flavor, or null when none is indicated.</summary>
     public static string? Parse(string name)
     {

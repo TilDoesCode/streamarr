@@ -10,8 +10,9 @@ public class WorldPlanTests
         var plan = WorldPlan.Build(DevCatalog.Load(FakeWorld.CatalogPath));
         var catalog = plan.Catalog;
 
-        Assert.InRange(catalog.Movies.Count, 6, int.MaxValue);
-        Assert.All(catalog.Movies, movie => Assert.InRange(movie.Releases.Count, 2, 5));
+        Assert.InRange(catalog.Movies.Count(m => m.Releases.Count > 0), 6, int.MaxValue);
+        Assert.All(catalog.Movies.Where(m => m.Releases.Count > 0), movie => Assert.InRange(movie.Releases.Count, 2, 5));
+        Assert.InRange(catalog.Movies.Count(m => m.Releases.Count == 0), 1, DiscoverLists.MaxTitlesWithoutReleases);
         Assert.InRange(catalog.Series.Count, 2, int.MaxValue);
         Assert.Contains(catalog.Series, s => s.Seasons.Count(season => season.Episodes.Any(e => e.Releases.Count > 0)) >= 2);
         Assert.All(
@@ -29,6 +30,39 @@ public class WorldPlanTests
         Assert.Contains(plan.Releases, r => r.Entry.Health == "degraded");
         Assert.Contains(plan.Releases, r => r.IsSeasonPack);
         Assert.Contains(catalog.Movies, m => ContentRatings.MinimumAge(m.OfficialRating) >= 16);
+    }
+
+    [Fact]
+    public void DiscoverRows_ListPlayableTitlesPlusAtMostTwoWithoutReleases()
+    {
+        var plan = WorldPlan.Build(DevCatalog.Load(FakeWorld.CatalogPath));
+        var discover = plan.Catalog.Discover;
+        var playable = plan.Releases.Select(r => r.Title.Key).ToHashSet();
+        var listed = discover.TrendingMovies.Concat(discover.PopularMovies).Concat(discover.TrendingSeries).Concat(discover.PopularSeries).Distinct().ToList();
+
+        Assert.All(new[] { discover.TrendingMovies, discover.TrendingSeries, discover.PopularMovies, discover.PopularSeries }, list => Assert.NotEmpty(list));
+        Assert.InRange(listed.Count(key => !playable.Contains(key)), 1, DiscoverLists.MaxTitlesWithoutReleases);
+        Assert.Contains(listed, key => plan.Catalog.Movies.Any(m => m.Key == key && m.LogoUrl is not null));
+    }
+
+    [Fact]
+    public void DiscoverRows_RejectUnknownKeysAndTooManyEmptyTitles()
+    {
+        var catalog = DevCatalog.Load(FakeWorld.CatalogPath);
+        var empty = catalog.Movies.First(m => m.Releases.Count == 0);
+        var broken = catalog with
+        {
+            Movies = [.. catalog.Movies, empty with { Key = "empty-2", TmdbId = 1 }, empty with { Key = "empty-3", TmdbId = 2 }],
+            Discover = catalog.Discover with
+            {
+                TrendingMovies = [.. catalog.Discover.TrendingMovies, "empty-2", "empty-3", "sherlock"],
+            },
+        };
+
+        var error = Assert.Throws<InvalidDataException>(() => WorldPlan.Build(broken));
+
+        Assert.Contains("discover.trendingMovies: 'sherlock' is not a catalog movie.", error.Message);
+        Assert.Contains("at most 2 are allowed", error.Message);
     }
 
     [Fact]

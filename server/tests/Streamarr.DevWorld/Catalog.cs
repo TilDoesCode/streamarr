@@ -18,6 +18,7 @@ public sealed record DevCatalog
     public Dictionary<string, VariantSpec> Variants { get; init; } = [];
     public List<MovieEntry> Movies { get; init; } = [];
     public List<SeriesEntry> Series { get; init; } = [];
+    public DiscoverLists Discover { get; init; } = new();
 
     public const int SupportedSchemaVersion = 1;
 
@@ -36,6 +37,18 @@ public sealed record CatalogDefaults
     public int MovieDurationSeconds { get; init; } = 180;
     public int EpisodeDurationSeconds { get; init; } = 120;
     public int PartSizeBytes { get; init; } = 262_144;
+}
+
+/// <summary>Title keys of the canned TMDB trending/popular lists (viewer home rows), in order.</summary>
+public sealed record DiscoverLists
+{
+    public List<string> TrendingMovies { get; init; } = [];
+    public List<string> TrendingSeries { get; init; } = [];
+    public List<string> PopularMovies { get; init; } = [];
+    public List<string> PopularSeries { get; init; } = [];
+
+    /// <summary>At most this many listed titles may have no release (they exercise the empty-versions state).</summary>
+    public const int MaxTitlesWithoutReleases = 2;
 }
 
 public sealed record VariantSpec
@@ -94,6 +107,7 @@ public abstract record TitleEntry
     public float? CommunityRating { get; init; }
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
+    public string? LogoUrl { get; init; }
     public string? License { get; init; }
     public string AccentColor { get; init; } = "#888888";
     public string Fps { get; init; } = "24000/1001";
@@ -268,10 +282,35 @@ public sealed class WorldPlan
 
         if (releases.Select(r => r.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != releases.Count)
             problems.Add("Release names must be unique.");
+        problems.AddRange(ValidateDiscover(catalog, releases));
         if (problems.Count > 0)
             throw new InvalidDataException("Fixture catalog is inconsistent:\n  " + string.Join("\n  ", problems));
 
         return new WorldPlan { Catalog = catalog, Media = media.Values.ToList(), Releases = releases };
+    }
+
+    /// <summary>Home rows may only list catalog titles of the right type, and at most two of them without any release.</summary>
+    private static IEnumerable<string> ValidateDiscover(DevCatalog catalog, IReadOnlyList<PlannedRelease> releases)
+    {
+        var movies = catalog.Movies.ToDictionary(m => m.Key, StringComparer.Ordinal);
+        var series = catalog.Series.ToDictionary(s => s.Key, StringComparer.Ordinal);
+        var lists = new (string Name, List<string> Keys, bool Movie)[]
+        {
+            ("trendingMovies", catalog.Discover.TrendingMovies, true),
+            ("trendingSeries", catalog.Discover.TrendingSeries, false),
+            ("popularMovies", catalog.Discover.PopularMovies, true),
+            ("popularSeries", catalog.Discover.PopularSeries, false),
+        };
+        foreach (var (name, keys, movie) in lists)
+        {
+            foreach (var key in keys.Where(k => movie ? !movies.ContainsKey(k) : !series.ContainsKey(k)))
+                yield return $"discover.{name}: '{key}' is not a catalog {(movie ? "movie" : "series")}.";
+        }
+
+        var playable = releases.Select(r => r.Title.Key).ToHashSet(StringComparer.Ordinal);
+        var empty = lists.SelectMany(l => l.Keys).Distinct().Where(k => !playable.Contains(k)).ToList();
+        if (empty.Count > DiscoverLists.MaxTitlesWithoutReleases)
+            yield return $"discover lists {empty.Count} titles without releases ({string.Join(", ", empty)}); at most {DiscoverLists.MaxTitlesWithoutReleases} are allowed.";
     }
 
     /// <summary>The ranker must see what the file really is: the parsed name has to match the variant.</summary>

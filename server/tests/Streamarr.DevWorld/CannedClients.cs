@@ -164,6 +164,30 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
         return Task.FromResult(series is null ? null : ToMatch(series, MediaType.Tv));
     }
 
+    public Task<IReadOnlyList<TmdbMatch>> GetTrendingAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Task.FromResult(List(mediaType == MediaType.Movie ? catalog.Discover.TrendingMovies : catalog.Discover.TrendingSeries, mediaType));
+
+    public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Task.FromResult(List(mediaType == MediaType.Movie ? catalog.Discover.PopularMovies : catalog.Discover.PopularSeries, mediaType));
+
+    /// <summary>Like TMDB list results: card fields only, so certifications need a detail lookup.</summary>
+    private IReadOnlyList<TmdbMatch> List(IEnumerable<string> keys, MediaType type)
+        => keys
+            .Select(key => type == MediaType.Movie
+                ? (TitleEntry?)catalog.Movies.FirstOrDefault(m => m.Key == key)
+                : catalog.Series.FirstOrDefault(s => s.Key == key))
+            .OfType<TitleEntry>()
+            .Select(entry => ToMatch(entry, type) with
+            {
+                ImdbId = null,
+                Tagline = null,
+                OfficialRating = null,
+                LogoUrl = null,
+                Genres = [],
+                RuntimeMinutes = null,
+            })
+            .ToList();
+
     /// <summary>Exact title first, then prefix, then token matches; ties by community rating.</summary>
     private IEnumerable<TmdbMatch> Candidates(string query, MediaType? mediaType)
     {
@@ -204,6 +228,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
         Overview = entry.Overview,
         PosterUrl = entry.PosterUrl,
         BackdropUrl = entry.BackdropUrl,
+        LogoUrl = entry.LogoUrl,
         OriginalTitle = entry.OriginalTitle,
         Tagline = entry.Tagline,
         OfficialRating = entry.OfficialRating,

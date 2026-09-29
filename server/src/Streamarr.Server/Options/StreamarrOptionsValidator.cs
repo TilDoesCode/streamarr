@@ -77,6 +77,7 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         }
         Range(o.MaxFallbackHops, 0, 20, nameof(o.MaxFallbackHops));
         Range(o.HealthCacheTtlSeconds, 0, 30 * 24 * 3600, nameof(o.HealthCacheTtlSeconds));
+        Range(o.ViewerVersionsCacheSeconds, 0, 24 * 3600, nameof(o.ViewerVersionsCacheSeconds));
         Range(o.ArticleReadAheadCount, 1, 100, nameof(o.ArticleReadAheadCount));
         Range(o.ArticleStartupReadAheadCount, 1, 100, nameof(o.ArticleStartupReadAheadCount));
         Range(o.ArticleStartupReadAheadSegments, 1, 100, nameof(o.ArticleStartupReadAheadSegments));

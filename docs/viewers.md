@@ -51,7 +51,7 @@ Every viewer response carries `"accountType": "viewer"`.
 | Email | Optional. Needed only for password reset and sign-in codes. Addresses set by an admin count as verified; a viewer's own change is confirmed with an emailed code. |
 | Age limit | `0`, `6`, `12`, `16`, `18`, or unrestricted. |
 | Block unrated | With an age limit set, also block works without a known certification. |
-| Allow transcoding | Stored for the viewer playback API. |
+| Allow transcoding | Stored for the viewer playback API; the catalog's playback prediction flags versions that would need a transcode (`transcoding_not_allowed`). |
 | Max. concurrent streams | Stored for the viewer playback API (empty = unlimited). |
 
 Admins can also disable an account (all its sessions end immediately), unlock it after
@@ -66,6 +66,10 @@ map to a minimum age: US film (`G` 0, `PG` 10, `PG-13` 13, `R` 17, `NC-17` 18), 
 (`TV-Y7` 7, `TV-PG` 10, `TV-14` 14, `TV-MA` 17), numeric systems such as FSK (`0`–`18`),
 and BBFC-style values (`U`, `12A`, `15`, `18`, `R18`). If the rating cannot be looked up,
 a restricted viewer is denied (`rating_unavailable`).
+
+The same rule runs through the [catalog](#catalog): search results and home rows simply leave
+out titles the viewer may not watch (and unrated ones when **Block unrated** is on), while
+details, seasons and versions of such a title answer `403 age_restricted` with the reason.
 
 ## Sign-in and security
 
@@ -120,6 +124,33 @@ Clients report playback with `POST /api/v1/viewer/watch/progress`
   notifications, playback ranges, and next-episode pre-downloads behave as they do for
   Jellyfin.
 
+## Catalog
+
+`/api/v1/viewer/catalog` is what a viewer app browses. It is a thin layer over what the server
+already has — TMDB metadata, the viewer's watch state and the normal search ranking — so it
+needs no extra setup beyond a TMDB credential and at least one indexer.
+
+| What | How it works | Cost |
+|---|---|---|
+| Search | TMDB movie and series candidates for a query. | TMDB only (cached) |
+| Home rows | TMDB **trending** and **popular** movies and series. | TMDB only, cached for `Tmdb:DiscoverCacheTtlHours` (default 6 h) |
+| Movie / series details | Metadata (incl. title logo, certification), the viewer's watch state, and for series the season list with played counts and the **next episode** to play (`start`, `next` or `resume`). | TMDB only (cached) |
+| Season | Every episode with its watch state; with `availability=true` also how many versions each episode has. | TMDB only; `availability=true` runs one season-wide indexer search |
+| Versions | The releases of a movie or episode the server would play, best first, with parsed attributes (resolution, codec, HDR incl. Dolby Vision, audio, languages, size, estimated bitrate, age, health, local pre-download) and the recommended one. | One indexer search per movie or season, cached |
+
+- Rows and search results are TMDB data: a title can appear there and still have no versions.
+- Versions never contain NZB links, indexer names or keys.
+- Version lists are cached for `Streamarr:ViewerVersionsCacheSeconds` (default 600 seconds) per
+  movie and per season, shared by all viewers; a client can ask for `?refresh=true`. Health and
+  local pre-downloads are always current: a release a playback just found dead drops out
+  immediately.
+- A client can send a compact device profile with the versions request to get a
+  **predicted playback method** (`direct`, `remux`, `transcode`) per version. It is a prediction from
+  the release name, labelled with every assumption it makes; the server decides for real when
+  playback starts.
+
+See [API reference § 13](api.md#13-viewer-catalog) for the contract.
+
 ## Email delivery
 
 | Mode | Behaviour |
@@ -130,5 +161,6 @@ Clients report playback with `POST /api/v1/viewer/watch/progress`
 
 ## API overview
 
-See [API reference § 12](api.md#12-viewer-accounts-and-watch-state) and the OpenAPI
-document for the complete contract.
+See [API reference § 12](api.md#12-viewer-accounts-and-watch-state) (accounts and watch
+state), [§ 13](api.md#13-viewer-catalog) (catalog) and the OpenAPI document for the complete
+contract.

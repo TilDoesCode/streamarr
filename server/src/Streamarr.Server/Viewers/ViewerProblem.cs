@@ -7,10 +7,11 @@ using Streamarr.Server.Viewers.Auth;
 namespace Streamarr.Server.Viewers;
 
 /// <summary>A domain failure of the viewer module that maps 1:1 onto the shared error envelope.</summary>
-public sealed class ViewerProblem(int status, string code, string message) : Exception(message)
+public sealed class ViewerProblem(int status, string code, string message, IReadOnlyDictionary<string, string>? parameters = null) : Exception(message)
 {
     public int Status { get; } = status;
     public string Code { get; } = code;
+    public IReadOnlyDictionary<string, string>? Parameters { get; } = parameters;
 
     public static ViewerProblem BadRequest(string code, string message) => new(StatusCodes.Status400BadRequest, code, message);
     public static ViewerProblem NotFound(string code, string message) => new(StatusCodes.Status404NotFound, code, message);
@@ -26,8 +27,29 @@ public sealed class ViewerProblemFilterAttribute : ExceptionFilterAttribute
     {
         if (context.Exception is not ViewerProblem problem)
             return;
-        context.Result = new ObjectResult(ErrorResponse.Of(problem.Code, problem.Message)) { StatusCode = problem.Status };
+        context.Result = new ObjectResult(new ErrorResponse
+        {
+            Error = new ErrorDetail { Code = problem.Code, Message = problem.Message, Params = problem.Parameters },
+        })
+        { StatusCode = problem.Status };
+        if (problem.Status == StatusCodes.Status429TooManyRequests || problem.Status == StatusCodes.Status503ServiceUnavailable)
+            context.HttpContext.Response.Headers.RetryAfter = "1";
         context.ExceptionHandled = true;
+    }
+}
+
+/// <summary>Answers malformed route or query values with the standard envelope (<c>400 invalid_request</c>) instead of ProblemDetails.</summary>
+public sealed class ViewerModelStateFilterAttribute : ActionFilterAttribute
+{
+    public ViewerModelStateFilterAttribute() => Order = -3000;
+
+    public override void OnActionExecuting(ActionExecutingContext context)
+    {
+        if (context.ModelState.IsValid)
+            return;
+        var fields = string.Join(", ", context.ModelState.Where(e => e.Value?.Errors.Count > 0).Select(e => e.Key).Take(8));
+        context.Result = new ObjectResult(ErrorResponse.Of("invalid_request", $"Malformed value for: {fields}."))
+        { StatusCode = StatusCodes.Status400BadRequest };
     }
 }
 

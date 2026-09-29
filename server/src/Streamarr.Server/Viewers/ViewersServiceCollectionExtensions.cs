@@ -6,6 +6,7 @@ using Streamarr.Server.Modules;
 using Streamarr.Server.Options;
 using Streamarr.Server.Viewers.Access;
 using Streamarr.Server.Viewers.Auth;
+using Streamarr.Server.Viewers.Catalog;
 using Streamarr.Server.Viewers.Email;
 using Streamarr.Server.Viewers.Watch;
 
@@ -30,6 +31,9 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<WatchStateService>();
         services.AddSingleton<NextUpService>();
         services.AddSingleton<ViewerContentPolicy>();
+        services.AddSingleton<ViewerVersionCache>();
+        services.AddSingleton<PlaybackPredictor>();
+        services.AddSingleton<ViewerCatalogService>();
 
         services.AddAuthentication()
             .AddScheme<AuthenticationSchemeOptions, ViewerAuthenticationHandler>(ViewerAuth.Scheme, _ => { });

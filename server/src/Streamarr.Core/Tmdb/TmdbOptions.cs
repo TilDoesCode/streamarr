@@ -66,11 +66,16 @@ public sealed class TmdbOptions
 
     public string BackdropSize { get; set; } = "w1280";
 
+    public string LogoSize { get; set; } = "w500";
+
     /// <summary>Optional ISO 639-1 language for TMDB responses (e.g. "en-US").</summary>
     public string? Language { get; set; }
 
     /// <summary>Result-cache lifetime; TMDB metadata is cached aggressively (BRIEF §6.1).</summary>
     public int CacheTtlHours { get; set; } = 24;
+
+    /// <summary>Lifetime of cached trending/popular lists (viewer home rows); capped by <see cref="CacheTtlHours"/>.</summary>
+    public int DiscoverCacheTtlHours { get; set; } = 6;
 
     /// <summary>Maximum decompressed JSON response body accepted from TMDB.</summary>
     public int MaxResponseBytes { get; set; } = 4 * 1024 * 1024;
@@ -96,6 +101,8 @@ public sealed class TmdbOptions
     public int RetryMaxDelayMilliseconds { get; set; } = 5_000;
 
     public TimeSpan CacheTtl => TimeSpan.FromHours(Math.Max(0, CacheTtlHours));
+
+    public TimeSpan DiscoverCacheTtl => TimeSpan.FromHours(Math.Clamp(DiscoverCacheTtlHours, 0, Math.Max(0, CacheTtlHours)));
 
     public int TransientRetryCount => Math.Clamp(MaxTransientRetries, 0, 10);
 
