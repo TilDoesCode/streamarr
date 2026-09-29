@@ -323,6 +323,9 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `HealthCacheMaxEntries` | `10000` | Hard bound for cached release-health classifications. |
 | `ReleaseStoreMaxEntries` | `10000` | Hard bound for the in-memory release lookup store. |
 | `TmdbCacheMaxEntries` | `5000` | Hard bound for cached TMDB metadata. |
+| `ViewerVersionsCacheSeconds` | `600` | How long the viewer catalog reuses a ranked version list (per movie / per season) before searching the indexers again; `0` disables it. |
+| `ViewerPlaybackHeartbeatSeconds` | `60` | A ready viewer playback counts toward the viewer's max concurrent streams this long after its last progress report (heartbeat), ready or switch (15–3600). |
+| `ViewerPlaybackIdleSeconds` | `600` | A viewer playback without polls, progress reports or switches for this long is stopped and its remux/transcode closed (60–86400). |
 | `MaxWatchEvents` | `10000` | Maximum retained playback-event rows; oldest rows are pruned on write. |
 | `DeepHealthCacheSeconds` | `30` | Shared cache lifetime for admin-only dependency probes. |
 | `Admin` | — | First-run admin bootstrap (below). |
@@ -410,9 +413,10 @@ and `MinimumFreeDiskBytes` are deployment-only safeguards and require configurat
 | `ApiKey` | `""` | TMDB v3 API key or API Read Access Token (JWT). Empty → public semantic search returns no works; raw indexer results remain available through `/debug/search`. |
 | `BaseUrl` | `https://api.themoviedb.org/3` | TMDB API base. |
 | `ImageBaseUrl` | `https://image.tmdb.org/t/p` | Image CDN base. |
-| `PosterSize` / `BackdropSize` | `w780` / `w1280` | Requested image sizes. |
-| `Language` | `null` | Optional ISO 639-1 response language (e.g. `en-US`). |
+| `PosterSize` / `BackdropSize` / `LogoSize` | `w780` / `w1280` / `w500` | Requested image sizes (logos are served as PNG). |
+| `Language` | `null` | Optional ISO 639-1 response language (e.g. `en-US`); also the preferred title-logo language (then English, then textless). |
 | `CacheTtlHours` | `24` | Metadata cache lifetime (cached aggressively). |
+| `DiscoverCacheTtlHours` | `6` | Lifetime of the trending/popular lists behind the viewer home rows (at most `CacheTtlHours`). |
 | `MaxResponseBytes` | `4194304` | Maximum decompressed JSON response body accepted from TMDB. |
 | `RequestTimeoutSeconds` | `20` | Hard lifetime for one shared upstream lookup, including admission wait. |
 | `MaxConcurrentRequests` | `4` | Process-wide maximum TMDB requests in flight. |
