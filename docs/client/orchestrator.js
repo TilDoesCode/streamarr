@@ -47,6 +47,7 @@ const COMMIT = {
 
 const COMMON = [
   'You are a senior engineer working unattended in the Streamarr monorepo at /Users/til/Development/streamarr (branch main).',
+  'WORKING DIRECTORY: your shell may start in an unrelated directory (another git repo) and resets to it after every command. Start every shell command with "cd /Users/til/Development/streamarr && " (or use absolute paths / git -C /Users/til/Development/streamarr). Never run git, npm or dotnet outside /Users/til/Development/streamarr.',
   'Two tracks run concurrently: backend (server/, web/ types, scripts/devworld.sh, docs/*.md) and client (client/). Stay inside your track unless your task explicitly requires otherwise, and never revert changes you did not make.',
   'Before anything else read: docs/client/PLAN.md (binding spec: sections 1-4 and your task in section 5), docs/client/JOURNAL.md, and of the dependency journals docs/client/journal/<id>.md only the Status, Summary, Decisions, Open issues and Notes for next tasks sections (skip their long evidence logs). PLAN.md section 3 (conventions) and section 4 (journal protocol) are mandatory.',
   'Hard rules:',
@@ -244,6 +245,7 @@ function commitPrompt(id, t, outcome) {
     'You create one git checkpoint commit in /Users/til/Development/streamarr (branch main). Do nothing else: no code edits, no push, no reset/stash/checkout/clean.',
     'Task: ' + id + ' - ' + t.title + ' (' + t.track + ' track). Outcome: ' + outcome + '.',
     '1. If .git/index.lock exists, wait 15 s and re-check (up to 8 times); if it persists and no git process runs (pgrep -x git), report it and stop.',
+    'Your shell may start elsewhere and resets after every command: prefix EVERY command with "cd /Users/til/Development/streamarr && ".',
     '2. Stage only these paths (skip any that do not exist): git add -A -- ' + paths.join(' '),
     '3. Run "gitleaks git --staged --no-banner --redact". If it reports leaks, unstage the offending files (git restore --staged -- <file>), and mention them in your note.',
     '4. If nothing is staged, return committed=false.',
