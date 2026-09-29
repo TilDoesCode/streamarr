@@ -27,3 +27,5 @@ Append-only. One line per task outcome; details in `journal/<TASK-ID>.md`.
 - W7 · started · same orchestrator (renamed w7), skip M3.1; M2.4 and M1.5 continue from their in-progress journals and the working tree, then M4.1 -> M4.2
 - W7 · interrupted · run wf_7d59a9be-c28 (22:20-22:32): M2.4 and M1.5 continued from their journals (M2.4: tsc/lint clean, jest 198/198, Google TV check started; M1.5: viewer suite 230/230, WebVTT renditions for transcodes), then both agents failed on the weekly limit of info@thecodecave.de (resets Oct 1 16:00). Other Codecraft accounts still have quota
 - W8 · started · same orchestrator (renamed w8), skip M3.1; M2.4 and M1.5 continue from their journals and the working tree, then M4.1 -> M4.2
+- W8 · interrupted · run wf_56a754ba-ba9 (22:36-22:42): M2.4 continued its Google TV checks, M1.5 started docs + contract regen; the Codecraft runner lost its backend connection for one minute (fetch failed 22:42:16-22:43:14) and forced the session inactive, which ended the workflow
+- W9 · started · same orchestrator (renamed w9), skip M3.1; M2.4 and M1.5 continue from their journals, then M4.1 -> M4.2
