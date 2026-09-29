@@ -2,7 +2,7 @@ using System.Text;
 
 namespace Streamarr.Server.Tests.Transcoding;
 
-/// <summary>The transcoding server plus remux media: H.264/E-AC-3/SRT/ASS with irregular keyframes (MKV, MP4, no Cues), open-GOP HEVC HDR10, HLG and Dolby Vision 8.1/5.</summary>
+/// <summary>The transcoding server plus remux media: H.264/E-AC-3/SRT/ASS with irregular keyframes (MKV, MP4, no Cues), open-GOP HEVC HDR10, HLG, Dolby Vision 8.1/5 and a PGS subtitle.</summary>
 public sealed class RemuxServerFixture : TranscodingServerFixture
 {
     public const string RemuxWorkId = "tmdb-movie-4343";
@@ -13,11 +13,16 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
     public const string HevcHlg = "rel-remux-hevc-hlg";
     public const string DolbyVision81 = "rel-remux-dv81";
     public const string DolbyVision5 = "rel-remux-dv5";
+    public const string PgsMkv = "rel-remux-pgs-mkv";
     public const int H264Seconds = 90;
     public const int HevcSeconds = 30;
 
     /// <summary>Forced keyframes of the H.264 source; the remux plan must cut at 0, 8, 13, 20, 27, 33, 40, … 88.</summary>
     public static readonly double[] Keyframes = [0, 2.5, 5, 8, 13, 14, 20, 21.5, 27, 33, 40, 46, 52, 58, 64, 70, 76, 82, 88];
+
+    /// <summary>White PGS boxes on a black 320x180 picture: A shows 0-4 s, B shows 6-10 s (of 12 s).</summary>
+    public static readonly PgsFixture.Box PgsBoxA = new(0, 4, 80, 120, 160, 40);
+    public static readonly PgsFixture.Box PgsBoxB = new(6, 10, 16, 16, 48, 32);
 
     protected override async Task<IReadOnlyList<FixtureRelease>> GenerateExtraReleasesAsync(string directory)
     {
@@ -66,6 +71,15 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
                 "-c:a", "aac", "-b:a", "96k", path);
         }
         var pqBytes = await File.ReadAllBytesAsync(pq);
+        var sup = Path.Combine(directory, "boxes.sup");
+        var pgs = Path.Combine(directory, "pgs.mkv");
+        await File.WriteAllBytesAsync(sup, PgsFixture.Write(320, 180, [PgsBoxA, PgsBoxB]));
+        await KeyframeFixture.FfmpegAsync(
+            "-f", "lavfi", "-i", "color=c=black:size=320x180:rate=24:duration=12",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=12",
+            "-i", sup, "-map", "0:v", "-map", "1:a", "-map", "2:s",
+            "-c:v", "libx264", "-preset", "veryfast", "-g", "48", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-c:s", "copy",
+            "-metadata:s:s:0", "language=ger", pgs);
 
         return
         [
@@ -76,6 +90,7 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
             new(HevcHlg, RemuxWorkId, "Remux.Source.2024.2160p.UHD.BluRay.AAC.HLG.x265.mkv", await File.ReadAllBytesAsync(hlg)),
             new(DolbyVision81, RemuxWorkId, "Remux.Source.2024.2160p.WEB-DL.AAC.DV.HDR10.H.265.mp4", WithDolbyVision(pqBytes, profile: 8, compatibility: 1)),
             new(DolbyVision5, RemuxWorkId, "Remux.Source.2024.2160p.WEB-DL.AAC.DV.H.265.mp4", WithDolbyVision(pqBytes, profile: 5, compatibility: 0)),
+            new(PgsMkv, RemuxWorkId, "Remux.Source.2024.1080p.BluRay.AAC.PGS.H.264.mkv", await File.ReadAllBytesAsync(pgs)),
         ];
     }
 

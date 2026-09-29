@@ -180,7 +180,10 @@ no longer waits for detection: capability detection starts immediately at startu
   about to produce is awaited. A request more than ~24 s beyond the encoder, or before
   the current run started, restarts ffmpeg with an input seek at that segment
   (`-ss N×L -start_number N`). ffmpeg writes segments via `temp_file`, so a file that
-  exists is always complete.
+  exists is always complete. An input seek does not trim **stream-copied audio** (and Matroska
+  files with subtitle tracks even seek back to the last subtitle cue, up to 30 s), so a restarted
+  run that copies the audio drops the packets before `N×L` with
+  `-bsf:a noise=drop=lt(pts*tb\,N×L)` (ffmpeg ≥ 6), keeping the original timestamps.
 - **Throttling.** When ffmpeg is more than *throttle buffer* seconds ahead of the player
   it is paused with `SIGSTOP` and resumed with `SIGCONT` when the player catches up
   (Linux and macOS).
@@ -262,9 +265,17 @@ stream alongside the video run; segments carry `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:0
 times on the media timeline and repeat cues that span a boundary. ASS styling is reduced to
 `<b>`/`<i>`. Image subtitles (PGS, VobSub, DVB) cannot be delivered: the plan lists them with
 `deliveredAs: none` and, when requested via `subtitleStreamIndex`, reason `subtitle_not_deliverable`
-(`params.mode: remux`) so the client can offer direct play with VLC. There is no burn-in transcode:
-a full transcode delivers no subtitles at all, and a selected stream (text or image) gets
-`subtitle_not_deliverable` with `params.mode: transcode`.
+(`params.mode: remux`) so the client can offer direct play with VLC. A full transcode carries no
+subtitle renditions; a selected stream gets `subtitle_not_deliverable` with `params.mode: transcode`.
+
+**Burn-in.** Viewer playback (`/api/v1/viewer/playback`, [`viewers.md`](./viewers.md#playback)) can
+burn a selected **image** subtitle into a transcode when the device can neither render it nor use
+VLC: ffmpeg overlays it in one CPU filter graph (`[0:v]…[base];[base][0:s]overlay…`, deinterlacing
+and tone mapping before, scaling after the overlay, hardware decode off, hardware encode still
+possible). The plan says `subtitle_burned_in` and the stream's `deliveredAs` is `burnedIn`. Text
+subtitles are not burned in (that needs libass). The machine/admin session API does not expose
+burn-in. After a restart (seek), Matroska's subtitle seek-back also shows a subtitle that is already
+on screen at the restart point; other containers show the next one.
 
 For players: hls.js derives its time origin (`initPTS`) from the first fragment it loads. Started
 mid-file, the audio of that fragment begins a little before the video keyframe, so hls.js places the
@@ -381,7 +392,8 @@ dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:39310 --ap
 ## Current limits
 
 - Remux: H.264, HEVC and AV1 only (VP9, MPEG-2, VC-1 are transcoded); one audio rendition (switching
-  audio creates a new session); image subtitles are not delivered and there is no burn-in; a cue that
+  audio creates a new session); image subtitles are not delivered by a remux (only a viewer-playback
+  transcode can burn them in); a cue that
   starts before a restarted run's first keyframe and is still showing at its start is only delivered
   if an earlier run demuxed it; sources without a Matroska Cues
   entry or an MP4 sample table need the ffprobe scan, which rarely finishes in time for large files

@@ -225,6 +225,12 @@ public sealed class StreamarrOptions
     /// <summary>How long the viewer catalog reuses a ranked version list before searching the indexers again (0 = never).</summary>
     public int ViewerVersionsCacheSeconds { get; set; } = 600;
 
+    /// <summary>A ready viewer playback counts as an active stream (for max concurrent streams) this long after its last progress report.</summary>
+    public int ViewerPlaybackHeartbeatSeconds { get; set; } = 60;
+
+    /// <summary>A viewer playback without polls, progress reports or switches for this long is stopped and forgotten.</summary>
+    public int ViewerPlaybackIdleSeconds { get; set; } = 600;
+
     /// <summary>Maximum retained playback-event rows; oldest rows are pruned on write.</summary>
     public int MaxWatchEvents { get; set; } = 10_000;
 

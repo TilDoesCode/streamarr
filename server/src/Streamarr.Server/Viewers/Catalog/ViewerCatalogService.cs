@@ -34,6 +34,7 @@ public sealed class ViewerCatalogService(
     IReleaseHealthCache healthCache,
     ViewerVersionCache versionCache,
     PlaybackPredictor predictor,
+    IReleaseStore releaseStore,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -270,21 +271,7 @@ public sealed class ViewerCatalogService(
                 throw ViewerProblem.BadRequest("invalid_work_id", "Versions are listed for TMDB movie and episode ids only.");
         }
 
-        var local = sessions.ListLocalReleaseAvailability(new HashSet<string>(StringComparer.Ordinal) { key.WorkId }, PlaybackClient, viewer.Id)
-            .GroupBy(a => a.ReleaseId, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Any(a => a.State == "ready") ? "ready" : "downloading", StringComparer.Ordinal);
-
-        var versions = new List<VersionDto>(releases.Count);
-        foreach (var (release, parsed) in releases)
-        {
-            var health = healthCache.Get(release.ReleaseId) ?? release.Health;
-            if (health == ReleaseHealth.Dead)
-                continue;
-            var estimated = VersionMapper.EstimatedKbps(release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
-            var prediction = device is null ? null : predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding);
-            versions.Add(VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction));
-        }
-
+        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device);
         return new CatalogVersionsResponse
         {
             WorkId = key.WorkId,
@@ -295,6 +282,72 @@ public sealed class ViewerCatalogService(
             Incomplete = incomplete,
         };
     }
+
+    /// <summary>The recommended (rank 1) version, searching the indexers when the ranking is not cached.</summary>
+    public async Task<VersionDto?> RecommendedAsync(ViewerEntity viewer, WorkKey key, CancellationToken ct)
+        => (await VersionsAsync(viewer, key, refresh: false, device: null, ct)).Versions.FirstOrDefault();
+
+    /// <summary>One release as a version: ranked from the cached list when present (no indexer search), else from its registration with rank 0.</summary>
+    public async Task<VersionDto?> VersionAsync(ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct)
+    {
+        IReadOnlyList<ParsedRelease>? releases = null;
+        int? runtime = null;
+        var packEpisodes = 1;
+        try
+        {
+            switch (key)
+            {
+                case { Kind: WorkKind.Movie, TmdbId: { } movieId }:
+                    runtime = (await tmdb.GetMovieAsync(movieId, ct))?.RuntimeMinutes;
+                    releases = versionCache.TryPeek<MovieVersions>($"movie:{movieId}")?.Releases;
+                    break;
+                case { Kind: WorkKind.Episode, TmdbId: { } seriesId, Season: { } season, Episode: { } episode }:
+                    if (versionCache.TryPeek<SeasonVersions>($"season:{seriesId}:{season}") is { } cached)
+                    {
+                        releases = cached.Episodes.GetValueOrDefault(episode);
+                        runtime = cached.RuntimeMinutes.GetValueOrDefault(episode);
+                        packEpisodes = cached.EpisodeCount;
+                    }
+                    break;
+            }
+        }
+        catch (TmdbTransientException e)
+        {
+            logger.LogDebug(e, "Runtime lookup for {WorkId} failed", key.WorkId);
+        }
+
+        if (releases is not null && MapVersions(viewer, key, releases, runtime, packEpisodes, null).FirstOrDefault(v => v.ReleaseId == releaseId) is { } ranked)
+            return ranked;
+        if (releaseStore.Get(releaseId, key.WorkId) is not { } registered)
+            return null;
+        var parsed = ReleaseParser.Parse(registered.Release.Title);
+        var local = LocalAvailability(viewer, key);
+        var estimated = VersionMapper.EstimatedKbps(registered.Release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
+        return VersionMapper.Map(registered.Release, parsed, 0, healthCache.Get(releaseId) ?? registered.Release.Health,
+            local.GetValueOrDefault(releaseId), estimated, null);
+    }
+
+    private List<VersionDto> MapVersions(
+        ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, int? runtime, int packEpisodes, DeviceHints? device)
+    {
+        var local = LocalAvailability(viewer, key);
+        var versions = new List<VersionDto>(releases.Count);
+        foreach (var (release, parsed) in releases)
+        {
+            var health = healthCache.Get(release.ReleaseId) ?? release.Health;
+            if (health == ReleaseHealth.Dead)
+                continue;
+            var estimated = VersionMapper.EstimatedKbps(release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
+            var prediction = device is null ? null : predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding);
+            versions.Add(VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction));
+        }
+        return versions;
+    }
+
+    private Dictionary<string, string> LocalAvailability(ViewerEntity viewer, WorkKey key)
+        => sessions.ListLocalReleaseAvailability(new HashSet<string>(StringComparer.Ordinal) { key.WorkId }, PlaybackClient, viewer.Id)
+            .GroupBy(a => a.ReleaseId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Any(a => a.State == "ready") ? "ready" : "downloading", StringComparer.Ordinal);
 
     private Task<CachedLookup<SeasonVersions>> SeasonVersionsAsync(int tmdbId, int seasonNumber, bool refresh, CancellationToken ct)
         => versionCache.GetAsync($"season:{tmdbId}:{seasonNumber}", refresh, _ => ComputeSeasonAsync(tmdbId, seasonNumber), v => !v.Incomplete, ct);
@@ -458,17 +511,7 @@ public sealed class ViewerCatalogService(
     private static ContentAccessDecision Gate(ViewerEntity viewer, string workId, string? rating)
     {
         var decision = ViewerContentPolicy.Decide(viewer, workId, rating, ContentRatings.MinimumAge(rating), lookupFailed: false);
-        if (decision.Allowed)
-            return decision;
-        var parameters = new Dictionary<string, string>(StringComparer.Ordinal) { ["reason"] = decision.Reason };
-        if (decision.Rating is { } r)
-            parameters["rating"] = r;
-        if (decision.MinimumAge is { } minimum)
-            parameters["minimumAge"] = minimum.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        if (decision.ViewerMaxAge is { } max)
-            parameters["viewerMaxAge"] = max.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        throw new ViewerProblem(StatusCodes.Status403Forbidden, "age_restricted",
-            $"This title is not available for this profile ({decision.Reason}).", parameters);
+        return decision.Allowed ? decision : throw ViewerContentPolicy.AgeRestricted(decision);
     }
 
     private bool IsDead(Release release) => (healthCache.Get(release.ReleaseId) ?? release.Health) == ReleaseHealth.Dead;

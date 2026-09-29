@@ -1,0 +1,86 @@
+PASS ben: degraded release plays (ATV direct) - ready direct ['resolving', 'ready']
+PASS ben: attempts show degraded - [{"releaseId": "fa5bba29155956f3a34ea668bced6d3b0b51c882f29f20951c04cd6723ada490", "name": "Tears.of.Steel.2012.1080p.BluRay.DDP5.1.x264-FLAKY", "status": "degraded"}]
+PASS ben: release_degraded reason - release_degraded,direct_play
+PASS ben: after token refresh the playback is still his (200) - refresh=200 get=200
+PASS ben: stop 204
+PASS dead Cosmos.Laundromat.2015.1080p.B: ready after fallback - ready None
+PASS dead Cosmos.Laundromat.2015.1080p.B: attempts dead -> ready with names - [{"releaseId": "29474776ae0319143cdd7c5a7caedff4f2cd15a49f417e2d9f1e89b9e7215a9b", "name": "Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST", "status": "dead"}, {"releaseId": "0aafeb1a2587d66bbfbedad0bc83e2a133e0aa44841e8f3a04df3091680055a6", "name": "Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-DEVWORLD", "status": "ready"}]
+PASS dead Cosmos.Laundromat.2015.1080p.B: fallbackFrom = dead release
+PASS dead Cosmos.Laundromat.2015.1080p.B: version = fallback
+PASS dead Cosmos.Laundromat.2015.1080p.B: fallback_used reason with from param
+   states seen: ['resolving', 'fallback', 'planning', 'ready'] resolving-attempt snapshots: ['["resolving"]', '["dead", "resolving"]', '["dead", "ready"]', '["dead", "ready"]']
+PASS dead Cosmos.Laundromat.2015.1080p.B: states in order queued/resolving..ready - ['resolving', 'fallback', 'planning', 'ready']
+PASS dead Cosmos.Laundromat.2015.1080p.B: second request (health cache) still falls back - ['resolving', 'starting', 'ready'] [{"releaseId": "29474776ae0319143cdd7c5a7caedff4f2cd15a49f417e2d9f1e89b9e7215a9b", "name": "Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST", "status": "dead"}, {"releaseId": "0aafeb1a2587d66bbfbedad0bc83e2a133e0aa44841e8f3a04df3091680055a6", "name": "Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-DEVWORLD", "status": "ready"}]
+PASS dead Sherlock.S01E02.German.DL.1080: ready after fallback - ready None
+PASS dead Sherlock.S01E02.German.DL.1080: attempts dead -> ready with names - [{"releaseId": "b60322ea0e12689c1efcaefa7c6b7b58b44452a5ad8e596168a8bc39ab6e4139", "name": "Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST", "status": "dead"}, {"releaseId": "b45d9d3e375f490f706829bf712fd56fc0e5e825813563576b0f461a4eb486eb", "name": "Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD", "status": "ready"}]
+PASS dead Sherlock.S01E02.German.DL.1080: fallbackFrom = dead release
+PASS dead Sherlock.S01E02.German.DL.1080: version = fallback
+PASS dead Sherlock.S01E02.German.DL.1080: fallback_used reason with from param
+   states seen: ['resolving', 'fallback', 'planning', 'ready'] resolving-attempt snapshots: ['["resolving"]', '["resolving"]', '["resolving"]', '["dead", "resolving"]', '["dead", "resolving"]', '["dead", "resolving"]']
+PASS dead Sherlock.S01E02.German.DL.1080: states in order queued/resolving..ready - ['resolving', 'fallback', 'planning', 'ready']
+PASS dead Sherlock.S01E02.German.DL.1080: second request (health cache) still falls back - ['resolving', 'ready'] [{"releaseId": "b60322ea0e12689c1efcaefa7c6b7b58b44452a5ad8e596168a8bc39ab6e4139", "name": "Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST", "status": "dead"}, {"releaseId": "b45d9d3e375f490f706829bf712fd56fc0e5e825813563576b0f461a4eb486eb", "name": "Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD", "status": "ready"}]
+PASS gast: remux with audio conversion is allowed - ready remux
+PASS gast: second device 409 too_many_streams - 409 {'error': {'code': 'too_many_streams', 'message': "This profile may play 1 stream(s) at a time and 'Gast TV' is already playing.", 'host': None, 'indexerId': None, 'params': {'limit': '1', 'device': 'Gast TV', 'workId': 'tmdb-movie-10378', 'releaseName': 'Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD'}}}
+PASS gast: 409 params name device/limit/workId/releaseName - {"error": {"code": "too_many_streams", "message": "This profile may play 1 stream(s) at a time and 'Gast TV' is already playing.", "host": null, "indexerId": null, "params": {"limit": "1", "device": "Gast TV", "workId": "tmdb-movie-10378", "releaseName": "Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD"}}}
+PASS gast: heartbeat 200 - 200
+PASS gast: progress stop with the TV's playbackId from the phone does not end it - 200 200
+PASS gast: same device replaced its own playback (old 404) - 404
+PASS gast: MPEG-2 on Safari -> failed transcoding_not_allowed - {"code": "transcoding_not_allowed", "message": "This version needs a full transcode on this device, and transcoding is not allowed for this profile.", "params": null}
+PASS gast: failed has suggestedActions + decision.skipped - [["otherVersion"], {"method": null, "engine": null, "reasons": [{"code": "transcoding_not_allowed", "message": "This version needs a full transcode on this device, and transcoding is not allowed for this profile.", "params": null}], "skipped": [{"method": "direct", "engine": "web", "reasons": [{"code": "container_unsupported", "message": "Container 'mpeg' is not supported by the player.", "params": {"container": "mpeg"}}, {"code": "video_codec_unsupported", "message": "Video codec 'mpeg2video' is not supported by the player.", "params": {"codec": "mpeg2video"}}]}, {"method": "remux", "engine": "web", "reasons": [{"code": "video_codec_not_remuxable", "message": "Video codec 'mpeg2video' cannot be carried in fragmented-MP4 HLS.", "params": {"codec": "mpeg2video"}}]}, {"method": "transcode", "engine": "web", "reasons": [{"code": "transcoding_not_allowed", "message": "Full transcodes are not allowed for this profile.", "params": null}]}]}]
+PASS gast: failed has no url/method
+PASS gast: MPEG-2 on ATV with VLC -> VLC direct (no transcode needed) - ready direct
+PASS gast: maxHeight 720 below the source needs a transcode -> transcoding_not_allowed - {"code": "transcoding_not_allowed", "message": "This version needs a full transcode on this device, and transcoding is not allowed for this profile.", "params": null}
+PASS gast: concurrent POSTs from two devices -> exactly one 202, one 409 - [202, 409]
+PASS kind: Night of the Living Dead 403 age_restricted/above_age_limit with params - {"error": {"code": "age_restricted", "message": "This title is not available for this profile (above_age_limit).", "host": null, "indexerId": null, "params": {"reason": "above_age_limit", "rating": "16", "minimumAge": "16", "viewerMaxAge": "12"}}}
+PASS kind: Tears of Steel 403 age_restricted/unrated_blocked with params - {"error": {"code": "age_restricted", "message": "This title is not available for this profile (unrated_blocked).", "host": null, "indexerId": null, "params": {"reason": "unrated_blocked", "rating": "NR", "viewerMaxAge": "12"}}}
+PASS kind: Sherlock S01E01 (FSK 12) plays - ready None
+PASS kind: NOTLD with explicit releaseId also 403 - 403
+PASS kind: NOTLD release under the BBB work id -> failed release_not_found - 202 {'code': 'release_not_found', 'message': 'This version is not known for the title (any more).', 'params': {'releaseId': '54120028d4df3ce7592b349cf8a1371df88f97954e9992245bd239552200af1e'}}
+PASS anna: default audio (German AC3 5.1) copied - [{"index": 1, "codec": "ac3", "channels": 6, "language": "de", "title": "Deutsch AC3 5.1", "default": true, "selected": true, "deliveredAs": "copy", "deliveredCodec": "ac3", "deliveredChannels": 6}, {"index": 2, "codec": "ac3", "channels": 2, "language": "en", "title": "English AC3 2.0", "default": false, "selected": false, "deliveredAs": "none", "deliveredCodec": null, "deliveredChannels": null}]
+PASS anna: forced German subtitle selected, ASS as webvtt - [{"index": 3, "codec": "ass", "language": "de", "title": "Deutsch (styled)", "forced": false, "default": false, "textBased": true, "selected": false, "deliveredAs": "webvtt"}, {"index": 4, "codec": "ass", "language": "en", "title": "English (styled)", "forced": false, "default": false, "textBased": true, "selected": false, "deliveredAs": "webvtt"}, {"index": 5, "codec": "subrip", "language": "de", "title": "Deutsch (forced)", "forced": true, "default": false, "textBased": true, "selected": true, "deliveredAs": "webvtt"}]
+PASS ownership: gast gets 404 playback_not_found on GET/switch/stop - 404 404 404
+PASS ownership: kind gets 404 playback_not_found on GET/switch/stop - 404 404 404
+PASS ownership: anna phone gets 404 playback_not_found on GET/switch/stop - 404 404 404
+PASS ownership: still alive for the owner
+PASS switch: 202 revision 1, state planning (no re-resolve) - 202 planning 1
+PASS switch: ready with English audio (2ch) and English ASS - ['starting', 'ready']
+PASS switch: the new HLS carries the 2-channel English track (was 6ch) - [6] -> [2]
+PASS switch: startPositionTicks 90 s, new URL
+PASS switch: hlssim on switched rendition - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,ac-3
+PASS switch: old URL still 200 in the grace period - 200
+PASS switch: two sessions during the grace period - 2
+PASS switch: other release -> resolving, revision 2 - 202 resolving
+PASS switch: other release ready, version and tracks follow - ['starting', 'ready'] None
+PASS switch: position kept (90 s) - 900000000
+PASS heartbeat: lastReleaseId filled from the playback - {"workId": "tmdb-movie-45745", "kind": "movie", "seriesWorkId": null, "seasonNumber": null, "episodeNumber": null, "title": null, "positionTicks": 1200000000, "durationTicks": 3000000000, "progressPercent": 40, "played": false, "playCount": 0, "lastReleaseId": "1ac24a9aa5a568f402a4bf4c34f1260138638a
+PASS heartbeat: other work id does not link - {"workId": "tmdb-movie-10378", "kind": "movie", "seriesWorkId": null, "seasonNumber": null, "episodeNumber": null, "title": null, "positionTicks": 0, "durationTicks": 3000000000, "progressPercent": 0,
+PASS stepDown: direct/native -> remux/native -> direct/vlc -> transcode/native -> no_more_methods - [('direct', 'native'), ('remux', 'native'), ('direct', 'vlc'), ('transcode', 'native'), ('failed', 'no_more_methods')]
+PASS stepDown: failed has suggestedActions - ['otherVersion']
+PASS switch: preferences.engine vlc -> direct/vlc - direct/vlc
+FAIL switch: maxBitrateKbps 1500 -> transcode within the bitrate - ready direct [{'code': 'direct_play', 'message': 'The player can play the original file as it is.', 'params': None}]
+PASS stop: 204
+PASS stop: no transcoding session of that device left - []
+PASS stop: GET 404 and second stop 404 - 404 404
+PASS stop: switched-away URL 404 - 404
+PASS heartbeat stop: event stop ends the playback (404) - 404
+PASS resume: resumePositionTicks = saved 150 s - 1500000000
+PASS 400: {"workId": "tmdb-movie-10378"} - 400 {'error': {'code': 'invalid_device_profile', 'message': "'device' is required.", 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-tv-19885", "device": {"platform": "web", "vlcAvailable": false, "engines" - 400 {'error': {'code': 'invalid_work_id', 'message': 'Expected a movie or episode work id.', 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "nope", "device": {"platform": "web", "vlcAvailable": false, "engines": [{"engi - 400 {'error': {'code': 'invalid_work_id', 'message': 'Expected a work id such as tmdb-movie-603 or tmdb-tv-1396-s01e01.', 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-movie-10378", "device": {"platform": "web", "vlcAvailable": false, "engin - 400 {'error': {'code': 'invalid_playback_request', 'message': "'preferences.engine' must be auto, native or vlc.", 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-movie-10378", "device": {"platform": "web", "vlcAvailable": false, "engin - 400 {'error': {'code': 'invalid_playback_request', 'message': "'preferences.subtitleMode' must be off, forced or always.", 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-movie-10378", "device": {"platform": "web", "vlcAvailable": false, "engin - 400 {'error': {'code': 'invalid_playback_request', 'message': "'preferences.audioLanguage' must be an ISO 639 language code.", 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-movie-10378", "device": {"platform": "web", "vlcAvailable": false, "engin - 400 {'error': {'code': 'invalid_playback_request', 'message': "'startPositionTicks' must be between 0 and 10 days.", 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-movie-10378", "device": {"platform": "web", "engines": [{"engine": "web", - 400 {'error': {'code': 'invalid_device_profile', 'message': "'videoCodecs[].codec' entries must be short codec or format names.", 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-movie-10378", "device": {"platform": "web", "engines": [{"engine": "nativ - 400 {'error': {'code': 'invalid_device_profile', 'message': "Engine 'native' is listed twice.", 'host': None, 'indexerId': None}}
+PASS 400: {"workId": "tmdb-movie-10378", "device": {"platform": "web", "vlcAvailable": false, "engin - 400 {'error': {'code': 'invalid_device_profile', 'message': 'The device needs a native or web engine, or an available VLC engine.', 'host': None, 'indexerId': None}}
+PASS 400: empty body uses the error envelope - 400 b'{"error":{"code":"invalid_request","message":"Malformed value for: , request.","host":null,"indexerId":null}}'
+PASS 401 without auth - 401
+PASS 401 with an admin token (viewer policy only) - 401
+PASS failed unknown_audio_stream with params + suggestedActions - {"code": "unknown_audio_stream", "message": "Audio stream 7 does not exist in this version.", "params": {"index": "7"}}
+PASS failed release_not_found for an unknown release id - {"code": "release_not_found", "message": "This version is not known for the title (any more).", "params": {"releaseId": "0000000000000000000000000000000000000000000000000000000000000000"}}
+PASS no_versions for a metadata-only movie - 202 {'code': 'no_versions', 'message': 'No version of this title is available right now.', 'params': None}
+PASS 404 for an overlong id - 404
+PASS Cache-Control no-store on GET - private, no-store, max-age=0
+FAILED: 81 passed, 1 failed
+  FAILED: switch: maxBitrateKbps 1500 -> transcode within the bitrate - ready direct [{'code': 'direct_play', 'message': 'The player can play the original file as it is.', 'params': None}]

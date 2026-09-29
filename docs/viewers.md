@@ -13,7 +13,7 @@ The feature is an **optional module** and is **off by default**.
 - While it is disabled, every viewer endpoint (`/api/v1/viewer/*`) answers
   `404 module_disabled` and viewer tokens are rejected. Admins can still prepare
   accounts under `/api/v1/config/viewers`.
-- Nothing about Jellyfin, the admin account, machine API keys, or playback changes.
+- Nothing about Jellyfin, the admin account, machine API keys, or Jellyfin playback changes.
 
 ## Viewers are not administrators
 
@@ -51,8 +51,8 @@ Every viewer response carries `"accountType": "viewer"`.
 | Email | Optional. Needed only for password reset and sign-in codes. Addresses set by an admin count as verified; a viewer's own change is confirmed with an emailed code. |
 | Age limit | `0`, `6`, `12`, `16`, `18`, or unrestricted. |
 | Block unrated | With an age limit set, also block works without a known certification. |
-| Allow transcoding | Stored for the viewer playback API; the catalog's playback prediction flags versions that would need a transcode (`transcoding_not_allowed`). |
-| Max. concurrent streams | Stored for the viewer playback API (empty = unlimited). |
+| Allow transcoding | Off blocks **full video transcodes** in [playback](#playback) (including burned-in subtitles and reduced quality). A remux, which copies the video and may convert the audio, stays allowed. The catalog's playback prediction flags versions that would need a transcode (`transcoding_not_allowed`). |
+| Max. concurrent streams | How many [playbacks](#playback) may run at once across the viewer's devices (empty = unlimited). |
 
 Admins can also disable an account (all its sessions end immediately), unlock it after
 too many failed sign-ins, assign or generate a new password, reset a lost authenticator,
@@ -122,7 +122,8 @@ Clients report playback with `POST /api/v1/viewer/watch/progress`
 - A report that includes a `releaseId` (and optionally the stream token) is also passed
   on to the shared playback event stream with source `streamarr-viewer`, so
   notifications, playback ranges, and next-episode pre-downloads behave as they do for
-  Jellyfin.
+  Jellyfin. A report with the `playbackId` of a [server playback](#playback) fills both in
+  and doubles as that playback's heartbeat.
 
 ## Catalog
 
@@ -149,7 +150,51 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   the release name, labelled with every assumption it makes; the server decides for real when
   playback starts.
 
-See [API reference § 13](api.md#13-viewer-catalog) for the contract.
+See [API reference § 13](api.md#13-viewer-catalog-and-playback) for the contract.
+
+## Playback
+
+`/api/v1/viewer/playback` is how a viewer app starts watching. The app sends the work, optionally a
+version, and what the device can play (a **device profile**: platform, its native or web player's
+containers and codecs with limits, subtitle formats, HLS support, whether VLC is bundled, an
+optional bandwidth cap) plus the viewer's preferences (engine, maximum height or bitrate, audio and
+subtitle language, subtitle mode). The server then works asynchronously and the app polls a state:
+
+`queued → resolving → (fallback) → (repairing) → planning → starting → ready | failed`
+
+- **Resolve** is the same pipeline the Jellyfin plugin uses: a Usenet health check, automatic
+  fallback to the next healthy version when the chosen one is dead (every hop is listed in
+  `attempts`), and a PAR2 repair with progress and ETA when nothing else is left. Without a version,
+  the catalog's recommended one plays.
+- **Decision.** The server probes the file and picks, in this order: the device's own player
+  playing the original file, the device's player via a server **remux** (video copied, audio copied
+  or converted, text subtitles as WebVTT), **VLC** playing the original file (only when the app
+  bundles it), and last a full **transcode** (only when the viewer may transcode). Image subtitles
+  the device's player cannot show are played with VLC, else burned into a transcode, else left out
+  (and said so). Audio and subtitle tracks follow the viewer's languages; forced subtitles for the
+  audio language are the default.
+- **Ready** carries the method, the engine, a URL, full track lists (what is delivered how) and
+  the reasons for the decision as stable codes the app can translate. **Failed** carries an error
+  code and what the viewer can do next (retry, another version, lower quality, use VLC).
+- **URLs need no credentials.** They are capability paths on the server (`/api/v1/stream/…` for the
+  original file, `/api/v1/transcode/…/master.m3u8` for HLS), so any player can open them; they stop
+  working when the playback ends or the stream expires.
+- **Switching** audio, subtitles, engine, quality or version re-plans the same playback at the
+  current position; the old URL keeps working for 30 seconds after the new one is ready. A player
+  error can ask for the next method (`stepDown`).
+- **Limits.** The age gate applies on start and on every switch (`403 age_restricted`). With
+  **Max. concurrent streams**, a playback counts while it is prepared and while its app reports
+  progress (within `Streamarr:ViewerPlaybackHeartbeatSeconds`, default 60 s); a second device at the
+  limit gets `409 too_many_streams` naming the device that is playing, while the same device simply
+  replaces its previous playback. Stopping (or `event: stop` in watch progress) ends the server's
+  remux/transcode and frees the slot.
+- **Ownership and expiry.** A playback belongs to the device that started it; everyone else gets
+  `404`. Playbacks without polls, progress or switches for `Streamarr:ViewerPlaybackIdleSeconds`
+  (default 600 s) are stopped. They are kept in memory only.
+
+The Dev World (`server/tests/Streamarr.DevWorld`) exercises all of it against real generated media;
+`server/tests/Streamarr.DevWorld/tools/e2e_playback.py` plays every variant with Android TV, Apple TV,
+Chrome and Safari profiles.
 
 ## Email delivery
 
@@ -162,5 +207,5 @@ See [API reference § 13](api.md#13-viewer-catalog) for the contract.
 ## API overview
 
 See [API reference § 12](api.md#12-viewer-accounts-and-watch-state) (accounts and watch
-state), [§ 13](api.md#13-viewer-catalog) (catalog) and the OpenAPI document for the complete
+state), [§ 13](api.md#13-viewer-catalog-and-playback) (catalog and playback) and the OpenAPI document for the complete
 contract.

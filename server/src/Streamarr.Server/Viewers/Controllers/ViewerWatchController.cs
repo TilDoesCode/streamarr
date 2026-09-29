@@ -4,6 +4,7 @@ using Streamarr.Server.Contracts;
 using Streamarr.Server.Modules;
 using Streamarr.Server.Viewers.Access;
 using Streamarr.Server.Viewers.Auth;
+using Streamarr.Server.Viewers.Playback;
 using Streamarr.Server.Viewers.Watch;
 
 namespace Streamarr.Server.Viewers.Controllers;
@@ -19,11 +20,12 @@ public sealed class ViewerWatchController(
     WatchStateService watch,
     NextUpService nextUp,
     ViewerAccountService accounts,
-    ViewerContentPolicy policy) : ControllerBase
+    ViewerContentPolicy policy,
+    ViewerPlaybackService playbacks) : ControllerBase
 {
     private static readonly HashSet<string> Events = new(StringComparer.Ordinal) { "start", "progress", "stop" };
 
-    /// <summary>Report playback of a movie or episode (start, periodic progress, stop).</summary>
+    /// <summary>Report playback of a movie or episode (start, periodic progress, stop); a server <c>playbackId</c> fills in release and stream token, keeps that playback alive, and <c>stop</c> ends it.</summary>
     [HttpPost("progress")]
     [ProducesResponseType(typeof(WatchStateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -38,20 +40,26 @@ public sealed class ViewerWatchController(
             return BadRequest(ErrorResponse.Of("invalid_event", "One or more values are negative, too long or contain control characters."));
         }
 
+        var work = ViewerMappings.RequireWork(request.WorkId, playableOnly: true);
+        var caller = new ViewerCaller(User.ViewerId(), User.SessionId(), User.Identity?.Name ?? string.Empty, User.FindFirst(ViewerAuth.DeviceClaim)?.Value ?? string.Empty);
+        var playbackId = Clean(request.PlaybackId);
+        var link = playbackId is null ? null : playbacks.Heartbeat(caller, playbackId, work.WorkId, request.PositionTicks);
         var state = await watch.ReportAsync(
-            new ViewerContext(User.ViewerId(), User.Identity?.Name ?? string.Empty, User.FindFirst(ViewerAuth.DeviceClaim)?.Value ?? string.Empty),
+            new ViewerContext(caller.ViewerId, caller.Username, caller.DeviceName),
             new WatchReport
             {
                 Event = kind,
-                Work = ViewerMappings.RequireWork(request.WorkId, playableOnly: true),
+                Work = work,
                 PositionTicks = request.PositionTicks,
                 DurationTicks = request.DurationTicks,
-                PlaybackId = Clean(request.PlaybackId),
-                ReleaseId = Clean(request.ReleaseId),
-                StreamToken = Clean(request.StreamToken),
+                PlaybackId = playbackId,
+                ReleaseId = Clean(request.ReleaseId) ?? link?.ReleaseId,
+                StreamToken = Clean(request.StreamToken) ?? link?.StreamToken,
                 Title = Clean(request.Title),
             },
             ct);
+        if (link is not null && kind == "stop")
+            await playbacks.StopAsync(caller, playbackId!, "progress stop");
         return Ok(ViewerMappings.State(state));
     }
 

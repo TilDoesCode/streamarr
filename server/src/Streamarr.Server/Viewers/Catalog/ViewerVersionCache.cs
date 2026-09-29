@@ -49,6 +49,12 @@ public sealed class ViewerVersionCache(IOptions<StreamarrOptions> options, TimeP
         return new CachedLookup<T>((T)value!, entry.CheckedAt ?? now, FromCache: !created);
     }
 
+    /// <summary>A completed, unexpired value without computing one.</summary>
+    public T? TryPeek<T>(string key) where T : class
+        => _entries.TryGetValue(key, out var entry) && entry.Task.IsCompletedSuccessfully && entry.ExpiresAt > time.GetUtcNow()
+            ? entry.Task.Result as T
+            : null;
+
     private Func<Entry, Task<object?>> RunAsync<T>(string key, Func<CancellationToken, Task<T>> compute, Func<T, bool> cacheable)
         where T : class
         => async entry =>

@@ -71,13 +71,16 @@ public static class FfmpegArgumentBuilder
         if (spec.Settings.Threads > 0)
             args.AddRange(["-threads", spec.Settings.Threads.ToString(CultureInfo.InvariantCulture)]);
 
-        args.AddRange(["-map", $"0:{plan.SourceVideo.Index}"]);
+        if (plan.BurnIn is not null)
+            args.AddRange(["-filter_complex", BuildBurnInGraph(plan), "-map", "[vout]"]);
+        else
+            args.AddRange(["-map", $"0:{plan.SourceVideo.Index}"]);
         if (plan.Audio is { } audio)
             args.AddRange(["-map", $"0:{audio.SourceIndex}"]);
         args.AddRange(["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn"]);
 
         AddVideo(args, spec);
-        AddAudio(args, plan.Audio);
+        AddAudio(args, spec);
 
         args.AddRange([
             "-copyts", "-start_at_zero",
@@ -252,13 +255,31 @@ public static class FfmpegArgumentBuilder
         }
 
         args.AddRange(["-force_key_frames:v", KeyframeExpression(spec)]);
-        var filters = BuildVideoFilters(plan);
+        var filters = plan.BurnIn is null ? BuildVideoFilters(plan) : string.Empty;
         if (filters.Length > 0)
             args.AddRange(["-vf", filters]);
     }
 
-    private static void AddAudio(List<string> args, AudioTarget? audio)
+    /// <summary>Software graph for a burn-in: deinterlace and tone-map the source, overlay the image subtitle at source size, then scale and hand off to the encoder.</summary>
+    public static string BuildBurnInGraph(TranscodePlan plan)
     {
+        var subtitle = plan.BurnIn ?? throw new InvalidOperationException("The plan burns in no subtitle.");
+        var before = new List<string>();
+        if (plan.Deinterlace)
+            before.Add("bwdif=mode=send_frame:parity=auto:deint=all");
+        if (plan.ToneMap == ToneMapMode.Software)
+            before.Add(SoftwareToneMapChain);
+        var after = new List<string>();
+        if (plan.Scales)
+            after.Add($"scale=w={plan.Video.Width}:h={plan.Video.Height}");
+        after.Add(plan.HardwareEncode ? HardwareProfiles.UploadFilter(plan.Acceleration) : "format=yuv420p");
+        var pre = before.Count == 0 ? "null" : string.Join(',', before);
+        return $"[0:{plan.SourceVideo.Index}]{pre}[base];[base][0:{subtitle.Index}]overlay=eof_action=pass:repeatlast=0[burned];[burned]{string.Join(',', after)}[vout]";
+    }
+
+    private static void AddAudio(List<string> args, FfmpegJobSpec spec)
+    {
+        var audio = spec.Plan.Audio;
         if (audio is null)
         {
             args.Add("-an");
@@ -267,6 +288,9 @@ public static class FfmpegArgumentBuilder
         if (audio.Copy)
         {
             args.AddRange(["-c:a", "copy"]);
+            // An input seek does not trim copied audio (Matroska even seeks back to a subtitle cue), so drop what precedes the restart point.
+            if (spec.StartSegment > 0 && spec.Capabilities.MajorVersion is null or >= 6)
+                args.AddRange(["-bsf:a", $"noise=drop=lt(pts*tb\\,{Seconds(spec.StartSeconds)})"]);
             return;
         }
         args.AddRange([

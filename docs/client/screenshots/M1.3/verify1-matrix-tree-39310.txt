@@ -1,0 +1,657 @@
+PASS mp4-h264-aac-1080p @ androidtv: 202 - {'playbackId': 'e07202956cf90dac6d4eb9b3cd3915f4', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:03.339788+00:00', 'updatedAt': '2026-09-29T10:15:03.33
+PASS mp4-h264-aac-1080p @ androidtv: ready as direct/native - got ready ('direct', 'native') states=['ready'] err=None
+PASS mp4-h264-aac-1080p @ androidtv: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-1080p @ androidtv: subtitle track list complete - []
+PASS mp4-h264-aac-1080p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-1080p @ androidtv: streamToken/url/version present
+PASS mp4-h264-aac-1080p @ androidtv: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-1080p @ androidtv: direct URL is /api/v1/stream - /api/v1/stream/e1eda09bca94289d0eb7e71160e9c5bfe76f5c31bb6f021b
+PASS mp4-h264-aac-1080p @ androidtv: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-1080p @ androidtv: audio deliveredAs original
+PASS mp4-h264-aac-1080p @ androidtv: stop 204
+PASS mp4-h264-aac-1080p @ appletv: 202 - {'playbackId': 'c226f2507a510534c3930244de54e67b', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:03.384567+00:00', 'updatedAt': '2026-09-29T10:15:03.38
+PASS mp4-h264-aac-1080p @ appletv: ready as direct/native - got ready ('direct', 'native') states=['ready'] err=None
+PASS mp4-h264-aac-1080p @ appletv: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-1080p @ appletv: subtitle track list complete - []
+PASS mp4-h264-aac-1080p @ appletv: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-1080p @ appletv: streamToken/url/version present
+PASS mp4-h264-aac-1080p @ appletv: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-1080p @ appletv: direct URL is /api/v1/stream - /api/v1/stream/e1eda09bca94289d0eb7e71160e9c5bfe76f5c31bb6f021b
+PASS mp4-h264-aac-1080p @ appletv: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-1080p @ appletv: audio deliveredAs original
+PASS mp4-h264-aac-1080p @ appletv: stop 204
+PASS mp4-h264-aac-1080p @ chrome: 202 - {'playbackId': '8c58af21f2d549d408d90fd308b13c8a', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:03.417099+00:00', 'updatedAt': '2026-09-29T10:15:03.41
+PASS mp4-h264-aac-1080p @ chrome: ready as direct/web - got ready ('direct', 'web') states=['ready'] err=None
+PASS mp4-h264-aac-1080p @ chrome: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-1080p @ chrome: subtitle track list complete - []
+PASS mp4-h264-aac-1080p @ chrome: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-1080p @ chrome: streamToken/url/version present
+PASS mp4-h264-aac-1080p @ chrome: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-1080p @ chrome: direct URL is /api/v1/stream - /api/v1/stream/e1eda09bca94289d0eb7e71160e9c5bfe76f5c31bb6f021b
+PASS mp4-h264-aac-1080p @ chrome: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-1080p @ chrome: audio deliveredAs original
+PASS mp4-h264-aac-1080p @ chrome: stop 204
+PASS mp4-h264-aac-1080p @ safari: 202 - {'playbackId': '3ae7dc8a9cf69750539a09156b12d495', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:03.448609+00:00', 'updatedAt': '2026-09-29T10:15:03.44
+PASS mp4-h264-aac-1080p @ safari: ready as direct/web - got ready ('direct', 'web') states=['ready'] err=None
+PASS mp4-h264-aac-1080p @ safari: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-1080p @ safari: subtitle track list complete - []
+PASS mp4-h264-aac-1080p @ safari: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-1080p @ safari: streamToken/url/version present
+PASS mp4-h264-aac-1080p @ safari: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-1080p @ safari: direct URL is /api/v1/stream - /api/v1/stream/e1eda09bca94289d0eb7e71160e9c5bfe76f5c31bb6f021b
+PASS mp4-h264-aac-1080p @ safari: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-1080p @ safari: audio deliveredAs original
+PASS mp4-h264-aac-1080p @ safari: stop 204
+PASS mp4-h264-aac-720p @ androidtv: 202 - {'playbackId': '3b9b6a413095d7fc54ed781300e8551b', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:03.479836+00:00', 'updatedAt': '2026-09-29T10:15:03.4
+PASS mp4-h264-aac-720p @ androidtv: ready as direct/native - got ready ('direct', 'native') states=['ready'] err=None
+PASS mp4-h264-aac-720p @ androidtv: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-720p @ androidtv: subtitle track list complete - []
+PASS mp4-h264-aac-720p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-720p @ androidtv: streamToken/url/version present
+PASS mp4-h264-aac-720p @ androidtv: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-720p @ androidtv: direct URL is /api/v1/stream - /api/v1/stream/8debdb2717cf2204fbaadf14771d66cfe2b181b6ed5485ff
+PASS mp4-h264-aac-720p @ androidtv: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-720p @ androidtv: audio deliveredAs original
+PASS mp4-h264-aac-720p @ androidtv: stop 204
+PASS mp4-h264-aac-720p @ appletv: 202 - {'playbackId': 'dde7aae25cd2a1bb07c5cc7afb51466e', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:03.538153+00:00', 'updatedAt': '2026-09-29T10:15:03.5
+PASS mp4-h264-aac-720p @ appletv: ready as direct/native - got ready ('direct', 'native') states=['ready'] err=None
+PASS mp4-h264-aac-720p @ appletv: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-720p @ appletv: subtitle track list complete - []
+PASS mp4-h264-aac-720p @ appletv: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-720p @ appletv: streamToken/url/version present
+PASS mp4-h264-aac-720p @ appletv: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-720p @ appletv: direct URL is /api/v1/stream - /api/v1/stream/8debdb2717cf2204fbaadf14771d66cfe2b181b6ed5485ff
+PASS mp4-h264-aac-720p @ appletv: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-720p @ appletv: audio deliveredAs original
+PASS mp4-h264-aac-720p @ appletv: stop 204
+PASS mp4-h264-aac-720p @ chrome: 202 - {'playbackId': '0387640b92e6c289070d559d072b321f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:03.568248+00:00', 'updatedAt': '2026-09-29T10:15:03.5
+PASS mp4-h264-aac-720p @ chrome: ready as direct/web - got ready ('direct', 'web') states=['ready'] err=None
+PASS mp4-h264-aac-720p @ chrome: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-720p @ chrome: subtitle track list complete - []
+PASS mp4-h264-aac-720p @ chrome: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-720p @ chrome: streamToken/url/version present
+PASS mp4-h264-aac-720p @ chrome: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-720p @ chrome: direct URL is /api/v1/stream - /api/v1/stream/8debdb2717cf2204fbaadf14771d66cfe2b181b6ed5485ff
+PASS mp4-h264-aac-720p @ chrome: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-720p @ chrome: audio deliveredAs original
+PASS mp4-h264-aac-720p @ chrome: stop 204
+PASS mp4-h264-aac-720p @ safari: 202 - {'playbackId': '4cf897c6824c6c5f976f9e890352291a', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:03.597389+00:00', 'updatedAt': '2026-09-29T10:15:03.5
+PASS mp4-h264-aac-720p @ safari: ready as direct/web - got ready ('direct', 'web') states=['ready'] err=None
+PASS mp4-h264-aac-720p @ safari: audio track list complete - [["aac", 2, "en"]]
+PASS mp4-h264-aac-720p @ safari: subtitle track list complete - []
+PASS mp4-h264-aac-720p @ safari: exactly one audio selected - [{"index": 1, "codec": "aac", "channels": 2, "language": "en", "title": null, "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mp4-h264-aac-720p @ safari: streamToken/url/version present
+PASS mp4-h264-aac-720p @ safari: decision reasons carry code+message - direct_play
+PASS mp4-h264-aac-720p @ safari: direct URL is /api/v1/stream - /api/v1/stream/8debdb2717cf2204fbaadf14771d66cfe2b181b6ed5485ff
+PASS mp4-h264-aac-720p @ safari: ffprobe of direct URL = source codecs - ['h264']
+PASS mp4-h264-aac-720p @ safari: audio deliveredAs original
+PASS mp4-h264-aac-720p @ safari: stop 204
+PASS mkv-h264-eac3-srt-1080p @ androidtv: 202 - {'playbackId': '789cc8ec1ec7e74e2a4b00e89be8a89f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:03.626634+00:00', 'updatedAt': '2026-09-29T10:15:03.62
+PASS mkv-h264-eac3-srt-1080p @ androidtv: ready as direct/native - got ready ('direct', 'native') states=['ready'] err=None
+PASS mkv-h264-eac3-srt-1080p @ androidtv: audio track list complete - [["eac3", 6, "en"]]
+PASS mkv-h264-eac3-srt-1080p @ androidtv: subtitle track list complete - [["subrip", "en", false, "embedded", false], ["subrip", "de", false, "embedded", false]]
+PASS mkv-h264-eac3-srt-1080p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "eac3", "channels": 6, "language": "en", "title": "English 5.1", "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-h264-eac3-srt-1080p @ androidtv: streamToken/url/version present
+PASS mkv-h264-eac3-srt-1080p @ androidtv: decision reasons carry code+message - direct_play
+PASS mkv-h264-eac3-srt-1080p @ androidtv: direct URL is /api/v1/stream - /api/v1/stream/071267175b22216f2039cc90a253e8db54c20ef755323f83
+PASS mkv-h264-eac3-srt-1080p @ androidtv: ffprobe of direct URL = source codecs - ['h264']
+PASS mkv-h264-eac3-srt-1080p @ androidtv: audio deliveredAs original
+PASS mkv-h264-eac3-srt-1080p @ androidtv: stop 204
+PASS mkv-h264-eac3-srt-1080p @ appletv: 202 - {'playbackId': 'd94d4eb3e0bf1db09656552d625e3c9a', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:03.674291+00:00', 'updatedAt': '2026-09-29T10:15:03.67
+PASS mkv-h264-eac3-srt-1080p @ appletv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-h264-eac3-srt-1080p @ appletv: audio track list complete - [["eac3", 6, "en"]]
+PASS mkv-h264-eac3-srt-1080p @ appletv: subtitle track list complete - [["subrip", "en", false, "webvtt", false], ["subrip", "de", false, "webvtt", false]]
+PASS mkv-h264-eac3-srt-1080p @ appletv: exactly one audio selected - [{"index": 1, "codec": "eac3", "channels": 6, "language": "en", "title": "English 5.1", "default": true, "selected": true, "deliveredAs": "copy", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-h264-eac3-srt-1080p @ appletv: streamToken/url/version present
+PASS mkv-h264-eac3-srt-1080p @ appletv: decision reasons carry code+message - container_unsupported,audio_copied
+PASS mkv-h264-eac3-srt-1080p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/8c1DuWxltMc6Vl8eSfkUKEmYFQWfhYxAxOiwbecQcQE/master.m3u8
+PASS mkv-h264-eac3-srt-1080p @ appletv: master.m3u8 200 without auth - 200
+PASS mkv-h264-eac3-srt-1080p @ appletv: SUBTITLES renditions == webvtt tracks - 2 vs 2
+PASS mkv-h264-eac3-srt-1080p @ appletv: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-h264-eac3-srt-1080p @ appletv: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-h264-eac3-srt-1080p @ appletv: HLS audio eac3 = selected deliveredCodec - probe=[('eac3', 6)] sel=eac3/6
+PASS mkv-h264-eac3-srt-1080p @ appletv: hlssim PASS - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,ec-3
+PASS mkv-h264-eac3-srt-1080p @ appletv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-h264-eac3-srt-1080p @ appletv: stop 204
+PASS mkv-h264-eac3-srt-1080p @ appletv: HLS 404 after stop - 404
+PASS mkv-h264-eac3-srt-1080p @ chrome: 202 - {'playbackId': '5e924eed0984627b711435267551b3d0', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:04.602509+00:00', 'updatedAt': '2026-09-29T10:15:04.60
+PASS mkv-h264-eac3-srt-1080p @ chrome: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-h264-eac3-srt-1080p @ chrome: audio track list complete - [["eac3", 6, "en"]]
+PASS mkv-h264-eac3-srt-1080p @ chrome: subtitle track list complete - [["subrip", "en", false, "webvtt", false], ["subrip", "de", false, "webvtt", false]]
+PASS mkv-h264-eac3-srt-1080p @ chrome: exactly one audio selected - [{"index": 1, "codec": "eac3", "channels": 6, "language": "en", "title": "English 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-h264-eac3-srt-1080p @ chrome: streamToken/url/version present
+PASS mkv-h264-eac3-srt-1080p @ chrome: decision reasons carry code+message - container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-h264-eac3-srt-1080p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/sQexrjf9F93Cp65T0NFDaBFETR9fDU0DA-Y3cp-yFZI/master.m3u8
+PASS mkv-h264-eac3-srt-1080p @ chrome: master.m3u8 200 without auth - 200
+PASS mkv-h264-eac3-srt-1080p @ chrome: SUBTITLES renditions == webvtt tracks - 2 vs 2
+PASS mkv-h264-eac3-srt-1080p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-h264-eac3-srt-1080p @ chrome: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-h264-eac3-srt-1080p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-h264-eac3-srt-1080p @ chrome: hlssim PASS - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2
+PASS mkv-h264-eac3-srt-1080p @ chrome: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-h264-eac3-srt-1080p @ chrome: stop 204
+PASS mkv-h264-eac3-srt-1080p @ chrome: HLS 404 after stop - 404
+PASS mkv-h264-eac3-srt-1080p @ safari: 202 - {'playbackId': '705f7201638494d8c82dc1a2963ee042', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:05.494082+00:00', 'updatedAt': '2026-09-29T10:15:05.49
+PASS mkv-h264-eac3-srt-1080p @ safari: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-h264-eac3-srt-1080p @ safari: audio track list complete - [["eac3", 6, "en"]]
+PASS mkv-h264-eac3-srt-1080p @ safari: subtitle track list complete - [["subrip", "en", false, "webvtt", false], ["subrip", "de", false, "webvtt", false]]
+PASS mkv-h264-eac3-srt-1080p @ safari: exactly one audio selected - [{"index": 1, "codec": "eac3", "channels": 6, "language": "en", "title": "English 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-h264-eac3-srt-1080p @ safari: streamToken/url/version present
+PASS mkv-h264-eac3-srt-1080p @ safari: decision reasons carry code+message - container_unsupported,audio_converted
+PASS mkv-h264-eac3-srt-1080p @ safari: HLS URL is a transcode capability - /api/v1/transcode/6PaDfL18oRon7Nsva8Mo_AdDrdGRLKvR-1jiC8lLdEM/master.m3u8
+PASS mkv-h264-eac3-srt-1080p @ safari: master.m3u8 200 without auth - 200
+PASS mkv-h264-eac3-srt-1080p @ safari: SUBTITLES renditions == webvtt tracks - 2 vs 2
+PASS mkv-h264-eac3-srt-1080p @ safari: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-h264-eac3-srt-1080p @ safari: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-h264-eac3-srt-1080p @ safari: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-h264-eac3-srt-1080p @ safari: hlssim PASS - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2
+PASS mkv-h264-eac3-srt-1080p @ safari: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-h264-eac3-srt-1080p @ safari: stop 204
+PASS mkv-h264-eac3-srt-1080p @ safari: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: 202 - {'playbackId': 'c9d23e251bfc2de7cc4f7b70d10f6126', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:06.37914+00:00', 'updatedAt': '2026-09-29T10:15:06.379
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: audio track list complete - [["dts", 6, "en"]]
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "dts", "channels": 6, "language": "en", "title": "English DTS 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: streamToken/url/version present
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: decision reasons carry code+message - audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: HLS URL is a transcode capability - /api/v1/transcode/vvFYm4tiScoFffvh8C3YyeK_xRsENNZ8nA8j52iJPaQ/master.m3u8
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: HLS audio eac3 = selected deliveredCodec - probe=[('eac3', 6)] sel=eac3/6
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: hlssim PASS - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: stop 204
+PASS mkv-hevc-hdr10-dts-1080p @ androidtv: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: 202 - {'playbackId': '501e41b514c5bc9920eafeb6ac878c20', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:07.626046+00:00', 'updatedAt': '2026-09-29T10:15:07.62
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: audio track list complete - [["dts", 6, "en"]]
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: exactly one audio selected - [{"index": 1, "codec": "dts", "channels": 6, "language": "en", "title": "English DTS 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: streamToken/url/version present
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: decision reasons carry code+message - container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/4DlpvUn18xdVBgNLn-mCNcnV44XJrDngtjw2lMpmNPo/master.m3u8
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: HLS audio eac3 = selected deliveredCodec - probe=[('eac3', 6)] sel=eac3/6
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: hlssim PASS - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: stop 204
+PASS mkv-hevc-hdr10-dts-1080p @ appletv: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: 202 - {'playbackId': 'a5445846e198023dcbd99202b7fd577d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:08.904982+00:00', 'updatedAt': '2026-09-29T10:15:08.90
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: audio track list complete - [["dts", 6, "en"]]
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: subtitle track list complete - [["subrip", "en", false, "none", false]]
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: exactly one audio selected - [{"index": 1, "codec": "dts", "channels": 6, "language": "en", "title": "English DTS 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: streamToken/url/version present
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: decision reasons carry code+message - video_codec_unsupported,bit_depth_unsupported,hdr_unsupported
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/S8iYxNb7jAz4KyoHY0Ngp9Apr1B1SMK10p-42d5Z3tA/master.m3u8
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: transcode videoRange SDR
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: stop 204
+PASS mkv-hevc-hdr10-dts-1080p @ chrome: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-dts-1080p @ safari: 202 - {'playbackId': 'fe9745b515c8462181cd9d0720f3ca76', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:10.800554+00:00', 'updatedAt': '2026-09-29T10:15:10.80
+PASS mkv-hevc-hdr10-dts-1080p @ safari: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-dts-1080p @ safari: audio track list complete - [["dts", 6, "en"]]
+PASS mkv-hevc-hdr10-dts-1080p @ safari: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-dts-1080p @ safari: exactly one audio selected - [{"index": 1, "codec": "dts", "channels": 6, "language": "en", "title": "English DTS 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-hevc-hdr10-dts-1080p @ safari: streamToken/url/version present
+PASS mkv-hevc-hdr10-dts-1080p @ safari: decision reasons carry code+message - container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-dts-1080p @ safari: HLS URL is a transcode capability - /api/v1/transcode/iXnVpqCWUKOWPshy0d9ngJBqMC1f2Ta-ZejkIILGUTw/master.m3u8
+PASS mkv-hevc-hdr10-dts-1080p @ safari: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-dts-1080p @ safari: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-dts-1080p @ safari: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-dts-1080p @ safari: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-dts-1080p @ safari: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-hevc-hdr10-dts-1080p @ safari: hlssim PASS - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2
+PASS mkv-hevc-hdr10-dts-1080p @ safari: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-dts-1080p @ safari: stop 204
+PASS mkv-hevc-hdr10-dts-1080p @ safari: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: 202 - {'playbackId': '89402a41a657c2c5d3525afd1863e2de', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T10:15:12.047425+00:00', 'updatedAt': '2026-09-29T10:15:12.0
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: decision reasons carry code+message - audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: HLS URL is a transcode capability - /api/v1/transcode/hsidxkGkMCejZ3ddY88POIqYtjwFt5CAQGai4rsjZ9g/master.m3u8
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: HLS audio eac3 = selected deliveredCodec - probe=[('eac3', 6)] sel=eac3/6
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: hlssim PASS - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p @ androidtv: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: 202 - {'playbackId': '35a5b6bde793b2809b70a679f5022d6d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T10:15:13.230247+00:00', 'updatedAt': '2026-09-29T10:15:13.2
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: decision reasons carry code+message - container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/qRsJVvtMiDJ_cFOTXoBH00ri_LcBDjOLo8Xmz0ou-Oc/master.m3u8
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: HLS audio eac3 = selected deliveredCodec - probe=[('eac3', 6)] sel=eac3/6
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: hlssim PASS - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p @ appletv: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: 202 - {'playbackId': '9e6fb75f4e0fd24c4893fc9c70da46e0', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T10:15:14.379268+00:00', 'updatedAt': '2026-09-29T10:15:14.3
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: subtitle track list complete - [["subrip", "en", false, "none", false]]
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: decision reasons carry code+message - video_codec_unsupported,bit_depth_unsupported,hdr_unsupported
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/xXIOkUWu1b0i6OtLXTNdXoCuEFwDIaEDfoCDfxpbiJM/master.m3u8
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: transcode videoRange SDR
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p @ chrome: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: 202 - {'playbackId': '5b73f6c6c4305497d9ae00f7fc60fb8c', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T10:15:16.102806+00:00', 'updatedAt': '2026-09-29T10:15:16.1
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: decision reasons carry code+message - container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: HLS URL is a transcode capability - /api/v1/transcode/FKgJISDOzuO2WqhSYshk0pv5up6q43eYYm0ni0kN_M8/master.m3u8
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: hlssim PASS - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p @ safari: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: 202 - {'playbackId': '1bbe5091e69853381c7295a276217eaf', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:17.284788+00:00', 'updatedAt': '2026-09-29T10:15:17.28
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: decision reasons carry code+message - audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: HLS URL is a transcode capability - /api/v1/transcode/lWFCaLryyC7ihZqQoMdxir8D3YdBlLW-fECH3obc21A/master.m3u8
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: HLS audio eac3 = selected deliveredCodec - probe=[('eac3', 6)] sel=eac3/6
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: hlssim PASS - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,ec-3
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p @ androidtv: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: 202 - {'playbackId': '28667d494281dcde55d4e4a5705e9f9f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:19.454229+00:00', 'updatedAt': '2026-09-29T10:15:19.45
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "eac3", "deliveredChannels": 6}]
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: decision reasons carry code+message - container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/SMfb0dd1cyTA6v4HC5Ry315cEGmn4A4Q8huqhYAXsKk/master.m3u8
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: HLS audio eac3 = selected deliveredCodec - probe=[('eac3', 6)] sel=eac3/6
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: hlssim PASS - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,ec-3
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p @ appletv: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: 202 - {'playbackId': '7babb7de3980e514b04dff369b23e594', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:21.606367+00:00', 'updatedAt': '2026-09-29T10:15:21.60
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: subtitle track list complete - [["subrip", "en", false, "none", false]]
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: decision reasons carry code+message - video_codec_unsupported,bit_depth_unsupported,hdr_unsupported
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/afwQraelfdmAwY904O9w6Olt68-nUno0pI76_i-do0E/master.m3u8
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: transcode videoRange SDR
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: hlssim PASS - playlist 20 × 3s = 60.0s, codecs avc1.640033,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p @ chrome: HLS 404 after stop - 404
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: 202 - {'playbackId': 'f2266be3d5220ddeaa7026579a3e4981', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T10:15:29.877039+00:00', 'updatedAt': '2026-09-29T10:15:29.87
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: audio track list complete - [["truehd", 6, "en"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: exactly one audio selected - [{"index": 1, "codec": "truehd", "channels": 6, "language": "en", "title": "English TrueHD 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: streamToken/url/version present
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: decision reasons carry code+message - container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: HLS URL is a transcode capability - /api/v1/transcode/Xs57cBa4Jdz1hR-c9ZDfq9UqssqSECDFVGxVqRJr79Q/master.m3u8
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: master.m3u8 200 without auth - 200
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: VIDEO-RANGE matches mediaInfo - PQ vs PQ
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: ffprobe HLS video = deliveredCodec - ['hevc'] vs hevc
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: hlssim PASS - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p @ safari: HLS 404 after stop - 404
+PASS mkv-av1-opus-1080p @ androidtv: 202 - {'playbackId': '8ab0bada0d8209987c660b431ef8729a', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:32.109358+00:00', 'updatedAt': '2026-09-29T10:15:32.10
+PASS mkv-av1-opus-1080p @ androidtv: ready as direct/native - got ready ('direct', 'native') states=['ready'] err=None
+PASS mkv-av1-opus-1080p @ androidtv: audio track list complete - [["opus", 6, "en"]]
+PASS mkv-av1-opus-1080p @ androidtv: subtitle track list complete - [["subrip", "en", false, "embedded", false]]
+PASS mkv-av1-opus-1080p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "opus", "channels": 6, "language": "en", "title": "English Opus 5.1", "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "opus", "deliveredChannels": 6}]
+PASS mkv-av1-opus-1080p @ androidtv: streamToken/url/version present
+PASS mkv-av1-opus-1080p @ androidtv: decision reasons carry code+message - direct_play
+PASS mkv-av1-opus-1080p @ androidtv: direct URL is /api/v1/stream - /api/v1/stream/743c08beb2451f56d1b7c19c20906468b175e637572b2734
+PASS mkv-av1-opus-1080p @ androidtv: ffprobe of direct URL = source codecs - ['av1']
+PASS mkv-av1-opus-1080p @ androidtv: audio deliveredAs original
+PASS mkv-av1-opus-1080p @ androidtv: stop 204
+PASS mkv-av1-opus-1080p @ appletv: 202 - {'playbackId': 'f62055e8faf68532bfb09e588de0f471', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:32.160514+00:00', 'updatedAt': '2026-09-29T10:15:32.16
+PASS mkv-av1-opus-1080p @ appletv: ready as transcode/native - got ready ('transcode', 'native') states=['starting', 'ready'] err=None
+PASS mkv-av1-opus-1080p @ appletv: audio track list complete - [["opus", 6, "en"]]
+PASS mkv-av1-opus-1080p @ appletv: subtitle track list complete - [["subrip", "en", false, "none", false]]
+PASS mkv-av1-opus-1080p @ appletv: exactly one audio selected - [{"index": 1, "codec": "opus", "channels": 6, "language": "en", "title": "English Opus 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-av1-opus-1080p @ appletv: streamToken/url/version present
+PASS mkv-av1-opus-1080p @ appletv: decision reasons carry code+message - video_codec_unsupported
+PASS mkv-av1-opus-1080p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/hV6C8xGaO11CH6QaLKqzSkfnWHF1MpqR8W6vGFmojyc/master.m3u8
+PASS mkv-av1-opus-1080p @ appletv: master.m3u8 200 without auth - 200
+PASS mkv-av1-opus-1080p @ appletv: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mkv-av1-opus-1080p @ appletv: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-av1-opus-1080p @ appletv: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-av1-opus-1080p @ appletv: HLS audio = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-av1-opus-1080p @ appletv: transcode videoRange SDR
+PASS mkv-av1-opus-1080p @ appletv: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mkv-av1-opus-1080p @ appletv: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-av1-opus-1080p @ appletv: stop 204
+PASS mkv-av1-opus-1080p @ appletv: HLS 404 after stop - 404
+PASS mkv-av1-opus-1080p @ chrome: 202 - {'playbackId': '4379226e27b07160de155796c26800ef', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:33.579167+00:00', 'updatedAt': '2026-09-29T10:15:33.57
+PASS mkv-av1-opus-1080p @ chrome: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-av1-opus-1080p @ chrome: audio track list complete - [["opus", 6, "en"]]
+PASS mkv-av1-opus-1080p @ chrome: subtitle track list complete - [["subrip", "en", false, "webvtt", false]]
+PASS mkv-av1-opus-1080p @ chrome: exactly one audio selected - [{"index": 1, "codec": "opus", "channels": 6, "language": "en", "title": "English Opus 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-av1-opus-1080p @ chrome: streamToken/url/version present
+PASS mkv-av1-opus-1080p @ chrome: decision reasons carry code+message - container_unsupported,audio_converted
+PASS mkv-av1-opus-1080p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/x5_0Df_y_rvxy-aO_TgOHEfNBe4L8-an2ZSBe-Gi2g0/master.m3u8
+PASS mkv-av1-opus-1080p @ chrome: master.m3u8 200 without auth - 200
+PASS mkv-av1-opus-1080p @ chrome: SUBTITLES renditions == webvtt tracks - 1 vs 1
+PASS mkv-av1-opus-1080p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-av1-opus-1080p @ chrome: ffprobe HLS video = deliveredCodec - ['av1'] vs av1
+PASS mkv-av1-opus-1080p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-av1-opus-1080p @ chrome: hlssim PASS - playlist 30 × 6.007s = 180.0s, codecs av01.0.08M.08,mp4a.40.2
+PASS mkv-av1-opus-1080p @ chrome: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-av1-opus-1080p @ chrome: stop 204
+PASS mkv-av1-opus-1080p @ chrome: HLS 404 after stop - 404
+PASS mkv-av1-opus-1080p @ safari: 202 - {'playbackId': '624238994f3714d90f6cf972bc2008cf', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:34.599421+00:00', 'updatedAt': '2026-09-29T10:15:34.59
+PASS mkv-av1-opus-1080p @ safari: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mkv-av1-opus-1080p @ safari: audio track list complete - [["opus", 6, "en"]]
+PASS mkv-av1-opus-1080p @ safari: subtitle track list complete - [["subrip", "en", false, "none", false]]
+PASS mkv-av1-opus-1080p @ safari: exactly one audio selected - [{"index": 1, "codec": "opus", "channels": 6, "language": "en", "title": "English Opus 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-av1-opus-1080p @ safari: streamToken/url/version present
+PASS mkv-av1-opus-1080p @ safari: decision reasons carry code+message - video_codec_unsupported
+PASS mkv-av1-opus-1080p @ safari: HLS URL is a transcode capability - /api/v1/transcode/Vkid-GjQb0Hd8hT5mevn5MXHfUppayBniBLz4askbDI/master.m3u8
+PASS mkv-av1-opus-1080p @ safari: master.m3u8 200 without auth - 200
+PASS mkv-av1-opus-1080p @ safari: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mkv-av1-opus-1080p @ safari: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-av1-opus-1080p @ safari: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-av1-opus-1080p @ safari: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-av1-opus-1080p @ safari: transcode videoRange SDR
+PASS mkv-av1-opus-1080p @ safari: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mkv-av1-opus-1080p @ safari: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-av1-opus-1080p @ safari: stop 204
+PASS mkv-av1-opus-1080p @ safari: HLS 404 after stop - 404
+PASS mkv-dualaudio-ass-1080p @ androidtv: 202 - {'playbackId': 'aaddbf95e1f264bb54670a76f00a81b8', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:35.985974+00:00', 'updatedAt': '2026-09-29T10:15:35.98
+PASS mkv-dualaudio-ass-1080p @ androidtv: ready as direct/native - got ready ('direct', 'native') states=['ready'] err=None
+PASS mkv-dualaudio-ass-1080p @ androidtv: audio track list complete - [["ac3", 6, "de"], ["ac3", 2, "en"]]
+PASS mkv-dualaudio-ass-1080p @ androidtv: subtitle track list complete - [["ass", "de", false, "embedded", false], ["ass", "en", false, "embedded", false], ["subrip", "de", true, "embedded", true]]
+PASS mkv-dualaudio-ass-1080p @ androidtv: exactly one audio selected - [{"index": 1, "codec": "ac3", "channels": 6, "language": "de", "title": "Deutsch AC3 5.1", "default": true, "selected": true, "deliveredAs": "original", "deliveredCodec": "ac3", "deliveredChannels": 6}]
+PASS mkv-dualaudio-ass-1080p @ androidtv: streamToken/url/version present
+PASS mkv-dualaudio-ass-1080p @ androidtv: decision reasons carry code+message - subtitle_forced,direct_play
+PASS mkv-dualaudio-ass-1080p @ androidtv: direct URL is /api/v1/stream - /api/v1/stream/7cbf52558b49266206222ece3f1ec662428823bf3071993b
+PASS mkv-dualaudio-ass-1080p @ androidtv: ffprobe of direct URL = source codecs - ['h264']
+PASS mkv-dualaudio-ass-1080p @ androidtv: audio deliveredAs original
+PASS mkv-dualaudio-ass-1080p @ androidtv: stop 204
+PASS mkv-dualaudio-ass-1080p @ appletv: 202 - {'playbackId': '3e13a4e87955c6734d6bcf18cf8d1a0c', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:36.0363+00:00', 'updatedAt': '2026-09-29T10:15:36.0363
+PASS mkv-dualaudio-ass-1080p @ appletv: ready as remux/native - got ready ('remux', 'native') states=['starting', 'ready'] err=None
+PASS mkv-dualaudio-ass-1080p @ appletv: audio track list complete - [["ac3", 6, "de"], ["ac3", 2, "en"]]
+PASS mkv-dualaudio-ass-1080p @ appletv: subtitle track list complete - [["ass", "de", false, "webvtt", false], ["ass", "en", false, "webvtt", false], ["subrip", "de", true, "webvtt", true]]
+PASS mkv-dualaudio-ass-1080p @ appletv: exactly one audio selected - [{"index": 1, "codec": "ac3", "channels": 6, "language": "de", "title": "Deutsch AC3 5.1", "default": true, "selected": true, "deliveredAs": "copy", "deliveredCodec": "ac3", "deliveredChannels": 6}]
+PASS mkv-dualaudio-ass-1080p @ appletv: streamToken/url/version present
+PASS mkv-dualaudio-ass-1080p @ appletv: decision reasons carry code+message - subtitle_forced,container_unsupported,subtitle_format_unsupported,audio_copied
+PASS mkv-dualaudio-ass-1080p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/NzIFmzYq_F0Ns0aJtuNlMtpIXMOytEXO1CRMpzIonB8/master.m3u8
+PASS mkv-dualaudio-ass-1080p @ appletv: master.m3u8 200 without auth - 200
+PASS mkv-dualaudio-ass-1080p @ appletv: SUBTITLES renditions == webvtt tracks - 3 vs 3
+PASS mkv-dualaudio-ass-1080p @ appletv: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-dualaudio-ass-1080p @ appletv: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-dualaudio-ass-1080p @ appletv: HLS audio ac3 = selected deliveredCodec - probe=[('ac3', 6)] sel=ac3/6
+PASS mkv-dualaudio-ass-1080p @ appletv: hlssim PASS - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,ac-3
+PASS mkv-dualaudio-ass-1080p @ appletv: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-dualaudio-ass-1080p @ appletv: stop 204
+PASS mkv-dualaudio-ass-1080p @ appletv: HLS 404 after stop - 404
+PASS mkv-dualaudio-ass-1080p @ chrome: 202 - {'playbackId': '0add347a6ef65ae823a2c3abfbfda75c', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:36.912556+00:00', 'updatedAt': '2026-09-29T10:15:36.91
+PASS mkv-dualaudio-ass-1080p @ chrome: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-dualaudio-ass-1080p @ chrome: audio track list complete - [["ac3", 6, "de"], ["ac3", 2, "en"]]
+PASS mkv-dualaudio-ass-1080p @ chrome: subtitle track list complete - [["ass", "de", false, "webvtt", false], ["ass", "en", false, "webvtt", false], ["subrip", "de", true, "webvtt", true]]
+PASS mkv-dualaudio-ass-1080p @ chrome: exactly one audio selected - [{"index": 1, "codec": "ac3", "channels": 6, "language": "de", "title": "Deutsch AC3 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-dualaudio-ass-1080p @ chrome: streamToken/url/version present
+PASS mkv-dualaudio-ass-1080p @ chrome: decision reasons carry code+message - subtitle_forced,container_unsupported,audio_codec_unsupported,subtitle_format_unsupported,audio_converted
+PASS mkv-dualaudio-ass-1080p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/CcQRtKafMXq4SOlXn1pSXSGMJ7N5Y3lpPVN5tLha7MA/master.m3u8
+PASS mkv-dualaudio-ass-1080p @ chrome: master.m3u8 200 without auth - 200
+PASS mkv-dualaudio-ass-1080p @ chrome: SUBTITLES renditions == webvtt tracks - 3 vs 3
+PASS mkv-dualaudio-ass-1080p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-dualaudio-ass-1080p @ chrome: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-dualaudio-ass-1080p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-dualaudio-ass-1080p @ chrome: hlssim PASS - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2
+PASS mkv-dualaudio-ass-1080p @ chrome: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-dualaudio-ass-1080p @ chrome: stop 204
+PASS mkv-dualaudio-ass-1080p @ chrome: HLS 404 after stop - 404
+PASS mkv-dualaudio-ass-1080p @ safari: 202 - {'playbackId': 'b06e88220c8a72a1a3e715fec553c6b3', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T10:15:37.882244+00:00', 'updatedAt': '2026-09-29T10:15:37.88
+PASS mkv-dualaudio-ass-1080p @ safari: ready as remux/web - got ready ('remux', 'web') states=['starting', 'ready'] err=None
+PASS mkv-dualaudio-ass-1080p @ safari: audio track list complete - [["ac3", 6, "de"], ["ac3", 2, "en"]]
+PASS mkv-dualaudio-ass-1080p @ safari: subtitle track list complete - [["ass", "de", false, "webvtt", false], ["ass", "en", false, "webvtt", false], ["subrip", "de", true, "webvtt", true]]
+PASS mkv-dualaudio-ass-1080p @ safari: exactly one audio selected - [{"index": 1, "codec": "ac3", "channels": 6, "language": "de", "title": "Deutsch AC3 5.1", "default": true, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mkv-dualaudio-ass-1080p @ safari: streamToken/url/version present
+PASS mkv-dualaudio-ass-1080p @ safari: decision reasons carry code+message - subtitle_forced,container_unsupported,subtitle_format_unsupported,audio_converted
+PASS mkv-dualaudio-ass-1080p @ safari: HLS URL is a transcode capability - /api/v1/transcode/HxDLt3BOBjxlaE3znnnfR85aoRt84xyZWyuQ4kMe6Gw/master.m3u8
+PASS mkv-dualaudio-ass-1080p @ safari: master.m3u8 200 without auth - 200
+PASS mkv-dualaudio-ass-1080p @ safari: SUBTITLES renditions == webvtt tracks - 3 vs 3
+PASS mkv-dualaudio-ass-1080p @ safari: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mkv-dualaudio-ass-1080p @ safari: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mkv-dualaudio-ass-1080p @ safari: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mkv-dualaudio-ass-1080p @ safari: hlssim PASS - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2
+PASS mkv-dualaudio-ass-1080p @ safari: admin sessions list the remux session - [["remux", "viewer:anna@Anna Verifier TV"]]
+PASS mkv-dualaudio-ass-1080p @ safari: stop 204
+PASS mkv-dualaudio-ass-1080p @ safari: HLS 404 after stop - 404
+PASS mpg-mpeg2-ac3-576p @ androidtv: 202 - {'playbackId': '38e57209d3ec01a9dc50d61054e763a9', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:38.934201+00:00', 'updatedAt': '2026-09-29T10:15:38.9
+PASS mpg-mpeg2-ac3-576p @ androidtv: ready as direct/vlc - got ready ('direct', 'vlc') states=['ready'] err=None
+PASS mpg-mpeg2-ac3-576p @ androidtv: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-576p @ androidtv: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-576p @ androidtv: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "original", "deliveredCodec": "ac3", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-576p @ androidtv: streamToken/url/version present
+PASS mpg-mpeg2-ac3-576p @ androidtv: decision reasons carry code+message - vlc_fallback,direct_play
+PASS mpg-mpeg2-ac3-576p @ androidtv: direct URL is /api/v1/stream - /api/v1/stream/0e80f07bb12a2e4a0fe9cb82aabf25831e0224d5cd53aa8a
+PASS mpg-mpeg2-ac3-576p @ androidtv: ffprobe of direct URL = source codecs - ['mpeg2video']
+PASS mpg-mpeg2-ac3-576p @ androidtv: audio deliveredAs original
+PASS mpg-mpeg2-ac3-576p @ androidtv: stop 204
+PASS mpg-mpeg2-ac3-576p @ appletv: 202 - {'playbackId': '062a1e0a3c4a418cfd695eeb147cf71d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:38.99405+00:00', 'updatedAt': '2026-09-29T10:15:38.99
+PASS mpg-mpeg2-ac3-576p @ appletv: ready as transcode/native - got ready ('transcode', 'native') states=['starting', 'ready'] err=None
+PASS mpg-mpeg2-ac3-576p @ appletv: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-576p @ appletv: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-576p @ appletv: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-576p @ appletv: streamToken/url/version present
+PASS mpg-mpeg2-ac3-576p @ appletv: decision reasons carry code+message - video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-576p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/O-Lx5DytspDHHPyHyh4FhleUaM6Wuf3cEnKmuANSJr8/master.m3u8
+PASS mpg-mpeg2-ac3-576p @ appletv: master.m3u8 200 without auth - 200
+PASS mpg-mpeg2-ac3-576p @ appletv: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mpg-mpeg2-ac3-576p @ appletv: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mpg-mpeg2-ac3-576p @ appletv: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mpg-mpeg2-ac3-576p @ appletv: HLS audio = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mpg-mpeg2-ac3-576p @ appletv: transcode videoRange SDR
+PASS mpg-mpeg2-ac3-576p @ appletv: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-576p @ appletv: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mpg-mpeg2-ac3-576p @ appletv: stop 204
+PASS mpg-mpeg2-ac3-576p @ appletv: HLS 404 after stop - 404
+PASS mpg-mpeg2-ac3-576p @ chrome: 202 - {'playbackId': '66144a79651fefaac49f64882cb8f3eb', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:39.692203+00:00', 'updatedAt': '2026-09-29T10:15:39.6
+PASS mpg-mpeg2-ac3-576p @ chrome: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mpg-mpeg2-ac3-576p @ chrome: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-576p @ chrome: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-576p @ chrome: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-576p @ chrome: streamToken/url/version present
+PASS mpg-mpeg2-ac3-576p @ chrome: decision reasons carry code+message - video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-576p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/VgtSPIjMIJ3rDT6HAbRZDkX-ptatcPzcQ7w6oX6os0I/master.m3u8
+PASS mpg-mpeg2-ac3-576p @ chrome: master.m3u8 200 without auth - 200
+PASS mpg-mpeg2-ac3-576p @ chrome: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mpg-mpeg2-ac3-576p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mpg-mpeg2-ac3-576p @ chrome: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mpg-mpeg2-ac3-576p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mpg-mpeg2-ac3-576p @ chrome: transcode videoRange SDR
+PASS mpg-mpeg2-ac3-576p @ chrome: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-576p @ chrome: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mpg-mpeg2-ac3-576p @ chrome: stop 204
+PASS mpg-mpeg2-ac3-576p @ chrome: HLS 404 after stop - 404
+PASS mpg-mpeg2-ac3-576p @ safari: 202 - {'playbackId': 'e83592b440a24f7a17709cf1ef17a31f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T10:15:40.406686+00:00', 'updatedAt': '2026-09-29T10:15:40.4
+PASS mpg-mpeg2-ac3-576p @ safari: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mpg-mpeg2-ac3-576p @ safari: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-576p @ safari: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-576p @ safari: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-576p @ safari: streamToken/url/version present
+PASS mpg-mpeg2-ac3-576p @ safari: decision reasons carry code+message - video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-576p @ safari: HLS URL is a transcode capability - /api/v1/transcode/Py582HadSp2l906gRlpF5UcPEz4zdhCTYbGGOAY_6SM/master.m3u8
+PASS mpg-mpeg2-ac3-576p @ safari: master.m3u8 200 without auth - 200
+PASS mpg-mpeg2-ac3-576p @ safari: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mpg-mpeg2-ac3-576p @ safari: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mpg-mpeg2-ac3-576p @ safari: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mpg-mpeg2-ac3-576p @ safari: HLS audio = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mpg-mpeg2-ac3-576p @ safari: transcode videoRange SDR
+PASS mpg-mpeg2-ac3-576p @ safari: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-576p @ safari: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mpg-mpeg2-ac3-576p @ safari: stop 204
+PASS mpg-mpeg2-ac3-576p @ safari: HLS 404 after stop - 404
+PASS mpg-mpeg2-ac3-480p @ androidtv: 202 - {'playbackId': 'd483a61dd0ed752471661a859cfa8d8f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T10:15:41.09781+00:00', 'updatedAt': '2026-09-29T10:15:41.097
+PASS mpg-mpeg2-ac3-480p @ androidtv: ready as direct/vlc - got ready ('direct', 'vlc') states=['ready'] err=None
+PASS mpg-mpeg2-ac3-480p @ androidtv: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-480p @ androidtv: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-480p @ androidtv: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "original", "deliveredCodec": "ac3", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-480p @ androidtv: streamToken/url/version present
+PASS mpg-mpeg2-ac3-480p @ androidtv: decision reasons carry code+message - vlc_fallback,direct_play
+PASS mpg-mpeg2-ac3-480p @ androidtv: direct URL is /api/v1/stream - /api/v1/stream/934827953d29641802d9ecfc0a2ab0c717f89656450ecb90
+PASS mpg-mpeg2-ac3-480p @ androidtv: ffprobe of direct URL = source codecs - ['mpeg2video']
+PASS mpg-mpeg2-ac3-480p @ androidtv: audio deliveredAs original
+PASS mpg-mpeg2-ac3-480p @ androidtv: stop 204
+PASS mpg-mpeg2-ac3-480p @ appletv: 202 - {'playbackId': 'f91579d5ab811980eccbe618e559715d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T10:15:41.156852+00:00', 'updatedAt': '2026-09-29T10:15:41.15
+PASS mpg-mpeg2-ac3-480p @ appletv: ready as transcode/native - got ready ('transcode', 'native') states=['starting', 'ready'] err=None
+PASS mpg-mpeg2-ac3-480p @ appletv: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-480p @ appletv: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-480p @ appletv: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-480p @ appletv: streamToken/url/version present
+PASS mpg-mpeg2-ac3-480p @ appletv: decision reasons carry code+message - video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-480p @ appletv: HLS URL is a transcode capability - /api/v1/transcode/2PaFYPahA08ecFoBWbqmkLt6_DXbYfJUvbYS6Jk7muw/master.m3u8
+PASS mpg-mpeg2-ac3-480p @ appletv: master.m3u8 200 without auth - 200
+PASS mpg-mpeg2-ac3-480p @ appletv: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mpg-mpeg2-ac3-480p @ appletv: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mpg-mpeg2-ac3-480p @ appletv: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mpg-mpeg2-ac3-480p @ appletv: HLS audio = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mpg-mpeg2-ac3-480p @ appletv: transcode videoRange SDR
+PASS mpg-mpeg2-ac3-480p @ appletv: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-480p @ appletv: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mpg-mpeg2-ac3-480p @ appletv: stop 204
+PASS mpg-mpeg2-ac3-480p @ appletv: HLS 404 after stop - 404
+PASS mpg-mpeg2-ac3-480p @ chrome: 202 - {'playbackId': 'f953c03e458b1426199919f15a77a903', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T10:15:41.873797+00:00', 'updatedAt': '2026-09-29T10:15:41.87
+PASS mpg-mpeg2-ac3-480p @ chrome: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mpg-mpeg2-ac3-480p @ chrome: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-480p @ chrome: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-480p @ chrome: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-480p @ chrome: streamToken/url/version present
+PASS mpg-mpeg2-ac3-480p @ chrome: decision reasons carry code+message - video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-480p @ chrome: HLS URL is a transcode capability - /api/v1/transcode/_ZGn3aMgUNs0kl9L1aqVyuhYUarwsHMraX2nRKeJb5A/master.m3u8
+PASS mpg-mpeg2-ac3-480p @ chrome: master.m3u8 200 without auth - 200
+PASS mpg-mpeg2-ac3-480p @ chrome: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mpg-mpeg2-ac3-480p @ chrome: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mpg-mpeg2-ac3-480p @ chrome: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mpg-mpeg2-ac3-480p @ chrome: HLS audio aac = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mpg-mpeg2-ac3-480p @ chrome: transcode videoRange SDR
+PASS mpg-mpeg2-ac3-480p @ chrome: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-480p @ chrome: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mpg-mpeg2-ac3-480p @ chrome: stop 204
+PASS mpg-mpeg2-ac3-480p @ chrome: HLS 404 after stop - 404
+PASS mpg-mpeg2-ac3-480p @ safari: 202 - {'playbackId': 'a3c64cc576b398709d17f7af79364288', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T10:15:42.562604+00:00', 'updatedAt': '2026-09-29T10:15:42.56
+PASS mpg-mpeg2-ac3-480p @ safari: ready as transcode/web - got ready ('transcode', 'web') states=['starting', 'ready'] err=None
+PASS mpg-mpeg2-ac3-480p @ safari: audio track list complete - [["ac3", 2, null]]
+PASS mpg-mpeg2-ac3-480p @ safari: subtitle track list complete - []
+PASS mpg-mpeg2-ac3-480p @ safari: exactly one audio selected - [{"index": 2, "codec": "ac3", "channels": 2, "language": null, "title": null, "default": false, "selected": true, "deliveredAs": "converted", "deliveredCodec": "aac", "deliveredChannels": 2}]
+PASS mpg-mpeg2-ac3-480p @ safari: streamToken/url/version present
+PASS mpg-mpeg2-ac3-480p @ safari: decision reasons carry code+message - video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-480p @ safari: HLS URL is a transcode capability - /api/v1/transcode/qB-3tb6qNh9-IU1nJIQyIJAXTKyBHPq1wv_7ObZILeA/master.m3u8
+PASS mpg-mpeg2-ac3-480p @ safari: master.m3u8 200 without auth - 200
+PASS mpg-mpeg2-ac3-480p @ safari: SUBTITLES renditions == webvtt tracks - 0 vs 0
+PASS mpg-mpeg2-ac3-480p @ safari: VIDEO-RANGE matches mediaInfo - SDR vs SDR
+PASS mpg-mpeg2-ac3-480p @ safari: ffprobe HLS video = deliveredCodec - ['h264'] vs h264
+PASS mpg-mpeg2-ac3-480p @ safari: HLS audio = selected deliveredCodec - probe=[('aac', 2)] sel=aac/2
+PASS mpg-mpeg2-ac3-480p @ safari: transcode videoRange SDR
+PASS mpg-mpeg2-ac3-480p @ safari: hlssim PASS - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-480p @ safari: admin sessions list the transcode session - [["transcode", "viewer:anna@Anna Verifier TV"]]
+PASS mpg-mpeg2-ac3-480p @ safari: stop 204
+PASS mpg-mpeg2-ac3-480p @ safari: HLS 404 after stop - 404
+PASS matrix: no transcoding sessions left - []
+
+TABLE
+mp4-h264-aac-1080p | androidtv | ready | ('direct', 'native') | direct_play | 
+mp4-h264-aac-1080p | appletv | ready | ('direct', 'native') | direct_play | 
+mp4-h264-aac-1080p | chrome | ready | ('direct', 'web') | direct_play | 
+mp4-h264-aac-1080p | safari | ready | ('direct', 'web') | direct_play | 
+mp4-h264-aac-720p | androidtv | ready | ('direct', 'native') | direct_play | 
+mp4-h264-aac-720p | appletv | ready | ('direct', 'native') | direct_play | 
+mp4-h264-aac-720p | chrome | ready | ('direct', 'web') | direct_play | 
+mp4-h264-aac-720p | safari | ready | ('direct', 'web') | direct_play | 
+mkv-h264-eac3-srt-1080p | androidtv | ready | ('direct', 'native') | direct_play | 
+mkv-h264-eac3-srt-1080p | appletv | ready | ('remux', 'native') | container_unsupported,audio_copied | direct/native:container_unsupported
+mkv-h264-eac3-srt-1080p | chrome | ready | ('remux', 'web') | container_unsupported,audio_codec_unsupported,audio_converted | direct/web:container_unsupported,audio_codec_unsupported
+mkv-h264-eac3-srt-1080p | safari | ready | ('remux', 'web') | container_unsupported,audio_converted | direct/web:container_unsupported
+mkv-hevc-hdr10-dts-1080p | androidtv | ready | ('remux', 'native') | audio_codec_unsupported,audio_converted | direct/native:audio_codec_unsupported
+mkv-hevc-hdr10-dts-1080p | appletv | ready | ('remux', 'native') | container_unsupported,audio_codec_unsupported,audio_converted | direct/native:container_unsupported,audio_codec_unsupported
+mkv-hevc-hdr10-dts-1080p | chrome | ready | ('transcode', 'web') | video_codec_unsupported,bit_depth_unsupported,hdr_unsupported | direct/web:container_unsupported,video_codec_unsupported,bit_depth_unsupported,hdr_unsupported,audio_codec_unsupported;remux/web:video_codec_unsupported,bit_depth_unsupported,hdr_unsupported
+mkv-hevc-hdr10-dts-1080p | safari | ready | ('remux', 'web') | container_unsupported,audio_codec_unsupported,audio_converted | direct/web:container_unsupported,audio_codec_unsupported
+mkv-hevc-hdr10-truehd-1080p | androidtv | ready | ('remux', 'native') | audio_codec_unsupported,audio_converted | direct/native:audio_codec_unsupported
+mkv-hevc-hdr10-truehd-1080p | appletv | ready | ('remux', 'native') | container_unsupported,audio_codec_unsupported,audio_converted | direct/native:container_unsupported,audio_codec_unsupported
+mkv-hevc-hdr10-truehd-1080p | chrome | ready | ('transcode', 'web') | video_codec_unsupported,bit_depth_unsupported,hdr_unsupported | direct/web:container_unsupported,video_codec_unsupported,bit_depth_unsupported,hdr_unsupported,audio_codec_unsupported;remux/web:video_codec_unsupported,bit_depth_unsupported,hdr_unsupported
+mkv-hevc-hdr10-truehd-1080p | safari | ready | ('remux', 'web') | container_unsupported,audio_codec_unsupported,audio_converted | direct/web:container_unsupported,audio_codec_unsupported
+mkv-hevc-hdr10-truehd-2160p | androidtv | ready | ('remux', 'native') | audio_codec_unsupported,audio_converted | direct/native:audio_codec_unsupported
+mkv-hevc-hdr10-truehd-2160p | appletv | ready | ('remux', 'native') | container_unsupported,audio_codec_unsupported,audio_converted | direct/native:container_unsupported,audio_codec_unsupported
+mkv-hevc-hdr10-truehd-2160p | chrome | ready | ('transcode', 'web') | video_codec_unsupported,bit_depth_unsupported,hdr_unsupported | direct/web:container_unsupported,video_codec_unsupported,bit_depth_unsupported,hdr_unsupported,audio_codec_unsupported;remux/web:video_codec_unsupported,bit_depth_unsupported,hdr_unsupported
+mkv-hevc-hdr10-truehd-2160p | safari | ready | ('remux', 'web') | container_unsupported,audio_codec_unsupported,audio_converted | direct/web:container_unsupported,audio_codec_unsupported
+mkv-av1-opus-1080p | androidtv | ready | ('direct', 'native') | direct_play | 
+mkv-av1-opus-1080p | appletv | ready | ('transcode', 'native') | video_codec_unsupported | direct/native:container_unsupported,video_codec_unsupported,audio_codec_unsupported;remux/native:video_codec_unsupported
+mkv-av1-opus-1080p | chrome | ready | ('remux', 'web') | container_unsupported,audio_converted | direct/web:container_unsupported
+mkv-av1-opus-1080p | safari | ready | ('transcode', 'web') | video_codec_unsupported | direct/web:container_unsupported,video_codec_unsupported,audio_codec_unsupported;remux/web:video_codec_unsupported
+mkv-dualaudio-ass-1080p | androidtv | ready | ('direct', 'native') | subtitle_forced,direct_play | 
+mkv-dualaudio-ass-1080p | appletv | ready | ('remux', 'native') | subtitle_forced,container_unsupported,subtitle_format_unsupported,audio_copied | direct/native:container_unsupported,subtitle_format_unsupported
+mkv-dualaudio-ass-1080p | chrome | ready | ('remux', 'web') | subtitle_forced,container_unsupported,audio_codec_unsupported,subtitle_format_unsupported,audio_converted | direct/web:container_unsupported,audio_codec_unsupported,subtitle_format_unsupported
+mkv-dualaudio-ass-1080p | safari | ready | ('remux', 'web') | subtitle_forced,container_unsupported,subtitle_format_unsupported,audio_converted | direct/web:container_unsupported,subtitle_format_unsupported
+mpg-mpeg2-ac3-576p | androidtv | ready | ('direct', 'vlc') | vlc_fallback,direct_play | direct/native:container_unsupported,video_codec_unsupported;remux/native:video_codec_not_remuxable
+mpg-mpeg2-ac3-576p | appletv | ready | ('transcode', 'native') | video_codec_not_remuxable | direct/native:container_unsupported,video_codec_unsupported;remux/native:video_codec_not_remuxable
+mpg-mpeg2-ac3-576p | chrome | ready | ('transcode', 'web') | video_codec_not_remuxable | direct/web:container_unsupported,video_codec_unsupported,audio_codec_unsupported;remux/web:video_codec_not_remuxable
+mpg-mpeg2-ac3-576p | safari | ready | ('transcode', 'web') | video_codec_not_remuxable | direct/web:container_unsupported,video_codec_unsupported;remux/web:video_codec_not_remuxable
+mpg-mpeg2-ac3-480p | androidtv | ready | ('direct', 'vlc') | vlc_fallback,direct_play | direct/native:container_unsupported,video_codec_unsupported;remux/native:video_codec_not_remuxable
+mpg-mpeg2-ac3-480p | appletv | ready | ('transcode', 'native') | video_codec_not_remuxable | direct/native:container_unsupported,video_codec_unsupported;remux/native:video_codec_not_remuxable
+mpg-mpeg2-ac3-480p | chrome | ready | ('transcode', 'web') | video_codec_not_remuxable | direct/web:container_unsupported,video_codec_unsupported,audio_codec_unsupported;remux/web:video_codec_not_remuxable
+mpg-mpeg2-ac3-480p | safari | ready | ('transcode', 'web') | video_codec_not_remuxable | direct/web:container_unsupported,video_codec_unsupported;remux/web:video_codec_not_remuxable
+OK: 614 passed, 0 failed

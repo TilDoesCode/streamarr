@@ -1,0 +1,25 @@
+ready transcode web deliveredHeight 720 audio copy aac
+[0] segment    0:    194 KiB in      1 ms  video    0.083s +3.000s  key=True
+[0] segment    1:    138 KiB in      1 ms  video    3.083s +3.000s  key=True
+[0] segment    2:    157 KiB in    151 ms  video    6.083s +3.000s  key=True
+[0] seek 8,0s → 150,0s (segment 50)
+[0] segment   50:    171 KiB in    324 ms  video  150.000s +3.000s  key=True
+[0] segment   51:    167 KiB in    140 ms  video  153.000s +3.000s  key=True
+[0] segment   52:    172 KiB in    140 ms  video  156.000s +3.000s  key=True
+[0] segment   53:    140 KiB in    151 ms  video  159.000s +3.000s  key=True
+[0] segment   54:    156 KiB in    141 ms  video  162.000s +3.000s  key=True
+[0] segment   55:    163 KiB in    152 ms  video  165.000s +3.000s  key=True
+[0] segment   56:    172 KiB in    142 ms  video  168.000s +3.000s  key=True
+[0] segment   57:    135 KiB in    183 ms  video  171.000s +3.000s  key=True
+[0] segment   58:    159 KiB in    157 ms  video  174.000s +3.000s  key=True
+[0] segment   59:    170 KiB in    106 ms  video  177.000s +3.000s  key=True
+
+== player 0: PASS ==
+playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+time to first segment 53 ms, fetched 13 segments (2.1 MiB) in 2.1s
+segment latency p50 142 ms · p95 324 ms · max 324 ms
+seek latency: 325 ms
+stalls 0 (0.0s)
+
+hlssim exit 0
+stop 204

@@ -1,0 +1,892 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using Microsoft.Extensions.Options;
+using Streamarr.Core.Media;
+using Streamarr.Server.Contracts;
+using Streamarr.Server.Options;
+using Streamarr.Server.Persistence.Entities;
+using Streamarr.Server.Services;
+using Streamarr.Server.Transcoding;
+using Streamarr.Server.Viewers.Access;
+using Streamarr.Server.Viewers.Catalog;
+using Streamarr.Server.Viewers.Watch;
+using Streamarr.Usenet.Exceptions;
+
+namespace Streamarr.Server.Viewers.Playback;
+
+/// <summary>Who asks: playbacks belong to one viewer session (device).</summary>
+public sealed record ViewerCaller(string ViewerId, string SessionId, string Username, string DeviceName);
+
+/// <summary>What a progress report with a server <c>playbackId</c> fills in.</summary>
+public sealed record PlaybackLink(string? ReleaseId, string? StreamToken);
+
+/// <summary>Poll and retry pacing; tests shorten it.</summary>
+public sealed record PlaybackTimings(TimeSpan RepairPoll, TimeSpan CapacityRetry, TimeSpan CapacityWait, TimeSpan SwitchGrace, TimeSpan SweepInterval)
+{
+    public static PlaybackTimings Default { get; } = new(
+        TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(15));
+}
+
+/// <summary>Viewer playbacks: per-playback async state machine over resolve and HLS sessions, plus switch, stop, heartbeat, idle expiry and the stream limit.</summary>
+public sealed class ViewerPlaybackService(
+    IPlaybackResolver resolver,
+    IPlaybackMedia media,
+    ViewerCatalogService catalog,
+    ViewerContentPolicy policy,
+    WatchStateService watch,
+    IReleaseStore releases,
+    IOptions<StreamarrOptions> options,
+    TimeProvider time,
+    ILogger<ViewerPlaybackService> logger,
+    PlaybackTimings? timings = null) : BackgroundService
+{
+    public const int MaxPlaybacksPerViewer = 16;
+    public const int MaxPlaybacks = 1024;
+    private static readonly string[] PreparingStates = [States.Queued, States.Resolving, States.Fallback, States.Repairing, States.Planning, States.Starting];
+
+    private readonly ConcurrentDictionary<string, Playback> _playbacks = new(StringComparer.Ordinal);
+    private readonly object _admission = new();
+    private readonly PlaybackTimings _timings = timings ?? PlaybackTimings.Default;
+    private TimeSpan HeartbeatWindow => TimeSpan.FromSeconds(options.Value.ViewerPlaybackHeartbeatSeconds);
+    private TimeSpan IdleTimeout => TimeSpan.FromSeconds(options.Value.ViewerPlaybackIdleSeconds);
+
+    public static class States
+    {
+        public const string Queued = "queued";
+        public const string Resolving = "resolving";
+        public const string Fallback = "fallback";
+        public const string Repairing = "repairing";
+        public const string Planning = "planning";
+        public const string Starting = "starting";
+        public const string Ready = "ready";
+        public const string Failed = "failed";
+    }
+
+    internal int Count => _playbacks.Count;
+
+    public async Task<PlaybackResponse> StartAsync(ViewerCaller caller, ViewerEntity viewer, PlaybackStartRequest request, CancellationToken ct)
+    {
+        if (request is null)
+            throw Invalid("A request body is required.");
+        var work = ViewerMappings.RequireWork(request.WorkId, playableOnly: true);
+        var releaseId = ReleaseId(request.ReleaseId);
+        var start = Position(request.StartPositionTicks, "startPositionTicks") ?? 0;
+        ValidateIndexes(request.AudioStreamIndex, request.SubtitleStreamIndex);
+        var device = DeviceCaps.Parse(request.Device);
+        var preferences = PlaybackPreferences.Merge(request.Preferences, PlaybackPreferences.Default);
+        await EnsureAllowedAsync(viewer, work, ct);
+        var saved = (await watch.GetAsync(viewer.Id, [work.WorkId], ct)).FirstOrDefault();
+
+        var now = time.GetUtcNow();
+        var playback = new Playback
+        {
+            Id = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
+            ViewerId = viewer.Id,
+            SessionId = caller.SessionId,
+            Username = caller.Username,
+            DeviceName = caller.DeviceName,
+            Work = work,
+            CreatedAt = now,
+            Viewer = viewer,
+            RequestedReleaseId = releaseId,
+            Device = device,
+            Preferences = preferences,
+            AudioIndex = request.AudioStreamIndex,
+            SubtitleIndex = request.SubtitleStreamIndex,
+            StartTicks = start,
+            ResumeTicks = saved is { PositionTicks: > 0, Played: false } ? saved.PositionTicks : null,
+            State = States.Queued,
+            UpdatedAt = now,
+            LastActivity = now,
+        };
+
+        var superseded = new List<Playback>();
+        lock (_admission)
+        {
+            var mine = _playbacks.Values.Where(p => p.ViewerId == viewer.Id && !p.Stopped).OrderBy(p => p.CreatedAt).ToList();
+            if (viewer.MaxConcurrentStreams is { } limit)
+            {
+                var active = mine.Where(p => IsActive(p, now)).ToList();
+                foreach (var own in active.Where(p => p.SessionId == caller.SessionId).ToList())
+                {
+                    if (active.Count < limit)
+                        break;
+                    active.Remove(own);
+                    superseded.Add(own);
+                }
+                if (active.Count >= limit)
+                {
+                    var other = active.OrderByDescending(LastActive).First();
+                    throw new ViewerProblem(StatusCodes.Status409Conflict, "too_many_streams",
+                        $"This profile may play {limit} stream(s) at a time and '{other.DeviceName}' is already playing.",
+                        TrackSelector.Params(("limit", limit), ("device", other.DeviceName), ("workId", other.Work.WorkId), ("releaseName", other.Version?.Name)));
+                }
+            }
+            foreach (var old in mine.Except(superseded).Where(p => !IsActive(p, now)).Take(Math.Max(0, mine.Count - superseded.Count - (MaxPlaybacksPerViewer - 1))))
+                superseded.Add(old);
+            if (mine.Count - superseded.Count >= MaxPlaybacksPerViewer || _playbacks.Count >= MaxPlaybacks)
+                throw new ViewerProblem(StatusCodes.Status429TooManyRequests, "too_many_playbacks", "Too many playbacks are being prepared; stop one first.");
+            foreach (var old in superseded)
+                Detach(old);
+            _playbacks[playback.Id] = playback;
+        }
+        foreach (var old in superseded)
+            await CloseMediaAsync(old, "superseded by a new playback on the same device");
+
+        Launch(playback, 0, resolve: true, playback.Cancellation.Token);
+        logger.LogInformation("Viewer playback {PlaybackId} of {WorkId} started for {Viewer} on {Device}", playback.Id, work.WorkId, caller.Username, caller.DeviceName);
+        return Snapshot(playback, touch: false);
+    }
+
+    public PlaybackResponse Get(ViewerCaller caller, string playbackId)
+        => Snapshot(Find(caller, playbackId) ?? throw NotFound(), touch: true);
+
+    public async Task<PlaybackResponse> SwitchAsync(ViewerCaller caller, ViewerEntity viewer, string playbackId, PlaybackSwitchRequest request, CancellationToken ct)
+    {
+        var playback = Find(caller, playbackId) ?? throw NotFound();
+        if (request is null)
+            throw Invalid("A request body is required.");
+        var releaseId = ReleaseId(request.ReleaseId);
+        var position = Position(request.PositionTicks, "positionTicks");
+        ValidateIndexes(request.AudioStreamIndex, request.SubtitleStreamIndex);
+        await EnsureAllowedAsync(viewer, playback.Work, ct);
+
+        bool resolve;
+        int revision;
+        CancellationToken run;
+        lock (playback.Gate)
+        {
+            if (playback.Stopped)
+                throw NotFound();
+            var preferences = PlaybackPreferences.Merge(request.Preferences, playback.Preferences);
+            resolve = playback.StreamToken is null || (releaseId is not null && releaseId != playback.ResolvedReleaseId);
+            if (releaseId is not null && releaseId != playback.ResolvedReleaseId)
+            {
+                playback.RequestedReleaseId = releaseId;
+                playback.Excluded.Clear();
+                playback.Attempts.Clear();
+                playback.FallbackFrom = null;
+                playback.Version = null;
+                playback.Repair = null;
+                playback.StreamToken = null;
+                playback.ResolvedReleaseId = null;
+                playback.AudioIndex = null;
+                playback.SubtitleIndex = null;
+            }
+            if (request.StepDown && playback.Ready is { } ready)
+                playback.Excluded.Add(PlaybackDecider.Key(ready.Method, ready.Engine));
+            playback.Preferences = preferences;
+            playback.AudioIndex = request.AudioStreamIndex ?? playback.AudioIndex;
+            playback.SubtitleIndex = request.SubtitleStreamIndex ?? playback.SubtitleIndex;
+            playback.StartTicks = position ?? playback.PositionTicks ?? playback.StartTicks;
+            playback.Viewer = viewer;
+            revision = ++playback.Revision;
+            playback.Cancellation.Cancel();
+            playback.Cancellation = new CancellationTokenSource();
+            run = playback.Cancellation.Token;
+            if (playback.CurrentHls is { } current)
+                playback.PreviousHls.Add(new PreviousRendition(current, null));
+            playback.CurrentHls = null;
+            playback.Ready = null;
+            playback.Failure = null;
+            playback.Decision = null;
+            playback.State = resolve ? States.Resolving : States.Planning;
+            var now = time.GetUtcNow();
+            playback.UpdatedAt = now;
+            playback.LastActivity = now;
+            playback.LastSwitchAt = now;
+        }
+        Launch(playback, revision, resolve, run);
+        return Snapshot(playback, touch: false);
+    }
+
+    public async Task StopAsync(ViewerCaller caller, string playbackId, string reason)
+    {
+        var playback = Find(caller, playbackId) ?? throw NotFound();
+        await EndAsync(playback, reason);
+    }
+
+    /// <summary>Records a progress report of a server playback; null when the id is not a live playback of this device for this work.</summary>
+    public PlaybackLink? Heartbeat(ViewerCaller caller, string playbackId, string workId, long positionTicks)
+    {
+        var playback = Find(caller, playbackId);
+        if (playback is null || playback.Work.WorkId != workId)
+            return null;
+        string? hls;
+        lock (playback.Gate)
+        {
+            var now = time.GetUtcNow();
+            playback.LastHeartbeat = now;
+            playback.LastActivity = now;
+            playback.PositionTicks = positionTicks;
+            hls = playback.CurrentHls;
+        }
+        if (hls is not null)
+            media.TouchHls(hls);
+        return new PlaybackLink(playback.ResolvedReleaseId, playback.StreamToken);
+    }
+
+    /// <summary>Stops idle playbacks and closes renditions replaced by a switch once their grace period is over.</summary>
+    internal async Task SweepAsync()
+    {
+        var now = time.GetUtcNow();
+        foreach (var playback in _playbacks.Values.ToList())
+        {
+            if (now - playback.LastActivity > IdleTimeout)
+            {
+                logger.LogInformation("Viewer playback {PlaybackId} expired after {Idle} without activity", playback.Id, IdleTimeout);
+                await EndAsync(playback, "idle");
+                continue;
+            }
+            List<string> due;
+            lock (playback.Gate)
+            {
+                due = playback.PreviousHls.Where(r => r.CloseAt is { } at && at <= now).Select(r => r.Id).ToList();
+                playback.PreviousHls.RemoveAll(r => due.Contains(r.Id));
+            }
+            foreach (var id in due)
+                await media.CloseHlsAsync(id, "replaced by a playback switch");
+        }
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(_timings.SweepInterval, stoppingToken);
+                try
+                {
+                    await SweepAsync();
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    logger.LogWarning(e, "Viewer playback sweep failed");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        foreach (var playback in _playbacks.Values.ToList())
+            await EndAsync(playback, "server stopping");
+    }
+
+    private async Task EndAsync(Playback playback, string reason)
+    {
+        lock (_admission)
+            Detach(playback);
+        await CloseMediaAsync(playback, reason);
+    }
+
+    private void Detach(Playback playback)
+    {
+        _playbacks.TryRemove(new KeyValuePair<string, Playback>(playback.Id, playback));
+        lock (playback.Gate)
+        {
+            playback.Stopped = true;
+            playback.Cancellation.Cancel();
+        }
+    }
+
+    private async Task CloseMediaAsync(Playback playback, string reason)
+    {
+        List<string> renditions;
+        lock (playback.Gate)
+        {
+            renditions = [.. playback.PreviousHls.Select(r => r.Id)];
+            if (playback.CurrentHls is { } current)
+                renditions.Add(current);
+            playback.PreviousHls.Clear();
+            playback.CurrentHls = null;
+        }
+        foreach (var id in renditions)
+            await media.CloseHlsAsync(id, $"viewer playback ended ({reason})");
+    }
+
+    private void Launch(Playback playback, int revision, bool resolve, CancellationToken ct)
+        => _ = Task.Run(() => RunAsync(playback, revision, resolve, ct), CancellationToken.None);
+
+    private async Task RunAsync(Playback playback, int revision, bool resolve, CancellationToken ct)
+    {
+        try
+        {
+            if (resolve || !media.StreamAlive(playback.StreamToken!))
+                await ResolveAsync(playback, revision, ct);
+            await PlanAndStartAsync(playback, revision, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (PlaybackFailure failure)
+        {
+            Fail(playback, revision, failure);
+        }
+        catch (ViewerProblem problem)
+        {
+            var transient = problem.Status is StatusCodes.Status429TooManyRequests or StatusCodes.Status503ServiceUnavailable;
+            Fail(playback, revision, new PlaybackFailure(problem.Code, problem.Message, problem.Parameters,
+                new[] { transient ? SuggestedActions.Retry : SuggestedActions.OtherVersion }));
+        }
+        catch (Exception e)
+        {
+            Fail(playback, revision, Map(e));
+        }
+    }
+
+    private async Task ResolveAsync(Playback playback, int revision, CancellationToken ct)
+    {
+        Update(playback, revision, p => p.State = States.Resolving);
+        string releaseId;
+        lock (playback.Gate)
+            releaseId = playback.RequestedReleaseId ?? string.Empty;
+        if (releaseId.Length == 0)
+        {
+            var recommended = await catalog.RecommendedAsync(playback.Viewer, playback.Work, ct)
+                              ?? throw new PlaybackFailure("no_versions", "No version of this title is available right now.", null, [SuggestedActions.Retry]);
+            releaseId = recommended.ReleaseId;
+            Update(playback, revision, p => p.RequestedReleaseId = releaseId);
+        }
+        else if (releases.Get(releaseId, playback.Work.WorkId) is null)
+        {
+            try
+            {
+                await catalog.RecommendedAsync(playback.Viewer, playback.Work, ct);
+            }
+            catch (ViewerProblem e)
+            {
+                logger.LogDebug("Re-ranking {WorkId} for playback {PlaybackId} failed: {Code}", playback.Work.WorkId, playback.Id, e.Code);
+            }
+            if (releases.Get(releaseId, playback.Work.WorkId) is null)
+            {
+                throw new PlaybackFailure("release_not_found", "This version is not known for the title (any more).",
+                    TrackSelector.Params(("releaseId", releaseId)), [SuggestedActions.OtherVersion]);
+            }
+        }
+
+        var observer = new HopObserver(this, playback, revision, releaseId);
+        var response = await ResolveQueuedAsync(playback, revision, new PlaybackResolveCall(releaseId, playback.Work.WorkId, playback.ViewerId, playback.Username, true), observer, ct);
+        var repaired = false;
+        while (response.Status == "dead")
+        {
+            if (!repaired && response.Repair is { } repair && !IsTerminal(repair.State))
+            {
+                repaired = true;
+                response = await RepairAsync(playback, revision, response.ReleaseId, observer, ct);
+                continue;
+            }
+            Update(playback, revision, p => p.Attempts = Attempts(response, p));
+            throw new PlaybackFailure("release_dead",
+                response.Repair is { } failed && IsTerminal(failed.State) && failed.State != "ready"
+                    ? "This version is missing data on Usenet and could not be repaired."
+                    : "This version is missing data on Usenet and no other version could stand in.",
+                TrackSelector.Params(("releaseId", response.ReleaseId), ("attempts", response.Attempts.Count), ("suggestedReleaseId", response.SuggestedFallbackReleaseId)),
+                [SuggestedActions.OtherVersion, SuggestedActions.Retry]);
+        }
+
+        var token = TokenOf(response.StreamUrl) ?? throw new PlaybackFailure("resolve_failed", "The resolve returned no stream.", null, [SuggestedActions.Retry]);
+        var version = await catalog.VersionAsync(playback.Viewer, playback.Work, response.ReleaseId, ct);
+        Update(playback, revision, p =>
+        {
+            p.StreamToken = token;
+            p.ResolvedReleaseId = response.ReleaseId;
+            p.Playability = response.Playability;
+            p.ResolvedStatus = response.Status;
+            p.Repair = response.Repair ?? p.Repair;
+            p.Attempts = Attempts(response, p);
+            p.FallbackFrom = response.FallbackFromReleaseId is { } from ? new PlaybackReleaseDto { ReleaseId = from, Name = NameOf(from, p.Work.WorkId) } : null;
+            p.Version = version;
+        });
+    }
+
+    private async Task<ResolveResponse> ResolveQueuedAsync(
+        Playback playback, int revision, PlaybackResolveCall call, IResolveObserver observer, CancellationToken ct)
+    {
+        var started = time.GetUtcNow();
+        while (true)
+        {
+            try
+            {
+                return await resolver.ResolveAsync(call, observer, ct);
+            }
+            catch (ResourceCapacityException) when (time.GetUtcNow() - started < _timings.CapacityWait)
+            {
+                Update(playback, revision, p => p.State = States.Queued);
+                await Task.Delay(_timings.CapacityRetry, ct);
+                Update(playback, revision, p => p.State = p.FallbackFrom is null ? States.Resolving : States.Fallback);
+            }
+        }
+    }
+
+    private async Task<ResolveResponse> RepairAsync(Playback playback, int revision, string releaseId, IResolveObserver observer, CancellationToken ct)
+    {
+        while (true)
+        {
+            var status = resolver.RepairStatus(releaseId)
+                         ?? throw new PlaybackFailure("repair_failed", "The repair of this version stopped.", TrackSelector.Params(("releaseId", releaseId)),
+                             [SuggestedActions.OtherVersion, SuggestedActions.Retry]);
+            Update(playback, revision, p =>
+            {
+                p.State = States.Repairing;
+                p.Repair = status;
+            });
+            if (status.State == "ready")
+                return await ResolveQueuedAsync(playback, revision, new PlaybackResolveCall(releaseId, playback.Work.WorkId, playback.ViewerId, playback.Username, false), observer, ct);
+            if (IsTerminal(status.State))
+            {
+                throw new PlaybackFailure("repair_failed", "This version could not be repaired.",
+                    TrackSelector.Params(("releaseId", releaseId), ("state", status.State), ("reason", status.FailureReason)),
+                    [SuggestedActions.OtherVersion, SuggestedActions.Retry]);
+            }
+            await Task.Delay(_timings.RepairPoll, ct);
+        }
+    }
+
+    private async Task PlanAndStartAsync(Playback playback, int revision, CancellationToken ct)
+    {
+        Update(playback, revision, p => p.State = States.Planning);
+        string token;
+        DeviceCaps device;
+        PlaybackPreferences preferences;
+        int? audioIndex, subtitleIndex;
+        long startTicks;
+        bool allowTranscoding;
+        IReadOnlySet<string> excluded;
+        lock (playback.Gate)
+        {
+            token = playback.StreamToken!;
+            device = playback.Device;
+            preferences = playback.Preferences;
+            audioIndex = playback.AudioIndex;
+            subtitleIndex = playback.SubtitleIndex;
+            startTicks = playback.StartTicks;
+            allowTranscoding = playback.Viewer.AllowTranscoding;
+            excluded = playback.Excluded.ToHashSet(StringComparer.Ordinal);
+        }
+
+        SourceMediaInfo? probe;
+        try
+        {
+            probe = await media.ProbeAsync(token, ct);
+        }
+        catch (TranscodeException e) when (e.Code == "unknown_stream")
+        {
+            throw new PlaybackFailure("stream_expired", "The stream of this version expired; start the playback again.", null, [SuggestedActions.Retry]);
+        }
+        if (probe is null)
+        {
+            if (device.Vlc is not null && !excluded.Contains(PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc)))
+            {
+                var notes = new List<PlanReason> { PlanReason.Of("probe_failed", "The server could not read the file's streams; VLC plays the original file.") };
+                MarkReady(playback, revision, new ReadyState(DeliveryMode.Direct, EngineCaps.Vlc, $"/api/v1/stream/{token}", null, null,
+                    new PlaybackDecisionDto { Method = "direct", Engine = EngineCaps.Vlc, Reasons = notes.Select(Reason).ToList(), Skipped = [] }), null);
+                return;
+            }
+            throw new PlaybackFailure("probe_failed", "The server could not read the streams of this version.", null,
+                [SuggestedActions.Retry, SuggestedActions.OtherVersion]);
+        }
+
+        var server = await media.ServerAsync(ct);
+        var decision = PlaybackDecider.Decide(probe, device, preferences, allowTranscoding, server, audioIndex, subtitleIndex, excluded);
+        if (decision.Failure is { } impossible)
+        {
+            Update(playback, revision, p => p.Decision = DecisionDto(null, decision, decision.Skipped, ResolveNotes(p)));
+            throw impossible;
+        }
+
+        Update(playback, revision, p => p.State = States.Starting);
+        var skipped = decision.Skipped.ToList();
+        TranscodeException? lastError = null;
+        foreach (var candidate in decision.Viable)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (candidate.Method == DeliveryMode.Direct)
+            {
+                var ready = Ready(playback, candidate, candidate.Plan, probe, $"/api/v1/stream/{token}", decision, skipped);
+                MarkReady(playback, revision, ready, null);
+                return;
+            }
+            HlsRendition rendition;
+            try
+            {
+                rendition = await media.StartHlsAsync(token, candidate.Client, candidate.Limits, Label(playback), startTicks / (double)TimeSpan.TicksPerSecond,
+                    candidate.Method == DeliveryMode.Remux ? ModePreference.Remux : ModePreference.Transcode, CancellationToken.None);
+            }
+            catch (TranscodeException e)
+            {
+                logger.LogInformation("Playback {PlaybackId}: {Method} on {Engine} could not start ({Code}); trying the next method",
+                    playback.Id, candidate.Method.ToApi(), candidate.Engine.Name, e.Code);
+                skipped.Add(new SkippedCandidate(candidate.Method, candidate.Engine.Name, [PlanReason.Of(e.Code, e.Message)]));
+                lastError = e;
+                continue;
+            }
+            var hlsReady = Ready(playback, candidate, rendition.Plan, rendition.Media, $"/api/v1/transcode/{rendition.Id}/master.m3u8", decision, skipped);
+            if (!MarkReady(playback, revision, hlsReady, rendition.Id))
+                await media.CloseHlsAsync(rendition.Id, "playback switched or stopped while starting");
+            return;
+        }
+
+        var code = lastError?.Code ?? "playback_failed";
+        var suggestions = new List<string> { SuggestedActions.Retry };
+        if (code is "segment_timeout" or "transcode_failed")
+            suggestions.Add(SuggestedActions.LowerQuality);
+        if (device.Vlc is not null && preferences.Engine != EnginePreference.Vlc)
+            suggestions.Add(SuggestedActions.UseVlc);
+        suggestions.Add(SuggestedActions.OtherVersion);
+        Update(playback, revision, p => p.Decision = DecisionDto(null, decision, skipped, ResolveNotes(p)));
+        throw new PlaybackFailure(code, lastError?.Message ?? "The playback could not be started.", null, suggestions);
+    }
+
+    private ReadyState Ready(
+        Playback playback, PlaybackCandidate candidate, TranscodePlan plan, SourceMediaInfo source, string url, PlaybackDecision decision, IReadOnlyList<SkippedCandidate> skipped)
+    {
+        List<PlanReason> resolveNotes;
+        lock (playback.Gate)
+            resolveNotes = ResolveNotes(playback);
+        var dto = DecisionDto(candidate with { Plan = plan }, decision, skipped, resolveNotes);
+        return new ReadyState(candidate.Method, candidate.Engine.Name, url, MediaInfo(source, plan, candidate), plan, dto);
+    }
+
+    private bool MarkReady(Playback playback, int revision, ReadyState ready, string? rendition)
+    {
+        var now = time.GetUtcNow();
+        return Update(playback, revision, p =>
+        {
+            p.Ready = ready;
+            p.Decision = ready.Decision;
+            p.State = States.Ready;
+            p.ReadyAt = now;
+            p.CurrentHls = rendition;
+            for (var i = 0; i < p.PreviousHls.Count; i++)
+                p.PreviousHls[i] = p.PreviousHls[i] with { CloseAt = p.PreviousHls[i].CloseAt ?? now + _timings.SwitchGrace };
+            logger.LogInformation("Viewer playback {PlaybackId} ready: {Method} on {Engine}", p.Id, ready.Method.ToApi(), ready.Engine);
+        });
+    }
+
+    private void Fail(Playback playback, int revision, PlaybackFailure failure)
+    {
+        if (Update(playback, revision, p =>
+            {
+                p.Failure = failure;
+                p.State = States.Failed;
+            }))
+        {
+            logger.LogInformation("Viewer playback {PlaybackId} failed: {Code}", playback.Id, failure.Code);
+        }
+    }
+
+    /// <summary>Applies a change when the revision is still current; false once switched or stopped.</summary>
+    private bool Update(Playback playback, int revision, Action<Playback> change)
+    {
+        lock (playback.Gate)
+        {
+            if (playback.Stopped || playback.Revision != revision)
+                return false;
+            change(playback);
+            playback.UpdatedAt = time.GetUtcNow();
+            return true;
+        }
+    }
+
+    private PlaybackResponse Snapshot(Playback p, bool touch)
+    {
+        lock (p.Gate)
+        {
+            if (touch)
+                p.LastActivity = time.GetUtcNow();
+            var ready = p.State == States.Ready ? p.Ready : null;
+            var failed = p.State == States.Failed ? p.Failure : null;
+            return new PlaybackResponse
+            {
+                PlaybackId = p.Id,
+                Revision = p.Revision,
+                State = p.State,
+                WorkId = p.Work.WorkId,
+                CreatedAt = p.CreatedAt,
+                UpdatedAt = p.UpdatedAt,
+                PollAfterMs = p.State switch
+                {
+                    States.Ready or States.Failed => 0,
+                    States.Repairing => (p.Repair?.RetryAfterSeconds ?? 2) * 1000,
+                    _ => 500,
+                },
+                Attempts = p.Attempts.ToList(),
+                FallbackFrom = p.FallbackFrom,
+                Version = p.Version,
+                Repair = p.Repair,
+                StartPositionTicks = p.StartTicks,
+                ResumePositionTicks = p.ResumeTicks,
+                Method = ready?.Method.ToApi(),
+                Engine = ready?.Engine,
+                Url = ready?.Url,
+                StreamToken = ready is null ? null : p.StreamToken,
+                MediaInfo = ready?.MediaInfo,
+                Decision = p.State is States.Ready or States.Failed ? p.Decision : null,
+                Error = failed is null ? null : new PlaybackErrorDto { Code = failed.Code, Message = failed.Message, Params = failed.Parameters },
+                SuggestedActions = failed?.SuggestedActions,
+            };
+        }
+    }
+
+    private Playback? Find(ViewerCaller caller, string playbackId)
+        => playbackId.Length <= 64 && _playbacks.TryGetValue(playbackId, out var playback)
+           && playback.ViewerId == caller.ViewerId && playback.SessionId == caller.SessionId && !playback.Stopped
+            ? playback
+            : null;
+
+    private bool IsActive(Playback p, DateTimeOffset now)
+    {
+        lock (p.Gate)
+        {
+            if (p.Stopped || p.State == States.Failed)
+                return false;
+            return PreparingStates.Contains(p.State) || now - LastActive(p) <= HeartbeatWindow;
+        }
+    }
+
+    private static DateTimeOffset LastActive(Playback p)
+        => new[] { p.CreatedAt, p.ReadyAt ?? default, p.LastHeartbeat ?? default, p.LastSwitchAt ?? default }.Max();
+
+    private async Task EnsureAllowedAsync(ViewerEntity viewer, WorkKey work, CancellationToken ct)
+    {
+        var access = await policy.EvaluateAsync(viewer, work, ct);
+        if (!access.Allowed)
+            throw ViewerContentPolicy.AgeRestricted(access);
+    }
+
+    private List<PlaybackAttemptDto> Attempts(ResolveResponse response, Playback p)
+        => response.Attempts.Count == 0
+            ? p.Attempts
+            : response.Attempts.Select(a => new PlaybackAttemptDto { ReleaseId = a.ReleaseId, Name = NameOf(a.ReleaseId, p.Work.WorkId), Status = a.Status }).ToList();
+
+    private string? NameOf(string releaseId, string workId) => releases.Get(releaseId, workId)?.Release.Title;
+
+    private static List<PlanReason> ResolveNotes(Playback p)
+    {
+        var notes = new List<PlanReason>();
+        if (p.FallbackFrom is { } from)
+            notes.Add(PlanReason.Of("fallback_used", "The requested version is missing data; the next best version plays instead.", ("from", from.ReleaseId)));
+        if (p.Playability == "repairedReady")
+            notes.Add(PlanReason.Of("repaired_copy", "A locally repaired copy of this version plays."));
+        else if (p.Playability == "progressive")
+            notes.Add(PlanReason.Of("repair_progressive", "This version is being repaired while it plays."));
+        else if (p.ResolvedStatus == "degraded")
+            notes.Add(PlanReason.Of("release_degraded", "Some data of this version could not be checked; playback may stall."));
+        return notes;
+    }
+
+    private static PlaybackDecisionDto DecisionDto(PlaybackCandidate? chosen, PlaybackDecision decision, IReadOnlyList<SkippedCandidate> skipped, IReadOnlyList<PlanReason> resolveNotes)
+    {
+        var reasons = new List<PlanReason>(resolveNotes);
+        reasons.AddRange(decision.Notes);
+        if (chosen is not null)
+        {
+            reasons.AddRange(chosen.Notes);
+            reasons.AddRange(chosen.Plan.Reasons.Where(r => r.Code != "transcode_requested"));
+        }
+        else if (decision.Failure is { } failure)
+        {
+            reasons.Add(new PlanReason(failure.Code, failure.Message, failure.Parameters));
+        }
+        return new PlaybackDecisionDto
+        {
+            Method = chosen?.Method.ToApi(),
+            Engine = chosen?.Engine.Name,
+            Reasons = reasons.Select(Reason).ToList(),
+            Skipped = skipped.Select(s => new PlaybackSkippedDto { Method = s.Method.ToApi(), Engine = s.Engine, Reasons = s.Reasons.Select(Reason).ToList() }).ToList(),
+        };
+    }
+
+    private static PlanReasonResponse Reason(PlanReason r) => new(r.Code, r.Message, r.Params);
+
+    private static PlaybackMediaInfoDto MediaInfo(SourceMediaInfo source, TranscodePlan plan, PlaybackCandidate candidate)
+    {
+        var direct = candidate.Method == DeliveryMode.Direct;
+        var subtitlePlans = plan.Subtitles.ToDictionary(s => s.Stream.Index);
+        return new PlaybackMediaInfoDto
+        {
+            Container = TranscodePlanner.ContainerFamily(source.Container),
+            DurationTicks = (long)(source.DurationSeconds * TimeSpan.TicksPerSecond),
+            BitrateKbps = source.BitRate is { } bps ? (int)(bps / 1000) : null,
+            Video = source.Video is not { } video ? null : new PlaybackVideoDto
+            {
+                Index = video.Index,
+                Codec = video.Codec,
+                Profile = video.Profile,
+                BitDepth = video.BitDepth,
+                Width = video.Width,
+                Height = video.Height,
+                Fps = video.FrameRate is { } fps ? Math.Round(fps, 3) : null,
+                Hdr = video.Hdr.ToApi(),
+                DolbyVisionProfile = video.DolbyVisionProfile,
+                Interlaced = video.Interlaced,
+                VideoRange = candidate.Method == DeliveryMode.Transcode ? "SDR" : plan.VideoRange,
+                DeliveredCodec = plan.Video.Codec,
+                DeliveredHeight = plan.Video.Height,
+            },
+            AudioTracks = source.Audio.Select(a =>
+            {
+                var delivered = direct ? null : plan.Audio is { } target && target.SourceIndex == a.Index ? target : null;
+                return new PlaybackAudioTrackDto
+                {
+                    Index = a.Index,
+                    Codec = a.Codec,
+                    Channels = a.Channels,
+                    Language = TrackSelector.Lang(a.Language),
+                    Title = a.Title,
+                    Default = a.IsDefault,
+                    Selected = a.Index == candidate.Limits.AudioStreamIndex,
+                    DeliveredAs = direct ? "original" : delivered is null ? "none" : delivered.Copy ? "copy" : "converted",
+                    DeliveredCodec = direct ? a.Codec : delivered?.Codec,
+                    DeliveredChannels = direct ? a.Channels : delivered?.Channels,
+                };
+            }).ToList(),
+            SubtitleTracks = source.Subtitles.Select(s =>
+            {
+                var deliveredAs = direct
+                    ? candidate.Engine.SubtitleFormats is null || candidate.Engine.RendersSubtitle(s.Codec) ? SubtitlePlan.Embedded : SubtitlePlan.None
+                    : subtitlePlans.GetValueOrDefault(s.Index)?.DeliveredAs ?? SubtitlePlan.None;
+                return new PlaybackSubtitleTrackDto
+                {
+                    Index = s.Index,
+                    Codec = s.Codec,
+                    Language = TrackSelector.Lang(s.Language),
+                    Title = s.Title,
+                    Forced = s.IsForced,
+                    Default = s.IsDefault,
+                    TextBased = s.TextBased,
+                    Selected = s.Index == candidate.Limits.SubtitleStreamIndex && deliveredAs != SubtitlePlan.None,
+                    DeliveredAs = deliveredAs,
+                };
+            }).ToList(),
+        };
+    }
+
+    private static PlaybackFailure Map(Exception e) => e switch
+    {
+        ReleaseNotFoundException => new PlaybackFailure("release_not_found", "This version is not known to the server (any more).", null, [SuggestedActions.OtherVersion]),
+        NoPlayableFileException => new PlaybackFailure("no_playable_file", "This version contains no playable video file.", null, [SuggestedActions.OtherVersion]),
+        NzbOriginNotAllowedException => new PlaybackFailure("nzb_host_not_allowed", "This version's download host is not allowed.", null, [SuggestedActions.OtherVersion]),
+        InvalidDataException => new PlaybackFailure("invalid_release", "This version could not be read.", null, [SuggestedActions.OtherVersion]),
+        ResourceCapacityException => new PlaybackFailure("capacity_reached", "The server is busy with other streams; try again shortly.", null, [SuggestedActions.Retry]),
+        NzbUnexpectedContentException or HttpRequestException or IOException => new PlaybackFailure("nzb_fetch_failed",
+            "The version could not be fetched from its indexer.", null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
+        UsenetException => new PlaybackFailure("usenet_unreachable", "The Usenet provider could not be reached.", null, [SuggestedActions.Retry]),
+        TranscodeException t => new PlaybackFailure(t.Code, t.Message, null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
+        _ => new PlaybackFailure("playback_failed", "The playback could not be prepared.", null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
+    };
+
+    private static bool IsTerminal(string state) => state is "ready" or "failed" or "cancelled" or "evicted";
+
+    private static string? TokenOf(string? streamUrl)
+        => streamUrl is { Length: > 0 } url ? Uri.UnescapeDataString(url[(url.LastIndexOf('/') + 1)..]) : null;
+
+    private static string Label(Playback p)
+    {
+        var label = $"viewer:{p.Username}@{p.DeviceName}";
+        return label.Length <= 64 ? label : label[..64];
+    }
+
+    private static string? ReleaseId(string? value)
+    {
+        if (value is null)
+            return null;
+        var trimmed = value.Trim();
+        return trimmed.Length is > 0 and <= 256 && !trimmed.Any(char.IsControl)
+            ? trimmed
+            : throw Invalid("'releaseId' must be a release id from the versions list.");
+    }
+
+    private static long? Position(long? ticks, string field)
+        => ticks is < 0 or > 10L * 24 * 3600 * TimeSpan.TicksPerSecond ? throw Invalid($"'{field}' must be between 0 and 10 days.") : ticks;
+
+    private static void ValidateIndexes(int? audio, int? subtitle)
+    {
+        if (audio is < 0 or > 1_000)
+            throw Invalid("'audioStreamIndex' must be a source stream index.");
+        if (subtitle is < -1 or > 1_000)
+            throw Invalid("'subtitleStreamIndex' must be a source stream index or -1.");
+    }
+
+    private static ViewerProblem Invalid(string message) => ViewerProblem.BadRequest("invalid_playback_request", message);
+
+    private static ViewerProblem NotFound() => ViewerProblem.NotFound("playback_not_found", "No playback with this id exists for this device (stopped or expired).");
+
+    private sealed class HopObserver(ViewerPlaybackService owner, Playback playback, int revision, string requested) : IResolveObserver
+    {
+        public void HopStarted(string releaseId, int hop)
+            => owner.Update(playback, revision, p =>
+            {
+                if (hop == 0)
+                    p.Attempts.RemoveAll(a => a.ReleaseId == releaseId && a.Status == "resolving");
+                p.Attempts.Add(new PlaybackAttemptDto { ReleaseId = releaseId, Name = owner.NameOf(releaseId, p.Work.WorkId), Status = "resolving" });
+                if (hop > 0)
+                {
+                    p.State = States.Fallback;
+                    p.FallbackFrom ??= new PlaybackReleaseDto { ReleaseId = requested, Name = owner.NameOf(requested, p.Work.WorkId) };
+                }
+            });
+
+        public void HopFinished(string releaseId, string status)
+            => owner.Update(playback, revision, p =>
+            {
+                var index = p.Attempts.FindLastIndex(a => a.ReleaseId == releaseId);
+                if (index >= 0)
+                    p.Attempts[index] = p.Attempts[index] with { Status = status };
+            });
+    }
+
+    private sealed record PreviousRendition(string Id, DateTimeOffset? CloseAt);
+
+    private sealed record ReadyState(DeliveryMode Method, string Engine, string Url, PlaybackMediaInfoDto? MediaInfo, TranscodePlan? Plan, PlaybackDecisionDto Decision);
+
+    private sealed class Playback
+    {
+        public readonly object Gate = new();
+        public required string Id { get; init; }
+        public required string ViewerId { get; init; }
+        public required string SessionId { get; init; }
+        public required string Username { get; init; }
+        public required string DeviceName { get; init; }
+        public required WorkKey Work { get; init; }
+        public required DateTimeOffset CreatedAt { get; init; }
+        public required ViewerEntity Viewer { get; set; }
+        public string? RequestedReleaseId { get; set; }
+        public required DeviceCaps Device { get; init; }
+        public required PlaybackPreferences Preferences { get; set; }
+        public int? AudioIndex { get; set; }
+        public int? SubtitleIndex { get; set; }
+        public long StartTicks { get; set; }
+        public long? ResumeTicks { get; init; }
+        public long? PositionTicks { get; set; }
+        public HashSet<string> Excluded { get; } = new(StringComparer.Ordinal);
+        public int Revision { get; set; }
+        public required string State { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+        public List<PlaybackAttemptDto> Attempts { get; set; } = [];
+        public PlaybackReleaseDto? FallbackFrom { get; set; }
+        public VersionDto? Version { get; set; }
+        public RepairStatusInfo? Repair { get; set; }
+        public string? StreamToken { get; set; }
+        public string? ResolvedReleaseId { get; set; }
+        public string? ResolvedStatus { get; set; }
+        public string? Playability { get; set; }
+        public ReadyState? Ready { get; set; }
+        public PlaybackDecisionDto? Decision { get; set; }
+        public PlaybackFailure? Failure { get; set; }
+        public string? CurrentHls { get; set; }
+        public List<PreviousRendition> PreviousHls { get; } = [];
+        public DateTimeOffset LastActivity { get; set; }
+        public DateTimeOffset? LastHeartbeat { get; set; }
+        public DateTimeOffset? ReadyAt { get; set; }
+        public DateTimeOffset? LastSwitchAt { get; set; }
+        public CancellationTokenSource Cancellation { get; set; } = new();
+        public bool Stopped { get; set; }
+    }
+}

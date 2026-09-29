@@ -56,6 +56,19 @@ public sealed class TranscodeSessionManager(
         return (planned.Media, planned.Plan, planned.Settings, planned.Capabilities);
     }
 
+    /// <summary>The full probe a plan uses (cached per source for 10 minutes); null when ffprobe cannot read it.</summary>
+    public async Task<SourceMediaInfo?> ProbeSourceAsync(TranscodeSource source, CancellationToken ct)
+    {
+        try
+        {
+            return await ProbeAsync(source, ct);
+        }
+        catch (TranscodeException e) when (e.Code == "probe_failed")
+        {
+            return null;
+        }
+    }
+
     private sealed record TimedPlan(
         SourceMediaInfo Media, TranscodePlan Plan, TranscodingSettings Settings, FfmpegCapabilities Capabilities,
         double CapabilitiesMs, double ProbeMs, bool ProbeCached, double PlanMs);

@@ -175,12 +175,60 @@ public sealed class FfmpegArgumentBuilderTests
     }
 
     [Fact]
+    public void BurnIn_OverlaysTheImageSubtitle_InOneCpuGraph_BeforeScaling()
+    {
+        var settings = new TranscodingSettings { Acceleration = HardwareAcceleration.VideoToolbox };
+        var capabilities = Capabilities(Accelerator(HardwareAcceleration.VideoToolbox, decode: [DecodeCodecs.Hevc10]));
+        var media = Media(codec: "hevc", bitDepth: 10, hdr: HdrFormat.Hdr10, subtitles: [Subtitle(2, "hdmv_pgs_subtitle", "ger"), Subtitle(3, "subrip")]);
+        var plan = Plan(media, settings, capabilities, limits: new TranscodeLimits(MaxHeight: 720, SubtitleStreamIndex: 2, BurnInSubtitle: true));
+        var args = FfmpegArgumentBuilder.Build(Spec(plan, settings, capabilities));
+
+        Assert.Equal(2, plan.BurnIn!.Index);
+        Assert.Equal((false, true), (plan.HardwareDecode, plan.HardwareEncode));
+        AssertSequence(args, "-filter_complex",
+            $"[0:0]{FfmpegArgumentBuilder.SoftwareToneMapChain}[base];[base][0:2]overlay=eof_action=pass:repeatlast=0[burned];[burned]scale=w=1280:h=720,format=nv12[vout]",
+            "-map", "[vout]", "-map", "0:1");
+        Assert.DoesNotContain("-vf", args);
+        Assert.DoesNotContain("-hwaccel", args);
+    }
+
+    [Fact]
+    public void BurnIn_OfATextSubtitle_IsNotPossible_AndNotRequestedMeansNoOverlay()
+    {
+        var media = Media(subtitles: [Subtitle(2, "subrip"), Subtitle(3, "dvd_subtitle")]);
+
+        var text = Plan(media, limits: new TranscodeLimits(SubtitleStreamIndex: 2, BurnInSubtitle: true));
+        var notRequested = Plan(media, limits: new TranscodeLimits(SubtitleStreamIndex: 3));
+
+        Assert.Null(text.BurnIn);
+        Assert.Null(notRequested.BurnIn);
+        AssertSequence(FfmpegArgumentBuilder.Build(Spec(notRequested)), "-map", "0:0", "-map", "0:1");
+        Assert.DoesNotContain("-filter_complex", FfmpegArgumentBuilder.Build(Spec(text)));
+    }
+
+    [Fact]
     public void AacSource_IsCopiedInsteadOfReencoded()
     {
         var plan = Plan(Media(audioCodec: "aac", channels: 2));
         var args = FfmpegArgumentBuilder.Build(Spec(plan));
 
         AssertSequence(args, "-c:a", "copy");
+    }
+
+    [Fact]
+    public void CopiedAudio_OfARestartedRun_DropsPacketsBeforeTheRestartPoint_OnFfmpeg6AndLater()
+    {
+        var plan = Plan(Media(audioCodec: "aac", channels: 2));
+
+        var restart = FfmpegArgumentBuilder.Build(Spec(plan, startSegment: 2));
+        var fromZero = FfmpegArgumentBuilder.Build(Spec(plan));
+        var ffmpeg5 = FfmpegArgumentBuilder.Build(Spec(plan, capabilities: Capabilities() with { MajorVersion = 5 }, startSegment: 2));
+        var converted = FfmpegArgumentBuilder.Build(Spec(Plan(Media(audioCodec: "eac3", channels: 6)), startSegment: 2));
+
+        AssertSequence(restart, "-c:a", "copy", "-bsf:a", "noise=drop=lt(pts*tb\\,8)");
+        Assert.DoesNotContain("-bsf:a", fromZero);
+        Assert.DoesNotContain("-bsf:a", ffmpeg5);
+        Assert.DoesNotContain("-bsf:a", converted);
     }
 
     [Fact]

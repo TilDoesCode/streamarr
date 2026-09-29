@@ -6886,6 +6886,315 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/playback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts preparing a playback; poll `GET {playbackId}` until `ready` or `failed`. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PlaybackStartRequest"];
+                    "text/json": components["schemas"]["PlaybackStartRequest"];
+                    "application/*+json": components["schemas"]["PlaybackStartRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackResponse"];
+                        "application/json": components["schemas"]["PlaybackResponse"];
+                        "text/json": components["schemas"]["PlaybackResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/playback/{playbackId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The playback's state; once `ready` it carries the URL, method, engine, media info and why. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    playbackId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackResponse"];
+                        "application/json": components["schemas"]["PlaybackResponse"];
+                        "text/json": components["schemas"]["PlaybackResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/playback/{playbackId}/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-plans at a position with another audio/subtitle track, engine, quality or version; the previous URL stays valid for a short grace period after the new one is ready. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    playbackId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PlaybackSwitchRequest"];
+                    "text/json": components["schemas"]["PlaybackSwitchRequest"];
+                    "application/*+json": components["schemas"]["PlaybackSwitchRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackResponse"];
+                        "application/json": components["schemas"]["PlaybackResponse"];
+                        "text/json": components["schemas"]["PlaybackResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/playback/{playbackId}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ends the playback: stops its remux/transcode sessions and frees the stream slot. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    playbackId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/watch/progress": {
         parameters: {
             query?: never;
@@ -6895,7 +7204,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Report playback of a movie or episode (start, periodic progress, stop). */
+        /** Report playback of a movie or episode (start, periodic progress, stop); a server `playbackId` fills in release and stream token, keeps that playback alive, and `stop` ends it. */
         post: {
             parameters: {
                 query?: never;
@@ -7504,6 +7813,17 @@ export interface components {
             attemptsTruncated?: boolean;
             attempts?: components["schemas"]["ArticleProviderAttemptResponse"][] | null;
         };
+        AudioCodecProfileDto: {
+            /** @description `aac`, `ac3`, `eac3`, `truehd`, `dts`, `flac`, `opus`, `mp3`, … */
+            codec?: string | null;
+            /**
+             * Format: int32
+             * @description Channels the engine decodes for this codec (only checked for direct play; decoders usually downmix).
+             */
+            maxChannels?: number | null;
+            /** @description True when the engine bitstreams this codec to the audio output (no channel limit). */
+            passthrough?: boolean;
+        };
         BenchmarkCreateRequest: {
             sampleId: string;
             /** Format: int32 */
@@ -7979,6 +8299,37 @@ export interface components {
             backend?: string | null;
             passed?: boolean | null;
             detail?: string | null;
+        };
+        /** @description What the device can play; the server decides the method from it. */
+        DeviceProfileDto: {
+            /** @description `ios`, `ipados`, `tvos`, `android`, `androidtv` or `web`. */
+            platform?: string | null;
+            /** @description Playback engines in the device's order of preference (the built-in `native`/`web` one first, `vlc` when bundled). */
+            engines?: components["schemas"]["EngineProfileDto"][] | null;
+            /** @description True when the VLC engine can be used on this device. */
+            vlcAvailable?: boolean;
+            /**
+             * Format: int32
+             * @description Optional bandwidth cap of the connection.
+             */
+            maxBitrateKbps?: number | null;
+        };
+        EngineProfileDto: {
+            /** @description `native` (ExoPlayer, AVPlayer), `web` (browser video + hls.js / Safari HLS) or `vlc`. */
+            engine?: string | null;
+            /** @description Containers the engine plays from a URL: `mp4`, `mkv`, `webm`, `ts`, `mpeg`, … */
+            containers?: string[] | null;
+            videoCodecs?: components["schemas"]["VideoCodecProfileDto"][] | null;
+            audioCodecs?: components["schemas"]["AudioCodecProfileDto"][] | null;
+            /** @description Subtitle formats the engine renders from the original file (`srt`, `ass`, `webvtt`, `pgs`, `vobsub`, …); omitted = not declared. */
+            subtitleFormats?: string[] | null;
+            /** @description True when the engine plays fMP4 HLS (needed for a server remux or transcode). */
+            hls?: boolean;
+            /**
+             * Format: int32
+             * @description Channels of the audio output path (2 for stereo, 6 or 8 for a surround receiver); default 2.
+             */
+            maxAudioChannels?: number | null;
         };
         /**
          * @description Operational view of one server-managed ephemeral file. SizeBytes counts toward the logical
@@ -8486,6 +8837,75 @@ export interface components {
             /** @description Redacted failure classification when phase is "failed". */
             error?: string | null;
         };
+        PlaybackAttemptDto: {
+            releaseId: string | null;
+            name?: string | null;
+            /** @description `resolving`, `ready`, `degraded` or `dead`. */
+            status: string | null;
+        };
+        PlaybackAudioTrackDto: {
+            /** Format: int32 */
+            index: number;
+            codec: string | null;
+            /** Format: int32 */
+            channels: number;
+            language?: string | null;
+            title?: string | null;
+            default?: boolean;
+            selected?: boolean;
+            /** @description `original` (direct play: the engine switches locally), `copy`, `converted` or `none` (switch to hear it). */
+            deliveredAs: string | null;
+            deliveredCodec?: string | null;
+            /** Format: int32 */
+            deliveredChannels?: number | null;
+        };
+        PlaybackDecisionDto: {
+            method?: string | null;
+            engine?: string | null;
+            /** @description Stable codes with `params` for localized texts: the planner's reasons plus track and engine notes. */
+            reasons: components["schemas"]["PlanReasonResponse"][] | null;
+            /** @description Higher-ranked methods that were not possible, each with why. */
+            skipped: components["schemas"]["PlaybackSkippedDto"][] | null;
+        };
+        PlaybackErrorDto: {
+            code: string | null;
+            message: string | null;
+            params?: {
+                [key: string]: string;
+            } | null;
+        };
+        PlaybackMediaInfoDto: {
+            /** @description Container family of the original file (`mkv`, `mp4`, `mpeg`, …). */
+            container?: string | null;
+            /** Format: int64 */
+            durationTicks?: number;
+            /** Format: int32 */
+            bitrateKbps?: number | null;
+            video?: components["schemas"]["PlaybackVideoDto"];
+            audioTracks: components["schemas"]["PlaybackAudioTrackDto"][] | null;
+            subtitleTracks: components["schemas"]["PlaybackSubtitleTrackDto"][] | null;
+        };
+        /** @description User preferences for one playback; on a switch, set fields replace the current ones. */
+        PlaybackPreferencesDto: {
+            /** @description `auto` (default: native, then VLC as §2 ranks them), `native` (never VLC) or `vlc` (always VLC when available). */
+            engine?: string | null;
+            /**
+             * Format: int32
+             * @description Highest video height the viewer wants; lower than the source means a transcode.
+             */
+            maxHeight?: number | null;
+            /**
+             * Format: int32
+             * @description Highest total bitrate the viewer wants (combined with the device's bandwidth cap).
+             */
+            maxBitrateKbps?: number | null;
+            /** @description Preferred audio language (ISO 639-1 or 639-2, e.g. `de` or `ger`). */
+            audioLanguage?: string | null;
+            /** @description Preferred subtitle language. */
+            subtitleLanguage?: string | null;
+            /** @description `off`, `forced` (default: only forced subtitles, e.g. for foreign-language scenes) or `always`. */
+            subtitleMode?: string | null;
+        };
         /**
          * @description Merged watched-time intervals for one playback scope (work × playback session × user),
          *     folded from progress heartbeats. Spans survive session close, so failed attempts keep
@@ -8526,6 +8946,144 @@ export interface components {
             /** @description Capability token this span was watched through; null when the front-end sent none. */
             sessionToken?: string | null;
             releaseId?: string | null;
+        };
+        PlaybackReleaseDto: {
+            releaseId: string | null;
+            name?: string | null;
+        };
+        /** @description One viewer playback: its preparation state and, once `ready`, what to play and why. */
+        PlaybackResponse: {
+            playbackId: string | null;
+            /**
+             * Format: int32
+             * @description Increments with every switch; the state belongs to this revision.
+             */
+            revision: number;
+            /** @description `queued`, `resolving`, `fallback`, `repairing`, `planning`, `starting`, `ready` or `failed`. */
+            state: string | null;
+            workId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /**
+             * Format: int32
+             * @description Suggested delay before the next poll; 0 once ready or failed.
+             */
+            pollAfterMs?: number;
+            /** @description Every release tried, in order, with its health (`resolving`, `ready`, `degraded`, `dead`). */
+            attempts: components["schemas"]["PlaybackAttemptDto"][] | null;
+            fallbackFrom?: components["schemas"]["PlaybackReleaseDto"];
+            version?: components["schemas"]["VersionDto"];
+            repair?: components["schemas"]["RepairStatusInfo"];
+            /**
+             * Format: int64
+             * @description Where this revision starts.
+             */
+            startPositionTicks?: number;
+            /**
+             * Format: int64
+             * @description The viewer's saved position for this work (null = none).
+             */
+            resumePositionTicks?: number | null;
+            /** @description `direct`, `remux` or `transcode` (ready only). */
+            method?: string | null;
+            /** @description `native`, `web` or `vlc` (ready only). */
+            engine?: string | null;
+            /** @description Capability path relative to the server origin (`/api/v1/stream/{token}` or `/api/v1/transcode/{capability}/master.m3u8`); players need no auth headers. */
+            url?: string | null;
+            /** @description The stream capability of the resolved release. */
+            streamToken?: string | null;
+            mediaInfo?: components["schemas"]["PlaybackMediaInfoDto"];
+            decision?: components["schemas"]["PlaybackDecisionDto"];
+            error?: components["schemas"]["PlaybackErrorDto"];
+            /** @description `retry`, `otherVersion`, `lowerQuality`, `useVlc` (failed only). */
+            suggestedActions?: string[] | null;
+        };
+        PlaybackSkippedDto: {
+            method: string | null;
+            engine: string | null;
+            reasons: components["schemas"]["PlanReasonResponse"][] | null;
+        };
+        PlaybackStartRequest: {
+            /** @description Canonical movie or episode work id, e.g. `tmdb-movie-603` or `tmdb-tv-1396-s01e01`. */
+            workId?: string | null;
+            /** @description A version from `/viewer/catalog/works/{workId}/versions`; omitted = the recommended (rank 1) version. */
+            releaseId?: string | null;
+            /**
+             * Format: int64
+             * @description Where playback starts (default 0); `resumePositionTicks` in the answer is the saved position.
+             */
+            startPositionTicks?: number | null;
+            /**
+             * Format: int32
+             * @description Source stream index of the audio track; omitted = chosen from `preferences.audioLanguage`, then the default track.
+             */
+            audioStreamIndex?: number | null;
+            /**
+             * Format: int32
+             * @description Source stream index of the subtitle; `-1` = none; omitted = chosen from `preferences.subtitleMode` and `subtitleLanguage`.
+             */
+            subtitleStreamIndex?: number | null;
+            device?: components["schemas"]["DeviceProfileDto"];
+            preferences?: components["schemas"]["PlaybackPreferencesDto"];
+        };
+        PlaybackSubtitleTrackDto: {
+            /** Format: int32 */
+            index: number;
+            codec: string | null;
+            language?: string | null;
+            title?: string | null;
+            forced?: boolean;
+            default?: boolean;
+            textBased?: boolean;
+            selected?: boolean;
+            /** @description `embedded` (direct play), `webvtt` (remux rendition), `burnedIn` (in the transcoded picture) or `none`. */
+            deliveredAs: string | null;
+        };
+        PlaybackSwitchRequest: {
+            /**
+             * Format: int64
+             * @description Where the new rendition starts; default = the last reported position.
+             */
+            positionTicks?: number | null;
+            /** @description Another version of the same work. */
+            releaseId?: string | null;
+            /** Format: int32 */
+            audioStreamIndex?: number | null;
+            /**
+             * Format: int32
+             * @description `-1` turns subtitles off.
+             */
+            subtitleStreamIndex?: number | null;
+            preferences?: components["schemas"]["PlaybackPreferencesDto"];
+            /** @description The current method failed on the device: continue with the next one in the ranking. */
+            stepDown?: boolean;
+        };
+        PlaybackVideoDto: {
+            /** Format: int32 */
+            index: number;
+            codec: string | null;
+            profile?: string | null;
+            /** Format: int32 */
+            bitDepth: number;
+            /** Format: int32 */
+            width: number;
+            /** Format: int32 */
+            height: number;
+            /** Format: double */
+            fps?: number | null;
+            /** @description `none`, `hdr10`, `hlg` or `dolbyvision`. */
+            hdr: string | null;
+            /** Format: int32 */
+            dolbyVisionProfile?: number | null;
+            interlaced?: boolean;
+            /** @description What the player receives: `SDR`, `PQ` or `HLG` (a transcode is SDR). */
+            videoRange?: string | null;
+            /** @description The video codec the player receives (the source codec unless transcoded). */
+            deliveredCodec?: string | null;
+            /** Format: int32 */
+            deliveredHeight?: number | null;
         };
         /** @description Effective low-priority pre-download policy. */
         PreDownloadConfigResponse: {
@@ -9915,6 +10473,21 @@ export interface components {
             /** @description Why, plus every assumption the prediction made (e.g. `container_assumed`). */
             predictionReasons?: components["schemas"]["PredictionReasonDto"][] | null;
         };
+        VideoCodecProfileDto: {
+            /** @description `h264`, `hevc`, `av1`, `vp9`, `mpeg2video`, `mpeg4`, `vc1`, … */
+            codec?: string | null;
+            /** Format: int32 */
+            maxWidth?: number | null;
+            /** Format: int32 */
+            maxHeight?: number | null;
+            /**
+             * Format: int32
+             * @description Highest decodable bit depth; default 8 for H.264 and 10 for HEVC/AV1/VP9.
+             */
+            maxBitDepth?: number | null;
+            /** @description HDR formats rendered for this codec: `hdr10`, `hlg`, `dolbyvision`. */
+            hdrFormats?: string[] | null;
+        };
         ViewerAdminResponse: {
             accountType?: string | null;
             id: string | null;
@@ -10223,9 +10796,9 @@ export interface components {
             positionTicks?: number;
             /** Format: int64 */
             durationTicks?: number | null;
-            /** @description Client-chosen id of one playback, used to count a completed play exactly once. */
+            /** @description Id of one playback, used to count a completed play exactly once; a `/viewer/playback` id of this device also fills `releaseId`/`streamToken`, keeps that playback alive, and `stop` ends it. */
             playbackId?: string | null;
-            /** @description Optional: forwards the report to the shared event stream (pre-download, notifications). */
+            /** @description Optional (filled from a server playback): forwards the report to the shared event stream (pre-download, notifications). */
             releaseId?: string | null;
             streamToken?: string | null;
             title?: string | null;

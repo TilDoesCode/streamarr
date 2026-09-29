@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Streamarr.Server.Transcoding;
+using Streamarr.Server.Viewers.Playback;
 using Streamarr.Tools.HlsSim;
 using Xunit.Abstractions;
 
@@ -389,6 +390,83 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
         Assert.DoesNotContain("SUBTITLES", await raw.GetStringAsync(transcode.GetProperty("playlistUrl").GetString()));
     }
 
+    [Fact]
+    public async Task PgsSubtitle_BurnedIntoATranscode_ShowsOnlyWhileItIsOnScreen_AndARestartedRunStillPlays()
+    {
+        var token = await fixture.ResolveStreamTokenAsync(_machine, RemuxServerFixture.PgsMkv, RemuxServerFixture.RemuxWorkId);
+        var media = fixture.GetRequiredService<IPlaybackMedia>();
+        var source = await media.ProbeAsync(token, CancellationToken.None);
+        var pgs = Assert.Single(source!.Subtitles);
+        Assert.Equal(("hdmv_pgs_subtitle", false), (pgs.Codec, pgs.TextBased));
+        var client = new ClientProfile { VideoCodecs = ["h264"], AudioCodecs = ["aac"], Containers = ["mp4"], MaxAudioChannels = 2, SubtitleFormats = ["webvtt"] };
+        var limits = new TranscodeLimits(SubtitleStreamIndex: pgs.Index, BurnInSubtitle: true);
+
+        var rendition = await media.StartHlsAsync(token, client, limits, "burn-in test", 0, ModePreference.Transcode, CancellationToken.None);
+        var restarted = await media.StartHlsAsync(token, client, limits, "burn-in seek test", 8, ModePreference.Transcode, CancellationToken.None);
+        var joined = Path.Combine(Path.GetTempPath(), $"burn-in-{Guid.NewGuid():N}.mp4");
+        try
+        {
+            Assert.Equal(DeliveryMode.Transcode, rendition.Mode);
+            Assert.Equal(pgs.Index, rendition.Plan.BurnIn?.Index);
+            Assert.False(rendition.Plan.HardwareDecode);
+            Assert.Contains("subtitle_burned_in", rendition.Plan.Reasons.Select(r => r.Code));
+            Assert.Equal(SubtitlePlan.BurnedIn, Assert.Single(rendition.Plan.Subtitles).DeliveredAs);
+            var playlist = $"/api/v1/transcode/{rendition.Id}/master.m3u8";
+            var report = await SimulateUrlAsync(playlist, new HlsSimOptions { PlaybackRate = 0, Decode = true });
+            Assert.True(report.Passed, string.Join('\n', report.Errors));
+            var seek = await SimulateUrlAsync($"/api/v1/transcode/{restarted.Id}/master.m3u8", new HlsSimOptions { PlaybackRate = 0, StartPositionSeconds = 8, Decode = true });
+            Assert.True(seek.Passed, string.Join('\n', seek.Errors));
+
+            using var raw = fixture.CreateClient(authenticated: false);
+            await using (var file = File.Create(joined))
+            {
+                await file.WriteAsync(await raw.GetByteArrayAsync($"/api/v1/transcode/{rendition.Id}/init.mp4"));
+                for (var i = 0; i < report.PlaylistSegments; i++)
+                    await file.WriteAsync(await raw.GetByteArrayAsync($"/api/v1/transcode/{rendition.Id}/{i}.m4s"));
+            }
+            var a = await LumaAsync(joined, RemuxServerFixture.PgsBoxA);
+            var b = await LumaAsync(joined, RemuxServerFixture.PgsBoxB);
+            Assert.All(Window(a, 0.5, 3.5), y => Assert.True(y > 200, $"box A shown at 0.5-3.5 s: {y}"));
+            Assert.All(Window(b, 0.5, 3.5), y => Assert.True(y < 40, $"box B hidden at 0.5-3.5 s: {y}"));
+            Assert.All(Window(a, 4.5, 5.5).Concat(Window(b, 4.5, 5.5)), y => Assert.True(y < 40, $"nothing shown at 4.5-5.5 s: {y}"));
+            Assert.All(Window(b, 6.5, 9.5), y => Assert.True(y > 200, $"box B shown at 6.5-9.5 s: {y}"));
+            Assert.All(Window(a, 6.5, 9.5).Concat(Window(b, 10.5, 11.5)), y => Assert.True(y < 40, $"box A hidden later, box B gone after 10 s: {y}"));
+
+            await using (var file = File.Create(joined))
+            {
+                await file.WriteAsync(await raw.GetByteArrayAsync($"/api/v1/transcode/{restarted.Id}/init.mp4"));
+                await file.WriteAsync(await raw.GetByteArrayAsync($"/api/v1/transcode/{restarted.Id}/2.m4s"));
+            }
+            Assert.All(Window(await LumaAsync(joined, RemuxServerFixture.PgsBoxB), 8.2, 9.8), y => Assert.True(y > 200, $"box B (on screen since 6 s) shown after the restart at 8 s: {y}"));
+        }
+        finally
+        {
+            await media.CloseHlsAsync(rendition.Id, "test done");
+            await media.CloseHlsAsync(restarted.Id, "test done");
+            File.Delete(joined);
+        }
+    }
+
+    /// <summary>Mean luma of a subtitle box per decoded frame (presentation seconds, limited range 16-235).</summary>
+    private static async Task<IReadOnlyList<(double Seconds, double Luma)>> LumaAsync(string file, PgsFixture.Box box)
+    {
+        var csv = await KeyframeFixture.RunAsync("ffprobe", "-v", "error", "-f", "lavfi", "-i",
+            $"movie={file},crop={box.Width}:{box.Height}:{box.X}:{box.Y},signalstats",
+            "-show_entries", "frame=pts_time:frame_tags=lavfi.signalstats.YAVG", "-of", "csv=p=0");
+        return csv.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .Where(parts => parts.Length >= 2)
+            .Select(parts => (double.Parse(parts[0], CultureInfo.InvariantCulture), double.Parse(parts[1], CultureInfo.InvariantCulture)))
+            .ToList();
+    }
+
+    private static List<double> Window(IReadOnlyList<(double Seconds, double Luma)> frames, double from, double to)
+    {
+        var inside = frames.Where(f => f.Seconds >= from && f.Seconds <= to).Select(f => f.Luma).ToList();
+        Assert.True(inside.Count >= 20, $"frames between {from} and {to} s: {inside.Count}");
+        return inside;
+    }
+
     private async Task<JsonElement> CreateAsync(string releaseId, object options, string workId = RemuxServerFixture.RemuxWorkId)
     {
         var token = await fixture.ResolveStreamTokenAsync(_machine, releaseId, workId);
@@ -409,11 +487,14 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    private async Task<HlsSimReport> SimulateAsync(JsonElement created, HlsSimOptions options)
+    private Task<HlsSimReport> SimulateAsync(JsonElement created, HlsSimOptions options)
+        => SimulateUrlAsync(created.GetProperty("playlistUrl").GetString()!, options);
+
+    private async Task<HlsSimReport> SimulateUrlAsync(string playlistUrl, HlsSimOptions options)
     {
         using var raw = fixture.CreateClient(authenticated: false);
         var simulator = new HlsPlayerSimulator(raw, options, line => output.WriteLine(line));
-        var report = await simulator.RunAsync(new Uri(new Uri(fixture.BaseUrl), created.GetProperty("playlistUrl").GetString()), CancellationToken.None);
+        var report = await simulator.RunAsync(new Uri(new Uri(fixture.BaseUrl), playlistUrl), CancellationToken.None);
         foreach (var warning in report.Warnings)
             output.WriteLine($"warning: {warning}");
         return report;

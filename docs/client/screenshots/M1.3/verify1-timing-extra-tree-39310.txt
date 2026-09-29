@@ -1,0 +1,54 @@
+# M1.3 verification round 1: console captures (verifier scripts in /tmp/m13v, tree Dev World on 39310)
+
+## timing.py (Dev World restarted with Streamarr__ViewerPlaybackIdleSeconds=60, Streamarr__ViewerPlaybackHeartbeatSeconds=15, Streamarr__MaxConcurrentResolves=1), 3 min 1 s
+queued test states: queued ['resolving', 'fallback', 'planning', 'starting', 'ready'] ['queued', 'resolving', 'planning', 'ready']
+PASS queued: a playback waiting for the resolve slot shows 'queued', then becomes ready - queued ['queued', 'resolving', 'planning', 'ready']
+PASS queued: the dead-release playback still falls back - ['resolving', 'fallback', 'planning', 'starting', 'ready']
+PASS window: phone 409 right after the TV became ready - 409
+PASS window: 20 s after ready without a heartbeat (polls only) the TV no longer counts -> phone 202 - 202
+PASS window: the TV playback itself still exists - 200
+PASS window: phone kept active by heartbeats -> TV gets 409 naming Gast Phone - 409 too_many_streams params.device 'Gast Phone'
+PASS stop frees the slot: phone stop 204
+PASS stop frees the slot: TV 202 right after the phone stopped - 202
+PASS grace: D switched, old URL 200 immediately
+PASS grace: switched-away URL closed 30-50 s after the switch - closed after 35.1 s
+PASS grace: the new D URL still works
+PASS idle: A (no poll/heartbeat for 95 s) expired -> 404 - 404   (A's 0.m4s was fetched every 5 s meanwhile)
+PASS idle: A's HLS session closed - []
+PASS idle: B kept alive (heartbeats) -> 200 ready, HLS 200 - 200
+PASS idle: C kept alive (polls) -> 200 ready, HLS 200 - 200
+PASS no transcoding sessions left - []
+OK: 16 passed, 0 failed
+
+## extra.py (default settings)
+maxBitrate 300: ready transcode ['bitrate_exceeds_limit'] 384
+PASS maxBitrateKbps 300 below the ~385 kbps source -> transcode
+PASS maxBitrate transcode plays (hlssim) - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS device bandwidth cap -> transcode + bandwidth_limit note (params.max 300) + bitrate_exceeds_limit
+PASS subtitleMode always + de -> German SRT selected as webvtt
+PASS subtitle_language reason
+PASS switch subtitleStreamIndex -1 -> nothing selected
+PASS switch to unknown subtitle 99 -> failed unknown_subtitle_stream (params.index 99)
+PASS switch after a failed switch recovers
+PASS ATV direct: SRT deliveredAs embedded, selected
+PASS transcode started at 120 s + hlssim seek to 150 s - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+OK: 10 passed, 0 failed
+(lifecycle.py's one FAIL "maxBitrateKbps 1500 -> transcode" was a verifier assumption: the source is ~385 kbps, so 1500 correctly stays direct.)
+
+## extra2.py (short-timing instance; admin PATCH bodies use `permissions`)
+PASS season pack: episode 3 via the pack release is ready, stream is the E03 file - Pioneer.One.S01E03.1080p.BluRay.DDP5.1.x264-DEVPACK.mkv
+PASS season pack: version is the pack (rank 0, recommended false)
+recommended cosmos (first run): ['resolving', 'ready'] attempts GHOST dead -> DEVWORLD ready, fallbackFrom GHOST
+PASS recommended on Cosmos (rank 1 dead) ends ready on a healthy version
+PASS admin PATCH kind maxAge 6 - 200
+PASS kind: switch after the admin lowered maxAge -> 403 age_restricted (params reason above_age_limit, rating 12)
+PASS anna: AV1 on Safari transcodes - transcode
+PASS anna: after admin disallows transcoding, the switch fails transcoding_not_allowed
+after logout: 204 401
+OK: 7 passed, 0 failed
+
+## final probe (default settings)
+Location: http://127.0.0.1:39310/api/v1/viewer/playback/<id>  Cache-Control: private, no-store, max-age=0
+anna token == ben token: False
+stop: 204
+direct URL after stop: 206 100   (the stream capability outlives the playback, as docs/api.md says)

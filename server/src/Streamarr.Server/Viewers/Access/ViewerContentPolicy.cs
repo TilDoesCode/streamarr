@@ -37,6 +37,20 @@ public sealed class ViewerContentPolicy(ITmdbClient tmdb, ILogger<ViewerContentP
         return new ContentAccessDecision(workId, allowed, reason, rating, minimumAge, viewer.MaxAge);
     }
 
+    /// <summary><c>403 age_restricted</c> with the reason, rating and ages as <c>params</c>.</summary>
+    public static ViewerProblem AgeRestricted(ContentAccessDecision decision)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.Ordinal) { ["reason"] = decision.Reason };
+        if (decision.Rating is { } rating)
+            parameters["rating"] = rating;
+        if (decision.MinimumAge is { } minimum)
+            parameters["minimumAge"] = minimum.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (decision.ViewerMaxAge is { } max)
+            parameters["viewerMaxAge"] = max.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return new ViewerProblem(StatusCodes.Status403Forbidden, "age_restricted",
+            $"This title is not available for this profile ({decision.Reason}).", parameters);
+    }
+
     private async Task<(string? Rating, bool Failed)> RatingAsync(WorkKey work, CancellationToken ct)
     {
         if (work.TmdbId is not { } id)

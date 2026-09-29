@@ -177,9 +177,9 @@ public sealed record WatchProgressRequest
     public string? WorkId { get; init; }
     public long PositionTicks { get; init; }
     public long? DurationTicks { get; init; }
-    /// <summary>Client-chosen id of one playback, used to count a completed play exactly once.</summary>
+    /// <summary>Id of one playback, used to count a completed play exactly once; a <c>/viewer/playback</c> id of this device also fills <c>releaseId</c>/<c>streamToken</c>, keeps that playback alive, and <c>stop</c> ends it.</summary>
     public string? PlaybackId { get; init; }
-    /// <summary>Optional: forwards the report to the shared event stream (pre-download, notifications).</summary>
+    /// <summary>Optional (filled from a server playback): forwards the report to the shared event stream (pre-download, notifications).</summary>
     public string? ReleaseId { get; init; }
     public string? StreamToken { get; init; }
     public string? Title { get; init; }

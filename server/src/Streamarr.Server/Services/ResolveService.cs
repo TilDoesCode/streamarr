@@ -142,7 +142,7 @@ public sealed class ResolveService(
             localStreamUrlForToken,
             ct);
 
-    /// <summary>Ownership-aware resolve surface used by playback-admission cleanup.</summary>
+    /// <summary>Ownership-aware resolve surface used by playback-admission cleanup and viewer playback (which also observes each hop).</summary>
     internal async Task<ResolveResponse> ResolveAsync(
         string releaseId,
         string? workId,
@@ -152,7 +152,8 @@ public sealed class ResolveService(
         bool autoFallback,
         Func<string, bool, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
-        CancellationToken ct)
+        CancellationToken ct,
+        IResolveObserver? observer = null)
     {
         if (!await _resolveGate.WaitAsync(0, ct))
             throw new ResourceCapacityException("The concurrent resolve limit has been reached.");
@@ -194,6 +195,7 @@ public sealed class ResolveService(
                 streamUrlForToken,
                 localStreamUrlForToken,
                 streamAttemptId,
+                observer,
                 ct);
 
             // Reused attempts finalize at reuse; fresh sessions finalize at close; no capability finalizes here.
@@ -262,6 +264,7 @@ public sealed class ResolveService(
         Func<string, bool, string> streamUrlForToken,
         Func<string, string> localStreamUrlForToken,
         string? streamAttemptId,
+        IResolveObserver? observer,
         CancellationToken ct)
     {
         var maxHops = Math.Max(0, options.Value.MaxFallbackHops);
@@ -277,6 +280,7 @@ public sealed class ResolveService(
             if (!visited.Add(currentId))
                 break;
 
+            observer?.HopStarted(currentId, hop);
             var single = await ResolveSingleAsync(
                 currentId,
                 workId,
@@ -302,6 +306,7 @@ public sealed class ResolveService(
 
             if (single.Response.Status != "dead")
             {
+                observer?.HopFinished(currentId, single.Response.Status);
                 // ready or degraded — return the healthy release, noting the fallback chain.
                 return single.Response with
                 {
@@ -321,6 +326,7 @@ public sealed class ResolveService(
                 streamUrlForToken, localStreamUrlForToken, streamAttemptId, ct);
             if (localSingle is not null)
             {
+                observer?.HopFinished(currentId, localSingle.Response.Status);
                 attempts[^1] = new ResolveAttempt { ReleaseId = currentId, Status = localSingle.Response.Status };
                 return localSingle.Response with
                 {
@@ -329,6 +335,7 @@ public sealed class ResolveService(
                 };
             }
 
+            observer?.HopFinished(currentId, "dead");
             var preferRepair = options.Value.Repair.Policy == RepairPolicy.PreferRepair
                 && repairCoordinator is { Enabled: true };
             var next = autoFallback && hop < maxHops && !preferRepair
@@ -1088,4 +1095,13 @@ public sealed class ResolveService(
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
+}
+
+/// <summary>Live progress of one resolve: each hop (the requested release, then automatic fallbacks) as it starts and ends.</summary>
+public interface IResolveObserver
+{
+    void HopStarted(string releaseId, int hop);
+
+    /// <summary><paramref name="status"/> is ready, degraded or dead.</summary>
+    void HopFinished(string releaseId, string status);
 }

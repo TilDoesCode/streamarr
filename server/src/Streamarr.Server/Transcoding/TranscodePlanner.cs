@@ -24,7 +24,9 @@ public sealed record ClientProfile
         => format == HdrFormat.None || (HdrFormats is { } formats ? formats.Contains(format.ToApi(), StringComparer.OrdinalIgnoreCase) : SupportsHdr);
 }
 
-public sealed record TranscodeLimits(int? MaxHeight = null, int? MaxBitrateKbps = null, int? AudioStreamIndex = null, int? SubtitleStreamIndex = null);
+/// <summary>Request limits and track choices; <see cref="BurnInSubtitle"/> lets a transcode overlay a selected image-based subtitle onto the video.</summary>
+public sealed record TranscodeLimits(
+    int? MaxHeight = null, int? MaxBitrateKbps = null, int? AudioStreamIndex = null, int? SubtitleStreamIndex = null, bool BurnInSubtitle = false);
 
 /// <summary>How a stream reaches the player: the original file, a stream copy into HLS, or a full re-encode.</summary>
 public enum DeliveryMode
@@ -86,6 +88,7 @@ public sealed record SubtitlePlan(SourceSubtitleStream Stream, string DeliveredA
 {
     public const string WebVtt = "webvtt";
     public const string Embedded = "embedded";
+    public const string BurnedIn = "burnedIn";
     public const string None = "none";
 
     public bool Delivered => DeliveredAs == WebVtt;
@@ -147,6 +150,9 @@ public sealed record TranscodePlan
     /// <summary>HLS VIDEO-RANGE of a stream copy: SDR, PQ or HLG.</summary>
     public string VideoRange { get; init; } = "SDR";
     public IReadOnlyList<SubtitlePlan> Subtitles { get; init; } = [];
+
+    /// <summary>The image-based subtitle a transcode overlays onto the video (software decode path).</summary>
+    public SourceSubtitleStream? BurnIn { get; init; }
     public KeyframeIndex? KeyframeIndex { get; init; }
     public SegmentTimeline? RemuxTimeline { get; init; }
     public int? PeakBandwidthBitsPerSecond { get; init; }
@@ -208,7 +214,10 @@ public static class TranscodePlanner
         }
 
         var deinterlace = video.Interlaced;
-        var (hwDecode, hwDecodeReason) = DecideHardwareDecode(video, settings, accel, accelCap, deinterlace);
+        var burnIn = limits.BurnInSubtitle && SelectSubtitle(media, limits.SubtitleStreamIndex) is { TextBased: false } image ? image : null;
+        var (hwDecode, hwDecodeReason) = burnIn is not null
+            ? (false, "Burning in an image subtitle overlays it on the CPU.")
+            : DecideHardwareDecode(video, settings, accel, accelCap, deinterlace);
         var (hwEncode, hwEncodeReason, encoder) = DecideEncoder(outputCodec, settings, accel, accelCap, capabilities, warnings);
         if (!hwEncode && encoder == "libx265" && !capabilities.Encoders.Contains("libx265"))
         {
@@ -240,6 +249,7 @@ public static class TranscodePlanner
             Deinterlace = deinterlace,
             Warnings = warnings,
             DurationSeconds = media.DurationSeconds,
+            BurnIn = burnIn,
         };
     }
 
@@ -324,12 +334,18 @@ public static class TranscodePlanner
         if (preference == ModePreference.Transcode)
             why.Add(PlanReason.Of("transcode_requested", "A full transcode was requested."));
         why.AddRange(remuxBlockers);
-        if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { } selected)
+        if (transcode.BurnIn is { } burned)
+        {
+            why.Add(PlanReason.Of("subtitle_burned_in",
+                $"Subtitle stream {burned.Index} ({burned.Codec}) is image-based and is burned into the transcoded video.",
+                ("index", burned.Index), ("codec", burned.Codec)));
+        }
+        else if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { } selected)
         {
             why.Add(PlanReason.Of("subtitle_not_deliverable",
                 selected.TextBased
-                    ? $"Subtitle stream {selected.Index} ({selected.Codec}) is not delivered with a transcode (no WebVTT renditions, no burn-in); a remux or the original file carries it."
-                    : $"Subtitle stream {selected.Index} ({selected.Codec}) is image-based and a transcode does not burn it in; play the original file (VLC) to see it.",
+                    ? $"Subtitle stream {selected.Index} ({selected.Codec}) is not delivered with a transcode (no WebVTT renditions; only image subtitles can be burned in); a remux or the original file carries it."
+                    : $"Subtitle stream {selected.Index} ({selected.Codec}) is image-based and this transcode does not burn it in (burn-in not requested); play the original file (VLC) or request burn-in to see it.",
                 ("index", selected.Index), ("codec", selected.Codec), ("mode", "transcode")));
         }
         return transcode with
@@ -338,7 +354,7 @@ public static class TranscodePlanner
             Reasons = why,
             RemuxPossible = remuxPossible,
             RemuxBlockers = remuxBlockers,
-            Subtitles = PlanSubtitles(media, DeliveryMode.Transcode),
+            Subtitles = PlanSubtitles(media, DeliveryMode.Transcode, transcode.BurnIn),
         };
     }
 
@@ -359,6 +375,7 @@ public static class TranscodePlanner
             ToneMap = ToneMapMode.NotNeeded,
             Deinterlace = false,
             Warnings = [],
+            BurnIn = null,
         };
     }
 
@@ -434,7 +451,7 @@ public static class TranscodePlanner
         return new AudioTarget(audio.Index, audio.Codec, false, channels, bitrate, sampleRate, codec, CodecStrings.Audio(codec, null));
     }
 
-    internal static IReadOnlyList<SubtitlePlan> PlanSubtitles(SourceMediaInfo media, DeliveryMode mode)
+    internal static IReadOnlyList<SubtitlePlan> PlanSubtitles(SourceMediaInfo media, DeliveryMode mode, SourceSubtitleStream? burnIn = null)
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         return media.Subtitles.Take(16).Select(stream =>
@@ -450,6 +467,7 @@ public static class TranscodePlanner
             {
                 DeliveryMode.Direct => SubtitlePlan.Embedded,
                 DeliveryMode.Remux when stream.TextBased => SubtitlePlan.WebVtt,
+                DeliveryMode.Transcode when burnIn?.Index == stream.Index => SubtitlePlan.BurnedIn,
                 _ => SubtitlePlan.None,
             };
             return new SubtitlePlan(stream, delivered, language, name);

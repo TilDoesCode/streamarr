@@ -9232,12 +9232,463 @@
         ]
       }
     },
+    "/api/v1/viewer/playback": {
+      "post": {
+        "tags": [
+          "ViewerPlayback"
+        ],
+        "summary": "Starts preparing a playback; poll `GET {playbackId}` until `ready` or `failed`.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackStartRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackStartRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/playback/{playbackId}": {
+      "get": {
+        "tags": [
+          "ViewerPlayback"
+        ],
+        "summary": "The playback's state; once `ready` it carries the URL, method, engine, media info and why.",
+        "parameters": [
+          {
+            "name": "playbackId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/playback/{playbackId}/switch": {
+      "post": {
+        "tags": [
+          "ViewerPlayback"
+        ],
+        "summary": "Re-plans at a position with another audio/subtitle track, engine, quality or version; the previous URL stays valid for a short grace period after the new one is ready.",
+        "parameters": [
+          {
+            "name": "playbackId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackSwitchRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackSwitchRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackSwitchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/playback/{playbackId}/stop": {
+      "post": {
+        "tags": [
+          "ViewerPlayback"
+        ],
+        "summary": "Ends the playback: stops its remux/transcode sessions and frees the stream slot.",
+        "parameters": [
+          {
+            "name": "playbackId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/watch/progress": {
       "post": {
         "tags": [
           "ViewerWatch"
         ],
-        "summary": "Report playback of a movie or episode (start, periodic progress, stop).",
+        "summary": "Report playback of a movie or episode (start, periodic progress, stop); a server `playbackId` fills in release and stream token, keeps that playback alive, and `stop` ends it.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10244,6 +10695,27 @@
         },
         "additionalProperties": false,
         "description": "Current transfer state and diagnostic evidence for one ordered release article."
+      },
+      "AudioCodecProfileDto": {
+        "type": "object",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "description": "`aac`, `ac3`, `eac3`, `truehd`, `dts`, `flac`, `opus`, `mp3`, …",
+            "nullable": true
+          },
+          "maxChannels": {
+            "type": "integer",
+            "description": "Channels the engine decodes for this codec (only checked for direct play; decoders usually downmix).",
+            "format": "int32",
+            "nullable": true
+          },
+          "passthrough": {
+            "type": "boolean",
+            "description": "True when the engine bitstreams this codec to the audio output (no channel limit)."
+          }
+        },
+        "additionalProperties": false
       },
       "BenchmarkCreateRequest": {
         "required": [
@@ -11756,6 +12228,87 @@
           },
           "detail": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeviceProfileDto": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "description": "`ios`, `ipados`, `tvos`, `android`, `androidtv` or `web`.",
+            "nullable": true
+          },
+          "engines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EngineProfileDto"
+            },
+            "description": "Playback engines in the device's order of preference (the built-in `native`/`web` one first, `vlc` when bundled).",
+            "nullable": true
+          },
+          "vlcAvailable": {
+            "type": "boolean",
+            "description": "True when the VLC engine can be used on this device."
+          },
+          "maxBitrateKbps": {
+            "type": "integer",
+            "description": "Optional bandwidth cap of the connection.",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "What the device can play; the server decides the method from it."
+      },
+      "EngineProfileDto": {
+        "type": "object",
+        "properties": {
+          "engine": {
+            "type": "string",
+            "description": "`native` (ExoPlayer, AVPlayer), `web` (browser video + hls.js / Safari HLS) or `vlc`.",
+            "nullable": true
+          },
+          "containers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Containers the engine plays from a URL: `mp4`, `mkv`, `webm`, `ts`, `mpeg`, …",
+            "nullable": true
+          },
+          "videoCodecs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoCodecProfileDto"
+            },
+            "nullable": true
+          },
+          "audioCodecs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioCodecProfileDto"
+            },
+            "nullable": true
+          },
+          "subtitleFormats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subtitle formats the engine renders from the original file (`srt`, `ass`, `webvtt`, `pgs`, `vobsub`, …); omitted = not declared.",
+            "nullable": true
+          },
+          "hls": {
+            "type": "boolean",
+            "description": "True when the engine plays fMP4 HLS (needed for a server remux or transcode)."
+          },
+          "maxAudioChannels": {
+            "type": "integer",
+            "description": "Channels of the audio output path (2 for stereo, 6 or 8 for a surround receiver); default 2.",
+            "format": "int32",
             "nullable": true
           }
         },
@@ -13301,6 +13854,220 @@
         "additionalProperties": false,
         "description": "Two-phase playback admission (POST/GET /api/v1/playback-sessions): the POST answers\r\nwithin a hard budget; \"preparing\" answers carry a pollable admission id while health\r\ncheck, materialization, ffprobe and repair analysis continue server-side."
       },
+      "PlaybackAttemptDto": {
+        "required": [
+          "releaseId",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "`resolving`, `ready`, `degraded` or `dead`.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackAudioTrackDto": {
+        "required": [
+          "channels",
+          "codec",
+          "deliveredAs",
+          "index"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "channels": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "default": {
+            "type": "boolean"
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "deliveredAs": {
+            "type": "string",
+            "description": "`original` (direct play: the engine switches locally), `copy`, `converted` or `none` (switch to hear it).",
+            "nullable": true
+          },
+          "deliveredCodec": {
+            "type": "string",
+            "nullable": true
+          },
+          "deliveredChannels": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackDecisionDto": {
+        "required": [
+          "reasons",
+          "skipped"
+        ],
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "nullable": true
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanReasonResponse"
+            },
+            "description": "Stable codes with `params` for localized texts: the planner's reasons plus track and engine notes.",
+            "nullable": true
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackSkippedDto"
+            },
+            "description": "Higher-ranked methods that were not possible, each with why.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackErrorDto": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackMediaInfoDto": {
+        "required": [
+          "audioTracks",
+          "subtitleTracks"
+        ],
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string",
+            "description": "Container family of the original file (`mkv`, `mp4`, `mpeg`, …).",
+            "nullable": true
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "bitrateKbps": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "video": {
+            "$ref": "#/components/schemas/PlaybackVideoDto"
+          },
+          "audioTracks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackAudioTrackDto"
+            },
+            "nullable": true
+          },
+          "subtitleTracks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackSubtitleTrackDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackPreferencesDto": {
+        "type": "object",
+        "properties": {
+          "engine": {
+            "type": "string",
+            "description": "`auto` (default: native, then VLC as §2 ranks them), `native` (never VLC) or `vlc` (always VLC when available).",
+            "nullable": true
+          },
+          "maxHeight": {
+            "type": "integer",
+            "description": "Highest video height the viewer wants; lower than the source means a transcode.",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxBitrateKbps": {
+            "type": "integer",
+            "description": "Highest total bitrate the viewer wants (combined with the device's bandwidth cap).",
+            "format": "int32",
+            "nullable": true
+          },
+          "audioLanguage": {
+            "type": "string",
+            "description": "Preferred audio language (ISO 639-1 or 639-2, e.g. `de` or `ger`).",
+            "nullable": true
+          },
+          "subtitleLanguage": {
+            "type": "string",
+            "description": "Preferred subtitle language.",
+            "nullable": true
+          },
+          "subtitleMode": {
+            "type": "string",
+            "description": "`off`, `forced` (default: only forced subtitles, e.g. for foreign-language scenes) or `always`.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "User preferences for one playback; on a switch, set fields replace the current ones."
+      },
       "PlaybackRangeResponse": {
         "required": [
           "source",
@@ -13396,6 +14163,351 @@
         },
         "additionalProperties": false,
         "description": "One watched span of the media timeline, in 100 ns ticks."
+      },
+      "PlaybackReleaseDto": {
+        "required": [
+          "releaseId"
+        ],
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackResponse": {
+        "required": [
+          "attempts",
+          "createdAt",
+          "playbackId",
+          "revision",
+          "state",
+          "updatedAt",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "playbackId": {
+            "type": "string",
+            "nullable": true
+          },
+          "revision": {
+            "type": "integer",
+            "description": "Increments with every switch; the state belongs to this revision.",
+            "format": "int32"
+          },
+          "state": {
+            "type": "string",
+            "description": "`queued`, `resolving`, `fallback`, `repairing`, `planning`, `starting`, `ready` or `failed`.",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pollAfterMs": {
+            "type": "integer",
+            "description": "Suggested delay before the next poll; 0 once ready or failed.",
+            "format": "int32"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackAttemptDto"
+            },
+            "description": "Every release tried, in order, with its health (`resolving`, `ready`, `degraded`, `dead`).",
+            "nullable": true
+          },
+          "fallbackFrom": {
+            "$ref": "#/components/schemas/PlaybackReleaseDto"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionDto"
+          },
+          "repair": {
+            "$ref": "#/components/schemas/RepairStatusInfo"
+          },
+          "startPositionTicks": {
+            "type": "integer",
+            "description": "Where this revision starts.",
+            "format": "int64"
+          },
+          "resumePositionTicks": {
+            "type": "integer",
+            "description": "The viewer's saved position for this work (null = none).",
+            "format": "int64",
+            "nullable": true
+          },
+          "method": {
+            "type": "string",
+            "description": "`direct`, `remux` or `transcode` (ready only).",
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "description": "`native`, `web` or `vlc` (ready only).",
+            "nullable": true
+          },
+          "url": {
+            "type": "string",
+            "description": "Capability path relative to the server origin (`/api/v1/stream/{token}` or `/api/v1/transcode/{capability}/master.m3u8`); players need no auth headers.",
+            "nullable": true
+          },
+          "streamToken": {
+            "type": "string",
+            "description": "The stream capability of the resolved release.",
+            "nullable": true
+          },
+          "mediaInfo": {
+            "$ref": "#/components/schemas/PlaybackMediaInfoDto"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/PlaybackDecisionDto"
+          },
+          "error": {
+            "$ref": "#/components/schemas/PlaybackErrorDto"
+          },
+          "suggestedActions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`retry`, `otherVersion`, `lowerQuality`, `useVlc` (failed only).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One viewer playback: its preparation state and, once `ready`, what to play and why."
+      },
+      "PlaybackSkippedDto": {
+        "required": [
+          "engine",
+          "method",
+          "reasons"
+        ],
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "nullable": true
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanReasonResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackStartRequest": {
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "Canonical movie or episode work id, e.g. `tmdb-movie-603` or `tmdb-tv-1396-s01e01`.",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "description": "A version from `/viewer/catalog/works/{workId}/versions`; omitted = the recommended (rank 1) version.",
+            "nullable": true
+          },
+          "startPositionTicks": {
+            "type": "integer",
+            "description": "Where playback starts (default 0); `resumePositionTicks` in the answer is the saved position.",
+            "format": "int64",
+            "nullable": true
+          },
+          "audioStreamIndex": {
+            "type": "integer",
+            "description": "Source stream index of the audio track; omitted = chosen from `preferences.audioLanguage`, then the default track.",
+            "format": "int32",
+            "nullable": true
+          },
+          "subtitleStreamIndex": {
+            "type": "integer",
+            "description": "Source stream index of the subtitle; `-1` = none; omitted = chosen from `preferences.subtitleMode` and `subtitleLanguage`.",
+            "format": "int32",
+            "nullable": true
+          },
+          "device": {
+            "$ref": "#/components/schemas/DeviceProfileDto"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PlaybackPreferencesDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackSubtitleTrackDto": {
+        "required": [
+          "codec",
+          "deliveredAs",
+          "index"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "forced": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean"
+          },
+          "textBased": {
+            "type": "boolean"
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "deliveredAs": {
+            "type": "string",
+            "description": "`embedded` (direct play), `webvtt` (remux rendition), `burnedIn` (in the transcoded picture) or `none`.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackSwitchRequest": {
+        "type": "object",
+        "properties": {
+          "positionTicks": {
+            "type": "integer",
+            "description": "Where the new rendition starts; default = the last reported position.",
+            "format": "int64",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "description": "Another version of the same work.",
+            "nullable": true
+          },
+          "audioStreamIndex": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "subtitleStreamIndex": {
+            "type": "integer",
+            "description": "`-1` turns subtitles off.",
+            "format": "int32",
+            "nullable": true
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PlaybackPreferencesDto"
+          },
+          "stepDown": {
+            "type": "boolean",
+            "description": "The current method failed on the device: continue with the next one in the ranking."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaybackVideoDto": {
+        "required": [
+          "bitDepth",
+          "codec",
+          "hdr",
+          "height",
+          "index",
+          "width"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "profile": {
+            "type": "string",
+            "nullable": true
+          },
+          "bitDepth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fps": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "hdr": {
+            "type": "string",
+            "description": "`none`, `hdr10`, `hlg` or `dolbyvision`.",
+            "nullable": true
+          },
+          "dolbyVisionProfile": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "interlaced": {
+            "type": "boolean"
+          },
+          "videoRange": {
+            "type": "string",
+            "description": "What the player receives: `SDR`, `PQ` or `HLG` (a transcode is SDR).",
+            "nullable": true
+          },
+          "deliveredCodec": {
+            "type": "string",
+            "description": "The video codec the player receives (the source codec unless transcoded).",
+            "nullable": true
+          },
+          "deliveredHeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "PreDownloadConfigResponse": {
         "required": [
@@ -17408,6 +18520,41 @@
         "additionalProperties": false,
         "description": "One playable version, derived from the parsed release name plus server state; codes are lower-case, null = not stated."
       },
+      "VideoCodecProfileDto": {
+        "type": "object",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "description": "`h264`, `hevc`, `av1`, `vp9`, `mpeg2video`, `mpeg4`, `vc1`, …",
+            "nullable": true
+          },
+          "maxWidth": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxHeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxBitDepth": {
+            "type": "integer",
+            "description": "Highest decodable bit depth; default 8 for H.264 and 10 for HEVC/AV1/VP9.",
+            "format": "int32",
+            "nullable": true
+          },
+          "hdrFormats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "HDR formats rendered for this codec: `hdr10`, `hlg`, `dolbyvision`.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ViewerAdminResponse": {
         "required": [
           "displayName",
@@ -18395,12 +19542,12 @@
           },
           "playbackId": {
             "type": "string",
-            "description": "Client-chosen id of one playback, used to count a completed play exactly once.",
+            "description": "Id of one playback, used to count a completed play exactly once; a `/viewer/playback` id of this device also fills `releaseId`/`streamToken`, keeps that playback alive, and `stop` ends it.",
             "nullable": true
           },
           "releaseId": {
             "type": "string",
-            "description": "Optional: forwards the report to the shared event stream (pre-download, notifications).",
+            "description": "Optional (filled from a server playback): forwards the report to the shared event stream (pre-download, notifications).",
             "nullable": true
           },
           "streamToken": {
@@ -18652,6 +19799,10 @@
     {
       "name": "ViewerMe",
       "description": "The signed-in viewer's own account: profile, password, email, two-factor and devices."
+    },
+    {
+      "name": "ViewerPlayback",
+      "description": "Viewer playback: asynchronous preparation (resolve, fallback, repair, plan, start) with a pollable state, switches and stop."
     },
     {
       "name": "ViewerWatch",
