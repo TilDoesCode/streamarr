@@ -47,9 +47,7 @@ public sealed class TranscodeSession
         Client = client;
         Title = title;
         CreatedAt = DateTimeOffset.UtcNow;
-        Subtitles = plan.Mode == DeliveryMode.Remux
-            ? plan.Subtitles.Where(s => s.Delivered).Select(s => new SubtitleTrackStore(s.Stream.Index)).ToList()
-            : [];
+        Subtitles = plan.Subtitles.Where(s => s.Delivered).Select(s => new SubtitleTrackStore(s.Stream.Index)).ToList();
         _subtitleCovered = new bool[timeline.Count];
         Touch();
     }
@@ -71,7 +69,7 @@ public sealed class TranscodeSession
     public string Title { get; }
     public DeliveryMode Mode => Plan.Mode;
 
-    /// <summary>WebVTT renditions of a remux session, one per delivered text subtitle stream.</summary>
+    /// <summary>WebVTT renditions of a remux or transcode session, one per delivered text subtitle stream.</summary>
     public IReadOnlyList<SubtitleTrackStore> Subtitles { get; }
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset LastAccessAt => new(Interlocked.Read(ref _lastAccessTicks), TimeSpan.Zero);

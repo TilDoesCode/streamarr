@@ -342,7 +342,7 @@ export class ViewerClient {
   // ---- internals ----
 
   private adopt(response: ViewerAuthResponse): ViewerAuthResponse {
-    if (response?.status === "authenticated") this.setTokens(toTokens(response.session));
+    if (response?.status === "authenticated" && response.session) this.setTokens(toTokens(response.session));
     return response;
   }
 

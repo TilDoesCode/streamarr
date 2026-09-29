@@ -7,10 +7,13 @@ namespace Streamarr.Server.Viewers.Catalog;
 /// <summary>A cached ranking result and whether this caller computed it.</summary>
 public sealed record CachedLookup<T>(T Value, DateTimeOffset CheckedAt, bool FromCache);
 
-/// <summary>Short-lived single-flight cache of indexer-backed rankings; failures and non-cacheable results are never kept.</summary>
+/// <summary>Short-lived single-flight cache of indexer-backed rankings; failures and non-cacheable results are never kept, refreshes are coalesced.</summary>
 public sealed class ViewerVersionCache(IOptions<StreamarrOptions> options, TimeProvider time)
 {
     private const int MaxEntries = 512;
+
+    /// <summary>A refresh joins a running search and reuses a result younger than this, so looping clients cannot fan out to the indexers.</summary>
+    public static readonly TimeSpan MinRefreshAge = TimeSpan.FromSeconds(60);
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
     private readonly TimeSpan _ttl = TimeSpan.FromSeconds(Math.Max(0, options.Value.ViewerVersionsCacheSeconds));
 
@@ -23,9 +26,9 @@ public sealed class ViewerVersionCache(IOptions<StreamarrOptions> options, TimeP
     {
         var now = time.GetUtcNow();
         Entry? entry = null;
-        if (!refresh && _entries.TryGetValue(key, out var existing))
+        if (_entries.TryGetValue(key, out var existing))
         {
-            if (!existing.Task.IsCompleted || existing.ExpiresAt > now)
+            if (!existing.Task.IsCompleted || (existing.ExpiresAt > now && (!refresh || now - existing.CheckedAt < MinRefreshAge)))
                 entry = existing;
             else
                 _entries.TryRemove(new KeyValuePair<string, Entry>(key, existing));
@@ -36,10 +39,7 @@ public sealed class ViewerVersionCache(IOptions<StreamarrOptions> options, TimeP
         {
             Prune(now);
             var fresh = new Entry(RunAsync(key, compute, cacheable), now + _ttl);
-            if (refresh)
-                _entries[key] = entry = fresh;
-            else
-                entry = _entries.GetOrAdd(key, fresh);
+            entry = _entries.GetOrAdd(key, fresh);
             created = ReferenceEquals(entry, fresh);
             if (created)
                 fresh.Start();

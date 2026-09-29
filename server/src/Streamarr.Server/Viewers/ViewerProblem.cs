@@ -18,6 +18,10 @@ public sealed class ViewerProblem(int status, string code, string message, IRead
     public static ViewerProblem Conflict(string code, string message) => new(StatusCodes.Status409Conflict, code, message);
     public static ViewerProblem Unauthorized(string code, string message) => new(StatusCodes.Status401Unauthorized, code, message);
     public static ViewerProblem Forbidden(string code, string message) => new(StatusCodes.Status403Forbidden, code, message);
+
+    /// <summary><c>503 catalog_unavailable</c>: TMDB cannot be reached right now and nothing is cached; the client retries.</summary>
+    public static ViewerProblem CatalogUnavailable()
+        => new(StatusCodes.Status503ServiceUnavailable, "catalog_unavailable", "TMDB is temporarily unavailable; retry shortly.");
 }
 
 /// <summary>Turns <see cref="ViewerProblem"/> into the typed error response.</summary>

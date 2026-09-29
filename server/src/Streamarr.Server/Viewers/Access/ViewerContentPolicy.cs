@@ -15,9 +15,14 @@ public sealed record ContentAccessDecision(
 /// <summary>Age gate for viewers: compares the TMDB certification of a work with the viewer's age limit.</summary>
 public sealed class ViewerContentPolicy(ITmdbClient tmdb, ILogger<ViewerContentPolicy> logger)
 {
+    private readonly ITmdbClient _tmdb = tmdb.Strict;
+
+    /// <summary>The age-gate decision; a restricted viewer gets <c>503 catalog_unavailable</c> while TMDB is down and the rating is not cached.</summary>
     public async Task<ContentAccessDecision> EvaluateAsync(ViewerEntity viewer, WorkKey work, CancellationToken ct)
     {
-        var (rating, lookupFailed) = await RatingAsync(work, ct);
+        var (rating, lookupFailed, transient) = await RatingAsync(work, ct);
+        if (transient && viewer.MaxAge is not null)
+            throw ViewerProblem.CatalogUnavailable();
         var minimumAge = ContentRatings.MinimumAge(rating);
         return Decide(viewer, work.WorkId, rating, minimumAge, lookupFailed);
     }
@@ -51,21 +56,21 @@ public sealed class ViewerContentPolicy(ITmdbClient tmdb, ILogger<ViewerContentP
             $"This title is not available for this profile ({decision.Reason}).", parameters);
     }
 
-    private async Task<(string? Rating, bool Failed)> RatingAsync(WorkKey work, CancellationToken ct)
+    private async Task<(string? Rating, bool Failed, bool Transient)> RatingAsync(WorkKey work, CancellationToken ct)
     {
         if (work.TmdbId is not { } id)
-            return (null, false);
+            return (null, false, false);
         try
         {
             var match = work.Kind == WorkKind.Movie
-                ? await tmdb.GetMovieAsync(id, ct)
-                : await tmdb.GetTvAsync(id, ct);
-            return match is null ? (null, true) : (match.OfficialRating, false);
+                ? await _tmdb.GetMovieAsync(id, ct)
+                : await _tmdb.GetTvAsync(id, ct);
+            return match is null ? (null, true, false) : (match.OfficialRating, false, false);
         }
         catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogDebug(e, "Rating lookup for {WorkId} failed", work.WorkId);
-            return (null, true);
+            return (null, true, e is TmdbTransientException);
         }
     }
 }

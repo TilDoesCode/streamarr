@@ -10,7 +10,7 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
     {
         var failures = new List<string>();
 
-        if (o.Admin is null || o.TrustedProxies is null || o.TrustedOrigins is null ||
+        if (o.Admin is null || o.TrustedProxies is null || o.TrustedOrigins is null || o.ViewerCorsOrigins is null ||
             o.Providers is null || o.Indexers is null ||
             o.Search is null || o.Tmdb is null || o.PreDownload is null ||
             o.HealthCheck is null || o.Repair is null)

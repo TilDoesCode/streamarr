@@ -60,6 +60,13 @@ public sealed class StreamarrOptions
     public List<string> TrustedOrigins { get; set; } = [];
 
     /// <summary>
+    /// Origins (<c>scheme://host[:port]</c>, or <c>*</c>) of viewer apps served elsewhere, e.g. the web client on its own
+    /// domain. They get CORS access to the viewer API and the <c>/stream</c> and <c>/transcode</c> capability URLs
+    /// (bearer tokens only, never cookies). Empty by default: a same-origin viewer app needs nothing.
+    /// </summary>
+    public List<string> ViewerCorsOrigins { get; set; } = [];
+
+    /// <summary>
     /// Directory the Data Protection key ring (secret encryption) persists to; empty
     /// defaults to a "keys" folder next to the app so ciphertext survives restarts.
     /// </summary>

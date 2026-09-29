@@ -39,6 +39,7 @@ public class StreamDetailParserTests
     [InlineData("Movie.2021.720p.HDRip.HC.x264-GRP", "hardcoded", "")]
     [InlineData("Movie.2021.1080p.WEB.H264.HardSub.ENG-GRP", "hardcoded", "")]
     [InlineData("Movie.2021.VOSTFR.1080p.WEB.x264-GRP", "subbed", "fr")]
+    [InlineData("Movie.2021.VOSTA.1080p.WEB.x264-GRP", "subbed", "en")]
     [InlineData("Movie.2021.1080p.BluRay.x264.SWESUB-GRP", "subbed", "sv")]
     [InlineData("Movie.2021.1080p.WEB-DL.Subs.EN.x264-GRP", "subbed", "en")]
     [InlineData("Suburbicon.2017.1080p.BluRay.x264-GRP", "", "")]

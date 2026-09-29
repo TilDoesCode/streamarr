@@ -1,0 +1,41 @@
+PASS live /openapi/v1.json equals the frozen contract
+PASS contract: anonymous discover -> 401
+PASS contract: discover -> 200
+PASS contract: resume?limit=abc -> 400
+PASS malformed query is 400 invalid_request - {'error': {'code': 'invalid_request', 'message': 'Malformed value for: limit.', 'host': None, 'indexerId': None}}
+PASS contract: versions with hdrFormats only -> 200
+PASS hdrFormats implies 10-bit in predictions - direct ['container_assumed', 'direct_play']
+PASS a second refresh within a minute is served from the cache - True -> True
+PASS contract: start transcode -> 202
+PASS contract: transcode long-poll -> 200
+PASS contract: transcode long-poll -> 200
+PASS contract: transcode long-poll -> 200
+PASS contract: transcode long-poll -> 200
+PASS long-poll answers the ready state - ready transcode after 0.48 s
+PASS transcode delivers text subtitles as webvtt - 3 of 3
+PASS transcode master lists SUBTITLES renditions - 200
+PASS contract: transcode .vtt segment -> 200
+PASS WebVTT segment of a transcode - 200 text/vtt; charset=utf-8
+PASS contract: switch to a missing track -> 400
+PASS missing track is 400 unknown_audio_stream - {'error': {'code': 'unknown_audio_stream', 'message': 'Audio stream 99 does not exist in this version.', 'host': None, 'indexerId': None, 'params': {'index': '9
+PASS the playback keeps playing after a rejected switch
+PASS contract: GET ?waitMs=20000 -> 400
+PASS ?waitMs=20000 is 400 invalid_playback_request - {'error': {'code': 'invalid_playback_request', 'message': "'waitMs' must be between 0 and 10000.", 'host': None, 'indexerId': None}}
+PASS contract: GET ?waitMs=abc -> 400
+PASS ?waitMs=abc is 400 invalid_request - {'error': {'code': 'invalid_request', 'message': 'Malformed value for: waitMs.', 'host': None, 'indexerId': None}}
+PASS contract: 2.vtt after stop -> 404
+PASS 2.vtt after stop is an error envelope - 404
+PASS contract: 3.m4s after stop -> 404
+PASS 3.m4s after stop is an error envelope - 404
+PASS contract: init.mp4 after stop -> 404
+PASS init.mp4 after stop is an error envelope - 404
+PASS contract: 4K transcode long-poll -> 200
+PASS contract: 4K transcode long-poll -> 200
+PASS contract: 4K transcode long-poll -> 200
+PASS a 4K transcode is scaled to 1080p by default - transcode 2160 -> 1080 ['audio_language', 'transcode_height_default', 'video_codec_unsupported', 'bit_depth_unsupported', 'hdr_unsupported', 'resolution_exceeds_limit']
+PASS contract: hdrToneMapping=True long-poll -> 200
+PASS contract: hdrToneMapping=True long-poll -> 200
+PASS HDR10 with hdrToneMapping=True plays as direct/vlc - ('direct', 'vlc') ['audio_language', 'vlc_fallback', 'hdr_tone_mapped', 'direct_play']
+PASS contract: hdrToneMapping=False long-poll -> 200
+PASS HDR10 with hdrToneMapping=False plays as transcode/native - ('transcode', 'native') ['audio_language', 'transcode_height_default', 'hdr_unsupported', 'resolution_exceeds_limit']
+OK: 40 passed, 0 failed

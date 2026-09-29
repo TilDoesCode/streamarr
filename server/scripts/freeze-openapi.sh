@@ -17,6 +17,8 @@ trap cleanup EXIT
 export Streamarr__ConnectionString="Data Source=$TMP/streamarr.db"
 export Streamarr__DataProtectionKeysPath="$TMP/keys"
 export ASPNETCORE_ENVIRONMENT=Development
+# No MSBuild/Roslyn build servers: they would outlive this script and hold memory.
+export DOTNET_CLI_USE_MSBUILD_SERVER=0 MSBUILDDISABLENODEREUSE=1 UseSharedCompilation=false
 
 dotnet run --project "$SERVER_DIR/src/Streamarr.Server/Streamarr.Server.csproj" \
   --no-launch-profile --urls "$URL" > "$TMP/server.log" 2>&1 &

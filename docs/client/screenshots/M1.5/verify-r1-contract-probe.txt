@@ -1,0 +1,39 @@
+PASS anonymous: GET /api/v1/viewer/catalog/search?q=a -> 401 
+PASS anonymous: GET /api/v1/viewer/catalog/discover -> 401 
+PASS anonymous: GET /api/v1/viewer/catalog/movies/10331 -> 401 
+PASS anonymous: GET /api/v1/viewer/catalog/works/tmdb-movie-10331/versions -> 401 
+PASS anonymous: GET /api/v1/viewer/me -> 401 
+PASS anonymous: GET /api/v1/viewer/watch/resume -> 401 
+PASS anonymous: GET /api/v1/viewer/playback/x -> 401 
+PASS anonymous: GET /api/v1/viewer/access/tmdb-movie-10331 -> 401 
+PASS me: GET /api/v1/viewer/me -> 200 
+PASS sessions: GET /api/v1/viewer/me/sessions -> 200 
+PASS search: GET /api/v1/viewer/catalog/search?q=s -> 200 
+PASS movie: GET /api/v1/viewer/catalog/movies/10331 -> 200 
+PASS series: GET /api/v1/viewer/catalog/series/33050 -> 200 
+PASS season: GET /api/v1/viewer/catalog/series/33050/seasons/1?availability=true -> 200 
+PASS access: GET /api/v1/viewer/access/tmdb-movie-10331 -> 200 
+PASS next-up: GET /api/v1/viewer/watch/next-up -> 200 
+PASS history: GET /api/v1/viewer/watch/history -> 200 
+PASS resume: GET /api/v1/viewer/watch/resume -> 200 
+PASS kid movie 16: GET /api/v1/viewer/catalog/movies/10331 -> 403 
+PASS kid access 16: GET /api/v1/viewer/access/tmdb-movie-10331 -> 200 
+PASS unknown movie: GET /api/v1/viewer/catalog/movies/2147480000 -> 404 
+PASS bad path int: GET /api/v1/viewer/catalog/movies/abc -> 400 
+PASS search limit=abc: GET /api/v1/viewer/catalog/search?q=s&limit=abc -> 400 
+PASS history offset=abc: GET /api/v1/viewer/watch/history?offset=abc -> 400 
+PASS season availability=abc: GET /api/v1/viewer/catalog/series/33050/seasons/1?availability=abc -> 400 
+PASS unknown playback: GET /api/v1/viewer/playback/nope -> 404 
+PASS unknown playback long-poll: GET /api/v1/viewer/playback/nope?waitMs=500 -> 404 
+PASS start without body fields: POST /api/v1/viewer/playback -> 400 
+PASS progress bad body: POST /api/v1/viewer/watch/progress -> 400 
+PASS kid start 16: POST /api/v1/viewer/playback -> 403 
+PASS start: POST /api/v1/viewer/playback -> 202 
+PASS get immediately: GET /api/v1/viewer/playback/cf7e90865fc984f672a29085b9a5b22f -> 200 
+PASS long-poll: GET /api/v1/viewer/playback/cf7e90865fc984f672a29085b9a5b22f?waitMs=10000 -> 200 
+state ready direct web
+PASS switch unknown subtitle: POST /api/v1/viewer/playback/cf7e90865fc984f672a29085b9a5b22f/switch -> 400 
+PASS stop: POST /api/v1/viewer/playback/cf7e90865fc984f672a29085b9a5b22f/stop -> 204 
+PASS get after stop: GET /api/v1/viewer/playback/cf7e90865fc984f672a29085b9a5b22f -> 404 
+PASS bogus transcode master: GET /api/v1/transcode/bogus/master.m3u8 -> 404 
+PASS bogus transcode sub playlist: GET /api/v1/transcode/bogus/subtitles/0/main.m3u8 -> 404 

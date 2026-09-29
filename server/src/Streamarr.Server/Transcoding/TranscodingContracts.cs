@@ -184,7 +184,7 @@ public sealed record TranscodeSourceResponse
 /// <summary>A decision reason: stable <c>code</c> for clients (localizable with <c>params</c>) and an English message.</summary>
 public sealed record PlanReasonResponse(string Code, string Message, IReadOnlyDictionary<string, string>? Params);
 
-/// <summary>A source subtitle stream and how this plan delivers it: <c>webvtt</c> rendition, <c>embedded</c> (direct play) or <c>none</c>.</summary>
+/// <summary>A source subtitle stream and how this plan delivers it: <c>webvtt</c> rendition (remux and transcode), <c>embedded</c> (direct play), <c>burnedIn</c> or <c>none</c>.</summary>
 public sealed record SubtitleTrackResponse
 {
     public required int Index { get; init; }
@@ -293,7 +293,7 @@ public sealed record TranscodeSessionCreateRequest
     public int? MaxBitrateKbps { get; init; }
     public int? AudioStreamIndex { get; init; }
 
-    /// <summary>The subtitle stream the viewer wants; one the mode cannot deliver (image-based in a remux, any in a transcode) gets the reason <c>subtitle_not_deliverable</c>.</summary>
+    /// <summary>The subtitle stream the viewer wants; an image-based one a remux or transcode cannot deliver (no burn-in) gets the reason <c>subtitle_not_deliverable</c>; text streams become WebVTT renditions.</summary>
     public int? SubtitleStreamIndex { get; init; }
     public double? StartPositionSeconds { get; init; }
     [MaxLength(64)] public string? ClientName { get; init; }

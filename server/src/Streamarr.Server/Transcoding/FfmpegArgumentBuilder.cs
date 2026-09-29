@@ -99,6 +99,7 @@ public static class FfmpegArgumentBuilder
             "-hls_segment_options", "movflags=+frag_discont",
             "-y", Path.Combine(spec.OutputDirectory, spec.PlaylistFileName),
         ]);
+        AddWebVttOutputs(args, spec);
         return args;
     }
 
@@ -158,7 +159,14 @@ public static class FfmpegArgumentBuilder
             "pipe:1",
         ]);
 
-        foreach (var subtitle in plan.Subtitles.Where(s => s.Delivered))
+        AddWebVttOutputs(args, spec);
+        return args;
+    }
+
+    /// <summary>One <c>-f webvtt</c> output per delivered text subtitle, on the same media timeline as the video.</summary>
+    private static void AddWebVttOutputs(List<string> args, FfmpegJobSpec spec)
+    {
+        foreach (var subtitle in spec.Plan.Subtitles.Where(s => s.Delivered))
         {
             args.AddRange([
                 "-map", $"0:{subtitle.Stream.Index}",
@@ -169,7 +177,6 @@ public static class FfmpegArgumentBuilder
                 "-y", Path.Combine(spec.OutputDirectory, new SubtitleTrackStore(subtitle.Stream.Index).FileName(spec.JobTag)),
             ]);
         }
-        return args;
     }
 
     /// <summary>Encoder priming would give the run from 0 a negative first timestamp, so that run trims this much input audio instead.</summary>

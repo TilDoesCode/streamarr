@@ -209,6 +209,29 @@ public class CachingTmdbClientTests
     }
 
     [Fact]
+    public async Task StrictView_ThrowsTransientFailures_AndSharesTheCacheWithTheLenientView()
+    {
+        var inner = new CountingTmdbClient { Result = Sample, TransientMovieFailures = 1 };
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(24));
+
+        await Assert.ThrowsAsync<TmdbTransientException>(() => caching.Strict.SearchMovieAsync("Example", null, default));
+        Assert.Same(Sample, await caching.Strict.SearchMovieAsync("Example", null, default));
+        Assert.Same(Sample, await caching.SearchMovieAsync("Example", null, default));
+        Assert.Equal(2, inner.MovieSearches);
+    }
+
+    [Fact]
+    public async Task StrictView_TurnsAnUpstreamTimeoutIntoATransientFailure()
+    {
+        var inner = new BlockingTmdbClient();
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(1), upstreamTimeout: TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAsync<TmdbTransientException>(() => caching.Strict.SearchMovieAsync("Stuck", null, default));
+        Assert.Null(await caching.SearchMovieAsync("Stuck", null, default));
+        Assert.Equal(2, inner.Started);
+    }
+
+    [Fact]
     public async Task CredentialRevision_BypassesMissCachedByPreviousCredential()
     {
         var revision = 0L;

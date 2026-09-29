@@ -44,15 +44,19 @@ public sealed class ViewerCatalogService(
     public const int MaxSearchResults = 20;
     public const int MaxRowItems = 20;
 
+    private readonly ITmdbClient _tmdb = tmdb.Strict;
+
     public async Task<CatalogSearchResponse> SearchAsync(ViewerEntity viewer, string query, MediaType? type, int limit, CancellationToken ct)
     {
-        var candidates = await TmdbAsync(() => tmdb.SearchCandidatesAsync(query, type, ct));
+        var candidates = await TmdbAsync(() => _tmdb.SearchCandidatesAsync(query, type, ct));
         var matches = candidates
             .Where(c => type is null || c.MediaType == type)
             .DistinctBy(c => (c.MediaType, c.TmdbId))
             .Take(MaxSearchResults)
             .ToList();
-        var allowed = await AllowedAsync(viewer, matches, ct);
+        var (allowed, lookupsFailed) = await AllowedAsync(viewer, matches, ct);
+        if (allowed.Count == 0 && lookupsFailed)
+            throw Unavailable();
         return new CatalogSearchResponse { Items = allowed.Take(limit).Select(Item).ToList() };
     }
 
@@ -67,10 +71,12 @@ public sealed class ViewerCatalogService(
         ];
         var lists = await Task.WhenAll(rows.Select(row => RowAsync(row.Kind, row.Type, ct)));
         var result = new List<CatalogRowDto>(rows.Length);
+        var failed = lists.Any(list => list is null);
         for (var i = 0; i < rows.Length; i++)
         {
-            var items = lists[i].Where(m => m.MediaType == rows[i].Type).DistinctBy(m => m.TmdbId).Take(MaxRowItems).ToList();
-            var allowed = await AllowedAsync(viewer, items, ct);
+            var items = (lists[i] ?? []).Where(m => m.MediaType == rows[i].Type).DistinctBy(m => m.TmdbId).Take(MaxRowItems).ToList();
+            var (allowed, lookupsFailed) = await AllowedAsync(viewer, items, ct);
+            failed |= lookupsFailed;
             if (allowed.Count == 0)
                 continue;
             result.Add(new CatalogRowDto
@@ -81,12 +87,14 @@ public sealed class ViewerCatalogService(
                 Items = allowed.Select(Item).ToList(),
             });
         }
+        if (result.Count == 0 && failed)
+            throw Unavailable();
         return new CatalogDiscoverResponse { Rows = result };
     }
 
     public async Task<CatalogMovieResponse> MovieAsync(ViewerEntity viewer, int tmdbId, CancellationToken ct)
     {
-        var movie = await TmdbAsync(() => tmdb.GetMovieAsync(tmdbId, ct)) ?? throw TitleNotFound();
+        var movie = await TmdbAsync(() => _tmdb.GetMovieAsync(tmdbId, ct)) ?? throw TitleNotFound();
         var key = new WorkKey($"tmdb-movie-{tmdbId}", WorkKind.Movie, tmdbId, null, null);
         var access = Gate(viewer, key.WorkId, movie.OfficialRating);
         var state = (await watch.GetAsync(viewer.Id, [key.WorkId], ct)).FirstOrDefault();
@@ -116,7 +124,7 @@ public sealed class ViewerCatalogService(
 
     public async Task<CatalogSeriesResponse> SeriesAsync(ViewerEntity viewer, int tmdbId, CancellationToken ct)
     {
-        var catalog = await TmdbAsync(() => tmdb.GetTvSeriesCatalogAsync(tmdbId, ct)) ?? throw TitleNotFound();
+        var catalog = await TmdbAsync(() => _tmdb.GetTvSeriesCatalogAsync(tmdbId, ct)) ?? throw TitleNotFound();
         var series = catalog.Series;
         var seriesWorkId = TvCatalogService.SeriesWorkId(tmdbId);
         var access = Gate(viewer, seriesWorkId, series.OfficialRating);
@@ -171,8 +179,8 @@ public sealed class ViewerCatalogService(
     public async Task<CatalogSeasonResponse> SeasonAsync(
         ViewerEntity viewer, int tmdbId, int seasonNumber, bool availability, bool refresh, CancellationToken ct)
     {
-        var seriesTask = TmdbAsync(() => tmdb.GetTvSeriesCatalogAsync(tmdbId, ct));
-        var seasonTask = TmdbAsync(() => tmdb.GetTvSeasonCatalogAsync(tmdbId, seasonNumber, ct));
+        var seriesTask = TmdbAsync(() => _tmdb.GetTvSeriesCatalogAsync(tmdbId, ct));
+        var seasonTask = TmdbAsync(() => _tmdb.GetTvSeasonCatalogAsync(tmdbId, seasonNumber, ct));
         var catalog = await seriesTask ?? throw TitleNotFound();
         var season = await seasonTask
                      ?? throw ViewerProblem.NotFound("season_not_found", "The season was not found.");
@@ -248,7 +256,7 @@ public sealed class ViewerCatalogService(
         {
             case { Kind: WorkKind.Movie, TmdbId: { } movieId }:
             {
-                var movie = await TmdbAsync(() => tmdb.GetMovieAsync(movieId, ct)) ?? throw TitleNotFound();
+                var movie = await TmdbAsync(() => _tmdb.GetMovieAsync(movieId, ct)) ?? throw TitleNotFound();
                 Gate(viewer, key.WorkId, movie.OfficialRating);
                 var lookup = await versionCache.GetAsync(
                     $"movie:{movieId}", refresh, _ => MovieVersionsAsync(movie, key.WorkId), v => !v.Incomplete, ct);
@@ -258,7 +266,7 @@ public sealed class ViewerCatalogService(
             }
             case { Kind: WorkKind.Episode, TmdbId: { } seriesId, Season: { } seasonNumber, Episode: { } episodeNumber }:
             {
-                var catalog = await TmdbAsync(() => tmdb.GetTvSeriesCatalogAsync(seriesId, ct)) ?? throw TitleNotFound();
+                var catalog = await TmdbAsync(() => _tmdb.GetTvSeriesCatalogAsync(seriesId, ct)) ?? throw TitleNotFound();
                 Gate(viewer, key.WorkId, catalog.Series.OfficialRating);
                 var lookup = await SeasonVersionsAsync(seriesId, seasonNumber, refresh, ct);
                 if (!lookup.Value.Episodes.TryGetValue(episodeNumber, out var episodeReleases))
@@ -298,7 +306,7 @@ public sealed class ViewerCatalogService(
             switch (key)
             {
                 case { Kind: WorkKind.Movie, TmdbId: { } movieId }:
-                    runtime = (await tmdb.GetMovieAsync(movieId, ct))?.RuntimeMinutes;
+                    runtime = (await _tmdb.GetMovieAsync(movieId, ct))?.RuntimeMinutes;
                     releases = versionCache.TryPeek<MovieVersions>($"movie:{movieId}")?.Releases;
                     break;
                 case { Kind: WorkKind.Episode, TmdbId: { } seriesId, Season: { } season, Episode: { } episode }:
@@ -435,7 +443,7 @@ public sealed class ViewerCatalogService(
             return (null, next.Incomplete);
         try
         {
-            var season = await tmdb.GetTvSeasonCatalogAsync(tmdbId, first.SeasonNumber, ct);
+            var season = await _tmdb.GetTvSeasonCatalogAsync(tmdbId, first.SeasonNumber, ct);
             if (season is null)
                 return (null, true);
             var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
@@ -468,7 +476,7 @@ public sealed class ViewerCatalogService(
     {
         try
         {
-            return (await tmdb.GetTvSeasonCatalogAsync(tmdbId, season, ct))?.Episodes.FirstOrDefault(e => e.EpisodeNumber == episode);
+            return (await _tmdb.GetTvSeasonCatalogAsync(tmdbId, season, ct))?.Episodes.FirstOrDefault(e => e.EpisodeNumber == episode);
         }
         catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -477,35 +485,36 @@ public sealed class ViewerCatalogService(
         }
     }
 
-    /// <summary>List items the viewer may watch, in their original order; restricted viewers need each certification.</summary>
-    private async Task<IReadOnlyList<TmdbMatch>> AllowedAsync(ViewerEntity viewer, IReadOnlyList<TmdbMatch> items, CancellationToken ct)
+    /// <summary>List items the viewer may watch, in their original order; restricted viewers need each certification, and failed lookups hide the item.</summary>
+    private async Task<(IReadOnlyList<TmdbMatch> Allowed, bool LookupsFailed)> AllowedAsync(ViewerEntity viewer, IReadOnlyList<TmdbMatch> items, CancellationToken ct)
     {
         if (viewer.MaxAge is null || items.Count == 0)
-            return items;
-        var allowed = await Task.WhenAll(items.Select(item => AllowsAsync(viewer, item, ct)));
-        return items.Where((_, i) => allowed[i]).ToList();
+            return (items, false);
+        var decisions = await Task.WhenAll(items.Select(item => AllowsAsync(viewer, item, ct)));
+        return (items.Where((_, i) => decisions[i].Allowed).ToList(), decisions.Any(d => d.Transient));
     }
 
-    private async Task<bool> AllowsAsync(ViewerEntity viewer, TmdbMatch item, CancellationToken ct)
+    private async Task<(bool Allowed, bool Transient)> AllowsAsync(ViewerEntity viewer, TmdbMatch item, CancellationToken ct)
     {
         var rating = item.OfficialRating;
         var failed = false;
+        var transient = false;
         if (rating is null)
         {
             try
             {
                 var details = item.MediaType == MediaType.Movie
-                    ? await tmdb.GetMovieAsync(item.TmdbId, ct)
-                    : await tmdb.GetTvAsync(item.TmdbId, ct);
+                    ? await _tmdb.GetMovieAsync(item.TmdbId, ct)
+                    : await _tmdb.GetTvAsync(item.TmdbId, ct);
                 (rating, failed) = (details?.OfficialRating, details is null);
             }
             catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 logger.LogDebug(e, "Rating lookup for {MediaType} {TmdbId} failed", item.MediaType, item.TmdbId);
-                failed = true;
+                (failed, transient) = (true, e is TmdbTransientException);
             }
         }
-        return ViewerContentPolicy.Decide(viewer, WorkId(item), rating, ContentRatings.MinimumAge(rating), failed).Allowed;
+        return (ViewerContentPolicy.Decide(viewer, WorkId(item), rating, ContentRatings.MinimumAge(rating), failed).Allowed, transient);
     }
 
     private static ContentAccessDecision Gate(ViewerEntity viewer, string workId, string? rating)
@@ -516,16 +525,17 @@ public sealed class ViewerCatalogService(
 
     private bool IsDead(Release release) => (healthCache.Get(release.ReleaseId) ?? release.Health) == ReleaseHealth.Dead;
 
-    private async Task<IReadOnlyList<TmdbMatch>> RowAsync(string kind, MediaType type, CancellationToken ct)
+    /// <summary>A TMDB list; null when TMDB is unavailable right now.</summary>
+    private async Task<IReadOnlyList<TmdbMatch>?> RowAsync(string kind, MediaType type, CancellationToken ct)
     {
         try
         {
-            return kind == "trending" ? await tmdb.GetTrendingAsync(type, ct) : await tmdb.GetPopularAsync(type, ct);
+            return kind == "trending" ? await _tmdb.GetTrendingAsync(type, ct) : await _tmdb.GetPopularAsync(type, ct);
         }
         catch (TmdbTransientException e)
         {
             logger.LogDebug(e, "TMDB {Kind} {MediaType} list is unavailable", kind, type);
-            return [];
+            return null;
         }
     }
 
@@ -537,9 +547,11 @@ public sealed class ViewerCatalogService(
         }
         catch (TmdbTransientException)
         {
-            throw new ViewerProblem(StatusCodes.Status503ServiceUnavailable, "catalog_unavailable", "TMDB is temporarily unavailable; retry shortly.");
+            throw Unavailable();
         }
     }
+
+    private static ViewerProblem Unavailable() => ViewerProblem.CatalogUnavailable();
 
     private static ParsedRelease Parse(Release release) => new(release, ReleaseParser.Parse(release.Title));
 

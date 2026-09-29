@@ -15,6 +15,7 @@ namespace Streamarr.Server.Viewers.Controllers;
 [Route("api/v1/viewer/auth")]
 [RequiresModule(ViewerAuth.ModuleId)]
 [ViewerProblemFilter]
+[ViewerModelStateFilter]
 public sealed class ViewerAuthController(
     ViewerSettingsService settings,
     ViewerLoginService logins,

@@ -138,8 +138,30 @@ public sealed class ViewerPlaybackService(
         return Snapshot(playback, touch: false);
     }
 
-    public PlaybackResponse Get(ViewerCaller caller, string playbackId)
-        => Snapshot(Find(caller, playbackId) ?? throw NotFound(), touch: true);
+    public const int MaxWaitMs = 10_000;
+
+    /// <summary>The playback's state; with <paramref name="waitMs"/> it first waits until the playback changes or reaches <c>ready</c>/<c>failed</c>.</summary>
+    public async Task<PlaybackResponse> GetAsync(ViewerCaller caller, string playbackId, int waitMs, CancellationToken ct)
+    {
+        if (waitMs is < 0 or > MaxWaitMs)
+            throw Invalid($"'waitMs' must be between 0 and {MaxWaitMs}.");
+        var playback = Find(caller, playbackId) ?? throw NotFound();
+        if (waitMs > 0)
+        {
+            Task changed;
+            lock (playback.Gate)
+                changed = playback.State is States.Ready or States.Failed ? Task.CompletedTask : playback.Changed.Task;
+            try
+            {
+                await changed.WaitAsync(TimeSpan.FromMilliseconds(waitMs), ct);
+            }
+            catch (TimeoutException)
+            {
+            }
+            playback = Find(caller, playbackId) ?? throw NotFound();
+        }
+        return Snapshot(playback, touch: true);
+    }
 
     public async Task<PlaybackResponse> SwitchAsync(ViewerCaller caller, ViewerEntity viewer, string playbackId, PlaybackSwitchRequest request, CancellationToken ct)
     {
@@ -159,8 +181,11 @@ public sealed class ViewerPlaybackService(
             if (playback.Stopped)
                 throw NotFound();
             var preferences = PlaybackPreferences.Merge(request.Preferences, playback.Preferences);
-            resolve = playback.StreamToken is null || (releaseId is not null && releaseId != playback.ResolvedReleaseId);
-            if (releaseId is not null && releaseId != playback.ResolvedReleaseId)
+            var otherRelease = releaseId is not null && releaseId != playback.ResolvedReleaseId;
+            if (!otherRelease && playback.Media is { } known)
+                ValidateTracks(known, request.AudioStreamIndex, request.SubtitleStreamIndex);
+            resolve = playback.StreamToken is null || otherRelease;
+            if (otherRelease)
             {
                 playback.RequestedReleaseId = releaseId;
                 playback.Excluded.Clear();
@@ -170,11 +195,12 @@ public sealed class ViewerPlaybackService(
                 playback.Repair = null;
                 playback.StreamToken = null;
                 playback.ResolvedReleaseId = null;
+                playback.Media = null;
                 playback.AudioIndex = null;
                 playback.SubtitleIndex = null;
             }
-            if (request.StepDown && playback.Ready is { } ready)
-                playback.Excluded.Add(PlaybackDecider.Key(ready.Method, ready.Engine));
+            if (request.StepDown && playback.PlayingKey is { } playing)
+                playback.Excluded.Add(playing);
             playback.Preferences = preferences;
             playback.AudioIndex = request.AudioStreamIndex ?? playback.AudioIndex;
             playback.SubtitleIndex = request.SubtitleStreamIndex ?? playback.SubtitleIndex;
@@ -195,6 +221,7 @@ public sealed class ViewerPlaybackService(
             playback.UpdatedAt = now;
             playback.LastActivity = now;
             playback.LastSwitchAt = now;
+            Signal(playback);
         }
         Launch(playback, revision, resolve, run);
         return Snapshot(playback, touch: false);
@@ -212,17 +239,17 @@ public sealed class ViewerPlaybackService(
         var playback = Find(caller, playbackId);
         if (playback is null || playback.Work.WorkId != workId)
             return null;
-        string? hls;
+        List<string> hls;
         lock (playback.Gate)
         {
             var now = time.GetUtcNow();
             playback.LastHeartbeat = now;
             playback.LastActivity = now;
             playback.PositionTicks = positionTicks;
-            hls = playback.CurrentHls;
+            hls = OpenRenditions(playback).ToList();
         }
-        if (hls is not null)
-            media.TouchHls(hls);
+        foreach (var id in hls)
+            media.TouchHls(id);
         return new PlaybackLink(playback.ResolvedReleaseId, playback.StreamToken);
     }
 
@@ -232,7 +259,10 @@ public sealed class ViewerPlaybackService(
         var now = time.GetUtcNow();
         foreach (var playback in _playbacks.Values.ToList())
         {
-            if (now - playback.LastActivity > IdleTimeout)
+            DateTimeOffset lastActivity;
+            lock (playback.Gate)
+                lastActivity = playback.LastActivity > HlsAccess(playback) ? playback.LastActivity : HlsAccess(playback);
+            if (now - lastActivity > IdleTimeout)
             {
                 logger.LogInformation("Viewer playback {PlaybackId} expired after {Idle} without activity", playback.Id, IdleTimeout);
                 await EndAsync(playback, "idle");
@@ -292,6 +322,7 @@ public sealed class ViewerPlaybackService(
         {
             playback.Stopped = true;
             playback.Cancellation.Cancel();
+            Signal(playback);
         }
     }
 
@@ -496,13 +527,22 @@ public sealed class ViewerPlaybackService(
         var decision = PlaybackDecider.Decide(probe, device, preferences, allowTranscoding, server, audioIndex, subtitleIndex, excluded);
         if (decision.Failure is { } impossible)
         {
-            Update(playback, revision, p => p.Decision = DecisionDto(null, decision, decision.Skipped, ResolveNotes(p)));
+            Update(playback, revision, p =>
+            {
+                p.Media = probe;
+                p.Decision = DecisionDto(null, decision, decision.Skipped, ResolveNotes(p));
+            });
             throw impossible;
         }
 
-        Update(playback, revision, p => p.State = States.Starting);
+        Update(playback, revision, p =>
+        {
+            p.Media = probe;
+            p.State = States.Starting;
+        });
         var skipped = decision.Skipped.ToList();
         TranscodeException? lastError = null;
+        DeliveryMode? lastMethod = null;
         foreach (var candidate in decision.Viable)
         {
             ct.ThrowIfCancellationRequested();
@@ -523,7 +563,7 @@ public sealed class ViewerPlaybackService(
                 logger.LogInformation("Playback {PlaybackId}: {Method} on {Engine} could not start ({Code}); trying the next method",
                     playback.Id, candidate.Method.ToApi(), candidate.Engine.Name, e.Code);
                 skipped.Add(new SkippedCandidate(candidate.Method, candidate.Engine.Name, [PlanReason.Of(e.Code, e.Message)]));
-                lastError = e;
+                (lastError, lastMethod) = (e, candidate.Method);
                 continue;
             }
             var hlsReady = Ready(playback, candidate, rendition.Plan, rendition.Media, $"/api/v1/transcode/{rendition.Id}/master.m3u8", decision, skipped);
@@ -532,7 +572,7 @@ public sealed class ViewerPlaybackService(
             return;
         }
 
-        var code = lastError?.Code ?? "playback_failed";
+        var (code, parameters) = lastError is null ? ("playback_failed", null) : StartError(lastError, lastMethod);
         var suggestions = new List<string> { SuggestedActions.Retry };
         if (code is "segment_timeout" or "transcode_failed")
             suggestions.Add(SuggestedActions.LowerQuality);
@@ -540,7 +580,7 @@ public sealed class ViewerPlaybackService(
             suggestions.Add(SuggestedActions.UseVlc);
         suggestions.Add(SuggestedActions.OtherVersion);
         Update(playback, revision, p => p.Decision = DecisionDto(null, decision, skipped, ResolveNotes(p)));
-        throw new PlaybackFailure(code, lastError?.Message ?? "The playback could not be started.", null, suggestions);
+        throw new PlaybackFailure(code, lastError?.Message ?? "The playback could not be started.", parameters, suggestions);
     }
 
     private ReadyState Ready(
@@ -559,6 +599,7 @@ public sealed class ViewerPlaybackService(
         return Update(playback, revision, p =>
         {
             p.Ready = ready;
+            p.PlayingKey = PlaybackDecider.Key(ready.Method, ready.Engine);
             p.Decision = ready.Decision;
             p.State = States.Ready;
             p.ReadyAt = now;
@@ -590,8 +631,17 @@ public sealed class ViewerPlaybackService(
                 return false;
             change(playback);
             playback.UpdatedAt = time.GetUtcNow();
+            Signal(playback);
             return true;
         }
+    }
+
+    /// <summary>Wakes long-polls waiting for this playback; call under its gate.</summary>
+    private static void Signal(Playback p)
+    {
+        var waiting = p.Changed;
+        p.Changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        waiting.TrySetResult();
     }
 
     private PlaybackResponse Snapshot(Playback p, bool touch)
@@ -644,14 +694,22 @@ public sealed class ViewerPlaybackService(
     {
         lock (p.Gate)
         {
-            if (p.Stopped || p.State == States.Failed)
+            if (p.Stopped || (p.State == States.Failed && p.PlayingKey is null))
                 return false;
             return PreparingStates.Contains(p.State) || now - LastActive(p) <= HeartbeatWindow;
         }
     }
 
-    private static DateTimeOffset LastActive(Playback p)
-        => new[] { p.CreatedAt, p.ReadyAt ?? default, p.LastHeartbeat ?? default, p.LastSwitchAt ?? default }.Max();
+    /// <summary>Ready, heartbeat, switch or the player fetching the playback's HLS rendition, whichever is latest.</summary>
+    private DateTimeOffset LastActive(Playback p)
+        => new[] { p.CreatedAt, p.ReadyAt ?? default, p.LastHeartbeat ?? default, p.LastSwitchAt ?? default, HlsAccess(p) }.Max();
+
+    private DateTimeOffset HlsAccess(Playback p)
+        => OpenRenditions(p).Select(media.HlsLastAccess).OfType<DateTimeOffset>().DefaultIfEmpty().Max();
+
+    /// <summary>The current rendition plus a replaced one the device may still play (a switch that has not become ready); call under the gate.</summary>
+    private static IEnumerable<string> OpenRenditions(Playback p)
+        => p.PreviousHls.Where(r => r.CloseAt is null).Select(r => r.Id).Append(p.CurrentHls).OfType<string>();
 
     private async Task EnsureAllowedAsync(ViewerEntity viewer, WorkKey work, CancellationToken ct)
     {
@@ -778,9 +836,25 @@ public sealed class ViewerPlaybackService(
         NzbUnexpectedContentException or HttpRequestException or IOException => new PlaybackFailure("nzb_fetch_failed",
             "The version could not be fetched from its indexer.", null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
         UsenetException => new PlaybackFailure("usenet_unreachable", "The Usenet provider could not be reached.", null, [SuggestedActions.Retry]),
-        TranscodeException t => new PlaybackFailure(t.Code, t.Message, null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
+        TranscodeException t when StartError(t, null) is var (code, parameters)
+            => new PlaybackFailure(code, t.Message, parameters, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
         _ => new PlaybackFailure("playback_failed", "The playback could not be prepared.", null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
     };
+
+    /// <summary>Maps a remux/transcode start error onto the documented failed-playback codes; a mapped code keeps the original in <c>params.reason</c>.</summary>
+    internal static (string Code, IReadOnlyDictionary<string, string>? Parameters) StartError(TranscodeException e, DeliveryMode? method)
+    {
+        var reason = TrackSelector.Params(("reason", e.Code));
+        return e.Code switch
+        {
+            "segment_timeout" or "transcode_failed" or "transcode_capacity" or "remux_capacity" or "probe_failed" => (e.Code, null),
+            "too_many_sessions" or "insufficient_disk" => (method == DeliveryMode.Remux ? "remux_capacity" : "transcode_capacity", reason),
+            "init_unavailable" or "segment_unavailable" or "end_of_stream" => ("transcode_failed", reason),
+            "transcoding_disabled" or "ffmpeg_unavailable" or "no_local_listener" => ("transcoding_unavailable", reason),
+            "unknown_stream" => ("stream_expired", null),
+            _ => ("playback_failed", reason),
+        };
+    }
 
     private static bool IsTerminal(string state) => state is "ready" or "failed" or "cancelled" or "evicted";
 
@@ -812,6 +886,15 @@ public sealed class ViewerPlaybackService(
             throw Invalid("'audioStreamIndex' must be a source stream index.");
         if (subtitle is < -1 or > 1_000)
             throw Invalid("'subtitleStreamIndex' must be a source stream index or -1.");
+    }
+
+    /// <summary>A switch to a track the playing version does not have is rejected up front, so the playback keeps playing and no bad index sticks.</summary>
+    private static void ValidateTracks(SourceMediaInfo media, int? audio, int? subtitle)
+    {
+        if (audio is { } a && media.Audio.All(s => s.Index != a))
+            throw new ViewerProblem(StatusCodes.Status400BadRequest, "unknown_audio_stream", $"Audio stream {a} does not exist in this version.", TrackSelector.Params(("index", a)));
+        if (subtitle is { } t and >= 0 && media.Subtitles.All(s => s.Index != t))
+            throw new ViewerProblem(StatusCodes.Status400BadRequest, "unknown_subtitle_stream", $"Subtitle stream {t} does not exist in this version.", TrackSelector.Params(("index", t)));
     }
 
     private static ViewerProblem Invalid(string message) => ViewerProblem.BadRequest("invalid_playback_request", message);
@@ -888,5 +971,10 @@ public sealed class ViewerPlaybackService(
         public DateTimeOffset? LastSwitchAt { get; set; }
         public CancellationTokenSource Cancellation { get; set; } = new();
         public bool Stopped { get; set; }
+        public TaskCompletionSource Changed { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public SourceMediaInfo? Media { get; set; }
+
+        /// <summary>Method and engine of the last ready state: what the device plays until a switch becomes ready.</summary>
+        public string? PlayingKey { get; set; }
     }
 }

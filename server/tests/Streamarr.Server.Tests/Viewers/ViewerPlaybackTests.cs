@@ -926,6 +926,140 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task Get_WithWaitMs_LongPollsUntilThePlaybackChanges()
+    {
+        var (viewer, _) = await ViewerAsync("longpoll");
+        factory.Media.ProbeGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var created = await StartAsync(viewer, Play(Release(Mp4()), AppleTv));
+        await WaitAsync(viewer, Id(created), b => State(b) == "planning");
+
+        var poll = viewer.GetAsync($"{Base}/{Id(created)}?waitMs=10000");
+        await Task.Delay(300);
+        Assert.False(poll.IsCompleted, "the long-poll answered before anything changed");
+        var released = DateTime.UtcNow;
+        factory.Media.ProbeGate.SetResult();
+        var response = await poll;
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(DateTime.UtcNow - released < TimeSpan.FromSeconds(5));
+
+        var ready = await WaitAsync(viewer, Id(created));
+        var started = DateTime.UtcNow;
+        var final = await viewer.GetFromJsonAsync<JsonElement>($"{Base}/{Id(created)}?waitMs=10000");
+        Assert.Equal("ready", State(final));
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(5));
+        Assert.Equal("ready", State(ready));
+
+        var invalid = await viewer.GetAsync($"{Base}/{Id(created)}?waitMs=60000");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task Switch_ToATrackTheVersionLacks_Answers400_AndKeepsPlaying()
+    {
+        var (viewer, _) = await ViewerAsync("badtrack");
+        var ready = await ReadyAsync(viewer, Play(Release(DualAudio()), AppleTv));
+
+        var subtitle = await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { subtitleStreamIndex = 99 });
+        var audio = await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { audioStreamIndex = 42 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, subtitle.StatusCode);
+        Assert.Equal("unknown_subtitle_stream", await ViewerApi.ErrorCodeAsync(subtitle));
+        Assert.Equal(HttpStatusCode.BadRequest, audio.StatusCode);
+        Assert.Equal("unknown_audio_stream", await ViewerApi.ErrorCodeAsync(audio));
+        var still = await GetAsync(viewer, Id(ready));
+        Assert.Equal(("ready", 0), (State(still), still.GetProperty("revision").GetInt32()));
+
+        var valid = await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { audioStreamIndex = 2 });
+        Assert.Equal(HttpStatusCode.Accepted, valid.StatusCode);
+        var again = await WaitAsync(viewer, Id(ready));
+        Assert.Equal("ready", State(again));
+        Assert.Equal((2, (int?)null), (factory.Media.Starts.Last().Limits.AudioStreamIndex, factory.Media.Starts.Last().Limits.SubtitleStreamIndex));
+    }
+
+    [Fact]
+    public async Task AfterAFailedSwitch_TheStillPlayingRendition_CountsAsActive_AndStepDownLeavesItsMethod()
+    {
+        var (tv, username) = await ViewerAsync("failedswitch", new { maxConcurrentStreams = 1 });
+        using var phone = await DeviceAsync(username, "Phone");
+        var ready = await ReadyAsync(tv, Play(Release(DualAudio()), AppleTv));
+        Assert.Equal("remux", ready.GetProperty("method").GetString());
+        var playing = factory.Media.Starts.Last().Id;
+        factory.Media.FailModes[ModePreference.Remux] = "remux_capacity";
+        factory.Media.FailModes[ModePreference.Transcode] = "transcode_capacity";
+        try
+        {
+            await tv.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { audioStreamIndex = 2 });
+            Assert.Equal("failed", State(await WaitAsync(tv, Id(ready), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready" or "failed")));
+        }
+        finally
+        {
+            factory.Media.FailModes.Clear();
+        }
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(100));
+        factory.Media.Accessed[playing] = factory.Clock.GetUtcNow();
+        await StartAsync(phone, Play(Release(Mp4()), Chrome), HttpStatusCode.Conflict);
+        factory.Media.Touched.Clear();
+        await tv.PostAsJsonAsync("/api/v1/viewer/watch/progress", new { @event = "progress", workId = Movie, positionTicks = 10L, playbackId = Id(ready) });
+        Assert.Contains(playing, factory.Media.Touched);
+
+        await tv.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { stepDown = true });
+        var stepped = await WaitAsync(tv, Id(ready), b => b.GetProperty("revision").GetInt32() == 2 && State(b) is "ready" or "failed");
+        Assert.Equal("transcode", stepped.GetProperty("method").GetString());
+        Assert.Contains("step_down", stepped.GetProperty("decision").GetProperty("skipped").EnumerateArray().SelectMany(s => Codes(s.GetProperty("reasons"))));
+    }
+
+    [Theory]
+    [InlineData("too_many_sessions", true, "transcode_capacity", "too_many_sessions")]
+    [InlineData("insufficient_disk", true, "transcode_capacity", "insufficient_disk")]
+    [InlineData("init_unavailable", true, "transcode_failed", "init_unavailable")]
+    [InlineData("ffmpeg_unavailable", true, "transcoding_unavailable", "ffmpeg_unavailable")]
+    [InlineData("remux_not_possible", true, "playback_failed", "remux_not_possible")]
+    [InlineData("segment_timeout", true, "segment_timeout", null)]
+    [InlineData("too_many_sessions", false, "remux_capacity", "too_many_sessions")]
+    public async Task HlsStartErrors_UseTheDocumentedFailureCodes(string startError, bool transcode, string code, string? reason)
+    {
+        var (viewer, _) = await ViewerAsync("starterr", new { allowTranscoding = transcode });
+        factory.Media.FailModes[transcode ? ModePreference.Transcode : ModePreference.Remux] = startError;
+        var release = transcode ? Release(Mpeg2()) : Release(Mkv());
+
+        var failed = await WaitAsync(viewer, Id(await StartAsync(viewer, Play(release, transcode ? Chrome : AppleTv))));
+
+        Assert.Equal("failed", State(failed));
+        Assert.Equal(code, Error(failed).GetProperty("code").GetString());
+        if (reason is null)
+            Assert.False(Error(failed).TryGetProperty("params", out var parameters) && parameters.ValueKind != JsonValueKind.Null);
+        else
+            Assert.Equal(reason, Error(failed).GetProperty("params").GetProperty("reason").GetString());
+        Assert.Contains(failed.GetProperty("decision").GetProperty("skipped").EnumerateArray(),
+            s => Codes(s.GetProperty("reasons")).Contains(startError));
+    }
+
+    [Fact]
+    public async Task HlsFetches_KeepThePlaybackActive_ForTheStreamLimitAndIdleExpiry()
+    {
+        var (tv, username) = await ViewerAsync("hlsactive", new { maxConcurrentStreams = 1 });
+        using var phone = await DeviceAsync(username, "Phone");
+        var playing = await ReadyAsync(tv, Play(Release(Mkv()), AppleTv));
+        var hls = factory.Media.Starts.Last().Id;
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(100));
+        factory.Media.Accessed[hls] = factory.Clock.GetUtcNow();
+        await StartAsync(phone, Play(Release(Mp4()), Chrome), HttpStatusCode.Conflict);
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(590));
+        factory.Media.Accessed[hls] = factory.Clock.GetUtcNow();
+        factory.Clock.Advance(TimeSpan.FromSeconds(20));
+        await factory.Playbacks.SweepAsync();
+        Assert.DoesNotContain(hls, factory.Media.Closed);
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(61));
+        var second = await ReadyAsync(phone, Play(Release(Mp4()), Chrome));
+        Assert.Equal("ready", State(second));
+        Assert.Equal("ready", State(await GetAsync(tv, Id(playing))));
+    }
+
+    [Fact]
     public async Task OnlyViewerSessions_WhileTheModuleIsOn_MayUseIt()
     {
         var body = Play(null, AppleTv);

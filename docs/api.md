@@ -10,7 +10,11 @@ or remove endpoints, it explains them. **If an endpoint is not in `v1.json`, it 
 not exist.**
 
 The spec is served live at `/openapi/v1.json` (all environments) and, in Development,
-browsable at `/swagger`.
+browsable at `/swagger`. Viewer endpoints declare their gate responses too (`401`,
+`403 password_change_required`, `404 module_disabled`, `400 invalid_request`). Properties the
+server may send as `null` are `nullable` (object-typed ones as `allOf: [$ref]` + `nullable: true`,
+so generated types read `X | null`). `server/tests/Streamarr.DevWorld/tools/contract_check.py`
+checks live Dev World responses of the viewer API against the spec.
 
 > Shapes are domain-shaped around *works*, *releases*, *streams*, *sessions*, and
 > *profiles* — never around Jellyfin. `/resolve` returns a neutral `mediaStreams`
@@ -802,10 +806,10 @@ Reason codes are stable for localization: direct-play blockers `container_unsupp
 `bitrate_exceeds_limit`; remux blockers additionally `video_codec_not_remuxable`,
 `video_profile_unsupported`, `dolby_vision_profile_unsupported`, `keyframe_index_unavailable`; decisions
 `direct_play`, `hls_requested`, `transcode_requested`, `audio_copied`, `audio_converted`,
-`subtitle_not_deliverable` (`params`: `index`, `codec`, `mode`; an image stream in a remux, or any
-selected stream in a transcode, which carries no subtitle renditions), `subtitle_burned_in` (only viewer
-playback, § 13, burns an image subtitle into a transcode; these sessions do not). `deliveredAs` is `webvtt`
-(remux rendition), `embedded` (direct play), `burnedIn` or `none`. `target` describes what the player receives: the
+`subtitle_not_deliverable` (`params`: `index`, `codec`, `mode`; an image stream in a remux, or an image
+stream a transcode does not burn in), `subtitle_burned_in` (only viewer playback, § 13, burns an image
+subtitle into a transcode; these sessions do not). `deliveredAs` is `webvtt` (text streams: an HLS rendition
+of a remux or a transcode), `embedded` (direct play), `burnedIn` or `none`. `target` describes what the player receives: the
 original streams for `direct` (`videoCopy`/`audioCopy` true, `encoder: none`), the copied video for a
 remux (`encoder: copy`), the encoder output for a transcode.
 
@@ -822,11 +826,17 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 
 | Path | Result |
 |---|---|
-| `master.m3u8` | One variant with `BANDWIDTH`, `AVERAGE-BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE` (`SDR` for transcodes; `PQ`/`HLG`/`SDR` for remuxes). Remuxes add one `#EXT-X-MEDIA:TYPE=SUBTITLES` per delivered text stream and `CLOSED-CAPTIONS=NONE`. |
+| `master.m3u8` | One variant with `BANDWIDTH`, `AVERAGE-BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE` (`SDR` for transcodes; `PQ`/`HLG`/`SDR` for remuxes). Remuxes and transcodes add one `#EXT-X-MEDIA:TYPE=SUBTITLES` per delivered text stream and `CLOSED-CAPTIONS=NONE`. |
 | `main.m3u8` | Complete VOD playlist (fMP4, `#EXT-X-MAP`, `#EXT-X-ENDLIST`): a fixed grid for transcodes, keyframe-aligned real durations for remuxes. |
-| `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | Remux only: WebVTT rendition aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline); a segment no live run covers starts the copy there and waits for its cues, like a video segment; `404` for streams that are not delivered. |
+| `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | WebVTT rendition of a remux or transcode, aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline). A segment no live run covers starts ffmpeg there and waits for its cues, like a video segment; a transcode is never restarted backwards for subtitles (a segment behind its encoder returns the cues known so far). `404` for streams that are not delivered. |
 | `init.mp4` | Initialization segment; identical across ffmpeg restarts. |
-| `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. `503`/`504` carry `Retry-After: 1`. |
+| `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. |
+
+`init.mp4`, `{n}.m4s` and `{n}.vtt` can start ffmpeg, so they share these errors: `404 unknown_transcode` /
+`unknown_segment` / `end_of_stream`, `410 session_closed`, `500 transcode_failed`,
+`503 transcode_capacity` / `remux_capacity` / `init_unavailable` / `segment_unavailable`,
+`504 segment_timeout`. `503` and `504` carry `Retry-After: 1`. Every fetch of a playlist or segment counts
+as activity of the session (and of the viewer playback that owns it, § 13).
 | `DELETE` on the capability root | Ends the session and its ffmpeg process (`204`). |
 
 ### Admin endpoints
@@ -926,6 +936,14 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
   `minimumAge`, `viewerMaxAge` when known). For a restricted viewer, every list item needs its TMDB
   certification, so each item costs one cached TMDB detail lookup; unrestricted viewers cost none.
 - **Errors:** the standard envelope (§ 2). `429 capacity_reached` and `503 …` carry `Retry-After: 1`.
+  Malformed query values (e.g. `limit=abc`) answer `400 invalid_request` on every viewer endpoint.
+- **TMDB outages** are never shown as "not found" or "nothing there": when TMDB cannot be reached
+  (and nothing is cached), search, details, seasons and versions answer `503 catalog_unavailable`.
+  `discover` leaves out a row whose list failed and answers `503 catalog_unavailable` only when no
+  row is left; for a restricted viewer, a list whose certification lookups failed and left nothing
+  to show answers the same. The age gate of a restricted viewer (playback start and switch,
+  `GET /viewer/access/{workId}`) also answers `503 catalog_unavailable` while the certification
+  cannot be read; `rating_unavailable` then only means that TMDB does not know the title.
 
 | Endpoint | Returns | External cost on a cache miss |
 |---|---|---|
@@ -1000,7 +1018,9 @@ ranking is the normal search ranking (default quality profile); episodes include
 - Never included: NZB URLs, indexer names or ids, API keys, scores, grabs.
 - **Caching:** lists are cached per movie and per season for `Streamarr:ViewerVersionsCacheSeconds`
   (default 600); concurrent requests share one search; `fromCache` says whether this request
-  reused it and `checkedAt` when it was searched. `?refresh=true` searches again (the indexer's own
+  reused it and `checkedAt` when it was searched. `?refresh=true` searches again, unless a search
+  for the list is running or the cached list is younger than 60 seconds: then that list is returned
+  (`fromCache: true`), so a looping client cannot fan out to the indexers (the indexer's own
   60-second response cache still applies). Lists with a failed indexer are marked `incomplete` and
   not cached; when every indexer fails the endpoint answers `503 search_temporarily_unavailable`,
   and `429 capacity_reached` when the server-wide search capacity is in use.
@@ -1009,6 +1029,8 @@ ranking is the normal search ranking (default quality profile); episodes include
 `videoCodecs` (required to enable it), `audioCodecs`, `containers`, `hdrFormats` (comma-separated,
 the codec/container names of `/transcoding` `client`), `supports10Bit`, `maxAudioChannels`,
 `maxHeight`, `maxBitrateKbps`. Missing lists use the transcoding defaults (`aac,mp3`, `mp4`, 2 channels).
+A profile with `hdrFormats` implies `supports10Bit=true` (HDR is always 10-bit) unless
+`supports10Bit=false` is sent.
 
 ```
 GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,eac3&containers=mp4&hdrFormats=hdr10&supports10Bit=true&maxAudioChannels=6
@@ -1035,7 +1057,7 @@ password-change and age rules as the catalog apply.
 | Endpoint | Returns |
 |---|---|
 | `POST …/playback` | `PlaybackStartRequest` → `202 PlaybackResponse` (`Location: …/playback/{playbackId}`) |
-| `GET …/playback/{playbackId}` | The current `PlaybackResponse`; poll again after `pollAfterMs` (0 once `ready`/`failed`) |
+| `GET …/playback/{playbackId}?waitMs=` | The current `PlaybackResponse`; poll again after `pollAfterMs` (0 once `ready`/`failed`). With `waitMs` (1–10000) the request is a **long-poll**: it answers as soon as the state changes (or right away when it is already `ready`/`failed`), at the latest after `waitMs` |
 | `POST …/playback/{playbackId}/switch` | `PlaybackSwitchRequest` → `202 PlaybackResponse` with `revision` + 1 |
 | `POST …/playback/{playbackId}/stop` | `204`; ends the playback's remux/transcode sessions and frees its stream slot |
 
@@ -1059,7 +1081,8 @@ State responses carry `Cache-Control: private, no-store`.
                          { "codec": "hevc", "maxBitDepth": 10, "hdrFormats": ["hdr10", "hlg"] } ],
         "audioCodecs": [ { "codec": "aac", "maxChannels": 6 }, { "codec": "eac3", "passthrough": true },
                          { "codec": "dts", "passthrough": true } ],
-        "subtitleFormats": ["srt", "ass", "webvtt", "pgs"] } ] },
+        "subtitleFormats": ["srt", "ass", "webvtt", "pgs"],
+        "hdrToneMapping": false } ] },  // true: the engine tone-maps HDR10/HLG to SDR itself
   "preferences": { "engine": "auto",  // auto | native (never VLC) | vlc
                    "maxHeight": null, "maxBitrateKbps": null,
                    "audioLanguage": "de", "subtitleLanguage": "en",
@@ -1075,7 +1098,11 @@ limits direct play (decoders downmix; a remux converts within `maxAudioChannels`
 codecs have no channel limit. `subtitleFormats` omitted means "not declared": direct play assumes
 the engine renders a selected text subtitle, while image subtitles count as not renderable.
 `hls: true` is needed for a remux or transcode. With `vlcAvailable` and no
-`vlc` engine entry, libVLC's usual codecs are assumed.
+`vlc` engine entry, libVLC's usual codecs (with `hdrToneMapping`) are assumed. `hdrToneMapping: true`
+declares that the engine tone-maps HDR10 and HLG to the display itself (VLC, browsers): a 10-bit
+HDR10/HLG source then plays direct or remuxed on it (`hdr_tone_mapped`) instead of being transcoded
+to SDR. The order of `engines` does not matter: the server always ranks the native/web engine before
+VLC (PLAN § 2) and uses only the first `native` or `web` entry.
 
 **States.** `queued → resolving → (fallback) → (repairing) → planning → starting → ready | failed`.
 
@@ -1120,8 +1147,10 @@ the engine renders a selected text subtitle, while image subtitles count as not 
   capability of the resolved version.
 - `audioTracks[].deliveredAs`: `original` (direct play: the engine switches tracks itself), `copy`,
   `converted` (`deliveredCodec`/`deliveredChannels`) or `none` (not in this rendition: switch).
-  `subtitleTracks[].deliveredAs`: `embedded` (direct play, the engine renders it), `webvtt` (remux
-  rendition), `burnedIn` (in the transcoded picture) or `none`. `selected` marks the chosen tracks.
+  `subtitleTracks[].deliveredAs`: `embedded` (direct play, the engine renders it), `webvtt` (HLS
+  rendition of a remux or transcode), `burnedIn` (in the transcoded picture) or `none`. `selected`
+  marks the tracks the server delivered as chosen at this `revision`; after a switch inside the
+  engine (`original`, `embedded`, `webvtt`) the client tracks the current selection itself.
 - `decision.reasons` are stable codes with `params` for localized texts: the planner's codes (§ 11:
   `direct_play`, `container_unsupported`, `video_codec_unsupported`, `audio_codec_unsupported`,
   `audio_copied`, `audio_converted`, `resolution_exceeds_limit`, `bitrate_exceeds_limit`,
@@ -1129,7 +1158,8 @@ the engine renders a selected text subtitle, while image subtitles count as not 
   `subtitle_format_unsupported`, `subtitle_burned_in`, `subtitle_not_deliverable` …) plus
   playback codes: `fallback_used`, `repaired_copy`, `repair_progressive`, `release_degraded`,
   `vlc_fallback`, `image_subtitle_vlc`, `vlc_unavailable`, `native_unavailable`, `bandwidth_limit`,
-  `probe_failed`, `audio_track_requested`, `audio_language`, `audio_language_unavailable`,
+  `hdr_tone_mapped` (`params.hdr`, `engine`), `transcode_height_default` (`params.height`, `max`),
+  `transcode_native_engine`, `probe_failed`, `audio_track_requested`, `audio_language`, `audio_language_unavailable`,
   `subtitle_track_requested`, `subtitle_forced`, `subtitle_default`, `subtitle_language`,
   `subtitle_language_unavailable`. `decision.skipped` lists every higher-ranked method that was not
   possible, with its reasons (additionally `step_down`, `hls_unsupported`, `transcoding_not_allowed`,
@@ -1145,8 +1175,14 @@ the engine renders a selected text subtitle, while image subtitles count as not 
 3. **VLC direct play**, only when `vlcAvailable` (and `engine` is not `native`).
 4. **Full transcode** for the native engine, only when the viewer's `allowTranscoding` is on.
 
-`preferences.engine: vlc` plays VLC direct, then a transcode for VLC; `native` never uses VLC.
+`preferences.engine: vlc` plays VLC direct; when that is not possible, a transcode plays in the
+native engine (`transcode_native_engine`: plain H.264/AAC HLS, which the native player handles
+best), and VLC only without a native engine. `native` never uses VLC.
 `maxHeight`/`maxBitrateKbps` (and the device's bandwidth cap) below the source lead to a transcode.
+A full transcode is scaled to at most **1080p** unless `preferences.maxHeight` asks for more
+(`transcode_height_default`: a 4K encode rarely keeps up in real time). A lossless TrueHD/DTS-HD
+track the device cannot pass through is converted (E-AC-3/AC-3/AAC) in a remux, because the remux
+ranks before VLC; a viewer who wants it lossless picks `engine: vlc`.
 An **image subtitle** (PGS, VobSub, DVB) the native engine cannot render is played with VLC when
 available, else **burned into a transcode** (CPU overlay, `subtitle_burned_in`) when transcoding is
 allowed, else the playback goes on without it and says so (`subtitle_not_deliverable`,
@@ -1170,29 +1206,40 @@ directly.
 | `transcoding_unavailable` | Only a remux or transcode could play it and the server cannot run ffmpeg (`params.reason`: `transcoding_disabled`, `ffmpeg_unavailable`). |
 | `no_playable_method` · `no_more_methods` | No method of the device fits / every method was stepped down. |
 | `unknown_audio_stream` · `unknown_subtitle_stream` | The requested index is not in this version. |
-| `capacity_reached` · `transcode_capacity` · `remux_capacity` | Server busy; `retry`. |
-| `probe_failed`, `stream_expired`, `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable`, `playback_failed`, a transcode start code (`segment_timeout`, `transcode_failed` …) | As named. |
+| `capacity_reached` · `transcode_capacity` · `remux_capacity` | Server busy; `retry`. A remux/transcode start that hit the session limit or a full disk says so in `params.reason` (`too_many_sessions`, `insufficient_disk`). |
+| `transcode_failed` · `segment_timeout` | ffmpeg failed or did not produce the first segment in time (`lowerQuality`); `params.reason` carries the start code when it was more specific (`init_unavailable`, `segment_unavailable`, `end_of_stream`). |
+| `probe_failed`, `stream_expired`, `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable` | As named. |
+| `playback_failed` | Anything else; `params.reason` names the internal start code when there is one. |
+
+Only the codes in this table reach `error.code`; a remux or transcode start error is mapped onto them
+(`transcoding_disabled`, `ffmpeg_unavailable`, `no_local_listener` → `transcoding_unavailable`).
 
 HTTP errors (standard envelope): `400 invalid_work_id` (movie and episode ids only),
-`400 invalid_device_profile`, `400 invalid_playback_request`, `400 invalid_request`,
+`400 invalid_device_profile`, `400 invalid_playback_request` (also `waitMs` outside 0–10000),
+`400 invalid_request`, `400 unknown_audio_stream` / `unknown_subtitle_stream` (switch),
 `403 age_restricted` (with `params`, on start and on switch), `403 password_change_required`,
-`404 playback_not_found`, `404 module_disabled`, `409 too_many_streams`, `429 too_many_playbacks`.
+`404 playback_not_found`, `404 module_disabled`, `409 too_many_streams`, `429 too_many_playbacks`,
+`503 catalog_unavailable` (restricted viewer while TMDB cannot be reached, start and switch).
 
 **Switch.** `{ positionTicks?, releaseId?, audioStreamIndex?, subtitleStreamIndex? (-1 = off),
 preferences?, stepDown? }` re-plans the same `playbackId` at `positionTicks` (default: the last
 reported position). Set preference fields replace the current ones. Another `releaseId` resolves
 again (with fallback); otherwise the live stream is re-planned without a new health check.
-`stepDown: true` excludes the current method + engine (it failed on the device) and continues with
-the next one; `no_more_methods` when none is left. The state restarts at `resolving` or `planning`;
-the previous URL keeps working until 30 s after the new one is `ready`.
+`stepDown: true` excludes the method + engine the device is playing (the last `ready` one, even
+when a later switch failed) and continues with the next one; `no_more_methods` when none is left.
+A track index the playing version does not have is rejected right away with
+`400 unknown_audio_stream` / `unknown_subtitle_stream`; the playback keeps its state and tracks.
+The state restarts at `resolving` or `planning`; the previous URL keeps working until 30 s after
+the new one is `ready`.
 
 **Enforcement.**
 
 - `allowTranscoding: false` blocks **full video transcodes only** (including burn-in and quality
   reductions). A remux, which copies the video and may convert the audio, stays allowed.
 - `maxConcurrentStreams`: a playback counts while it is being prepared, and when `ready` while its
-  last activity (ready, heartbeat, switch) is younger than `Streamarr:ViewerPlaybackHeartbeatSeconds`
-  (default 60). At the limit a new playback on the **same device** replaces that device's older one;
+  last activity (ready, heartbeat, switch, or the player fetching its HLS playlists/segments) is
+  younger than `Streamarr:ViewerPlaybackHeartbeatSeconds` (default 60). A playback whose switch
+  failed keeps counting while the device still plays its previous rendition. At the limit a new playback on the **same device** replaces that device's older one;
   another device gets `409 too_many_streams` with `params` `limit`, `device` (the other device's
   name), `workId` and `releaseName` (when known). Failed and stopped playbacks do not count.
 - Age gate: `403 age_restricted` before any work starts, and again on every switch.
@@ -1202,9 +1249,10 @@ other viewers and the same viewer's other devices get `404 playback_not_found`. 
 with `POST /viewer/watch/progress` and the `playbackId` (every ~10 s while playing): it fills
 `releaseId`/`streamToken` of the watch event (pre-download and the shared event stream), keeps the
 playback and its HLS session alive, and `event: stop` ends the playback like `…/stop`. A playback
-without polls, heartbeats or switches for `Streamarr:ViewerPlaybackIdleSeconds` (default 600) is
-stopped. Playbacks live in memory and end with a server restart. Stop closes the remux/transcode
-sessions; the stream capability itself expires with its normal TTL, so playing the same version
+without polls, heartbeats, switches or HLS fetches for `Streamarr:ViewerPlaybackIdleSeconds`
+(default 600) is stopped. Playbacks live in memory and end with a server restart. Stop closes the
+remux/transcode sessions, so their HLS URLs stop working; a `direct` URL (`/api/v1/stream/{token}`)
+is the stream capability itself and keeps working until its normal TTL, so playing the same version
 again soon skips the health check.
 
 ---

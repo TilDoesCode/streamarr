@@ -25,71 +25,99 @@ public sealed class CachingTmdbClient(
         ? configured
         : TimeSpan.FromSeconds(20);
 
-    public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(
-        string query,
-        MediaType? mediaType,
-        CancellationToken cancellationToken)
-        => GetOrAddAsync(
-            $"search-candidates|{mediaType?.ToString().ToLowerInvariant() ?? "any"}|{query.ToLowerInvariant()}",
-            ct => inner.SearchCandidatesAsync(query, mediaType, ct),
-            Array.Empty<TmdbMatch>(),
-            cancellationToken);
+    private StrictView? _strict;
+
+    /// <summary>The same cache and single-flight calls, but a transient failure throws <see cref="TmdbTransientException"/> instead of returning the miss fallback.</summary>
+    public ITmdbClient Strict => _strict ??= new StrictView(this);
+
+    public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(string query, MediaType? mediaType, CancellationToken cancellationToken)
+        => Candidates(query, mediaType, false, cancellationToken);
 
     public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken)
-        => GetOrAddAsync($"search-any|{query.ToLowerInvariant()}", ct => inner.SearchAnyAsync(query, ct), null, cancellationToken);
+        => Any(query, false, cancellationToken);
 
     public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
-        => GetOrAddAsync($"search-movie|{title.ToLowerInvariant()}|{year}", ct => inner.SearchMovieAsync(title, year, ct), null, cancellationToken);
+        => MovieSearch(title, year, false, cancellationToken);
 
     public Task<TmdbMatch?> SearchTvAsync(string title, CancellationToken cancellationToken)
-        => GetOrAddAsync($"search-tv|{title.ToLowerInvariant()}", ct => inner.SearchTvAsync(title, ct), null, cancellationToken);
+        => TvSearch(title, false, cancellationToken);
 
     public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
-        => GetOrAddAsync($"movie|{tmdbId}", ct => inner.GetMovieAsync(tmdbId, ct), null, cancellationToken);
+        => Movie(tmdbId, false, cancellationToken);
 
     public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken)
-        => GetOrAddAsync($"tv|{tmdbId}", ct => inner.GetTvAsync(tmdbId, ct), null, cancellationToken);
+        => Tv(tmdbId, false, cancellationToken);
 
     public Task<TmdbTvSeriesCatalog?> GetTvSeriesCatalogAsync(int tmdbId, CancellationToken cancellationToken)
-        => GetOrAddAsync(
-            $"tv-catalog|{tmdbId}",
-            ct => inner.GetTvSeriesCatalogAsync(tmdbId, ct),
-            null,
-            cancellationToken);
+        => SeriesCatalog(tmdbId, false, cancellationToken);
 
-    public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(
-        int tmdbId,
-        int seasonNumber,
-        CancellationToken cancellationToken)
-        => GetOrAddAsync(
-            $"tv-season|{tmdbId}|{seasonNumber}",
-            ct => inner.GetTvSeasonCatalogAsync(tmdbId, seasonNumber, ct),
-            null,
-            cancellationToken);
+    public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken)
+        => SeasonCatalog(tmdbId, seasonNumber, false, cancellationToken);
 
     public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken)
-        => GetOrAddAsync($"imdb|{imdbId.ToLowerInvariant()}", ct => inner.FindByImdbAsync(imdbId, ct), null, cancellationToken);
+        => Imdb(imdbId, false, cancellationToken);
 
     public Task<IReadOnlyList<TmdbMatch>> GetTrendingAsync(MediaType mediaType, CancellationToken cancellationToken)
-        => GetOrAddAsync(
-            $"trending|{mediaType.ToString().ToLowerInvariant()}",
-            ct => inner.GetTrendingAsync(mediaType, ct),
-            Array.Empty<TmdbMatch>(),
-            cancellationToken,
-            _listTtl);
+        => Trending(mediaType, false, cancellationToken);
 
     public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Popular(mediaType, false, cancellationToken);
+
+    private Task<IReadOnlyList<TmdbMatch>> Candidates(string query, MediaType? mediaType, bool strict, CancellationToken ct)
+        => GetOrAddAsync(
+            $"search-candidates|{mediaType?.ToString().ToLowerInvariant() ?? "any"}|{query.ToLowerInvariant()}",
+            c => inner.SearchCandidatesAsync(query, mediaType, c),
+            Array.Empty<TmdbMatch>(),
+            strict,
+            ct);
+
+    private Task<TmdbMatch?> Any(string query, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"search-any|{query.ToLowerInvariant()}", c => inner.SearchAnyAsync(query, c), null, strict, ct);
+
+    private Task<TmdbMatch?> MovieSearch(string title, int? year, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"search-movie|{title.ToLowerInvariant()}|{year}", c => inner.SearchMovieAsync(title, year, c), null, strict, ct);
+
+    private Task<TmdbMatch?> TvSearch(string title, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"search-tv|{title.ToLowerInvariant()}", c => inner.SearchTvAsync(title, c), null, strict, ct);
+
+    private Task<TmdbMatch?> Movie(int tmdbId, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"movie|{tmdbId}", c => inner.GetMovieAsync(tmdbId, c), null, strict, ct);
+
+    private Task<TmdbMatch?> Tv(int tmdbId, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"tv|{tmdbId}", c => inner.GetTvAsync(tmdbId, c), null, strict, ct);
+
+    private Task<TmdbTvSeriesCatalog?> SeriesCatalog(int tmdbId, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"tv-catalog|{tmdbId}", c => inner.GetTvSeriesCatalogAsync(tmdbId, c), null, strict, ct);
+
+    private Task<TmdbTvSeasonCatalog?> SeasonCatalog(int tmdbId, int seasonNumber, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"tv-season|{tmdbId}|{seasonNumber}", c => inner.GetTvSeasonCatalogAsync(tmdbId, seasonNumber, c), null, strict, ct);
+
+    private Task<TmdbMatch?> Imdb(string imdbId, bool strict, CancellationToken ct)
+        => GetOrAddAsync($"imdb|{imdbId.ToLowerInvariant()}", c => inner.FindByImdbAsync(imdbId, c), null, strict, ct);
+
+    private Task<IReadOnlyList<TmdbMatch>> Trending(MediaType mediaType, bool strict, CancellationToken ct)
+        => GetOrAddAsync(
+            $"trending|{mediaType.ToString().ToLowerInvariant()}",
+            c => inner.GetTrendingAsync(mediaType, c),
+            Array.Empty<TmdbMatch>(),
+            strict,
+            ct,
+            _listTtl);
+
+    private Task<IReadOnlyList<TmdbMatch>> Popular(MediaType mediaType, bool strict, CancellationToken ct)
         => GetOrAddAsync(
             $"popular|{mediaType.ToString().ToLowerInvariant()}",
-            ct => inner.GetPopularAsync(mediaType, ct),
+            c => inner.GetPopularAsync(mediaType, c),
             Array.Empty<TmdbMatch>(),
-            cancellationToken,
+            strict,
+            ct,
             _listTtl);
 
     private Task<T> GetOrAddAsync<T>(
         string key,
         Func<CancellationToken, Task<T>> factory,
         T timeoutFallback,
+        bool strict,
         CancellationToken cancellationToken,
         TimeSpan? lifetime = null)
     {
@@ -99,7 +127,7 @@ public sealed class CachingTmdbClient(
         var entryTtl = lifetime ?? ttl;
 
         if (entryTtl <= TimeSpan.Zero)
-            return RunUncachedAsync(factory, timeoutFallback, cancellationToken);
+            return RunUncachedAsync(factory, timeoutFallback, strict, cancellationToken);
 
         while (true)
         {
@@ -112,7 +140,7 @@ public sealed class CachingTmdbClient(
                     continue;
                 }
                 if (existing.ExpiresAt > now)
-                    return Await(existing, key, timeoutFallback, cancellationToken);
+                    return Await(existing, key, timeoutFallback, strict, cancellationToken);
                 Remove(key, existing);
             }
 
@@ -123,11 +151,11 @@ public sealed class CachingTmdbClient(
                 created.Retire();
             TrimToLimit();
             if (actual.ExpiresAt > now)
-                return Await((Entry<T>)actual, key, timeoutFallback, cancellationToken);
+                return Await((Entry<T>)actual, key, timeoutFallback, strict, cancellationToken);
         }
     }
 
-    private async Task<T> Await<T>(Entry<T> entry, string key, T timeoutFallback, CancellationToken ct)
+    private async Task<T> Await<T>(Entry<T> entry, string key, T timeoutFallback, bool strict, CancellationToken ct)
     {
         Task<T> task;
         try
@@ -144,15 +172,20 @@ public sealed class CachingTmdbClient(
         {
             return await task.WaitAsync(ct);
         }
-        catch (TmdbTransientException)
+        catch (TmdbTransientException) when (!strict)
         {
             Remove(key, entry);
             return timeoutFallback;
         }
+        catch (TmdbTransientException)
+        {
+            Remove(key, entry);
+            throw;
+        }
         catch (SharedUpstreamTimeoutException)
         {
             Remove(key, entry);
-            return timeoutFallback;
+            return strict ? throw TimedOut() : timeoutFallback;
         }
         catch when (task.IsFaulted || task.IsCanceled)
         {
@@ -197,6 +230,7 @@ public sealed class CachingTmdbClient(
     private async Task<T> RunUncachedAsync<T>(
         Func<CancellationToken, Task<T>> factory,
         T timeoutFallback,
+        bool strict,
         CancellationToken caller)
     {
         using var timeout = new CancellationTokenSource(_upstreamTimeout);
@@ -214,9 +248,9 @@ public sealed class CachingTmdbClient(
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            return timeoutFallback;
+            return strict ? throw TimedOut() : timeoutFallback;
         }
-        catch (TmdbTransientException)
+        catch (TmdbTransientException) when (!strict)
         {
             return timeoutFallback;
         }
@@ -300,5 +334,40 @@ public sealed class CachingTmdbClient(
         }
     }
 
+    private static TmdbTransientException TimedOut() => new("TMDB did not answer in time.");
+
     private sealed class SharedUpstreamTimeoutException : Exception;
+
+    private sealed class StrictView(CachingTmdbClient owner) : ITmdbClient
+    {
+        public ITmdbClient Strict => this;
+
+        public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(string query, MediaType? mediaType, CancellationToken cancellationToken)
+            => owner.Candidates(query, mediaType, true, cancellationToken);
+
+        public Task<TmdbMatch?> SearchAnyAsync(string query, CancellationToken cancellationToken) => owner.Any(query, true, cancellationToken);
+
+        public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
+            => owner.MovieSearch(title, year, true, cancellationToken);
+
+        public Task<TmdbMatch?> SearchTvAsync(string title, CancellationToken cancellationToken) => owner.TvSearch(title, true, cancellationToken);
+
+        public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken) => owner.Movie(tmdbId, true, cancellationToken);
+
+        public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken) => owner.Tv(tmdbId, true, cancellationToken);
+
+        public Task<TmdbTvSeriesCatalog?> GetTvSeriesCatalogAsync(int tmdbId, CancellationToken cancellationToken)
+            => owner.SeriesCatalog(tmdbId, true, cancellationToken);
+
+        public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken)
+            => owner.SeasonCatalog(tmdbId, seasonNumber, true, cancellationToken);
+
+        public Task<TmdbMatch?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken) => owner.Imdb(imdbId, true, cancellationToken);
+
+        public Task<IReadOnlyList<TmdbMatch>> GetTrendingAsync(MediaType mediaType, CancellationToken cancellationToken)
+            => owner.Trending(mediaType, true, cancellationToken);
+
+        public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
+            => owner.Popular(mediaType, true, cancellationToken);
+    }
 }

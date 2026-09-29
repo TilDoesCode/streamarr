@@ -182,7 +182,7 @@ public sealed class RemuxPlannerTests
     }
 
     [Fact]
-    public void Transcode_WithASelectedSubtitle_ReportsItAsNotDeliverable()
+    public void Transcode_DeliversTextSubtitlesAsWebVtt_AndReportsAnImageOneItDoesNotBurnIn()
     {
         var media = Media(codec: "mpeg2video", subtitles: [Subtitle(2, "subrip", "eng"), Subtitle(3, "hdmv_pgs_subtitle", "eng")]);
 
@@ -194,7 +194,9 @@ public sealed class RemuxPlannerTests
         var reason = Assert.Single(image.Reasons, r => r.Code == "subtitle_not_deliverable");
         Assert.Equal(("3", "hdmv_pgs_subtitle", "transcode"), (reason.Params!["index"], reason.Params["codec"], reason.Params["mode"]));
         Assert.Contains("image-based", reason.Message);
-        Assert.Contains(text.Reasons, r => r.Code == "subtitle_not_deliverable" && r.Params!["index"] == "2");
+        Assert.DoesNotContain(text.Reasons, r => r.Code == "subtitle_not_deliverable");
+        Assert.Equal(DeliveryMode.Transcode, text.Mode);
+        Assert.Equal([SubtitlePlan.WebVtt, SubtitlePlan.None], text.Subtitles.Select(s => s.DeliveredAs));
         Assert.DoesNotContain(none.Reasons, r => r.Code == "subtitle_not_deliverable");
     }
 
@@ -231,7 +233,8 @@ public sealed class RemuxPlannerTests
         Assert.Equal(["en", "de", "de", "fr", null], remux.Subtitles.Select(s => s.Language));
         var image = Assert.Single(remux.Reasons, r => r.Code == "subtitle_not_deliverable");
         Assert.Equal("hdmv_pgs_subtitle", image.Params!["codec"]);
-        Assert.All(transcode.Subtitles, s => Assert.Equal("none", s.DeliveredAs));
+        Assert.Equal(DeliveryMode.Transcode, transcode.Mode);
+        Assert.Equal(["webvtt", "webvtt", "webvtt", "none", "webvtt"], transcode.Subtitles.Select(s => s.DeliveredAs));
         Assert.Equal(DeliveryMode.Direct, direct.Mode);
         Assert.All(direct.Subtitles, s => Assert.Equal("embedded", s.DeliveredAs));
     }

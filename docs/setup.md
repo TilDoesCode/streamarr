@@ -126,6 +126,13 @@ origin (`scheme://host[:port]`, no path) through `Streamarr__TrustedOrigins__0` 
 the index for more). Leave it empty for a plain single-origin deployment. The dev stack and
 native `server` action already wire this from the `CODECRAFT_URL_*` public URLs.
 
+A viewer app served from **another origin** (for example the web client on its own domain) needs
+CORS for the viewer API and the `/stream` and `/transcode` capability URLs its player opens. List
+those origins through `Streamarr__ViewerCorsOrigins__0` (or `*` for any origin). Cross-origin
+apps sign in with bearer tokens (`useCookies: false`): the server never allows credentials
+cross-origin, and the admin and machine APIs stay same-origin. A viewer app served by the server
+itself needs nothing.
+
 ---
 
 ## 3. Configuration — where it lives
@@ -324,8 +331,9 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `ReleaseStoreMaxEntries` | `10000` | Hard bound for the in-memory release lookup store. |
 | `TmdbCacheMaxEntries` | `5000` | Hard bound for cached TMDB metadata. |
 | `ViewerVersionsCacheSeconds` | `600` | How long the viewer catalog reuses a ranked version list (per movie / per season) before searching the indexers again; `0` disables it. |
-| `ViewerPlaybackHeartbeatSeconds` | `60` | A ready viewer playback counts toward the viewer's max concurrent streams this long after its last progress report (heartbeat), ready or switch (15–3600). |
-| `ViewerPlaybackIdleSeconds` | `600` | A viewer playback without polls, progress reports or switches for this long is stopped and its remux/transcode closed (60–86400). |
+| `ViewerPlaybackHeartbeatSeconds` | `60` | A ready viewer playback counts toward the viewer's max concurrent streams this long after its last progress report (heartbeat), ready, switch or HLS fetch of its remux/transcode (15–3600). |
+| `ViewerPlaybackIdleSeconds` | `600` | A viewer playback without polls, progress reports, switches or HLS fetches for this long is stopped and its remux/transcode closed (60–86400). |
+| `ViewerCorsOrigins` | `[]` | Origins (`scheme://host[:port]`, or `*`) of viewer apps served elsewhere; they get CORS (without credentials) for `/api/v1/viewer/*`, `/api/v1/stream/*` and `/api/v1/transcode/*`. Empty: same-origin only. |
 | `MaxWatchEvents` | `10000` | Maximum retained playback-event rows; oldest rows are pruned on write. |
 | `DeepHealthCacheSeconds` | `30` | Shared cache lifetime for admin-only dependency probes. |
 | `Admin` | — | First-run admin bootstrap (below). |

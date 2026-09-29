@@ -89,7 +89,7 @@ public static class HlsPlaylist
     {
         var video = plan.Video;
         var remux = plan.Mode == DeliveryMode.Remux;
-        var subtitles = remux ? plan.Subtitles.Where(s => s.Delivered).ToList() : [];
+        var subtitles = plan.Subtitles.Where(s => s.Delivered).ToList();
         var bandwidth = plan.PeakBandwidthBitsPerSecond ?? plan.BandwidthBitsPerSecond;
         var average = plan.AverageBandwidthBitsPerSecond ?? plan.BandwidthBitsPerSecond;
         var builder = new StringBuilder()

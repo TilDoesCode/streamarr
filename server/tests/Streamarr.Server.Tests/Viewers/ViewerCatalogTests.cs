@@ -344,6 +344,29 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task VersionRefreshes_AreCoalesced_ForAMinute()
+    {
+        using var viewer = await ViewerAsync("refreshloop");
+        factory.Clock.Advance(IndexerCacheLifetime);
+
+        var first = await OkAsync(viewer, $"{Base}/works/tmdb-movie-502/versions?refresh=true");
+        var looped = await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => OkAsync(viewer, $"{Base}/works/tmdb-movie-502/versions?refresh=true")));
+        factory.Clock.Advance(ViewerVersionCacheMinRefreshAge + TimeSpan.FromSeconds(1));
+        var later = await OkAsync(viewer, $"{Base}/works/tmdb-movie-502/versions?refresh=true");
+
+        Assert.False(first.GetProperty("fromCache").GetBoolean());
+        Assert.All(looped, body =>
+        {
+            Assert.True(body.GetProperty("fromCache").GetBoolean());
+            Assert.Equal(first.GetProperty("checkedAt").GetDateTimeOffset(), body.GetProperty("checkedAt").GetDateTimeOffset());
+        });
+        Assert.False(later.GetProperty("fromCache").GetBoolean());
+        Assert.True(later.GetProperty("checkedAt").GetDateTimeOffset() > first.GetProperty("checkedAt").GetDateTimeOffset());
+    }
+
+    private static readonly TimeSpan ViewerVersionCacheMinRefreshAge = TimeSpan.FromSeconds(60);
+
+    [Fact]
     public async Task Versions_NeverExposeIndexerOrNzbData()
     {
         using var viewer = await ViewerAsync("leak");
@@ -380,6 +403,18 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
         Assert.Equal("transcode", Method(3));
         Assert.Contains("video_codec_unsupported", Codes(3));
         Assert.Contains("transcoding_not_allowed", Codes(3));
+    }
+
+    [Fact]
+    public async Task Versions_PredictHdrAsTenBit_WhenTheProfileListsHdrFormatsWithoutSupports10Bit()
+    {
+        using var viewer = await ViewerAsync("predicthdr", new { allowTranscoding = false });
+
+        var body = await OkAsync(viewer, $"{Base}/works/tmdb-movie-501/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,eac3&containers=mp4&hdrFormats=hdr10&maxAudioChannels=6");
+        var uhd = body.GetProperty("versions").EnumerateArray().Single(v => v.GetProperty("name").GetString() == CatalogNewznabFake.MovieReleases[0]);
+
+        Assert.Equal("remux", uhd.GetProperty("predictedMethod").GetString());
+        Assert.DoesNotContain("bit_depth_unsupported", uhd.GetProperty("predictionReasons").EnumerateArray().Select(r => r.GetProperty("code").GetString()));
     }
 
     [Theory]

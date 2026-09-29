@@ -92,7 +92,7 @@ public static class SubtitleParser
             AddLanguage(languages, vost.Groups["lang"].Value switch
             {
                 "" or "FR" or "fr" => "fr",
-                "A" or "a" => "es",
+                "A" or "a" => "en",
                 var other => other,
             });
         }

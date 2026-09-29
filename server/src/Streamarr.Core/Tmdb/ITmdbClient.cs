@@ -85,4 +85,7 @@ public interface ITmdbClient
     /// <summary>TMDB's currently popular titles for one media type (discovery rows); empty by default.</summary>
     Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<TmdbMatch>>([]);
+
+    /// <summary>A view that surfaces transient failures as <see cref="TmdbTransientException"/> instead of a decorator's fallback.</summary>
+    ITmdbClient Strict => this;
 }

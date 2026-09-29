@@ -20,6 +20,7 @@ using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
+using Streamarr.Server.Contracts;
 using Streamarr.Server.Logging;
 using Streamarr.Server.Modules;
 using Streamarr.Server.Options;
@@ -147,6 +148,8 @@ public static class StreamarrServerBootstrap
             };
             o.AddSecurityDefinition("bearer", scheme);
             o.OperationFilter<AllowAnonymousOperationFilter>();
+            o.OperationFilter<ViewerGateResponsesOperationFilter>();
+            o.SchemaFilter<NullableReferenceSchemaFilter>();
 
             foreach (var xml in Directory.GetFiles(AppContext.BaseDirectory, "Streamarr.*.xml"))
                 o.IncludeXmlComments(xml, includeControllerXmlComments: true);
@@ -530,6 +533,8 @@ public static class StreamarrServerBootstrap
             app.UseDefaultFiles();
             app.UseStaticFiles();
         }
+
+        app.UseMiddleware<ViewerCorsMiddleware>();
 
         // Explicit routing so the static-files middleware above is guaranteed to run first
         // (minimal hosting would otherwise auto-insert routing at the very top).

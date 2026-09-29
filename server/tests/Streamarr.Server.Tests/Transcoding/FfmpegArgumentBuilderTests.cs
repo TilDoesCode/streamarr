@@ -280,6 +280,23 @@ public sealed class FfmpegArgumentBuilderTests
     }
 
     [Fact]
+    public void Transcode_WritesOneWebVttFilePerTextSubtitle_NextToTheHlsOutput()
+    {
+        var media = Media(codec: "mpeg2video", subtitles: [Subtitle(2, "subrip"), Subtitle(3, "hdmv_pgs_subtitle"), Subtitle(4, "ass", "ger")]);
+        var plan = Decide(media, ClientProfile.Default, allowDirect: false);
+
+        var args = FfmpegArgumentBuilder.Build(Spec(plan, startSegment: 3));
+
+        Assert.Equal(DeliveryMode.Transcode, plan.Mode);
+        AssertSequence(args, "-sn", "-dn");
+        AssertSequence(args, "-hls_segment_options", "movflags=+frag_discont", "-y", Path.Combine("/work/session", "job-1.m3u8"),
+            "-map", "0:2", "-c:s", "webvtt", "-avoid_negative_ts", "disabled", "-flush_packets", "1", "-f", "webvtt", "-y",
+            Path.Combine("/work/session", "sub-2-1.vtt"));
+        Assert.Equal(Path.Combine("/work/session", "sub-4-1.vtt"), args[^1]);
+        Assert.DoesNotContain("0:3", args);
+    }
+
+    [Fact]
     public void RemuxRestart_SeeksInMicroseconds_CopiesAudio_AndDoesNotTrim()
     {
         var plan = Decide(Media(codec: "h264", audioCodec: "ac3", channels: 6), HdrClient, allowDirect: false);

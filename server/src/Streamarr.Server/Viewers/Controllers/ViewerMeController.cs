@@ -14,6 +14,7 @@ namespace Streamarr.Server.Viewers.Controllers;
 [Authorize(Policy = ViewerAuth.Policy)]
 [ViewerProblemFilter]
 [ViewerPasswordChangeFilter]
+[ViewerModelStateFilter]
 public sealed class ViewerMeController(
     ViewerAccountService accounts,
     ViewerTwoFactorService twoFactor,

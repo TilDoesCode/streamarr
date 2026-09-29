@@ -36,6 +36,9 @@ public interface IPlaybackMedia
     Task CloseHlsAsync(string id, string reason);
 
     void TouchHls(string id);
+
+    /// <summary>When the player last fetched the rendition (playlist or segment); null when it no longer exists.</summary>
+    DateTimeOffset? HlsLastAccess(string id);
 }
 
 /// <summary>Resolves with client <c>streamarr-viewer</c> and the viewer id as requester, so pre-downloads and capability reuse stay per viewer.</summary>
@@ -110,4 +113,7 @@ public sealed class ServerPlaybackMedia(
         if (transcodes.TryGet(id, out var session))
             session.Touch();
     }
+
+    public DateTimeOffset? HlsLastAccess(string id)
+        => transcodes.TryGet(id, out var session) ? session.LastAccessAt : null;
 }

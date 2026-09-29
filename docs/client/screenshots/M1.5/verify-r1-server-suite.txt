@@ -1,0 +1,5 @@
+Passed!  - Failed:     0, Passed:   247, Skipped:     0, Total:   247, Duration: 1 s - Streamarr.Usenet.Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   444, Skipped:     0, Total:   444, Duration: 5 s - Streamarr.Core.Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:    35, Skipped:     0, Total:    35, Duration: 18 s - Streamarr.DevWorld.Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   990, Skipped:     0, Total:   990, Duration: 2 m 34 s - Streamarr.Server.Tests.dll (net8.0)
+exit 0

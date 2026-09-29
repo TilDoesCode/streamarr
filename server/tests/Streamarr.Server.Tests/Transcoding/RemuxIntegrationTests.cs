@@ -109,6 +109,48 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
     }
 
     [Fact]
+    public async Task Transcode_CarriesTextSubtitles_AsWebVttRenditions_OnItsSegmentGrid()
+    {
+        var created = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "transcode", maxHeight = 360 });
+        var plan = created.GetProperty("plan");
+
+        Assert.Equal("transcode", plan.GetProperty("mode").GetString());
+        Assert.Equal(["webvtt", "webvtt"], plan.GetProperty("subtitles").EnumerateArray().Select(s => s.GetProperty("deliveredAs").GetString()));
+        Assert.DoesNotContain("subtitle_not_deliverable", Codes(plan.GetProperty("reasons")));
+        using var raw = fixture.CreateClient(authenticated: false);
+        var master = await raw.GetStringAsync(created.GetProperty("playlistUrl").GetString());
+        Assert.Contains("TYPE=SUBTITLES,GROUP-ID=\"subs\",NAME=\"English\",LANGUAGE=\"en\"", master);
+        Assert.Contains("VIDEO-RANGE=SDR,SUBTITLES=\"subs\"\nmain.m3u8", master);
+        var english = plan.GetProperty("subtitles")[0].GetProperty("index").GetInt32();
+
+        var spanning = await raw.GetStringAsync($"{BasePath(created)}/subtitles/{english}/3.vtt");
+        Assert.Contains("EN 2", spanning);
+        Assert.Contains("EN spanning", spanning);
+        var report = await SimulateAsync(created, new HlsSimOptions { PlaybackRate = 0 });
+
+        Assert.True(report.Passed, string.Join('\n', report.Errors));
+        Assert.Equal(2, report.SubtitleRenditions);
+        Assert.Contains(report.SubtitleCueList, c => c.Contains("EN 9", StringComparison.Ordinal));
+        Assert.Contains(report.SubtitleCueList, c => c.Contains("<i>DE 4</i>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Transcode_StartedLate_ServesEarlierSubtitleSegments_WithoutRestartingTheEncoder()
+    {
+        var created = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "transcode", maxHeight = 360, startPositionSeconds = 40 });
+        var english = created.GetProperty("plan").GetProperty("subtitles")[0].GetProperty("index").GetInt32();
+        using var raw = fixture.CreateClient(authenticated: false);
+
+        var current = await raw.GetStringAsync($"{BasePath(created)}/subtitles/{english}/10.vtt");
+        var behind = await raw.GetStringAsync($"{BasePath(created)}/subtitles/{english}/9.vtt");
+
+        Assert.Contains("EN 5", current);
+        Assert.StartsWith("WEBVTT\n", behind);
+        var job = (await AdminSessionAsync(created)).GetProperty("job");
+        Assert.Equal(10, job.GetProperty("startSegment").GetInt32());
+    }
+
+    [Fact]
     public async Task FarSeekBack_RestartsTheCopy_OnTheSameTimeline()
     {
         var created = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "remux", startPositionSeconds = 70 });
@@ -385,9 +427,10 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
         Assert.Equal("text/vtt", (await raw.GetAsync($"{BasePath(remux)}/subtitles/{english}/0.vtt")).Content.Headers.ContentType!.MediaType);
         Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync($"{BasePath(remux)}/subtitles/0/main.m3u8")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync($"{BasePath(remux)}/subtitles/{english}/99.vtt")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync($"{BasePath(transcode)}/subtitles/{english}/0.vtt")).StatusCode);
+        Assert.Equal("text/vtt", (await raw.GetAsync($"{BasePath(transcode)}/subtitles/{english}/0.vtt")).Content.Headers.ContentType!.MediaType);
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync($"{BasePath(transcode)}/subtitles/0/main.m3u8")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync($"/api/v1/transcode/not-a-session/subtitles/{english}/0.vtt")).StatusCode);
-        Assert.DoesNotContain("SUBTITLES", await raw.GetStringAsync(transcode.GetProperty("playlistUrl").GetString()));
+        Assert.Contains("TYPE=SUBTITLES", await raw.GetStringAsync(transcode.GetProperty("playlistUrl").GetString()));
     }
 
     [Fact]

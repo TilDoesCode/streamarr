@@ -16,6 +16,7 @@ namespace Streamarr.Server.Viewers.Controllers;
 [Authorize(Policy = ViewerAuth.Policy)]
 [ViewerProblemFilter]
 [ViewerPasswordChangeFilter]
+[ViewerModelStateFilter]
 public sealed class ViewerWatchController(
     WatchStateService watch,
     NextUpService nextUp,
@@ -142,6 +143,7 @@ public sealed class ViewerWatchController(
     [HttpGet("~/api/v1/viewer/access/{workId}")]
     [ProducesResponseType(typeof(ContentAccessResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<ContentAccessResponse>> Access(string workId, CancellationToken ct)
     {
         var key = ViewerMappings.RequireWork(workId, playableOnly: false);

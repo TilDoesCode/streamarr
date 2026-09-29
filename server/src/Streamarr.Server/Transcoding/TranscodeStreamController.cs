@@ -42,6 +42,10 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions) 
     [HttpGet("init.mp4")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status410Gone)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status504GatewayTimeout)]
     public async Task<IActionResult> Init(string token, CancellationToken ct)
     {
         NoStore();
@@ -60,7 +64,10 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions) 
     [HttpGet("{segment:int:min(0)}.m4s")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status410Gone)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status504GatewayTimeout)]
     public async Task<IActionResult> Segment(string token, int segment, CancellationToken ct)
     {
         NoStore();
@@ -106,6 +113,10 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions) 
     [HttpGet("subtitles/{stream:int:min(0)}/{segment:int:min(0)}.vtt")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status410Gone)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status504GatewayTimeout)]
     public async Task<IActionResult> SubtitleSegment(string token, int stream, int segment, CancellationToken ct)
     {
         NoStore();

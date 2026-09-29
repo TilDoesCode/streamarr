@@ -51,6 +51,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
     /// <summary>Home rows (trending and popular movies and series) from TMDB, cached for hours.</summary>
     [HttpGet("discover")]
     [ProducesResponseType(typeof(CatalogDiscoverResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<CatalogDiscoverResponse>> Discover(CancellationToken ct)
         => Ok(await catalog.DiscoverAsync(await ViewerAsync(ct), ct));
 
@@ -131,7 +132,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
                 Containers = List(containers) ?? ClientProfile.Default.Containers,
                 HdrFormats = List(hdrFormats),
                 SupportsHdr = List(hdrFormats) is { Count: > 0 },
-                Supports10Bit = supports10Bit ?? false,
+                Supports10Bit = supports10Bit ?? List(hdrFormats) is { Count: > 0 },
                 MaxAudioChannels = Math.Clamp(maxAudioChannels ?? 2, 1, 8),
             };
             device = new DeviceHints(client, new TranscodeLimits(

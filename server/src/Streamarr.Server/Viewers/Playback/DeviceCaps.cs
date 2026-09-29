@@ -28,8 +28,12 @@ public sealed record EngineCaps(
     IReadOnlyList<AudioCaps> Audio,
     IReadOnlyList<string>? SubtitleFormats,
     bool Hls,
-    int MaxAudioChannels)
+    int MaxAudioChannels,
+    bool ToneMapsHdr = false)
 {
+    /// <summary>HDR formats an engine that tone-maps shows on any display.</summary>
+    public static readonly string[] ToneMappedFormats = ["hdr10", "hlg"];
+
     public const string Native = "native";
     public const string Web = "web";
     public const string Vlc = "vlc";
@@ -57,12 +61,20 @@ public sealed record EngineCaps(
         ],
         ["srt", "ass", "webvtt", "mov_text", "pgs", "vobsub", "dvbsub"],
         true,
-        8);
+        8,
+        ToneMapsHdr: true);
+
+    /// <summary>HDR formats this engine shows for a codec: what it renders plus, when it tone-maps, HDR10 and HLG of a 10-bit decoder.</summary>
+    public IReadOnlyList<string> HdrFormatsFor(VideoCaps? entry)
+        => entry is null ? []
+            : ToneMapsHdr && entry.MaxBitDepth >= 10 ? entry.HdrFormats.Union(ToneMappedFormats, StringComparer.Ordinal).ToList()
+            : entry.HdrFormats;
 
     /// <summary>The planner's view of this engine for one source video: per-codec bit depth and HDR formats of the source codec.</summary>
     public ClientProfile ClientFor(SourceVideoStream? video)
     {
         var entry = video is null ? null : VideoFor(video.Codec);
+        var hdr = HdrFormatsFor(entry);
         return new ClientProfile
         {
             VideoCodecs = Video.Select(v => v.Codec).Distinct().ToList(),
@@ -70,8 +82,8 @@ public sealed record EngineCaps(
             Containers = Containers,
             MaxAudioChannels = MaxAudioChannels,
             Supports10Bit = entry is { MaxBitDepth: >= 10 },
-            HdrFormats = entry?.HdrFormats ?? [],
-            SupportsHdr = entry is { HdrFormats.Count: > 0 },
+            HdrFormats = hdr,
+            SupportsHdr = hdr.Count > 0,
             SubtitleFormats = SubtitleFormats,
         };
     }
@@ -139,7 +151,7 @@ public sealed record DeviceCaps(string Platform, EngineCaps? Native, EngineCaps?
         IReadOnlyList<string>? subtitles = dto.SubtitleFormats is null ? null : Names(dto.SubtitleFormats, "subtitleFormats", Limit).Select(DeviceNames.Subtitle).ToList();
         var maxChannels = dto.MaxAudioChannels ?? 2;
         return new EngineCaps(name, Names(dto.Containers, "containers", Limit).Select(DeviceNames.Container).Distinct().ToList(),
-            videoCaps, audioCaps, subtitles, dto.Hls, maxChannels);
+            videoCaps, audioCaps, subtitles, dto.Hls, maxChannels, dto.HdrToneMapping);
     }
 
     private const int Limit = 32;

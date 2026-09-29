@@ -203,6 +203,9 @@ public sealed record PlaybackDecision(
 /// <summary>PLAN §2 ranking (native direct, native remux, VLC direct, transcode); image subtitles prefer VLC, then burn-in, then none.</summary>
 public static class PlaybackDecider
 {
+    /// <summary>Output height of a full transcode when the viewer did not ask for more; 4K encodes rarely keep up in real time.</summary>
+    public const int DefaultTranscodeMaxHeight = 1080;
+
     public static string Key(DeliveryMode method, string engine) => $"{method.ToApi()}:{engine}";
 
     private sealed record Step(DeliveryMode Method, EngineCaps Engine, bool WithSubtitle, bool BurnIn);
@@ -248,7 +251,9 @@ public static class PlaybackDecider
             }
             var client = step.Engine.ClientFor(media.Video);
             var limits = new TranscodeLimits(
-                step.Method == DeliveryMode.Transcode ? Min(preferences.MaxHeight, OutputMaxHeight(step.Engine, server.Settings)) : preferences.MaxHeight,
+                step.Method == DeliveryMode.Transcode
+                    ? Min(preferences.MaxHeight ?? DefaultTranscodeMaxHeight, OutputMaxHeight(step.Engine, server.Settings))
+                    : preferences.MaxHeight,
                 maxBitrate,
                 tracks.Audio?.Index,
                 step.WithSubtitle ? tracks.Subtitle?.Index : null,
@@ -281,6 +286,21 @@ public static class PlaybackDecider
                     ? PlanReason.Of("image_subtitle_vlc", $"VLC plays the original file so the image subtitle ({image.Codec}) shows.", ("codec", image.Codec))
                     : PlanReason.Of("vlc_fallback", "The native player cannot play this version as it is; VLC plays the original file."));
             }
+            if (step.Method == DeliveryMode.Transcode && preferences.MaxHeight is null && media.Video is { Height: > DefaultTranscodeMaxHeight } tall)
+            {
+                candidateNotes.Add(PlanReason.Of("transcode_height_default",
+                    $"The transcode is scaled to {DefaultTranscodeMaxHeight}p; set a higher maxHeight to transcode at {tall.Height}p.",
+                    ("height", tall.Height), ("max", DefaultTranscodeMaxHeight)));
+            }
+            if (step.Method == DeliveryMode.Transcode && preference == EnginePreference.Vlc && step.Engine.Name != EngineCaps.Vlc)
+                candidateNotes.Add(PlanReason.Of("transcode_native_engine", "VLC plays original files; the server transcode plays in the device's own player."));
+            if (media.Video is { Hdr: not HdrFormat.None } hdrVideo && step.Engine.ToneMapsHdr
+                && step.Engine.VideoFor(hdrVideo.Codec) is { } hdrCaps && !hdrCaps.HdrFormats.Contains(hdrVideo.Hdr.ToApi(), StringComparer.Ordinal)
+                && step.Engine.HdrFormatsFor(hdrCaps).Contains(hdrVideo.Hdr.ToApi(), StringComparer.Ordinal) && step.Method != DeliveryMode.Transcode)
+            {
+                candidateNotes.Add(PlanReason.Of("hdr_tone_mapped", $"The {step.Engine.Name} engine tone-maps the {hdrVideo.Hdr.ToApi()} video to the display itself.",
+                    ("hdr", hdrVideo.Hdr.ToApi()), ("engine", step.Engine.Name)));
+            }
             if (!step.WithSubtitle && tracks.Subtitle is { } dropped)
             {
                 candidateNotes.Add(PlanReason.Of("subtitle_not_deliverable",
@@ -304,6 +324,8 @@ public static class PlaybackDecider
             if (preference == EnginePreference.Vlc)
             {
                 steps.Add(new Step(DeliveryMode.Direct, vlc!, withSubtitle, false));
+                if (native is not null)
+                    steps.Add(new Step(DeliveryMode.Transcode, native, withSubtitle, false));
                 steps.Add(new Step(DeliveryMode.Transcode, vlc!, withSubtitle, false));
                 return;
             }

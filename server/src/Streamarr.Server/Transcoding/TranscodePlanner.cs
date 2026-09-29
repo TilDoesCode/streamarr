@@ -340,12 +340,10 @@ public static class TranscodePlanner
                 $"Subtitle stream {burned.Index} ({burned.Codec}) is image-based and is burned into the transcoded video.",
                 ("index", burned.Index), ("codec", burned.Codec)));
         }
-        else if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { } selected)
+        else if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { TextBased: false } selected)
         {
             why.Add(PlanReason.Of("subtitle_not_deliverable",
-                selected.TextBased
-                    ? $"Subtitle stream {selected.Index} ({selected.Codec}) is not delivered with a transcode (no WebVTT renditions; only image subtitles can be burned in); a remux or the original file carries it."
-                    : $"Subtitle stream {selected.Index} ({selected.Codec}) is image-based and this transcode does not burn it in (burn-in not requested); play the original file (VLC) or request burn-in to see it.",
+                $"Subtitle stream {selected.Index} ({selected.Codec}) is image-based and this transcode does not burn it in (burn-in not requested); play the original file (VLC) or request burn-in to see it.",
                 ("index", selected.Index), ("codec", selected.Codec), ("mode", "transcode")));
         }
         return transcode with
@@ -466,8 +464,8 @@ public static class TranscodePlanner
             var delivered = mode switch
             {
                 DeliveryMode.Direct => SubtitlePlan.Embedded,
-                DeliveryMode.Remux when stream.TextBased => SubtitlePlan.WebVtt,
                 DeliveryMode.Transcode when burnIn?.Index == stream.Index => SubtitlePlan.BurnedIn,
+                DeliveryMode.Remux or DeliveryMode.Transcode when stream.TextBased => SubtitlePlan.WebVtt,
                 _ => SubtitlePlan.None,
             };
             return new SubtitlePlan(stream, delivered, language, name);

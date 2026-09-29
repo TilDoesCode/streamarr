@@ -1,0 +1,25 @@
+  Failed Streamarr.Server.Tests.Viewers.ViewerCatalogOutageTests.AgeGate_DuringATmdbOutage_IsA503ForRestrictedViewers_NotAgeRestricted [810 ms]
+  Error Message:
+   /api/v1/viewer/access/tmdb-movie-999: 200 {"workId":"tmdb-movie-999","allowed":false,"reason":"rating_unavailable","rating":null,"minimumAge":null,"viewerMaxAge":12}
+  Failed Streamarr.Server.Tests.Viewers.ViewerCatalogOutageTests.TmdbOutage_IsARetryable503_ForDetailsListsAndVersions [251 ms]
+  Error Message:
+   /api/v1/viewer/catalog/movies/501: 404 {"error":{"code":"title_not_found","message":"The title was not found.","host":null,"indexerId":null}}
+  Failed Streamarr.Server.Tests.Viewers.ViewerPlaybackTests.Get_WithWaitMs_LongPollsUntilThePlaybackChanges [1 s]
+  Error Message:
+  Failed Streamarr.Server.Tests.Viewers.ViewerCatalogOutageTests.FailedCertificationLookups_AreA503_NotAnEmptyListForRestrictedViewers [258 ms]
+  Error Message:
+   /api/v1/viewer/catalog/search?q=movie: 200 {"items":[]}
+  Failed Streamarr.Server.Tests.Viewers.ViewerPlaybackTests.Switch_ToATrackTheVersionLacks_Answers400_AndKeepsPlaying [248 ms]
+  Error Message:
+Expected: BadRequest
+Actual:   Accepted
+  Failed Streamarr.Server.Tests.Viewers.ViewerContractTests.HlsSegmentRoutes_DeclareEveryFailureTheyCanAnswer(path: "/api/v1/transcode/{token}/init.mp4") [5 s]
+  Error Message:
+  Failed Streamarr.Server.Tests.Viewers.ViewerContractTests.HlsSegmentRoutes_DeclareEveryFailureTheyCanAnswer(path: "/api/v1/transcode/{token}/{segment}.m4s") [1 s]
+  Error Message:
+  Failed Streamarr.Server.Tests.Viewers.ViewerContractTests.HlsSegmentRoutes_DeclareEveryFailureTheyCanAnswer(path: "/api/v1/transcode/{token}/subtitles/{stream}/{segm"···) [1 s]
+  Error Message:
+Failed!  - Failed:     8, Passed:     0, Skipped:     0, Total:     8, Duration: 8 s - Streamarr.Server.Tests.dll (net8.0)
+Core.Tests on base 2643887:
+  Failed StreamDetailParserTests.SubtitleHints_ComeFromSubtitleMarkers(name: "Movie.2021.VOSTA.1080p.WEB.x264-GRP", languages: "en")
+  Expected: "en"  Actual: "es"

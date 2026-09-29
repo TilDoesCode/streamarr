@@ -82,6 +82,9 @@ public sealed record EngineProfileDto
 
     /// <summary>Channels of the audio output path (2 for stereo, 6 or 8 for a surround receiver); default 2.</summary>
     public int? MaxAudioChannels { get; init; }
+
+    /// <summary>True when the engine tone-maps HDR10 and HLG to SDR itself (VLC, browsers): such sources then play on it although <c>hdrFormats</c> does not list them.</summary>
+    public bool HdrToneMapping { get; init; }
 }
 
 public sealed record VideoCodecProfileDto
@@ -295,6 +298,6 @@ public sealed record PlaybackSubtitleTrackDto
     public bool TextBased { get; init; }
     public bool Selected { get; init; }
 
-    /// <summary><c>embedded</c> (direct play), <c>webvtt</c> (remux rendition), <c>burnedIn</c> (in the transcoded picture) or <c>none</c>.</summary>
+    /// <summary><c>embedded</c> (direct play), <c>webvtt</c> (HLS rendition of a remux or transcode), <c>burnedIn</c> (in the transcoded picture) or <c>none</c>.</summary>
     public required string DeliveredAs { get; init; }
 }

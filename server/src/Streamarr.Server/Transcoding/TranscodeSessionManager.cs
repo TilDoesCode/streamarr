@@ -369,6 +369,7 @@ public sealed class TranscodeSessionManager(
     {
         if (session.Job is { } previous)
         {
+            CoverTranscodedSubtitles(session);
             await previous.KillAsync();
             session.NoteRestart();
         }
@@ -428,6 +429,7 @@ public sealed class TranscodeSessionManager(
         => session.Plan.KeyframeIndex?.Keyframes.Select(k => k - session.Media.StartTime).ToList() ?? [];
 
     /// <summary>A WebVTT segment; like a video segment it starts or restarts the copy when no live run will demux its cues, then waits for them.</summary>
+    /// <remarks>A transcode run is never restarted backwards for subtitles (an encoder restart costs seconds); such a segment gets the cues known so far.</remarks>
     public async Task<string> GetSubtitleSegmentAsync(TranscodeSession session, int streamIndex, int index, CancellationToken ct)
     {
         var track = session.Subtitles.FirstOrDefault(t => t.StreamIndex == streamIndex)
@@ -436,7 +438,13 @@ public sealed class TranscodeSessionManager(
             throw new TranscodeException("unknown_segment", "The segment is outside this rendition.", 404);
         session.Touch();
 
-        for (var attempt = 0; attempt < 4 && !session.SubtitlesCovered(index); attempt++)
+        bool Covered()
+        {
+            CoverTranscodedSubtitles(session);
+            return session.SubtitlesCovered(index);
+        }
+
+        for (var attempt = 0; attempt < 4 && !Covered(); attempt++)
         {
             TranscodeJob job;
             await session.Gate.WaitAsync(ct);
@@ -444,7 +452,9 @@ public sealed class TranscodeSessionManager(
             {
                 if (session.Closed)
                     throw new TranscodeException("session_closed", "The transcode session was closed.", 410);
-                if (session.SubtitlesCovered(index))
+                if (Covered())
+                    break;
+                if (session.Mode == DeliveryMode.Transcode && session.Job is { HasExited: false } running && index < running.StartSegment)
                     break;
                 job = await EnsureJobForSegmentLockedAsync(session, index);
             }
@@ -455,7 +465,7 @@ public sealed class TranscodeSessionManager(
 
             try
             {
-                if (await WaitForAsync(session, job, () => session.SubtitlesCovered(index), ct))
+                if (await WaitForAsync(session, job, Covered, ct))
                     break;
             }
             catch (TranscodeException e) when (e.Code == "end_of_stream")
@@ -465,6 +475,15 @@ public sealed class TranscodeSessionManager(
         }
         track.Refresh(session.Directory);
         return WebVttSubtitles.Segment(track.Between(session.Timeline.StartOf(index), session.Timeline.EndOf(index)));
+    }
+
+    /// <summary>A transcode run has demuxed the cues of every segment two behind its front, and all of them once it ended cleanly.</summary>
+    private static void CoverTranscodedSubtitles(TranscodeSession session)
+    {
+        if (session.Mode != DeliveryMode.Transcode || session.Subtitles.Count == 0 || session.Job is not { } job)
+            return;
+        var last = job is { HasExited: true, Killed: false, ExitCode: 0 } ? session.Timeline.Count - 1 : job.Front() - 2;
+        session.CoverSubtitles(job.StartSegment, last);
     }
 
     private async Task<bool> WaitForAsync(TranscodeSession session, TranscodeJob job, Func<bool> ready, CancellationToken ct)

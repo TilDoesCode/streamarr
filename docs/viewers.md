@@ -64,8 +64,9 @@ sign the viewer out everywhere, read or clear its watch state, and delete it.
 certification (US preferred, the same value Streamarr shows elsewhere). Certifications
 map to a minimum age: US film (`G` 0, `PG` 10, `PG-13` 13, `R` 17, `NC-17` 18), US TV
 (`TV-Y7` 7, `TV-PG` 10, `TV-14` 14, `TV-MA` 17), numeric systems such as FSK (`0`–`18`),
-and BBFC-style values (`U`, `12A`, `15`, `18`, `R18`). If the rating cannot be looked up,
-a restricted viewer is denied (`rating_unavailable`).
+and BBFC-style values (`U`, `12A`, `15`, `18`, `R18`). If TMDB does not know the title,
+a restricted viewer is denied (`rating_unavailable`); while TMDB cannot be reached (and the rating
+is not cached) the request answers `503 catalog_unavailable` so the app can retry.
 
 The same rule runs through the [catalog](#catalog): search results and home rows simply leave
 out titles the viewer may not watch (and unrated ones when **Block unrated** is on), while
@@ -140,9 +141,12 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
 | Versions | The releases of a movie or episode the server would play, best first, with parsed attributes (resolution, codec, HDR incl. Dolby Vision, audio, languages, size, estimated bitrate, age, health, local pre-download) and the recommended one. | One indexer search per movie or season, cached |
 
 - Rows and search results are TMDB data: a title can appear there and still have no versions.
+- When TMDB cannot be reached, the catalog says so (`503 catalog_unavailable`, retry) instead of
+  answering "not found" or an empty list; home rows leave out only the rows that failed.
 - Versions never contain NZB links, indexer names or keys.
 - Version lists are cached for `Streamarr:ViewerVersionsCacheSeconds` (default 600 seconds) per
-  movie and per season, shared by all viewers; a client can ask for `?refresh=true`. Health and
+  movie and per season, shared by all viewers; a client can ask for `?refresh=true` (answered from
+  the cache while a search runs or the list is younger than a minute). Health and
   local pre-downloads are always current: a release a playback just found dead drops out
   immediately.
 - A client can send a compact device profile with the versions request to get a
@@ -158,7 +162,8 @@ See [API reference § 13](api.md#13-viewer-catalog-and-playback) for the contrac
 version, and what the device can play (a **device profile**: platform, its native or web player's
 containers and codecs with limits, subtitle formats, HLS support, whether VLC is bundled, an
 optional bandwidth cap) plus the viewer's preferences (engine, maximum height or bitrate, audio and
-subtitle language, subtitle mode). The server then works asynchronously and the app polls a state:
+subtitle language, subtitle mode). The server then works asynchronously and the app polls a state
+(a long-poll with `?waitMs=` answers as soon as it changes):
 
 `queued → resolving → (fallback) → (repairing) → planning → starting → ready | failed`
 
@@ -169,7 +174,10 @@ subtitle language, subtitle mode). The server then works asynchronously and the 
 - **Decision.** The server probes the file and picks, in this order: the device's own player
   playing the original file, the device's player via a server **remux** (video copied, audio copied
   or converted, text subtitles as WebVTT), **VLC** playing the original file (only when the app
-  bundles it), and last a full **transcode** (only when the viewer may transcode). Image subtitles
+  bundles it), and last a full **transcode** (only when the viewer may transcode; at most 1080p
+  unless the viewer asks for more, text subtitles as WebVTT, played by the device's own player even
+  when the viewer prefers VLC). An engine that tone-maps HDR itself (VLC, browsers) gets HDR10/HLG
+  files without a transcode. Image subtitles
   the device's player cannot show are played with VLC, else burned into a transcode, else left out
   (and said so). Audio and subtitle tracks follow the viewer's languages; forced subtitles for the
   audio language are the default.
@@ -177,24 +185,28 @@ subtitle language, subtitle mode). The server then works asynchronously and the 
   the reasons for the decision as stable codes the app can translate. **Failed** carries an error
   code and what the viewer can do next (retry, another version, lower quality, use VLC).
 - **URLs need no credentials.** They are capability paths on the server (`/api/v1/stream/…` for the
-  original file, `/api/v1/transcode/…/master.m3u8` for HLS), so any player can open them; they stop
-  working when the playback ends or the stream expires.
+  original file, `/api/v1/transcode/…/master.m3u8` for HLS), so any player can open them. HLS URLs
+  stop working when the playback ends; an original-file URL is the stream capability itself and
+  works until it expires (24 h by default). A web app on another origin needs
+  `Streamarr:ViewerCorsOrigins` ([setup](setup.md#7-configuration-reference-streamarroptions)).
 - **Switching** audio, subtitles, engine, quality or version re-plans the same playback at the
   current position; the old URL keeps working for 30 seconds after the new one is ready. A player
   error can ask for the next method (`stepDown`).
 - **Limits.** The age gate applies on start and on every switch (`403 age_restricted`). With
   **Max. concurrent streams**, a playback counts while it is prepared and while its app reports
-  progress (within `Streamarr:ViewerPlaybackHeartbeatSeconds`, default 60 s); a second device at the
+  progress or its player fetches the HLS stream (within `Streamarr:ViewerPlaybackHeartbeatSeconds`,
+  default 60 s); a second device at the
   limit gets `409 too_many_streams` naming the device that is playing, while the same device simply
   replaces its previous playback. Stopping (or `event: stop` in watch progress) ends the server's
   remux/transcode and frees the slot.
 - **Ownership and expiry.** A playback belongs to the device that started it; everyone else gets
-  `404`. Playbacks without polls, progress or switches for `Streamarr:ViewerPlaybackIdleSeconds`
+  `404`. Playbacks without polls, progress, switches or HLS fetches for `Streamarr:ViewerPlaybackIdleSeconds`
   (default 600 s) are stopped. They are kept in memory only.
 
 The Dev World (`server/tests/Streamarr.DevWorld`) exercises all of it against real generated media;
 `server/tests/Streamarr.DevWorld/tools/e2e_playback.py` plays every variant with Android TV, Apple TV,
-Chrome and Safari profiles.
+Chrome and Safari profiles, and `tools/contract_check.py` checks the viewer API's real responses
+(long-poll, switch errors, WebVTT in transcodes, HDR tone mapping, …) against `server/openapi/v1.json`.
 
 ## Email delivery
 
