@@ -84,10 +84,14 @@ public static class Mp4IndexReader
         {
             var body = stss.Body(data);
             var count = BinaryPrimitives.ReadUInt32BigEndian(body[4..]);
+            if (count > KeyframeIndexService.MaxKeyframes)
+                return null;
             sync = new HashSet<long>();
             for (var i = 0; i < count && 8 + i * 4 + 4 <= body.Length; i++)
                 sync.Add(BinaryPrimitives.ReadUInt32BigEndian(body[(8 + i * 4)..]));
         }
+        if (sync is null && sampleCount > KeyframeIndexService.MaxKeyframes)
+            return null;
         var sizes = tables.TryGetValue("stsz", out var stsz) ? SampleSizes(stsz.Body(data)) : null;
 
         var (mediaTime, emptyEdit) = EditList(data, children, movieTimescale);

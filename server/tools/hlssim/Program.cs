@@ -19,7 +19,7 @@ if (arguments.ContainsKey("help") || !arguments.ContainsKey("server"))
                       "[--max-height N] [--bitrate KBPS] [--rate X] [--buffer S] [--duration S] [--start S] " +
                       "[--seek AT:TO,...] [--decode] [--concurrency N] [--json FILE] [--keep] [--quiet] " +
                       "[--mode auto|remux|transcode] [--video-codecs LIST] [--audio-codecs LIST] [--containers LIST] [--max-channels N] " +
-                      "[--ten-bit] [--hdr-formats LIST] [--subtitle-formats LIST] [--audio-index N] [--subtitle-index N] [--no-subtitles]");
+                      "[--ten-bit] [--hdr-formats LIST] [--subtitle-formats LIST] [--audio-index N] [--subtitle-index N] [--no-subtitles] [--subtitles-first]");
     return 2;
 }
 
@@ -51,6 +51,7 @@ var options = new HlsSimOptions
     Seeks = ParseSeeks(arguments.GetValueOrDefault("seek")),
     Decode = arguments.ContainsKey("decode"),
     ValidateSubtitles = !arguments.ContainsKey("no-subtitles"),
+    SubtitlesFirst = arguments.ContainsKey("subtitles-first"),
 };
 var concurrency = (int)Double("concurrency", 1);
 var quiet = arguments.ContainsKey("quiet") || concurrency > 1;

@@ -284,6 +284,46 @@ export function remuxPlan(overrides: Partial<TranscodePlanResponse> = {}): Trans
   };
 }
 
+/** An MP4 the client plays as it is: the target mirrors the original streams and no encoder runs. */
+export function directPlan(overrides: Partial<TranscodePlanResponse> = {}): TranscodePlanResponse {
+  const base = plan();
+  return {
+    ...base,
+    mode: "direct",
+    reasons: [{ code: "direct_play", message: "The player can play the original file as it is.", params: null }],
+    directPlayPossible: true,
+    directPlayBlockers: [],
+    source: { ...base.source, videoCodec: "h264", videoProfile: "High", width: 1920, height: 1080, bitDepth: 8, hdr: "none", container: "mp4" },
+    target: {
+      ...base.target,
+      videoCodec: "h264",
+      width: 1920,
+      height: 1080,
+      videoBitrateKbps: 5_800,
+      frameRate: 23.976,
+      level: "4.0",
+      codecs: "avc1.640028,mp4a.40.2",
+      videoCopy: true,
+      videoRange: "SDR",
+      audioSourceCodec: "aac",
+      audioCodec: "aac",
+      audioCopy: true,
+      audioChannels: 2,
+      audioBitrateKbps: 192,
+    },
+    acceleration: "none",
+    accelerationLabel: "Software (CPU)",
+    hardwareDecode: false,
+    hardwareDecodeReason: "Direct play: the video is not decoded.",
+    hardwareEncode: false,
+    hardwareEncodeReason: "Direct play: the video is not encoded.",
+    encoder: "none",
+    toneMap: "notneeded",
+    videoFilters: "",
+    ...overrides,
+  };
+}
+
 export function benchmark(overrides: Partial<BenchmarkResponse> = {}): BenchmarkResponse {
   const checks = Array.from({ length: 8 }, (_, index) => ({
     index,

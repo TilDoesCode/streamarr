@@ -797,8 +797,11 @@ Reason codes are stable for localization: direct-play blockers `container_unsupp
 `bitrate_exceeds_limit`; remux blockers additionally `video_codec_not_remuxable`,
 `video_profile_unsupported`, `dolby_vision_profile_unsupported`, `keyframe_index_unavailable`; decisions
 `direct_play`, `hls_requested`, `transcode_requested`, `audio_copied`, `audio_converted`,
-`subtitle_not_deliverable`. `deliveredAs` is `webvtt` (remux rendition), `embedded` (direct play) or
-`none`.
+`subtitle_not_deliverable` (`params`: `index`, `codec`, `mode`; an image stream in a remux, or any
+selected stream in a transcode, which carries no subtitles and has no burn-in). `deliveredAs` is `webvtt`
+(remux rendition), `embedded` (direct play) or `none`. `target` describes what the player receives: the
+original streams for `direct` (`videoCopy`/`audioCopy` true, `encoder: none`), the copied video for a
+remux (`encoder: copy`), the encoder output for a transcode.
 
 Errors: `400 invalid_transcode_request` (also for an unknown `mode`), `404 unknown_stream`,
 `409 transcoding_disabled`, `422` planning errors (`no_video_stream`, `unknown_duration`,
@@ -815,7 +818,7 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 |---|---|
 | `master.m3u8` | One variant with `BANDWIDTH`, `AVERAGE-BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE` (`SDR` for transcodes; `PQ`/`HLG`/`SDR` for remuxes). Remuxes add one `#EXT-X-MEDIA:TYPE=SUBTITLES` per delivered text stream and `CLOSED-CAPTIONS=NONE`. |
 | `main.m3u8` | Complete VOD playlist (fMP4, `#EXT-X-MAP`, `#EXT-X-ENDLIST`): a fixed grid for transcodes, keyframe-aligned real durations for remuxes. |
-| `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | Remux only: WebVTT rendition aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline); `404` for streams that are not delivered. |
+| `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | Remux only: WebVTT rendition aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline); a segment no live run covers starts the copy there and waits for its cues, like a video segment; `404` for streams that are not delivered. |
 | `init.mp4` | Initialization segment; identical across ffmpeg restarts. |
 | `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. `503`/`504` carry `Retry-After: 1`. |
 | `DELETE` on the capability root | Ends the session and its ffmpeg process (`204`). |

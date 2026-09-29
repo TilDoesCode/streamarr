@@ -60,6 +60,9 @@ public sealed record SourceAudioStream
     public string? Language { get; init; }
     public string? Title { get; init; }
     public bool IsDefault { get; init; }
+
+    /// <summary>First timestamp of the stream on the source timeline (ffprobe <c>start_time</c>).</summary>
+    public double? StartTime { get; init; }
 }
 
 public sealed record SourceSubtitleStream
@@ -189,6 +192,7 @@ public sealed class SourceMediaProber(
                             Language = Tag(stream, "language"),
                             Title = Tag(stream, "title"),
                             IsDefault = Disposition(stream, "default"),
+                            StartTime = ParseDouble(Str(stream, "start_time")),
                         });
                         break;
                     case "subtitle":

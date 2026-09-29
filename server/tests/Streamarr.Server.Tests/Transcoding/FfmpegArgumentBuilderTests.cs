@@ -244,6 +244,32 @@ public sealed class FfmpegArgumentBuilderTests
         Assert.DoesNotContain("-af", args);
     }
 
+    [Fact]
+    public void RemuxRestart_WithConvertedAudio_StartsOnTheFrameGridOfTheRunFromZero()
+    {
+        var plan = Decide(Media(codec: "h264", audioCodec: "eac3", channels: 6), ClientProfile.Default, allowDirect: false);
+
+        var args = FfmpegArgumentBuilder.Build(Spec(plan, startSegment: 2) with { SeekSeconds = 8.155435, SourceAudioSampleRate = 48_000 });
+
+        AssertSequence(args, "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-af", "atrim=start=8.171667");
+    }
+
+    [Theory]
+    [InlineData(null, "aac", 48_000, 0, 0.065)]
+    [InlineData(8.155435, "aac", 48_000, 0, 0.065 + 380 * 1024d / 48_000)]
+    [InlineData(8.155435, "ac3", 48_000, 0, 0.009 + 255 * 1536d / 48_000)]
+    [InlineData(8.155435, "aac", 44_100, 0.5, 0.5 + 330 * 1024d / 44_100)]
+    [InlineData(0.3, "aac", 48_000, 0.5, 0.5)]
+    public void RemuxAudioTrim_PrimingForTheFirstRun_ElseTheNextFrameBoundaryOfThatRun(double? seek, string codec, int rate, double audioStart, double expected)
+    {
+        var audio = new AudioTarget(1, "eac3", false, 2, 192, null, codec, codec == "aac" ? "mp4a.40.2" : "ac-3");
+
+        var trim = FfmpegArgumentBuilder.RemuxAudioTrimSeconds(seek, audio, rate, audioStart);
+
+        Assert.Equal(expected, trim, 0.0000001);
+        Assert.True(seek is null || trim >= seek);
+    }
+
     [Theory]
     [InlineData(6.005, 8.005, 6.155435)]
     [InlineData(10, 10.1, 10.05)]

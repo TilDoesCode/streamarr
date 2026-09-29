@@ -200,7 +200,7 @@ decide direct → remux → transcode, each with stable reason codes:
 
 | Mode | Chosen when |
 |---|---|
-| `direct` | The player can play the original file (container, codecs, bit depth, HDR, subtitle format, request limits). Only the plan endpoint returns it; a session always delivers HLS. |
+| `direct` | The player can play the original file (container, codecs, bit depth, HDR, subtitle format, request limits). Only the plan endpoint returns it; a session always delivers HLS. Its `target` describes the original streams (`videoCopy`/`audioCopy` true, `encoder: none`), not a transcode. |
 | `remux` | The video is H.264 (8-bit 4:2:0), HEVC Main/Main 10 or AV1 Main, in the client's `videoCodecs`, 10-bit only with `supports10Bit`, its HDR format (or the Dolby Vision base layer) in `hdrFormats`/`supportsHdr`, progressive, and within the request's `maxHeight`/`maxBitrateKbps`. The server's own transcode caps (max height, max bitrate) do not apply to copies. |
 | `transcode` | Anything else (MPEG-2, VC-1, VP9, Hi10P H.264, 12-bit or 4:2:2 HEVC, interlaced, Dolby Vision profile 5, too large for the request), `mode: transcode`, or no usable keyframe index. |
 
@@ -218,8 +218,10 @@ same loopback `/api/v1/stream/{token}` ffmpeg uses:
    `KeyframeScanTimeoutSeconds` (20 s). A scan over Usenet reads the whole file, so large sources
    usually fall back to a transcode instead.
 
-An index is rejected when two keyframes are more than 24 s apart; the plan then says
-`keyframe_index_unavailable` and the session transcodes.
+An index is rejected when two keyframes are more than 24 s apart or when it lists more than
+1 000 000 keyframes (a bound on what an untrusted file can make the server allocate); the plan then says
+`keyframe_index_unavailable` and the session transcodes. Any unexpected error while reading the
+container falls back to the scan and is never cached.
 
 **Segments.** Target boundaries every 6 s move to the first keyframe at or after them; boundaries
 that land on the same keyframe merge (a long GOP gives one longer segment, never a sliver), and a tail
@@ -239,12 +241,18 @@ the pre-roll is dropped. Output timestamps are the source's minus its start time
 each run's decode times are aligned to the served init segment's edit list, so segments from
 different runs join without gaps. Open-GOP sources (x265's default) work; a player that starts at a
 segment skips the few leading pictures of its CRA keyframe, as with any HLS random access.
+A WebVTT segment request is handled like a video segment request: when no live run will demux its
+cues (the player loads subtitles before the video after a seek, or far ahead), it starts or restarts
+the copy at that segment and waits for the cues, so a subtitle segment is never served empty just
+because it was requested first.
 
 **Audio.** One muxed rendition. The selected track is copied when it is AAC, AC-3, E-AC-3, FLAC or
 Opus, listed in `audioCodecs`, and has at most `maxAudioChannels` channels. Otherwise it is converted
 along E-AC-3 5.1 (640 kbps) → AC-3 5.1 (640 kbps) → AAC stereo (the audio bitrate setting), by what the
 client lists and its channel limit. The run from 0 trims the encoder's priming delay from the input so
-no timestamp is negative. **Switching audio** means a new session (`audioStreamIndex`); one ffmpeg per
+no timestamp is negative; a restarted run starts its converted audio on the next encoder frame boundary
+of that run (AAC 1024, AC-3/E-AC-3 1536 samples), so audio decode times are identical in every run and
+segments of different runs meet sample-exactly. **Switching audio** means a new session (`audioStreamIndex`); one ffmpeg per
 session is simpler and more robust than parallel audio renditions.
 
 **Subtitles.** Every text stream (SRT, ASS/SSA, WebVTT, MOV text) becomes a WebVTT rendition
@@ -254,7 +262,15 @@ stream alongside the video run; segments carry `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:0
 times on the media timeline and repeat cues that span a boundary. ASS styling is reduced to
 `<b>`/`<i>`. Image subtitles (PGS, VobSub, DVB) cannot be delivered: the plan lists them with
 `deliveredAs: none` and, when requested via `subtitleStreamIndex`, reason `subtitle_not_deliverable`
-so the client can offer VLC or a burn-in transcode.
+(`params.mode: remux`) so the client can offer direct play with VLC. There is no burn-in transcode:
+a full transcode delivers no subtitles at all, and a selected stream (text or image) gets
+`subtitle_not_deliverable` with `params.mode: transcode`.
+
+For players: hls.js derives its time origin (`initPTS`) from the first fragment it loads. Started
+mid-file, the audio of that fragment begins a little before the video keyframe, so hls.js places the
+whole presentation, video and cues alike, up to one audio frame plus the B-frame delay later
+(about 75 ms measured) than the playlist times. Subtitles stay in sync with the picture; only
+`currentTime` differs slightly from a start at 0.
 
 **Signalling.** `CODECS` comes from the bitstream's configuration record (`avcC` → `avc1.PPCCLL`,
 `hvcC` → `hvc1.2.4.L150.90`-style strings with profile space, tier and constraint bytes, `av1C` →
@@ -263,7 +279,9 @@ so the client can offer VLC or a burn-in transcode.
 The init segment carries `colr` (nclx primaries/transfer/matrix); mastering display and content light
 level stay in the bitstream (SEI) and are written as `mdcv`/`clli` only when the source container had
 them. `BANDWIDTH` is 1.1 × the peak segment bitrate measured from the index's byte positions
-(`AVERAGE-BANDWIDTH` the mean).
+(`AVERAGE-BANDWIDTH` the mean). Matroska positions include every stream, so audio tracks with a known
+constant rate (AC-3, E-AC-3, DTS core) are replaced by the delivered audio's rate; tracks without a
+known rate stay in the estimate, which can only overstate it.
 
 **Capacity.** Remux runs have their own pool (*Concurrent remuxes*, default 8, `503 remux_capacity`);
 they never take a transcode slot. The Sessions tab labels every session *Remux* or *Transcode*.
@@ -363,7 +381,9 @@ dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:39310 --ap
 ## Current limits
 
 - Remux: H.264, HEVC and AV1 only (VP9, MPEG-2, VC-1 are transcoded); one audio rendition (switching
-  audio creates a new session); image subtitles are not delivered; sources without a Matroska Cues
+  audio creates a new session); image subtitles are not delivered and there is no burn-in; a cue that
+  starts before a restarted run's first keyframe and is still showing at its start is only delivered
+  if an earlier run demuxed it; sources without a Matroska Cues
   entry or an MP4 sample table need the ffprobe scan, which rarely finishes in time for large files
   over Usenet; the admin UI's preview player (hls.js light) does not render subtitles.
 - One rendition per session (no adaptive bitrate ladder); transcodes carry no subtitle tracks.

@@ -132,6 +132,62 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
     }
 
     [Fact]
+    public async Task SubtitleSegment_FetchedBeforeItsVideo_OutsideTheRunningCopy_StartsARun_AndCarriesItsCues()
+    {
+        var created = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "remux", startPositionSeconds = 70 });
+        var english = created.GetProperty("plan").GetProperty("subtitles")[0].GetProperty("index").GetInt32();
+        using var raw = fixture.CreateClient(authenticated: false);
+
+        var early = await raw.GetStringAsync($"{BasePath(created)}/subtitles/{english}/1.vtt");
+
+        Assert.Contains("EN 2", early);
+        Assert.Contains("EN spanning", early);
+        var session = await AdminSessionAsync(created);
+        Assert.Equal(-1, session.GetProperty("lastRequestedSegment").GetInt32());
+        Assert.Equal(1, session.GetProperty("job").GetProperty("startSegment").GetInt32());
+        Assert.True(session.GetProperty("restarts").GetInt32() >= 1);
+
+        var seeking = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "remux", startPositionSeconds = 70 });
+        var report = await SimulateAsync(seeking, new HlsSimOptions
+        {
+            PlaybackRate = 0,
+            StartPositionSeconds = 70,
+            Seeks = [new SeekStep(80, 21)],
+            SubtitlesFirst = true,
+        });
+
+        Assert.True(report.Passed, string.Join('\n', report.Errors));
+        Assert.Contains(report.SubtitleCueList, c => c.StartsWith("English #11: ", StringComparison.Ordinal) && c.EndsWith(" EN 8", StringComparison.Ordinal));
+        Assert.Contains(report.SubtitleCueList, c => c.StartsWith("English #3: ", StringComparison.Ordinal) && c.EndsWith(" EN 3", StringComparison.Ordinal));
+        Assert.Contains(report.SubtitleCueList, c => c.StartsWith("Deutsch #3: ", StringComparison.Ordinal) && c.Contains("DE 3", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RestartedRun_WithConvertedAudio_KeepsTheDecodeTimesOfTheRunFromZero()
+    {
+        var fromZero = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "remux" });
+        var late = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "remux", startPositionSeconds = 70 });
+        using var raw = fixture.CreateClient(authenticated: false);
+        var init = Fmp4.ParseInit(await raw.GetByteArrayAsync($"{BasePath(fromZero)}/init.mp4"));
+
+        async Task<(long Video, long Audio)> DecodeTimesAsync(JsonElement session, int segment)
+        {
+            var fragments = Fmp4.ParseSegment(await raw.GetByteArrayAsync($"{BasePath(session)}/{segment}.m4s"), init).Fragments;
+            return (fragments.First(f => f.TrackId == init.Video!.TrackId).BaseDecodeTime, fragments.First(f => f.TrackId == init.Audio!.TrackId).BaseDecodeTime);
+        }
+
+        var reference = new List<(long Video, long Audio)>();
+        for (var segment = 0; segment < fromZero.GetProperty("segmentCount").GetInt32(); segment++)
+            reference.Add(await DecodeTimesAsync(fromZero, segment));
+
+        Assert.Equal("aac", fromZero.GetProperty("plan").GetProperty("target").GetProperty("audioCodec").GetString());
+        Assert.Equal(0, (await AdminSessionAsync(fromZero)).GetProperty("restarts").GetInt32());
+        foreach (var segment in new[] { 11, 12, 3, 4, 9 })
+            Assert.Equal(reference[segment], await DecodeTimesAsync(late, segment));
+        Assert.True((await AdminSessionAsync(late)).GetProperty("restarts").GetInt32() >= 1);
+    }
+
+    [Fact]
     public async Task HevcMain10Hdr10_IsTaggedHvc1_SignalsPq_KeepsColour_AndDecodesAcrossSeeks()
     {
         var created = await CreateAsync(RemuxServerFixture.HevcHdr, new { mode = "remux", client = HdrClient });
@@ -180,6 +236,41 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
         {
             File.Delete(joined);
         }
+    }
+
+    [Fact]
+    public async Task HlgAndDolbyVision_FromRealProbes_SignalTheirRange_OrTranscodeProfile5()
+    {
+        var hlg = await CreateAsync(RemuxServerFixture.HevcHlg, new { mode = "auto", client = HdrClient });
+        var dolbyVision = await CreateAsync(RemuxServerFixture.DolbyVision81, new { mode = "auto", client = HdrClient });
+        var dvToken = await fixture.ResolveStreamTokenAsync(_machine, RemuxServerFixture.DolbyVision81, RemuxServerFixture.RemuxWorkId);
+        var dvClient = await PlanAsync(new { streamToken = dvToken, client = new { videoCodecs = new[] { "hevc" }, audioCodecs = new[] { "aac" }, containers = new[] { "mp4" }, supports10Bit = true, hdrFormats = new[] { "hdr10", "dolbyvision" } } });
+        var profile5 = await PlanAsync(new
+        {
+            streamToken = await fixture.ResolveStreamTokenAsync(_machine, RemuxServerFixture.DolbyVision5, RemuxServerFixture.RemuxWorkId),
+            client = HdrClient,
+        });
+        using var raw = fixture.CreateClient(authenticated: false);
+
+        Assert.Equal(("remux", "HLG"), (hlg.GetProperty("mode").GetString(), hlg.GetProperty("plan").GetProperty("target").GetProperty("videoRange").GetString()));
+        Assert.Contains("VIDEO-RANGE=HLG", await raw.GetStringAsync(hlg.GetProperty("playlistUrl").GetString()));
+        var init = await raw.GetByteArrayAsync($"{BasePath(hlg)}/init.mp4");
+        var colr = FindBox(init, "colr");
+        Assert.Equal((9, 18, 9), (init[colr + 13], init[colr + 15], init[colr + 17]));
+
+        var dvPlan = dolbyVision.GetProperty("plan");
+        Assert.Equal(("remux", 8), (dvPlan.GetProperty("mode").GetString(), dvPlan.GetProperty("source").GetProperty("dolbyVisionProfile").GetInt32()));
+        Assert.Equal("dolbyvision", dvPlan.GetProperty("source").GetProperty("hdr").GetString());
+        Assert.Contains("hdr_unsupported", Codes(dvPlan.GetProperty("reasons")));
+        var dvMaster = await raw.GetStringAsync(dolbyVision.GetProperty("playlistUrl").GetString());
+        Assert.Contains("VIDEO-RANGE=PQ", dvMaster);
+        Assert.Matches("CODECS=\"hvc1\\.2\\.4\\.L\\d+\\.[0-9A-F]{2}[^\"]*,mp4a\\.40\\.2\"", dvMaster);
+        Assert.True((await SimulateAsync(dolbyVision, new HlsSimOptions { PlaybackRate = 0, Decode = true })).Passed);
+
+        Assert.Equal(("direct", "PQ"), (dvClient.GetProperty("mode").GetString(), dvClient.GetProperty("target").GetProperty("videoRange").GetString()));
+        Assert.Equal("transcode", profile5.GetProperty("mode").GetString());
+        var blocker = Assert.Single(profile5.GetProperty("remuxBlockers").EnumerateArray());
+        Assert.Equal(("dolby_vision_profile_unsupported", "5"), (blocker.GetProperty("code").GetString(), blocker.GetProperty("params").GetProperty("profile").GetString()));
     }
 
     [Theory]

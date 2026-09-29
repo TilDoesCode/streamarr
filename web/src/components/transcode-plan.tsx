@@ -67,6 +67,7 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
   const mode = (plan.mode ?? "transcode").toLowerCase();
   const meta = modeMeta(mode);
   const copy = mode === "remux";
+  const direct = mode === "direct";
   const reasons = plan.reasons ?? [];
   const subtitles = plan.subtitles ?? [];
   const index = plan.keyframeIndex;
@@ -94,10 +95,10 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
         <div className="flex items-center justify-center text-muted-foreground" aria-hidden>
           <ArrowRight className="size-4 rotate-90 sm:rotate-0" />
         </div>
-        <MediaBox title={copy ? "Output (HLS fMP4, stream copy)" : mode === "direct" ? "Output (original file)" : "Output (HLS fMP4)"}>
-          {copy ? (
+        <MediaBox title={copy ? "Output (HLS fMP4, stream copy)" : direct ? "Output (original file)" : "Output (HLS fMP4)"}>
+          {copy || direct ? (
             <>
-              <MediaLine label="Video" value={`${codecLabel(target.videoCodec)}${target.level ? ` level ${target.level}` : ""} · copied`} />
+              <MediaLine label="Video" value={`${codecLabel(target.videoCodec)}${target.level ? ` level ${target.level}` : ""} · ${copy ? "copied" : "original"}`} />
               <MediaLine label="Frame" value={`${target.width}×${target.height} · ${source.bitDepth}-bit ${RANGE_LABELS[target.videoRange ?? "SDR"] ?? target.videoRange}`} />
             </>
           ) : (
@@ -125,6 +126,8 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
             />
             <Decision label="Encoder" value="None — video and copied audio are not re-encoded" />
           </>
+        ) : direct ? (
+          <Decision label="Encoder" value="None — the player reads the original file" />
         ) : (
           <>
             <Decision label="Hardware decode" passed={plan.hardwareDecode} reason={plan.hardwareDecodeReason} />
@@ -139,7 +142,7 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
           </>
         )}
         <Decision label="Direct play" value={plan.directPlayPossible ? "Possible — the client could play the source as-is" : `Not possible (${blockers.length} ${blockers.length === 1 ? "blocker" : "blockers"})`} />
-        {!copy && mode !== "direct" && (
+        {!copy && !direct && (
           <Decision label="Remux (stream copy)" passed={plan.remuxPossible} value={plan.remuxPossible ? "Possible" : "Not possible — the video must be re-encoded"} />
         )}
         {plan.videoFilters && (

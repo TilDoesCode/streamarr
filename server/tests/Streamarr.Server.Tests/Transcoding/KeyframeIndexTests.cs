@@ -222,6 +222,51 @@ public sealed class KeyframeIndexTests(KeyframeFixture fixture) : IClassFixture<
         Assert.Null(await ReadAsync(path, Mp4IndexReader.ReadAsync));
     }
 
+    [Fact]
+    public void Mp4SampleTable_WithMoreKeyframesThanTheCap_IsRejectedBeforeAllocating()
+    {
+        const uint TooMany = KeyframeIndexService.MaxKeyframes + 1;
+
+        Assert.Equal(1000, Mp4IndexReader.Parse(SyntheticMoov(1000, stssCount: null))!.Keyframes.Count);
+        Assert.Null(Mp4IndexReader.Parse(SyntheticMoov(TooMany, stssCount: null)));
+        Assert.Null(Mp4IndexReader.Parse(SyntheticMoov(TooMany, stssCount: TooMany)));
+        Assert.Contains("more than", KeyframeIndexService.Reject(
+            new ContainerIndex(KeyframeIndexSource.FfprobeScan, Enumerable.Range(0, (int)TooMany).Select(i => i * 0.01).ToList(), null, true, null),
+            new SourceMediaInfo { DurationSeconds = TooMany * 0.01 }));
+    }
+
+    [Fact]
+    public async Task Service_TurnsUnexpectedContainerErrorsIntoAnUncachedResult()
+    {
+        var directory = System.IO.Directory.CreateDirectory(Path.Combine(fixture.Directory, "not-a-file.mkv")).FullName;
+        var service = Service(scanSeconds: 5);
+        var source = new TranscodeSource(TranscodeSource.SampleKind, directory, false, "directory");
+        var media = new SourceMediaInfo { Container = "matroska,webm", DurationSeconds = 10 };
+
+        var first = await service.GetAsync(source, media, CancellationToken.None);
+        var second = await service.GetAsync(source, media, CancellationToken.None);
+
+        Assert.Null(first.Index);
+        Assert.Contains("container index failed", first.Error);
+        Assert.Null(second.Index);
+    }
+
+    /// <summary>A minimal moov: one video track whose stts lists <paramref name="samples"/> samples, optionally with a stss header.</summary>
+    private static byte[] SyntheticMoov(uint samples, uint? stssCount)
+    {
+        static byte[] U32(params uint[] values) => values.SelectMany(v => BitConverter.GetBytes(v).Reverse()).ToArray();
+        static byte[] Box(string type, params byte[][] children)
+        {
+            var content = children.SelectMany(c => c).ToArray();
+            return [.. U32((uint)content.Length + 8), .. Encoding.ASCII.GetBytes(type), .. content];
+        }
+        var stbl = stssCount is { } count
+            ? Box("stbl", Box("stts", U32(0, 1, samples, 1)), Box("stss", U32(0, count, 1)))
+            : Box("stbl", Box("stts", U32(0, 1, samples, 1)));
+        var mdia = Box("mdia", Box("mdhd", U32(0, 0, 0, 24, samples, 0)), Box("hdlr", U32(0, 0), Encoding.ASCII.GetBytes("vide"), U32(0, 0, 0), [0]), Box("minf", stbl));
+        return Box("moov", Box("mvhd", U32(0, 0, 0, 1000, 0)), Box("trak", mdia));
+    }
+
     private static KeyframeIndexService Service(int scanSeconds = 20)
         => new(new NoHttp(), new ProcessRunner(),
             Microsoft.Extensions.Options.Options.Create(new TranscodingOptions { KeyframeScanTimeoutSeconds = scanSeconds }), NullLogger<KeyframeIndexService>.Instance);

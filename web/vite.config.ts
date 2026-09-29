@@ -8,6 +8,9 @@ import path from "node:path";
 // itself as static files with SPA fallback — see StreamarrServerBootstrap.UseStreamarrServer.
 const SERVER_ORIGIN = process.env.STREAMARR_SERVER_ORIGIN ?? "http://localhost:5199";
 
+// Node 25 enables its own Web Storage globals, which shadow jsdom's localStorage in tests.
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -33,6 +36,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    poolOptions: { forks: { execArgv: NODE_MAJOR >= 25 ? ["--no-experimental-webstorage"] : [] } },
     // Vitest component tests live under src/. Playwright E2E specs live under e2e/ and
     // must NOT be collected by Vitest (they use @playwright/test, not the jsdom runner).
     include: ["src/**/*.{test,spec}.{ts,tsx}"],

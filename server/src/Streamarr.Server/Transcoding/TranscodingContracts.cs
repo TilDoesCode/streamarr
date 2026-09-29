@@ -209,6 +209,7 @@ public sealed record KeyframeIndexResponse
     public required double MaxSegmentSeconds { get; init; }
 }
 
+/// <summary>What the player receives: the original streams for direct play, the copied video for a remux, the encoder output for a transcode.</summary>
 public sealed record TranscodeTargetResponse
 {
     public required string VideoCodec { get; init; }
@@ -219,7 +220,7 @@ public sealed record TranscodeTargetResponse
     public required string Level { get; init; }
     public required string Codecs { get; init; }
 
-    /// <summary>True for a remux: the video bitstream is copied, not re-encoded.</summary>
+    /// <summary>True for a remux or direct play: the video bitstream reaches the player unchanged.</summary>
     public bool VideoCopy { get; init; }
 
     /// <summary>HLS VIDEO-RANGE of the output: SDR, PQ or HLG.</summary>
@@ -255,6 +256,7 @@ public sealed record TranscodePlanResponse
     public required string HardwareDecodeReason { get; init; }
     public required bool HardwareEncode { get; init; }
     public required string HardwareEncodeReason { get; init; }
+    /// <summary>ffmpeg video encoder of a transcode; <c>copy</c> for a remux, <c>none</c> for direct play.</summary>
     public required string Encoder { get; init; }
     public required string ToneMap { get; init; }
     public required bool Deinterlace { get; init; }
@@ -291,7 +293,7 @@ public sealed record TranscodeSessionCreateRequest
     public int? MaxBitrateKbps { get; init; }
     public int? AudioStreamIndex { get; init; }
 
-    /// <summary>The subtitle stream the viewer wants; image-based streams are reported as not deliverable by a remux.</summary>
+    /// <summary>The subtitle stream the viewer wants; one the mode cannot deliver (image-based in a remux, any in a transcode) gets the reason <c>subtitle_not_deliverable</c>.</summary>
     public int? SubtitleStreamIndex { get; init; }
     public double? StartPositionSeconds { get; init; }
     [MaxLength(64)] public string? ClientName { get; init; }

@@ -235,7 +235,7 @@ public static class TranscodingResponses
             FrameRate = Math.Round(plan.Video.FrameRate, 3),
             Level = plan.Video.Level,
             Codecs = plan.CodecsAttribute,
-            VideoCopy = plan.Mode == DeliveryMode.Remux,
+            VideoCopy = plan.Mode != DeliveryMode.Transcode,
             VideoRange = plan.Mode == DeliveryMode.Transcode ? "SDR" : plan.VideoRange,
             AudioStreamIndex = plan.Audio?.SourceIndex,
             AudioSourceCodec = plan.Audio?.SourceCodec,

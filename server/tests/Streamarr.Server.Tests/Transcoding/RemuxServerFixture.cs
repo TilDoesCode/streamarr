@@ -2,7 +2,7 @@ using System.Text;
 
 namespace Streamarr.Server.Tests.Transcoding;
 
-/// <summary>The transcoding server plus remux media: H.264/E-AC-3/SRT/ASS with irregular keyframes (MKV, MP4, no Cues) and open-GOP HEVC HDR10.</summary>
+/// <summary>The transcoding server plus remux media: H.264/E-AC-3/SRT/ASS with irregular keyframes (MKV, MP4, no Cues), open-GOP HEVC HDR10, HLG and Dolby Vision 8.1/5.</summary>
 public sealed class RemuxServerFixture : TranscodingServerFixture
 {
     public const string RemuxWorkId = "tmdb-movie-4343";
@@ -10,6 +10,9 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
     public const string H264Mp4 = "rel-remux-h264-mp4";
     public const string NoCuesMkv = "rel-remux-nocues-mkv";
     public const string HevcHdr = "rel-remux-hevc-hdr10";
+    public const string HevcHlg = "rel-remux-hevc-hlg";
+    public const string DolbyVision81 = "rel-remux-dv81";
+    public const string DolbyVision5 = "rel-remux-dv5";
     public const int H264Seconds = 90;
     public const int HevcSeconds = 30;
 
@@ -50,6 +53,19 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
             "-x265-params", "keyint=48:min-keyint=48:scenecut=0:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:" +
                             "master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400:log-level=error",
             "-c:a", "ac3", "-b:a", "384k", hevc);
+        var hlg = Path.Combine(directory, "hlg.mkv");
+        var pq = Path.Combine(directory, "pq.mp4");
+        foreach (var (path, transfer) in new[] { (hlg, "arib-std-b67"), (pq, "smpte2084") })
+        {
+            await KeyframeFixture.FfmpegAsync(
+                "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=12",
+                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=12",
+                "-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1",
+                "-color_primaries", "bt2020", "-color_trc", transfer, "-colorspace", "bt2020nc",
+                "-x265-params", $"keyint=48:min-keyint=48:scenecut=0:colorprim=bt2020:transfer={transfer}:colormatrix=bt2020nc:log-level=error",
+                "-c:a", "aac", "-b:a", "96k", path);
+        }
+        var pqBytes = await File.ReadAllBytesAsync(pq);
 
         return
         [
@@ -57,8 +73,41 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
             new(H264Mp4, RemuxWorkId, "Remux.Source.2024.1080p.WEB-DL.DDP5.1.H.264.mp4", await File.ReadAllBytesAsync(mp4)),
             new(NoCuesMkv, RemuxWorkId, "Remux.Source.2024.1080p.WEB-DL.DDP5.1.H.264-NOCUES.mkv", await File.ReadAllBytesAsync(noCues)),
             new(HevcHdr, RemuxWorkId, "Remux.Source.2024.2160p.UHD.BluRay.DD5.1.HDR10.x265.mkv", await File.ReadAllBytesAsync(hevc)),
+            new(HevcHlg, RemuxWorkId, "Remux.Source.2024.2160p.UHD.BluRay.AAC.HLG.x265.mkv", await File.ReadAllBytesAsync(hlg)),
+            new(DolbyVision81, RemuxWorkId, "Remux.Source.2024.2160p.WEB-DL.AAC.DV.HDR10.H.265.mp4", WithDolbyVision(pqBytes, profile: 8, compatibility: 1)),
+            new(DolbyVision5, RemuxWorkId, "Remux.Source.2024.2160p.WEB-DL.AAC.DV.H.265.mp4", WithDolbyVision(pqBytes, profile: 5, compatibility: 0)),
         ];
     }
+
+    /// <summary>Adds a <c>dvcC</c> record to the hvc1 sample entry of an MP4 whose moov follows mdat, as Dolby Vision encoders write it.</summary>
+    internal static byte[] WithDolbyVision(byte[] mp4, int profile, int compatibility)
+    {
+        var flags = (profile << 9) | (6 << 3) | 0b101;
+        byte[] record = [1, 0, (byte)(flags >> 8), (byte)flags, (byte)(compatibility << 4), .. new byte[19]];
+        return Append(mp4, 0, mp4.Length, ["moov", "trak", "mdia", "minf", "stbl", "stsd", "hvc1"], [.. BigEndian(8 + record.Length), .. "dvcC"u8, .. record]);
+    }
+
+    private static byte[] Append(byte[] data, int from, int to, string[] path, byte[] child)
+    {
+        var output = new List<byte>();
+        for (var offset = from; offset + 8 <= to;)
+        {
+            var size = (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+            var type = Encoding.ASCII.GetString(data, offset + 4, 4);
+            var box = data.AsSpan(offset, size).ToArray();
+            if (type == path[0])
+            {
+                var body = type switch { "stsd" => 16, "hvc1" => 8 + 78, _ => 8 };
+                box = path.Length == 1 ? [.. box, .. child] : [.. box[..body], .. Append(data, offset + body, offset + size, path[1..], child)];
+                BigEndian(box.Length).CopyTo(box, 0);
+            }
+            output.AddRange(box);
+            offset += size;
+        }
+        return [.. output];
+    }
+
+    private static byte[] BigEndian(int value) => [(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value];
 
     /// <summary>Renames the SeekHead's Cues entry to an unknown element id, as muxers that write no seek entry for Cues leave it.</summary>
     private static byte[] WithoutCuesPointer(byte[] mkv)

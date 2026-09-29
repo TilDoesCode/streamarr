@@ -275,14 +275,18 @@ public static class TranscodePlanner
 
         if (allowDirect && preference == ModePreference.Auto && transcode.DirectPlayPossible)
         {
-            return transcode with
+            var original = SelectAudio(media, limits.AudioStreamIndex);
+            return Untouched(transcode, media, "Direct play") with
             {
                 Mode = DeliveryMode.Direct,
                 Reasons = [PlanReason.Of("direct_play", "The player can play the original file as it is.")],
                 RemuxPossible = remuxPossible,
                 RemuxBlockers = remuxBlockers,
-                VideoRange = videoRange,
+                VideoRange = video.Hdr == HdrFormat.None ? "SDR" : (video.BaseLayerHdr ?? HdrFormat.Hdr10) == HdrFormat.Hlg ? "HLG" : "PQ",
                 Subtitles = PlanSubtitles(media, DeliveryMode.Direct),
+                Audio = original is null ? null : new AudioTarget(original.Index, original.Codec, true, original.Channels, CopiedAudioKbps(original), null,
+                    original.Codec, CodecStrings.Audio(original.Codec, original.Profile)),
+                Encoder = "none",
             };
         }
 
@@ -300,12 +304,10 @@ public static class TranscodePlanner
             if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { TextBased: false } image)
             {
                 reasons.Add(PlanReason.Of("subtitle_not_deliverable",
-                    $"Subtitle stream {image.Index} ({image.Codec}) is image-based and cannot be delivered with a remux; use VLC or a burn-in transcode.",
-                    ("index", image.Index), ("codec", image.Codec)));
+                    $"Subtitle stream {image.Index} ({image.Codec}) is image-based and cannot be delivered with a remux; play the original file (VLC) to see it.",
+                    ("index", image.Index), ("codec", image.Codec), ("mode", "remux")));
             }
-            var frameRate = video.FrameRate is > 0 and <= 240 ? video.FrameRate.Value : transcode.Video.FrameRate;
-            var videoKbps = (int)Math.Max(1, (media.EstimatedVideoBitRate ?? 0) / 1000);
-            return transcode with
+            return Untouched(transcode, media, "Stream copy") with
             {
                 Mode = DeliveryMode.Remux,
                 Reasons = reasons,
@@ -313,17 +315,8 @@ public static class TranscodePlanner
                 RemuxBlockers = [],
                 VideoRange = videoRange,
                 Subtitles = subtitles,
-                Video = new VideoTarget(video.Codec, video.Width, video.Height, videoKbps, frameRate, LevelName(video), CodecStrings.VideoFromProbe(video)),
                 Audio = audioTarget,
                 Encoder = "copy",
-                Acceleration = HardwareAcceleration.None,
-                HardwareDecode = false,
-                HardwareDecodeReason = "Stream copy: the video is not decoded.",
-                HardwareEncode = false,
-                HardwareEncodeReason = "Stream copy: the video is not encoded.",
-                ToneMap = ToneMapMode.NotNeeded,
-                Deinterlace = false,
-                Warnings = [],
             };
         }
 
@@ -331,6 +324,14 @@ public static class TranscodePlanner
         if (preference == ModePreference.Transcode)
             why.Add(PlanReason.Of("transcode_requested", "A full transcode was requested."));
         why.AddRange(remuxBlockers);
+        if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { } selected)
+        {
+            why.Add(PlanReason.Of("subtitle_not_deliverable",
+                selected.TextBased
+                    ? $"Subtitle stream {selected.Index} ({selected.Codec}) is not delivered with a transcode (no WebVTT renditions, no burn-in); a remux or the original file carries it."
+                    : $"Subtitle stream {selected.Index} ({selected.Codec}) is image-based and a transcode does not burn it in; play the original file (VLC) to see it.",
+                ("index", selected.Index), ("codec", selected.Codec), ("mode", "transcode")));
+        }
         return transcode with
         {
             Mode = DeliveryMode.Transcode,
@@ -338,6 +339,26 @@ public static class TranscodePlanner
             RemuxPossible = remuxPossible,
             RemuxBlockers = remuxBlockers,
             Subtitles = PlanSubtitles(media, DeliveryMode.Transcode),
+        };
+    }
+
+    /// <summary>The server neither decodes nor encodes the video: the target describes the original stream.</summary>
+    private static TranscodePlan Untouched(TranscodePlan transcode, SourceMediaInfo media, string what)
+    {
+        var video = transcode.SourceVideo;
+        var frameRate = video.FrameRate is > 0 and <= 240 ? video.FrameRate.Value : transcode.Video.FrameRate;
+        var videoKbps = (int)Math.Max(1, (media.EstimatedVideoBitRate ?? 0) / 1000);
+        return transcode with
+        {
+            Video = new VideoTarget(video.Codec, video.Width, video.Height, videoKbps, frameRate, LevelName(video), CodecStrings.VideoFromProbe(video)),
+            Acceleration = HardwareAcceleration.None,
+            HardwareDecode = false,
+            HardwareDecodeReason = $"{what}: the video is not decoded.",
+            HardwareEncode = false,
+            HardwareEncodeReason = $"{what}: the video is not encoded.",
+            ToneMap = ToneMapMode.NotNeeded,
+            Deinterlace = false,
+            Warnings = [],
         };
     }
 
@@ -441,7 +462,7 @@ public static class TranscodePlanner
         var keyframes = index.Keyframes.Select(k => k - media.StartTime).ToList();
         var timeline = SegmentTimeline.FromKeyframes(keyframes, media.DurationSeconds, RemuxSegmentTargetSeconds);
         var codecs = CodecStrings.Video(plan.SourceVideo, index.Config);
-        var (peak, average) = Bandwidth(timeline, keyframes, index.Container, totalBytes, plan);
+        var (peak, average) = Bandwidth(timeline, keyframes, index.Container, totalBytes, plan, media);
         return plan with
         {
             KeyframeIndex = index,
@@ -453,9 +474,9 @@ public static class TranscodePlanner
     }
 
     private static (int Peak, int Average) Bandwidth(
-        SegmentTimeline timeline, List<double> keyframes, ContainerIndex index, long? totalBytes, TranscodePlan plan)
+        SegmentTimeline timeline, List<double> keyframes, ContainerIndex index, long? totalBytes, TranscodePlan plan, SourceMediaInfo media)
     {
-        var audioBps = index.OffsetsCoverAllStreams ? 0 : (plan.Audio?.BitrateKbps ?? 0) * 1000d;
+        var audioBps = index.OffsetsCoverAllStreams ? DeliveredMinusSourceAudioBps(plan.Audio, media) : (plan.Audio?.BitrateKbps ?? 0) * 1000d;
         var fallbackAverage = Math.Max(100_000d, plan.BandwidthBitsPerSecond);
         if (index.ByteOffsets is not { Count: > 0 } offsets || offsets.Count != keyframes.Count)
             return ((int)Math.Min(int.MaxValue, fallbackAverage * 2), (int)Math.Min(int.MaxValue, fallbackAverage));
@@ -485,6 +506,17 @@ public static class TranscodePlanner
             return ((int)Math.Min(int.MaxValue, fallbackAverage * 2), (int)Math.Min(int.MaxValue, fallbackAverage));
         var average = bytes * 8 / seconds + audioBps;
         return ((int)Math.Min(int.MaxValue, Math.Ceiling(peak * 1.1)), (int)Math.Min(int.MaxValue, Math.Ceiling(average)));
+    }
+
+    /// <summary>Byte offsets over all streams include every source audio track; constant-rate tracks with a known rate are swapped for the delivered audio.</summary>
+    private static double DeliveredMinusSourceAudioBps(AudioTarget? delivered, SourceMediaInfo media)
+    {
+        static long KnownConstantBps(SourceAudioStream? audio)
+            => audio is { Codec: "ac3" or "eac3" or "dts", BitRate: long bps and > 0 } && audio.Profile?.Contains("HD", StringComparison.Ordinal) != true ? bps : 0;
+        var removed = media.Audio.Sum(KnownConstantBps);
+        var source = delivered is null ? null : media.Audio.FirstOrDefault(a => a.Index == delivered.SourceIndex);
+        var added = delivered is null ? 0 : delivered.Copy ? KnownConstantBps(source) : delivered.BitrateKbps * 1000d;
+        return added - removed;
     }
 
     private static int CopiedAudioKbps(SourceAudioStream audio)

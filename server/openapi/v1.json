@@ -14410,6 +14410,7 @@
           },
           "encoder": {
             "type": "string",
+            "description": "ffmpeg video encoder of a transcode; `copy` for a remux, `none` for direct play.",
             "nullable": true
           },
           "toneMap": {
@@ -14468,7 +14469,7 @@
           },
           "subtitleStreamIndex": {
             "type": "integer",
-            "description": "The subtitle stream the viewer wants; image-based streams are reported as not deliverable by a remux.",
+            "description": "The subtitle stream the viewer wants; one the mode cannot deliver (image-based in a remux, any in a transcode) gets the reason `subtitle_not_deliverable`.",
             "format": "int32",
             "nullable": true
           },
@@ -14793,7 +14794,7 @@
           },
           "videoCopy": {
             "type": "boolean",
-            "description": "True for a remux: the video bitstream is copied, not re-encoded."
+            "description": "True for a remux or direct play: the video bitstream reaches the player unchanged."
           },
           "videoRange": {
             "type": "string",
@@ -14828,7 +14829,8 @@
             "nullable": true
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "What the player receives: the original streams for direct play, the copied video for a remux, the encoder output for a transcode."
       },
       "TranscodingCapabilitiesResponse": {
         "required": [

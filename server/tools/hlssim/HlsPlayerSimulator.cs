@@ -24,6 +24,9 @@ public sealed record HlsSimOptions
 
     /// <summary>Fetch and validate the WebVTT segment of every subtitle rendition alongside each video segment.</summary>
     public bool ValidateSubtitles { get; init; } = true;
+
+    /// <summary>Request each WebVTT segment before its video segment, as hls.js may after a seek.</summary>
+    public bool SubtitlesFirst { get; init; }
 }
 
 public sealed record SegmentFetch(
@@ -59,6 +62,9 @@ public sealed record HlsSimReport
     public int SubtitleSegments { get; init; }
     public int SubtitleCues { get; init; }
     public IReadOnlyList<string> SubtitleSamples { get; init; } = [];
+
+    /// <summary>Every cue received, as "rendition #segment: start text".</summary>
+    public IReadOnlyList<string> SubtitleCueList { get; init; } = [];
 
     public bool Passed => Errors.Count == 0;
 
@@ -110,6 +116,7 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
         var subtitleSegments = 0;
         var subtitleCues = 0;
         var subtitleSamples = new List<string>();
+        var subtitleCueList = new List<string>();
 
         var segmentLength = media.Segments[0].Duration;
         var starts = new double[media.Segments.Count];
@@ -187,6 +194,8 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
             if (index < media.Segments.Count && (options.PlaybackRate == 0 || bufferedEnd - playhead < options.BufferTargetSeconds))
             {
                 var (duration, uri) = media.Segments[index];
+                if (options.ValidateSubtitles && options.SubtitlesFirst)
+                    await FetchSubtitlesAsync(index, duration);
                 var started = clock.Elapsed.TotalMilliseconds;
                 byte[] data;
                 try
@@ -199,20 +208,8 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
                     break;
                 }
                 var latency = clock.Elapsed.TotalMilliseconds - started;
-                if (options.ValidateSubtitles)
-                {
-                    foreach (var rendition in subtitles.Where(r => index < r.Playlist.Segments.Count))
-                    {
-                        var vtt = await GetStringAsync(new Uri(rendition.PlaylistUrl, rendition.Playlist.Segments[index].Uri), ct);
-                        subtitleSegments++;
-                        foreach (var cue in InspectWebVtt(rendition.Name, index, starts[index], duration, vtt, errors))
-                        {
-                            subtitleCues++;
-                            if (subtitleSamples.Count < 12)
-                                subtitleSamples.Add($"{rendition.Name} #{index}: {cue}");
-                        }
-                    }
-                }
+                if (options.ValidateSubtitles && !options.SubtitlesFirst)
+                    await FetchSubtitlesAsync(index, duration);
                 var fetch = Inspect(index, starts[index], duration, data, init, latency, run, index == media.Segments.Count - 1, previous, errors, warnings);
                 fetches.Add(fetch);
                 runs[^1].Add(data);
@@ -260,7 +257,24 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
             SubtitleSegments = subtitleSegments,
             SubtitleCues = subtitleCues,
             SubtitleSamples = subtitleSamples,
+            SubtitleCueList = subtitleCueList,
         };
+
+        async Task FetchSubtitlesAsync(int segment, double duration)
+        {
+            foreach (var rendition in subtitles.Where(r => segment < r.Playlist.Segments.Count))
+            {
+                var vtt = await GetStringAsync(new Uri(rendition.PlaylistUrl, rendition.Playlist.Segments[segment].Uri), ct);
+                subtitleSegments++;
+                foreach (var cue in InspectWebVtt(rendition.Name, segment, starts[segment], duration, vtt, errors))
+                {
+                    subtitleCues++;
+                    subtitleCueList.Add($"{rendition.Name} #{segment}: {cue}");
+                    if (subtitleSamples.Count < 12)
+                        subtitleSamples.Add($"{rendition.Name} #{segment}: {cue}");
+                }
+            }
+        }
     }
 
     /// <summary>Checks one WebVTT segment: header, X-TIMESTAMP-MAP, and every cue overlapping the segment's playlist window.</summary>

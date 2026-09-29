@@ -8,6 +8,7 @@ import {
   benchmark,
   capabilities,
   config,
+  directPlan,
   liveSession,
   multiGpuCapabilities,
   remuxPlan,
@@ -314,6 +315,17 @@ describe("Transcoding sessions", () => {
     expect(screen.queryByText("Why direct play is not possible")).toBeNull();
     expect(screen.getByText(/#2 English \(SRT\) — WebVTT rendition/)).toBeVisible();
     expect(screen.getByText(/#4 French \(PGS\) — not delivered/)).toBeVisible();
+  });
+
+  it("explains a direct-play plan as the original file without an encoder", () => {
+    renderWithProviders(<PlanExplanation plan={directPlan()} />);
+
+    expect(screen.getByText("Output (original file)")).toBeVisible();
+    expect(screen.getByText("H.264 level 4.0 · original")).toBeVisible();
+    expect(screen.getAllByText("1920×1080 · 8-bit SDR")).toHaveLength(2);
+    expect(screen.getByText("None — the player reads the original file")).toBeVisible();
+    expect(screen.queryByText("Hardware decode")).toBeNull();
+    expect(screen.queryByText("libx264")).toBeNull();
   });
 
   it("explains how sessions come about when none are live", async () => {

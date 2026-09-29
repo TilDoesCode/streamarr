@@ -163,6 +163,42 @@ public sealed class RemuxPlannerTests
     }
 
     [Fact]
+    public void DirectPlay_Target_DescribesTheOriginalStreams_NotATranscode()
+    {
+        var mp4 = Media(container: "mov,mp4,m4a,3gp,3g2,mj2", audioCodec: "aac", channels: 2, bitRate: 3_000_000);
+        var hdr = mp4 with { Video = mp4.Video! with { Codec = "hevc", Profile = "Main 10", PixelFormat = "yuv420p10le", BitDepth = 10, ColorTransfer = "smpte2084", Hdr = HdrFormat.Hdr10 } };
+
+        var direct = Decide(mp4, Browser);
+        var directHdr = Decide(hdr, AppleTv);
+
+        Assert.Equal(DeliveryMode.Direct, direct.Mode);
+        Assert.Equal(("none", "h264", 1920, 1080), (direct.Encoder, direct.Video.Codec, direct.Video.Width, direct.Video.Height));
+        Assert.StartsWith("avc1.", direct.Video.CodecsTag);
+        Assert.Equal(("aac", true, 2), (direct.Audio!.Codec, direct.Audio.Copy, direct.Audio.Channels));
+        Assert.False(direct.HardwareDecode || direct.HardwareEncode);
+        Assert.Empty(direct.Warnings);
+        Assert.Equal("SDR", direct.VideoRange);
+        Assert.Equal((DeliveryMode.Direct, "hevc", "PQ", ToneMapMode.NotNeeded), (directHdr.Mode, directHdr.Video.Codec, directHdr.VideoRange, directHdr.ToneMap));
+    }
+
+    [Fact]
+    public void Transcode_WithASelectedSubtitle_ReportsItAsNotDeliverable()
+    {
+        var media = Media(codec: "mpeg2video", subtitles: [Subtitle(2, "subrip", "eng"), Subtitle(3, "hdmv_pgs_subtitle", "eng")]);
+
+        var image = Decide(media, Browser, allowDirect: false, limits: new TranscodeLimits(SubtitleStreamIndex: 3));
+        var text = Decide(media, Browser, allowDirect: false, limits: new TranscodeLimits(SubtitleStreamIndex: 2));
+        var none = Decide(media, Browser, allowDirect: false);
+
+        Assert.Equal(DeliveryMode.Transcode, image.Mode);
+        var reason = Assert.Single(image.Reasons, r => r.Code == "subtitle_not_deliverable");
+        Assert.Equal(("3", "hdmv_pgs_subtitle", "transcode"), (reason.Params!["index"], reason.Params["codec"], reason.Params["mode"]));
+        Assert.Contains("image-based", reason.Message);
+        Assert.Contains(text.Reasons, r => r.Code == "subtitle_not_deliverable" && r.Params!["index"] == "2");
+        Assert.DoesNotContain(none.Reasons, r => r.Code == "subtitle_not_deliverable");
+    }
+
+    [Fact]
     public void MissingKeyframeIndex_FallsBackToATranscode_WithTheReason()
     {
         var reason = PlanReason.Of("keyframe_index_unavailable", "No keyframe index.", ("detail", "gap"));

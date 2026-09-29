@@ -8695,6 +8695,7 @@ export interface components {
             hardwareDecodeReason: string | null;
             hardwareEncode: boolean;
             hardwareEncodeReason: string | null;
+            /** @description ffmpeg video encoder of a transcode; `copy` for a remux, `none` for direct play. */
             encoder: string | null;
             toneMap: string | null;
             deinterlace: boolean;
@@ -8715,7 +8716,7 @@ export interface components {
             audioStreamIndex?: number | null;
             /**
              * Format: int32
-             * @description The subtitle stream the viewer wants; image-based streams are reported as not deliverable by a remux.
+             * @description The subtitle stream the viewer wants; one the mode cannot deliver (image-based in a remux, any in a transcode) gets the reason `subtitle_not_deliverable`.
              */
             subtitleStreamIndex?: number | null;
             /** Format: double */
@@ -8812,6 +8813,7 @@ export interface components {
              */
             firstSegmentServedMs?: number | null;
         };
+        /** @description What the player receives: the original streams for direct play, the copied video for a remux, the encoder output for a transcode. */
         TranscodeTargetResponse: {
             videoCodec: string | null;
             /** Format: int32 */
@@ -8824,7 +8826,7 @@ export interface components {
             frameRate: number;
             level: string | null;
             codecs: string | null;
-            /** @description True for a remux: the video bitstream is copied, not re-encoded. */
+            /** @description True for a remux or direct play: the video bitstream reaches the player unchanged. */
             videoCopy?: boolean;
             /** @description HLS VIDEO-RANGE of the output: SDR, PQ or HLG. */
             videoRange: string | null;

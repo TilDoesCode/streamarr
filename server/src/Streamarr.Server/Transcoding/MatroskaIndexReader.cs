@@ -113,6 +113,8 @@ public static class MatroskaIndexReader
             }
             if (time is { } t && position is { } pos)
                 points.TryAdd((long)t, segmentStart + pos);
+            if (points.Count > KeyframeIndexService.MaxKeyframes)
+                return null;
         }
         if (points.Count == 0)
             return null;

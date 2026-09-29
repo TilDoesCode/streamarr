@@ -17,6 +17,10 @@ public sealed record FfmpegJobSpec
     /// <summary>Input seek of a remux run: just past the start segment's keyframe (see <see cref="FfmpegArgumentBuilder.RemuxSeekSeconds"/>).</summary>
     public double? SeekSeconds { get; init; }
 
+    /// <summary>Where the source audio starts on the output timeline and its sample rate; converted audio of a restart keeps the frame grid of the run from 0.</summary>
+    public double AudioStartSeconds { get; init; }
+    public int? SourceAudioSampleRate { get; init; }
+
     public string InitFileName => $"init-{JobTag}.mp4";
     public string PlaylistFileName => $"job-{JobTag}.m3u8";
     public double StartSeconds => StartSegment * SegmentLength;
@@ -135,8 +139,8 @@ public static class FfmpegArgumentBuilder
             ]);
             if (converted.SampleRate is { } rate)
                 args.AddRange(["-ar", rate.ToString(CultureInfo.InvariantCulture)]);
-            if (spec.SeekSeconds is null or <= 0)
-                args.AddRange(["-af", $"atrim=start={Micros(EncoderPrimingSeconds(converted))}"]);
+            var sampleRate = converted.SampleRate ?? spec.SourceAudioSampleRate ?? 48_000;
+            args.AddRange(["-af", $"atrim=start={Micros(RemuxAudioTrimSeconds(spec.SeekSeconds, converted, sampleRate, spec.AudioStartSeconds))}"]);
         }
         else
         {
@@ -168,6 +172,18 @@ public static class FfmpegArgumentBuilder
     /// <summary>Encoder priming would give the run from 0 a negative first timestamp, so that run trims this much input audio instead.</summary>
     internal static double EncoderPrimingSeconds(AudioTarget audio)
         => audio.Codec == "aac" ? 1024d / 16_000 + 0.001 : 256d / 32_000 + 0.001;
+
+    /// <summary>The run from 0 trims the encoder priming; a restart starts its audio on that run's encoder frame grid, so segments of different runs meet sample-exactly.</summary>
+    internal static double RemuxAudioTrimSeconds(double? seek, AudioTarget audio, int sampleRate, double audioStart)
+    {
+        var priming = EncoderPrimingSeconds(audio);
+        if (seek is not { } exact || exact <= 0)
+            return priming;
+        var from = Math.Round(exact, 6);
+        var origin = Math.Max(priming, audioStart);
+        var frame = (audio.Codec == "aac" ? 1024d : 1536d) / Math.Max(8_000, sampleRate);
+        return from <= origin ? origin : origin + Math.Ceiling((from - origin) / frame - 1e-9) * frame;
+    }
 
     /// <summary>Seek target that lands on <paramref name="keyframe"/> both with ffmpeg's Matroska "dts heuristic" (−3/23 s) and with SEEK_TO_PTS demuxers.</summary>
     public static double RemuxSeekSeconds(double keyframe, double? nextKeyframe)

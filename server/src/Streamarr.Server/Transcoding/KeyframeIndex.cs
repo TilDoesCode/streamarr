@@ -131,6 +131,9 @@ public sealed class KeyframeIndexService(
     /// <summary>A keyframe gap beyond this makes segments too long for HLS; the index is then rejected.</summary>
     public const double MaxKeyframeGapSeconds = 24;
 
+    /// <summary>Bounds the memory an untrusted index can claim (a 4 h all-intra 60 fps source has 864 000 keyframes).</summary>
+    public const int MaxKeyframes = 1_000_000;
+
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
     private readonly ConcurrentDictionary<string, (DateTimeOffset At, Lazy<Task<KeyframeIndexResult>> Build)> _cache = new(StringComparer.Ordinal);
 
@@ -142,8 +145,23 @@ public sealed class KeyframeIndexService(
             if (now - entry.At > CacheTtl)
                 _cache.TryRemove(key, out _);
         }
-        var cached = _cache.GetOrAdd(source.Input, _ => (now, new Lazy<Task<KeyframeIndexResult>>(() => BuildAsync(source, media))));
+        var cached = _cache.GetOrAdd(source.Input, _ => (now, new Lazy<Task<KeyframeIndexResult>>(() => BuildSafelyAsync(source, media))));
         return cached.Build.Value.WaitAsync(ct);
+    }
+
+    /// <summary>Never faults, so the cache cannot keep a failed build: unexpected errors become an uncached "no index" result.</summary>
+    private async Task<KeyframeIndexResult> BuildSafelyAsync(TranscodeSource source, SourceMediaInfo media)
+    {
+        try
+        {
+            return await BuildAsync(source, media);
+        }
+        catch (Exception e)
+        {
+            _cache.TryRemove(source.Input, out _);
+            logger.LogWarning(e, "Keyframe index build failed for {Source}", TranscodeRedaction.Redact(source.Input));
+            return new KeyframeIndexResult(null, $"index build failed: {e.GetType().Name}");
+        }
     }
 
     internal async Task<KeyframeIndexResult> BuildAsync(TranscodeSource source, SourceMediaInfo media)
@@ -165,8 +183,7 @@ public sealed class KeyframeIndexService(
                     index = null;
             }
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or InvalidDataException or ArgumentException
-                                      or IndexOutOfRangeException or InvalidOperationException or OperationCanceledException)
+        catch (Exception e)
         {
             rejected = $"container index failed: {e.Message}";
             logger.LogDebug(e, "Container keyframe index failed for {Source}", TranscodeRedaction.Redact(source.Input));
@@ -204,6 +221,8 @@ public sealed class KeyframeIndexService(
     {
         if (index.Keyframes.Count == 0)
             return "the index lists no keyframes";
+        if (index.Keyframes.Count > MaxKeyframes)
+            return $"the index lists more than {MaxKeyframes} keyframes";
         var end = media.StartTime + media.DurationSeconds;
         var previous = media.StartTime;
         foreach (var keyframe in index.Keyframes.Append(end))
@@ -257,6 +276,11 @@ public sealed class KeyframeIndexService(
             {
                 if (ParsePacket(line) is { } packet)
                     keyframes.Add(packet);
+                if (keyframes.Count > MaxKeyframes)
+                {
+                    ProcessRunner.Kill(process);
+                    return null;
+                }
             }
             await process.WaitForExitAsync(timeout.Token);
         }

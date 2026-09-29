@@ -133,6 +133,27 @@ public sealed class RemuxPlaylistTests
         Assert.Equal((int)Math.Ceiling((8_250_000 - 3_000_000) * 8 / 6d * 1.1), plan.PeakBandwidthBitsPerSecond);
         Assert.Equal((int)Math.Ceiling((11_250_000 - 1_000) * 8 / 18d), plan.AverageBandwidthBitsPerSecond);
     }
+
+    [Fact]
+    public void FinalizeRemux_Bandwidth_SwapsUndeliveredConstantRateAudioForTheDeliveredAudio()
+    {
+        var single = Media(duration: 18, audioCodec: "ac3");
+        var german = single.Audio[0] with { BitRate = 640_000, Language = "ger", IsDefault = true };
+        var dual = single with { Audio = [german, german with { Index = 2, Language = "eng", IsDefault = false }] };
+        var container = new ContainerIndex(KeyframeIndexSource.MatroskaCues, [0, 6, 12], [0, 6_000_000, 12_000_000], true, null, 18_000_000);
+        var index = new KeyframeIndex(container, null, 1);
+        var ac3Client = new ClientProfile { VideoCodecs = ["h264"], AudioCodecs = ["aac", "ac3"], Containers = ["mp4"], MaxAudioChannels = 6 };
+
+        var copied = TranscodePlanner.FinalizeRemux(Decide(dual, ac3Client, allowDirect: false), dual, index, container.TotalBytes);
+        var converted = TranscodePlanner.FinalizeRemux(Decide(dual, ClientProfile.Default, allowDirect: false), dual, index, container.TotalBytes);
+        var unknownRate = TranscodePlanner.FinalizeRemux(Decide(single, ClientProfile.Default, allowDirect: false), single, index, container.TotalBytes);
+
+        const double Bytes = 6_000_000 * 8 / 6d;
+        Assert.Equal((int)Math.Ceiling((Bytes - 640_000) * 1.1), copied.PeakBandwidthBitsPerSecond);
+        Assert.Equal((int)Math.Ceiling(Bytes - 640_000), copied.AverageBandwidthBitsPerSecond);
+        Assert.Equal((int)Math.Ceiling((Bytes - 1_280_000 + converted.Audio!.BitrateKbps * 1000) * 1.1), converted.PeakBandwidthBitsPerSecond);
+        Assert.Equal((int)Math.Ceiling((Bytes + unknownRate.Audio!.BitrateKbps * 1000) * 1.1), unknownRate.PeakBandwidthBitsPerSecond);
+    }
 }
 
 public sealed class WebVttTests

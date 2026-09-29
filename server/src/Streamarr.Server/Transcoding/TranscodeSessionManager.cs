@@ -363,6 +363,7 @@ public sealed class TranscodeSessionManager(
 
         session.JobSequence++;
         var remux = session.Mode == DeliveryMode.Remux;
+        var sourceAudio = session.Media.Audio.FirstOrDefault(a => a.Index == session.Plan.Audio?.SourceIndex);
         var spec = new FfmpegJobSpec
         {
             Plan = session.Plan,
@@ -374,6 +375,8 @@ public sealed class TranscodeSessionManager(
             SegmentLength = session.Timeline.SegmentLength,
             StartSegment = startSegment,
             SeekSeconds = remux && startSegment > 0 ? RemuxSeek(session, startSegment) : null,
+            AudioStartSeconds = sourceAudio?.StartTime is { } audioStart ? Math.Max(0, audioStart - session.Media.StartTime) : 0,
+            SourceAudioSampleRate = sourceAudio?.SampleRate,
         };
         var job = remux
             ? TranscodeJob.Start(options.Value.FfmpegPath, FfmpegArgumentBuilder.Build(spec), session.Directory, spec.JobTag, startSegment,
@@ -411,7 +414,7 @@ public sealed class TranscodeSessionManager(
     private static IReadOnlyList<double> OutputKeyframes(TranscodeSession session)
         => session.Plan.KeyframeIndex?.Keyframes.Select(k => k - session.Media.StartTime).ToList() ?? [];
 
-    /// <summary>A WebVTT segment; waits only while the running copy is about to demux past it, otherwise returns the cues known so far.</summary>
+    /// <summary>A WebVTT segment; like a video segment it starts or restarts the copy when no live run will demux its cues, then waits for them.</summary>
     public async Task<string> GetSubtitleSegmentAsync(TranscodeSession session, int streamIndex, int index, CancellationToken ct)
     {
         var track = session.Subtitles.FirstOrDefault(t => t.StreamIndex == streamIndex)
@@ -419,12 +422,33 @@ public sealed class TranscodeSessionManager(
         if (index < 0 || index >= session.Timeline.Count)
             throw new TranscodeException("unknown_segment", "The segment is outside this rendition.", 404);
         session.Touch();
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(options.Value.SegmentWaitTimeoutSeconds, 5, 20));
-        while (!session.SubtitlesCovered(index) && DateTimeOffset.UtcNow < deadline && !session.Closed
-               && session.Job is { HasExited: false } job && job.StartSegment <= index
-               && index <= job.Front() + Math.Max(2, (int)Math.Ceiling(SeekGapSeconds / session.Timeline.SegmentLength)))
+
+        for (var attempt = 0; attempt < 4 && !session.SubtitlesCovered(index); attempt++)
         {
-            await Task.Delay(50, ct);
+            TranscodeJob job;
+            await session.Gate.WaitAsync(ct);
+            try
+            {
+                if (session.Closed)
+                    throw new TranscodeException("session_closed", "The transcode session was closed.", 410);
+                if (session.SubtitlesCovered(index))
+                    break;
+                job = await EnsureJobForSegmentLockedAsync(session, index);
+            }
+            finally
+            {
+                session.Gate.Release();
+            }
+
+            try
+            {
+                if (await WaitForAsync(session, job, () => session.SubtitlesCovered(index), ct))
+                    break;
+            }
+            catch (TranscodeException e) when (e.Code == "end_of_stream")
+            {
+                break;
+            }
         }
         track.Refresh(session.Directory);
         return WebVttSubtitles.Segment(track.Between(session.Timeline.StartOf(index), session.Timeline.EndOf(index)));
