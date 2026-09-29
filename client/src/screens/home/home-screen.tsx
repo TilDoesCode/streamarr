@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Film, LayoutGrid, LogOut, Users } from 'lucide-react-native';
+import { Clapperboard, Film, LayoutGrid, LogOut, Users } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -128,6 +128,15 @@ export function HomeScreen() {
                   icon={LayoutGrid}
                   label={t('home.openGallery')}
                   onPress={() => router.push('/dev/gallery')}
+                />
+              ) : null}
+              {__DEV__ ? (
+                <Button
+                  testID="open-player-lab"
+                  variant="ghost"
+                  icon={Clapperboard}
+                  label={t('home.openPlayerLab')}
+                  onPress={() => router.push('/dev/player')}
                 />
               ) : null}
             </FocusGuide>

@@ -1,5 +1,6 @@
 {
   "background": "#0A0B0F",
+  "video": "#000000",
   "surface": {
     "DEFAULT": "#12141A",
     "raised": "#1A1D25",

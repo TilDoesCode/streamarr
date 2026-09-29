@@ -19,6 +19,7 @@
   },
   "home": {
     "openGallery": "Component gallery",
+    "openPlayerLab": "Player lab",
     "greeting": "Hi, {name}",
     "server": "Watching on {server}",
     "placeholder": "Browsing arrives with the navigation shells. These rows come live from your server.",
@@ -648,5 +649,79 @@
       "plural": "Plural: {value}"
     },
     "animateLoaders": "Animate loaders"
+  },
+  "devPlayer": {
+    "title": "Player lab",
+    "subtitle": "{server} · {platform} · {model}",
+    "capsTitle": "Device capabilities",
+    "capsLoading": "Reading the media capabilities of this device…",
+    "capsError": "Could not read the capabilities: {message}",
+    "codecLine": "{codec}: {uses, select, hardware {hardware decoder} software {software decoder only} other {not supported}}{height, select, none {} other { · up to {height}p}} · {depth}-bit · HDR {hdr}",
+    "decoderNames": "HW {hardware} · SW {software}",
+    "display": "Display {width} × {height} at {rate} Hz · HDR {hdr}",
+    "audioOutput": "Audio output {channels} channels · passthrough {passthrough} · {api}",
+    "web": "{browser} · MSE {mse} · native HLS {hls}",
+    "none": "none",
+    "showProfile": "Show device profile",
+    "hideProfile": "Hide device profile",
+    "engineTitle": "Native engine under test",
+    "preferenceTitle": "Engine preference",
+    "preference": {
+      "auto": "Auto",
+      "vlc": "Always VLC"
+    },
+    "variantsTitle": "Dev World variants",
+    "variantsLoading": "Loading the Dev World catalog…",
+    "variantsError": "The Dev World catalog is not available: {message}",
+    "variantLabel": "{label} · {title}",
+    "scenario": {
+      "fallback": "Dead rank-1 release (fallback) · {title}",
+      "degraded": "Degraded rank-1 release · {title}"
+    },
+    "runAll": "Run all variants",
+    "running": "Running {index} of {total}…",
+    "autoMeasure": "Measure automatically: {state, select, on {on} other {off}}",
+    "vlcDirect": "VLC direct rendering: {state, select, on {on} other {off (copy-back)}}",
+    "resultsTitle": "Results",
+    "resultsEmpty": "No playbacks measured yet.",
+    "resultLine": "{variant} · {engine} · {method} via {serverEngine} · API {api} ms · first frame {ttff} ms · start {startup} ms · seeks {seeks} ms · rebuffers {rebuffers} · dropped {dropped} · {decoder} · {video} · audio {audio} · subtitles {subtitles}{switches, select, none {} other { · switches {switches}}}{error, select, none {} other { · error {error}}}",
+    "clearResults": "Clear results",
+    "overlay": {
+      "starting": "Preparing {variant}…",
+      "server": "Server {state} · {method} via {engine} · {ms} ms",
+      "states": "States {states}",
+      "fallback": "Fell back from {name}",
+      "reasons": "Reasons {codes}",
+      "engine": "Engine {engine} · {state} · {position} / {duration}",
+      "startup": "First frame {ttff} ms · start {startup} ms",
+      "seeks": "Seeks {list}",
+      "buffering": "Rebuffers {count} ({ms} ms)",
+      "frames": "Dropped frames {dropped} of {total}",
+      "decoder": "Decoder {name} ({kind, select, hardware {hardware} software {software} other {unknown}})",
+      "video": "Video {size} {range} · {bitrate}",
+      "tracks": "Engine tracks: audio {audio} · subtitles {subtitles}",
+      "switches": "Track switches {list}",
+      "keys": "Keys {list}",
+      "error": "Error {message}",
+      "failed": "Playback failed: {code}",
+      "hint": "OK play or pause · ◀ ▶ seek · ▲ tracks · ▼ statistics · Back stops"
+    },
+    "controls": {
+      "play": "Play",
+      "pause": "Pause",
+      "back10": "−10 s",
+      "forward30": "+30 s",
+      "tracks": "Tracks",
+      "measure": "Measure",
+      "stats": "Statistics",
+      "stop": "Stop"
+    },
+    "tracks": {
+      "title": "Audio and subtitles",
+      "audio": "Audio · {label}",
+      "subtitle": "Subtitles · {label}",
+      "off": "Subtitles off",
+      "delivery": "{codec} · {channels, select, none {} other {{channels} ch · }}{delivered}"
+    }
   }
 }

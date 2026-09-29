@@ -19,6 +19,7 @@
   },
   "home": {
     "openGallery": "Komponenten-Galerie",
+    "openPlayerLab": "Player-Labor",
     "greeting": "Hallo, {name}",
     "server": "Du schaust auf {server}",
     "placeholder": "Stöbern kommt mit der Navigation. Diese Reihen kommen live von deinem Server.",
@@ -648,5 +649,79 @@
       "plural": "Plural: {value}"
     },
     "animateLoaders": "Ladeanimationen"
+  },
+  "devPlayer": {
+    "title": "Player-Labor",
+    "subtitle": "{server} · {platform} · {model}",
+    "capsTitle": "Gerätefähigkeiten",
+    "capsLoading": "Medienfähigkeiten dieses Geräts werden gelesen …",
+    "capsError": "Die Fähigkeiten konnten nicht gelesen werden: {message}",
+    "codecLine": "{codec}: {uses, select, hardware {Hardware-Decoder} software {nur Software-Decoder} other {nicht unterstützt}}{height, select, none {} other { · bis {height}p}} · {depth} Bit · HDR {hdr}",
+    "decoderNames": "HW {hardware} · SW {software}",
+    "display": "Display {width} × {height} mit {rate} Hz · HDR {hdr}",
+    "audioOutput": "Audioausgang {channels} Kanäle · Passthrough {passthrough} · {api}",
+    "web": "{browser} · MSE {mse} · natives HLS {hls}",
+    "none": "keine",
+    "showProfile": "Geräteprofil anzeigen",
+    "hideProfile": "Geräteprofil ausblenden",
+    "engineTitle": "Getestete native Engine",
+    "preferenceTitle": "Engine-Vorgabe",
+    "preference": {
+      "auto": "Automatisch",
+      "vlc": "Immer VLC"
+    },
+    "variantsTitle": "Dev-World-Varianten",
+    "variantsLoading": "Dev-World-Katalog wird geladen …",
+    "variantsError": "Der Dev-World-Katalog ist nicht verfügbar: {message}",
+    "variantLabel": "{label} · {title}",
+    "scenario": {
+      "fallback": "Defektes Release auf Rang 1 (Fallback) · {title}",
+      "degraded": "Beschädigtes Release auf Rang 1 · {title}"
+    },
+    "runAll": "Alle Varianten abspielen",
+    "running": "Läuft: {index} von {total} …",
+    "autoMeasure": "Automatisch messen: {state, select, on {an} other {aus}}",
+    "vlcDirect": "VLC-Direct-Rendering: {state, select, on {an} other {aus (Kopie)}}",
+    "resultsTitle": "Ergebnisse",
+    "resultsEmpty": "Noch keine Wiedergabe gemessen.",
+    "resultLine": "{variant} · {engine} · {method} über {serverEngine} · API {api} ms · erstes Bild {ttff} ms · Start {startup} ms · Sprünge {seeks} ms · Nachladen {rebuffers} · verworfen {dropped} · {decoder} · {video} · Audio {audio} · Untertitel {subtitles}{switches, select, none {} other { · Wechsel {switches}}}{error, select, none {} other { · Fehler {error}}}",
+    "clearResults": "Ergebnisse löschen",
+    "overlay": {
+      "starting": "{variant} wird vorbereitet …",
+      "server": "Server {state} · {method} über {engine} · {ms} ms",
+      "states": "Zustände {states}",
+      "fallback": "Ausweichen von {name}",
+      "reasons": "Gründe {codes}",
+      "engine": "Engine {engine} · {state} · {position} / {duration}",
+      "startup": "Erstes Bild {ttff} ms · Start {startup} ms",
+      "seeks": "Sprünge {list}",
+      "buffering": "Nachladen {count} ({ms} ms)",
+      "frames": "Verworfene Bilder {dropped} von {total}",
+      "decoder": "Decoder {name} ({kind, select, hardware {Hardware} software {Software} other {unbekannt}})",
+      "video": "Video {size} {range} · {bitrate}",
+      "tracks": "Engine-Spuren: Audio {audio} · Untertitel {subtitles}",
+      "switches": "Spurwechsel {list}",
+      "keys": "Tasten {list}",
+      "error": "Fehler {message}",
+      "failed": "Wiedergabe fehlgeschlagen: {code}",
+      "hint": "OK Wiedergabe oder Pause · ◀ ▶ springen · ▲ Spuren · ▼ Statistik · Zurück beendet"
+    },
+    "controls": {
+      "play": "Abspielen",
+      "pause": "Pause",
+      "back10": "−10 s",
+      "forward30": "+30 s",
+      "tracks": "Spuren",
+      "measure": "Messen",
+      "stats": "Statistik",
+      "stop": "Beenden"
+    },
+    "tracks": {
+      "title": "Audio und Untertitel",
+      "audio": "Audio · {label}",
+      "subtitle": "Untertitel · {label}",
+      "off": "Untertitel aus",
+      "delivery": "{codec} · {channels, select, none {} other {{channels} Kan. · }}{delivered}"
+    }
   }
 }

@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["MediaCapsModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.mediacaps.MediaCapsModule"]
+  }
+}

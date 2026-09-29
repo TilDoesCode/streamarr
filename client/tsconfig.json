@@ -5,7 +5,8 @@
     "noUncheckedIndexedAccess": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@/assets/*": ["./assets/*"]
+      "@/assets/*": ["./assets/*"],
+      "@modules/*": ["./modules/*"]
     },
     "types": ["jest", "node"]
   },

@@ -1,0 +1,59 @@
+diff --git a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
+index da483e9..ae9cb87 100644
+--- a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
++++ b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
+@@ -307,7 +307,7 @@ class MediaPlayer(
+       if (index == -1) {
+         player.unselectTrackType(type)
+       } else {
+-        player.selectTrack(index.toString())
++        player.getTracks(type)?.getOrNull(index)?.let { track -> player.selectTrack(track.id) }
+       }
+     }
+   }
+@@ -401,20 +401,20 @@ class MediaPlayer(
+       player
+         .getTracks(
+           IMedia.Track.Type.Audio,
+-        )?.mapIndexed { index, track -> MediaTrack(id = index, name = track.name) }
++        )?.mapIndexed { index, track -> MediaTrack(id = index, name = track.name, selected = track.selected) }
+     val videos =
+       player.getTracks(IMedia.Track.Type.Video)?.mapIndexed {
+         index,
+         track,
+         ->
+-        MediaTrack(id = index, name = track.name)
++        MediaTrack(id = index, name = track.name, selected = track.selected)
+       }
+     val subtitles =
+       player.getTracks(IMedia.Track.Type.Text)?.mapIndexed {
+         index,
+         track,
+         ->
+-        MediaTrack(id = index, name = track.name)
++        MediaTrack(id = index, name = track.name, selected = track.selected)
+       }
+ 
+     val audio = listOf(disableTrack) + (audios ?: emptyList())
+@@ -623,7 +623,9 @@ private fun MediaPlayer.setPlayerListener() {
+             view.onPositionChanged(mapOf("value" to player.getPosition()))
+           }
+ 
+-          Event.ESAdded -> {
++          Event.ESAdded,
++          Event.ESSelected,
++          -> {
+             view.onESAdded(getMediaTracks())
+           }
+ 
+diff --git a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/records/MediaTrack.kt b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/records/MediaTrack.kt
+index e78a0d7..6b4086e 100644
+--- a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/records/MediaTrack.kt
++++ b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/records/MediaTrack.kt
+@@ -7,5 +7,6 @@ import java.io.Serializable
+ class MediaTrack(
+   @Field val id: Int = 0,
+   @Field val name: String = "",
++  @Field val selected: Boolean = false,
+ ) : Record,
+   Serializable
