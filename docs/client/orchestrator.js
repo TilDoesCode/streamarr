@@ -248,7 +248,7 @@ function commitPrompt(id, t, outcome) {
     'Your shell may start elsewhere and resets after every command: prefix EVERY command with "cd /Users/til/Development/streamarr && ".',
     '2. Stage only these paths (skip any that do not exist): git add -A -- ' + paths.join(' '),
     '3. Run "gitleaks git --staged --no-banner --redact". If it reports leaks, unstage the offending files (git restore --staged -- <file>), and mention them in your note.',
-    '4. If nothing is staged, return committed=false.',
+    '4. If nothing is staged, return committed=false. Other tracks may have staged files outside your paths: never commit them. Always commit with an explicit pathspec, git commit -m <msg> -- <the existing paths from step 2>, then check "git show --stat HEAD" lists only files under those paths.',
     '5. Commit with a conventional message: subject "' + (t.track === 'Backend' ? 'feat(server)' : 'feat(client)') + ': <what the task delivered> (' + id + ')" (max 72 chars), a short body (3-6 bullet lines) based on docs/client/journal/' + id + '.md Summary and the verification outcome, and the final trailer line exactly: Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>',
     'Return committed, the short hash and a one-line note.',
   ].join('\n')
