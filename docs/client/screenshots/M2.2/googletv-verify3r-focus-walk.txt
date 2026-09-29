@@ -1,0 +1,413 @@
+# M2.2 verification round 3 (final run, 2026-09-29 ~12:10-13:20) - Google TV D-pad transcript
+# Streamarr_GoogleTV_1080p (1920x1080 @ 320 dpi), APK client/android/app/build/outputs/apk/debug/app-debug.apk (sha256 f5f96c55...a36f, 05:36) reinstalled with adb install -r;
+# Metro 8081 (CI mode), adb reverse. Presses: Argent tv-remote (MCP and 'argent run tv-remote'). After each press: focused node label + bounds from a
+# uiautomator dump once focus is stable (/tmp/m22v3r-focus.py). SAFE = inside x 96..1824, y 54..1026 px. Reanimated flag on device:
+# __reanimatedModuleProxy.getStaticFeatureFlag('FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS') = false.
+# The googletv-verify3-* files (without 'r') come from the two interrupted round-3 attempts and are not evidence of this run.
+
+## Fresh-app-session Sheet checks (force-stop + relaunch, gallery, Argent path down x12 + right, Argent describe, Argent select; panel pixel (1860,1000) should be surface-raised rgb(26,29,37))
+## session 1 (manual, first launch after reinstall, debugger attached, German override)
+select -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE; Audio sheet [1120,0][1920,1080]
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312]; sheet [1120,0][1920,1080]; pixel (1860,1000) (26, 29, 37)
+## session 2
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+argent describe -> Focused: Sheet öffnen [button]
+select (+3 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup MATCH: sheet-options [1120,128][1920,1080] ScrollView
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37)
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup MATCH: sheet-options [1120,128][1920,1080] ScrollView
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37)
+back -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+## session 3
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+select -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+down x12, right -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+argent describe -> Focused: Sheet öffnen [button]
+select (+3 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE MATCH: Sheet öffnen open-sheet [361,136][587,208] Button visible=None MATCH: Langes Sheet öffnen open-long-sheet [619,136][943,208] Button visible=None 
+## session 4
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+argent describe -> Focused: Sheet öffnen [button]
+select (+3 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE MATCH: Sheet öffnen open-sheet [361,136][587,208] Button visible=None MATCH: Langes Sheet öffnen open-long-sheet [619,136][943,208] Button visible=None 
+## session 5
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+argent describe -> Focused: Sheet öffnen [button]
+select (+3 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE MATCH: Sheet öffnen open-sheet [361,136][587,208] Button visible=None MATCH: Langes Sheet öffnen open-long-sheet [619,136][943,208] Button visible=None 
+## session 6
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+argent describe -> Focused: Sheet öffnen [button]
+select (+3 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE MATCH: Sheet öffnen open-sheet [361,136][587,208] Button visible=None MATCH: Langes Sheet öffnen open-long-sheet [619,136][943,208] Button visible=None 
+## session 7
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+argent describe -> Focused: Sheet öffnen [button]
+select (+3 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE MATCH: Sheet öffnen open-sheet [361,136][587,208] Button visible=None MATCH: Langes Sheet öffnen open-long-sheet [619,136][943,208] Button visible=None 
+## session 8
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE
+argent describe -> Focused: Sheet öffnen [button]
+select (+3 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE MATCH: Sheet öffnen open-sheet [361,136][587,208] Button visible=None MATCH: Langes Sheet öffnen open-long-sheet [619,136][943,208] Button visible=None 
+## session 9 (English)
+launch -> FOCUSED: Set up Google TV [1185,277][1834,423] Button checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Add account [850,402][1070,681] LinearLayout checked=false SAFE
+select -> FOCUSED: (no label) [486,432][1434,538] EditText checked=false SAFE
+down x12, right -> FOCUSED: (no label) [486,432][1434,538] EditText checked=false SAFE
+argent describe -> Focused: (no label) [textfield]
+select (+3 s) -> FOCUSED: (no label) [486,432][1434,538] EditText checked=false SAFE 
+  pixels open: 1860,1000 (25, 29, 35) 1860,600 (28, 33, 40) 
+down (+4 s) -> FOCUSED: (no label) [486,432][1434,538] EditText checked=false SAFE 
+  pixels after down: 1860,1000 (25, 29, 35) 1860,600 (28, 33, 40) 
+back -> FOCUSED: (no label) [486,450][1434,556] EditText checked=false SAFE 
+## session 10 (English)
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Component gallery [785,717][1135,789] Button checked=false SAFE
+select -> FOCUSED: Play [96,798][262,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Open sheet [342,136][549,208] Button checked=false SAFE
+argent describe -> Focused: Open sheet [button]
+select (+3 s) -> FOCUSED: English · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: German · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Open sheet [342,136][549,208] Button checked=false SAFE MATCH: Dialogs, sheets and toasts  [96,54][1824,104] View visible=None MATCH: Open sheet open-sheet [342,136][549,208] Button visible=None MATCH: Open sheet  [370,153][521,191] TextView visible=None MATCH: Open long sheet open-long-sheet [581,136][849,208] Button visible=None MATCH: Open long sheet  [613,154][817,190] TextView visible=None 
+## session 11 (English)
+launch -> FOCUSED: Close [1788,646][1884,742] View checked=false ONSCREEN-OUTSIDE-SAFE (dismiss dev-menu intro)
+launch -> FOCUSED: Component gallery [785,717][1135,789] Button checked=false SAFE
+select -> FOCUSED: Play [96,798][262,870] Button checked=false SAFE
+down x12, right -> FOCUSED: Open sheet [342,136][549,208] Button checked=false SAFE
+argent describe -> Focused: Open sheet [button]
+select (+3 s) -> FOCUSED: English · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels open: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+down (+4 s) -> FOCUSED: German · Dolby Digital 5.1 [1168,232][1824,312] RadioButton checked=false SAFE MATCH: Audio sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  sheet-options [1120,128][1920,1080] ScrollView visible=None 
+  pixels after down: 1860,1000 (26, 29, 37) 1860,600 (26, 29, 37) 
+back -> FOCUSED: Open sheet [342,136][549,208] Button checked=false SAFE MATCH: Dialogs, sheets and toasts  [96,54][1824,104] View visible=None MATCH: Open sheet open-sheet [342,136][549,208] Button visible=None MATCH: Open sheet  [370,153][521,191] TextView visible=None MATCH: Open long sheet open-long-sheet [581,136][849,208] Button visible=None MATCH: Open long sheet  [613,154][817,190] TextView visible=None 
+(session 9 is not counted: the relaunch did not reach the app in 12 s and the script drove the launcher's account setup)
+
+## JS stall probe (session 8): setTimeout busy-loop 3 s scheduled 1.5 s before the Argent select (ran +2.0..+5.0 s)
+select (+6 s) -> FOCUSED: Englisch · Dolby Digital Plus 5.1 [1168,144][1824,224] RadioButton checked=true SAFE; sheet [1120,0][1920,1080]; pixels (1860,1000) (26,29,37)
+down (+4 s) -> FOCUSED: Deutsch · Dolby Digital 5.1 [1168,232][1824,312] SAFE; sheet [1120,0][1920,1080]; pixels (1860,1000) (26,29,37)
+select -> FOCUSED: Sheet öffnen [361,136][587,208] (option picked, sheet closed, focus back on trigger)
+
+## Long sheet (German, session 8)
+right  -> FOCUSED: Langes Sheet öffnen [619,136][943,208] Button SAFE
+select -> FOCUSED: Aus [1168,144][1824,224] RadioButton checked=true SAFE; long-sheet [1120,0][1920,1080]
+down   -> Untertitelspur 1..4 at [1168,232..496] (each +88 px) SAFE
+down   -> Untertitelspur 5..10 each at [1168,564][1824,644] (centred) SAFE
+down   -> Untertitelspur 11..15 at [1168,578]..[1168,930][1824,1010] (list clamps at the end) SAFE
+down x3 more, left, right -> stays on Untertitelspur 15 [1168,930][1824,1010] SAFE (googletv-verify3r-long-sheet-end.png)
+up x2  -> Untertitelspur 13 [1168,754][1824,834]; select -> Langes Sheet öffnen [619,136][943,208] (sheet closed)
+select -> FOCUSED: Untertitelspur 13 [1168,754][1824,834] RadioButton checked=true SAFE (reopen focuses the selection; googletv-verify3r-long-sheet-reopen-track13.png)
+
+## German overlays row: wraps onto two lines on TV ("Fehler-Toast zeigen" on line 2)
+back   -> FOCUSED: Langes Sheet öffnen [619,136][943,208] Button checked=false SAFE 
+right  -> FOCUSED: Info-Toast zeigen [975,136][1259,208] Button checked=false SAFE 
+right  -> FOCUSED: Erfolgs-Toast zeigen [1291,136][1615,208] Button checked=false SAFE 
+right  -> FOCUSED: Erfolgs-Toast zeigen [1291,136][1615,208] Button checked=false SAFE 
+down   -> FOCUSED: Fehler-Toast zeigen [96,240][409,312] Button checked=false SAFE 
+right  -> FOCUSED: Sheet öffnen [361,136][587,208] Button checked=false SAFE 
+left   -> FOCUSED: Dialog öffnen [96,136][329,208] Button checked=false SAFE 
+down   -> FOCUSED: Fehler-Toast zeigen [96,240][409,312] Button checked=false SAFE 
+up     -> FOCUSED: Dialog öffnen [96,136][329,208] Button checked=false SAFE 
+up     -> FOCUSED: Folge 3 · 1 Std. 30 Min. · 8. Aug. 2010. The Great Game [96,403][1824,624] Button checked=false SAFE 
+up     -> FOCUSED: Folge 2 · 1 Std. 29 Min. · 1. Aug. 2010. The Blind Banker [96,403][1824,624] Button checked=false SAFE 
+
+## German page walk from the top (hero, row memory, horizontal scrolling)
+back   -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE 
+right  -> FOCUSED: Mehr Infos [357,798][606,870] Button checked=false SAFE 
+right  -> FOCUSED: Versionen [630,798][702,870] Button checked=false SAFE 
+right  -> FOCUSED: Versionen [630,798][702,870] Button checked=false SAFE 
+left   -> FOCUSED: Mehr Infos [357,798][606,870] Button checked=false SAFE 
+left   -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE 
+down   -> FOCUSED: Big Buck Bunny, Noch 7 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: Sintel, Noch 8 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: S1, F3 · The Great Game, Noch 31 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: Elephants Dream, Noch 2 Min. [96,134][488,439] Button checked=false SAFE 
+down   -> FOCUSED: Big Buck Bunny, 2008 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Sintel, 2010 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Tears of Steel, 2012 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Elephants Dream, 2006 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Cosmos Laundromat, 2015 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Sprite Fright, 2024 [96,138][304,534] Button checked=false SAFE 
+down   -> FOCUSED: Pioneer One, 1 Staffel [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Sherlock, 3 Staffeln [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [96,138][304,534] Button checked=false SAFE 
+up     -> FOCUSED: Sprite Fright, 2024 [96,138][304,534] Button checked=false SAFE 
+up     -> FOCUSED: Elephants Dream, Noch 2 Min. [96,134][488,439] Button checked=false SAFE 
+up     -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE 
+down   -> FOCUSED: Elephants Dream, Noch 2 Min. [96,134][488,439] Button checked=false SAFE 
+down   -> FOCUSED: Sprite Fright, 2024 [96,138][304,534] Button checked=false SAFE 
+down   -> FOCUSED: Big Buck Bunny, 2008 [96,138][304,534] Button checked=false SAFE 
+## buttons, icon buttons, tags, episodes
+down   -> FOCUSED: Primär [96,136][293,208] Button checked=false SAFE 
+right  -> FOCUSED: Sekundär [325,136][557,208] Button checked=false SAFE 
+right  -> FOCUSED: Dezent [589,136][789,208] Button checked=false SAFE 
+right  -> FOCUSED: Löschen [821,136][1040,208] Button checked=false SAFE 
+right  -> FOCUSED: Löschen [821,136][1040,208] Button checked=false SAFE 
+down   -> FOCUSED: Klein [96,250][203,310] Button checked=false SAFE 
+right  -> FOCUSED: Mittel [235,244][372,316] Button checked=false SAFE 
+right  -> FOCUSED: Groß [404,240][547,320] Button checked=false SAFE 
+right  -> FOCUSED: Groß [404,240][547,320] Button checked=false SAFE 
+down   -> FOCUSED: Abspielen [96,352][333,424] Button checked=false SAFE 
+right  -> FOCUSED: Abspielen, busy [1096,352][1333,424] Button checked=false SAFE 
+right  -> FOCUSED: Abspielen, busy [1096,352][1333,424] Button checked=false SAFE 
+right  -> FOCUSED: Abspielen, busy [1096,352][1333,424] Button checked=false SAFE 
+down   -> FOCUSED: Sekundär [107,136][179,208] Button checked=false SAFE 
+right  -> FOCUSED: Abspielen [222,136][294,208] Button checked=false SAFE 
+right  -> FOCUSED: Schließen [326,136][398,208] Button checked=false SAFE 
+right  -> FOCUSED: Einstellungen [827,136][887,196] Button checked=false SAFE 
+right  -> FOCUSED: Einstellungen [919,136][991,208] Button checked=false SAFE 
+right  -> FOCUSED: Einstellungen [1023,136][1103,216] Button checked=false SAFE 
+right  -> FOCUSED: Einstellungen [1023,136][1103,216] Button checked=false SAFE 
+right  -> FOCUSED: Einstellungen [1023,136][1103,216] Button checked=false SAFE 
+down   -> FOCUSED: Alle [96,210][241,270] Button checked=false SAFE 
+right  -> FOCUSED: Filme [273,210][402,270] Button checked=false SAFE 
+right  -> FOCUSED: Serien [434,210][572,270] Button checked=false SAFE 
+right  -> FOCUSED: Serien [434,210][572,270] Button checked=false SAFE 
+down   -> FOCUSED: Folge 1 · 1 Std. 28 Min. · 25. Juli 2010. A Study in Pink [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Folge 2 · 1 Std. 29 Min. · 1. Aug. 2010. The Blind Banker [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Folge 3 · 1 Std. 30 Min. · 8. Aug. 2010. The Great Game [96,403][1824,624] Button checked=false SAFE 
+## episodes -> overlays -> states -> progress -> loaders -> language
+down   -> FOCUSED: Folge 1 · 1 Std. 28 Min. · 25. Juli 2010. A Study in Pink [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Folge 2 · 1 Std. 29 Min. · 1. Aug. 2010. The Blind Banker [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Folge 3 · 1 Std. 30 Min. · 8. Aug. 2010. The Great Game [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Dialog öffnen [96,136][329,208] Button checked=false SAFE 
+down   -> FOCUSED: Fehler-Toast zeigen [96,240][409,312] Button checked=false SAFE 
+down   -> FOCUSED: Suche [865,630][1056,702] Button checked=false SAFE 
+down   -> FOCUSED: Erneut versuchen [819,657][1102,729] Button checked=false SAFE 
+down   -> FOCUSED: Zum Start [777,657][967,729] Button checked=false SAFE 
+down   -> FOCUSED: Erneut versuchen [472,677][755,749] Button checked=false SAFE 
+down   -> FOCUSED: 12 % gesehen, 50 % gesehen, 90 % gesehen, Wird geladen, Wird geladen, Wird geladen [96,136][968,374] ViewGroup checked=false SAFE 
+down   -> FOCUSED: Ladeanimationen [96,136][362,196] Button checked=false SAFE 
+right  -> FOCUSED: Ladeanimationen [96,136][362,196] Button checked=false SAFE 
+right  -> FOCUSED: Ladeanimationen [96,136][362,196] Button checked=false SAFE 
+right  -> FOCUSED: Ladeanimationen [96,136][362,196] Button checked=false SAFE 
+down   -> FOCUSED: Systemsprache [96,136][340,196] Button checked=false SAFE 
+## language row end, formatting, colours (one guide per line), typography, page end
+right  -> FOCUSED: English [372,136][521,196] Button checked=false SAFE 
+right  -> FOCUSED: Deutsch [553,136][749,196] Button checked=false SAFE 
+right  -> FOCUSED: Deutsch [553,136][749,196] Button checked=false SAFE 
+down   -> FOCUSED: Datum: 25.7.2010 · 25. Juli 2010 · 25. Juli 2010, Laufzeit: 35 Sek. · 42 Min. · 1 Std. 30 Min. · 1 Std. 42 Min., Verbleibend: Noch 37 Min., Relativ: Heute · Gestern · vor 3 Tagen · 17. Sept. 2026, Größe: 4,2 GB · 734 MB, Plural: 1 Folge · 12 Folgen · 2 Staffeln · Keine Versionen [96,136][792,424] ViewGroup checked=false SAFE 
+down   -> FOCUSED: surface [376,442][624,584] ViewGroup checked=false SAFE 
+right  -> FOCUSED: surface-raised [656,442][904,584] ViewGroup checked=false SAFE 
+right  -> FOCUSED: surface-overlay [936,442][1184,584] ViewGroup checked=false SAFE 
+right  -> FOCUSED: foreground [1216,442][1464,584] ViewGroup checked=false SAFE 
+right  -> FOCUSED: foreground-muted [1496,442][1744,584] ViewGroup checked=false SAFE 
+right  -> FOCUSED: foreground-muted [1496,442][1744,584] ViewGroup checked=false SAFE 
+right  -> FOCUSED: foreground-muted [1496,442][1744,584] ViewGroup checked=false SAFE 
+down   -> FOCUSED: secondary-hover [1496,442][1744,584] ViewGroup checked=false SAFE 
+down   -> FOCUSED: success [1496,442][1744,584] ViewGroup checked=false SAFE 
+down   -> FOCUSED: info [1496,442][1744,584] ViewGroup checked=false SAFE 
+down   -> FOCUSED: input [1496,442][1744,584] ViewGroup checked=false SAFE 
+down   -> FOCUSED: shadow [1216,442][1464,584] ViewGroup checked=false SAFE 
+down   -> FOCUSED: display · 40/46, Der schnelle Fuchs schaut einen Film [96,442][1392,584] ViewGroup checked=false SAFE 
+down   -> FOCUSED: title · 28/34, Der schnelle Fuchs schaut einen Film [96,454][1019,572] ViewGroup checked=false SAFE 
+left   -> FOCUSED: title · 28/34, Der schnelle Fuchs schaut einen Film [96,454][1019,572] ViewGroup checked=false SAFE 
+left   -> FOCUSED: title · 28/34, Der schnelle Fuchs schaut einen Film [96,454][1019,572] ViewGroup checked=false SAFE 
+left   -> FOCUSED: title · 28/34, Der schnelle Fuchs schaut einen Film [96,454][1019,572] ViewGroup checked=false SAFE 
+left   -> FOCUSED: title · 28/34, Der schnelle Fuchs schaut einen Film [96,454][1019,572] ViewGroup checked=false SAFE 
+left   -> FOCUSED: title · 28/34, Der schnelle Fuchs schaut einen Film [96,454][1019,572] ViewGroup checked=false SAFE 
+left   -> FOCUSED: title · 28/34, Der schnelle Fuchs schaut einen Film [96,454][1019,572] ViewGroup checked=false SAFE 
+down   -> FOCUSED: heading · 19/25, Der schnelle Fuchs schaut einen Film [96,463][738,563] ViewGroup checked=false SAFE 
+down   -> FOCUSED: subheading · 16/21, Der schnelle Fuchs schaut einen Film [96,467][645,559] ViewGroup checked=false SAFE 
+down   -> FOCUSED: body · 14/20, Der schnelle Fuchs schaut einen Film [96,480][574,570] ViewGroup checked=false SAFE 
+down   -> FOCUSED: callout · 13/18, Der schnelle Fuchs schaut einen Film [96,586][544,672] ViewGroup checked=false SAFE 
+down   -> FOCUSED: caption · 11/15, Der schnelle Fuchs schaut einen Film [96,688][478,768] ViewGroup checked=false SAFE 
+down   -> FOCUSED: overline · 10/13, DER SCHNELLE FUCHS SCHAUT EINEN FILM [96,784][579,860] ViewGroup checked=false SAFE 
+down   -> FOCUSED: label · 14/18, Der schnelle Fuchs schaut einen Film [96,876][579,962] ViewGroup checked=false SAFE 
+down   -> FOCUSED: label · 14/18, Der schnelle Fuchs schaut einen Film [96,876][579,962] ViewGroup checked=false SAFE 
+down   -> FOCUSED: label · 14/18, Der schnelle Fuchs schaut einen Film [96,876][579,962] ViewGroup checked=false SAFE 
+down   -> FOCUSED: label · 14/18, Der schnelle Fuchs schaut einen Film [96,876][579,962] ViewGroup checked=false SAFE 
+down   -> FOCUSED: label · 14/18, Der schnelle Fuchs schaut einen Film [96,876][579,962] ViewGroup checked=false SAFE 
+right  -> FOCUSED: label · 14/18, Der schnelle Fuchs schaut einen Film [96,876][579,962] ViewGroup checked=false SAFE 
+## back to top, walk down again: Typography is entered on its remembered last sample
+back   -> FOCUSED: Abspielen [96,798][333,870] Button SAFE
+down x25 ... -> FOCUSED: surface [376,442][624,584] (Colors line 1) -> foreground-disabled -> accent -> warning -> destructive -> focus-glow (line 7)
+down   -> FOCUSED: label · 14/18, Der schnelle Fuchs schaut einen Film [96,876][579,962] ViewGroup SAFE   <- skips display..overline (googletv-verify3r-typography-entry-remembered-label.png)
+## back handling
+back   -> FOCUSED: Abspielen [96,798][333,870] Button SAFE
+back   -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button SAFE
+back   -> topResumedActivity = com.google.android.apps.tv.launcherx/.home.HomeActivity
+
+## remount restore (same process: rows left on The Great Game / Tears of Steel / Big Buck Bunny, back x2, re-enter)
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE 
+down   -> FOCUSED: Elephants Dream, Noch 2 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: Cosmos Laundromat, Noch 8 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: S2, F3 · The Reichenbach Fall, Noch 40 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: Night of the Living Dead, Noch 1 Std. 19 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, Noch 5 Min. [96,134][488,439] Button checked=false SAFE 
+right  -> FOCUSED: S3, F3 · His Last Vow, Noch 31 Min. [172,134][564,439] Button checked=false SAFE 
+right  -> FOCUSED: Tears of Steel, Noch 2 Min. [592,134][984,439] Button checked=false SAFE 
+right  -> FOCUSED: Elephants Dream, Noch 8 Min. [1012,134][1404,439] Button checked=false SAFE 
+right  -> FOCUSED: S1, F3 · The Great Game, Noch 41 Min. [1432,134][1824,439] Button checked=false SAFE 
+right  -> FOCUSED: S1, F3 · The Great Game, Noch 41 Min. [1432,134][1824,439] Button checked=false SAFE 
+down   -> FOCUSED: Sprite Fright, 2024 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Night of the Living Dead, 1968 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [200,138][408,534] Button checked=false SAFE 
+right  -> FOCUSED: Sintel, 2010 [436,138][644,534] Button checked=false SAFE 
+right  -> FOCUSED: Tears of Steel, 2012 [672,138][880,534] Button checked=false SAFE 
+down   -> FOCUSED: Big Buck Bunny, 2008 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Sintel, 2010 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Tears of Steel, 2012 [96,138][304,534] Button checked=false SAFE 
+right  -> FOCUSED: Elephants Dream, 2006 [200,138][408,534] Button checked=false SAFE 
+right  -> FOCUSED: Cosmos Laundromat, 2015 [436,138][644,534] Button checked=false SAFE 
+right  -> FOCUSED: Sprite Fright, 2024 [672,138][880,534] Button checked=false SAFE 
+right  -> FOCUSED: Night of the Living Dead, 1968 [908,138][1116,534] Button checked=false SAFE 
+right  -> FOCUSED: Pioneer One, 1 Staffel [1144,138][1352,534] Button checked=false SAFE 
+right  -> FOCUSED: Sherlock, 3 Staffeln [1380,138][1588,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [1616,138][1824,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [1616,138][1824,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [1616,138][1824,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [1616,138][1824,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [1616,138][1824,534] Button checked=false SAFE 
+back   -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE 
+back   -> FOCUSED: Komponenten-Galerie [767,717][1154,789] Button checked=false SAFE 
+select -> FOCUSED: Abspielen [96,798][333,870] Button checked=false SAFE 
+down   -> FOCUSED: S1, F3 · The Great Game, Noch 41 Min. [1432,134][1824,439] Button checked=false SAFE 
+down   -> FOCUSED: Tears of Steel, 2012 [672,138][880,534] Button checked=false SAFE 
+down   -> FOCUSED: Big Buck Bunny, 2008 [1616,138][1824,534] Button checked=false SAFE 
+right  -> FOCUSED: Big Buck Bunny, 2008 [1616,138][1824,534] Button checked=false SAFE 
+left   -> FOCUSED: Sherlock, 3 Staffeln [1380,138][1588,534] Button checked=false SAFE 
+left   -> FOCUSED: Pioneer One, 1 Staffel [1144,138][1352,534] Button checked=false SAFE 
+up     -> FOCUSED: Tears of Steel, 2012 [672,138][880,534] Button checked=false SAFE 
+up     -> FOCUSED: S1, F3 · The Great Game, Noch 41 Min. [1432,134][1824,439] Button checked=false SAFE 
+(googletv-verify3r-remount-restore.png)
+
+## Dialog (first open of the session) + toast
+down   -> FOCUSED: Tears of Steel, 2012 [672,138][880,534] Button checked=false SAFE 
+down   -> FOCUSED: Pioneer One, 1 Staffel [1144,138][1352,534] Button checked=false SAFE 
+down   -> FOCUSED: Primär [96,136][293,208] Button checked=false SAFE 
+down   -> FOCUSED: Klein [96,250][203,310] Button checked=false SAFE 
+down   -> FOCUSED: Abspielen [96,352][333,424] Button checked=false SAFE 
+down   -> FOCUSED: Sekundär [107,136][179,208] Button checked=false SAFE 
+down   -> FOCUSED: Alle [96,210][241,270] Button checked=false SAFE 
+down   -> FOCUSED: Folge 1 · 1 Std. 28 Min. · 25. Juli 2010. A Study in Pink [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Folge 2 · 1 Std. 29 Min. · 1. Aug. 2010. The Blind Banker [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Folge 3 · 1 Std. 30 Min. · 8. Aug. 2010. The Great Game [96,403][1824,624] Button checked=false SAFE 
+down   -> FOCUSED: Dialog öffnen [96,136][329,208] Button checked=false SAFE 
+select -> FOCUSED: Abbrechen [961,605][1162,677] Button checked=false SAFE 
+up     -> FOCUSED: Abbrechen [961,605][1162,677] Button checked=false SAFE 
+left   -> FOCUSED: Abbrechen [961,605][1162,677] Button checked=false SAFE 
+down   -> FOCUSED: Abbrechen [961,605][1162,677] Button checked=false SAFE 
+right  -> FOCUSED: Entfernen [1186,605][1372,677] Button checked=false SAFE 
+right  -> FOCUSED: Entfernen [1186,605][1372,677] Button checked=false SAFE 
+down   -> FOCUSED: Entfernen [1186,605][1372,677] Button checked=false SAFE 
+up     -> FOCUSED: Entfernen [1186,605][1372,677] Button checked=false SAFE 
+back   -> FOCUSED: Dialog öffnen [96,136][329,208] Button SAFE (googletv-verify3r-dialog-single-ring.png: one ring, trigger unringed)
+right x3, select on Info-Toast zeigen -> toast shown, FOCUSED: Info-Toast zeigen [975,136][1259,208] SAFE (googletv-verify3r-toast-focus-kept.png)
+
+## language switch (German override -> System default = English)
+down   -> FOCUSED: Fehler-Toast zeigen [96,240][409,312] Button checked=false SAFE 
+down   -> FOCUSED: Suche [865,630][1056,702] Button checked=false SAFE 
+down   -> FOCUSED: Erneut versuchen [819,657][1102,729] Button checked=false SAFE 
+down   -> FOCUSED: Zum Start [777,657][967,729] Button checked=false SAFE 
+down   -> FOCUSED: Erneut versuchen [472,677][755,749] Button checked=false SAFE 
+down   -> FOCUSED: 12 % gesehen, 50 % gesehen, 90 % gesehen, Wird geladen, Wird geladen, Wird geladen [96,136][968,374] ViewGroup checked=false SAFE 
+down   -> FOCUSED: Ladeanimationen [96,136][362,196] Button checked=false SAFE 
+left   -> FOCUSED: Ladeanimationen [96,136][362,196] Button checked=false SAFE 
+left   -> FOCUSED: Ladeanimationen [96,136][362,196] Button checked=false SAFE 
+select -> DUMP FAILED ERROR: could not get idle state. 
+down   -> FOCUSED: Systemsprache [96,136][340,196] Button checked=false SAFE 
+left   -> FOCUSED: Systemsprache [96,136][340,196] Button checked=false SAFE 
+left   -> FOCUSED: Systemsprache [96,136][340,196] Button checked=false SAFE 
+select -> FOCUSED: System default [96,32][372,92] Button checked=false ONSCREEN-OUTSIDE-SAFE 
+up     -> FOCUSED: Animate loaders [96,136][351,196] Button checked=false SAFE 
+down   -> FOCUSED: System default [96,136][372,196] Button checked=false SAFE 
+right x2, select Deutsch -> FOCUSED: Deutsch [553,240][749,300] SAFE; left x2, select Systemsprache -> FOCUSED: System default [96,32][372,92] ONSCREEN-OUTSIDE-SAFE (googletv-verify3r-language-switch-focus-in-overscan.png)
+
+## English: first long-sheet open in a fresh session, overlays row end
+right  -> FOCUSED: Open long sheet [581,136][849,208] Button checked=false SAFE 
+select -> FOCUSED: Off [1168,144][1824,224] RadioButton checked=true SAFE MATCH: Subtitles long-sheet [1120,0][1920,1080] ViewGroup visible=None MATCH:  long-sheet-options [1120,128][1920,1080] ScrollView visible=None 
+down   -> FOCUSED: Subtitle track 1 [1168,232][1824,312] RadioButton checked=false SAFE 
+down   -> FOCUSED: Subtitle track 2 [1168,320][1824,400] RadioButton checked=false SAFE 
+down   -> FOCUSED: Subtitle track 3 [1168,408][1824,488] RadioButton checked=false SAFE 
+down   -> FOCUSED: Subtitle track 4 [1168,496][1824,576] RadioButton checked=false SAFE 
+down   -> FOCUSED: Subtitle track 5 [1168,564][1824,644] RadioButton checked=false SAFE 
+down   -> FOCUSED: Subtitle track 6 [1168,564][1824,644] RadioButton checked=false SAFE 
+back   -> FOCUSED: Open long sheet [581,136][849,208] Button checked=false SAFE 
+right  -> FOCUSED: Show info toast [881,136][1141,208] Button checked=false SAFE 
+right  -> FOCUSED: Show success toast [1173,136][1487,208] Button checked=false SAFE 
+right  -> FOCUSED: Show error toast [1519,136][1791,208] Button checked=false SAFE 
+right  -> FOCUSED: Show error toast [1519,136][1791,208] Button checked=false SAFE 
+down   -> FOCUSED: Search [860,630][1060,702] Button checked=false SAFE 
+up     -> FOCUSED: Show error toast [1519,136][1791,208] Button checked=false SAFE 
+
+## States section (centred EmptyState/ErrorState actions): right ends hold, LEFT leaves the section
+down   -> FOCUSED: Search [860,630][1060,702] Button checked=false SAFE 
+right  -> FOCUSED: Search [860,630][1060,702] Button checked=false SAFE 
+right  -> FOCUSED: Search [860,630][1060,702] Button checked=false SAFE 
+down   -> FOCUSED: Try again [870,677][1051,749] Button checked=false SAFE 
+right  -> FOCUSED: Try again [870,677][1051,749] Button checked=false SAFE 
+right  -> FOCUSED: Try again [870,677][1051,749] Button checked=false SAFE 
+down   -> FOCUSED: Go to start [766,657][963,729] Button checked=false SAFE 
+right  -> FOCUSED: Go back [987,657][1154,729] Button checked=false SAFE 
+right  -> FOCUSED: Go back [987,657][1154,729] Button checked=false SAFE 
+down   -> FOCUSED: Try again [547,657][728,729] Button checked=false SAFE 
+right  -> FOCUSED: Choose another version [752,657][1114,729] Button checked=false SAFE 
+right  -> FOCUSED: Play with VLC [1138,657][1374,729] Button checked=false SAFE 
+right  -> FOCUSED: Play with VLC [1138,657][1374,729] Button checked=false SAFE 
+left   -> FOCUSED: Choose another version [752,657][1114,729] Button checked=false SAFE 
+left   -> FOCUSED: Try again [547,657][728,729] Button checked=false SAFE 
+left   -> FOCUSED: surface [376,442][624,584] ViewGroup checked=false SAFE 
+right  -> FOCUSED: surface-raised [656,442][904,584] ViewGroup checked=false SAFE 
+up     -> FOCUSED: Date: 7/25/2010 · Jul 25, 2010 · July 25, 2010, Runtime: 35 s · 42 min · 1 h 30 min · 1 h 42 min, Remaining: 37 min left, Relative: Today · Yesterday · 3 days ago · Sep 17, 2026, Size: 4.2 GB · 734 MB, Plural: 1 episode · 12 episodes · 2 seasons · No versions [96,136][781,424] ViewGroup checked=false SAFE 
+up     -> FOCUSED: System default [96,136][372,196] Button checked=false SAFE 
+up     -> FOCUSED: Animate loaders [96,136][351,196] Button checked=false SAFE 
+up     -> FOCUSED: 12% watched, 50% watched, 90% watched, Loading, Loading, Loading [96,136][968,374] ViewGroup checked=false SAFE 
+up     -> FOCUSED: Try again [547,657][728,729] Button checked=false SAFE 
+up     -> FOCUSED: Go back [987,657][1154,729] Button checked=false SAFE 
+up     -> FOCUSED: Try again [870,677][1051,749] Button checked=false SAFE 
+down   -> FOCUSED: Go back [987,657][1154,729] Button checked=false SAFE 
+left   -> FOCUSED: Go to start [766,657][963,729] Button checked=false SAFE 
+left   -> FOCUSED: Date: 7/25/2010 ... (Formatting stop) [96,136][781,424] ViewGroup SAFE   <- from 'Go to start' (googletv-verify3r-left-from-go-to-start-jumps-to-formatting.png)
+up     -> FOCUSED: Animate loaders [96,136][351,196] Button checked=false SAFE 
+up     -> FOCUSED: 12% watched, 50% watched, 90% watched, Loading, Loading, Loading [96,136][968,374] ViewGroup checked=false SAFE 
+up     -> FOCUSED: Try again [547,657][728,729] Button checked=false SAFE 
+up     -> FOCUSED: Go to start [766,657][963,729] Button checked=false SAFE 
+up     -> FOCUSED: Try again [870,677][1051,749] Button checked=false SAFE 
+left   -> FOCUSED: 12% watched, 50% watched, 90% watched, Loading, Loading, Loading [96,136][968,374] ViewGroup checked=false SAFE 
+up     -> FOCUSED: Try again [547,657][728,729] Button checked=false SAFE 
+up     -> FOCUSED: Go to start [766,657][963,729] Button checked=false SAFE 
+up     -> FOCUSED: Try again [870,677][1051,749] Button checked=false SAFE 
+up     -> FOCUSED: Search [860,630][1060,702] Button checked=false SAFE 
+up     -> FOCUSED: Show error toast [1519,136][1791,208] Button checked=false SAFE 
+down   -> FOCUSED: Search [860,630][1060,702] Button checked=false SAFE 
+left   -> FOCUSED: 12% watched, 50% watched, 90% watched, Loading, Loading, Loading [96,136][968,374] ViewGroup checked=false SAFE 
+(last line: left from 'Search' lands on the Progress stop; googletv-verify3r-left-from-search-jumps-to-progress.png)

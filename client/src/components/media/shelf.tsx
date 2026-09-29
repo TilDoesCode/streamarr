@@ -64,10 +64,12 @@ export function Shelf<T>({
     listRef.current?.scrollToOffset({ offset: next, animated: true });
   };
 
+  // Gaps are cell margins, not `gap`: a container gap would also follow VirtualizedList's spacers.
   const renderCell = ({ item, index }: ListRenderItemInfo<T>) => (
     <View
       collapsable={false}
       scrollSnapAlign={design.isTV ? 'start' : undefined}
+      style={{ marginRight: index < data.length - 1 ? cardGap : 0 }}
       ref={index === restoreIndex ? setRestoreTarget : undefined}
       onFocus={() => {
         if (memoryKey && design.isTV) shelfMemory.set(memoryKey, index);
@@ -129,12 +131,12 @@ export function Shelf<T>({
             offset.current = event.nativeEvent.contentOffset.x;
           }}
           scrollEventThrottle={100}
-          contentContainerStyle={{
-            paddingHorizontal: gutter,
-            paddingVertical: focusRoom,
-            gap: cardGap,
-          }}
-          getItemLayout={(_, index) => ({ length: stride, offset: gutter + index * stride, index })}
+          contentContainerStyle={{ paddingHorizontal: gutter, paddingVertical: focusRoom }}
+          getItemLayout={(_, index) => ({
+            length: index < data.length - 1 ? stride : itemWidth,
+            offset: gutter + index * stride,
+            index,
+          })}
           initialScrollIndex={restoreIndex}
           contentOffset={restore?.offset}
           initialNumToRender={design.isTV ? 12 : 6}

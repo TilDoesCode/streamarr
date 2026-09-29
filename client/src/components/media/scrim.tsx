@@ -5,11 +5,12 @@ import { colors } from '@/theme';
 
 const DIRECTIONS = {
   up: { start: { x: 0, y: 0 }, end: { x: 0, y: 1 } },
+  down: { start: { x: 0, y: 1 }, end: { x: 0, y: 0 } },
   right: { start: { x: 1, y: 0 }, end: { x: 0, y: 0 } },
 } as const;
 
 export type ScrimProps = {
-  /** Side the darkness grows towards: 'up' darkens the bottom edge. */
+  /** Side the darkness grows towards: 'up' darkens the bottom edge, 'down' the top edge. */
   direction?: keyof typeof DIRECTIONS;
   /** Colour at the dark end (default: page background, for seamless blends). */
   color?: string;

@@ -24,7 +24,6 @@ export type ErrorStateProps = {
   onAction?: (action: ErrorAction) => void;
   /** Moves TV focus to the primary action when shown. */
   autoFocus?: boolean;
-  compact?: boolean;
   testID?: string;
 };
 
@@ -33,7 +32,6 @@ export function ErrorState({
   actions = ['retry'],
   onAction,
   autoFocus = false,
-  compact,
   testID,
 }: ErrorStateProps) {
   const { t, i18n } = useTranslation();
@@ -42,7 +40,6 @@ export function ErrorState({
   return (
     <EmptyState
       testID={testID}
-      compact={compact}
       icon={ICONS[code] ?? CircleAlert}
       iconColor={colors.danger.DEFAULT}
       title={t(`errors.codes.${key}.title`)}

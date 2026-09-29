@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { Tag } from '@/components/ui/tag';
 import { Text } from '@/components/ui/text';
 import {
@@ -12,7 +13,7 @@ import {
 import { useFormat } from '@/i18n/format';
 import { colors, useDesign, type TypeVariant } from '@/theme';
 
-import { FocusStop, GalleryRow, GallerySection } from './gallery-section';
+import { FocusStop, GalleryGrid, GalleryRow, GallerySection } from './gallery-section';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TYPE_VARIANTS: TypeVariant[] = [
@@ -108,12 +109,13 @@ export function GalleryColors() {
   const { t } = useTranslation();
   const design = useDesign();
   const size = design.px(44);
+  const width = design.px(124);
   return (
     <GallerySection title={t('gallery.sections.colors')} testID="section-colors">
-      <GalleryRow align="flex-start">
+      <GalleryGrid itemWidth={width}>
         {SWATCHES.map((swatch) => (
           <FocusStop key={swatch.name} testID={`swatch-${swatch.name}`}>
-            <View style={{ width: design.px(124), gap: design.space.xs, padding: design.space.xs }}>
+            <View style={{ width, gap: design.space.xs, padding: design.space.xs }}>
               <View
                 style={{
                   width: size,
@@ -130,7 +132,7 @@ export function GalleryColors() {
             </View>
           </FocusStop>
         ))}
-      </GalleryRow>
+      </GalleryGrid>
     </GallerySection>
   );
 }
@@ -140,7 +142,11 @@ export function GalleryTypography() {
   const design = useDesign();
   return (
     <GallerySection title={t('gallery.sections.typography')}>
-      <GalleryRow align="flex-start">
+      {/* A type ramp reads top to bottom: always entered at the sample nearest the remote, never wrapping. */}
+      <FocusGuide
+        remember={false}
+        trap={END_OF_ROW}
+        style={{ gap: design.space.sm, alignItems: 'flex-start' }}>
         {TYPE_VARIANTS.map((variant) => (
           <FocusStop key={variant}>
             <View style={{ padding: design.space.xs, gap: design.px(2) }}>
@@ -153,7 +159,7 @@ export function GalleryTypography() {
             </View>
           </FocusStop>
         ))}
-      </GalleryRow>
+      </FocusGuide>
     </GallerySection>
   );
 }

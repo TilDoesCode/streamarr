@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react-native';
+import { View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { Focusable, FocusLift, useFocusState, type FocusableProps } from '@/components/focus';
@@ -9,7 +10,7 @@ export type TagProps = Omit<FocusableProps, 'children'> & {
   selected?: boolean;
 };
 
-/** Selectable chip (filters, language, season picker). Selection = filled; focus = ring + lift. */
+/** Selectable chip (filters, language, season picker). Selection = accent tint + check; focus = white + ring + lift. */
 export function Tag({ label, selected = false, disabled, style, ...props }: TagProps) {
   const design = useDesign();
   const height = design.layout.controlHeight.sm;
@@ -38,19 +39,23 @@ function TagSurface({
   height: number;
 }) {
   const design = useDesign();
-  const { focus, hover } = useFocusState();
-  const rest = selected ? colors.primary.DEFAULT : colors.secondary.DEFAULT;
-  const hovered = selected ? colors.focus.DEFAULT : colors.secondary.hover;
-  const fg = selected ? colors.primary.foreground : colors.foreground.DEFAULT;
-  // Like buttons: hover lightens, focus turns the chip white; the check marks selection.
+  const { focus, hover, pressed } = useFocusState();
+  const rest = selected ? colors.accent.muted : colors.secondary.DEFAULT;
+  const hovered = selected ? colors.accent.hover : colors.secondary.hover;
+  // Hover and press lighten, focus turns the chip white (like buttons); selection is an accent tint + check.
   const surfaceStyle = useAnimatedStyle(() => {
-    const base = interpolateColor(hover.get(), [0, 1], [rest, hovered]);
+    const base = interpolateColor(Math.max(hover.get(), pressed.get()), [0, 1], [rest, hovered]);
     return { backgroundColor: interpolateColor(focus.get(), [0, 1], [base, colors.focus.DEFAULT]) };
   }, [rest, hovered]);
-  const labelStyle = useAnimatedStyle(
-    () => ({ color: interpolateColor(focus.get(), [0, 1], [fg, colors.primary.foreground]) }),
-    [fg]
-  );
+  const labelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      focus.get(),
+      [0, 1],
+      [colors.foreground.DEFAULT, colors.primary.foreground]
+    ),
+  }));
+  const restCheckStyle = useAnimatedStyle(() => ({ opacity: 1 - focus.get() }));
+  const focusCheckStyle = useAnimatedStyle(() => ({ opacity: focus.get() }));
   const iconSize = design.px(14);
   return (
     <Animated.View
@@ -66,7 +71,14 @@ function TagSurface({
         surfaceStyle,
       ]}>
       {selected ? (
-        <Check size={iconSize} color={colors.primary.foreground} strokeWidth={2.75} />
+        <View style={{ width: iconSize, height: iconSize }}>
+          <Animated.View style={[{ position: 'absolute' }, restCheckStyle]}>
+            <Check size={iconSize} color={colors.accent.DEFAULT} strokeWidth={2.75} />
+          </Animated.View>
+          <Animated.View style={[{ position: 'absolute' }, focusCheckStyle]}>
+            <Check size={iconSize} color={colors.primary.foreground} strokeWidth={2.75} />
+          </Animated.View>
+        </View>
       ) : null}
       <Animated.Text numberOfLines={1} style={[design.type.callout, labelStyle]}>
         {label}

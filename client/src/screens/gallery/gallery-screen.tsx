@@ -59,7 +59,9 @@ export function GalleryScreen() {
             gap: design.layout.sectionGap,
           }}
           snapToAlignment={design.isTV ? 'item' : undefined}
-          snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
+          snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}
+          // TV: a relayout above the viewport (e.g. a language switch) must not push focus into the overscan band.
+          maintainVisibleContentPosition={design.isTV ? { minIndexForVisible: 0 } : undefined}>
           <View collapsable={false} scrollSnapAlign={design.isTV ? 'start' : undefined}>
             <View
               style={{

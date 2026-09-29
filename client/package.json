@@ -93,5 +93,10 @@
     "setupFiles": [
       "<rootDir>/jest/setup.ts"
     ]
+  },
+  "reanimated": {
+    "staticFeatureFlags": {
+      "FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS": false
+    }
   }
 }

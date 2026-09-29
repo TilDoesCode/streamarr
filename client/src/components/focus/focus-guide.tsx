@@ -11,8 +11,11 @@ import {
 
 export type FocusDirection = 'up' | 'down' | 'left' | 'right';
 
-/** Horizontal groups stop at their right end; left stays open for a navigation rail. */
+/** Horizontal groups that start at the gutter stop at their right end; left stays open for a navigation rail. */
 export const END_OF_ROW: readonly FocusDirection[] = ['right'];
+
+/** Centred groups stop at both ends: nothing beside them lines up, so Android would jump anywhere on the page. */
+export const CENTRED_ROW: readonly FocusDirection[] = ['left', 'right'];
 
 export type FocusGuideProps = ViewProps & {
   /** Re-entering focus lands on the last focused child (first child on the first visit). */

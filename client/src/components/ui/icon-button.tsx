@@ -51,11 +51,12 @@ function IconButtonSurface({
   size: ButtonSize;
 }) {
   const design = useDesign();
-  const { focus, hover } = useFocusState();
+  const { focus, hover, pressed } = useFocusState();
   const palette = BUTTON_PALETTES[variant];
   const iconSize = design.layout.iconSize[size];
   const surfaceStyle = useAnimatedStyle(() => {
-    const rest = interpolateColor(hover.get(), [0, 1], [palette.bg[0], palette.bg[1]]);
+    const lit = Math.max(hover.get(), pressed.get());
+    const rest = interpolateColor(lit, [0, 1], [palette.bg[0], palette.bg[1]]);
     return { backgroundColor: interpolateColor(focus.get(), [0, 1], [rest, palette.bg[2]]) };
   }, [palette]);
   const restStyle = useAnimatedStyle(() => ({ opacity: 1 - focus.get() }));

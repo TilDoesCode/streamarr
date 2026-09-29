@@ -1,0 +1,237 @@
+# M2.2 fix round 3 - Google TV D-pad walk (Streamarr_GoogleTV_1080p, 1920x1080 @ 320 dpi, English device locale)
+# Presses: Argent tv-remote (CLI `argent run tv-remote`). After each press: focused node label + bounds from a
+# uiautomator dump taken ~1.2 s later. SAFE = inside the overscan-safe area (x 96..1824, y 54..1026 px).
+# APK sha256 f5f96c55... (no native change this round), Metro JS from the working tree.
+
+## Hero -> overlays -> states (English)
+start  FOCUSED: 'More info' [286,798][519,870] SAFE
+left   FOCUSED: 'Play' [96,798][262,870] SAFE
+down   FOCUSED: 'Big Buck Bunny, 7 min left' [96,134][488,439] SAFE
+down   FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+down   FOCUSED: 'Pioneer One, 1 season' [96,138][304,534] SAFE
+down   FOCUSED: 'Primary' [96,136][307,208] SAFE
+down   FOCUSED: 'Small' [96,250][210,310] SAFE
+down   FOCUSED: 'Play' [96,352][262,424] SAFE
+right  FOCUSED: 'Play, busy' [890,352][1056,424] SAFE
+right  FOCUSED: 'Play, busy' [890,352][1056,424] SAFE
+down   FOCUSED: 'Secondary' [113,136][185,208] SAFE
+down   FOCUSED: 'All' [96,210][227,270] SAFE
+down   FOCUSED: 'Episode 1 · 1 h 28 min · Jul 25, 2010. A Study in Pink' [96,403][1824,624] SAFE
+down   FOCUSED: 'Episode 2 · 1 h 29 min · Aug 1, 2010. The Blind Banker' [96,403][1824,624] SAFE
+down   FOCUSED: 'Episode 3 · 1 h 30 min · Aug 8, 2010. The Great Game' [96,403][1824,624] SAFE
+down   FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+right  FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+right  FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+right  FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+down   FOCUSED: 'Show info toast' [96,240][356,312] SAFE
+right  FOCUSED: 'Show success toast' [388,240][702,312] SAFE
+right  FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+right  FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+
+## States section (centred EmptyState/ErrorState actions): left and right both hold now
+down   FOCUSED: 'Search' [860,630][1060,702] SAFE
+left   FOCUSED: 'Search' [860,630][1060,702] SAFE
+left   FOCUSED: 'Search' [860,630][1060,702] SAFE
+right  FOCUSED: 'Search' [860,630][1060,702] SAFE
+right  FOCUSED: 'Search' [860,630][1060,702] SAFE
+down   FOCUSED: 'Try again' [870,677][1051,749] SAFE
+left   FOCUSED: 'Try again' [870,677][1051,749] SAFE
+left   FOCUSED: 'Try again' [870,677][1051,749] SAFE
+right  FOCUSED: 'Try again' [870,677][1051,749] SAFE
+right  FOCUSED: 'Try again' [870,677][1051,749] SAFE
+down   FOCUSED: 'Go to start' [766,657][963,729] SAFE
+left   FOCUSED: 'Go to start' [766,657][963,729] SAFE
+left   FOCUSED: 'Go to start' [766,657][963,729] SAFE
+right  FOCUSED: 'Go back' [987,657][1154,729] SAFE
+right  FOCUSED: 'Go back' [987,657][1154,729] SAFE
+right  FOCUSED: 'Go back' [987,657][1154,729] SAFE
+down   FOCUSED: 'Try again' [547,657][728,729] SAFE
+left   FOCUSED: 'Try again' [547,657][728,729] SAFE
+left   FOCUSED: 'Try again' [547,657][728,729] SAFE
+left   FOCUSED: 'Try again' [547,657][728,729] SAFE
+right  FOCUSED: 'Choose another version' [752,657][1114,729] SAFE
+right  FOCUSED: 'Play with VLC' [1138,657][1374,729] SAFE
+right  FOCUSED: 'Play with VLC' [1138,657][1374,729] SAFE
+left   FOCUSED: 'Choose another version' [752,657][1114,729] SAFE
+left   FOCUSED: 'Try again' [547,657][728,729] SAFE
+left   FOCUSED: 'Try again' [547,657][728,729] SAFE
+up     FOCUSED: 'Go back' [987,657][1154,729] SAFE
+left   FOCUSED: 'Go to start' [766,657][963,729] SAFE
+left   FOCUSED: 'Go to start' [766,657][963,729] SAFE
+up     FOCUSED: 'Try again' [870,677][1051,749] SAFE
+up     FOCUSED: 'Search' [860,630][1060,702] SAFE
+up     FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+down   FOCUSED: 'Search' [860,630][1060,702] SAFE
+left   FOCUSED: 'Search' [860,630][1060,702] SAFE
+down   FOCUSED: 'Try again' [870,677][1051,749] SAFE
+down   FOCUSED: 'Go to start' [766,657][963,729] SAFE
+down   FOCUSED: 'Try again' [547,657][728,729] SAFE
+left   FOCUSED: 'Try again' [547,657][728,729] SAFE
+left   FOCUSED: 'Try again' [547,657][728,729] SAFE
+
+## States -> page end (Progress, Loading, Language, Formatting, Colors, Typography)
+down   FOCUSED: '12% watched, 50% watched, 90% watched, Loading, Loading, Loading' [96,136][968,374] SAFE
+down   FOCUSED: 'Animate loaders' [96,136][351,196] SAFE
+down   FOCUSED: 'System default' [96,136][372,196] SAFE
+down   FOCUSED: 'Date: 7/25/2010 · Jul 25, 2010 · July 25, 2010, Runtime: 35 s · 42 ...' [96,136][781,424] SAFE
+down   FOCUSED: 'surface' [376,442][624,584] SAFE
+down   FOCUSED: 'foreground-disabled' [376,442][624,584] SAFE
+down   FOCUSED: 'accent' [376,442][624,584] SAFE
+down   FOCUSED: 'warning' [376,442][624,584] SAFE
+down   FOCUSED: 'destructive' [376,442][624,584] SAFE
+down   FOCUSED: 'focus-glow' [376,442][624,584] SAFE
+down   FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+down   FOCUSED: 'title · 28/34, The quick fox watches a movie' [96,454][865,572] SAFE
+down   FOCUSED: 'heading · 19/25, The quick fox watches a movie' [96,463][632,563] SAFE
+down   FOCUSED: 'subheading · 16/21, The quick fox watches a movie' [96,467][554,559] SAFE
+down   FOCUSED: 'body · 14/20, The quick fox watches a movie' [96,480][496,570] SAFE
+down   FOCUSED: 'callout · 13/18, The quick fox watches a movie' [96,586][471,672] SAFE
+down   FOCUSED: 'caption · 11/15, The quick fox watches a movie' [96,688][416,768] SAFE
+down   FOCUSED: 'overline · 10/13, THE QUICK FOX WATCHES A MOVIE' [96,784][488,860] SAFE
+down   FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+down   FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+right  FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+
+## Typography re-entry (remember={false}): leave upwards, come back down -> first sample, not the remembered label
+up     FOCUSED: 'overline · 10/13, THE QUICK FOX WATCHES A MOVIE' [96,784][488,860] SAFE
+up     FOCUSED: 'caption · 11/15, The quick fox watches a movie' [96,688][416,768] SAFE
+up     FOCUSED: 'callout · 13/18, The quick fox watches a movie' [96,586][471,672] SAFE
+up     FOCUSED: 'body · 14/20, The quick fox watches a movie' [96,480][496,570] SAFE
+up     FOCUSED: 'subheading · 16/21, The quick fox watches a movie' [96,467][554,559] SAFE
+up     FOCUSED: 'heading · 19/25, The quick fox watches a movie' [96,463][632,563] SAFE
+up     FOCUSED: 'title · 28/34, The quick fox watches a movie' [96,454][865,572] SAFE
+up     FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+up     FOCUSED: 'focus-glow' [376,442][624,584] SAFE
+down   FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+
+## Typography re-entry after back-to-top (the verifier path): label -> back -> walk down again -> display
+down   FOCUSED: 'title · 28/34, The quick fox watches a movie' [96,454][865,572] SAFE
+down   FOCUSED: 'heading · 19/25, The quick fox watches a movie' [96,463][632,563] SAFE
+down   FOCUSED: 'subheading · 16/21, The quick fox watches a movie' [96,467][554,559] SAFE
+down   FOCUSED: 'body · 14/20, The quick fox watches a movie' [96,480][496,570] SAFE
+down   FOCUSED: 'callout · 13/18, The quick fox watches a movie' [96,586][471,672] SAFE
+down   FOCUSED: 'caption · 11/15, The quick fox watches a movie' [96,688][416,768] SAFE
+down   FOCUSED: 'overline · 10/13, THE QUICK FOX WATCHES A MOVIE' [96,784][488,860] SAFE
+down   FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+back   FOCUSED: 'Play' [96,798][262,870] SAFE
+down x28FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+(28 downs from Play in one tv-remote call; the last one entered Typography, which lands on 'display' although 'label' was focused last)
+up     FOCUSED: 'focus-glow' [376,442][624,584] SAFE
+
+## Language switch keeps the focused chip in place (maintainVisibleContentPosition on the TV page)
+up x7  FOCUSED: 'System default' [96,136][372,196] SAFE
+right  FOCUSED: 'English' [404,136][553,196] SAFE
+right  FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+select FOCUSED: 'Deutsch' [553,136][749,196] SAFE
+left   FOCUSED: 'English' [372,136][521,196] SAFE
+left   FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+select FOCUSED: 'System default' [96,136][372,196] SAFE
+
+## Language switch controls (Metro watch mode, temporary edits via Fast Refresh, all reverted)
+# CONTROL 1 was void (Metro in CI mode, no reload) and is omitted; CONTROL 1b = the fixed tree minus the prop:
+#   English -> Deutsch -> System default keeps the chip at y=136 too: with the split overlays row nothing above changes height.
+## CONTROL 1b: split rows, prop removed (bundle rebuilt from the edited file)
+down x20FOCUSED: 'System default' [96,136][372,196] SAFE
+right  FOCUSED: 'English' [404,136][553,196] SAFE
+right  FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+select FOCUSED: 'Deutsch' [553,136][749,196] SAFE
+left   FOCUSED: 'English' [372,136][521,196] SAFE
+left   FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+select FOCUSED: 'System default' [96,136][372,196] SAFE
+## CONTROL 2: old single overlays row (wraps in German) and no maintainVisibleContentPosition
+after Fast Refresh (row merged, content above 52 dp shorter): FOCUSED 'System default' [96,32][372,92] ONSCREEN-OUTSIDE-SAFE
+up     FOCUSED: 'Animate loaders' [96,136][351,196] SAFE
+down   FOCUSED: 'System default' [96,136][372,196] SAFE
+right  FOCUSED: 'English' [404,136][553,196] SAFE
+right  FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+select FOCUSED: 'Deutsch' [553,240][749,300] SAFE
+left   FOCUSED: 'English' [372,136][521,196] SAFE
+left   FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+select FOCUSED: 'System default' [96,32][372,92] ONSCREEN-OUTSIDE-SAFE
+## CONTROL 3: old single overlays row (wraps in German) WITH maintainVisibleContentPosition
+up     FOCUSED: 'Animate loaders' [96,136][351,196] SAFE
+down   FOCUSED: 'System default' [96,136][372,196] SAFE
+right  FOCUSED: 'English' [404,136][553,196] SAFE
+right  FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+select FOCUSED: 'Deutsch' [553,136][749,196] SAFE
+left   FOCUSED: 'English' [372,136][521,196] SAFE
+left   FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+select FOCUSED: 'System default' [96,136][372,196] SAFE
+after restoring the split rows (content above grows 52 dp, prop on)FOCUSED: 'System default' [96,136][372,196] SAFE
+
+## German: overlays and toasts rows (no wrap), states, back to top
+right  FOCUSED: 'English' [404,136][553,196] SAFE
+right  FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+select FOCUSED: 'Deutsch' [553,136][749,196] SAFE
+up x7  FOCUSED: 'Info-Toast zeigen' [96,240][380,312] SAFE
+right  FOCUSED: 'Erfolgs-Toast zeigen' [412,240][736,312] SAFE
+right  FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+right  FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+down   FOCUSED: 'Suche' [865,630][1056,702] SAFE
+right  FOCUSED: 'Suche' [865,630][1056,702] SAFE
+right  FOCUSED: 'Suche' [865,630][1056,702] SAFE
+right  FOCUSED: 'Suche' [865,630][1056,702] SAFE
+left   FOCUSED: 'Suche' [865,630][1056,702] SAFE
+left   FOCUSED: 'Suche' [865,630][1056,702] SAFE
+up     FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+right  FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+right  FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+right  FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+down   FOCUSED: 'Suche' [865,630][1056,702] SAFE
+up     FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+up     FOCUSED: 'Dialog öffnen' [96,136][329,208] SAFE
+right  FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+right  FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+right  FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+down   FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+down   FOCUSED: 'Suche' [865,630][1056,702] SAFE
+down   FOCUSED: 'Erneut versuchen' [819,657][1102,729] SAFE
+left   FOCUSED: 'Erneut versuchen' [819,657][1102,729] SAFE
+down   FOCUSED: 'Zum Start' [777,657][967,729] SAFE
+left   FOCUSED: 'Zum Start' [777,657][967,729] SAFE
+left   FOCUSED: 'Zum Start' [777,657][967,729] SAFE
+down   FOCUSED: 'Erneut versuchen' [472,677][755,749] SAFE
+left   FOCUSED: 'Erneut versuchen' [472,677][755,749] SAFE
+right  FOCUSED: 'Andere Version wählen' [779,677][1132,749] SAFE
+right  FOCUSED: 'Mit VLC abspielen' [1156,677][1448,749] SAFE
+right  FOCUSED: 'Mit VLC abspielen' [1156,677][1448,749] SAFE
+
+## German: back to top, buttons state row (static Pressed preview now lighter than rest)
+back   FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+down x6FOCUSED: 'Abspielen' [96,352][333,424] SAFE
+down x6 -> buttons state row: 'Gedrückt' previews (button + icon button) are secondary.hover (22 % white), rest secondary is 14 % (googletv-fix3-pressed-preview-lighter.png)
+
+## German: long sheet (divider under the title while the options scroll), dialog, sheet
+down x6FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+select FOCUSED: 'Aus' [1168,146][1824,226] SAFE
+down x8FOCUSED: 'Untertitelspur 8' [1168,564][1824,644] SAFE
+back   FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+left   FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+select FOCUSED: 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] SAFE
+down   FOCUSED: 'Deutsch · Dolby Digital 5.1' [1168,232][1824,312] SAFE
+back   FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+left   FOCUSED: 'Dialog öffnen' [96,136][329,208] SAFE
+select FOCUSED: 'Abbrechen' [961,605][1162,677] SAFE
+right  FOCUSED: 'Entfernen' [1186,605][1372,677] SAFE
+left   FOCUSED: 'Abbrechen' [961,605][1162,677] SAFE
+back   FOCUSED: 'Dialog öffnen' [96,136][329,208] SAFE
+
+## German: shelves unchanged with maintainVisibleContentPosition (focused card at the gutter, row memory)
+back   FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+down   FOCUSED: 'Big Buck Bunny, Noch 7 Min.' [96,134][488,439] SAFE
+right  FOCUSED: 'Sintel, Noch 8 Min.' [96,134][488,439] SAFE
+right  FOCUSED: 'S1, F3 · The Great Game, Noch 31 Min.' [96,134][488,439] SAFE
+right  FOCUSED: 'Elephants Dream, Noch 2 Min.' [96,134][488,439] SAFE
+right  FOCUSED: 'Cosmos Laundromat, Noch 8 Min.' [96,134][488,439] SAFE
+down   FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+right  FOCUSED: 'Sintel, 2010' [96,138][304,534] SAFE
+right  FOCUSED: 'Tears of Steel, 2012' [96,138][304,534] SAFE
+up     FOCUSED: 'Cosmos Laundromat, Noch 8 Min.' [96,134][488,439] SAFE
+up     FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+up     FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+
+## Reset the language override to System default (leave the emulator as found)
+down x20FOCUSED: 'Deutsch' [553,136][749,196] SAFE
+left   FOCUSED: 'English' [372,136][521,196] SAFE
+left   FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+select FOCUSED: 'System default' [96,136][372,196] SAFE

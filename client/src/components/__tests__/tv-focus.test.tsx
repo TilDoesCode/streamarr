@@ -12,6 +12,7 @@ import {
 } from '@/components/focus';
 import { focusTopLayer } from '@/components/focus/focus-layer';
 import { Shelf } from '@/components/media/shelf';
+import { ErrorState } from '@/components/states/error-state';
 import { Text } from '@/components/ui/text';
 import '@/i18n';
 import { renderWithProviders } from '@/../jest/render';
@@ -63,6 +64,22 @@ describe('FocusGuide on TV', () => {
     expect(dialog.props.autoFocus).toBe(false);
     for (const side of ['Up', 'Down', 'Left', 'Right'])
       expect(dialog.props[`trapFocus${side}`]).toBe(true);
+  });
+});
+
+describe('EmptyState on TV', () => {
+  it('keeps left and right inside its centred actions, but lets up and down leave', async () => {
+    await renderWithProviders(
+      <ErrorState code="age_restricted" actions={['goHome', 'back']} onAction={jest.fn()} />
+    );
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(2);
+    const guide = ancestorWith(buttons[0]!, 'trapFocusLeft');
+    expect(ancestorWith(buttons[1]!, 'trapFocusLeft')).toBe(guide);
+    expect(guide?.props.trapFocusLeft).toBe(true);
+    expect(guide?.props.trapFocusRight).toBe(true);
+    expect(guide?.props.trapFocusUp).toBeFalsy();
+    expect(guide?.props.trapFocusDown).toBeFalsy();
   });
 });
 
@@ -153,6 +170,14 @@ describe('Shelf on TV', () => {
       offset: 48 + 3 * 114,
       index: 3,
     });
+    // The last card has no trailing gap: content ends at the right gutter (no extra 14 dp).
+    expect(list?.props.getItemLayout(null, 19)).toEqual({
+      length: 100,
+      offset: 48 + 19 * 114,
+      index: 19,
+    });
+    expect(list?.props.contentContainerStyle).not.toHaveProperty('gap');
+    expect(screen.getByTestId('item-3').parent).toHaveStyle({ marginRight: 14 });
     expect(list?.props.contentOffset).toBeUndefined();
     await fireEvent(screen.getByTestId('item-5').parent as TestInstance, 'focus', {});
     await act(async () => first.unmount());

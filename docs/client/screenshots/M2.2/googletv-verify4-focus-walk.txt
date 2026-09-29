@@ -1,0 +1,470 @@
+# M2.2 verification round 4 - Google TV D-pad walk (Streamarr_GoogleTV_1080p, 1920x1080 @ 320 dpi)
+# Presses: Argent tv-remote (CLI 'argent run tv-remote' / MCP). Focus: uiautomator dump after each press (SAFE = x 96..1824, y 54..1026 px).
+# APK sha256 f5f96c555115d27ec6f8687676e4527458ccfd3be68a212aaebfc9fdfe85a36f (adb install -r), Metro 8081, JS = working tree
+
+## English - hero and shelves
+start      FOCUSED: 'Play' [96,798][262,870] SAFE
+right      FOCUSED: 'More info' [286,798][519,870] SAFE
+right      FOCUSED: 'Versions' [543,798][615,870] SAFE
+right      FOCUSED: 'Versions' [543,798][615,870] SAFE
+right      FOCUSED: 'Versions' [543,798][615,870] SAFE
+down       FOCUSED: 'Big Buck Bunny, 7 min left' [96,134][488,439] SAFE
+right      FOCUSED: 'Sintel, 8 min left' [96,134][488,439] SAFE
+right      FOCUSED: 'S1, E3 · The Great Game, 31 min left' [96,134][488,439] SAFE
+right      FOCUSED: 'Elephants Dream, 2 min left' [96,134][488,439] SAFE
+right      FOCUSED: 'Cosmos Laundromat, 8 min left' [96,134][488,439] SAFE
+down       FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+right      FOCUSED: 'Sintel, 2010' [96,138][304,534] SAFE
+right      FOCUSED: 'Tears of Steel, 2012' [96,138][304,534] SAFE
+right      FOCUSED: 'Elephants Dream, 2006' [96,138][304,534] SAFE
+right      FOCUSED: 'Cosmos Laundromat, 2015' [96,138][304,534] SAFE
+right      FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+down       FOCUSED: 'Pioneer One, 1 season' [96,138][304,534] SAFE
+right      FOCUSED: 'Sherlock, 3 seasons' [96,138][304,534] SAFE
+right      FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+## Row memory (up then down)
+up         FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+up         FOCUSED: 'Cosmos Laundromat, 8 min left' [96,134][488,439] SAFE
+up         FOCUSED: 'Versions' [543,798][615,870] SAFE
+down       FOCUSED: 'Cosmos Laundromat, 8 min left' [96,134][488,439] SAFE
+down       FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+down       FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+## Popular row ends
+right      FOCUSED: 'Sintel, 2010' [96,138][304,534] SAFE
+right      FOCUSED: 'Tears of Steel, 2012' [96,138][304,534] SAFE
+right      FOCUSED: 'Elephants Dream, 2006' [200,138][408,534] SAFE
+right      FOCUSED: 'Cosmos Laundromat, 2015' [436,138][644,534] SAFE
+right      FOCUSED: 'Sprite Fright, 2024' [672,138][880,534] SAFE
+right      FOCUSED: 'Night of the Living Dead, 1968' [908,138][1116,534] SAFE
+right      FOCUSED: 'Pioneer One, 1 season' [1144,138][1352,534] SAFE
+right      FOCUSED: 'Sherlock, 3 seasons' [1380,138][1588,534] SAFE
+right      FOCUSED: 'Big Buck Bunny, 2008' [1616,138][1824,534] SAFE
+right      FOCUSED: 'Big Buck Bunny, 2008' [1616,138][1824,534] SAFE
+right      FOCUSED: 'Big Buck Bunny, 2008' [1616,138][1824,534] SAFE
+left       FOCUSED: 'Sherlock, 3 seasons' [1380,138][1588,534] SAFE
+left       FOCUSED: 'Pioneer One, 1 season' [1144,138][1352,534] SAFE
+left       FOCUSED: 'Night of the Living Dead, 1968' [908,138][1116,534] SAFE
+left       FOCUSED: 'Sprite Fright, 2024' [672,138][880,534] SAFE
+left       FOCUSED: 'Cosmos Laundromat, 2015' [436,138][644,534] SAFE
+left       FOCUSED: 'Elephants Dream, 2006' [200,138][408,534] SAFE
+left       FOCUSED: 'Tears of Steel, 2012' [96,138][304,534] SAFE
+left       FOCUSED: 'Sintel, 2010' [96,138][304,534] SAFE
+left       FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+left       FOCUSED: 'Sherlock, 3 seasons' [96,138][304,534] SAFE
+left       FOCUSED: 'Pioneer One, 1 season' [96,138][304,534] SAFE
+left       FOCUSED: 'Pioneer One, 1 season' [96,138][304,534] SAFE
+left       FOCUSED: 'Pioneer One, 1 season' [96,138][304,534] SAFE
+## Buttons, icon buttons, tags, episodes
+down       FOCUSED: 'Primary' [96,136][307,208] SAFE
+right      FOCUSED: 'Secondary' [339,136][585,208] SAFE
+right      FOCUSED: 'Ghost' [617,136][804,208] SAFE
+right      FOCUSED: 'Delete' [836,136][1029,208] SAFE
+right      FOCUSED: 'Delete' [836,136][1029,208] SAFE
+down       FOCUSED: 'Small' [96,250][210,310] SAFE
+right      FOCUSED: 'Medium' [242,244][409,316] SAFE
+right      FOCUSED: 'Large' [441,240][592,320] SAFE
+right      FOCUSED: 'Large' [441,240][592,320] SAFE
+down       FOCUSED: 'Play' [96,352][262,424] SAFE
+right      FOCUSED: 'Play, busy' [890,352][1056,424] SAFE
+right      FOCUSED: 'Play, busy' [890,352][1056,424] SAFE
+down       FOCUSED: 'Secondary' [113,136][185,208] SAFE
+right      FOCUSED: 'Play' [236,136][308,208] SAFE
+right      FOCUSED: 'Close' [343,136][415,208] SAFE
+right      FOCUSED: 'Settings' [794,136][854,196] SAFE
+right      FOCUSED: 'Settings' [891,136][963,208] SAFE
+right      FOCUSED: 'Settings' [999,136][1079,216] SAFE
+right      FOCUSED: 'Settings' [999,136][1079,216] SAFE
+down       FOCUSED: 'All' [96,210][227,270] SAFE
+right      FOCUSED: 'Movies' [259,210][408,270] SAFE
+right      FOCUSED: 'Series' [440,210][577,270] SAFE
+right      FOCUSED: 'Series' [440,210][577,270] SAFE
+right      FOCUSED: 'Series' [440,210][577,270] SAFE
+right      FOCUSED: 'Series' [440,210][577,270] SAFE
+right      FOCUSED: 'Series' [440,210][577,270] SAFE
+down       FOCUSED: 'Episode 1 · 1 h 28 min · Jul 25, 2010. A Study in Pink' [96,403][1824,624] SAFE
+down       FOCUSED: 'Episode 2 · 1 h 29 min · Aug 1, 2010. The Blind Banker' [96,403][1824,624] SAFE
+down       FOCUSED: 'Episode 3 · 1 h 30 min · Aug 8, 2010. The Great Game' [96,403][1824,624] SAFE
+down       FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+## Overlays + toasts rows
+down       FOCUSED: 'Show info toast' [96,240][356,312] SAFE
+right      FOCUSED: 'Show success toast' [388,240][702,312] SAFE
+right      FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+right      FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+down       FOCUSED: 'Search' [860,630][1060,702] SAFE
+right      FOCUSED: 'Search' [860,630][1060,702] SAFE
+right      FOCUSED: 'Search' [860,630][1060,702] SAFE
+right      FOCUSED: 'Search' [860,630][1060,702] SAFE
+left       FOCUSED: 'Search' [860,630][1060,702] SAFE
+left       FOCUSED: 'Search' [860,630][1060,702] SAFE
+left       FOCUSED: 'Search' [860,630][1060,702] SAFE
+up         FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+up         FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+right      FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+right      FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+right      FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+down       FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+## States section (round-3 blocker: left/right must hold in centred actions)
+down       FOCUSED: 'Search' [860,630][1060,702] SAFE
+down       FOCUSED: 'Try again' [870,677][1051,749] SAFE
+left       FOCUSED: 'Try again' [870,677][1051,749] SAFE
+left       FOCUSED: 'Try again' [870,677][1051,749] SAFE
+right      FOCUSED: 'Try again' [870,677][1051,749] SAFE
+right      FOCUSED: 'Try again' [870,677][1051,749] SAFE
+right      FOCUSED: 'Try again' [870,677][1051,749] SAFE
+down       FOCUSED: 'Go to start' [766,657][963,729] SAFE
+left       FOCUSED: 'Go to start' [766,657][963,729] SAFE
+left       FOCUSED: 'Go to start' [766,657][963,729] SAFE
+right      FOCUSED: 'Go back' [987,657][1154,729] SAFE
+right      FOCUSED: 'Go back' [987,657][1154,729] SAFE
+right      FOCUSED: 'Go back' [987,657][1154,729] SAFE
+down       FOCUSED: 'Try again' [547,657][728,729] SAFE
+left       FOCUSED: 'Try again' [547,657][728,729] SAFE
+left       FOCUSED: 'Try again' [547,657][728,729] SAFE
+right      FOCUSED: 'Choose another version' [752,657][1114,729] SAFE
+right      FOCUSED: 'Play with VLC' [1138,657][1374,729] SAFE
+right      FOCUSED: 'Play with VLC' [1138,657][1374,729] SAFE
+left       FOCUSED: 'Choose another version' [752,657][1114,729] SAFE
+left       FOCUSED: 'Try again' [547,657][728,729] SAFE
+left       FOCUSED: 'Try again' [547,657][728,729] SAFE
+up         FOCUSED: 'Go back' [987,657][1154,729] SAFE
+left       FOCUSED: 'Go to start' [766,657][963,729] SAFE
+left       FOCUSED: 'Go to start' [766,657][963,729] SAFE
+down       FOCUSED: 'Try again' [547,657][728,729] SAFE
+## Rest of the page (progress, loaders, language, formatting, colors, typography)
+down       FOCUSED: '12% watched, 50% watched, 90% watched, Loading, Loading, Loading' [96,136][968,374] SAFE
+down       FOCUSED: 'Animate loaders' [96,136][351,196] SAFE
+down       FOCUSED: 'System default' [96,136][372,196] SAFE
+down       FOCUSED: 'Date: 7/25/2010 · Jul 25, 2010 · July 25, 2010, Runtime: 35 s · 42 min · 1 h 30 min · 1 h 42 min, Remaining: 37 min left, Relative: Today · Yesterday · 3 days ago · Sep 16, 2026, Size: 4.2 GB · 734 MB, Plural: 1 episode · 12 episodes · 2 seasons · No versions' [96,136][781,424] SAFE
+down       FOCUSED: 'surface' [376,442][624,584] SAFE
+down       FOCUSED: 'foreground-disabled' [376,442][624,584] SAFE
+down       FOCUSED: 'accent' [376,442][624,584] SAFE
+down       FOCUSED: 'warning' [376,442][624,584] SAFE
+down       FOCUSED: 'destructive' [376,442][624,584] SAFE
+down       FOCUSED: 'focus-glow' [376,442][624,584] SAFE
+down       FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right      FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right      FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right      FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right      FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right      FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right      FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right      FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+up         FOCUSED: 'focus-glow' [376,442][624,584] SAFE
+right      FOCUSED: 'scrim' [656,442][904,584] SAFE
+right      FOCUSED: 'scrim-clear' [936,442][1184,584] SAFE
+right      FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+right      FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+right      FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+right      FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+up         FOCUSED: 'border' [1216,442][1464,584] SAFE
+right      FOCUSED: 'input' [1496,442][1744,584] SAFE
+right      FOCUSED: 'input' [1496,442][1744,584] SAFE
+right      FOCUSED: 'input' [1496,442][1744,584] SAFE
+right      FOCUSED: 'input' [1496,442][1744,584] SAFE
+right      FOCUSED: 'input' [1496,442][1744,584] SAFE
+right      FOCUSED: 'input' [1496,442][1744,584] SAFE
+down       FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+down       FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+down       FOCUSED: 'title · 28/34, The quick fox watches a movie' [96,454][865,572] SAFE
+down       FOCUSED: 'heading · 19/25, The quick fox watches a movie' [96,463][632,563] SAFE
+down       FOCUSED: 'subheading · 16/21, The quick fox watches a movie' [96,467][554,559] SAFE
+down       FOCUSED: 'body · 14/20, The quick fox watches a movie' [96,480][496,570] SAFE
+down       FOCUSED: 'callout · 13/18, The quick fox watches a movie' [96,586][471,672] SAFE
+down       FOCUSED: 'caption · 11/15, The quick fox watches a movie' [96,688][416,768] SAFE
+down       FOCUSED: 'overline · 10/13, THE QUICK FOX WATCHES A MOVIE' [96,784][488,860] SAFE
+down       FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+down       FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+down       FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+## Back to top, then re-walk to Typography (entry must be display, not remembered label)
+back       FOCUSED: 'Play' [96,798][262,870] SAFE
+down x27   FOCUSED: 'focus-glow' [376,442][624,584] SAFE
+down       FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+down       FOCUSED: 'title · 28/34, The quick fox watches a movie' [96,454][865,572] SAFE
+## Remount restore (set Popular to its last card, leave, re-enter)
+back       FOCUSED: 'Play' [96,798][262,870] SAFE
+down       FOCUSED: 'Cosmos Laundromat, 8 min left' [96,134][488,439] SAFE
+down       FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+down       FOCUSED: 'Pioneer One, 1 season' [96,138][304,534] SAFE
+right x11  FOCUSED: 'Big Buck Bunny, 2008' [1616,138][1824,534] SAFE
+back       FOCUSED: 'Play' [96,798][262,870] SAFE
+back       FOCUSED: 'Component gallery' [785,717][1135,789] SAFE
+select     FOCUSED: 'Play' [96,798][262,870] SAFE
+down       FOCUSED: 'Cosmos Laundromat, 8 min left' [96,134][488,439] SAFE
+down       FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+down       FOCUSED: 'Big Buck Bunny, 2008' [1616,138][1824,534] SAFE
+## Fresh-session Sheet checks (round-2 blocker): force-stop, relaunch, gallery, Argent tv-remote path, Argent describe, Argent select; px(1860,1000) = panel (surface.raised = (26,29,37)), px(400,1000) = page under the scrim
+(an earlier session 1 attempt never reached the app - dev-menu intro - and its presses landed on the launcher; not counted, script now aborts before any press)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+path       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+argent-describe: Focused: Open sheet [button]
+s1-open+3s         FOCUSED 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s1-down+4s         FOCUSED 'German · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s1-back            FOCUSED 'Open sheet' [342,136][549,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 2 (sheet)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+path       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+argent-describe: Focused: Open sheet [button]
+s2-open+3s         FOCUSED 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s2-down+4s         FOCUSED 'German · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s2-back            FOCUSED 'Open sheet' [342,136][549,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 3 (sheet)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+path       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+argent-describe: Focused: Open sheet [button]
+s3-open+3s         FOCUSED 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s3-down+4s         FOCUSED 'German · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s3-back            FOCUSED 'Open sheet' [342,136][549,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 4 (sheet)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+path       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+argent-describe: Focused: Open sheet [button]
+s4-open+3s         FOCUSED 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s4-down+4s         FOCUSED 'German · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s4-back            FOCUSED 'Open sheet' [342,136][549,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 5 (sheet)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+path       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+argent-describe: Focused: Open sheet [button]
+s5-open+3s         FOCUSED 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s5-down+4s         FOCUSED 'German · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s5-back            FOCUSED 'Open sheet' [342,136][549,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 6 (long sheet)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+path       FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+argent-describe: Focused: Open long sheet [button]
+s6-open+3s         FOCUSED 'Off' [1168,146][1824,226] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s6-down+4s         FOCUSED 'Subtitle track 1' [1168,234][1824,314] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s6-back            FOCUSED 'Open long sheet' [581,136][849,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 7 (long sheet)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+path       FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+argent-describe: Focused: Open long sheet [button]
+s7-open+3s         FOCUSED 'Off' [1168,146][1824,226] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s7-down+4s         FOCUSED 'Subtitle track 1' [1168,234][1824,314] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s7-back            FOCUSED 'Open long sheet' [581,136][849,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 8 (dialog, back, then sheet: the fix-round-1 sighting)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+s8-dialog          FOCUSED 'Cancel' [1032,605][1182,677] | panel dialog=[500,355][1420,725] | px(1860,1000)=(7, 8, 11) px(400,1000)=(9, 11, 14)
+path       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+argent-describe: Focused: Open sheet [button]
+s8-open+3s         FOCUSED 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s8-down+4s         FOCUSED 'German · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s8-back            FOCUSED 'Open sheet' [342,136][549,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 9 (dialog, back, then sheet: the fix-round-1 sighting)
+gallery    FOCUSED: 'Play' [96,798][262,870] SAFE
+s9-dialog          FOCUSED 'Cancel' [1032,605][1182,677] | panel dialog=[500,355][1420,725] | px(1860,1000)=(7, 8, 11) px(400,1000)=(9, 11, 14)
+path       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+argent-describe: Focused: Open sheet [button]
+s9-open+3s         FOCUSED 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s9-down+4s         FOCUSED 'German · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s9-back            FOCUSED 'Open sheet' [342,136][549,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- JS-stall probe: debugger-evaluate schedules a 3 s busy loop 1.5 s ahead; Argent select on 'Open long sheet' right after
+stall-open+7s      FOCUSED 'Off' [1168,146][1824,226] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+stall-down8        FOCUSED 'Subtitle track 8' [1168,564][1824,644] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+## Long sheet (round-2 blocker 2: options scroll, focus stays visible)
+down       FOCUSED: 'Subtitle track 9' [1168,564][1824,644] SAFE
+down       FOCUSED: 'Subtitle track 10' [1168,564][1824,644] SAFE
+down       FOCUSED: 'Subtitle track 11' [1168,580][1824,660] SAFE
+down       FOCUSED: 'Subtitle track 12' [1168,668][1824,748] SAFE
+down       FOCUSED: 'Subtitle track 13' [1168,756][1824,836] SAFE
+down       FOCUSED: 'Subtitle track 14' [1168,844][1824,924] SAFE
+down       FOCUSED: 'Subtitle track 15' [1168,932][1824,1012] SAFE
+down       FOCUSED: 'Subtitle track 15' [1168,932][1824,1012] SAFE
+down       FOCUSED: 'Subtitle track 15' [1168,932][1824,1012] SAFE
+right      FOCUSED: 'Subtitle track 15' [1168,932][1824,1012] SAFE
+left       FOCUSED: 'Subtitle track 15' [1168,932][1824,1012] SAFE
+up         FOCUSED: 'Subtitle track 14' [1168,844][1824,924] SAFE
+up         FOCUSED: 'Subtitle track 13' [1168,756][1824,836] SAFE
+up         FOCUSED: 'Subtitle track 12' [1168,668][1824,748] SAFE
+select     FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+select     FOCUSED: 'Subtitle track 12' [1168,668][1824,748] SAFE
+up         FOCUSED: 'Subtitle track 11' [1168,580][1824,660] SAFE
+back       FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+## Dialog
+left       FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+left       FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+select     FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+up         FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+left       FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+down       FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+right      FOCUSED: 'Remove' [1206,605][1372,677] SAFE
+right      FOCUSED: 'Remove' [1206,605][1372,677] SAFE
+down       FOCUSED: 'Remove' [1206,605][1372,677] SAFE
+up         FOCUSED: 'Remove' [1206,605][1372,677] SAFE
+back       FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+## Toast
+down       FOCUSED: 'Show info toast' [96,240][356,312] SAFE
+r,r,select FOCUSED: 'Show error toast' [734,240][1006,312] SAFE
+## Language switch (round-3 non-blocking 3: focus must stay out of the overscan band)
+down x6    FOCUSED: 'Animate loaders' [96,136][351,196] SAFE
+down       FOCUSED: 'System default' [96,136][372,196] SAFE
+right      FOCUSED: 'English' [404,136][553,196] SAFE
+right      FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+right      FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+select     FOCUSED: 'Deutsch' [553,136][749,196] SAFE
+left       FOCUSED: 'English' [372,136][521,196] SAFE
+left       FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+select     FOCUSED: 'System default' [96,136][372,196] SAFE
+right      FOCUSED: 'English' [404,136][553,196] SAFE
+right      FOCUSED: 'Deutsch' [585,136][745,196] SAFE
+select     FOCUSED: 'Deutsch' [553,136][749,196] SAFE
+## German: walk up to the overlays rows (round-3 non-blocking 2: no wrap, right holds)
+up         FOCUSED: 'Ladeanimationen' [96,136][362,196] SAFE
+up         FOCUSED: '12 % gesehen, 50 % gesehen, 90 % gesehen, Wird geladen, Wird geladen, Wird geladen' [96,136][968,374] SAFE
+up         FOCUSED: 'Erneut versuchen' [472,677][755,749] SAFE
+up         FOCUSED: 'Zum Start' [777,657][967,729] SAFE
+up         FOCUSED: 'Erneut versuchen' [819,657][1102,729] SAFE
+up         FOCUSED: 'Suche' [865,630][1056,702] SAFE
+up         FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+up         FOCUSED: 'Dialog öffnen' [96,136][329,208] SAFE
+right      FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+right      FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+right      FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+down       FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+right      FOCUSED: 'Fehler-Toast zeigen' [768,240][1081,312] SAFE
+left       FOCUSED: 'Erfolgs-Toast zeigen' [412,240][736,312] SAFE
+left       FOCUSED: 'Info-Toast zeigen' [96,240][380,312] SAFE
+left       FOCUSED: 'Info-Toast zeigen' [96,240][380,312] SAFE
+## German states
+down       FOCUSED: 'Suche' [865,630][1056,702] SAFE
+left       FOCUSED: 'Suche' [865,630][1056,702] SAFE
+down       FOCUSED: 'Erneut versuchen' [819,657][1102,729] SAFE
+left       FOCUSED: 'Erneut versuchen' [819,657][1102,729] SAFE
+down       FOCUSED: 'Zum Start' [777,657][967,729] SAFE
+left       FOCUSED: 'Zum Start' [777,657][967,729] SAFE
+down       FOCUSED: 'Erneut versuchen' [472,677][755,749] SAFE
+left       FOCUSED: 'Erneut versuchen' [472,677][755,749] SAFE
+right      FOCUSED: 'Andere Version wählen' [779,677][1132,749] SAFE
+right      FOCUSED: 'Mit VLC abspielen' [1156,677][1448,749] SAFE
+right      FOCUSED: 'Mit VLC abspielen' [1156,677][1448,749] SAFE
+## Back
+back       FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+right      FOCUSED: 'Mehr Infos' [357,798][606,870] SAFE
+back       FOCUSED: 'Komponenten-Galerie' [767,717][1154,789] SAFE
+back       top activity: com.google.android.apps.tv.launcherx/.home.HomeActivity
+## Relaunch (German persisted?) + rapid open/close of the Sheet
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+rapid-x3           FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+reopen             FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+back               FOCUSED 'Komponenten-Galerie' [767,717][1154,789] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+open-back-150ms-x3 FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(7, 8, 11)
+reopen             FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+reopen-down        FOCUSED 'Big Buck Bunny, Noch 7 Min.' [96,134][488,439] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+back               FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+path       FOCUSED: 'Folge 3 · 1 Std. 30 Min. · 8. Aug. 2010. The Great Game' [96,403][1824,624] SAFE
+left       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+-- one OK then Back 150 ms later (adb input keyevent)
+ok-back-150ms      FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+pair1              FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(7, 8, 11)
+pair2              FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+pair3              FOCUSED 'Komponenten-Galerie' [767,717][1154,789] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- OK then Back after 150 ms: state 3 s later, then one more Back
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 1: OK then Back after 150 ms
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 2: OK then Back after 150 ms
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(7, 8, 11)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 3: OK then Back after 150 ms
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 4: OK then Back after 150 ms
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+## Overlay open latency on this emulator (argent boot: -gpu auto; AVD hw.gpu.enabled=no)
+-- screenrecord 960x540, OK sent 1.5 s after the recorder starts (adb input keyevent)
+   Sheet (fresh session, no debugger): frames only in ~1 s pairs (1.54/1.56, 2.57/2.63, 3.64/3.68 ...); panel + full scrim first at 3.64 s, no intermediate slide/fade frames
+   Dialog: same 1 s cadence; dialog + scrim first at 3.41 s
+   Tag toggle (Filme, JS state change): changes at 1.77/1.85 s, then static
+-- dumpsys gfxinfo after OK on 'Dialog öffnen' (4 s): 6 frames, 6 janky, p50 1900 ms, p90 2950 ms, slow issue draw commands 6
+-- dumpsys gfxinfo after a D-pad right / left (3 s): 9 / 7 frames, p50 53 / 48 ms, gpu p50 4950 / 24 ms
+## Same emulator restarted with -gpu host (emulator log: gles_mode_selected:host)
+-- Dialog: frames every ~17 ms from 1.45 s (right after the key), scrim fade complete at ~1.67 s
+-- Sheet: frames every ~17 ms from 1.53 s, panel at x=1860 from 1.76 s, scrim fade complete at ~1.88 s
+=> the ~2 s overlay latency above is the emulator's GPU emulation, not the app
+## Fresh-session Sheet checks on the host-GPU emulator (different timing profile)
+-- session 10 (sheet, gpu host)
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+argent-describe: Focused: Sheet öffnen [button]
+s10-open+3s        FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s10-down+4s        FOCUSED 'Deutsch · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s10-back           FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 11 (sheet, gpu host)
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+argent-describe: Focused: Sheet öffnen [button]
+s11-open+3s        FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s11-down+4s        FOCUSED 'Deutsch · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s11-back           FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 12 (sheet, gpu host)
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+argent-describe: Focused: Sheet öffnen [button]
+s12-open+3s        FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s12-down+4s        FOCUSED 'Deutsch · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s12-back           FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 13 (sheet, gpu host)
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+argent-describe: Focused: Sheet öffnen [button]
+s13-open+3s        FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s13-down+4s        FOCUSED 'Deutsch · Dolby Digital 5.1' [1168,232][1824,312] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s13-back           FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 14 (long sheet, gpu host)
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+argent-describe: Focused: Langes Sheet öffnen [button]
+s14-open+3s        FOCUSED 'Aus' [1168,146][1824,226] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s14-down+4s        FOCUSED 'Untertitelspur 1' [1168,234][1824,314] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s14-back           FOCUSED 'Langes Sheet öffnen' [619,136][943,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+-- session 15 (long sheet, gpu host)
+gallery    FOCUSED: 'Abspielen' [96,798][333,870] SAFE
+path       FOCUSED: 'Langes Sheet öffnen' [619,136][943,208] SAFE
+argent-describe: Focused: Langes Sheet öffnen [button]
+s15-open+3s        FOCUSED 'Aus' [1168,146][1824,226] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s15-down+4s        FOCUSED 'Untertitelspur 1' [1168,234][1824,314] | panel long-sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(9, 11, 14)
+s15-back           FOCUSED 'Langes Sheet öffnen' [619,136][943,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+## OK then Back 150 ms later on the host-GPU emulator
+-- run 1
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 2
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 3
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 4
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0.15+3s     FOCUSED 'Sheet öffnen' [361,136][587,208] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(18, 20, 26)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+## OK then Back 0 ms later (host GPU)
+-- run 1
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0+3s        FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(7, 8, 11)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 2
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0+3s        FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(7, 8, 11)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+-- run 3
+path       FOCUSED: 'Sheet öffnen' [361,136][587,208] SAFE
+okback-0+3s        FOCUSED 'Englisch · Dolby Digital Plus 5.1' [1168,144][1824,224] | panel sheet=[1120,0][1920,1080] | px(1860,1000)=(26, 29, 37) px(400,1000)=(7, 8, 11)
+then-back          FOCUSED 'Abspielen' [96,798][333,870] | panel none | px(1860,1000)=(10, 11, 15) px(400,1000)=(10, 11, 15)
+up         FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+left       FOCUSED: 'Systemsprache' [96,136][340,196] SAFE
+select     FOCUSED: 'System default' [96,136][372,196] SAFE

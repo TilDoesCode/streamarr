@@ -28,7 +28,7 @@ export function formatDate(
   return new Intl.DateTimeFormat(lang, DATE_OPTIONS[style]).format(toDate(value));
 }
 
-export function formatNumber(value: number, lang: string, options?: Intl.NumberFormatOptions) {
+function formatNumber(value: number, lang: string, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat(lang, options).format(value);
 }
 
@@ -83,8 +83,6 @@ export function useFormat() {
     () => ({
       lang,
       date: (value: Date | string | number, style?: DateStyle) => formatDate(value, lang, style),
-      number: (value: number, options?: Intl.NumberFormatOptions) =>
-        formatNumber(value, lang, options),
       duration: (seconds: number) => formatDuration(seconds, t),
       remaining: (seconds: number) => formatRemaining(seconds, t),
       relativeDay: (value: Date | string | number, now?: Date) =>

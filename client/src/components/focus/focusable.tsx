@@ -125,6 +125,8 @@ export function Focusable({
         ref={ref}
         disabled={isDisabled || !!previewState}
         focusable={canFocus}
+        // Web: react-native-web's Pressable ignores `focusable` and makes every enabled press target a Tab stop.
+        tabIndex={Platform.OS === 'web' ? (canFocus ? 0 : -1) : undefined}
         hasTVPreferredFocus={Platform.isTV && canFocus ? hasTVPreferredFocus : undefined}
         scrollSnapAlign={snapAlign}
         aria-disabled={isDisabled}

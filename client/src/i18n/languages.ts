@@ -13,7 +13,7 @@ export const LANGUAGE_PREFERENCES: readonly LanguagePreference[] = [
 
 const STORAGE_KEY = 'language';
 
-export function isLanguage(value: unknown): value is Language {
+function isLanguage(value: unknown): value is Language {
   return SUPPORTED_LANGUAGES.includes(value as Language);
 }
 

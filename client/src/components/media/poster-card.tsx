@@ -65,7 +65,12 @@ export function PosterCard({
           ) : null}
         </View>
       </FocusLift>
-      <CardCaption title={title} subtitle={subtitle} artworkHeight={height} />
+      <CardCaption
+        title={title}
+        subtitle={subtitle}
+        artworkHeight={height}
+        revealOnFocus={design.isTV}
+      />
     </Focusable>
   );
 }

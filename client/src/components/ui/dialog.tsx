@@ -2,7 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import { Modal, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 
-import { FocusGuide, FocusLayer, useInitialWebFocus } from '@/components/focus';
+import { FocusGuide, FocusLayer, useInitialFocus } from '@/components/focus';
 import { Button, type ButtonVariant } from '@/components/ui/button';
 import { OverlayScrim } from '@/components/ui/overlay-scrim';
 import { Text } from '@/components/ui/text';
@@ -117,7 +117,7 @@ function DialogButton({
   preferred: boolean;
 }) {
   const ref = useRef<View>(null);
-  useInitialWebFocus(ref, preferred);
+  useInitialFocus(ref, preferred);
   return (
     <Button
       ref={ref}

@@ -35,15 +35,18 @@ export function PlayedMark() {
   );
 }
 
-/** Title + subtitle under a card; slides clear of the lifted artwork and brightens on focus. */
+/** Title + subtitle under a card; slides clear of the lifted artwork and brightens (or appears) on focus. */
 export function CardCaption({
   title,
   subtitle,
   artworkHeight,
+  revealOnFocus = false,
 }: {
   title: string;
   subtitle?: string;
   artworkHeight: number;
+  /** Only the focused card shows its caption (TV poster rows). */
+  revealOnFocus?: boolean;
 }) {
   const design = useDesign();
   const reduced = useReducedMotion();
@@ -54,8 +57,11 @@ export function CardCaption({
       design.focus.ringOffset +
       design.focus.ringWidth;
   const moveStyle = useAnimatedStyle(
-    () => ({ transform: [{ translateY: focus.get() * shift }] }),
-    [shift]
+    () => ({
+      opacity: revealOnFocus ? focus.get() : 1,
+      transform: [{ translateY: focus.get() * shift }],
+    }),
+    [shift, revealOnFocus]
   );
   const titleStyle = useAnimatedStyle(() => ({
     color: interpolateColor(

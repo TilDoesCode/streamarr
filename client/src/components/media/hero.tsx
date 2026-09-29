@@ -45,6 +45,10 @@ export function Hero({
       style={{ height: heroHeight }}>
       <Artwork uri={backdropUri} title={title} />
       <Scrim
+        direction="down"
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: '22%' }}
+      />
+      <Scrim
         direction="up"
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '75%' }}
       />

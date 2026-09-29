@@ -35,7 +35,13 @@ configuration lives in `app.config.ts` and `plugins/`:
 
 - `plugins/with-android-tv.js` makes every Android build TV-capable (leanback launcher, banner,
   touchscreen not required), so one APK runs on phones and Google TV. The UI branches on
-  `Platform.isTV`.
+  `Platform.isTV`. It also turns off the dev menu's floating button by default (it is focusable on TV
+  and covers content); open the dev menu with `adb shell input keyevent 82` or `m` in Metro.
+- `package.json` → `reanimated.staticFeatureFlags` sets `FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS: false`
+  (read at native build time). With Reanimated 4.5's default, settled animated styles are only kept if a
+  JS timer hands them back to React within 1–2 s; a late timer (seen on Google TV) drops them and the
+  next React commit restores stale styles (invisible Sheet, stale focus rings). Changing the flag needs
+  a native rebuild.
 - `@react-native-tvos/config-tv` retargets `ios/` to tvOS only when `EXPO_TV=1`.
 - `plugins/with-gradle-limits.js` caps Gradle at `-Xmx2g` and 4 workers.
 
@@ -62,14 +68,28 @@ adb shell am start -a android.intent.action.VIEW \
 - Dark only. Primary actions are white, the accent (violet) marks watch state and selection.
 - TV focus: wrap interactive things in `Focusable` with a `FocusLift` inside (UI-thread scale + ring),
   group rows in `FocusGuide` (`TVFocusGuideView`: remembers the last focused child, `END_OF_ROW` stops
-  focus at a row's right end), use `Shelf` for horizontal rows (memory across remounts via
-  `memoryKey`), `useBackHandler` for back/menu. `hasTVPreferredFocus` is only forwarded on TV.
+  focus at the right end of a row that starts at the gutter, `CENTRED_ROW` at both ends of a centred
+  group such as `EmptyState` actions, where Android would otherwise take any focusable further left on
+  the page), use `Shelf` for horizontal rows (memory across remounts via `memoryKey`), `useBackHandler`
+  for back/menu. `hasTVPreferredFocus` is only forwarded on TV. Vertical lists that should always be
+  entered at the item nearest the entry point use `remember={false}`.
 - TV scrolling: pages are a `ScrollView` with `snapToAlignment="item"` whose blocks are `FocusSection`s
   (a `Hero` / `Shelf` snaps itself). A section that fits the screen snaps its top under the overscan
   margin; a taller one (grids, long lists) centres the focused item instead, so focus never leaves the
-  screen. Do not put `scrollSnapAlign` on tall containers: the outermost snap target wins.
+  screen. Do not put `scrollSnapAlign` on tall containers: the outermost snap target wins. Snapping only
+  runs on focus changes, so TV pages also set `maintainVisibleContentPosition={{ minIndexForVisible: 0 }}`:
+  a relayout above the viewport (language switch, a row loading) then keeps the visible blocks, and the
+  focused one, in place (see the gallery).
 - Overlays (`Dialog`, `Sheet`) wrap their content in `FocusLayer` (hides the trigger's focus look under
-  the scrim on TV) and take initial focus on TV and web keyboard (`preferred`).
+  the scrim on TV; sibling and nested overlays are counted) and take initial focus on TV and web
+  keyboard (`preferred`, via `useInitialFocus` after mount). Enter/exit are mount animations
+  (`entering`/`exiting`): never leave an overlay's resting position to a JS-started animation.
+  `Sheet` options scroll (TV: the focused option stays centred; phone: drag the header once the list
+  scrolls); on web they are one radio group with a single Tab stop and arrow keys.
+- TV grids: one `FocusGuide` per visual line (`trap={END_OF_ROW}`, no `remember`), as in the gallery's
+  `GalleryGrid`; a single wrapping guide lets right at a line end jump to the line above.
+- The gallery's `FocusStop` (a focus stop for non-interactive content) exists only on TV; elsewhere it is a
+  plain View, so it adds no web Tab stops.
 - i18n: ICU MessageFormat (`i18next-icu`) in `src/i18n/locales/{en,de}.json` — `{name}`,
   `{count, plural, one {…} other {…}}`. Device language unless the per-device override (MMKV) is set;
   formatters in `src/i18n/format.ts`. Tests enforce de/en key + argument parity and no literal UI text

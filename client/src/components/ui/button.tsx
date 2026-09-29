@@ -11,7 +11,7 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 
 type Palette = { bg: [string, string, string]; fg: [string, string] };
 
-// [rest, hover, focused] backgrounds and [rest, focused] foregrounds. Hover lightens; focus turns white (TV idiom).
+// [rest, hover/pressed, focused] backgrounds and [rest, focused] foregrounds; focus turns white (TV idiom).
 export const BUTTON_PALETTES: Record<ButtonVariant, Palette> = {
   primary: {
     bg: [colors.primary.DEFAULT, colors.focus.DEFAULT, colors.focus.DEFAULT],
@@ -22,7 +22,7 @@ export const BUTTON_PALETTES: Record<ButtonVariant, Palette> = {
     fg: [colors.secondary.foreground, colors.primary.foreground],
   },
   ghost: {
-    bg: [colors.scrim.clear, colors.muted.DEFAULT, colors.primary.DEFAULT],
+    bg: [colors.scrim.clear, colors.muted, colors.primary.DEFAULT],
     fg: [colors.foreground.DEFAULT, colors.primary.foreground],
   },
   destructive: {
@@ -92,7 +92,7 @@ function ButtonSurface({
   radius: number;
 }) {
   const design = useDesign();
-  const { focus, hover } = useFocusState();
+  const { focus, hover, pressed } = useFocusState();
   const palette = BUTTON_PALETTES[variant];
   const height = design.layout.controlHeight[size];
   const iconSize = design.layout.iconSize[size];
@@ -101,7 +101,8 @@ function ButtonSurface({
     size === 'sm' ? design.space.md : size === 'md' ? design.space.lg : design.space.xl;
 
   const surfaceStyle = useAnimatedStyle(() => {
-    const rest = interpolateColor(hover.get(), [0, 1], [palette.bg[0], palette.bg[1]]);
+    const lit = Math.max(hover.get(), pressed.get());
+    const rest = interpolateColor(lit, [0, 1], [palette.bg[0], palette.bg[1]]);
     return { backgroundColor: interpolateColor(focus.get(), [0, 1], [rest, palette.bg[2]]) };
   }, [palette]);
   const labelStyle = useAnimatedStyle(

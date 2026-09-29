@@ -238,6 +238,12 @@
         "commentary": "Englisch · Kommentar · Stereo"
       }
     },
+    "longSheet": {
+      "open": "Langes Sheet öffnen",
+      "title": "Untertitel",
+      "off": "Aus",
+      "track": "Untertitelspur {number}"
+    },
     "toast": {
       "info": "Info-Toast zeigen",
       "success": "Erfolgs-Toast zeigen",

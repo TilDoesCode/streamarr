@@ -89,12 +89,19 @@ export function GalleryStates({ onAction }: { onAction: (name: string) => void }
 
 type AudioTrack = 'original' | 'dub' | 'commentary';
 
+// Longer than a TV screen: exercises the Sheet's scrolling.
+const SUBTITLE_TRACKS = Array.from({ length: 15 }, (_, index) => index + 1);
+
 export function GalleryOverlays({ onAction }: { onAction: (name: string) => void }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [longSheetOpen, setLongSheetOpen] = useState(false);
   const [audio, setAudio] = useState<AudioTrack>('original');
+  const [subtitle, setSubtitle] = useState(0);
+  const subtitleLabel = (track: number) =>
+    track === 0 ? t('gallery.longSheet.off') : t('gallery.longSheet.track', { number: track });
   return (
     <GallerySection title={t('gallery.sections.overlays')} testID="section-overlays">
       <GalleryRow>
@@ -111,15 +118,24 @@ export function GalleryOverlays({ onAction }: { onAction: (name: string) => void
           onPress={() => setSheetOpen(true)}
         />
         <Button
+          testID="open-long-sheet"
+          label={t('gallery.longSheet.open')}
+          variant="secondary"
+          onPress={() => setLongSheetOpen(true)}
+        />
+      </GalleryRow>
+      {/* Own row: six buttons wrap on a German TV screen, and right at a wrapped line end jumps diagonally. */}
+      <GalleryRow>
+        <Button
           testID="toast-info"
           label={t('gallery.toast.info')}
-          variant="ghost"
+          variant="secondary"
           onPress={() => toast.show({ message: t('gallery.toast.infoMessage'), tone: 'info' })}
         />
         <Button
           testID="toast-success"
           label={t('gallery.toast.success')}
-          variant="ghost"
+          variant="secondary"
           onPress={() =>
             toast.show({ message: t('gallery.toast.successMessage'), tone: 'success' })
           }
@@ -127,7 +143,7 @@ export function GalleryOverlays({ onAction }: { onAction: (name: string) => void
         <Button
           testID="toast-error"
           label={t('gallery.toast.error')}
-          variant="ghost"
+          variant="secondary"
           onPress={() => toast.show({ message: t('gallery.toast.errorMessage'), tone: 'error' })}
         />
       </GalleryRow>
@@ -164,6 +180,25 @@ export function GalleryOverlays({ onAction }: { onAction: (name: string) => void
               setAudio(track);
               setSheetOpen(false);
               onAction(t(`gallery.sheet.options.${track}`));
+            }}
+          />
+        ))}
+      </Sheet>
+      <Sheet
+        testID="long-sheet"
+        open={longSheetOpen}
+        onClose={() => setLongSheetOpen(false)}
+        title={t('gallery.longSheet.title')}>
+        {[0, ...SUBTITLE_TRACKS].map((track) => (
+          <SheetItem
+            key={track}
+            label={subtitleLabel(track)}
+            selected={subtitle === track}
+            preferred={subtitle === track}
+            onPress={() => {
+              setSubtitle(track);
+              setLongSheetOpen(false);
+              onAction(subtitleLabel(track));
             }}
           />
         ))}

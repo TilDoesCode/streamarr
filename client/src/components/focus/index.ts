@@ -1,6 +1,12 @@
-export { END_OF_ROW, FocusGuide, type FocusDirection, type FocusGuideProps } from './focus-guide';
+export {
+  CENTRED_ROW,
+  END_OF_ROW,
+  FocusGuide,
+  type FocusDirection,
+  type FocusGuideProps,
+} from './focus-guide';
 export { FocusLayer } from './focus-layer';
-export { FocusSection, type FocusSectionProps } from './focus-section';
+export { FocusSection, ItemSnapContext, type FocusSectionProps } from './focus-section';
 export {
   Focusable,
   FocusLift,
@@ -10,4 +16,4 @@ export {
   type FocusLiftProps,
 } from './focusable';
 export { useBackHandler } from './use-back-handler';
-export { useInitialWebFocus } from './use-initial-web-focus';
+export { useInitialFocus } from './use-initial-focus';

@@ -238,6 +238,12 @@
         "commentary": "English · Commentary · Stereo"
       }
     },
+    "longSheet": {
+      "open": "Open long sheet",
+      "title": "Subtitles",
+      "off": "Off",
+      "track": "Subtitle track {number}"
+    },
     "toast": {
       "info": "Show info toast",
       "success": "Show success toast",

@@ -1,0 +1,186 @@
+# M2.2 fix round 2 - Google TV D-pad walk (adb keyevents; focused node + bounds from a uiautomator dump after each press; 1920x1080 px; SAFE = inside 96..1824 x 54..1026)
+## Long sheet (Subtitles: Off + 15 tracks): open, down x17, up x17
+right  FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+select FOCUSED: 'Off' [1168,144][1824,224] SAFE
+down   FOCUSED: 'Subtitle track 1' [1168,232][1824,312] SAFE
+down   FOCUSED: 'Subtitle track 2' [1168,320][1824,400] SAFE
+down   FOCUSED: 'Subtitle track 3' [1168,408][1824,488] SAFE
+down   FOCUSED: 'Subtitle track 4' [1168,496][1824,576] SAFE
+down   FOCUSED: 'Subtitle track 5' [1168,564][1824,644] SAFE
+down   FOCUSED: 'Subtitle track 6' [1168,564][1824,644] SAFE
+down   FOCUSED: 'Subtitle track 7' [1168,564][1824,644] SAFE
+down   FOCUSED: 'Subtitle track 8' [1168,564][1824,644] SAFE
+down   FOCUSED: 'Subtitle track 9' [1168,564][1824,644] SAFE
+down   FOCUSED: 'Subtitle track 10' [1168,564][1824,644] SAFE
+down   FOCUSED: 'Subtitle track 11' [1168,578][1824,658] SAFE
+down   FOCUSED: 'Subtitle track 12' [1168,666][1824,746] SAFE
+down   FOCUSED: 'Subtitle track 13' [1168,754][1824,834] SAFE
+down   FOCUSED: 'Subtitle track 14' [1168,842][1824,922] SAFE
+down   FOCUSED: 'Subtitle track 15' [1168,930][1824,1010] SAFE
+down   FOCUSED: 'Subtitle track 15' [1168,930][1824,1010] SAFE
+down   FOCUSED: 'Subtitle track 15' [1168,930][1824,1010] SAFE
+up     FOCUSED: 'Subtitle track 14' [1168,842][1824,922] SAFE
+up     FOCUSED: 'Subtitle track 13' [1168,754][1824,834] SAFE
+up     FOCUSED: 'Subtitle track 12' [1168,666][1824,746] SAFE
+up     FOCUSED: 'Subtitle track 11' [1168,578][1824,658] SAFE
+up     FOCUSED: 'Subtitle track 10' [1168,564][1824,644] SAFE
+up     FOCUSED: 'Subtitle track 9' [1168,564][1824,644] SAFE
+up     FOCUSED: 'Subtitle track 8' [1168,564][1824,644] SAFE
+up     FOCUSED: 'Subtitle track 7' [1168,564][1824,644] SAFE
+up     FOCUSED: 'Subtitle track 6' [1168,564][1824,644] SAFE
+up     FOCUSED: 'Subtitle track 5' [1168,564][1824,644] SAFE
+up     FOCUSED: 'Subtitle track 4' [1168,496][1824,576] SAFE
+up     FOCUSED: 'Subtitle track 3' [1168,408][1824,488] SAFE
+up     FOCUSED: 'Subtitle track 2' [1168,320][1824,400] SAFE
+up     FOCUSED: 'Subtitle track 1' [1168,232][1824,312] SAFE
+up     FOCUSED: 'Off' [1168,144][1824,224] SAFE
+up     FOCUSED: 'Off' [1168,144][1824,224] SAFE
+up     FOCUSED: 'Off' [1168,144][1824,224] SAFE
+left   FOCUSED: 'Off' [1168,144][1824,224] SAFE
+right  FOCUSED: 'Off' [1168,144][1824,224] SAFE
+## Long sheet: pick track 12, reopen (lands on the selection, scrolled), back
+down12 FOCUSED: 'Subtitle track 12' [1168,666][1824,746] SAFE
+select FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+reopen FOCUSED: (none)
+back   FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+reopen FOCUSED: (none)
+reopen FOCUSED: 'Subtitle track 12' [1168,666][1824,746] SAFE
+down   FOCUSED: 'Subtitle track 13' [1168,754][1824,834] SAFE
+back   FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+## Trending shelf: right x6, left x6 (mid-row), right to the end, left from the end
+down   FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+right  FOCUSED: 'Sintel, 2010' [96,138][304,534] SAFE
+right  FOCUSED: 'Tears of Steel, 2012' [96,138][304,534] SAFE
+right  FOCUSED: 'Elephants Dream, 2006' [96,138][304,534] SAFE
+right  FOCUSED: 'Cosmos Laundromat, 2015' [96,138][304,534] SAFE
+right  FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+right  FOCUSED: 'Night of the Living Dead, 1968' [96,138][304,534] SAFE
+left   FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+left   FOCUSED: 'Cosmos Laundromat, 2015' [96,138][304,534] SAFE
+left   FOCUSED: 'Elephants Dream, 2006' [96,138][304,534] SAFE
+left   FOCUSED: 'Tears of Steel, 2012' [96,138][304,534] SAFE
+left   FOCUSED: 'Sintel, 2010' [96,138][304,534] SAFE
+left   FOCUSED: 'Big Buck Bunny, 2008' [96,138][304,534] SAFE
+right  FOCUSED: 'Sintel, 2010' [96,138][304,534] SAFE
+right  FOCUSED: 'Tears of Steel, 2012' [96,138][304,534] SAFE
+right  FOCUSED: 'Elephants Dream, 2006' [96,138][304,534] SAFE
+right  FOCUSED: 'Cosmos Laundromat, 2015' [96,138][304,534] SAFE
+right  FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+right  FOCUSED: 'Night of the Living Dead, 1968' [96,138][304,534] SAFE
+right  FOCUSED: 'Big Buck Bunny, 2008' [200,138][408,534] SAFE
+right  FOCUSED: 'Sintel, 2010' [436,138][644,534] SAFE
+right  FOCUSED: 'Tears of Steel, 2012' [672,138][880,534] SAFE
+right  FOCUSED: 'Elephants Dream, 2006' [908,138][1116,534] SAFE
+right  FOCUSED: 'Cosmos Laundromat, 2015' [1144,138][1352,534] SAFE
+right  FOCUSED: 'Sprite Fright, 2024' [1380,138][1588,534] SAFE
+right  FOCUSED: 'Night of the Living Dead, 1968' [1616,138][1824,534] SAFE
+right  FOCUSED: 'Night of the Living Dead, 1968' [1616,138][1824,534] SAFE
+left   FOCUSED: 'Sprite Fright, 2024' [1380,138][1588,534] SAFE
+left   FOCUSED: 'Cosmos Laundromat, 2015' [1144,138][1352,534] SAFE
+left   FOCUSED: 'Elephants Dream, 2006' [908,138][1116,534] SAFE
+left   FOCUSED: 'Tears of Steel, 2012' [672,138][880,534] SAFE
+left   FOCUSED: 'Sintel, 2010' [436,138][644,534] SAFE
+left   FOCUSED: 'Big Buck Bunny, 2008' [200,138][408,534] SAFE
+left   FOCUSED: 'Night of the Living Dead, 1968' [96,138][304,534] SAFE
+left   FOCUSED: 'Sprite Fright, 2024' [96,138][304,534] SAFE
+left   FOCUSED: 'Cosmos Laundromat, 2015' [96,138][304,534] SAFE
+## Remount restore at the row end (focus the last Trending card, back x2, re-enter)
+right  FOCUSED: 'Night of the Living Dead, 1968' [1616,138][1824,534] SAFE
+back   FOCUSED: 'Play' [96,798][262,870] SAFE
+back   FOCUSED: 'Component gallery' [785,717][1135,789] SAFE
+select FOCUSED: 'Play' [96,798][262,870] SAFE
+down   FOCUSED: 'Night of the Living Dead, 1968' [1616,138][1824,534] SAFE
+## Page walk: Popular -> buttons -> icon buttons -> tags
+down   FOCUSED: 'Pioneer One, 1 season' [96,138][304,534] SAFE
+down   FOCUSED: 'Primary' [96,136][307,208] SAFE
+down   FOCUSED: 'Small' [96,250][210,310] SAFE
+down   FOCUSED: 'Play' [96,352][262,424] SAFE
+down   FOCUSED: 'Secondary' [113,136][185,208] SAFE
+down   FOCUSED: 'All' [96,210][227,270] SAFE
+right  FOCUSED: 'Movies' [259,210][408,270] SAFE
+## Page walk down to Colors
+down   FOCUSED: 'Episode 1 · 1 h 28 min · Jul 25, 2010. A Study in Pink' [96,403][1824,624] SAFE
+down   FOCUSED: 'Episode 2 · 1 h 29 min · Aug 1, 2010. The Blind Banker' [96,403][1824,624] SAFE
+down   FOCUSED: 'Episode 3 · 1 h 30 min · Aug 8, 2010. The Great Game' [96,403][1824,624] SAFE
+down   FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+down   FOCUSED: 'Search' [860,630][1060,702] SAFE
+down   FOCUSED: 'Try again' [870,677][1051,749] SAFE
+down   FOCUSED: 'Go to start' [766,657][963,729] SAFE
+down   FOCUSED: 'Try again' [547,657][728,729] SAFE
+down   FOCUSED: '12% watched, 50% watched, 90% watched, Loading, Loading, Loading' [96,136][968,374] SAFE
+down   FOCUSED: 'Animate loaders' [96,136][351,196] SAFE
+down   FOCUSED: 'System default' [96,136][372,196] SAFE
+down   FOCUSED: 'Date: 7/25/2010 · Jul 25, 2010 · July 25, 2010, Runtime: 35 s · 42 min · 1 h 30 min · 1 h 42 min, Remaining: 37 min left, Relative: Today · Yesterday · 3 days ago · Sep 17, 2026, Size: 4.2 GB · 734 MB, Plural: 1 episode · 12 episodes · 2 seasons · No versions' [96,136][781,424] SAFE
+down   FOCUSED: 'surface' [376,442][624,584] SAFE
+down   FOCUSED: 'foreground-disabled' [376,442][624,584] SAFE
+down   FOCUSED: 'accent' [376,442][624,584] SAFE
+down   FOCUSED: 'warning' [376,442][624,584] SAFE
+down   FOCUSED: 'destructive' [376,442][624,584] SAFE
+down   FOCUSED: 'focus-glow' [376,442][624,584] SAFE
+## Colors grid line ends (6 per line on TV; each line its own row guide)
+right  FOCUSED: 'scrim' [656,442][904,584] SAFE
+right  FOCUSED: 'scrim-clear' [936,442][1184,584] SAFE
+right  FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+right  FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+up     FOCUSED: 'border' [1216,442][1464,584] SAFE
+right  FOCUSED: 'input' [1496,442][1744,584] SAFE
+right  FOCUSED: 'input' [1496,442][1744,584] SAFE
+right  FOCUSED: 'input' [1496,442][1744,584] SAFE
+right  FOCUSED: 'input' [1496,442][1744,584] SAFE
+down   FOCUSED: 'shadow' [1216,442][1464,584] SAFE
+## Typography (one sample per line on TV): down to the end, right on each stays
+down   FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+right  FOCUSED: 'display · 40/46, The quick fox watches a movie' [96,442][1175,584] SAFE
+down   FOCUSED: 'title · 28/34, The quick fox watches a movie' [96,454][865,572] SAFE
+right  FOCUSED: 'title · 28/34, The quick fox watches a movie' [96,454][865,572] SAFE
+down   FOCUSED: 'heading · 19/25, The quick fox watches a movie' [96,463][632,563] SAFE
+right  FOCUSED: 'heading · 19/25, The quick fox watches a movie' [96,463][632,563] SAFE
+down   FOCUSED: 'subheading · 16/21, The quick fox watches a movie' [96,467][554,559] SAFE
+right  FOCUSED: 'subheading · 16/21, The quick fox watches a movie' [96,467][554,559] SAFE
+down   FOCUSED: 'body · 14/20, The quick fox watches a movie' [96,480][496,570] SAFE
+right  FOCUSED: 'body · 14/20, The quick fox watches a movie' [96,480][496,570] SAFE
+down   FOCUSED: 'callout · 13/18, The quick fox watches a movie' [96,586][471,672] SAFE
+right  FOCUSED: 'callout · 13/18, The quick fox watches a movie' [96,586][471,672] SAFE
+down   FOCUSED: 'caption · 11/15, The quick fox watches a movie' [96,688][416,768] SAFE
+right  FOCUSED: 'caption · 11/15, The quick fox watches a movie' [96,688][416,768] SAFE
+down   FOCUSED: 'overline · 10/13, THE QUICK FOX WATCHES A MOVIE' [96,784][488,860] SAFE
+right  FOCUSED: 'overline · 10/13, THE QUICK FOX WATCHES A MOVIE' [96,784][488,860] SAFE
+down   FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+right  FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+down   FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+right  FOCUSED: 'label · 14/18, The quick fox watches a movie' [96,876][499,962] SAFE
+## Overlays: Dialog (trap, back), Sheet (trap, back), Dialog -> Sheet -> long sheet in a row
+start  FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+select FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+up     FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+left   FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+down   FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+right  FOCUSED: 'Remove' [1206,605][1372,677] SAFE
+right  FOCUSED: 'Remove' [1206,605][1372,677] SAFE
+down   FOCUSED: 'Remove' [1206,605][1372,677] SAFE
+back   FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+right  FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+select FOCUSED: 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] SAFE
+up     FOCUSED: 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] SAFE
+down   FOCUSED: 'German · Dolby Digital 5.1' [1168,232][1824,312] SAFE
+down   FOCUSED: 'English · Commentary · Stereo' [1168,320][1824,400] SAFE
+down   FOCUSED: 'English · Commentary · Stereo' [1168,320][1824,400] SAFE
+left   FOCUSED: 'English · Commentary · Stereo' [1168,320][1824,400] SAFE
+right  FOCUSED: 'English · Commentary · Stereo' [1168,320][1824,400] SAFE
+back   FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+right  FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+select FOCUSED: 'Off' [1168,144][1824,224] SAFE
+back   FOCUSED: 'Open long sheet' [581,136][849,208] SAFE
+left   FOCUSED: 'Open sheet' [342,136][549,208] SAFE
+left   FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+select FOCUSED: 'Cancel' [1032,605][1182,677] SAFE
+back   FOCUSED: 'Open dialog' [96,136][310,208] SAFE
+## Blocking 1 regression protocol (verifier's trigger): fresh app session (force-stop + dev-client link), gallery deep link,
+## Argent tv-remote path to "Open sheet", Argent describe right before select, Argent select, uiautomator dump, Argent down, dump.
+## Final code, sessions 12-18 (session 11 never reached the gallery: dev-menu intro still covering the index):
+s12..s18 open  FOCUSED: 'English · Dolby Digital Plus 5.1' [1168,144][1824,224] SAFE   sheet bounds [1120,0][1920,1080]  (7/7)
+s12..s18 down  FOCUSED: 'German · Dolby Digital 5.1' [1168,232][1824,312] SAFE          sheet bounds [1120,0][1920,1080]  (7/7)
+## Same protocol on the intermediate build (hasTVPreferredFocus still on SheetItem), sessions 1-7: 7/7 identical results.
+## Deterministic trigger (scratch probe, removed): JS thread blocked 3 s, 0.5 s after the Sheet opens, then down:
+before fix (Reanimated FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS=true, animated resting style): down -> FOCUSED: (none), no 'sheet' node, Modal window still open, trigger ringed, scrim transparent
+after fix: open -> 'English ...' [1168,144][1824,224]; down -> 'German ...' [1168,232][1824,312]; down -> 'English · Commentary · Stereo' [1168,320][1824,400]; sheet [1120,0][1920,1080]

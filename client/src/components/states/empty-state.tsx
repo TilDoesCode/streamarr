@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { END_OF_ROW, FocusGuide } from '@/components/focus';
+import { CENTRED_ROW, FocusGuide } from '@/components/focus';
 import { Text } from '@/components/ui/text';
 import { colors, useDesign } from '@/theme';
 
@@ -15,7 +15,6 @@ export type EmptyStateProps = {
   /** Error code or other detail, shown small and selectable. */
   detail?: string;
   iconColor?: string;
-  compact?: boolean;
   testID?: string;
 };
 
@@ -27,11 +26,10 @@ export function EmptyState({
   actions,
   detail,
   iconColor = colors.foreground.muted,
-  compact = false,
   testID,
 }: EmptyStateProps) {
   const design = useDesign();
-  const disc = design.px(compact ? 48 : 64);
+  const disc = design.px(64);
   const textWidth = design.px(440);
   return (
     <View
@@ -40,7 +38,7 @@ export function EmptyState({
         alignItems: 'center',
         alignSelf: 'stretch',
         gap: design.space.md,
-        paddingVertical: compact ? design.space.lg : design.space['3xl'],
+        paddingVertical: design.space['3xl'],
         paddingHorizontal: design.layout.gutter,
       }}>
       <View
@@ -54,9 +52,7 @@ export function EmptyState({
         }}>
         <IconComponent size={disc * 0.45} color={iconColor} strokeWidth={1.75} />
       </View>
-      <Text
-        variant={compact ? 'subheading' : 'heading'}
-        style={{ textAlign: 'center', maxWidth: textWidth }}>
+      <Text variant="heading" style={{ textAlign: 'center', maxWidth: textWidth }}>
         {title}
       </Text>
       {message ? (
@@ -76,7 +72,7 @@ export function EmptyState({
       {actions ? (
         <FocusGuide
           remember
-          trap={END_OF_ROW}
+          trap={CENTRED_ROW}
           style={{
             flexDirection: 'row',
             flexWrap: 'wrap',
