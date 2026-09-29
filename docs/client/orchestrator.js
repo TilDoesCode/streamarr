@@ -1,6 +1,6 @@
 export const meta = {
-  name: 'streamarr-client-w9',
-  description: 'W9 (resumes W8): player spike first, then navigation shells, browse and playback UI (client) with backend follow-ups in parallel; fail-stop, bounded verification',
+  name: 'streamarr-client-w10',
+  description: 'W10 (resumes W9): player spike first, then navigation shells, browse and playback UI (client) with backend follow-ups in parallel; fail-stop, bounded verification',
   phases: [
     { title: 'Client', detail: 'M3.1 player spike -> M2.4 navigation shells -> M4.1 browse -> M4.2 playback (waits for M1.5)' },
     { title: 'Backend', detail: 'M1.5 backend follow-ups (starts when M3.1 is committed)' },
