@@ -28,3 +28,20 @@ survives a crashed or ended session (unlike the harness's temporary workflow jou
 The script stops a lane as soon as an agent dies (usage limit, expired token) and never
 starts tasks that depend on it. Verification checks the task's acceptance checklist; after
 a fix round only the previous blocking findings are re-checked.
+
+## Driver since W11: Codecraft subagents instead of the Workflow tool
+
+Codecraft aborts a session's older provider run whenever a newer turn in the same session ends (scheduled
+resume or user message). The Claude Code `Workflow` runs inside that provider run, so every watchdog check killed
+the orchestration (W6, W9, W10). Codecraft's `dynamic_workflow_run` waits at most 30 min per agent, too short here.
+
+Each step (build, verify, fix) now runs as its own Codecraft subagent session (`subagent_spawn`, provider `claude`,
+model `opus`, `profileLabel` = the account with the most quota). The orchestrating session only reacts to the
+subagents' completion messages, so its turns never host running work.
+
+- Prompts still come from `orchestrator.js`: `node docs/client/prompt-cli.mjs <build|verify|fix> <taskId> [round] [input.json]`.
+  Inputs (builder report, previous blocking findings, verdict) live in `runs/driver/<task>-<step>.json`.
+- A subagent's first command runs the CLI and follows its output; its final message ends with the JSON result.
+- The runner reports a subagent as failed after 60 min of waiting even if it still runs: check `subagent_status`
+  and the task journal before starting anything new.
+- Checkpoint commits are made by the orchestrating session itself, path-scoped (`git commit -- <paths>`).
