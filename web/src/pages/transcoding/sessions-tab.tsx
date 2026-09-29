@@ -8,7 +8,7 @@ import { CodeDisclosure } from "@/components/code-disclosure";
 import { EmptyOpsState } from "@/components/ops-page";
 import { PlanSummaryLine } from "@/components/transcode-plan";
 import { Button } from "@/components/ui/button";
-import { formatSpeed, jobStateMeta, shellCommand } from "@/lib/transcoding";
+import { formatSpeed, jobStateMeta, modeMeta, shellCommand } from "@/lib/transcoding";
 import { cn, formatBytes, formatMs, timeAgo } from "@/lib/utils";
 import { ErrorPanel, LoadingBlock, ToneBadge } from "./shared";
 
@@ -38,6 +38,7 @@ function SessionCard({ session }: { session: TranscodeSessionResponse }) {
   const stop = useStopTranscodeSession();
   const job = session.job;
   const state = jobStateMeta(job);
+  const mode = modeMeta(session.mode);
   const headingId = `transcode-${session.handle}`;
 
   async function stopSession() {
@@ -60,6 +61,7 @@ function SessionCard({ session }: { session: TranscodeSessionResponse }) {
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <ToneBadge tone="muted">{session.sourceKind === "sample" ? "Test sample" : "Stream"}</ToneBadge>
+          <ToneBadge tone={mode.tone}>{mode.label}</ToneBadge>
           <ToneBadge tone={state.tone}>{state.label}</ToneBadge>
           <Button type="button" size="sm" variant="outline" onClick={stopSession} disabled={stop.isPending} aria-label={`Stop transcode ${session.title}`}>
             {stop.isPending ? <Loader2 className="animate-spin" /> : <Square />}Stop
@@ -124,7 +126,7 @@ function SegmentTrack({ session }: { session: TranscodeSessionResponse }) {
         <span>
           {job ? `ffmpeg front: segment ${front}` : "ffmpeg idle"} · player at {requested >= 0 ? `segment ${requested}` : "—"}
         </span>
-        <span>{count} × {session.segmentLengthSeconds} s</span>
+        <span>{session.mode === "remux" ? `${count} keyframe-aligned segments (~${session.segmentLengthSeconds} s)` : `${count} × ${session.segmentLengthSeconds} s`}</span>
       </div>
     </div>
   );

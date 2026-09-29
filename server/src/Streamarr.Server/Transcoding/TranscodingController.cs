@@ -137,7 +137,7 @@ public sealed class TranscodingController(
         return NoContent();
     }
 
-    /// <summary>Explains what a transcode of this source would do for this client, without starting ffmpeg.</summary>
+    /// <summary>Explains direct play → remux → transcode for this client (mode defaults to auto), without starting ffmpeg.</summary>
     [HttpPost("plan")]
     [ProducesResponseType(typeof(TranscodePlanResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -146,8 +146,9 @@ public sealed class TranscodingController(
     {
         try
         {
+            var preference = ToPreference(request.Mode, ModePreference.Auto);
             var (source, _) = await ResolveSourceAsync(request, ct);
-            var (media, plan, _, _) = await sessions.PlanAsync(source, ToClient(request.Client), ToLimits(request), ct);
+            var (media, plan, _, _) = await sessions.PlanAsync(source, ToClient(request.Client), ToLimits(request), preference, ct);
             return Ok(TranscodingResponses.Plan(plan, media));
         }
         catch (TranscodeException e)
@@ -156,7 +157,7 @@ public sealed class TranscodingController(
         }
     }
 
-    /// <summary>Starts an HLS transcode of a live stream capability (or a test sample) and returns its playlist capability.</summary>
+    /// <summary>Starts an HLS rendition (remux or transcode; mode defaults to transcode) of a live stream capability or a test sample.</summary>
     [HttpPost("sessions")]
     [ProducesResponseType(typeof(TranscodeSessionCreatedResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -168,17 +169,19 @@ public sealed class TranscodingController(
     {
         try
         {
+            var preference = ToPreference(request.Mode, ModePreference.Transcode);
             var (source, title) = await ResolveSourceAsync(request, ct);
             var clientName = string.IsNullOrWhiteSpace(request.ClientName) || request.ClientName.Any(char.IsControl)
                 ? (User.IsInRole(AuthRoles.Admin) ? "web" : "api")
                 : request.ClientName.Trim();
             var session = await sessions.CreateAsync(
                 source, title, ToClient(request.Client), ToLimits(request), clientName,
-                Math.Max(0, request.StartPositionSeconds ?? 0), ct);
+                Math.Max(0, request.StartPositionSeconds ?? 0), ct, preference);
             var basePath = $"/api/v1/transcode/{session.Id}";
             return StatusCode(StatusCodes.Status201Created, new TranscodeSessionCreatedResponse
             {
                 Handle = session.Handle,
+                Mode = session.Mode.ToApi(),
                 PlaylistUrl = $"{basePath}/master.m3u8",
                 MediaPlaylistUrl = $"{basePath}/{HlsPlaylist.MediaPlaylistName}",
                 DurationSeconds = session.Plan.DurationSeconds,
@@ -225,13 +228,25 @@ public sealed class TranscodingController(
             MaxAudioChannels = Math.Clamp(request.MaxAudioChannels ?? 2, 1, 8),
             SupportsHdr = request.SupportsHdr ?? false,
             Supports10Bit = request.Supports10Bit ?? false,
+            HdrFormats = Clean(request.HdrFormats),
+            SubtitleFormats = Clean(request.SubtitleFormats),
         };
     }
 
     private static TranscodeLimits ToLimits(TranscodeSessionCreateRequest request) => new(
         request.MaxHeight is { } h ? Math.Clamp(h, 144, 4320) : null,
         request.MaxBitrateKbps is { } b ? Math.Clamp(b, 300, 200_000) : null,
-        request.AudioStreamIndex);
+        request.AudioStreamIndex,
+        request.SubtitleStreamIndex);
+
+    private static ModePreference ToPreference(string? mode, ModePreference fallback)
+    {
+        if (string.IsNullOrWhiteSpace(mode))
+            return fallback;
+        return DeliveryModeNames.TryParsePreference(mode, out var preference)
+            ? preference
+            : throw new TranscodeException("invalid_transcode_request", "'mode' must be one of: auto, remux, transcode.", 400);
+    }
 
     private ActionResult Execute(Func<ActionResult> action)
     {

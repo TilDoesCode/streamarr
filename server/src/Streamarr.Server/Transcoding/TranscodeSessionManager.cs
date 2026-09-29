@@ -17,6 +17,7 @@ public sealed class TranscodeSessionManager(
     TranscodingSettingsService settingsService,
     FfmpegCapabilityService capabilityService,
     SourceMediaProber prober,
+    KeyframeIndexService keyframes,
     TranscodingWorkspace workspace,
     IOptions<TranscodingOptions> options,
     ILogger<TranscodeSessionManager> logger) : BackgroundService
@@ -47,10 +48,11 @@ public sealed class TranscodeSessionManager(
 
     public int RunningJobs => _sessions.Values.Count(s => s.Job is { HasExited: false });
 
+    /// <summary>Explains direct → remux → transcode for this client without starting ffmpeg (a remux candidate gets its keyframe index).</summary>
     public async Task<(SourceMediaInfo Media, TranscodePlan Plan, TranscodingSettings Settings, FfmpegCapabilities Capabilities)> PlanAsync(
-        TranscodeSource source, ClientProfile client, TranscodeLimits limits, CancellationToken ct)
+        TranscodeSource source, ClientProfile client, TranscodeLimits limits, ModePreference preference, CancellationToken ct)
     {
-        var planned = await PlanTimedAsync(source, client, limits, ct);
+        var planned = await PlanTimedAsync(source, client, limits, preference, allowDirect: true, ct);
         return (planned.Media, planned.Plan, planned.Settings, planned.Capabilities);
     }
 
@@ -58,7 +60,8 @@ public sealed class TranscodeSessionManager(
         SourceMediaInfo Media, TranscodePlan Plan, TranscodingSettings Settings, FfmpegCapabilities Capabilities,
         double CapabilitiesMs, double ProbeMs, bool ProbeCached, double PlanMs);
 
-    private async Task<TimedPlan> PlanTimedAsync(TranscodeSource source, ClientProfile client, TranscodeLimits limits, CancellationToken ct)
+    private async Task<TimedPlan> PlanTimedAsync(
+        TranscodeSource source, ClientProfile client, TranscodeLimits limits, ModePreference preference, bool allowDirect, CancellationToken ct)
     {
         var settings = settingsService.Current;
         if (!settings.Enabled)
@@ -77,7 +80,15 @@ public sealed class TranscodeSessionManager(
         var probeMs = clock.Elapsed.TotalMilliseconds - capabilitiesMs;
         try
         {
-            var plan = TranscodePlanner.Plan(media, client, limits, settings, capabilities);
+            var plan = TranscodePlanner.Decide(media, client, limits, settings, capabilities, preference, allowDirect);
+            if (plan.Mode == DeliveryMode.Remux)
+            {
+                var index = await keyframes.GetAsync(source, media, ct);
+                plan = index.Index is { } found
+                    ? TranscodePlanner.FinalizeRemux(plan, media, found, found.Container.TotalBytes)
+                    : TranscodePlanner.Decide(media, client, limits, settings, capabilities, preference, allowDirect,
+                        PlanReason.Of("keyframe_index_unavailable", $"No keyframe index for a stream copy: {index.Error}.", ("detail", index.Error)));
+            }
             var planMs = clock.Elapsed.TotalMilliseconds - capabilitiesMs - probeMs;
             return new TimedPlan(media, plan, settings, capabilities, capabilitiesMs, probeMs, cached, planMs);
         }
@@ -94,26 +105,47 @@ public sealed class TranscodeSessionManager(
         TranscodeLimits limits,
         string clientLabel,
         double startPositionSeconds,
-        CancellationToken ct)
+        CancellationToken ct,
+        ModePreference preference = ModePreference.Transcode)
     {
         var requestedAt = DateTimeOffset.UtcNow;
-        var planned = await PlanTimedAsync(source, client, limits, ct);
+        var planned = await PlanTimedAsync(source, client, limits, preference, allowDirect: false, ct);
         var (media, plan, settings, capabilities) = (planned.Media, planned.Plan, planned.Settings, planned.Capabilities);
+        if (preference == ModePreference.Remux && plan.Mode != DeliveryMode.Remux)
+        {
+            throw new TranscodeException("remux_not_possible",
+                $"A stream copy is not possible: {string.Join(" ", plan.RemuxBlockers.Select(r => r.Message))}", 422);
+        }
         EnsureDiskSpace();
         await EnsureSessionSlotAsync();
 
-        var timeline = SegmentTimeline.Create(plan.DurationSeconds, settings.SegmentLengthSeconds);
+        var timeline = plan.Mode == DeliveryMode.Remux && plan.RemuxTimeline is { } keyframeTimeline
+            ? keyframeTimeline
+            : SegmentTimeline.Create(plan.DurationSeconds, settings.SegmentLengthSeconds);
         var id = TranscodeSession.NewId();
         var session = new TranscodeSession(
             id, source, media, plan, timeline, settings, capabilities,
             workspace.CreateSessionDirectory(id), clientLabel, title);
         _sessions[id] = session;
-        logger.LogInformation(
-            "Transcode session {Handle} created for {Client}: {SourceCodec} {SourceHeight}p → {Codec} {Height}p @ {Bitrate} kbps via {Encoder} (hw decode {HwDecode}, tone map {ToneMap})",
-            session.Handle, clientLabel, plan.SourceVideo.Codec, plan.SourceVideo.Height, plan.Video.Codec, plan.Video.Height,
-            plan.Video.BitrateKbps, plan.Encoder, plan.HardwareDecode, plan.ToneMap);
+        if (plan.Mode == DeliveryMode.Remux)
+        {
+            logger.LogInformation(
+                "Remux session {Handle} created for {Client}: {Codecs} {Height}p {Range}, {Segments} keyframe-aligned segments from {Index}, audio {Audio}, {Subtitles} WebVTT rendition(s)",
+                session.Handle, clientLabel, plan.CodecsAttribute, plan.SourceVideo.Height, plan.VideoRange, timeline.Count,
+                plan.KeyframeIndex?.Source.ToApi(), plan.Audio is { } a ? (a.Copy ? $"copy {a.Codec}" : $"{a.SourceCodec} → {a.Codec} {a.Channels} ch") : "none",
+                session.Subtitles.Count);
+        }
+        else
+        {
+            logger.LogInformation(
+                "Transcode session {Handle} created for {Client}: {SourceCodec} {SourceHeight}p → {Codec} {Height}p @ {Bitrate} kbps via {Encoder} (hw decode {HwDecode}, tone map {ToneMap})",
+                session.Handle, clientLabel, plan.SourceVideo.Codec, plan.SourceVideo.Height, plan.Video.Codec, plan.Video.Height,
+                plan.Video.BitrateKbps, plan.Encoder, plan.HardwareDecode, plan.ToneMap);
+        }
 
-        var start = Math.Clamp((int)Math.Floor(Math.Max(0, startPositionSeconds) / timeline.SegmentLength), 0, timeline.Count - 1);
+        var start = plan.Mode == DeliveryMode.Remux
+            ? timeline.IndexAt(Math.Max(0, startPositionSeconds))
+            : Math.Clamp((int)Math.Floor(Math.Max(0, startPositionSeconds) / timeline.SegmentLength), 0, timeline.Count - 1);
         await session.Gate.WaitAsync(ct);
         var spawnClock = System.Diagnostics.Stopwatch.StartNew();
         try
@@ -330,6 +362,7 @@ public sealed class TranscodeSessionManager(
         await EnsureCapacityAsync(session);
 
         session.JobSequence++;
+        var remux = session.Mode == DeliveryMode.Remux;
         var spec = new FfmpegJobSpec
         {
             Plan = session.Plan,
@@ -340,11 +373,61 @@ public sealed class TranscodeSessionManager(
             JobTag = session.JobSequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
             SegmentLength = session.Timeline.SegmentLength,
             StartSegment = startSegment,
+            SeekSeconds = remux && startSegment > 0 ? RemuxSeek(session, startSegment) : null,
         };
-        var job = TranscodeJob.Start(options.Value.FfmpegPath, FfmpegArgumentBuilder.Build(spec), session.Directory, spec.JobTag, startSegment);
+        var job = remux
+            ? TranscodeJob.Start(options.Value.FfmpegPath, FfmpegArgumentBuilder.Build(spec), session.Directory, spec.JobTag, startSegment,
+                (running, stdout) => CreateSegmenter(session, spec, running).RunAsync(stdout, running.ExitedCleanlyAsync, CancellationToken.None))
+            : TranscodeJob.Start(options.Value.FfmpegPath, FfmpegArgumentBuilder.Build(spec), session.Directory, spec.JobTag, startSegment);
         session.Job = job;
         logger.LogDebug("Transcode {Handle} run {Run} started at segment {Segment}", session.Handle, spec.JobTag, startSegment);
         return job;
+    }
+
+    private RemuxSegmenter CreateSegmenter(TranscodeSession session, FfmpegJobSpec spec, TranscodeJob job)
+    {
+        var keyframes = OutputKeyframes(session);
+        var minGap = keyframes.Zip(keyframes.Skip(1), (a, b) => b - a).Where(g => g > 0).DefaultIfEmpty(1).Min();
+        var last = session.Timeline.Count - 1;
+        return new RemuxSegmenter(
+            session.Directory, spec.InitFileName, session.Timeline, spec.StartSegment, Math.Clamp(minGap * 0.4, 0.001, 0.05),
+            session.AdoptRemuxInit,
+            (runStart, segment) => session.CoverSubtitles(runStart, segment == last ? last : segment - 2),
+            job.ReportOutput,
+            logger);
+    }
+
+    /// <summary>A restart begins one keyframe early: open-GOP leading pictures of the target keyframe keep their references, and the segmenter drops the pre-roll.</summary>
+    private static double RemuxSeek(TranscodeSession session, int segment)
+    {
+        var start = session.Timeline.StartOf(segment);
+        var keyframes = OutputKeyframes(session);
+        var previous = keyframes.LastOrDefault(k => k < start - 1e-6, double.NaN);
+        return double.IsNaN(previous) || previous < 0
+            ? FfmpegArgumentBuilder.RemuxSeekSeconds(start, keyframes.FirstOrDefault(k => k > start + 1e-6, double.NaN) is var next && double.IsNaN(next) ? null : next)
+            : FfmpegArgumentBuilder.RemuxSeekSeconds(previous, start);
+    }
+
+    private static IReadOnlyList<double> OutputKeyframes(TranscodeSession session)
+        => session.Plan.KeyframeIndex?.Keyframes.Select(k => k - session.Media.StartTime).ToList() ?? [];
+
+    /// <summary>A WebVTT segment; waits only while the running copy is about to demux past it, otherwise returns the cues known so far.</summary>
+    public async Task<string> GetSubtitleSegmentAsync(TranscodeSession session, int streamIndex, int index, CancellationToken ct)
+    {
+        var track = session.Subtitles.FirstOrDefault(t => t.StreamIndex == streamIndex)
+                    ?? throw new TranscodeException("unknown_subtitle_stream", "This session has no such subtitle rendition.", 404);
+        if (index < 0 || index >= session.Timeline.Count)
+            throw new TranscodeException("unknown_segment", "The segment is outside this rendition.", 404);
+        session.Touch();
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(options.Value.SegmentWaitTimeoutSeconds, 5, 20));
+        while (!session.SubtitlesCovered(index) && DateTimeOffset.UtcNow < deadline && !session.Closed
+               && session.Job is { HasExited: false } job && job.StartSegment <= index
+               && index <= job.Front() + Math.Max(2, (int)Math.Ceiling(SeekGapSeconds / session.Timeline.SegmentLength)))
+        {
+            await Task.Delay(50, ct);
+        }
+        track.Refresh(session.Directory);
+        return WebVttSubtitles.Segment(track.Between(session.Timeline.StartOf(index), session.Timeline.EndOf(index)));
     }
 
     private async Task<bool> WaitForAsync(TranscodeSession session, TranscodeJob job, Func<bool> ready, CancellationToken ct)
@@ -361,7 +444,7 @@ public sealed class TranscodeSessionManager(
                 await Task.Delay(50, ct);
                 if (ready())
                     return true;
-                if (job.Killed)
+                if (job.Killed && job.OutputError is null)
                     return false;
                 if (job.ExitCode == 0)
                     throw new TranscodeException("end_of_stream", "The source ended before this segment.", 404);
@@ -406,10 +489,13 @@ public sealed class TranscodeSessionManager(
         }
     }
 
+    /// <summary>Remux and transcode runs have separate pools: a stream copy costs a fraction of an encode.</summary>
     private async Task EnsureCapacityAsync(TranscodeSession requester)
     {
-        var limit = settingsService.Current.MaxConcurrentTranscodes;
-        var running = _sessions.Values.Where(s => !ReferenceEquals(s, requester) && s.Job is { HasExited: false }).ToList();
+        var remux = requester.Mode == DeliveryMode.Remux;
+        var limit = remux ? settingsService.Current.MaxConcurrentRemuxes : settingsService.Current.MaxConcurrentTranscodes;
+        bool SamePool(TranscodeSession s) => !ReferenceEquals(s, requester) && s.Job is { HasExited: false } && (s.Mode == DeliveryMode.Remux) == remux;
+        var running = _sessions.Values.Where(SamePool).ToList();
         if (running.Count < limit)
             return;
 
@@ -422,11 +508,13 @@ public sealed class TranscodeSessionManager(
         {
             if (victim.Job is { } job)
                 await KillJobAsync(victim, job, "capacity reclaimed");
-            if (_sessions.Values.Count(s => !ReferenceEquals(s, requester) && s.Job is { HasExited: false }) < limit)
+            if (_sessions.Values.Count(SamePool) < limit)
                 return;
         }
-        throw new TranscodeException("transcode_capacity",
-            $"All {limit} transcode slots are busy; raise 'maxConcurrentTranscodes' or stop another stream.", 503);
+        throw remux
+            ? new TranscodeException("remux_capacity", $"All {limit} remux slots are busy; raise 'maxConcurrentRemuxes' or stop another stream.", 503)
+            : new TranscodeException("transcode_capacity",
+                $"All {limit} transcode slots are busy; raise 'maxConcurrentTranscodes' or stop another stream.", 503);
     }
 
     private async Task EnsureSessionSlotAsync()

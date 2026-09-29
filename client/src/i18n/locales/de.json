@@ -1,0 +1,261 @@
+{
+  "app": {
+    "name": "Streamarr",
+    "tagline": "Deine Bibliothek, bereit, wenn du es bist."
+  },
+  "platform": {
+    "androidtv": "Android TV",
+    "appletv": "Apple TV",
+    "android": "Android",
+    "ios": "iOS",
+    "web": "Web",
+    "running": "Läuft auf {platform}"
+  },
+  "formFactor": {
+    "phone": "Smartphone",
+    "tablet": "Tablet",
+    "tv": "TV",
+    "desktop-web": "Desktop-Web"
+  },
+  "home": {
+    "openGallery": "Komponenten-Galerie",
+    "placeholder": "Der Startbildschirm kommt mit der Navigation."
+  },
+  "notFound": {
+    "title": "Seite nicht gefunden",
+    "home": "Zum Start"
+  },
+  "common": {
+    "retry": "Erneut versuchen",
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "confirm": "Bestätigen",
+    "done": "Fertig",
+    "back": "Zurück",
+    "seeAll": "Alle anzeigen",
+    "loading": "Wird geladen …",
+    "play": "Abspielen",
+    "resume": "Fortsetzen",
+    "startOver": "Von vorne",
+    "moreInfo": "Mehr Infos",
+    "versions": "Versionen",
+    "episodes": "Folgen",
+    "settings": "Einstellungen",
+    "search": "Suche"
+  },
+  "a11y": {
+    "progress": "{progress, number, percent} gesehen",
+    "played": "Gesehen",
+    "loading": "Wird geladen",
+    "dismiss": "Ausblenden",
+    "artworkMissing": "Kein Bild verfügbar",
+    "scrollBack": "Zurückblättern",
+    "scrollForward": "Weiterblättern"
+  },
+  "media": {
+    "episodeCode": "S{season}, F{episode}",
+    "episodeNumber": "Folge {episode}",
+    "season": "Staffel {season}",
+    "seasons": "{count, plural, one {# Staffel} other {# Staffeln}}",
+    "episodes": "{count, plural, one {# Folge} other {# Folgen}}",
+    "versions": "{count, plural, =0 {Keine Versionen} one {# Version} other {# Versionen}}",
+    "remaining": "Noch {time}",
+    "played": "Gesehen",
+    "new": "Neu",
+    "unavailable": "Nicht verfügbar",
+    "recommended": "Empfohlen",
+    "ready": "Bereit",
+    "airDate": "Ausgestrahlt am {date}",
+    "upNext": "Als Nächstes"
+  },
+  "format": {
+    "duration": {
+      "hm": "{hours} Std. {minutes} Min.",
+      "h": "{hours} Std.",
+      "m": "{minutes} Min.",
+      "s": "{seconds} Sek."
+    },
+    "relative": {
+      "today": "Heute",
+      "yesterday": "Gestern",
+      "tomorrow": "Morgen",
+      "daysAgo": "{count, plural, one {vor # Tag} other {vor # Tagen}}",
+      "inDays": "{count, plural, one {in # Tag} other {in # Tagen}}"
+    },
+    "size": {
+      "gb": "{value} GB",
+      "mb": "{value} MB"
+    }
+  },
+  "language": {
+    "title": "Sprache",
+    "system": "Systemsprache",
+    "en": "English",
+    "de": "Deutsch",
+    "current": "Angezeigt wird {language}"
+  },
+  "states": {
+    "empty": {
+      "title": "Noch nichts da",
+      "message": "Titel erscheinen hier, sobald es etwas zu zeigen gibt."
+    },
+    "emptySearch": {
+      "title": "Keine Treffer für „{query}“",
+      "message": "Prüfe die Schreibweise oder suche nach einem anderen Titel."
+    },
+    "emptyContinue": {
+      "title": "Nichts zum Weiterschauen",
+      "message": "Filme und Folgen, die du anfängst, erscheinen hier."
+    }
+  },
+  "errors": {
+    "codeLabel": "Fehlercode {code}",
+    "codes": {
+      "unknown": {
+        "title": "Etwas ist schiefgelaufen",
+        "message": "Ein unerwarteter Fehler ist aufgetreten. Versuche es gleich noch einmal."
+      },
+      "network_unreachable": {
+        "title": "Server nicht erreichbar",
+        "message": "Prüfe, ob der Server läuft und dieses Gerät im selben Netzwerk ist."
+      },
+      "timeout": {
+        "title": "Der Server antwortet zu langsam",
+        "message": "Die Anfrage hat zu lange gedauert. Versuche es gleich noch einmal."
+      },
+      "unauthorized": {
+        "title": "Deine Sitzung ist abgelaufen",
+        "message": "Melde dich erneut an, um weiterzumachen."
+      },
+      "forbidden": {
+        "title": "Nicht erlaubt",
+        "message": "Dieses Profil hat dafür keine Berechtigung."
+      },
+      "age_restricted": {
+        "title": "Für dieses Profil nicht verfügbar",
+        "message": "Dieser Titel liegt über der Altersgrenze dieses Profils."
+      },
+      "not_found": {
+        "title": "Nicht gefunden",
+        "message": "Dieser Eintrag existiert auf dem Server nicht mehr."
+      },
+      "module_disabled": {
+        "title": "Ansehen ist deaktiviert",
+        "message": "Die Viewer-App ist auf diesem Server ausgeschaltet. Bitte den Server-Admin, sie zu aktivieren."
+      },
+      "too_many_streams": {
+        "title": "Zu viele Streams",
+        "message": "Dieses Profil schaut bereits auf einem anderen Gerät. Beende die Wiedergabe dort, um hier zu schauen."
+      },
+      "catalog_unavailable": {
+        "title": "Katalog nicht verfügbar",
+        "message": "Der Server kann gerade keine Titel laden. Versuche es später noch einmal."
+      },
+      "server_error": {
+        "title": "Serverfehler",
+        "message": "Auf dem Server ist ein Problem aufgetreten. Versuche es gleich noch einmal."
+      },
+      "playback_failed": {
+        "title": "Wiedergabe fehlgeschlagen",
+        "message": "Diese Version ließ sich nicht abspielen. Wähle eine andere Version oder eine niedrigere Qualität."
+      }
+    },
+    "actions": {
+      "retry": "Erneut versuchen",
+      "otherVersion": "Andere Version wählen",
+      "lowerQuality": "Niedrigere Qualität",
+      "useVlc": "Mit VLC abspielen",
+      "signIn": "Erneut anmelden",
+      "goHome": "Zum Start",
+      "back": "Zurück"
+    }
+  },
+  "gallery": {
+    "title": "Komponenten-Galerie",
+    "subtitle": "{formFactor} · Skalierung {scale, number} · {width, number} × {height, number}",
+    "sections": {
+      "language": "Sprache",
+      "colors": "Farben",
+      "typography": "Typografie",
+      "buttons": "Buttons",
+      "iconButtons": "Icon-Buttons",
+      "badges": "Badges und Tags",
+      "progress": "Fortschritt",
+      "loading": "Laden",
+      "cards": "Karten",
+      "episodes": "Folgen",
+      "states": "Leer- und Fehlerzustände",
+      "overlays": "Dialoge, Sheets und Toasts",
+      "formatting": "Formatierung"
+    },
+    "states": {
+      "default": "Standard",
+      "focused": "Fokussiert",
+      "pressed": "Gedrückt",
+      "disabled": "Deaktiviert",
+      "loading": "Lädt",
+      "error": "Fehler"
+    },
+    "variants": {
+      "primary": "Primär",
+      "secondary": "Sekundär",
+      "ghost": "Dezent",
+      "destructive": "Löschen"
+    },
+    "sizes": {
+      "sm": "Klein",
+      "md": "Mittel",
+      "lg": "Groß"
+    },
+    "type": {
+      "sample": "Der schnelle Fuchs schaut einen Film"
+    },
+    "shelves": {
+      "continueWatching": "Weiterschauen",
+      "trendingMovies": "Angesagte Filme",
+      "popularSeries": "Beliebte Serien"
+    },
+    "tags": {
+      "all": "Alle",
+      "movies": "Filme",
+      "series": "Serien"
+    },
+    "hero": {
+      "eyebrow": "Empfehlung"
+    },
+    "dialog": {
+      "open": "Dialog öffnen",
+      "title": "Aus „Weiterschauen“ entfernen?",
+      "message": "Dein Fortschritt bleibt erhalten. Der Titel erscheint nur nicht mehr in dieser Reihe.",
+      "confirm": "Entfernen"
+    },
+    "sheet": {
+      "open": "Sheet öffnen",
+      "title": "Audio",
+      "options": {
+        "original": "Englisch · Dolby Digital Plus 5.1",
+        "dub": "Deutsch · Dolby Digital 5.1",
+        "commentary": "Englisch · Kommentar · Stereo"
+      }
+    },
+    "toast": {
+      "info": "Info-Toast zeigen",
+      "success": "Erfolgs-Toast zeigen",
+      "error": "Fehler-Toast zeigen",
+      "infoMessage": "Auf deutschen Ton umgeschaltet",
+      "successMessage": "Als gesehen markiert",
+      "errorMessage": "Fortschritt konnte nicht gespeichert werden"
+    },
+    "lastAction": "Letzte Aktion: {action}",
+    "none": "keine",
+    "formatting": {
+      "date": "Datum: {value}",
+      "duration": "Laufzeit: {value}",
+      "remaining": "Verbleibend: {value}",
+      "relative": "Relativ: {value}",
+      "size": "Größe: {value}",
+      "plural": "Plural: {value}"
+    },
+    "animateLoaders": "Ladeanimationen"
+  }
+}

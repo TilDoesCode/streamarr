@@ -1,0 +1,71 @@
+# M2.2 fix round 1 - Google TV D-pad walk (Streamarr_GoogleTV_1080p, 1920x1080 px = 960x540 dp)
+# Each line: remote key -> focused node label and its uiautomator bounds in px (after the UI went idle).
+# Overscan-safe area: x 96..1824, y 54..1026 px.
+
+## Full page walk from the top (back -> Play, then down x40)
+back -> Play [96,798][262,870]
+down -> Big Buck Bunny, 7 min left [96,134][488,439]
+down -> Big Buck Bunny, 2008 [96,138][304,534]
+down -> Pioneer One, 1 season [96,138][304,534]
+down -> Primary [96,136][307,208]
+down -> Small [96,250][210,310]
+down -> Play [96,352][262,424]
+down -> Secondary [113,136][185,208]
+down -> All [96,210][227,270]
+down -> Episode 1 · 1 h 28 min · Jul 25, 2010. A Study in Pink [96,403][1824,624]
+down -> Episode 2 · 1 h 29 min · Aug 1, 2010. The Blind Banker [96,403][1824,624]
+down -> Episode 3 · 1 h 30 min · Aug 8, 2010. The Great Game [96,403][1824,624]
+down -> Open dialog [96,136][310,208]
+down -> Search [860,630][1060,702]
+down -> Try again [870,677][1051,749]
+down -> Go to start [766,657][963,729]
+down -> Try again [547,657][728,729]
+down -> 12% watched, 50% watched, 90% watched, Loading, Loading, Loading [96,136][968,374]
+down -> Animate loaders [96,136][351,196]
+down -> System default [96,136][372,196]
+down -> Date: 7/25/2010 · Jul 25, 2010 · July 25, 2010, Runtime: 35 s · 42 min · 1 h 30 min · 1 h 42 min, Remaining: 37 min left, Relative: Today · Yesterday · 3 days ago · Sep 16, 2026, Size: 4.2 GB · 734 MB, Plural: 1 episode · 12 episodes · 2 seasons · No versions [96,136][781,424]
+down -> secondary-foreground [96,442][344,584]
+down -> warning [96,442][344,584]
+down -> destructive [96,442][344,584]
+down -> popover [96,442][344,584]
+down -> focus-glow [96,442][344,584]
+down -> display · 40/46, The quick fox watches a movie [96,428][1175,570]
+down -> title · 28/34, The quick fox watches a movie [96,602][865,720]
+down -> subheading · 16/21, The quick fox watches a movie [96,752][554,844]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+down -> overline · 10/13, THE QUICK FOX WATCHES A MOVIE [96,876][488,952]
+
+## Colors grid: last row and the item the verifier saw clipped
+up x4 -> focus-glow [96,442][344,584]; right x4 -> shadow [1216,442][1464,584]; up -> ring [1216,442][1464,584]; left x3 -> popover-foreground [376,442][624,584]
+
+## Colors grid walked back up (row 6 -> row 1 -> Formatting)
+up -> destructive-foreground [376,442][624,584]
+up -> warning-muted [376,442][624,584]
+up -> accent [376,442][624,584]
+up -> foreground-disabled [376,442][624,584]
+up -> surface [376,442][624,584]
+up -> Date: 7/25/2010 · Jul 25, 2010 · July 25, 2010, Runtime: 35 s · 42 min · 1 h 30 min · 1 h 42 min, Remaining: 37 min left, Relative: Today · Yesterday · 3 days ago · Sep 16, 2026, Size: 4.2 GB · 734 MB, Plural: 1 episode · 12 episodes · 2 seasons · No versions [96,136][781,424]
+up -> System default [96,136][372,196]
+
+## Dialog (trigger unringed under the scrim), trap, back
+select on Open dialog -> Cancel [1032,605][1182,677]; right x2 -> Remove, Remove; down -> Remove; left x2 -> Cancel, Cancel; up -> Cancel; back -> Open dialog [96,136][310,208]
+
+## Sheet side panel (focus on the selected option, right edge at the gutter)
+select on Open sheet -> English · Dolby Digital Plus 5.1 [1168,128][1824,208]; back -> Open sheet
+Repeated dialog->back->sheet 3x: always Cancel / Open dialog / English · Dolby Digital Plus 5.1 [1168,128][1824,208]
+
+## Remount restore (rows left on Elephants Dream, Sprite Fright, Night of the Living Dead; back x2; select)
+down -> Elephants Dream, 2 min left [96,134][488,439]
+down -> Sprite Fright, 2024 [96,138][304,534]
+down -> Night of the Living Dead, 1968 [880,138][1088,534]
+right x4 -> Big Buck Bunny, 2008 [1588,138][1796,534] (row end holds); left x12 -> Pioneer One, 1 season [96,138][304,534]

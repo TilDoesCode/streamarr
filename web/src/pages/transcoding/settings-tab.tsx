@@ -49,6 +49,7 @@ export const transcodingSettingsSchema = z.object({
   throttleEnabled: z.boolean(),
   throttleBufferSeconds: whole(30, 3_600),
   maxConcurrentTranscodes: whole(1, 16),
+  maxConcurrentRemuxes: whole(1, 64),
   jobIdleTimeoutSeconds: whole(10, 3_600),
   sessionIdleTimeoutSeconds: whole(60, 86_400),
   segmentRetentionSeconds: whole(60, 86_400),
@@ -79,6 +80,7 @@ function toValues(config: TranscodingConfigResponse): Values {
     throttleEnabled: config.throttleEnabled,
     throttleBufferSeconds: config.throttleBufferSeconds,
     maxConcurrentTranscodes: config.maxConcurrentTranscodes,
+    maxConcurrentRemuxes: config.maxConcurrentRemuxes ?? 8,
     jobIdleTimeoutSeconds: config.jobIdleTimeoutSeconds,
     sessionIdleTimeoutSeconds: config.sessionIdleTimeoutSeconds,
     segmentRetentionSeconds: config.segmentRetentionSeconds,
@@ -278,6 +280,7 @@ function SettingsForm({ config }: { config: TranscodingConfigResponse }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <NumberField id="segmentLengthSeconds" label="Segment length" unit="s" min={2} max={10} hint="Shorter segments start and seek faster." error={errors.segmentLengthSeconds?.message} input={form.register("segmentLengthSeconds")} />
             <NumberField id="maxConcurrentTranscodes" label="Concurrent transcodes" unit="jobs" min={1} max={16} hint="Running ffmpeg processes across all users." error={errors.maxConcurrentTranscodes?.message} input={form.register("maxConcurrentTranscodes")} />
+            <NumberField id="maxConcurrentRemuxes" label="Concurrent remuxes" unit="jobs" min={1} max={64} hint="Stream copies (video not re-encoded); counted separately, they need little CPU." error={errors.maxConcurrentRemuxes?.message} input={form.register("maxConcurrentRemuxes")} />
           </div>
           <SwitchRow
             control={form.control}

@@ -36,11 +36,11 @@ public sealed class NntpConnection : IDisposable
 
     private TcpClient? _tcpClient;
     private Stream? _stream;
-    private StreamReader? _reader;
     private StreamWriter? _writer;
     private AsyncSemaphore _commandLock = new(1);
     private CancellationTokenSource _cts = new();
     private volatile ExceptionDispatchInfo? _backgroundException;
+    private readonly byte[] _readBytes = new byte[ReadBufferChars];
     private readonly char[] _readBuffer = new char[ReadBufferChars];
     private int _readBufferOffset;
     private int _readBufferLength;
@@ -71,7 +71,6 @@ public sealed class NntpConnection : IDisposable
             }
 
             // Use Latin1 encoding to preserve exact byte values 0-255 for yEnc-encoded content
-            _reader = new StreamReader(_stream, Encoding.Latin1);
             _writer = new StreamWriter(_stream, Encoding.Latin1) { AutoFlush = true };
 
             // Read the server response
@@ -579,7 +578,7 @@ public sealed class NntpConnection : IDisposable
         Exception? failure = null;
         try
         {
-            if (_reader == null)
+            if (_stream == null)
                 throw new UsenetProtocolException("Invalid NNTP response: article stream is unavailable.");
 
             long encodedBytes = 0;
@@ -746,14 +745,12 @@ public sealed class NntpConnection : IDisposable
 
     private void CleanupConnection()
     {
-        _reader?.Dispose();
-        _writer?.Dispose();
         _stream?.Dispose();
+        _writer?.Dispose();
         _tcpClient?.Dispose();
         _commandLock.Dispose();
         _cts.Dispose();
 
-        _reader = null;
         _writer = null;
         _stream = null;
         _tcpClient = null;
@@ -784,7 +781,7 @@ public sealed class NntpConnection : IDisposable
 
     private void ThrowIfNotConnected()
     {
-        if (_writer == null || _reader == null || _tcpClient == null || !_tcpClient.Connected)
+        if (_writer == null || _stream == null || _tcpClient == null || !_tcpClient.Connected)
         {
             throw new UsenetNotConnectedException("Not connected to server. Call ConnectAsync first.");
         }
@@ -882,7 +879,9 @@ public sealed class NntpConnection : IDisposable
         {
             if (_readBufferOffset >= _readBufferLength)
             {
-                _readBufferLength = await _reader!.ReadAsync(_readBuffer.AsMemory(), ct).ConfigureAwait(false);
+                // One stream read per refill: a StreamReader kept reading while its 1024-byte buffer filled and hung after an aligned terminator.
+                var read = await _stream!.ReadAsync(_readBytes.AsMemory(), ct).ConfigureAwait(false);
+                _readBufferLength = Encoding.Latin1.GetChars(_readBytes.AsSpan(0, read), _readBuffer);
                 _readBufferOffset = 0;
                 if (_readBufferLength == 0)
                 {

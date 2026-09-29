@@ -105,6 +105,9 @@ public sealed record TranscodingSettings
     public bool ThrottleEnabled { get; init; } = true;
     public int ThrottleBufferSeconds { get; init; } = 120;
     public int MaxConcurrentTranscodes { get; init; } = 2;
+
+    /// <summary>Stream-copy (remux) runs, counted separately from transcodes because they barely use the CPU.</summary>
+    public int MaxConcurrentRemuxes { get; init; } = 8;
     public int JobIdleTimeoutSeconds { get; init; } = 60;
     public int SessionIdleTimeoutSeconds { get; init; } = 1_800;
     public int SegmentRetentionSeconds { get; init; } = 900;
@@ -131,6 +134,7 @@ public sealed record TranscodingSettings
         Range(errors, SegmentLengthSeconds, MinSegmentLength, MaxSegmentLength, "segmentLengthSeconds");
         Range(errors, ThrottleBufferSeconds, 30, 3_600, "throttleBufferSeconds");
         Range(errors, MaxConcurrentTranscodes, 1, 16, "maxConcurrentTranscodes");
+        Range(errors, MaxConcurrentRemuxes, 1, 64, "maxConcurrentRemuxes");
         Range(errors, JobIdleTimeoutSeconds, 10, 3_600, "jobIdleTimeoutSeconds");
         Range(errors, SessionIdleTimeoutSeconds, 60, 86_400, "sessionIdleTimeoutSeconds");
         Range(errors, SegmentRetentionSeconds, 60, 86_400, "segmentRetentionSeconds");

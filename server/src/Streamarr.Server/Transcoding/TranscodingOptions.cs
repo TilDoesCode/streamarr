@@ -18,4 +18,10 @@ public sealed class TranscodingOptions
     public int ProbeTimeoutSeconds { get; set; } = 45;
     public int CapabilityProbeTimeoutSeconds { get; set; } = 30;
     public int MaintenanceIntervalMilliseconds { get; set; } = 1_000;
+
+    /// <summary>Budget for reading a remux keyframe index from the container (Matroska Cues, MP4 sample table).</summary>
+    public int KeyframeIndexTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>Budget for the ffprobe packet scan used when the container has no usable index.</summary>
+    public int KeyframeScanTimeoutSeconds { get; set; } = 20;
 }

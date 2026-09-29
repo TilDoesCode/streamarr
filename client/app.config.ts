@@ -1,0 +1,88 @@
+import type { ConfigContext, ExpoConfig } from 'expo/config';
+
+// EXPO_TV=1 retargets the iOS project to tvOS (separate prebuild). Android is TV-capable always.
+const isTV = ['1', 'true'].includes((process.env.EXPO_TV ?? '').toLowerCase());
+
+const SURFACE = '#09090b';
+const BRAND = '#6d28d9';
+const TV_BANNER = './assets/tv/android-banner.png';
+
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  ...config,
+  name: 'Streamarr',
+  slug: 'streamarr',
+  version: '0.1.0',
+  scheme: 'streamarr',
+  orientation: 'default',
+  userInterfaceStyle: 'dark',
+  backgroundColor: SURFACE,
+  icon: './assets/images/icon.png',
+  ios: {
+    bundleIdentifier: 'dev.streamarr.app',
+    supportsTablet: true,
+    infoPlist: {
+      // Self-hosted servers are often reached over plain HTTP on the LAN.
+      NSAppTransportSecurity: { NSAllowsArbitraryLoads: true, NSAllowsLocalNetworking: true },
+    },
+  },
+  android: {
+    package: 'dev.streamarr.app',
+    adaptiveIcon: {
+      backgroundColor: BRAND,
+      foregroundImage: './assets/images/android-icon-foreground.png',
+      monochromeImage: './assets/images/android-icon-monochrome.png',
+    },
+    predictiveBackGestureEnabled: false,
+  },
+  locales: {
+    en: './locales/native/en.json',
+    de: './locales/native/de.json',
+  },
+  web: {
+    bundler: 'metro',
+    output: 'single',
+    favicon: './assets/images/favicon.png',
+  },
+  plugins: [
+    'expo-router',
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: SURFACE,
+        image: './assets/images/splash-icon.png',
+        imageWidth: 120,
+      },
+    ],
+    [
+      'expo-build-properties',
+      {
+        android: { usesCleartextTraffic: true },
+      },
+    ],
+    'expo-font',
+    'expo-image',
+    'expo-localization',
+    [
+      '@react-native-tvos/config-tv',
+      {
+        isTV,
+        androidTVBanner: TV_BANNER,
+        appleTVImages: {
+          icon: './assets/tv/apple-icon-1280x768.png',
+          iconSmall: './assets/tv/apple-icon-400x240.png',
+          iconSmall2x: './assets/tv/apple-icon-800x480.png',
+          topShelf: './assets/tv/apple-topshelf-1920x720.png',
+          topShelf2x: './assets/tv/apple-topshelf-3840x1440.png',
+          topShelfWide: './assets/tv/apple-topshelf-wide-2320x720.png',
+          topShelfWide2x: './assets/tv/apple-topshelf-wide-4640x1440.png',
+        },
+      },
+    ],
+    ['./plugins/with-android-tv', { androidTVBanner: TV_BANNER }],
+    './plugins/with-gradle-limits',
+  ],
+  experiments: {
+    typedRoutes: true,
+    reactCompiler: true,
+  },
+});

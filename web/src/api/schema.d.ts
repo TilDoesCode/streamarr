@@ -3724,6 +3724,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transcode/{token}/subtitles/{stream}/main.m3u8": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                    stream: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcode/{token}/subtitles/{stream}/{segment}.vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** WebVTT segment aligned with the video segment of the same index; cue times are on the media timeline. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                    stream: number;
+                    segment: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transcode/{token}": {
         parameters: {
             query?: never;
@@ -4164,7 +4260,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Starts an HLS transcode of a live stream capability (or a test sample) and returns its playlist capability. */
+        /** Starts an HLS rendition (remux or transcode; mode defaults to transcode) of a live stream capability or a test sample. */
         post: {
             parameters: {
                 query?: never;
@@ -4298,7 +4394,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Explains what a transcode of this source would do for this client, without starting ffmpeg. */
+        /** Explains direct play → remux → transcode for this client (mode defaults to auto), without starting ffmpeg. */
         post: {
             parameters: {
                 query?: never;
@@ -7003,6 +7099,10 @@ export interface components {
             maxAudioChannels?: number | null;
             supportsHdr?: boolean | null;
             supports10Bit?: boolean | null;
+            /** @description HDR formats the display renders: hdr10, hlg, dolbyvision (overrides supportsHdr when set). */
+            hdrFormats?: string[] | null;
+            /** @description Subtitle formats the player renders from the original file (srt, ass, webvtt, pgs, vobsub, …). */
+            subtitleFormats?: string[] | null;
         };
         ClientSpan: {
             name: string | null;
@@ -7352,6 +7452,19 @@ export interface components {
             /** Format: int32 */
             priority?: number | null;
         };
+        /** @description Where a remux's keyframe-accurate segment plan came from. */
+        KeyframeIndexResponse: {
+            /** @description `matroska-cues`, `mp4-sample-table` or `ffprobe-scan`. */
+            source: string | null;
+            /** Format: int32 */
+            keyframes: number;
+            /** Format: double */
+            buildMs: number;
+            /** Format: int32 */
+            segments: number;
+            /** Format: double */
+            maxSegmentSeconds: number;
+        };
         /** @description One release whose episode-specific pre-download is running or locally complete. */
         LocalReleaseAvailabilityEntry: {
             workId: string | null;
@@ -7596,6 +7709,14 @@ export interface components {
             absoluteEpisodes?: number[] | null;
             seasonPack?: boolean;
             airDate?: string | null;
+        };
+        /** @description A decision reason: stable `code` for clients (localizable with `params`) and an English message. */
+        PlanReasonResponse: {
+            code?: string | null;
+            message?: string | null;
+            params?: {
+                [key: string]: string;
+            } | null;
         };
         PlatformResponse: {
             os?: string | null;
@@ -8506,6 +8627,19 @@ export interface components {
             /** Format: date-time */
             receivedAt?: string;
         };
+        /** @description A source subtitle stream and how this plan delivers it: `webvtt` rendition, `embedded` (direct play) or `none`. */
+        SubtitleTrackResponse: {
+            /** Format: int32 */
+            index: number;
+            codec: string | null;
+            language?: string | null;
+            title?: string | null;
+            name: string | null;
+            forced: boolean;
+            isDefault: boolean;
+            textBased: boolean;
+            deliveredAs: string | null;
+        };
         TmdbPerson: {
             name: string | null;
             type: string | null;
@@ -8543,6 +8677,14 @@ export interface components {
             command: string[] | null;
         };
         TranscodePlanResponse: {
+            /** @description `direct` (play the original file), `remux` (stream copy into HLS) or `transcode`. */
+            mode: string | null;
+            /** @description Why this mode: direct-play blockers a remux solves, audio handling, or why the video must be re-encoded. */
+            reasons: components["schemas"]["PlanReasonResponse"][] | null;
+            remuxPossible: boolean;
+            remuxBlockers: components["schemas"]["PlanReasonResponse"][] | null;
+            subtitles: components["schemas"]["SubtitleTrackResponse"][] | null;
+            keyframeIndex?: components["schemas"]["KeyframeIndexResponse"];
             directPlayPossible: boolean;
             directPlayBlockers: string[] | null;
             source: components["schemas"]["TranscodeSourceResponse"];
@@ -8571,12 +8713,21 @@ export interface components {
             maxBitrateKbps?: number | null;
             /** Format: int32 */
             audioStreamIndex?: number | null;
+            /**
+             * Format: int32
+             * @description The subtitle stream the viewer wants; image-based streams are reported as not deliverable by a remux.
+             */
+            subtitleStreamIndex?: number | null;
             /** Format: double */
             startPositionSeconds?: number | null;
             clientName?: string | null;
+            /** @description `auto` (remux when the video can be copied), `remux` (fail with 422 otherwise) or `transcode`. Sessions default to `transcode`, the plan endpoint to `auto`. */
+            mode?: string | null;
         };
         TranscodeSessionCreatedResponse: {
             handle: string | null;
+            /** @description `remux` or `transcode`. */
+            mode: string | null;
             playlistUrl: string | null;
             mediaPlaylistUrl: string | null;
             /** Format: double */
@@ -8589,6 +8740,8 @@ export interface components {
         };
         TranscodeSessionResponse: {
             handle: string | null;
+            /** @description `remux` or `transcode`. */
+            mode: string | null;
             title: string | null;
             client: string | null;
             sourceKind: string | null;
@@ -8632,6 +8785,8 @@ export interface components {
             /** Format: double */
             frameRate?: number | null;
             hdr: string | null;
+            /** Format: int32 */
+            dolbyVisionProfile?: number | null;
             interlaced: boolean;
             audio: components["schemas"]["SourceAudioResponse"][] | null;
         };
@@ -8669,9 +8824,15 @@ export interface components {
             frameRate: number;
             level: string | null;
             codecs: string | null;
+            /** @description True for a remux: the video bitstream is copied, not re-encoded. */
+            videoCopy?: boolean;
+            /** @description HLS VIDEO-RANGE of the output: SDR, PQ or HLG. */
+            videoRange: string | null;
             /** Format: int32 */
             audioStreamIndex?: number | null;
             audioSourceCodec?: string | null;
+            /** @description Output audio codec (the source codec when copied). */
+            audioCodec?: string | null;
             audioCopy?: boolean;
             /** Format: int32 */
             audioChannels?: number | null;
@@ -8735,6 +8896,11 @@ export interface components {
             throttleBufferSeconds: number;
             /** Format: int32 */
             maxConcurrentTranscodes: number;
+            /**
+             * Format: int32
+             * @description Concurrent stream-copy (remux) runs; a separate pool because a copy costs a fraction of an encode.
+             */
+            maxConcurrentRemuxes: number;
             /** Format: int32 */
             jobIdleTimeoutSeconds: number;
             /** Format: int32 */
@@ -8788,6 +8954,8 @@ export interface components {
             throttleBufferSeconds?: number | null;
             /** Format: int32 */
             maxConcurrentTranscodes?: number | null;
+            /** Format: int32 */
+            maxConcurrentRemuxes?: number | null;
             /** Format: int32 */
             jobIdleTimeoutSeconds?: number | null;
             /** Format: int32 */

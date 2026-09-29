@@ -757,25 +757,53 @@ only, a built-in test sample) and returns a new, unguessable playlist capability
 
 ```json
 // TranscodeSessionCreateRequest — exactly one of streamToken / sampleId
-{ "streamToken": "abc123", "maxHeight": 1080, "maxBitrateKbps": 8000,
-  "audioStreamIndex": 1, "startPositionSeconds": 0, "clientName": "my-tv-app",
-  "client": { "videoCodecs": ["h264"], "audioCodecs": ["aac"], "containers": ["mp4"],
-              "maxAudioChannels": 2, "supportsHdr": false, "supports10Bit": false } }
-```
-```json
-// 201 TranscodeSessionCreatedResponse
-{ "handle": "a53f5b44829f",
-  "playlistUrl": "/api/v1/transcode/<capability>/master.m3u8",
-  "mediaPlaylistUrl": "/api/v1/transcode/<capability>/main.m3u8",
-  "durationSeconds": 7201.5, "segmentLengthSeconds": 4, "segmentCount": 1801,
-  "plan": { "directPlayPossible": false, "directPlayBlockers": ["Audio codec 'ac3' is not supported by the player."],
-            "target": { "videoCodec": "h264", "width": 1920, "height": 1080, "codecs": "avc1.640029,mp4a.40.2", … },
-            "hardwareDecode": true, "hardwareDecodeReason": "…", "encoder": "h264_vaapi", "toneMap": "notneeded", … } }
+{ "streamToken": "abc123", "mode": "auto", "maxHeight": 1080, "maxBitrateKbps": 8000,
+  "audioStreamIndex": 1, "subtitleStreamIndex": 3, "startPositionSeconds": 0, "clientName": "my-tv-app",
+  "client": { "videoCodecs": ["h264", "hevc"], "audioCodecs": ["aac", "ac3", "eac3"], "containers": ["mp4"],
+              "maxAudioChannels": 6, "supportsHdr": true, "supports10Bit": true,
+              "hdrFormats": ["hdr10", "hlg"], "subtitleFormats": ["srt", "webvtt"] } }
 ```
 
-Errors: `404 unknown_stream`, `409 transcoding_disabled`, `422` planning errors
-(`no_video_stream`, `unknown_duration`, …), `502 probe_failed`, `503 ffmpeg_unavailable`,
-`503 transcode_capacity`, `503 too_many_sessions`. `POST /api/v1/transcoding/plan` takes
+`mode` picks the delivery: `auto` (remux when the video can be copied for this client, else
+transcode), `remux` (fail with `422 remux_not_possible` otherwise) or `transcode`. Sessions default to
+`transcode` so existing callers are unchanged; `POST /transcoding/plan` defaults to `auto` and may also
+answer `direct`. `hdrFormats` (`hdr10`, `hlg`, `dolbyvision`) overrides `supportsHdr`;
+`subtitleFormats` declares what the player renders from the original file (direct-play check for
+`subtitleStreamIndex`). Remuxes are described in [transcoding.md](./transcoding.md#remux-direct-stream).
+```json
+// 201 TranscodeSessionCreatedResponse (a remux of a 4K HDR10 MKV)
+{ "handle": "a53f5b44829f", "mode": "remux",
+  "playlistUrl": "/api/v1/transcode/<capability>/master.m3u8",
+  "mediaPlaylistUrl": "/api/v1/transcode/<capability>/main.m3u8",
+  "durationSeconds": 7201.5, "segmentLengthSeconds": 6, "segmentCount": 1187,
+  "plan": { "mode": "remux",
+            "reasons": [ { "code": "container_unsupported", "message": "Container 'mkv' is not supported by the player.", "params": { "container": "mkv" } },
+                         { "code": "audio_converted", "message": "Audio 'truehd' 8 ch is converted to 'eac3' 6 ch because …",
+                           "params": { "from": "truehd", "to": "eac3", "channels": "6" } } ],
+            "remuxPossible": true, "remuxBlockers": [],
+            "subtitles": [ { "index": 3, "codec": "subrip", "language": "en", "name": "English", "forced": false,
+                             "isDefault": false, "textBased": true, "deliveredAs": "webvtt" },
+                           { "index": 4, "codec": "hdmv_pgs_subtitle", "language": "de", "name": "German", …, "deliveredAs": "none" } ],
+            "keyframeIndex": { "source": "matroska-cues", "keyframes": 2400, "buildMs": 38, "segments": 1187, "maxSegmentSeconds": 8.3 },
+            "directPlayPossible": false, "directPlayBlockers": ["…"],
+            "target": { "videoCodec": "hevc", "width": 3840, "height": 2160, "videoCopy": true, "videoRange": "PQ",
+                        "codecs": "hvc1.2.4.L153.90,ec-3", "audioCodec": "eac3", "audioCopy": false, "audioChannels": 6, … },
+            "encoder": "copy", "hardwareDecode": false, "toneMap": "notneeded", … } }
+```
+
+Reason codes are stable for localization: direct-play blockers `container_unsupported`,
+`video_codec_unsupported`, `bit_depth_unsupported`, `hdr_unsupported`, `interlaced`,
+`audio_codec_unsupported`, `subtitle_format_unsupported`, `resolution_exceeds_limit`,
+`bitrate_exceeds_limit`; remux blockers additionally `video_codec_not_remuxable`,
+`video_profile_unsupported`, `dolby_vision_profile_unsupported`, `keyframe_index_unavailable`; decisions
+`direct_play`, `hls_requested`, `transcode_requested`, `audio_copied`, `audio_converted`,
+`subtitle_not_deliverable`. `deliveredAs` is `webvtt` (remux rendition), `embedded` (direct play) or
+`none`.
+
+Errors: `400 invalid_transcode_request` (also for an unknown `mode`), `404 unknown_stream`,
+`409 transcoding_disabled`, `422` planning errors (`no_video_stream`, `unknown_duration`,
+`unknown_audio_stream`, `unknown_subtitle_stream`, `remux_not_possible`), `502 probe_failed`,
+`503 ffmpeg_unavailable`, `503 transcode_capacity`, `503 remux_capacity`, `503 too_many_sessions`. `POST /api/v1/transcoding/plan` takes
 the same body and returns only the `plan` without starting ffmpeg.
 
 ### `GET /api/v1/transcode/{capability}/…`
@@ -785,8 +813,9 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 
 | Path | Result |
 |---|---|
-| `master.m3u8` | One variant with `BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE=SDR`. |
-| `main.m3u8` | Complete VOD playlist (fMP4, `#EXT-X-MAP`, fixed segment grid, `#EXT-X-ENDLIST`). |
+| `master.m3u8` | One variant with `BANDWIDTH`, `AVERAGE-BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE` (`SDR` for transcodes; `PQ`/`HLG`/`SDR` for remuxes). Remuxes add one `#EXT-X-MEDIA:TYPE=SUBTITLES` per delivered text stream and `CLOSED-CAPTIONS=NONE`. |
+| `main.m3u8` | Complete VOD playlist (fMP4, `#EXT-X-MAP`, `#EXT-X-ENDLIST`): a fixed grid for transcodes, keyframe-aligned real durations for remuxes. |
+| `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | Remux only: WebVTT rendition aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline); `404` for streams that are not delivered. |
 | `init.mp4` | Initialization segment; identical across ffmpeg restarts. |
 | `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. `503`/`504` carry `Retry-After: 1`. |
 | `DELETE` on the capability root | Ends the session and its ffmpeg process (`204`). |
@@ -795,11 +824,11 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET/PUT /api/v1/transcoding/config` | Settings (`PUT` is a partial update; `hardwareDecodingAuto: true` follows the self-tests). |
+| `GET/PUT /api/v1/transcoding/config` | Settings (`PUT` is a partial update; `hardwareDecodingAuto: true` follows the self-tests; `maxConcurrentRemuxes` 1–64 is the separate remux pool). |
 | `GET /api/v1/transcoding/capabilities` · `POST …/refresh` | ffmpeg version, encoders, filters, platform, and per-backend self-test results with setup notes. `detecting` is true while a detection runs. |
 | `GET /api/v1/transcoding/samples` · `POST …/samples/{id}/generate` | Synthetic test media and its generation state. |
 | `GET/POST /api/v1/transcoding/benchmarks` · `GET …/{id}` | Queue a benchmark (`sampleId`, `maxHeight`, `bitrateKbps`, optional `acceleration` override) and read its graded result. |
-| `GET /api/v1/transcoding/sessions` · `DELETE …/{handle}` | Live sessions with plan, ffmpeg job state, redacted command and log tail; stop by public handle. |
+| `GET /api/v1/transcoding/sessions` · `DELETE …/{handle}` | Live sessions with `mode` (`remux`/`transcode`), plan, ffmpeg job state, redacted command and log tail; stop by public handle. |
 
 ## 12. Viewer accounts and watch state
 

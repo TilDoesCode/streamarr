@@ -21,6 +21,9 @@ public sealed record HlsSimOptions
     public double MaxLateDriftSeconds { get; init; } = 0.30;
     public double MaxDiscontinuitySeconds { get; init; } = 0.10;
     public double MaxAudioVideoOffsetSeconds { get; init; } = 0.25;
+
+    /// <summary>Fetch and validate the WebVTT segment of every subtitle rendition alongside each video segment.</summary>
+    public bool ValidateSubtitles { get; init; } = true;
 }
 
 public sealed record SegmentFetch(
@@ -33,7 +36,8 @@ public sealed record SegmentFetch(
     bool StartsWithKeyframe,
     long Bytes,
     double LatencyMs,
-    int Run);
+    int Run,
+    double? VideoDecodeStart = null);
 
 public sealed record HlsSimReport
 {
@@ -51,6 +55,10 @@ public sealed record HlsSimReport
     public long TotalBytes { get; init; }
     public required IReadOnlyList<string> Errors { get; init; }
     public required IReadOnlyList<string> Warnings { get; init; }
+    public int SubtitleRenditions { get; init; }
+    public int SubtitleSegments { get; init; }
+    public int SubtitleCues { get; init; }
+    public IReadOnlyList<string> SubtitleSamples { get; init; } = [];
 
     public bool Passed => Errors.Count == 0;
 
@@ -64,6 +72,8 @@ public sealed record HlsSimReport
 }
 
 public sealed record MediaPlaylist(string InitUri, IReadOnlyList<(double Duration, string Uri)> Segments, int TargetDuration);
+
+public sealed record SubtitleRendition(string Name, string? Language, Uri PlaylistUrl, MediaPlaylist Playlist);
 
 /// <summary>
 /// Plays an HLS VOD rendition the way hls.js does (buffer target, sequential fetches, seeks) while validating every fMP4
@@ -85,6 +95,21 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
         var media = ParseMedia(await GetStringAsync(mediaUrl, ct), errors);
         if (media.Segments.Count == 0)
             return Report(media, codecs, fetches, seekLatencies, 0, 0, null, null, clock, errors, warnings);
+        var subtitles = new List<SubtitleRendition>();
+        foreach (var (name, language, uri) in ParseSubtitleRenditions(master))
+        {
+            var url = new Uri(masterUrl, uri);
+            var playlist = ParseMedia(await GetStringAsync(url, ct), errors, requireMap: false);
+            subtitles.Add(new SubtitleRendition(name, language, url, playlist));
+            if (playlist.Segments.Count != media.Segments.Count
+                || playlist.Segments.Zip(media.Segments).Any(p => Math.Abs(p.First.Duration - p.Second.Duration) > 0.001))
+            {
+                errors.Add($"subtitle rendition '{name}' is not aligned with the video playlist");
+            }
+        }
+        var subtitleSegments = 0;
+        var subtitleCues = 0;
+        var subtitleSamples = new List<string>();
 
         var segmentLength = media.Segments[0].Duration;
         var starts = new double[media.Segments.Count];
@@ -174,6 +199,20 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
                     break;
                 }
                 var latency = clock.Elapsed.TotalMilliseconds - started;
+                if (options.ValidateSubtitles)
+                {
+                    foreach (var rendition in subtitles.Where(r => index < r.Playlist.Segments.Count))
+                    {
+                        var vtt = await GetStringAsync(new Uri(rendition.PlaylistUrl, rendition.Playlist.Segments[index].Uri), ct);
+                        subtitleSegments++;
+                        foreach (var cue in InspectWebVtt(rendition.Name, index, starts[index], duration, vtt, errors))
+                        {
+                            subtitleCues++;
+                            if (subtitleSamples.Count < 12)
+                                subtitleSamples.Add($"{rendition.Name} #{index}: {cue}");
+                        }
+                    }
+                }
                 var fetch = Inspect(index, starts[index], duration, data, init, latency, run, index == media.Segments.Count - 1, previous, errors, warnings);
                 fetches.Add(fetch);
                 runs[^1].Add(data);
@@ -215,7 +254,51 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
             }
         }
 
-        return Report(media, codecs, fetches, seekLatencies, stalls, stallSeconds, ttfs, ttff, clock, errors, warnings);
+        return Report(media, codecs, fetches, seekLatencies, stalls, stallSeconds, ttfs, ttff, clock, errors, warnings) with
+        {
+            SubtitleRenditions = subtitles.Count,
+            SubtitleSegments = subtitleSegments,
+            SubtitleCues = subtitleCues,
+            SubtitleSamples = subtitleSamples,
+        };
+    }
+
+    /// <summary>Checks one WebVTT segment: header, X-TIMESTAMP-MAP, and every cue overlapping the segment's playlist window.</summary>
+    internal static List<string> InspectWebVtt(string rendition, int index, double start, double duration, string vtt, List<string> errors)
+    {
+        var cues = new List<string>();
+        var lines = vtt.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        if (lines.FirstOrDefault()?.StartsWith("WEBVTT", StringComparison.Ordinal) != true)
+            errors.Add($"subtitle '{rendition}' segment {index}: missing WEBVTT header");
+        if (!lines.Any(l => l.StartsWith("X-TIMESTAMP-MAP=", StringComparison.Ordinal)))
+            errors.Add($"subtitle '{rendition}' segment {index}: missing X-TIMESTAMP-MAP");
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!lines[i].Contains("-->", StringComparison.Ordinal))
+                continue;
+            var parts = lines[i].Split("-->", StringSplitOptions.TrimEntries);
+            var from = WebVttSubtitles.ParseTimestamp(parts[0]);
+            var to = WebVttSubtitles.ParseTimestamp(parts[1].Split(' ')[0]);
+            if (from is null || to is null || to <= from)
+            {
+                errors.Add($"subtitle '{rendition}' segment {index}: malformed cue timing '{lines[i]}'");
+                continue;
+            }
+            if (to <= start - 0.001 || from >= start + duration + 0.001)
+                errors.Add($"subtitle '{rendition}' segment {index}: cue {parts[0]} lies outside {start:0.000}-{start + duration:0.000}s");
+            cues.Add($"{parts[0]} {(i + 1 < lines.Length ? lines[i + 1] : string.Empty)}");
+        }
+        return cues;
+    }
+
+    internal static IEnumerable<(string Name, string? Language, string Uri)> ParseSubtitleRenditions(string master)
+    {
+        foreach (var line in Lines(master).Where(l => l.StartsWith("#EXT-X-MEDIA:", StringComparison.Ordinal) && l.Contains("TYPE=SUBTITLES", StringComparison.Ordinal)))
+        {
+            string? Attribute(string name) => line.Split($"{name}=\"").ElementAtOrDefault(1)?.Split('"')[0];
+            if (Attribute("URI") is { } uri)
+                yield return (Attribute("NAME") ?? uri, Attribute("LANGUAGE"), uri);
+        }
     }
 
     private SegmentFetch Inspect(
@@ -240,16 +323,17 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
             errors.Add($"segment {index}: audio starts {audio.StartSeconds - video.StartSeconds:+0.000;-0.000}s away from video");
         if (!last && Math.Abs(video.DurationSeconds - expectedDuration) > 0.15)
             warnings.Add($"segment {index}: {video.DurationSeconds:0.000}s of video for a {expectedDuration:0.000}s playlist entry");
-        if (previous is { VideoStart: { } prevStart, VideoDuration: { } prevDuration } && previous.Index == index - 1 && previous.Run == run)
+        if (previous is { VideoDecodeStart: { } prevStart, VideoDuration: { } prevDuration } && previous.Index == index - 1 && previous.Run == run)
         {
-            var gap = video.StartSeconds - (prevStart + prevDuration);
+            // Decode time is continuous even where open-GOP leading pictures present before the segment's keyframe.
+            var gap = video.DecodeStartSeconds - (prevStart + prevDuration);
             if (Math.Abs(gap) > options.MaxDiscontinuitySeconds)
                 errors.Add($"segment {index}: {(gap > 0 ? "gap" : "overlap")} of {Math.Abs(gap) * 1000:0} ms after segment {index - 1}");
         }
         log?.Invoke(string.Create(CultureInfo.InvariantCulture,
             $"segment {index,4}: {data.Length / 1024,6} KiB in {latency,6:0} ms  video {video.StartSeconds,8:0.000}s +{video.DurationSeconds:0.000}s  key={video.StartsWithKeyframe}"));
         return new SegmentFetch(index, expectedStart, expectedDuration, video.StartSeconds, video.DurationSeconds, audio?.StartSeconds,
-            video.StartsWithKeyframe, data.Length, latency, run);
+            video.StartsWithKeyframe, data.Length, latency, run, video.DecodeStartSeconds);
     }
 
     private async Task<string> DecodeAsync(byte[] init, List<byte[]> segments, CancellationToken ct)
@@ -264,7 +348,8 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
                     await file.WriteAsync(segment, ct);
             }
             var result = await new ProcessRunner().RunAsync(
-                options.FfmpegPath, ["-hide_banner", "-nostdin", "-v", "error", "-i", path, "-f", "null", "-"], TimeSpan.FromMinutes(5), ct);
+                // The input time base avoids false "non monotonically increasing dts" from rescaling millisecond timestamps to 1/fps.
+                options.FfmpegPath, ["-hide_banner", "-nostdin", "-v", "error", "-i", path, "-enc_time_base:v", "-1", "-f", "null", "-"], TimeSpan.FromMinutes(5), ct);
             return result.Succeeded ? result.StandardError.Trim() : $"exit {result.ExitCode}: {TranscodeRedaction.Tail(result.StandardError, 4)}";
         }
         finally
@@ -297,7 +382,7 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
         return (string.Empty, string.Empty);
     }
 
-    internal static MediaPlaylist ParseMedia(string text, List<string> errors)
+    internal static MediaPlaylist ParseMedia(string text, List<string> errors, bool requireMap = true)
     {
         var lines = Lines(text);
         var segments = new List<(double, string)>();
@@ -320,7 +405,7 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
         }
         if (!lines.Contains("#EXT-X-ENDLIST"))
             errors.Add("media playlist is not a complete VOD playlist (#EXT-X-ENDLIST missing)");
-        if (init.Length == 0)
+        if (init.Length == 0 && requireMap)
             errors.Add("media playlist has no #EXT-X-MAP init segment");
         if (segments.Any(s => Math.Round(s.Item1) > target))
             errors.Add("a segment is longer than #EXT-X-TARGETDURATION");

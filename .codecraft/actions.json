@@ -91,6 +91,20 @@
       }
     },
     {
+      "id": "devworld",
+      "label": "Dev World (Core Server + mock Usenet/TMDB for the viewer client)",
+      "group": "dev",
+      "command": "bash",
+      "args": ["scripts/devworld.sh", "run"],
+      "shell": false,
+      "env": {
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1"
+      },
+      "appName": {
+        "devworld": { "port": 39300, "portEnv": "DEVWORLD_PORT" }
+      }
+    },
+    {
       "id": "web",
       "label": "Management UI (native dev)",
       "group": "dev",
@@ -103,6 +117,42 @@
       "shell": true,
       "appName": {
         "web-dev": { "port": 39191, "portEnv": "PORT" }
+      }
+    },
+    {
+      "id": "client-web",
+      "label": "Viewer Client (Expo web)",
+      "group": "dev",
+      "command": "sh",
+      "args": [
+        "-c",
+        "exec npx expo start --web --port \"${PORT:-39301}\""
+      ],
+      "cwd": "./client",
+      "shell": false,
+      "env": {
+        "EXPO_NO_TELEMETRY": "1"
+      },
+      "appName": {
+        "client-web": { "port": 39301, "portEnv": "PORT" }
+      }
+    },
+    {
+      "id": "client-metro",
+      "label": "Viewer Client Metro (dev builds: Android/Google TV, iOS/tvOS)",
+      "group": "dev",
+      "command": "sh",
+      "args": [
+        "-c",
+        "exec npx expo start --dev-client --port \"${RCT_METRO_PORT:-8081}\""
+      ],
+      "cwd": "./client",
+      "shell": false,
+      "env": {
+        "EXPO_NO_TELEMETRY": "1"
+      },
+      "appName": {
+        "client-metro": { "port": 8081, "portEnv": "RCT_METRO_PORT" }
       }
     },
     {

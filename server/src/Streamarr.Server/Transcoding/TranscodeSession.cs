@@ -19,6 +19,9 @@ public sealed class TranscodeSession
     private long _bytesServed;
     private int _restarts;
     private int _lastRequested = -1;
+    private readonly bool[] _subtitleCovered;
+    private readonly object _initLock = new();
+    private Fmp4Init? _servedInit;
 
     public TranscodeSession(
         string id,
@@ -44,6 +47,10 @@ public sealed class TranscodeSession
         Client = client;
         Title = title;
         CreatedAt = DateTimeOffset.UtcNow;
+        Subtitles = plan.Mode == DeliveryMode.Remux
+            ? plan.Subtitles.Where(s => s.Delivered).Select(s => new SubtitleTrackStore(s.Stream.Index)).ToList()
+            : [];
+        _subtitleCovered = new bool[timeline.Count];
         Touch();
     }
 
@@ -62,6 +69,10 @@ public sealed class TranscodeSession
     public string Directory { get; }
     public string Client { get; }
     public string Title { get; }
+    public DeliveryMode Mode => Plan.Mode;
+
+    /// <summary>WebVTT renditions of a remux session, one per delivered text subtitle stream.</summary>
+    public IReadOnlyList<SubtitleTrackStore> Subtitles { get; }
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset LastAccessAt => new(Interlocked.Read(ref _lastAccessTicks), TimeSpan.Zero);
     public long SegmentsServed => Interlocked.Read(ref _segmentsServed);
@@ -95,6 +106,36 @@ public sealed class TranscodeSession
     }
 
     internal void NoteRestart() => Interlocked.Increment(ref _restarts);
+
+    /// <summary>Marks segments whose subtitle cues a run has fully demuxed (it started at or before them and read past them).</summary>
+    internal void CoverSubtitles(int from, int to)
+    {
+        lock (_subtitleCovered)
+        {
+            for (var i = Math.Max(0, from); i <= Math.Min(to, _subtitleCovered.Length - 1); i++)
+                _subtitleCovered[i] = true;
+        }
+    }
+
+    /// <summary>The first remux run's init becomes the served one; later runs align their decode times to its edit lists.</summary>
+    internal Fmp4Init AdoptRemuxInit(byte[] init)
+    {
+        lock (_initLock)
+        {
+            if (_servedInit is null)
+            {
+                InitSegment ??= Fmp4.NormalizeInit(init);
+                _servedInit = Fmp4.ParseInit(InitSegment);
+            }
+            return _servedInit;
+        }
+    }
+
+    public bool SubtitlesCovered(int segment)
+    {
+        lock (_subtitleCovered)
+            return segment >= 0 && segment < _subtitleCovered.Length && _subtitleCovered[segment];
+    }
 
     public string SegmentPath(int index) => Path.Combine(Directory, $"{index}.m4s");
 

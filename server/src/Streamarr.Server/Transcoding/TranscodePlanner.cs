@@ -12,10 +12,84 @@ public sealed record ClientProfile
     public bool SupportsHdr { get; init; }
     public bool Supports10Bit { get; init; }
 
+    /// <summary>HDR formats the display path renders (hdr10, hlg, dolbyvision); null falls back to <see cref="SupportsHdr"/>.</summary>
+    public IReadOnlyList<string>? HdrFormats { get; init; }
+
+    /// <summary>Subtitle formats the player renders from the original file (srt, ass, webvtt, pgs, …); null means "not declared".</summary>
+    public IReadOnlyList<string>? SubtitleFormats { get; init; }
+
     public static ClientProfile Default { get; } = new();
+
+    public bool SupportsHdrFormat(HdrFormat format)
+        => format == HdrFormat.None || (HdrFormats is { } formats ? formats.Contains(format.ToApi(), StringComparer.OrdinalIgnoreCase) : SupportsHdr);
 }
 
-public sealed record TranscodeLimits(int? MaxHeight = null, int? MaxBitrateKbps = null, int? AudioStreamIndex = null);
+public sealed record TranscodeLimits(int? MaxHeight = null, int? MaxBitrateKbps = null, int? AudioStreamIndex = null, int? SubtitleStreamIndex = null);
+
+/// <summary>How a stream reaches the player: the original file, a stream copy into HLS, or a full re-encode.</summary>
+public enum DeliveryMode
+{
+    Direct,
+    Remux,
+    Transcode,
+}
+
+public enum ModePreference
+{
+    Auto,
+    Remux,
+    Transcode,
+}
+
+public static class DeliveryModeNames
+{
+    public static string ToApi(this DeliveryMode mode) => mode switch
+    {
+        DeliveryMode.Direct => "direct",
+        DeliveryMode.Remux => "remux",
+        _ => "transcode",
+    };
+
+    public static bool TryParsePreference(string? value, out ModePreference preference)
+    {
+        preference = (value ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "" or "auto" => ModePreference.Auto,
+            "remux" or "copy" => ModePreference.Remux,
+            "transcode" => ModePreference.Transcode,
+            _ => (ModePreference)(-1),
+        };
+        return Enum.IsDefined(preference);
+    }
+
+    public static string ToApi(this HdrFormat format) => format switch
+    {
+        HdrFormat.Hdr10 => "hdr10",
+        HdrFormat.Hlg => "hlg",
+        HdrFormat.DolbyVision => "dolbyvision",
+        _ => "none",
+    };
+}
+
+/// <summary>A stable, machine-readable reason with an English message; <see cref="Params"/> carry the values for localized texts.</summary>
+public sealed record PlanReason(string Code, string Message, IReadOnlyDictionary<string, string>? Params = null)
+{
+    public static PlanReason Of(string code, string message, params (string Key, object? Value)[] parameters)
+        => new(code, message, parameters.Length == 0
+            ? null
+            : parameters.Where(p => p.Value is not null)
+                .ToDictionary(p => p.Key, p => Convert.ToString(p.Value, CultureInfo.InvariantCulture)!, StringComparer.Ordinal));
+}
+
+/// <summary>How one source subtitle stream reaches the player in this plan.</summary>
+public sealed record SubtitlePlan(SourceSubtitleStream Stream, string DeliveredAs, string? Language, string Name)
+{
+    public const string WebVtt = "webvtt";
+    public const string Embedded = "embedded";
+    public const string None = "none";
+
+    public bool Delivered => DeliveredAs == WebVtt;
+}
 
 public enum ToneMapMode
 {
@@ -35,10 +109,15 @@ public sealed record VideoTarget(
     string Level,
     string CodecsTag);
 
-public sealed record AudioTarget(int SourceIndex, string SourceCodec, bool Copy, int Channels, int BitrateKbps, int? SampleRate)
-{
-    public const string CodecsTag = "mp4a.40.2";
-}
+public sealed record AudioTarget(
+    int SourceIndex,
+    string SourceCodec,
+    bool Copy,
+    int Channels,
+    int BitrateKbps,
+    int? SampleRate,
+    string Codec = "aac",
+    string CodecsTag = "mp4a.40.2");
 
 public sealed record TranscodePlan
 {
@@ -57,12 +136,27 @@ public sealed record TranscodePlan
     public bool Deinterlace { get; init; }
     public IReadOnlyList<string> Warnings { get; init; } = [];
     public double DurationSeconds { get; init; }
+    public DeliveryMode Mode { get; init; } = DeliveryMode.Transcode;
+
+    /// <summary>Why this mode was chosen (or why the cheaper modes were not possible).</summary>
+    public IReadOnlyList<PlanReason> Reasons { get; init; } = [];
+    public IReadOnlyList<PlanReason> DirectPlayReasons { get; init; } = [];
+    public bool RemuxPossible { get; init; }
+    public IReadOnlyList<PlanReason> RemuxBlockers { get; init; } = [];
+
+    /// <summary>HLS VIDEO-RANGE of a stream copy: SDR, PQ or HLG.</summary>
+    public string VideoRange { get; init; } = "SDR";
+    public IReadOnlyList<SubtitlePlan> Subtitles { get; init; } = [];
+    public KeyframeIndex? KeyframeIndex { get; init; }
+    public SegmentTimeline? RemuxTimeline { get; init; }
+    public int? PeakBandwidthBitsPerSecond { get; init; }
+    public int? AverageBandwidthBitsPerSecond { get; init; }
 
     public bool Scales => Video.Width != SourceVideo.Width || Video.Height != SourceVideo.Height;
 
     public int BandwidthBitsPerSecond => (Video.BitrateKbps + (Audio?.BitrateKbps ?? 0)) * 1000;
 
-    public string CodecsAttribute => Audio is null ? Video.CodecsTag : $"{Video.CodecsTag},{AudioTarget.CodecsTag}";
+    public string CodecsAttribute => Audio is null ? Video.CodecsTag : $"{Video.CodecsTag},{Audio.CodecsTag}";
 }
 
 public sealed class TranscodePlanningException(string code, string message) : Exception(message)
@@ -94,7 +188,7 @@ public static class TranscodePlanner
         var maxHeight = Math.Min(settings.MaxHeight, limits.MaxHeight ?? int.MaxValue);
         var maxBitrate = Math.Min(settings.MaxBitrateKbps, limits.MaxBitrateKbps ?? int.MaxValue);
 
-        var blockers = DirectPlayBlockers(media, video, audio, client, maxHeight, maxBitrate);
+        var blockers = DirectPlayBlockers(media, video, audio, client, limits);
 
         var outputCodec = settings.AllowHevcOutput && Contains(client.VideoCodecs, "hevc") ? "hevc" : "h264";
         var (width, height) = FitWithin(video.Width, video.Height, maxHeight);
@@ -134,7 +228,8 @@ public static class TranscodePlanner
             Video = new VideoTarget(outputCodec, width, height, bitrate, frameRate, level, codecsTag),
             Audio = audioTarget,
             DirectPlayPossible = blockers.Count == 0,
-            DirectPlayBlockers = blockers,
+            DirectPlayBlockers = blockers.Select(b => b.Message).ToList(),
+            DirectPlayReasons = blockers,
             Acceleration = accel,
             HardwareDecode = hwDecode,
             HardwareDecodeReason = hwDecodeReason,
@@ -148,6 +243,279 @@ public static class TranscodePlanner
         };
     }
 
+    /// <summary>Target segment length of stream copies; boundaries move to the next keyframe.</summary>
+    public const double RemuxSegmentTargetSeconds = 6;
+
+    private static readonly string[] RemuxVideoCodecs = ["h264", "hevc", "av1"];
+    private static readonly string[] CopyableAudioCodecs = ["aac", "ac3", "eac3", "flac", "opus"];
+
+    /// <summary>Chooses direct → remux → transcode; <paramref name="allowDirect"/> is false when HLS is required, <paramref name="remuxUnavailable"/> forces a transcode.</summary>
+    public static TranscodePlan Decide(
+        SourceMediaInfo media,
+        ClientProfile client,
+        TranscodeLimits limits,
+        TranscodingSettings settings,
+        FfmpegCapabilities capabilities,
+        ModePreference preference,
+        bool allowDirect,
+        PlanReason? remuxUnavailable = null)
+    {
+        var transcode = Plan(media, client, limits, settings, capabilities);
+        var video = transcode.SourceVideo;
+        var remuxBlockers = RemuxBlockers(media, video, client, limits);
+        if (remuxUnavailable is not null)
+            remuxBlockers.Add(remuxUnavailable);
+        var remuxPossible = remuxBlockers.Count == 0;
+        var videoRange = (video.BaseLayerHdr ?? HdrFormat.None) switch
+        {
+            HdrFormat.Hdr10 => "PQ",
+            HdrFormat.Hlg => "HLG",
+            _ => "SDR",
+        };
+
+        if (allowDirect && preference == ModePreference.Auto && transcode.DirectPlayPossible)
+        {
+            return transcode with
+            {
+                Mode = DeliveryMode.Direct,
+                Reasons = [PlanReason.Of("direct_play", "The player can play the original file as it is.")],
+                RemuxPossible = remuxPossible,
+                RemuxBlockers = remuxBlockers,
+                VideoRange = videoRange,
+                Subtitles = PlanSubtitles(media, DeliveryMode.Direct),
+            };
+        }
+
+        if (preference != ModePreference.Transcode && remuxPossible)
+        {
+            var audio = SelectAudio(media, limits.AudioStreamIndex);
+            PlanReason? audioReason = null;
+            var audioTarget = audio is null ? null : PlanRemuxAudio(audio, client, settings, capabilities, out audioReason);
+            var reasons = new List<PlanReason>(transcode.DirectPlayReasons);
+            if (reasons.Count == 0)
+                reasons.Add(PlanReason.Of("hls_requested", "The player asked for HLS; the original video is copied without re-encoding."));
+            if (audioReason is not null)
+                reasons.Add(audioReason);
+            var subtitles = PlanSubtitles(media, DeliveryMode.Remux);
+            if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { TextBased: false } image)
+            {
+                reasons.Add(PlanReason.Of("subtitle_not_deliverable",
+                    $"Subtitle stream {image.Index} ({image.Codec}) is image-based and cannot be delivered with a remux; use VLC or a burn-in transcode.",
+                    ("index", image.Index), ("codec", image.Codec)));
+            }
+            var frameRate = video.FrameRate is > 0 and <= 240 ? video.FrameRate.Value : transcode.Video.FrameRate;
+            var videoKbps = (int)Math.Max(1, (media.EstimatedVideoBitRate ?? 0) / 1000);
+            return transcode with
+            {
+                Mode = DeliveryMode.Remux,
+                Reasons = reasons,
+                RemuxPossible = true,
+                RemuxBlockers = [],
+                VideoRange = videoRange,
+                Subtitles = subtitles,
+                Video = new VideoTarget(video.Codec, video.Width, video.Height, videoKbps, frameRate, LevelName(video), CodecStrings.VideoFromProbe(video)),
+                Audio = audioTarget,
+                Encoder = "copy",
+                Acceleration = HardwareAcceleration.None,
+                HardwareDecode = false,
+                HardwareDecodeReason = "Stream copy: the video is not decoded.",
+                HardwareEncode = false,
+                HardwareEncodeReason = "Stream copy: the video is not encoded.",
+                ToneMap = ToneMapMode.NotNeeded,
+                Deinterlace = false,
+                Warnings = [],
+            };
+        }
+
+        var why = new List<PlanReason>();
+        if (preference == ModePreference.Transcode)
+            why.Add(PlanReason.Of("transcode_requested", "A full transcode was requested."));
+        why.AddRange(remuxBlockers);
+        return transcode with
+        {
+            Mode = DeliveryMode.Transcode,
+            Reasons = why,
+            RemuxPossible = remuxPossible,
+            RemuxBlockers = remuxBlockers,
+            Subtitles = PlanSubtitles(media, DeliveryMode.Transcode),
+        };
+    }
+
+    /// <summary>Why the video cannot simply be copied for this client (empty when a remux works).</summary>
+    internal static List<PlanReason> RemuxBlockers(SourceMediaInfo media, SourceVideoStream video, ClientProfile client, TranscodeLimits limits)
+    {
+        var blockers = new List<PlanReason>();
+        if (!RemuxVideoCodecs.Contains(video.Codec))
+        {
+            blockers.Add(PlanReason.Of("video_codec_not_remuxable",
+                $"Video codec '{video.Codec}' cannot be carried in fragmented-MP4 HLS.", ("codec", video.Codec)));
+        }
+        else if (!Contains(client.VideoCodecs, video.Codec))
+        {
+            blockers.Add(PlanReason.Of("video_codec_unsupported", $"Video codec '{video.Codec}' is not supported by the player.", ("codec", video.Codec)));
+        }
+        var pixelFormat = video.PixelFormat ?? "yuv420p";
+        var fourTwoZero = pixelFormat is "yuv420p" or "yuvj420p" or "yuv420p10le" or "nv12" or "p010le";
+        if (RemuxVideoCodecs.Contains(video.Codec) && (!fourTwoZero || video.BitDepth > (video.Codec == "h264" ? 8 : 10)))
+        {
+            blockers.Add(PlanReason.Of("video_profile_unsupported",
+                $"{video.Codec} {video.Profile ?? pixelFormat} ({video.BitDepth}-bit {pixelFormat}) is not decodable by typical players.",
+                ("codec", video.Codec), ("profile", video.Profile ?? pixelFormat)));
+        }
+        if (video.BitDepth > 8 && !client.Supports10Bit)
+            blockers.Add(PlanReason.Of("bit_depth_unsupported", $"{video.BitDepth}-bit video is not supported by the player.", ("bitDepth", video.BitDepth)));
+        if (video.Hdr == HdrFormat.DolbyVision && video.BaseLayerHdr is null)
+        {
+            blockers.Add(PlanReason.Of("dolby_vision_profile_unsupported",
+                $"Dolby Vision profile {video.DolbyVisionProfile?.ToString(CultureInfo.InvariantCulture) ?? "?"} has no base layer other players can show.",
+                ("profile", video.DolbyVisionProfile)));
+        }
+        else if (video.BaseLayerHdr is { } range && range != HdrFormat.None && !client.SupportsHdrFormat(range))
+        {
+            blockers.Add(PlanReason.Of("hdr_unsupported", $"{range} HDR output is not supported by the player.", ("hdr", range.ToApi())));
+        }
+        if (video.Interlaced)
+            blockers.Add(PlanReason.Of("interlaced", "Interlaced video needs deinterlacing."));
+        blockers.AddRange(LimitReasons(media, video, limits));
+        return blockers;
+    }
+
+    /// <summary>Copy the audio when the player takes it as is; otherwise E-AC-3 5.1 → AC-3 5.1 → AAC stereo, within maxAudioChannels.</summary>
+    internal static AudioTarget PlanRemuxAudio(
+        SourceAudioStream audio, ClientProfile client, TranscodingSettings settings, FfmpegCapabilities capabilities, out PlanReason reason)
+    {
+        var copyable = CopyableAudioCodecs.Contains(audio.Codec) && (audio.Codec != "aac" || audio.Profile is null or "LC" or "HE-AAC" or "HE-AACv2");
+        if (copyable && Contains(client.AudioCodecs, audio.Codec) && audio.Channels <= client.MaxAudioChannels)
+        {
+            reason = PlanReason.Of("audio_copied", $"Audio '{audio.Codec}' {audio.Channels} ch is copied.", ("codec", audio.Codec), ("channels", audio.Channels));
+            return new AudioTarget(audio.Index, audio.Codec, true, audio.Channels, CopiedAudioKbps(audio), null, audio.Codec,
+                CodecStrings.Audio(audio.Codec, audio.Profile));
+        }
+
+        var surround = audio.Channels > 2 && client.MaxAudioChannels >= 6;
+        string codec;
+        int channels, bitrate;
+        if (surround && Contains(client.AudioCodecs, "eac3") && capabilities.Encoders.Contains("eac3"))
+            (codec, channels, bitrate) = ("eac3", 6, 640);
+        else if (surround && Contains(client.AudioCodecs, "ac3") && capabilities.Encoders.Contains("ac3"))
+            (codec, channels, bitrate) = ("ac3", 6, 640);
+        else
+            (codec, channels, bitrate) = ("aac", Math.Clamp(audio.Channels, 1, 2), audio.Channels == 1 ? Math.Min(128, settings.AudioBitrateKbps) : settings.AudioBitrateKbps);
+
+        var why = !CopyableAudioCodecs.Contains(audio.Codec) ? $"'{audio.Codec}' cannot be carried in HLS"
+            : !Contains(client.AudioCodecs, audio.Codec) ? $"the player does not decode '{audio.Codec}'"
+            : $"{audio.Channels} channels exceed the player's {client.MaxAudioChannels}";
+        reason = PlanReason.Of("audio_converted", $"Audio '{audio.Codec}' {audio.Channels} ch is converted to '{codec}' {channels} ch because {why}.",
+            ("from", audio.Codec), ("to", codec), ("channels", channels));
+        int? sampleRate = codec == "aac"
+            ? audio.SampleRate is > 48_000 or < 16_000 ? 48_000 : null
+            : audio.SampleRate is 48_000 or 44_100 or 32_000 ? null : 48_000;
+        return new AudioTarget(audio.Index, audio.Codec, false, channels, bitrate, sampleRate, codec, CodecStrings.Audio(codec, null));
+    }
+
+    internal static IReadOnlyList<SubtitlePlan> PlanSubtitles(SourceMediaInfo media, DeliveryMode mode)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return media.Subtitles.Take(16).Select(stream =>
+        {
+            var language = WebVttSubtitles.Bcp47(stream.Language);
+            var baseName = SanitizeName(stream.Title) ?? WebVttSubtitles.LanguageName(stream.Language) ?? $"Subtitle {stream.Index}";
+            if (stream.IsForced && !baseName.Contains("forced", StringComparison.OrdinalIgnoreCase))
+                baseName += " (forced)";
+            var name = baseName;
+            for (var n = 2; !names.Add(name); n++)
+                name = $"{baseName} {n}";
+            var delivered = mode switch
+            {
+                DeliveryMode.Direct => SubtitlePlan.Embedded,
+                DeliveryMode.Remux when stream.TextBased => SubtitlePlan.WebVtt,
+                _ => SubtitlePlan.None,
+            };
+            return new SubtitlePlan(stream, delivered, language, name);
+        }).ToList();
+    }
+
+    /// <summary>Completes a remux plan with its keyframe timeline, the exact CODECS string and bandwidth figures from the index.</summary>
+    public static TranscodePlan FinalizeRemux(TranscodePlan plan, SourceMediaInfo media, KeyframeIndex index, long? totalBytes)
+    {
+        var keyframes = index.Keyframes.Select(k => k - media.StartTime).ToList();
+        var timeline = SegmentTimeline.FromKeyframes(keyframes, media.DurationSeconds, RemuxSegmentTargetSeconds);
+        var codecs = CodecStrings.Video(plan.SourceVideo, index.Config);
+        var (peak, average) = Bandwidth(timeline, keyframes, index.Container, totalBytes, plan);
+        return plan with
+        {
+            KeyframeIndex = index,
+            RemuxTimeline = timeline,
+            Video = plan.Video with { CodecsTag = codecs },
+            PeakBandwidthBitsPerSecond = peak,
+            AverageBandwidthBitsPerSecond = average,
+        };
+    }
+
+    private static (int Peak, int Average) Bandwidth(
+        SegmentTimeline timeline, List<double> keyframes, ContainerIndex index, long? totalBytes, TranscodePlan plan)
+    {
+        var audioBps = index.OffsetsCoverAllStreams ? 0 : (plan.Audio?.BitrateKbps ?? 0) * 1000d;
+        var fallbackAverage = Math.Max(100_000d, plan.BandwidthBitsPerSecond);
+        if (index.ByteOffsets is not { Count: > 0 } offsets || offsets.Count != keyframes.Count)
+            return ((int)Math.Min(int.MaxValue, fallbackAverage * 2), (int)Math.Min(int.MaxValue, fallbackAverage));
+
+        var byTime = new Dictionary<double, long>();
+        for (var i = 0; i < keyframes.Count; i++)
+            byTime.TryAdd(Math.Round(keyframes[i], 6), offsets[i]);
+        long OffsetAt(int segment) => segment == 0 ? offsets[0] : byTime.GetValueOrDefault(timeline.StartOf(segment), -1);
+
+        double peak = 0, bytes = 0, seconds = 0;
+        for (var i = 0; i + 1 < timeline.Count; i++)
+        {
+            var (from, to) = (OffsetAt(i), OffsetAt(i + 1));
+            if (from < 0 || to < from || timeline.Durations[i] <= 0)
+                continue;
+            var bps = (to - from) * 8d / timeline.Durations[i] + audioBps;
+            peak = Math.Max(peak, bps);
+            bytes += to - from;
+            seconds += timeline.Durations[i];
+        }
+        if (index.OffsetsCoverAllStreams && totalBytes is { } total && OffsetAt(timeline.Count - 1) is var last and >= 0 && total > last)
+        {
+            bytes += total - last;
+            seconds += timeline.Durations[^1];
+        }
+        if (peak <= 0 || seconds <= 0)
+            return ((int)Math.Min(int.MaxValue, fallbackAverage * 2), (int)Math.Min(int.MaxValue, fallbackAverage));
+        var average = bytes * 8 / seconds + audioBps;
+        return ((int)Math.Min(int.MaxValue, Math.Ceiling(peak * 1.1)), (int)Math.Min(int.MaxValue, Math.Ceiling(average)));
+    }
+
+    private static int CopiedAudioKbps(SourceAudioStream audio)
+        => audio.BitRate is { } bps and > 0 ? (int)(bps / 1000) : audio.Codec switch
+        {
+            "eac3" or "ac3" => audio.Channels > 2 ? 640 : 192,
+            "flac" => 1_000,
+            _ => 192,
+        };
+
+    private static string LevelName(SourceVideoStream video)
+    {
+        if (video.Level is not { } level)
+            return "—";
+        return video.Codec switch
+        {
+            "h264" => (level / 10d).ToString("0.0", CultureInfo.InvariantCulture),
+            "hevc" => (level / 30d).ToString("0.0", CultureInfo.InvariantCulture),
+            "av1" => string.Create(CultureInfo.InvariantCulture, $"{2 + level / 4}.{level % 4}"),
+            _ => level.ToString(CultureInfo.InvariantCulture),
+        };
+    }
+
+    private static string? SanitizeName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var cleaned = new string(value.Where(c => c != '"' && !char.IsControl(c)).ToArray()).Trim();
+        return cleaned.Length == 0 ? null : cleaned.Length > 64 ? cleaned[..64] : cleaned;
+    }
+
     internal static SourceAudioStream? SelectAudio(SourceMediaInfo media, int? requestedIndex)
     {
         if (requestedIndex is { } index)
@@ -158,28 +526,66 @@ public static class TranscodePlanner
         return media.Audio.FirstOrDefault(a => a.IsDefault) ?? media.Audio.FirstOrDefault();
     }
 
-    private static List<string> DirectPlayBlockers(
-        SourceMediaInfo media, SourceVideoStream video, SourceAudioStream? audio, ClientProfile client, int maxHeight, int maxBitrate)
+    private static List<PlanReason> DirectPlayBlockers(
+        SourceMediaInfo media, SourceVideoStream video, SourceAudioStream? audio, ClientProfile client, TranscodeLimits limits)
     {
-        var blockers = new List<string>();
+        var blockers = new List<PlanReason>();
         var container = ContainerFamily(media.Container);
         if (!Contains(client.Containers, container))
-            blockers.Add($"Container '{container}' is not supported by the player.");
+            blockers.Add(PlanReason.Of("container_unsupported", $"Container '{container}' is not supported by the player.", ("container", container)));
         if (!Contains(client.VideoCodecs, video.Codec))
-            blockers.Add($"Video codec '{video.Codec}' is not supported by the player.");
+            blockers.Add(PlanReason.Of("video_codec_unsupported", $"Video codec '{video.Codec}' is not supported by the player.", ("codec", video.Codec)));
         if (video.BitDepth > 8 && !client.Supports10Bit)
-            blockers.Add($"{video.BitDepth}-bit video is not supported by the player.");
-        if (video.Hdr != HdrFormat.None && !client.SupportsHdr)
-            blockers.Add($"{video.Hdr} HDR output is not supported by the player.");
+            blockers.Add(PlanReason.Of("bit_depth_unsupported", $"{video.BitDepth}-bit video is not supported by the player.", ("bitDepth", video.BitDepth)));
+        if (video.Hdr != HdrFormat.None && !client.SupportsHdrFormat(video.Hdr))
+            blockers.Add(PlanReason.Of("hdr_unsupported", $"{video.Hdr} HDR output is not supported by the player.", ("hdr", video.Hdr.ToApi())));
         if (video.Interlaced)
-            blockers.Add("Interlaced video needs deinterlacing.");
+            blockers.Add(PlanReason.Of("interlaced", "Interlaced video needs deinterlacing."));
         if (audio is not null && !Contains(client.AudioCodecs, audio.Codec))
-            blockers.Add($"Audio codec '{audio.Codec}' is not supported by the player.");
-        if (video.Height > maxHeight)
-            blockers.Add($"Resolution {video.Height}p exceeds the {maxHeight}p limit.");
-        if (media.BitRate is { } bps && bps / 1000 > maxBitrate)
-            blockers.Add($"Bitrate {bps / 1000} kbps exceeds the {maxBitrate} kbps limit.");
+            blockers.Add(PlanReason.Of("audio_codec_unsupported", $"Audio codec '{audio.Codec}' is not supported by the player.", ("codec", audio.Codec)));
+        if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { } subtitle && client.SubtitleFormats is { } formats
+            && !SubtitleFormatNames(subtitle.Codec).Any(name => Contains(formats, name)))
+        {
+            blockers.Add(PlanReason.Of("subtitle_format_unsupported", $"Subtitle format '{subtitle.Codec}' is not supported by the player.",
+                ("codec", subtitle.Codec), ("index", subtitle.Index)));
+        }
+        blockers.AddRange(LimitReasons(media, video, limits));
         return blockers;
+    }
+
+    private static IEnumerable<PlanReason> LimitReasons(SourceMediaInfo media, SourceVideoStream video, TranscodeLimits limits)
+    {
+        if (limits.MaxHeight is { } maxHeight && video.Height > maxHeight)
+        {
+            yield return PlanReason.Of("resolution_exceeds_limit", $"Resolution {video.Height}p exceeds the {maxHeight}p limit.",
+                ("height", video.Height), ("max", maxHeight));
+        }
+        if (limits.MaxBitrateKbps is { } maxBitrate && media.BitRate is { } bps && bps / 1000 > maxBitrate)
+        {
+            yield return PlanReason.Of("bitrate_exceeds_limit", $"Bitrate {bps / 1000} kbps exceeds the {maxBitrate} kbps limit.",
+                ("kbps", bps / 1000), ("max", maxBitrate));
+        }
+    }
+
+    /// <summary>Names a client may use for a subtitle codec (ffprobe calls SRT "subrip", PGS "hdmv_pgs_subtitle", …).</summary>
+    internal static IEnumerable<string> SubtitleFormatNames(string codec) => codec switch
+    {
+        "subrip" => ["subrip", "srt"],
+        "ass" or "ssa" => ["ass", "ssa"],
+        "webvtt" => ["webvtt", "vtt"],
+        "mov_text" => ["mov_text", "tx3g"],
+        "hdmv_pgs_subtitle" => ["hdmv_pgs_subtitle", "pgs", "pgssub"],
+        "dvd_subtitle" => ["dvd_subtitle", "vobsub", "dvdsub"],
+        "dvb_subtitle" => ["dvb_subtitle", "dvbsub"],
+        _ => [codec],
+    };
+
+    internal static SourceSubtitleStream? SelectSubtitle(SourceMediaInfo media, int? requestedIndex)
+    {
+        if (requestedIndex is not { } index || index < 0)
+            return null;
+        return media.Subtitles.FirstOrDefault(s => s.Index == index)
+               ?? throw new TranscodePlanningException("unknown_subtitle_stream", $"Subtitle stream {index} does not exist in the source.");
     }
 
     internal static string ContainerFamily(string? formatName)

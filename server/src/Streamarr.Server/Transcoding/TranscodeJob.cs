@@ -13,6 +13,7 @@ public sealed class TranscodeJob
     private readonly Queue<string> _log = new();
     private readonly object _logLock = new();
     private readonly TaskCompletionSource _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<int> _processExit = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _front;
     private TimeSpan _cpu;
     private int _paused;
@@ -51,9 +52,19 @@ public sealed class TranscodeJob
     public Task Exited => _exited.Task;
     public string InitFileName => $"init-{Tag}.mp4";
 
-    public bool Failed => HasExited && !Killed && ExitCode is not 0;
+    /// <summary>Set when the stdout consumer (the remux segmenter) failed; the run then counts as failed even though it was killed.</summary>
+    public string? OutputError { get; private set; }
 
-    public static TranscodeJob Start(string ffmpegPath, IReadOnlyList<string> arguments, string directory, string tag, int startSegment)
+    public bool Failed => HasExited && ((!Killed && ExitCode is not 0) || OutputError is not null);
+
+    /// <summary>Starts ffmpeg; with <paramref name="outputConsumer"/> stdout carries media for it instead of <c>-progress</c> lines.</summary>
+    public static TranscodeJob Start(
+        string ffmpegPath,
+        IReadOnlyList<string> arguments,
+        string directory,
+        string tag,
+        int startSegment,
+        Func<TranscodeJob, Stream, Task>? outputConsumer = null)
     {
         var psi = new ProcessStartInfo(ffmpegPath)
         {
@@ -71,7 +82,7 @@ public sealed class TranscodeJob
         var job = new TranscodeJob(process, directory, tag, startSegment, TranscodeRedaction.RedactArguments(arguments), DateTimeOffset.UtcNow);
         process.Start();
         job._pid = process.Id;
-        job._pumps = Task.WhenAll(job.PumpProgressAsync(), job.PumpLogAsync());
+        job._pumps = Task.WhenAll(outputConsumer is null ? job.PumpProgressAsync() : job.ConsumeOutputAsync(outputConsumer), job.PumpLogAsync());
         _ = job.WatchExitAsync();
         return job;
     }
@@ -142,6 +153,23 @@ public sealed class TranscodeJob
         }
     }
 
+    /// <summary>True once ffmpeg exited on its own with code 0 (not killed); lets the segmenter decide whether the tail is complete.</summary>
+    public async Task<bool> ExitedCleanlyAsync()
+    {
+        var code = await _processExit.Task;
+        return code == 0 && !Killed;
+    }
+
+    internal void ReportOutput(double mediaSeconds, long frames)
+    {
+        var wall = (DateTimeOffset.UtcNow - StartedAt).TotalSeconds;
+        Frames = frames;
+        if (wall <= 0)
+            return;
+        Fps = frames / wall;
+        Speed = mediaSeconds / wall;
+    }
+
     public IReadOnlyList<string> LogTail(int max = 20)
     {
         lock (_logLock)
@@ -185,6 +213,24 @@ public sealed class TranscodeJob
         }
     }
 
+    private async Task ConsumeOutputAsync(Func<TranscodeJob, Stream, Task> consumer)
+    {
+        try
+        {
+            await consumer(this, _process.StandardOutput.BaseStream);
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or ObjectDisposedException or UnauthorizedAccessException)
+        {
+            if (Killed)
+                return;
+            OutputError = e.Message;
+            lock (_logLock)
+                _log.Enqueue($"[remux] {TranscodeRedaction.Redact(e.Message)}");
+            Interlocked.Exchange(ref _killed, 1);
+            ProcessRunner.Kill(_process);
+        }
+    }
+
     private async Task PumpLogAsync()
     {
         try
@@ -216,6 +262,7 @@ public sealed class TranscodeJob
         {
             await _process.WaitForExitAsync();
             ExitCode = _process.ExitCode;
+            _processExit.TrySetResult(_process.ExitCode);
             await _pumps.WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }
         catch (TimeoutException)
@@ -227,6 +274,7 @@ public sealed class TranscodeJob
         }
         finally
         {
+            _processExit.TrySetResult(ExitCode ?? -1);
             ExitedAt = DateTimeOffset.UtcNow;
             Volatile.Write(ref _paused, 0);
             _exited.TrySetResult();

@@ -88,6 +88,39 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions) 
         }
     }
 
+    [HttpGet("subtitles/{stream:int:min(0)}/main.m3u8")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public IActionResult SubtitlePlaylist(string token, int stream)
+    {
+        NoStore();
+        if (!sessions.TryGet(token, out var session))
+            return Unknown();
+        if (session.Subtitles.All(s => s.StreamIndex != stream))
+            return NotFound(ErrorResponse.Of("unknown_subtitle_stream", "This session has no such subtitle rendition."));
+        session.Touch();
+        return Content(HlsPlaylist.Subtitles(session.Timeline), PlaylistType);
+    }
+
+    /// <summary>WebVTT segment aligned with the video segment of the same index; cue times are on the media timeline.</summary>
+    [HttpGet("subtitles/{stream:int:min(0)}/{segment:int:min(0)}.vtt")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SubtitleSegment(string token, int stream, int segment, CancellationToken ct)
+    {
+        NoStore();
+        if (!sessions.TryGet(token, out var session))
+            return Unknown();
+        try
+        {
+            return Content(await sessions.GetSubtitleSegmentAsync(session, stream, segment, ct), WebVttSubtitles.ContentType);
+        }
+        catch (TranscodeException e)
+        {
+            return Failure(e);
+        }
+    }
+
     /// <summary>Ends the session and its ffmpeg run; any holder of the playlist capability may stop it.</summary>
     [HttpDelete]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

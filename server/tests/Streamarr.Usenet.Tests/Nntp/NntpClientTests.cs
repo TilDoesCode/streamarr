@@ -102,6 +102,56 @@ public class NntpClientTests
         Assert.Equal(data, ms.ToArray());
     }
 
+    [Theory]
+    [InlineData(2_000, false)]
+    [InlineData(262_144, false)]
+    [InlineData(262_144, true)]
+    public async Task Payload_EndingOnA1024ByteBoundary_AfterASeparateStatusLine_DoesNotStall(int size, bool article)
+    {
+        // Regression: a StreamReader with a 1024-byte buffer kept reading after a terminator that filled it exactly.
+        var data = YencTestEncoder.LcgBytes(size, size);
+        var text = AlignedArticle(data);
+        await using var server = new MockNntpServer { BodyPayloadDelay = TimeSpan.FromMilliseconds(100) };
+        server.Articles["aligned@test"] = text;
+        server.Articles["next@test"] = YencTestEncoder.Encode([7, 8, 9], "next.bin");
+        using var client = await Connect(server);
+
+        var stream = article
+            ? (await client.DecodedArticleAsync("aligned@test", CancellationToken.None)).Stream
+            : (await client.DecodedBodyAsync("aligned@test", CancellationToken.None)).Stream;
+        await using (stream)
+        {
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            Assert.Equal(data, ms.ToArray());
+        }
+
+        var next = await client.DecodedBodyAsync("next@test", CancellationToken.None);
+        await using (next.Stream)
+        {
+            using var ms = new MemoryStream();
+            await next.Stream.CopyToAsync(ms);
+            Assert.Equal([7, 8, 9], ms.ToArray());
+        }
+
+        Assert.Equal(1, server.MaxObservedConnections);
+    }
+
+    /// <summary>Pads the yEnc name so the dot-stuffed payload plus ".\r\n" is a multiple of 1024 but not of 8192 bytes.</summary>
+    private static string AlignedArticle(byte[] data)
+    {
+        static int WireLength(string article) => article.Split("\r\n")[..^1].Sum(l => l.Length + (l.StartsWith('.') ? 3 : 2)) + 3;
+
+        var unpadded = WireLength(YencTestEncoder.Encode(data, "a.bin"));
+        var pad = (1024 - unpadded % 1024) % 1024;
+        if ((unpadded + pad) % 8192 == 0)
+            pad += 1024;
+        var article = YencTestEncoder.Encode(data, new string('n', pad) + "a.bin");
+        Assert.Equal(0, WireLength(article) % 1024);
+        Assert.NotEqual(0, WireLength(article) % 8192);
+        return article;
+    }
+
     [Fact]
     public async Task DotStuffedLines_AreUnstuffedTransparently()
     {

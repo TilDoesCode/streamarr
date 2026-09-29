@@ -17,7 +17,9 @@ if (arguments.ContainsKey("help") || !arguments.ContainsKey("server"))
     Console.WriteLine("usage: hlssim --server URL (--password PW [--user admin] | --api-key KEY) " +
                       "(--sample ID | --release ID [--work ID] | --stream-token TOKEN | --playlist URL) " +
                       "[--max-height N] [--bitrate KBPS] [--rate X] [--buffer S] [--duration S] [--start S] " +
-                      "[--seek AT:TO,...] [--decode] [--concurrency N] [--json FILE] [--keep] [--quiet]");
+                      "[--seek AT:TO,...] [--decode] [--concurrency N] [--json FILE] [--keep] [--quiet] " +
+                      "[--mode auto|remux|transcode] [--video-codecs LIST] [--audio-codecs LIST] [--containers LIST] [--max-channels N] " +
+                      "[--ten-bit] [--hdr-formats LIST] [--subtitle-formats LIST] [--audio-index N] [--subtitle-index N] [--no-subtitles]");
     return 2;
 }
 
@@ -48,6 +50,7 @@ var options = new HlsSimOptions
     StopAfterMediaSeconds = arguments.ContainsKey("duration") ? Double("duration", 0) : null,
     Seeks = ParseSeeks(arguments.GetValueOrDefault("seek")),
     Decode = arguments.ContainsKey("decode"),
+    ValidateSubtitles = !arguments.ContainsKey("no-subtitles"),
 };
 var concurrency = (int)Double("concurrency", 1);
 var quiet = arguments.ContainsKey("quiet") || concurrency > 1;
@@ -97,6 +100,10 @@ async Task<(Uri Playlist, Uri? Stop)> CreatePlaylistAsync(int n)
         ["maxBitrateKbps"] = arguments.ContainsKey("bitrate") ? (int)Double("bitrate", 8000) : null,
         ["startPositionSeconds"] = options.StartPositionSeconds,
         ["clientName"] = $"hlssim-{n}",
+        ["mode"] = arguments.GetValueOrDefault("mode"),
+        ["audioStreamIndex"] = arguments.ContainsKey("audio-index") ? (int)Double("audio-index", 0) : null,
+        ["subtitleStreamIndex"] = arguments.ContainsKey("subtitle-index") ? (int)Double("subtitle-index", 0) : null,
+        ["client"] = ClientProfile(),
     };
     var created = await http.PostAsJsonAsync("api/v1/transcoding/sessions", request);
     var session = await created.Content.ReadFromJsonAsync<JsonElement>();
@@ -106,9 +113,17 @@ async Task<(Uri Playlist, Uri? Stop)> CreatePlaylistAsync(int n)
     if (!quiet)
     {
         var plan = session.GetProperty("plan");
-        Console.WriteLine($"[{n}] session {session.GetProperty("handle")}: {plan.GetProperty("encoder")} " +
+        var target = plan.GetProperty("target");
+        Console.WriteLine($"[{n}] session {session.GetProperty("handle")} mode={session.GetProperty("mode")}: {plan.GetProperty("encoder")} " +
+                          $"codecs={target.GetProperty("codecs")} range={target.GetProperty("videoRange")} " +
                           $"hwDecode={plan.GetProperty("hardwareDecode")} hwEncode={plan.GetProperty("hardwareEncode")} " +
                           $"toneMap={plan.GetProperty("toneMap")} filters=\"{plan.GetProperty("videoFilters")}\"");
+        foreach (var reason in plan.GetProperty("reasons").EnumerateArray())
+            Console.WriteLine($"[{n}]   reason {reason.GetProperty("code")}: {reason.GetProperty("message")}");
+        if (plan.TryGetProperty("keyframeIndex", out var index) && index.ValueKind == JsonValueKind.Object)
+            Console.WriteLine($"[{n}]   keyframe index {index}");
+        foreach (var subtitle in plan.GetProperty("subtitles").EnumerateArray())
+            Console.WriteLine($"[{n}]   subtitle #{subtitle.GetProperty("index")} {subtitle.GetProperty("codec")} {subtitle.GetProperty("name")} → {subtitle.GetProperty("deliveredAs")}");
     }
     return (new Uri(server, playlistUrl), new Uri(server, playlistUrl[..playlistUrl.LastIndexOf('/')]));
 }
@@ -126,10 +141,34 @@ void Print(int n, HlsSimReport r)
     if (r.SeekLatenciesMs.Count > 0)
         Console.WriteLine($"seek latency: {string.Join(", ", r.SeekLatenciesMs.Select(s => $"{s:0} ms"))}");
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"stalls {r.Stalls} ({r.StallSeconds:0.0}s)"));
+    if (r.SubtitleRenditions > 0)
+    {
+        Console.WriteLine($"subtitles: {r.SubtitleRenditions} rendition(s), {r.SubtitleSegments} WebVTT segments, {r.SubtitleCues} cues");
+        foreach (var sample in r.SubtitleSamples.Take(6))
+            Console.WriteLine($"  cue {sample}");
+    }
     foreach (var warning in r.Warnings.Take(10))
         Console.WriteLine($"  warn: {warning}");
     foreach (var error in r.Errors.Take(20))
         Console.WriteLine($"  ERROR: {error}");
+}
+
+Dictionary<string, object?>? ClientProfile()
+{
+    if (!new[] { "video-codecs", "audio-codecs", "containers", "max-channels", "ten-bit", "hdr-formats", "subtitle-formats" }.Any(arguments.ContainsKey))
+        return null;
+    static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    return new Dictionary<string, object?>
+    {
+        ["videoCodecs"] = List(arguments.GetValueOrDefault("video-codecs")),
+        ["audioCodecs"] = List(arguments.GetValueOrDefault("audio-codecs")),
+        ["containers"] = List(arguments.GetValueOrDefault("containers")),
+        ["maxAudioChannels"] = arguments.ContainsKey("max-channels") ? (int)Double("max-channels", 2) : null,
+        ["supports10Bit"] = arguments.ContainsKey("ten-bit"),
+        ["supportsHdr"] = arguments.ContainsKey("hdr-formats"),
+        ["hdrFormats"] = List(arguments.GetValueOrDefault("hdr-formats")),
+        ["subtitleFormats"] = List(arguments.GetValueOrDefault("subtitle-formats")),
+    };
 }
 
 double Double(string key, double fallback)

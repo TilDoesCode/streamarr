@@ -24,6 +24,9 @@ public sealed record TranscodingConfigResponse
     public required bool ThrottleEnabled { get; init; }
     public required int ThrottleBufferSeconds { get; init; }
     public required int MaxConcurrentTranscodes { get; init; }
+
+    /// <summary>Concurrent stream-copy (remux) runs; a separate pool because a copy costs a fraction of an encode.</summary>
+    public required int MaxConcurrentRemuxes { get; init; }
     public required int JobIdleTimeoutSeconds { get; init; }
     public required int SessionIdleTimeoutSeconds { get; init; }
     public required int SegmentRetentionSeconds { get; init; }
@@ -68,6 +71,7 @@ public sealed record TranscodingConfigWrite
     public bool? ThrottleEnabled { get; init; }
     public int? ThrottleBufferSeconds { get; init; }
     public int? MaxConcurrentTranscodes { get; init; }
+    public int? MaxConcurrentRemuxes { get; init; }
     public int? JobIdleTimeoutSeconds { get; init; }
     public int? SessionIdleTimeoutSeconds { get; init; }
     public int? SegmentRetentionSeconds { get; init; }
@@ -172,8 +176,37 @@ public sealed record TranscodeSourceResponse
     public required int BitDepth { get; init; }
     public double? FrameRate { get; init; }
     public required string Hdr { get; init; }
+    public int? DolbyVisionProfile { get; init; }
     public required bool Interlaced { get; init; }
     public required IReadOnlyList<SourceAudioResponse> Audio { get; init; }
+}
+
+/// <summary>A decision reason: stable <c>code</c> for clients (localizable with <c>params</c>) and an English message.</summary>
+public sealed record PlanReasonResponse(string Code, string Message, IReadOnlyDictionary<string, string>? Params);
+
+/// <summary>A source subtitle stream and how this plan delivers it: <c>webvtt</c> rendition, <c>embedded</c> (direct play) or <c>none</c>.</summary>
+public sealed record SubtitleTrackResponse
+{
+    public required int Index { get; init; }
+    public required string Codec { get; init; }
+    public string? Language { get; init; }
+    public string? Title { get; init; }
+    public required string Name { get; init; }
+    public required bool Forced { get; init; }
+    public required bool IsDefault { get; init; }
+    public required bool TextBased { get; init; }
+    public required string DeliveredAs { get; init; }
+}
+
+/// <summary>Where a remux's keyframe-accurate segment plan came from.</summary>
+public sealed record KeyframeIndexResponse
+{
+    /// <summary><c>matroska-cues</c>, <c>mp4-sample-table</c> or <c>ffprobe-scan</c>.</summary>
+    public required string Source { get; init; }
+    public required int Keyframes { get; init; }
+    public required double BuildMs { get; init; }
+    public required int Segments { get; init; }
+    public required double MaxSegmentSeconds { get; init; }
 }
 
 public sealed record TranscodeTargetResponse
@@ -185,8 +218,17 @@ public sealed record TranscodeTargetResponse
     public required double FrameRate { get; init; }
     public required string Level { get; init; }
     public required string Codecs { get; init; }
+
+    /// <summary>True for a remux: the video bitstream is copied, not re-encoded.</summary>
+    public bool VideoCopy { get; init; }
+
+    /// <summary>HLS VIDEO-RANGE of the output: SDR, PQ or HLG.</summary>
+    public required string VideoRange { get; init; }
     public int? AudioStreamIndex { get; init; }
     public string? AudioSourceCodec { get; init; }
+
+    /// <summary>Output audio codec (the source codec when copied).</summary>
+    public string? AudioCodec { get; init; }
     public bool AudioCopy { get; init; }
     public int? AudioChannels { get; init; }
     public int? AudioBitrateKbps { get; init; }
@@ -194,6 +236,15 @@ public sealed record TranscodeTargetResponse
 
 public sealed record TranscodePlanResponse
 {
+    /// <summary><c>direct</c> (play the original file), <c>remux</c> (stream copy into HLS) or <c>transcode</c>.</summary>
+    public required string Mode { get; init; }
+
+    /// <summary>Why this mode: direct-play blockers a remux solves, audio handling, or why the video must be re-encoded.</summary>
+    public required IReadOnlyList<PlanReasonResponse> Reasons { get; init; }
+    public required bool RemuxPossible { get; init; }
+    public required IReadOnlyList<PlanReasonResponse> RemuxBlockers { get; init; }
+    public required IReadOnlyList<SubtitleTrackResponse> Subtitles { get; init; }
+    public KeyframeIndexResponse? KeyframeIndex { get; init; }
     public required bool DirectPlayPossible { get; init; }
     public required IReadOnlyList<string> DirectPlayBlockers { get; init; }
     public required TranscodeSourceResponse Source { get; init; }
@@ -219,6 +270,12 @@ public sealed record ClientProfileRequest
     public int? MaxAudioChannels { get; init; }
     public bool? SupportsHdr { get; init; }
     public bool? Supports10Bit { get; init; }
+
+    /// <summary>HDR formats the display renders: hdr10, hlg, dolbyvision (overrides supportsHdr when set).</summary>
+    [MaxLength(8)] public IReadOnlyList<string>? HdrFormats { get; init; }
+
+    /// <summary>Subtitle formats the player renders from the original file (srt, ass, webvtt, pgs, vobsub, …).</summary>
+    [MaxLength(16)] public IReadOnlyList<string>? SubtitleFormats { get; init; }
 }
 
 public sealed record TranscodeSessionCreateRequest
@@ -233,13 +290,22 @@ public sealed record TranscodeSessionCreateRequest
     public int? MaxHeight { get; init; }
     public int? MaxBitrateKbps { get; init; }
     public int? AudioStreamIndex { get; init; }
+
+    /// <summary>The subtitle stream the viewer wants; image-based streams are reported as not deliverable by a remux.</summary>
+    public int? SubtitleStreamIndex { get; init; }
     public double? StartPositionSeconds { get; init; }
     [MaxLength(64)] public string? ClientName { get; init; }
+
+    /// <summary><c>auto</c> (remux when the video can be copied), <c>remux</c> (fail with 422 otherwise) or <c>transcode</c>. Sessions default to <c>transcode</c>, the plan endpoint to <c>auto</c>.</summary>
+    [MaxLength(16)] public string? Mode { get; init; }
 }
 
 public sealed record TranscodeSessionCreatedResponse
 {
     public required string Handle { get; init; }
+
+    /// <summary><c>remux</c> or <c>transcode</c>.</summary>
+    public required string Mode { get; init; }
     public required string PlaylistUrl { get; init; }
     public required string MediaPlaylistUrl { get; init; }
     public required double DurationSeconds { get; init; }
@@ -287,6 +353,9 @@ public sealed record TranscodeStartupResponse
 public sealed record TranscodeSessionResponse
 {
     public required string Handle { get; init; }
+
+    /// <summary><c>remux</c> or <c>transcode</c>.</summary>
+    public required string Mode { get; init; }
     public required string Title { get; init; }
     public required string Client { get; init; }
     public required string SourceKind { get; init; }

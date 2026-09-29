@@ -71,6 +71,14 @@ const CODEC_LABELS: Record<string, string> = {
   dts: "DTS",
   truehd: "TrueHD",
   vorbis: "Vorbis",
+  subrip: "SRT",
+  ass: "ASS",
+  ssa: "SSA",
+  webvtt: "WebVTT",
+  mov_text: "MOV text",
+  hdmv_pgs_subtitle: "PGS",
+  dvd_subtitle: "VobSub",
+  dvb_subtitle: "DVB",
 };
 
 export function codecLabel(codec?: string | null): string {
@@ -124,7 +132,28 @@ const TONE_MAP_TEXT: Record<string, string> = {
   unavailable: "HDR not tone-mapped (unavailable)",
 };
 
-/** "HEVC 4K HDR10 → H.264 1080p SDR · VideoToolbox decode+encode · tone-mapped on the GPU". */
+const MODE_META: Record<string, StatusMeta & { hint: string }> = {
+  direct: { label: "Direct play", tone: "success", hint: "The player can play the original file." },
+  remux: { label: "Remux", tone: "info", hint: "Video stream-copied into HLS; only audio or subtitles may be converted." },
+  transcode: { label: "Transcode", tone: "muted", hint: "Video re-encoded by ffmpeg." },
+};
+
+/** How the server delivers the stream: direct play, remux (stream copy into HLS) or a full transcode. */
+export function modeMeta(mode?: string | null): StatusMeta & { hint: string } {
+  return MODE_META[(mode ?? "transcode").toLowerCase()] ?? { label: mode ?? "unknown", tone: "muted", hint: "" };
+}
+
+const INDEX_SOURCE_LABELS: Record<string, string> = {
+  "matroska-cues": "Matroska Cues",
+  "mp4-sample-table": "MP4 sample table",
+  "ffprobe-scan": "ffprobe packet scan",
+};
+
+export function indexSourceLabel(source?: string | null): string {
+  return INDEX_SOURCE_LABELS[(source ?? "").toLowerCase()] ?? source ?? "unknown";
+}
+
+/** "HEVC 4K HDR10 → H.264 1080p SDR · VideoToolbox decode+encode · tone-mapped on the GPU", or "… · stream copy (remux) · …" for copies. */
 export function planSummary(plan: TranscodePlanResponse): string {
   const source = plan.source;
   const target = plan.target;
@@ -132,6 +161,12 @@ export function planSummary(plan: TranscodePlanResponse): string {
   const toneMap = (plan.toneMap ?? "notneeded").toLowerCase();
   const tenBit = !sourceHdr && source.bitDepth > 8 ? " 10-bit" : "";
   const from = `${codecLabel(source.videoCodec)} ${resolutionLabel(source.width, source.height)}${tenBit} ${hdrLabel(source.hdr)}`;
+  const mode = (plan.mode ?? "transcode").toLowerCase();
+  if (mode === "direct") return `${from} · direct play`;
+  if (mode === "remux") {
+    const audio = audioSummary(plan);
+    return [`${from} · stream copy (remux)`, audio && !target.audioCopy ? `audio ${audio}` : null].filter(Boolean).join(" · ");
+  }
   const outputRange = !sourceHdr || toneMap === "hardware" || toneMap === "software" ? " SDR" : "";
   const to = `${codecLabel(target.videoCodec)} ${resolutionLabel(target.width, target.height)}${outputRange}`;
   const parts = [`${from} → ${to}`, pipelineSummary(plan)];
@@ -154,7 +189,7 @@ export function audioSummary(plan: TranscodePlanResponse): string | null {
   const source = plan.source.audio?.find((track) => track.index === target.audioStreamIndex);
   const from = `${codecLabel(target.audioSourceCodec ?? source?.codec)}${source?.channels ? ` ${channelLabel(source.channels)}` : ""}`;
   if (target.audioCopy) return `${from} (copied)`;
-  const to = `AAC ${channelLabel(target.audioChannels)}${target.audioBitrateKbps ? ` · ${target.audioBitrateKbps} kbps` : ""}`.trim();
+  const to = `${codecLabel(target.audioCodec ?? "aac")} ${channelLabel(target.audioChannels)}${target.audioBitrateKbps ? ` · ${target.audioBitrateKbps} kbps` : ""}`.trim();
   return `${from} → ${to}`;
 }
 

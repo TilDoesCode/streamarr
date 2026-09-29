@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { setSession } from "@/api/token";
 import { renderWithProviders } from "@/test/render";
 import { installFetchRoutes } from "@/test/fetch-routes";
-import { createdSession } from "@/test/transcoding-fixtures";
+import { createdSession, remuxPlan } from "@/test/transcoding-fixtures";
 import { PlaybackPage } from "./playback";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -58,6 +58,27 @@ describe("PlaybackPage — server transcode mode", () => {
 
     unmount();
     await waitFor(() => expect(requests.some((r) => r.method === "DELETE" && r.path === "/api/v1/transcode/cap-token-123")).toBe(true));
+  });
+
+  it("asks for a stream copy in remux mode and explains the copy", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchRoutes({
+      "POST /api/v1/resolve": () => resolveResponse,
+      "POST /api/v1/transcoding/sessions": () => ({ status: 201, body: createdSession({ mode: "remux", plan: remuxPlan() }) }),
+      "DELETE /api/v1/transcode/cap-token-123": () => ({ status: 204 }),
+    });
+    renderWithProviders(<PlaybackPage />);
+
+    await user.type(screen.getByPlaceholderText(/release id/i), "rel-ac3");
+    await user.click(screen.getByRole("button", { name: /resolve & load/i }));
+    await user.click(await screen.findByRole("radio", { name: /server remux/i }));
+
+    expect(await screen.findByRole("region", { name: "Remuxed preview" })).toHaveAttribute("data-src", "/api/v1/transcode/cap-token-123/master.m3u8");
+    const create = requests.find((r) => r.method === "POST" && r.path.endsWith("/transcoding/sessions"));
+    expect(create?.body).toMatchObject({ streamToken: "tok-ac3", mode: "remux" });
+    expect(create?.body).not.toHaveProperty("maxHeight");
+    expect(screen.getAllByText(/stream copy \(remux\)/)[0]).toBeVisible();
+    expect(screen.getByRole("button", { name: /restart remux/i })).toBeVisible();
   });
 
   it("links to the settings when transcoding is disabled", async () => {

@@ -1,0 +1,261 @@
+{
+  "app": {
+    "name": "Streamarr",
+    "tagline": "Your library, ready when you are."
+  },
+  "platform": {
+    "androidtv": "Android TV",
+    "appletv": "Apple TV",
+    "android": "Android",
+    "ios": "iOS",
+    "web": "Web",
+    "running": "Running on {platform}"
+  },
+  "formFactor": {
+    "phone": "Phone",
+    "tablet": "Tablet",
+    "tv": "TV",
+    "desktop-web": "Desktop web"
+  },
+  "home": {
+    "openGallery": "Component gallery",
+    "placeholder": "The home screen arrives with the navigation shells."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "home": "Go to start"
+  },
+  "common": {
+    "retry": "Try again",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "done": "Done",
+    "back": "Back",
+    "seeAll": "See all",
+    "loading": "Loading…",
+    "play": "Play",
+    "resume": "Resume",
+    "startOver": "Start over",
+    "moreInfo": "More info",
+    "versions": "Versions",
+    "episodes": "Episodes",
+    "settings": "Settings",
+    "search": "Search"
+  },
+  "a11y": {
+    "progress": "{progress, number, percent} watched",
+    "played": "Watched",
+    "loading": "Loading",
+    "dismiss": "Dismiss",
+    "artworkMissing": "No artwork available",
+    "scrollBack": "Scroll back",
+    "scrollForward": "Scroll forward"
+  },
+  "media": {
+    "episodeCode": "S{season}, E{episode}",
+    "episodeNumber": "Episode {episode}",
+    "season": "Season {season}",
+    "seasons": "{count, plural, one {# season} other {# seasons}}",
+    "episodes": "{count, plural, one {# episode} other {# episodes}}",
+    "versions": "{count, plural, =0 {No versions} one {# version} other {# versions}}",
+    "remaining": "{time} left",
+    "played": "Watched",
+    "new": "New",
+    "unavailable": "Unavailable",
+    "recommended": "Recommended",
+    "ready": "Ready",
+    "airDate": "Aired {date}",
+    "upNext": "Up next"
+  },
+  "format": {
+    "duration": {
+      "hm": "{hours} h {minutes} min",
+      "h": "{hours} h",
+      "m": "{minutes} min",
+      "s": "{seconds} s"
+    },
+    "relative": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "tomorrow": "Tomorrow",
+      "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
+      "inDays": "{count, plural, one {in # day} other {in # days}}"
+    },
+    "size": {
+      "gb": "{value} GB",
+      "mb": "{value} MB"
+    }
+  },
+  "language": {
+    "title": "Language",
+    "system": "System default",
+    "en": "English",
+    "de": "Deutsch",
+    "current": "Showing {language}"
+  },
+  "states": {
+    "empty": {
+      "title": "Nothing here yet",
+      "message": "Titles will show up here as soon as there is something to show."
+    },
+    "emptySearch": {
+      "title": "No results for “{query}”",
+      "message": "Check the spelling or try another title."
+    },
+    "emptyContinue": {
+      "title": "Nothing to continue",
+      "message": "Movies and episodes you start watching appear here."
+    }
+  },
+  "errors": {
+    "codeLabel": "Error code {code}",
+    "codes": {
+      "unknown": {
+        "title": "Something went wrong",
+        "message": "An unexpected error occurred. Try again in a moment."
+      },
+      "network_unreachable": {
+        "title": "Can’t reach the server",
+        "message": "Check that the server is running and that this device is on the same network."
+      },
+      "timeout": {
+        "title": "The server is taking too long",
+        "message": "The request timed out. Try again in a moment."
+      },
+      "unauthorized": {
+        "title": "Your session has ended",
+        "message": "Sign in again to continue."
+      },
+      "forbidden": {
+        "title": "Not allowed",
+        "message": "This profile doesn’t have permission to do that."
+      },
+      "age_restricted": {
+        "title": "Not available for this profile",
+        "message": "This title is above the age limit set for this profile."
+      },
+      "not_found": {
+        "title": "Not found",
+        "message": "This item no longer exists on the server."
+      },
+      "module_disabled": {
+        "title": "Viewing is turned off",
+        "message": "The viewer app is disabled on this server. Ask the server admin to enable it."
+      },
+      "too_many_streams": {
+        "title": "Too many streams",
+        "message": "This profile is already watching on another device. Stop playback there to watch here."
+      },
+      "catalog_unavailable": {
+        "title": "Catalog unavailable",
+        "message": "The server can’t load titles right now. Try again later."
+      },
+      "server_error": {
+        "title": "Server error",
+        "message": "The server ran into a problem. Try again in a moment."
+      },
+      "playback_failed": {
+        "title": "Playback failed",
+        "message": "This version couldn’t be played. Try another version or a lower quality."
+      }
+    },
+    "actions": {
+      "retry": "Try again",
+      "otherVersion": "Choose another version",
+      "lowerQuality": "Lower quality",
+      "useVlc": "Play with VLC",
+      "signIn": "Sign in again",
+      "goHome": "Go to start",
+      "back": "Go back"
+    }
+  },
+  "gallery": {
+    "title": "Component gallery",
+    "subtitle": "{formFactor} · scale {scale, number} · {width, number} × {height, number}",
+    "sections": {
+      "language": "Language",
+      "colors": "Colors",
+      "typography": "Typography",
+      "buttons": "Buttons",
+      "iconButtons": "Icon buttons",
+      "badges": "Badges and tags",
+      "progress": "Progress",
+      "loading": "Loading",
+      "cards": "Cards",
+      "episodes": "Episodes",
+      "states": "Empty and error states",
+      "overlays": "Dialogs, sheets and toasts",
+      "formatting": "Formatting"
+    },
+    "states": {
+      "default": "Default",
+      "focused": "Focused",
+      "pressed": "Pressed",
+      "disabled": "Disabled",
+      "loading": "Loading",
+      "error": "Error"
+    },
+    "variants": {
+      "primary": "Primary",
+      "secondary": "Secondary",
+      "ghost": "Ghost",
+      "destructive": "Delete"
+    },
+    "sizes": {
+      "sm": "Small",
+      "md": "Medium",
+      "lg": "Large"
+    },
+    "type": {
+      "sample": "The quick fox watches a movie"
+    },
+    "shelves": {
+      "continueWatching": "Continue watching",
+      "trendingMovies": "Trending movies",
+      "popularSeries": "Popular series"
+    },
+    "tags": {
+      "all": "All",
+      "movies": "Movies",
+      "series": "Series"
+    },
+    "hero": {
+      "eyebrow": "Featured"
+    },
+    "dialog": {
+      "open": "Open dialog",
+      "title": "Remove from Continue watching?",
+      "message": "Your progress is kept. The title just won’t show up in this row anymore.",
+      "confirm": "Remove"
+    },
+    "sheet": {
+      "open": "Open sheet",
+      "title": "Audio",
+      "options": {
+        "original": "English · Dolby Digital Plus 5.1",
+        "dub": "German · Dolby Digital 5.1",
+        "commentary": "English · Commentary · Stereo"
+      }
+    },
+    "toast": {
+      "info": "Show info toast",
+      "success": "Show success toast",
+      "error": "Show error toast",
+      "infoMessage": "Switched to German audio",
+      "successMessage": "Marked as watched",
+      "errorMessage": "Couldn’t save your progress"
+    },
+    "lastAction": "Last action: {action}",
+    "none": "none",
+    "formatting": {
+      "date": "Date: {value}",
+      "duration": "Runtime: {value}",
+      "remaining": "Remaining: {value}",
+      "relative": "Relative: {value}",
+      "size": "Size: {value}",
+      "plural": "Plural: {value}"
+    },
+    "animateLoaders": "Animate loaders"
+  }
+}

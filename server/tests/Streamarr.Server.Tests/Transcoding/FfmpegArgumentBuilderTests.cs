@@ -202,6 +202,61 @@ public sealed class FfmpegArgumentBuilderTests
     public void GopFrames_CoverExactlyOneSegment(double length, double fps, int frames)
         => Assert.Equal(frames, FfmpegArgumentBuilder.GopFrames(length, fps));
 
+    private static readonly ClientProfile HdrClient = new()
+    {
+        VideoCodecs = ["h264", "hevc"], AudioCodecs = ["aac", "ac3", "eac3"], Containers = ["mp4"], MaxAudioChannels = 6,
+        Supports10Bit = true, HdrFormats = ["hdr10"],
+    };
+
+    [Fact]
+    public void Remux_CopiesVideoIntoFragmentedMp4OnStdout_PlusOneWebVttFilePerTextSubtitle()
+    {
+        var media = Media(codec: "hevc", bitDepth: 10, hdr: HdrFormat.Hdr10, audioCodec: "truehd",
+            subtitles: [Subtitle(2, "subrip"), Subtitle(3, "hdmv_pgs_subtitle"), Subtitle(4, "ass", "ger")]);
+        var plan = Decide(media, HdrClient, allowDirect: false);
+
+        var args = FfmpegArgumentBuilder.Build(Spec(plan, network: true));
+
+        AssertSequence(args, "-map", "0:0", "-map", "0:1", "-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-c:v", "copy", "-tag:v", "hvc1");
+        AssertSequence(args, "-c:a", "eac3", "-ac", "6", "-b:a", "640k", "-af", "atrim=start=0.009");
+        AssertSequence(args, "-copyts", "-start_at_zero", "-avoid_negative_ts", "disabled");
+        AssertSequence(args, "-f", "mp4", "-movflags", "+frag_keyframe+empty_moov+default_base_moof+delay_moov+frag_discont+skip_trailer", "pipe:1");
+        AssertSequence(args, "-map", "0:2", "-c:s", "webvtt", "-avoid_negative_ts", "disabled", "-flush_packets", "1", "-f", "webvtt", "-y",
+            Path.Combine("/work/session", "sub-2-1.vtt"));
+        Assert.Equal(Path.Combine("/work/session", "sub-4-1.vtt"), args[^1]);
+        Assert.DoesNotContain("0:3", args);
+        Assert.DoesNotContain("-progress", args);
+        Assert.DoesNotContain("-ss", args);
+        Assert.DoesNotContain("-hls_time", args);
+        AssertSequence(args, "-reconnect", "1");
+    }
+
+    [Fact]
+    public void RemuxRestart_SeeksInMicroseconds_CopiesAudio_AndDoesNotTrim()
+    {
+        var plan = Decide(Media(codec: "h264", audioCodec: "ac3", channels: 6), HdrClient, allowDirect: false);
+
+        var args = FfmpegArgumentBuilder.Build(Spec(plan, startSegment: 8) with { SeekSeconds = 48.150435 });
+
+        AssertSequence(args, "-ss", "48.150435", "-i", "/samples/movie.mkv");
+        AssertSequence(args, "-c:v", "copy", "-c:a", "copy", "-copyts");
+        Assert.DoesNotContain("-tag:v", args);
+        Assert.DoesNotContain("-af", args);
+    }
+
+    [Theory]
+    [InlineData(6.005, 8.005, 6.155435)]
+    [InlineData(10, 10.1, 10.05)]
+    [InlineData(10, null, 10.150435)]
+    [InlineData(4, 4.2, 4.150435)]
+    public void RemuxSeekSeconds_LandsOnTheKeyframeWithAndWithoutFfmpegsDtsHeuristic(double keyframe, double? next, double expected)
+    {
+        var seek = FfmpegArgumentBuilder.RemuxSeekSeconds(keyframe, next);
+
+        Assert.Equal(expected, seek, 0.000001);
+        Assert.InRange(seek, keyframe, next ?? double.MaxValue);
+    }
+
     private static void AssertSequence(IReadOnlyList<string> args, params string[] expected)
     {
         for (var i = 0; i + expected.Length <= args.Count; i++)

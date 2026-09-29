@@ -14,6 +14,9 @@ public sealed record FfmpegJobSpec
     public int StartSegment { get; init; }
     public double? MaxInputSeconds { get; init; }
 
+    /// <summary>Input seek of a remux run: just past the start segment's keyframe (see <see cref="FfmpegArgumentBuilder.RemuxSeekSeconds"/>).</summary>
+    public double? SeekSeconds { get; init; }
+
     public string InitFileName => $"init-{JobTag}.mp4";
     public string PlaylistFileName => $"job-{JobTag}.m3u8";
     public double StartSeconds => StartSegment * SegmentLength;
@@ -27,8 +30,12 @@ public static class FfmpegArgumentBuilder
     public const string SoftwareToneMapChain =
         "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
 
+    public const string RemuxMovFlags = "+frag_keyframe+empty_moov+default_base_moof+delay_moov+frag_discont+skip_trailer";
+
     public static IReadOnlyList<string> Build(FfmpegJobSpec spec)
     {
+        if (spec.Plan.Mode == DeliveryMode.Remux)
+            return BuildRemux(spec);
         var plan = spec.Plan;
         var args = new List<string>
         {
@@ -86,6 +93,90 @@ public static class FfmpegArgumentBuilder
             "-y", Path.Combine(spec.OutputDirectory, spec.PlaylistFileName),
         ]);
         return args;
+    }
+
+    /// <summary>Stream copy into fMP4 on stdout for the <see cref="RemuxSegmenter"/> (source timestamps kept), plus one WebVTT file per text subtitle.</summary>
+    public static IReadOnlyList<string> BuildRemux(FfmpegJobSpec spec)
+    {
+        var plan = spec.Plan;
+        var args = new List<string> { "-hide_banner", "-nostdin", "-loglevel", "level+warning" };
+        if (spec.Source.IsNetwork)
+        {
+            args.AddRange([
+                "-user_agent", UserAgent,
+                "-reconnect", "1",
+                "-reconnect_on_network_error", "1",
+                "-reconnect_delay_max", "10",
+            ]);
+        }
+        args.AddRange(["-analyzeduration", "5000000", "-probesize", "10000000"]);
+        if (spec.SeekSeconds is { } seek && seek > 0)
+            args.AddRange(["-ss", Micros(seek)]);
+        if (spec.MaxInputSeconds is { } limit)
+            args.AddRange(["-t", Seconds(limit)]);
+        args.AddRange(["-i", spec.Source.Input]);
+
+        args.AddRange(["-map", $"0:{plan.SourceVideo.Index}"]);
+        if (plan.Audio is { } audio)
+            args.AddRange(["-map", $"0:{audio.SourceIndex}"]);
+        args.AddRange(["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-c:v", "copy"]);
+        if (plan.SourceVideo.Codec == "hevc")
+            args.AddRange(["-tag:v", "hvc1"]);
+        if (plan.Audio is { Copy: true })
+        {
+            args.AddRange(["-c:a", "copy"]);
+        }
+        else if (plan.Audio is { } converted)
+        {
+            args.AddRange([
+                "-c:a", converted.Codec,
+                "-ac", converted.Channels.ToString(CultureInfo.InvariantCulture),
+                "-b:a", Kbps(converted.BitrateKbps),
+            ]);
+            if (converted.SampleRate is { } rate)
+                args.AddRange(["-ar", rate.ToString(CultureInfo.InvariantCulture)]);
+            if (spec.SeekSeconds is null or <= 0)
+                args.AddRange(["-af", $"atrim=start={Micros(EncoderPrimingSeconds(converted))}"]);
+        }
+        else
+        {
+            args.Add("-an");
+        }
+        args.AddRange([
+            "-copyts", "-start_at_zero",
+            "-avoid_negative_ts", "disabled",
+            "-max_muxing_queue_size", "4096",
+            "-f", "mp4",
+            "-movflags", RemuxMovFlags,
+            "pipe:1",
+        ]);
+
+        foreach (var subtitle in plan.Subtitles.Where(s => s.Delivered))
+        {
+            args.AddRange([
+                "-map", $"0:{subtitle.Stream.Index}",
+                "-c:s", "webvtt",
+                "-avoid_negative_ts", "disabled",
+                "-flush_packets", "1",
+                "-f", "webvtt",
+                "-y", Path.Combine(spec.OutputDirectory, new SubtitleTrackStore(subtitle.Stream.Index).FileName(spec.JobTag)),
+            ]);
+        }
+        return args;
+    }
+
+    /// <summary>Encoder priming would give the run from 0 a negative first timestamp, so that run trims this much input audio instead.</summary>
+    internal static double EncoderPrimingSeconds(AudioTarget audio)
+        => audio.Codec == "aac" ? 1024d / 16_000 + 0.001 : 256d / 32_000 + 0.001;
+
+    /// <summary>Seek target that lands on <paramref name="keyframe"/> both with ffmpeg's Matroska "dts heuristic" (−3/23 s) and with SEEK_TO_PTS demuxers.</summary>
+    public static double RemuxSeekSeconds(double keyframe, double? nextKeyframe)
+    {
+        const double DtsHeuristic = 3d / 23d;
+        var gap = nextKeyframe is { } next && next > keyframe ? next - keyframe : 10;
+        return gap > DtsHeuristic + 0.04
+            ? keyframe + DtsHeuristic + Math.Min(0.02, (gap - DtsHeuristic) / 2)
+            : keyframe + gap / 2;
     }
 
     private static void AddVideo(List<string> args, FfmpegJobSpec spec)
@@ -291,6 +382,8 @@ public static class FfmpegArgumentBuilder
     };
 
     internal static string Seconds(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static string Micros(double value) => value.ToString("0.######", CultureInfo.InvariantCulture);
 
     private static string Kbps(int kbps) => $"{kbps.ToString(CultureInfo.InvariantCulture)}k";
 }

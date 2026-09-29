@@ -1,0 +1,1137 @@
+{
+  "schemaVersion": 1,
+  "notes": [
+    "Dev World fixture catalog (server/tests/Streamarr.DevWorld). Metadata captured from public TMDB web pages with tools/capture_tmdb.py; IMDb ids verified via Wikidata.",
+    "officialRating = DE certification when TMDB has one, else US, else the first captured country.",
+    "Release names must parse to the attributes of their variant; the harness fails fast on a mismatch.",
+    "Indexer-reported sizes are nominal (variant/release nominalMbps x TMDB runtime); the generated clips are short.",
+    "health: ready (default) | dead (missing articles) | degraded (STAT probes drop the connection)."
+  ],
+  "defaults": {
+    "movieDurationSeconds": 180,
+    "episodeDurationSeconds": 120,
+    "partSizeBytes": 262144
+  },
+  "variants": {
+    "mp4-h264-aac-1080p": {
+      "label": "MP4 H264 AAC 2.0",
+      "container": "mp4",
+      "nominalMbps": 6,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "bitDepth": 8,
+        "kbps": 350
+      },
+      "audio": [
+        {
+          "codec": "aac",
+          "channels": 2,
+          "language": "eng",
+          "title": "English",
+          "kbps": 96
+        }
+      ],
+      "subtitles": []
+    },
+    "mp4-h264-aac-720p": {
+      "label": "MP4 H264 720P AAC 2.0",
+      "container": "mp4",
+      "nominalMbps": 3,
+      "video": {
+        "codec": "h264",
+        "width": 1280,
+        "height": 720,
+        "bitDepth": 8,
+        "kbps": 220
+      },
+      "audio": [
+        {
+          "codec": "aac",
+          "channels": 2,
+          "language": "eng",
+          "title": "English",
+          "kbps": 96
+        }
+      ],
+      "subtitles": []
+    },
+    "mkv-h264-eac3-srt-1080p": {
+      "label": "MKV H264 EAC3 5.1 SRT DE+EN",
+      "container": "mkv",
+      "nominalMbps": 10,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "bitDepth": 8,
+        "kbps": 350
+      },
+      "audio": [
+        {
+          "codec": "eac3",
+          "channels": 6,
+          "language": "eng",
+          "title": "English 5.1",
+          "kbps": 192
+        }
+      ],
+      "subtitles": [
+        {
+          "format": "srt",
+          "language": "eng",
+          "title": "English"
+        },
+        {
+          "format": "srt",
+          "language": "ger",
+          "title": "Deutsch"
+        }
+      ]
+    },
+    "mkv-hevc-hdr10-dts-1080p": {
+      "label": "MKV HEVC 10BIT HDR10 DTS 5.1",
+      "container": "mkv",
+      "nominalMbps": 8,
+      "video": {
+        "codec": "hevc",
+        "width": 1920,
+        "height": 1080,
+        "bitDepth": 10,
+        "hdr": "hdr10",
+        "kbps": 350
+      },
+      "audio": [
+        {
+          "codec": "dts",
+          "channels": 6,
+          "language": "eng",
+          "title": "English DTS 5.1",
+          "kbps": 768
+        }
+      ],
+      "subtitles": [
+        {
+          "format": "srt",
+          "language": "eng",
+          "title": "English"
+        }
+      ]
+    },
+    "mkv-hevc-hdr10-truehd-1080p": {
+      "label": "MKV HEVC 10BIT HDR10 TRUEHD 5.1",
+      "container": "mkv",
+      "nominalMbps": 9,
+      "video": {
+        "codec": "hevc",
+        "width": 1920,
+        "height": 1080,
+        "bitDepth": 10,
+        "hdr": "hdr10",
+        "kbps": 350
+      },
+      "audio": [
+        {
+          "codec": "truehd",
+          "channels": 6,
+          "language": "eng",
+          "title": "English TrueHD 5.1"
+        }
+      ],
+      "subtitles": [
+        {
+          "format": "srt",
+          "language": "eng",
+          "title": "English"
+        }
+      ]
+    },
+    "mkv-hevc-hdr10-truehd-2160p": {
+      "label": "MKV HEVC 2160P HDR10 TRUEHD 5.1",
+      "container": "mkv",
+      "nominalMbps": 40,
+      "durationSeconds": 60,
+      "video": {
+        "codec": "hevc",
+        "width": 3840,
+        "height": 2160,
+        "bitDepth": 10,
+        "hdr": "hdr10",
+        "kbps": 1800
+      },
+      "audio": [
+        {
+          "codec": "truehd",
+          "channels": 6,
+          "language": "eng",
+          "title": "English TrueHD 5.1"
+        }
+      ],
+      "subtitles": [
+        {
+          "format": "srt",
+          "language": "eng",
+          "title": "English"
+        }
+      ]
+    },
+    "mkv-av1-opus-1080p": {
+      "label": "MKV AV1 OPUS 5.1",
+      "container": "mkv",
+      "nominalMbps": 4,
+      "video": {
+        "codec": "av1",
+        "width": 1920,
+        "height": 1080,
+        "bitDepth": 8,
+        "kbps": 300
+      },
+      "audio": [
+        {
+          "codec": "opus",
+          "channels": 6,
+          "language": "eng",
+          "title": "English Opus 5.1",
+          "kbps": 128
+        }
+      ],
+      "subtitles": [
+        {
+          "format": "srt",
+          "language": "eng",
+          "title": "English"
+        }
+      ]
+    },
+    "mkv-dualaudio-ass-1080p": {
+      "label": "MKV H264 DE+EN AC3 ASS FORCED",
+      "container": "mkv",
+      "nominalMbps": 12,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "bitDepth": 8,
+        "kbps": 350
+      },
+      "audio": [
+        {
+          "codec": "ac3",
+          "channels": 6,
+          "language": "ger",
+          "title": "Deutsch AC3 5.1",
+          "kbps": 256,
+          "default": true
+        },
+        {
+          "codec": "ac3",
+          "channels": 2,
+          "language": "eng",
+          "title": "English AC3 2.0",
+          "kbps": 128
+        }
+      ],
+      "subtitles": [
+        {
+          "format": "ass",
+          "language": "ger",
+          "title": "Deutsch (styled)"
+        },
+        {
+          "format": "ass",
+          "language": "eng",
+          "title": "English (styled)"
+        },
+        {
+          "format": "srt",
+          "language": "ger",
+          "title": "Deutsch (forced)",
+          "forced": true
+        }
+      ]
+    },
+    "mpg-mpeg2-ac3-576p": {
+      "label": "MPEG-PS MPEG2 PAL AC3 2.0",
+      "container": "mpg",
+      "nominalMbps": 6,
+      "fps": "25",
+      "video": {
+        "codec": "mpeg2video",
+        "width": 720,
+        "height": 576,
+        "bitDepth": 8,
+        "kbps": 700,
+        "aspect": "16:9"
+      },
+      "audio": [
+        {
+          "codec": "ac3",
+          "channels": 2,
+          "language": "eng",
+          "title": "English",
+          "kbps": 192
+        }
+      ],
+      "subtitles": []
+    },
+    "mpg-mpeg2-ac3-480p": {
+      "label": "MPEG-PS MPEG2 NTSC AC3 2.0",
+      "container": "mpg",
+      "nominalMbps": 6,
+      "fps": "30000/1001",
+      "video": {
+        "codec": "mpeg2video",
+        "width": 720,
+        "height": 480,
+        "bitDepth": 8,
+        "kbps": 700,
+        "aspect": "4:3"
+      },
+      "audio": [
+        {
+          "codec": "ac3",
+          "channels": 2,
+          "language": "eng",
+          "title": "English",
+          "kbps": 192
+        }
+      ],
+      "subtitles": []
+    }
+  },
+  "movies": [
+    {
+      "key": "big-buck-bunny",
+      "tmdbId": 10378,
+      "imdbId": "tt1254207",
+      "title": "Big Buck Bunny",
+      "titleDe": null,
+      "originalTitle": "Big Buck Bunny",
+      "year": 2008,
+      "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+      "overviewDe": "Der Hauptcharakter ist ein ungewöhnlich großes und fülliges Kaninchen („Big Buck Bunny“), das sich zu Beginn des Films an Blumen und Schmetterlingen erfreut. Als jedoch das Flughörnchen Frank, das Eichhörnchen Rinky und das Chinchilla Gamera auftauchen, zwei Schmetterlinge töten und das Kaninchen mit Früchten und Nüssen bewerfen, beschließt es, seine Sanftmütigkeit abzulegen und an den Nagetieren Rache zu nehmen. Dazu baut es verschiedene Fallen auf.",
+      "tagline": null,
+      "taglineDe": null,
+      "genres": [
+        "Animation",
+        "Comedy",
+        "Family"
+      ],
+      "genresDe": [
+        "Animation",
+        "Komödie",
+        "Familie"
+      ],
+      "communityRating": 6.5,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/i9jJzvoXET4D9pOkoEwncSdNNER.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/xtdybjRRZ15mCrPOvEld305myys.jpg",
+      "license": "CC BY 3.0 (Blender Foundation)",
+      "accentColor": "#f4a261",
+      "fps": "24",
+      "runtimeMinutes": 8,
+      "certifications": {
+        "DE": "6",
+        "AU": "G",
+        "FI": "S",
+        "FR": "TP",
+        "NL": "AL",
+        "RO": "AP",
+        "SE": "7",
+        "US": "G"
+      },
+      "officialRating": "6",
+      "releases": [
+        {
+          "name": "Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+          "variant": "mp4-h264-aac-1080p",
+          "grabs": 950,
+          "ageDays": 400
+        },
+        {
+          "name": "Big.Buck.Bunny.2008.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+          "variant": "mkv-h264-eac3-srt-1080p",
+          "grabs": 420,
+          "ageDays": 900
+        },
+        {
+          "name": "Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD",
+          "variant": "mkv-hevc-hdr10-truehd-2160p",
+          "grabs": 180,
+          "ageDays": 300
+        }
+      ]
+    },
+    {
+      "key": "sintel",
+      "tmdbId": 45745,
+      "imdbId": "tt1727587",
+      "title": "Sintel",
+      "titleDe": null,
+      "originalTitle": "Sintel",
+      "year": 2010,
+      "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+      "overviewDe": "Der Einstieg des Films ist der Überfall eines Drachentöters auf die durch eine verschneite Landschaft streifende, junge, weibliche Hauptfigur Sintel. Bei dem Überfall scheint sie ihrem Angreifer hoffnungslos unterlegen, kann jedoch seinen Speerattacken ausweichen und ihn mit ihrem Messer verwunden, wodurch er seinen Speer fallen lässt. Als er ungestüm auf sie zuläuft kann sie den Speer aufrichten, wodurch er ihn sich selbst in den Bauch rammt und tot umfällt. Sintel ist jedoch durch die Strapazen und den Überfall so geschwächt, dass sie nach einigen Schritten erschöpft im Schnee liegen bleibt und bewusstlos wird.",
+      "tagline": null,
+      "taglineDe": null,
+      "genres": [
+        "Animation",
+        "Fantasy"
+      ],
+      "genresDe": [
+        "Animation",
+        "Fantasy"
+      ],
+      "communityRating": 7.3,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+      "license": "CC BY 3.0 (Blender Foundation)",
+      "accentColor": "#e63946",
+      "fps": "24",
+      "runtimeMinutes": 14,
+      "certifications": {
+        "AU": "PG",
+        "FI": "K-12",
+        "NL": "12",
+        "US": "PG"
+      },
+      "officialRating": "PG",
+      "releases": [
+        {
+          "name": "Sintel.2010.1080p.BluRay.DTS.5.1.HDR10.10bit.x265-DEVWORLD",
+          "variant": "mkv-hevc-hdr10-dts-1080p",
+          "grabs": 610,
+          "ageDays": 1500
+        },
+        {
+          "name": "Sintel.2010.1080p.WEB-DL.Opus.5.1.AV1-DEVWORLD",
+          "variant": "mkv-av1-opus-1080p",
+          "grabs": 140,
+          "ageDays": 60
+        },
+        {
+          "name": "Sintel.2010.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+          "variant": "mkv-dualaudio-ass-1080p",
+          "grabs": 330,
+          "ageDays": 800
+        }
+      ]
+    },
+    {
+      "key": "tears-of-steel",
+      "tmdbId": 133701,
+      "imdbId": "tt2285752",
+      "title": "Tears of Steel",
+      "titleDe": null,
+      "originalTitle": "Tears of Steel",
+      "year": 2012,
+      "overview": "The film’s premise is about a group of warriors and scientists, who gathered at the “Oude Kerk” in Amsterdam to stage a crucial event from the past, in a desperate attempt to rescue the world from destructive robots.",
+      "overviewDe": "Tears of Steel ist ein computergenerierter Kurzfilm, der im Rahmen des Filmprojektes Mango entstanden ist. Dieses Projekt wurde durch die Blender Foundation produziert und dient der Weiterentwicklung und Erprobung freier Software, insbesondere der 3D-Grafiksoftware Blender. Der Film wurde am 26. September 2012 auf der Projekthomepage veröffentlicht.",
+      "tagline": null,
+      "taglineDe": null,
+      "genres": [
+        "Science Fiction",
+        "Animation"
+      ],
+      "genresDe": [
+        "Science Fiction",
+        "Animation"
+      ],
+      "communityRating": 5.7,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/8qy3jRmaHR7f8VZh3iXCqCWfFsH.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/fOy6SL5Zs2PFcNXwqEPIDPrLB1q.jpg",
+      "license": "CC BY 3.0 (Blender Foundation)",
+      "accentColor": "#457b9d",
+      "fps": "24",
+      "runtimeMinutes": 12,
+      "certifications": {
+        "NL": "NR"
+      },
+      "officialRating": "NR",
+      "releases": [
+        {
+          "name": "Tears.of.Steel.2012.1080p.BluRay.DDP5.1.x264-FLAKY",
+          "variant": "mkv-h264-eac3-srt-1080p",
+          "grabs": 1200,
+          "ageDays": 20,
+          "health": "degraded"
+        },
+        {
+          "name": "Tears.of.Steel.2012.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+          "variant": "mp4-h264-aac-720p",
+          "grabs": 260,
+          "ageDays": 700
+        },
+        {
+          "name": "Tears.of.Steel.2012.576p.PAL.DVD.MPEG-2.DD2.0-DEVWORLD",
+          "variant": "mpg-mpeg2-ac3-576p",
+          "grabs": 35,
+          "ageDays": 3000
+        }
+      ]
+    },
+    {
+      "key": "elephants-dream",
+      "tmdbId": 9761,
+      "imdbId": "tt0807840",
+      "title": "Elephants Dream",
+      "titleDe": null,
+      "originalTitle": "Elephants Dream",
+      "year": 2006,
+      "overview": "Elephants Dream is the story of two strange characters exploring a capricious and seemingly infinite machine. The elder, Proog, acts as a tour-guide and protector, happily showing off the sights and dangers of the machine to his initially curious but increasingly skeptical protege Emo. As their journey unfolds we discover signs that the machine is not all Proog thinks it is, and his guiding takes on a more desperate aspect. Elephants Dream is a story about communication and fiction, made purposefully open-ended as the world’s first 3D animated “Open movie”. The film itself is released under the Creative Commons license, along with the entirety of the production files used to make it (roughly 7 Gigabytes of data). The software used to make the movie is the free/open source animation suite Blender along with other open source software, thus allowing the movie to be remade, remixed and re-purposed with only a computer and the data on the DVD or download.",
+      "overviewDe": "Emo und Proog befinden sich in einer riesigen surrealen Maschine. Der junge Emo ist verschüchtert und ruhig. Zudem scheint er Angst zu haben.Der alte Proog hingegen scheint die Maschine zu verstehen. Er deutet die merkwürdigen Dinge die geschehen und findet die scheinbar sicheren Wege.Je länger die beiden aber durch die Maschine irren, desto größer wird Emos Zweifel an Proog und der Maschine...",
+      "tagline": null,
+      "taglineDe": null,
+      "genres": [
+        "Animation",
+        "Science Fiction"
+      ],
+      "genresDe": [
+        "Animation",
+        "Science Fiction"
+      ],
+      "communityRating": 5.8,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/9zROtU9TkpZQrOuEaMAp68FOWLK.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/9bJDwuhza19HQcYA99FeslLYmUm.jpg",
+      "license": "CC BY 2.5 (Blender Foundation)",
+      "accentColor": "#2a9d8f",
+      "fps": "24",
+      "runtimeMinutes": 11,
+      "certifications": {
+        "FR": "TP",
+        "US": "NR"
+      },
+      "officialRating": "NR",
+      "releases": [
+        {
+          "name": "Elephants.Dream.2006.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+          "variant": "mkv-h264-eac3-srt-1080p",
+          "grabs": 380,
+          "ageDays": 1100
+        },
+        {
+          "name": "Elephants.Dream.2006.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+          "variant": "mp4-h264-aac-1080p",
+          "grabs": 510,
+          "ageDays": 500
+        }
+      ]
+    },
+    {
+      "key": "cosmos-laundromat",
+      "tmdbId": 358332,
+      "imdbId": "tt4957236",
+      "title": "Cosmos Laundromat",
+      "titleDe": null,
+      "originalTitle": "Cosmos Laundromat",
+      "year": 2015,
+      "overview": "On a desolate island, a suicidal sheep named Franck meets his fate…in the form of a quirky salesman named Victor, who offers him the gift of a lifetime. The gift is many lifetimes, actually, in many different worlds – each lasting just a few minutes. In the sequel to the pilot, Franck will find a new reason to live…in the form of a bewitching female adventurer named Tara, who awakens his long-lost lust for life. But can Franck keep up with her?",
+      "overviewDe": "Auf einer trostlosen Insel begegnet ein selbstmörderisches Schaf namens Franck seinem Schicksal, denn es bekommt von dem mysteriösen Geschäftsmann Victor eine Maschine geschenkt, mit der es neue Abenteuer in anderen Welten erleben kann.",
+      "tagline": "Any life you ever wanted!",
+      "taglineDe": "Jedes Leben, dass du dir wünschst!",
+      "genres": [
+        "Animation",
+        "Fantasy"
+      ],
+      "genresDe": [
+        "Animation",
+        "Fantasy"
+      ],
+      "communityRating": 6.3,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/5ZXi0oitpEgAdoJglFTc5SZF9nt.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/f2wABsgj2lIR2dkDEfBZX8p4Iyk.jpg",
+      "license": "CC BY 4.0 (Blender Institute)",
+      "accentColor": "#9b5de5",
+      "fps": "24",
+      "runtimeMinutes": 12,
+      "certifications": {
+        "AU": "G",
+        "RO": "15"
+      },
+      "officialRating": "G",
+      "releases": [
+        {
+          "name": "Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST",
+          "variant": "mkv-hevc-hdr10-truehd-1080p",
+          "grabs": 2400,
+          "ageDays": 3,
+          "health": "dead",
+          "nominalMbps": 14
+        },
+        {
+          "name": "Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-DEVWORLD",
+          "variant": "mkv-hevc-hdr10-truehd-1080p",
+          "grabs": 300,
+          "ageDays": 700
+        },
+        {
+          "name": "Cosmos.Laundromat.2015.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+          "variant": "mp4-h264-aac-1080p",
+          "grabs": 450,
+          "ageDays": 400
+        }
+      ]
+    },
+    {
+      "key": "sprite-fright",
+      "tmdbId": 891761,
+      "imdbId": "tt15804252",
+      "title": "Sprite Fright",
+      "titleDe": null,
+      "originalTitle": "Sprite Fright",
+      "year": 2024,
+      "overview": "Set in 80’s-Britain, when a group of rowdy teenagers trek into an isolated forest, they discover peaceful mushroom creatures that turn out to be an unexpected force of nature.",
+      "overviewDe": null,
+      "tagline": "Not all mushrooms are fun guys.",
+      "taglineDe": null,
+      "genres": [
+        "Animation",
+        "Horror",
+        "Comedy"
+      ],
+      "genresDe": [
+        "Animation",
+        "Horror",
+        "Komödie"
+      ],
+      "communityRating": 7.8,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/AjWJQOogG4Irpff6K49tzrUTb1s.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/aCMT1okuiKFnyKHdCOez66rJKyT.jpg",
+      "license": "CC BY 4.0 (Blender Studio)",
+      "accentColor": "#80b918",
+      "fps": "24",
+      "runtimeMinutes": 11,
+      "certifications": {
+        "NL": "14",
+        "US": "PG-13"
+      },
+      "officialRating": "PG-13",
+      "releases": [
+        {
+          "name": "Sprite.Fright.2024.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+          "variant": "mkv-dualaudio-ass-1080p",
+          "grabs": 290,
+          "ageDays": 150
+        },
+        {
+          "name": "Sprite.Fright.2024.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+          "variant": "mp4-h264-aac-1080p",
+          "grabs": 700,
+          "ageDays": 200
+        },
+        {
+          "name": "Sprite.Fright.2024.1080p.WEB-DL.Opus.5.1.AV1-DEVWORLD",
+          "variant": "mkv-av1-opus-1080p",
+          "grabs": 90,
+          "ageDays": 30
+        }
+      ]
+    },
+    {
+      "key": "night-of-the-living-dead",
+      "tmdbId": 10331,
+      "imdbId": "tt0063350",
+      "title": "Night of the Living Dead",
+      "titleDe": "Die Nacht der lebenden Toten",
+      "originalTitle": "Night of the Living Dead",
+      "year": 1968,
+      "overview": "A ragtag group barricade themselves in an old Pennsylvania farmhouse to remain safe from a horde of flesh-eating ghouls ravaging the Northeast.",
+      "overviewDe": "In der Provinz von Pennsylvania steigen Tote aus ihren Gräbern und machen sich mit kannibalistischen Motiven über die Landbevölkerung her. Eine Handvoll Durchreisender flüchtet in das abgelegene Haus einer höchst nervösen Kleinfamilie, wo man sich alsbald einer massiven Belagerung ausgesetzt sieht. Im Laufe einer turbulenten Nacht segnen sämtliche Eingeschlossenen das Zeitliche, wobei der letzte Überlebende als der einzige rational agierende Charakter bezeichnenderweise einer Kugel aus Polizeigewehren zum Opfer fällt.",
+      "tagline": "If it doesn't scare you, you're already dead!",
+      "taglineDe": "Wenn dich das nicht erschreckt, bist du schon tot!",
+      "genres": [
+        "Horror",
+        "Thriller",
+        "Science Fiction"
+      ],
+      "genresDe": [
+        "Horror",
+        "Thriller",
+        "Science Fiction"
+      ],
+      "communityRating": 7.6,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/rb2NWyb008u1EcKCOyXs2Nmj0ra.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/5KtmBSqFtHY3I9t8lgH27Mc0bqY.jpg",
+      "license": "Public domain",
+      "accentColor": "#6c757d",
+      "fps": "24000/1001",
+      "runtimeMinutes": 96,
+      "certifications": {
+        "DE": "16",
+        "AU": "M",
+        "BR": "16",
+        "CZ": "18+",
+        "FI": "K-16",
+        "FR": "16",
+        "HU": "18",
+        "ID": "17+",
+        "IE": "18",
+        "IT": "VM18",
+        "JP": "G",
+        "NL": "16",
+        "NO": "18",
+        "PL": "18",
+        "ES": "18",
+        "SE": "15",
+        "GB": "15",
+        "US": "NR"
+      },
+      "officialRating": "16",
+      "releases": [
+        {
+          "name": "Night.of.the.Living.Dead.1968.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+          "variant": "mp4-h264-aac-720p",
+          "grabs": 640,
+          "ageDays": 900
+        },
+        {
+          "name": "Night.of.the.Living.Dead.1968.480p.NTSC.DVD.MPEG-2.DD2.0-DEVWORLD",
+          "variant": "mpg-mpeg2-ac3-480p",
+          "grabs": 120,
+          "ageDays": 4000
+        }
+      ]
+    }
+  ],
+  "series": [
+    {
+      "key": "pioneer-one",
+      "tmdbId": 33050,
+      "imdbId": "tt1748166",
+      "title": "Pioneer One",
+      "titleDe": null,
+      "originalTitle": "Pioneer One",
+      "year": 2010,
+      "overview": "A Cold War relic returns amid fears of terrorism but turns out to be a forgotten Soviet space mission. What it brings back will have implications for the entire world.",
+      "overviewDe": null,
+      "tagline": null,
+      "taglineDe": null,
+      "genres": [
+        "Sci-Fi & Fantasy",
+        "War & Politics",
+        "Drama"
+      ],
+      "genresDe": [
+        "Sci-Fi & Fantasy",
+        "War & Politics",
+        "Drama"
+      ],
+      "communityRating": 6.3,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/p53wbsukyhJ8TieisoeU1zZr9iA.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/aMUc1h3nXYZnou7P9HRdJgW2zw2.jpg",
+      "license": "CC BY-NC-SA 3.0 (Bitlove / Josh Bernhard, Bracey Smith)",
+      "accentColor": "#e9c46a",
+      "fps": "24000/1001",
+      "runtimeMinutes": 35,
+      "certifications": {
+        "DE": "NR"
+      },
+      "officialRating": "NR",
+      "seasons": [
+        {
+          "seasonNumber": 1,
+          "title": "Season 1",
+          "posterUrl": null,
+          "episodes": [
+            {
+              "episodeNumber": 1,
+              "title": "Earthfall",
+              "titleDe": null,
+              "airDate": "2010-06-16",
+              "runtimeMinutes": 35,
+              "overview": "An object from space spreads radiation over North America. Fearing terrorism, U.S. Homeland Security agents are dispatched to investigate and contain the damage. What they discover is a forgotten relic of the old Soviet space program, whose return to Earth will have implications for the entire world.",
+              "overviewDe": null,
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "Pioneer.One.S01E01.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 210,
+                  "ageDays": 870
+                },
+                {
+                  "name": "Pioneer.One.S01E01.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+                  "variant": "mkv-h264-eac3-srt-1080p",
+                  "grabs": 155,
+                  "ageDays": 1170
+                }
+              ]
+            },
+            {
+              "episodeNumber": 2,
+              "title": "The Man From Mars",
+              "titleDe": null,
+              "airDate": "2010-06-25",
+              "runtimeMinutes": 35,
+              "overview": "Hired Mars expert Dr. Zachary Walzer (Jack Haley) fights to prove the validity of the Mars story. Can he convince the government to mount a manned mission to Mars? Agent in charge Tom Taylor (James Rich) faces pressure from both the Canadians and his own superiors, and has to make a call.",
+              "overviewDe": null,
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "Pioneer.One.S01E02.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 220,
+                  "ageDays": 840
+                },
+                {
+                  "name": "Pioneer.One.S01E02.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+                  "variant": "mkv-h264-eac3-srt-1080p",
+                  "grabs": 160,
+                  "ageDays": 1140
+                }
+              ]
+            },
+            {
+              "episodeNumber": 3,
+              "title": "Alone in the Night",
+              "titleDe": null,
+              "airDate": "2011-03-28",
+              "runtimeMinutes": 35,
+              "overview": "Now quarantined to the Calgary base for two weeks, Taylor and his team have bought time to get answers from the supposed Martian cosmonaut. But who can get him to talk?",
+              "overviewDe": null,
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "Pioneer.One.S01E03.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 230,
+                  "ageDays": 810
+                },
+                {
+                  "name": "Pioneer.One.S01E03.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+                  "variant": "mkv-h264-eac3-srt-1080p",
+                  "grabs": 165,
+                  "ageDays": 1110
+                }
+              ]
+            },
+            {
+              "episodeNumber": 4,
+              "title": "Triangular Diplomacy",
+              "titleDe": null,
+              "airDate": "2011-04-28",
+              "runtimeMinutes": 35,
+              "overview": "As the media begins to question the story about the crashed satellite, Secretary McClellan (Einar Gunn) starts to play hardball with the Russians in pursuit of his own truth. But everything hinges on what Yuri (Aleksandr Evtushenko), the frightened boy at the center of it all, might have to say...",
+              "overviewDe": null,
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "Pioneer.One.S01E04.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 240,
+                  "ageDays": 780
+                },
+                {
+                  "name": "Pioneer.One.S01E04.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+                  "variant": "mkv-h264-eac3-srt-1080p",
+                  "grabs": 170,
+                  "ageDays": 1080
+                }
+              ]
+            },
+            {
+              "episodeNumber": 5,
+              "title": "Sea Change",
+              "titleDe": null,
+              "airDate": "2011-10-05",
+              "runtimeMinutes": 35,
+              "overview": "When an unannounced visitor breaks in to the Calgary base with just days left in the Quarantine, tensions are higher than ever. The fate of Yuri and everyone on Tom Taylor’s team is about to be decided in this, the penultimate episode of the first season.",
+              "overviewDe": null,
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "Pioneer.One.S01E05.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 250,
+                  "ageDays": 750
+                },
+                {
+                  "name": "Pioneer.One.S01E05.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+                  "variant": "mkv-h264-eac3-srt-1080p",
+                  "grabs": 175,
+                  "ageDays": 1050
+                }
+              ]
+            },
+            {
+              "episodeNumber": 6,
+              "title": "War of the World",
+              "titleDe": null,
+              "airDate": "2011-12-13",
+              "runtimeMinutes": 35,
+              "overview": "Taylor prepares to go to the public with Yuri's story, and everyone discovers the consequences of their actions in the conclusion to Pioneer One's first season.",
+              "overviewDe": null,
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "Pioneer.One.S01E06.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 260,
+                  "ageDays": 720
+                },
+                {
+                  "name": "Pioneer.One.S01E06.1080p.BluRay.DDP5.1.x264-DEVWORLD",
+                  "variant": "mkv-h264-eac3-srt-1080p",
+                  "grabs": 180,
+                  "ageDays": 1020
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "seasonPacks": [
+        {
+          "name": "Pioneer.One.S01.1080p.BluRay.DDP5.1.x264-DEVPACK",
+          "variant": "mkv-h264-eac3-srt-1080p",
+          "grabs": 310,
+          "ageDays": 1000,
+          "season": 1
+        }
+      ]
+    },
+    {
+      "key": "sherlock",
+      "tmdbId": 19885,
+      "imdbId": "tt1475582",
+      "title": "Sherlock",
+      "titleDe": null,
+      "originalTitle": "Sherlock",
+      "year": 2010,
+      "overview": "A modern update finds the famous sleuth and his doctor partner solving crime in 21st century London.",
+      "overviewDe": "Sherlock ist eine britische Fernsehserie der BBC. Die Autoren Steven Moffat und Mark Gatiss versetzen dabei die von Sir Arthur Conan Doyle geschriebenen Detektivgeschichten in einen modernen Kontext und lassen Sherlock Holmes, gemeinsam mit seinem Assistenten Dr. Watson, im heutigen London ermitteln.",
+      "tagline": "A new sleuth for the 21st century.",
+      "taglineDe": null,
+      "genres": [
+        "Crime",
+        "Drama",
+        "Mystery"
+      ],
+      "genresDe": [
+        "Krimi",
+        "Drama",
+        "Mystery"
+      ],
+      "communityRating": 8.5,
+      "posterUrl": "https://image.tmdb.org/t/p/w780/7WTsnHkbA0FaG6R9twfFde0I9hl.jpg",
+      "backdropUrl": "https://image.tmdb.org/t/p/w1280/8rvLEmdI4gLrMO1rLqbNdnNcPFE.jpg",
+      "license": "Proprietary (BBC) - metadata and artwork URLs only; media is generated",
+      "accentColor": "#264653",
+      "fps": "25",
+      "runtimeMinutes": 89,
+      "certifications": {
+        "DE": "12"
+      },
+      "officialRating": "12",
+      "seasons": [
+        {
+          "seasonNumber": 1,
+          "title": "Season 1",
+          "posterUrl": "https://image.tmdb.org/t/p/w780/wQczbo7IKtHjmO49pVWTc2u5pSt.jpg",
+          "episodes": [
+            {
+              "episodeNumber": 1,
+              "title": "A Study in Pink",
+              "titleDe": "Ein Fall von Pink",
+              "airDate": "2010-07-25",
+              "runtimeMinutes": 88,
+              "overview": "A war hero, invalided home from Afghanistan, meets a strange but charismatic genius who is looking for a flatmate; it is London, 2010, and Dr Watson and Sherlock Holmes are meeting for the first time. A string of impossible suicides has Scotland Yard baffled - and only one man can help.",
+              "overviewDe": "Eine in Pink gekleidete Frau liegt tot in einem baufälligen Haus. Sie ist bereits die vierte Leiche in einer Serie scheinbar unmöglicher Selbstmorde. Detective Inspector Lestrade ist der beste Mann bei Scotland Yard, aber zunehmend ratlos. Er weiß, dass es nur einen Mann gibt, der in diesem Fall weiterhelfen kann. Anderswo in London kehrt ein als dienstunfähig eingestufter Kriegsheld aus Afghanistan zurück. Das seltsame, aber charismatische Genie Sherlock Holmes sucht einen Mitbewohner: Dr. John Watson und Sherlock Holmes treffen sich zum ersten Mal.",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/u8xvgVzTQjAeRu68sI9JJHeQSuA.jpg",
+              "releases": [
+                {
+                  "name": "Sherlock.S01E01.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 420,
+                  "ageDays": 1600
+                },
+                {
+                  "name": "Sherlock.S01E01.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 920,
+                  "ageDays": 1200
+                }
+              ]
+            },
+            {
+              "episodeNumber": 2,
+              "title": "The Blind Banker",
+              "titleDe": "Der blinde Banker",
+              "airDate": "2010-08-01",
+              "runtimeMinutes": 89,
+              "overview": "A mysterious cipher is being scrawled on the walls around London. The first person to see the cipher is dead within hours of reading it. Sherlock plunges into a world of codes and symbols, consulting with London's best graffiti artists. He soon learns that the city is in the grip a gang of international smugglers, a secret society called the Black Lotus.",
+              "overviewDe": "Das neue Leben von Watson ist niemals langweilig – schließlich teilt er sich die Wohnung mit Sherlock Holmes. Aber leider werden durch das Lösen von Rätseln keine Rechnungen bezahlt. Sherlocks Idee einfach eine Bank aufzusuchen ist dabei nicht ganz das, was Watson sich vorstellt. Mysteriöse Chiffren tauchen plötzlich auf Mauern in London. auf. Die Chiffren finden sich in ganz London vom glänzenden Finanzzentrum in der Stadt bis hin zum chinesischen Wanderzirkus. Jeder, der diese Chiffren sieht ist innerhalb von Stunden tot. Sherlock und Watson sollen die tödlichen Symbole entschlüsseln bevor noch weitere Personen dem mysteriösen Black Lotus zum Opfer fallen.",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/cp1mf1pwb8F7NcuCJkzcfxIkZw2.jpg",
+              "releases": [
+                {
+                  "name": "Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 3100,
+                  "ageDays": 4,
+                  "health": "dead",
+                  "nominalMbps": 16
+                },
+                {
+                  "name": "Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 440,
+                  "ageDays": 1600
+                },
+                {
+                  "name": "Sherlock.S01E02.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 940,
+                  "ageDays": 1200
+                }
+              ]
+            },
+            {
+              "episodeNumber": 3,
+              "title": "The Great Game",
+              "titleDe": "Das große Spiel",
+              "airDate": "2010-08-08",
+              "runtimeMinutes": 90,
+              "overview": "A strange clue in an empty room, a blood-soaked car, a priceless Old Master, a deranged bomber. With the clock ticking, the curtain rises on a battle of wits between Sherlock, John and the shadowy stranger who seems to know all the answers...",
+              "overviewDe": "Die Londoner Polizei verzweifelt am Einfallreichtum der Kriminellen. Sherlock Holmes wird gebeten einen scheinbar gewöhnlichen Fall zu übernehmen. Ein junger Beamter wurde mit zertrümmertem Kopf auf einer Bahnstrecke gefunden. Ein glasklarer Fall – denkt Sherlock Holmes zumindest. Als ein verrückter Bombenleger seinen Verstand mit Sherlock Holmes messen möchte, beginnt ein erschreckendes Katz- und Maus-Spiel. Ein 20 Jahre alter Mord, ein blutgetränktes Auto und ein Millionen teures, wiederentdecktes Kunstwerk – genau diese Art von Abenteuer lieben Sherlock Holmes und John Watson. Doch wer steckt hinter den Rätseln? Als Sherlock der gesuchten Person entgegentritt wird London zum Schlachtfeld. Wird Sherlock Holmes diesmal scheitern?",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/inRnf07LWmlT5Z3KkS4iWlBX48x.jpg",
+              "releases": [
+                {
+                  "name": "Sherlock.S01E03.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 460,
+                  "ageDays": 1600
+                },
+                {
+                  "name": "Sherlock.S01E03.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 960,
+                  "ageDays": 1200
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "seasonNumber": 2,
+          "title": "Season 2",
+          "posterUrl": "https://image.tmdb.org/t/p/w780/hSf2frcLiEWAPUZ6wbOMTTNZ7b0.jpg",
+          "episodes": [
+            {
+              "episodeNumber": 1,
+              "title": "A Scandal in Belgravia",
+              "titleDe": "Ein Skandal in Belgravia",
+              "airDate": "2012-01-01",
+              "runtimeMinutes": 90,
+              "overview": "Blackmail threatens the monarchy and Sherlock is about to meet the woman who beats him.",
+              "overviewDe": "Ein Erpressungsfall droht die britische Monarchie zu Fall zu bringen. Sherlock Holmes und John Watson stellen schnell fest, dass hinter dieser Erpressung noch mehr steckt. Bald haben sie es mit internationalem Terrorismus, rauen CIA-Agenten und einer Verschwörung zu tun, die bis in die Britische Regierung reicht.",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/9fmNcR20uEnMeAKmUucJnCPeUJg.jpg",
+              "releases": [
+                {
+                  "name": "Sherlock.S02E01.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 420,
+                  "ageDays": 1200
+                },
+                {
+                  "name": "Sherlock.S02E01.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 920,
+                  "ageDays": 900
+                }
+              ]
+            },
+            {
+              "episodeNumber": 2,
+              "title": "The Hounds of Baskerville",
+              "titleDe": "Die Hunde von Baskerville",
+              "airDate": "2012-01-08",
+              "runtimeMinutes": 89,
+              "overview": "A hound from hell. Sherlock's most famous case. But is a monster really stalking Dartmoor?",
+              "overviewDe": "Ein Höllenhund, ein Mann in Angst und Schrecken – sucht tatsächlich ein Monster die Sümpfe von Dartmoor heim? Einst wurde der Vater von Henry Knight dort vor den Augen seines noch kleinen Sohnes von einem monströsen Hund zerfleischt. Danach ward die Bestie nie mehr gesehen. 20 Jahre später hofft der noch immer traumatisierte Henry, mit Sherlocks und Johns Hilfe endlich den Hintergründen dieses schrecklichen Ereignisses auf die Spur zu kommen.",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/vjUsJUsF5RcTRKn2prGHCW9Nxro.jpg",
+              "releases": [
+                {
+                  "name": "Sherlock.S02E02.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 440,
+                  "ageDays": 1200
+                },
+                {
+                  "name": "Sherlock.S02E02.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 940,
+                  "ageDays": 900
+                }
+              ]
+            },
+            {
+              "episodeNumber": 3,
+              "title": "The Reichenbach Fall",
+              "titleDe": "Der Reichenbachfall",
+              "airDate": "2012-01-15",
+              "runtimeMinutes": 89,
+              "overview": "The return of Moriarty. The crime of the century. Can Sherlock possibly survive?",
+              "overviewDe": "James Moriarty besitzt ein höchstgefährliches kriminelles Potenzial. Sherlock und John wussten, dass er früher oder später wieder auftauchen würde. Aber auch die beiden hatten keine Vorstellung über das Ausmaß der Perfidität und Kühnheit, mit der Moriarty erneut für Schlagzeilen sorgt: Es ist das Verbrechen des Jahrhunderts.",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/PVxRD2JqT2QM4t1Cih0v2AoRSR.jpg",
+              "releases": [
+                {
+                  "name": "Sherlock.S02E03.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 460,
+                  "ageDays": 1200
+                },
+                {
+                  "name": "Sherlock.S02E03.720p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-720p",
+                  "grabs": 960,
+                  "ageDays": 900
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "seasonNumber": 3,
+          "title": "Season 3",
+          "posterUrl": "https://image.tmdb.org/t/p/w780/z9ljxwZUQA2349ZBZAssBXpd0i6.jpg",
+          "episodes": [
+            {
+              "episodeNumber": 1,
+              "title": "The Empty Hearse",
+              "titleDe": "Der leere Sarg",
+              "airDate": "2014-01-01",
+              "runtimeMinutes": 87,
+              "overview": "Two years on from reports of his Reichenbach Fall demise, Sherlock resurfaces as London comes under threat of a huge terrorist attack. John, though, has mixed feelings about his friend's shocking return.",
+              "overviewDe": "Zwei Jahre nach Sherlock’s vermeintlichem Tod, hat Dr. John Watson es geschafft, mit seinem Leben weiter zu machen. Da sich London in der Bedrohung von Terroristen befindet, inszeniert Sherlock seine Wiederauferstehung und kehrt zurück. Doch falls er denkt, alles sei so wie es vorher war, wird er überrascht über die Veränderungen sein.",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/zXsOogQ8BVyvWUR2zgs6NBxkReX.jpg",
+              "releases": []
+            },
+            {
+              "episodeNumber": 2,
+              "title": "The Sign of Three",
+              "titleDe": "Im Zeichen der Drei",
+              "airDate": "2014-01-05",
+              "runtimeMinutes": 87,
+              "overview": "Sherlock faces his biggest challenge of all – delivering a Best Man’s speech on John’s wedding day! But all isn’t quite as it seems. Mortal danger stalks the reception – and someone might not make it to the happy couple’s first dance. Sherlock must thank the bridesmaids, solve the case and stop a killer.",
+              "overviewDe": "Sherlock stellt sich seiner bisher größten Herausforderung – er soll eine Rede auf John‘s Hochzeit halten. Aber es ist nicht alles so wie es scheint. Tödliche Gefahr lauert - und jemand wird es vielleicht nicht zum Hochzeitstanz des glücklichen Paares schaffen. Sherlock muss den Brautjungfern danken, den Fall lösen und einen Killer stoppen.",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/ca3ayuzXGpxpALFlcsVsXTQau9G.jpg",
+              "releases": []
+            },
+            {
+              "episodeNumber": 3,
+              "title": "His Last Vow",
+              "titleDe": "Sein letzter Schwur",
+              "airDate": "2014-01-12",
+              "runtimeMinutes": 90,
+              "overview": "A case of stolen letters leads Sherlock Holmes into a long conflict with Charles Augustus Magnussen, the Napoleon of blackmail, and the one man he truly hates. But how do you tackle a foe who knows the personal weakness of every person of importance in the Western world?",
+              "overviewDe": "Ein Fall gestohlener Briefe veranlasst Sherlock dazu in einem Konflikt mit Charles Augustus Magnussen zu landen, dem Meister der Erpressungen - der Mann, den er aus tiefsten Herzen hasst. Aber wie packt man ein Problem an wenn diese Person über jegliche Schwächen aller wichtiger Personen in der westlichen Welt Bescheid weiß?",
+              "stillUrl": "https://image.tmdb.org/t/p/w1280/5phdYWQXMwn9cBUPzUt1Z3oie4K.jpg",
+              "releases": []
+            }
+          ]
+        }
+      ],
+      "seasonPacks": []
+    }
+  ]
+}

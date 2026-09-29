@@ -5,6 +5,10 @@ audio, HEVC or AV1, 10-bit, HDR10/HLG, interlaced MPEG-2 — into browser-safe
 **H.264 + AAC HLS** (fragmented MP4) on the server. It is the first building block for
 standalone clients that do not rely on Jellyfin's transcoder.
 
+When the player can decode the video but not the container, the audio, or the subtitle format,
+the server **remuxes** instead: the video is stream-copied into fMP4 HLS on keyframe-accurate
+segments and only the audio (and text subtitles) are converted — see [Remux](#remux-direct-stream).
+
 The feature is a **separate path**:
 
 - It lives in its own module (`server/src/Streamarr.Server/Transcoding/`) and its own
@@ -39,7 +43,7 @@ The feature is a **separate path**:
    (hls.js, or native HLS on Safari) with live time-to-first-frame, buffer, dropped-frame,
    and seek-latency readouts.
 4. In **Playback Preview**, resolve a release and switch the mode from *Direct play* to
-   *Server transcode (HLS)*. If direct play fails, the player offers the switch itself.
+   *Server remux (HLS)* or *Server transcode (HLS)*. If direct play fails, the player offers the switch itself.
 
 ### Test samples
 
@@ -186,6 +190,84 @@ no longer waits for detection: capability detection starts immediately at startu
 - **Capacity.** At most *concurrent transcodes* ffmpeg processes run; a new session beyond
   that gets `503 transcode_capacity` instead of starving the running ones.
 
+## Remux (direct stream)
+
+A remux ("direct stream") copies the video bitstream into fragmented-MP4 HLS. It costs a fraction
+of a transcode (no decode, no encode) and keeps the original quality, HDR included.
+
+**When.** `POST /api/v1/transcoding/plan` (default `mode: auto`) and sessions with `mode: auto|remux`
+decide direct → remux → transcode, each with stable reason codes:
+
+| Mode | Chosen when |
+|---|---|
+| `direct` | The player can play the original file (container, codecs, bit depth, HDR, subtitle format, request limits). Only the plan endpoint returns it; a session always delivers HLS. |
+| `remux` | The video is H.264 (8-bit 4:2:0), HEVC Main/Main 10 or AV1 Main, in the client's `videoCodecs`, 10-bit only with `supports10Bit`, its HDR format (or the Dolby Vision base layer) in `hdrFormats`/`supportsHdr`, progressive, and within the request's `maxHeight`/`maxBitrateKbps`. The server's own transcode caps (max height, max bitrate) do not apply to copies. |
+| `transcode` | Anything else (MPEG-2, VC-1, VP9, Hi10P H.264, 12-bit or 4:2:2 HEVC, interlaced, Dolby Vision profile 5, too large for the request), `mode: transcode`, or no usable keyframe index. |
+
+Sessions default to `mode: transcode` so existing callers keep the unchanged transcode path;
+`mode: remux` fails with `422 remux_not_possible` and the blockers when the video cannot be copied.
+
+**Keyframe index.** Built once per stream (cached 10 minutes) with a few range reads over the
+same loopback `/api/v1/stream/{token}` ffmpeg uses:
+
+1. Matroska: EBML header → SeekHead (one nested SeekHead level) → Info (TimecodeScale), Tracks
+   (first video track, `CodecPrivate`) → `Cues` (cue times and cluster positions of that track).
+2. MP4/MOV: top-level box walk to `moov` (≤ 64 MiB), first video `trak`: `stts`, `ctts`, `stss`,
+   `elst` (presentation time = decode time + composition offset − edit), `stsz`, `stsd`.
+3. Otherwise (MPEG-TS, Matroska without a Cues entry, fragmented MP4): an ffprobe packet scan within
+   `KeyframeScanTimeoutSeconds` (20 s). A scan over Usenet reads the whole file, so large sources
+   usually fall back to a transcode instead.
+
+An index is rejected when two keyframes are more than 24 s apart; the plan then says
+`keyframe_index_unavailable` and the session transcodes.
+
+**Segments.** Target boundaries every 6 s move to the first keyframe at or after them; boundaries
+that land on the same keyframe merge (a long GOP gives one longer segment, never a sliver), and a tail
+under 1 s joins the last segment. `EXTINF` values are the real durations, `TARGETDURATION` is the
+longest one rounded (RFC 8216), `#EXT-X-ENDLIST` is present from the start, so players can seek anywhere.
+
+**How ffmpeg runs.** One process per run: `-c:v copy` (HEVC tagged `hvc1`), audio copied or encoded,
+`-copyts -start_at_zero -avoid_negative_ts disabled`, fragmented MP4 (`frag_keyframe`, `delay_moov`,
+`frag_discont`) on stdout. The server reads that box stream and writes the run's init segment and each
+planned `{n}.m4s` atomically as soon as its last fragment reaches the next boundary; the final segment
+is written only after a clean ffmpeg exit, never after a kill. Serving, throttling (SIGSTOP), idle stop
+and retention are the same as for transcodes.
+
+**Seeks.** A request far from the running copy restarts ffmpeg one keyframe *before* the target
+segment (`-ss` aims past ffmpeg's 3/23 s Matroska seek heuristic without reaching the next keyframe);
+the pre-roll is dropped. Output timestamps are the source's minus its start time in every run, and
+each run's decode times are aligned to the served init segment's edit list, so segments from
+different runs join without gaps. Open-GOP sources (x265's default) work; a player that starts at a
+segment skips the few leading pictures of its CRA keyframe, as with any HLS random access.
+
+**Audio.** One muxed rendition. The selected track is copied when it is AAC, AC-3, E-AC-3, FLAC or
+Opus, listed in `audioCodecs`, and has at most `maxAudioChannels` channels. Otherwise it is converted
+along E-AC-3 5.1 (640 kbps) → AC-3 5.1 (640 kbps) → AAC stereo (the audio bitrate setting), by what the
+client lists and its channel limit. The run from 0 trims the encoder's priming delay from the input so
+no timestamp is negative. **Switching audio** means a new session (`audioStreamIndex`); one ffmpeg per
+session is simpler and more robust than parallel audio renditions.
+
+**Subtitles.** Every text stream (SRT, ASS/SSA, WebVTT, MOV text) becomes a WebVTT rendition
+(`#EXT-X-MEDIA:TYPE=SUBTITLES`, `LANGUAGE` as RFC 5646, `FORCED` from the disposition) at
+`subtitles/{streamIndex}/main.m3u8`, aligned with the video segments. ffmpeg writes one WebVTT file per
+stream alongside the video run; segments carry `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000` with cue
+times on the media timeline and repeat cues that span a boundary. ASS styling is reduced to
+`<b>`/`<i>`. Image subtitles (PGS, VobSub, DVB) cannot be delivered: the plan lists them with
+`deliveredAs: none` and, when requested via `subtitleStreamIndex`, reason `subtitle_not_deliverable`
+so the client can offer VLC or a burn-in transcode.
+
+**Signalling.** `CODECS` comes from the bitstream's configuration record (`avcC` → `avc1.PPCCLL`,
+`hvcC` → `hvc1.2.4.L150.90`-style strings with profile space, tier and constraint bytes, `av1C` →
+`av01.0.08M.10`), with ffprobe profile/level as fallback; audio `mp4a.40.2/5/29`, `ac-3`, `ec-3`,
+`fLaC`, `Opus`. `VIDEO-RANGE` is `PQ` (HDR10, Dolby Vision 8.1/7), `HLG` (HLG, Dolby Vision 8.4) or `SDR`.
+The init segment carries `colr` (nclx primaries/transfer/matrix); mastering display and content light
+level stay in the bitstream (SEI) and are written as `mdcv`/`clli` only when the source container had
+them. `BANDWIDTH` is 1.1 × the peak segment bitrate measured from the index's byte positions
+(`AVERAGE-BANDWIDTH` the mean).
+
+**Capacity.** Remux runs have their own pool (*Concurrent remuxes*, default 8, `503 remux_capacity`);
+they never take a transcode slot. The Sessions tab labels every session *Remux* or *Transcode*.
+
 ## Settings
 
 Editable in **Transcoding → Settings** (stored in the database):
@@ -205,6 +287,7 @@ Editable in **Transcoding → Settings** (stored in the database):
 | Audio bitrate / allow surround | 192 kbps / off | AAC; 5.1 only for clients that accept it. |
 | Segment length | 3 s | 2–10 s. Shorter segments start and seek faster; see *Time to first frame*. |
 | Concurrent transcodes | 2 | Running ffmpeg processes across all users. |
+| Concurrent remuxes | 8 | Running stream copies (1–64), counted separately. |
 | Throttle / buffer | on / 120 s | Pause ffmpeg this far ahead of the player. |
 | ffmpeg threads | 0 (auto) | Limits encoder threads for software encodes. |
 | Job idle / session idle / retention | 60 s / 30 min / 15 min | See *Cleanup*. |
@@ -219,6 +302,8 @@ Host-level options (appsettings or environment only):
 | `Streamarr:Transcoding:LocalSourceBaseUrl` | derived from the listen address | Loopback origin ffmpeg uses to read `/api/v1/stream`. Set it if the server only listens on a non-loopback address. |
 | `Streamarr:Transcoding:MaxSessions` | 16 | Sessions (running or idle) kept at once. |
 | `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` | 90 | Longest a segment request waits before `504 segment_timeout`. |
+| `Streamarr:Transcoding:KeyframeIndexTimeoutSeconds` | 30 | Budget for reading Matroska Cues or the MP4 sample table for a remux. |
+| `Streamarr:Transcoding:KeyframeScanTimeoutSeconds` | 20 | Budget for the ffprobe packet scan when the container has no usable index. |
 
 ## API
 
@@ -235,7 +320,8 @@ the [API reference](api.md#11-server-side-transcoding).
 | Multi-GPU | `TranscodingMultiGpuTests` | GPU enumeration from fake sysfs/`/dev` trees and `nvidia-smi` output, per-device detection with a scripted ffmpeg (a failing and a working GPU per backend), device pinning in the argv. |
 | TTFF | `TranscodingTtffTests` | Cold-release time to first frame for direct play vs. transcode, start and resume, against a mock provider with realistic latency and throughput; prints the per-stage breakdown. `STREAMARR_TTFF_SEGMENT_SECONDS` compares segment lengths. |
 | Integration | `TranscodingIntegrationTests` | Real server + mock Usenet + **real ffmpeg**: a 3-minute H.264/AC-3 release is transcoded and validated segment by segment (keyframes, timestamps, A/V alignment, continuity across restarts), forward/backward seeks, throttling, idle stop, capacity, capability security, the special samples (10-bit, HDR, interlaced), benchmarks, and that stopping a transcode leaves the direct stream alone. |
-| Player simulator | `server/tools/hlssim` | Plays a rendition like hls.js (buffer target, realtime or faster playhead, scripted seeks, parallel players) against any running server and reports stalls, latencies and segment validation. |
+| Remux | `RemuxPlannerTests`, `KeyframeIndexTests`, `RemuxSegmenterTests`, `CodecStringTests`, `RemuxPlaylistTests`, `RemuxIntegrationTests` | Decision matrix, audio ladder, Matroska/MP4 index vs. ffprobe on generated media (irregular keyframes, B-frames, edit lists, no Cues), segment planning, codec strings, WebVTT, the segmenter on real ffmpeg output (restart pre-roll, killed tail), and end to end over mock Usenet: keyframe-accurate playlists, far seeks, HEVC HDR10 signalling, audio conversion, subtitles, separate capacity. |
+| Player simulator | `server/tools/hlssim` | Plays a rendition like hls.js (buffer target, realtime or faster playhead, scripted seeks, parallel players) against any running server and reports stalls, latencies and segment validation, including WebVTT renditions. `--mode remux` plus client flags (`--video-codecs`, `--audio-codecs`, `--max-channels`, `--ten-bit`, `--hdr-formats`) exercise remuxes. |
 | UI | `web/src/**/*.test.tsx`, `web/e2e/transcoding-ui.spec.ts` | Component tests plus a Playwright run that detects ffmpeg, benchmarks, plays HLS in Chromium, and switches Playback Preview. |
 
 ```bash
@@ -251,6 +337,11 @@ docker run --rm -v "$PWD/server:/src:ro" mcr.microsoft.com/dotnet/sdk:8.0-noble 
 # Drive a running server: realtime playback with two seeks, three parallel players
 dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:8080 --password '<admin>' \
   --sample h264-1080p-ac3 --max-height 720 --rate 1 --seek 6:22,26:2 --concurrency 3 --decode
+
+# Remux a release for an HDR-capable Apple-like client, with a far seek
+dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:39310 --api-key <key> --release <id> --work <workId> \
+  --mode remux --video-codecs h264,hevc --audio-codecs aac,ac3,eac3 --containers mp4 --max-channels 6 \
+  --ten-bit --hdr-formats hdr10,hlg --rate 0 --seek 12:150 --decode
 ```
 
 ## Troubleshooting
@@ -263,13 +354,18 @@ dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:8080 --pas
 | Hardware passes but the wrong GPU is busy (multi-GPU host) | Check *Overview → Graphics devices*; select the intended render node or NVIDIA GPU in Settings. |
 | Slow start or seeks | Compare *Startup* in the Sessions tab with the benchmark's *time to first segment*; enable hardware acceleration, lower *Max height* or *Segment length*. |
 | `503 transcode_capacity` | All transcode slots are busy; raise *Concurrent transcodes* or stop a session in the *Sessions* tab. |
+| `503 remux_capacity` | All remux slots are busy; raise *Concurrent remuxes*. |
+| `422 remux_not_possible` | `mode: remux` was requested but the video cannot be copied for this client; the message lists the blockers (`POST /transcoding/plan` shows them as `remuxBlockers`). |
+| A remux falls back to a transcode with `keyframe_index_unavailable` | The source has no usable Cues/sample table and the ffprobe scan did not finish in time (large MPEG-TS over Usenet), or keyframes are more than 24 s apart. |
 | `504 segment_timeout` | ffmpeg could not keep up or the source stalled; check the session's ffmpeg log and the benchmark speed for similar media. |
 | Benchmark verdict *Marginal* or *Too slow* | Enable hardware acceleration, lower *Max height*, or use a faster preset. |
 
 ## Current limits
 
-- Video is always re-encoded; stream-copy remuxing (e.g. H.264 in MKV with AC-3 audio)
-  is a planned follow-up.
-- One rendition per session (no adaptive bitrate ladder) and no subtitle tracks yet.
+- Remux: H.264, HEVC and AV1 only (VP9, MPEG-2, VC-1 are transcoded); one audio rendition (switching
+  audio creates a new session); image subtitles are not delivered; sources without a Matroska Cues
+  entry or an MP4 sample table need the ffprobe scan, which rarely finishes in time for large files
+  over Usenet; the admin UI's preview player (hls.js light) does not render subtitles.
+- One rendition per session (no adaptive bitrate ladder); transcodes carry no subtitle tracks.
 - The Jellyfin plugin keeps using Jellyfin's own transcoder; this path is for
   Streamarr's own clients and the management UI.

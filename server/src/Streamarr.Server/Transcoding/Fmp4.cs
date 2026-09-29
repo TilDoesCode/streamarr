@@ -2,7 +2,9 @@ using System.Buffers.Binary;
 
 namespace Streamarr.Server.Transcoding;
 
-public sealed record Fmp4Track(uint TrackId, string Handler, uint Timescale, uint DefaultSampleDuration, uint DefaultSampleFlags, int Width = 0, int Height = 0);
+/// <summary>A track of an init segment; <see cref="EditMediaTime"/> is the first non-empty edit's media time (the composition delay presentation skips).</summary>
+public sealed record Fmp4Track(
+    uint TrackId, string Handler, uint Timescale, uint DefaultSampleDuration, uint DefaultSampleFlags, int Width = 0, int Height = 0, long EditMediaTime = 0);
 
 public sealed record Fmp4Init(IReadOnlyList<Fmp4Track> Tracks)
 {
@@ -19,7 +21,8 @@ public sealed record Fmp4TrackFragment(
     long FirstCompositionOffset,
     int SyncSamples);
 
-public sealed record Fmp4TrackTiming(string Handler, double StartSeconds, double DurationSeconds, int Samples, bool StartsWithKeyframe, int Keyframes);
+public sealed record Fmp4TrackTiming(
+    string Handler, double StartSeconds, double DurationSeconds, int Samples, bool StartsWithKeyframe, int Keyframes, double DecodeStartSeconds = 0);
 
 public sealed record Fmp4Segment(IReadOnlyList<Fmp4TrackFragment> Fragments)
 {
@@ -35,11 +38,12 @@ public sealed record Fmp4Segment(IReadOnlyList<Fmp4TrackFragment> Fragments)
             var scale = (double)track.Timescale;
             result.Add(new Fmp4TrackTiming(
                 track.Handler,
-                (first.BaseDecodeTime + first.FirstCompositionOffset) / scale,
+                (first.BaseDecodeTime + first.FirstCompositionOffset - track.EditMediaTime) / scale,
                 group.Sum(f => f.Duration) / scale,
                 group.Sum(f => f.SampleCount),
                 first.StartsWithSyncSample,
-                group.Sum(f => f.SyncSamples)));
+                group.Sum(f => f.SyncSamples),
+                first.BaseDecodeTime / scale));
         }
         return result;
     }
@@ -97,6 +101,35 @@ public static class Fmp4
         return new Fmp4Segment(fragments);
     }
 
+    /// <summary>Adds a per-track offset to every <c>tfdt</c> of a <c>moof</c> in place (aligns a run's edit-list delay with the served init).</summary>
+    public static void ShiftDecodeTimes(byte[] moof, IReadOnlyDictionary<uint, long> shifts)
+    {
+        foreach (var (type, start, size, header) in Boxes(moof, 0, moof.Length))
+        {
+            if (type != "moof")
+                continue;
+            foreach (var (t, s, z, h) in Boxes(moof, start + header, start + size))
+            {
+                if (t != "traf")
+                    continue;
+                uint trackId = 0;
+                foreach (var (bt, bs, bz, bh) in Boxes(moof, s + h, s + z))
+                {
+                    var body = moof.AsSpan(bs + bh, bz - bh);
+                    if (bt == "tfhd" && body.Length >= 8)
+                        trackId = BinaryPrimitives.ReadUInt32BigEndian(body[4..]);
+                    else if (bt == "tfdt" && shifts.TryGetValue(trackId, out var shift))
+                    {
+                        if (body[0] == 1 && body.Length >= 12)
+                            BinaryPrimitives.WriteInt64BigEndian(body[4..], BinaryPrimitives.ReadInt64BigEndian(body[4..]) + shift);
+                        else if (body.Length >= 8)
+                            BinaryPrimitives.WriteUInt32BigEndian(body[4..], (uint)Math.Max(0, BinaryPrimitives.ReadUInt32BigEndian(body[4..]) + shift));
+                    }
+                }
+            }
+        }
+    }
+
     /// <summary>Zeroes empty-edit durations so every restart's init segment presents the same timeline.</summary>
     public static byte[] NormalizeInit(byte[] data)
     {
@@ -138,10 +171,13 @@ public static class Fmp4
     {
         uint id = 0, timescale = 0;
         int width = 0, height = 0;
+        long editMediaTime = 0;
         var handler = "unknown";
         foreach (var (type, start, size, header) in Boxes(data, from, to))
         {
-            if (type == "tkhd")
+            if (type == "edts")
+                editMediaTime = FirstEditMediaTime(data, start + header, start + size);
+            else if (type == "tkhd")
             {
                 var body = data.Slice(start + header, size - header);
                 id = BinaryPrimitives.ReadUInt32BigEndian(body[(body[0] == 1 ? 20 : 12)..]);
@@ -163,7 +199,28 @@ public static class Fmp4
                 }
             }
         }
-        return new Fmp4Track(id, handler, timescale, 0, 0, width, height);
+        return new Fmp4Track(id, handler, timescale, 0, 0, width, height, editMediaTime);
+    }
+
+    private static long FirstEditMediaTime(ReadOnlySpan<byte> data, int from, int to)
+    {
+        foreach (var (type, start, size, header) in Boxes(data, from, to))
+        {
+            if (type != "elst" || size < header + 8)
+                continue;
+            var body = data.Slice(start + header, size - header);
+            var wide = body[0] == 1;
+            var count = (int)BinaryPrimitives.ReadUInt32BigEndian(body[4..]);
+            var entrySize = wide ? 20 : 12;
+            for (var i = 0; i < count && 8 + (i + 1) * entrySize <= body.Length; i++)
+            {
+                var entry = body.Slice(8 + i * entrySize, entrySize);
+                var mediaTime = wide ? BinaryPrimitives.ReadInt64BigEndian(entry[8..]) : BinaryPrimitives.ReadInt32BigEndian(entry[4..]);
+                if (mediaTime >= 0)
+                    return mediaTime;
+            }
+        }
+        return 0;
     }
 
     private static Fmp4TrackFragment ParseTraf(ReadOnlySpan<byte> data, int from, int to, Fmp4Init init)

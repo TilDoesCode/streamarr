@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { isBenchmarkActive, transcodeCapabilityUrl } from "@/api/queries";
-import { capabilities, config, plan, vaapiNoDevice, videoToolboxReady } from "@/test/transcoding-fixtures";
+import { capabilities, config, plan, remuxPlan, vaapiNoDevice, videoToolboxReady } from "@/test/transcoding-fixtures";
 import {
   audioSummary,
   formatBitrate,
   formatSpeed,
+  modeMeta,
   planSummary,
   shellCommand,
   transcodingHealth,
@@ -60,6 +61,20 @@ describe("plan summaries", () => {
 
   it("explains audio conversion", () => {
     expect(audioSummary(plan())).toBe("AC-3 5.1 → AAC stereo · 192 kbps");
+    expect(audioSummary(remuxPlan())).toBe("TrueHD 5.1 → E-AC-3 5.1 · 640 kbps");
+  });
+
+  it("summarises stream copies and direct play without an encoder pipeline", () => {
+    expect(planSummary(remuxPlan())).toBe("HEVC 4K HDR10 · stream copy (remux) · audio TrueHD 5.1 → E-AC-3 5.1 · 640 kbps");
+    const copiedAudio = remuxPlan({ target: { ...remuxPlan().target, audioCopy: true, audioCodec: "truehd" } });
+    expect(planSummary(copiedAudio)).toBe("HEVC 4K HDR10 · stream copy (remux)");
+    expect(planSummary(plan({ mode: "direct" }))).toBe("H.264 1080p SDR · direct play");
+  });
+
+  it("labels delivery modes", () => {
+    expect(modeMeta("remux")).toMatchObject({ label: "Remux", tone: "info" });
+    expect(modeMeta("direct").label).toBe("Direct play");
+    expect(modeMeta(null).label).toBe("Transcode");
   });
 });
 

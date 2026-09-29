@@ -28,15 +28,50 @@ public static class YencTestEncoder
         long begin, long end, int lineLength = 128)
     {
         var part = wholeFile[(int)(begin - 1)..(int)end];
-        var sb = new StringBuilder();
-        sb.Append($"=ybegin part={partNumber} total={totalParts} line={lineLength} size={wholeFile.Length} name={name}\r\n");
+        return EncodePartSlice(part, name, partNumber, totalParts, begin, wholeFile.Length, lineLength);
+    }
+
+    /// <summary>Encodes one already-sliced part of a <paramref name="fileSize"/>-byte file (1-based <paramref name="begin"/>).</summary>
+    public static string EncodePartSlice(
+        ReadOnlySpan<byte> part, string name, int partNumber, int totalParts,
+        long begin, long fileSize, int lineLength = 128)
+    {
+        var end = begin + part.Length - 1;
+        var sb = new StringBuilder(part.Length + part.Length / 32 + 256);
+        sb.Append($"=ybegin part={partNumber} total={totalParts} line={lineLength} size={fileSize} name={name}\r\n");
         sb.Append($"=ypart begin={begin} end={end}\r\n");
         AppendEncodedData(sb, part, lineLength);
         sb.Append($"=yend size={part.Length} part={partNumber} pcrc32={Crc32.Compute(part):x8}\r\n");
         return sb.ToString();
     }
 
-    private static void AppendEncodedData(StringBuilder sb, byte[] data, int lineLength)
+    /// <summary>Length in characters of the article <see cref="EncodePartSlice"/> would return.</summary>
+    public static long EncodedPartLength(
+        ReadOnlySpan<byte> part, string name, int partNumber, int totalParts,
+        long begin, long fileSize, int lineLength = 128)
+    {
+        var end = begin + part.Length - 1;
+        long length = $"=ybegin part={partNumber} total={totalParts} line={lineLength} size={fileSize} name={name}\r\n".Length
+                      + $"=ypart begin={begin} end={end}\r\n".Length
+                      + $"=yend size={part.Length} part={partNumber} pcrc32=00000000\r\n".Length;
+        var column = 0;
+        foreach (var b in part)
+        {
+            var encoded = unchecked((byte)(b + 42));
+            var width = encoded is 0x00 or 0x0A or 0x0D or 0x3D ? 2 : 1;
+            length += width;
+            column += width;
+            if (column >= lineLength)
+            {
+                length += 2;
+                column = 0;
+            }
+        }
+
+        return column > 0 ? length + 2 : length;
+    }
+
+    private static void AppendEncodedData(StringBuilder sb, ReadOnlySpan<byte> data, int lineLength)
     {
         var column = 0;
         foreach (var b in data)

@@ -4941,6 +4941,121 @@
         }
       }
     },
+    "/api/v1/transcode/{token}/subtitles/{stream}/main.m3u8": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stream",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcode/{token}/subtitles/{stream}/{segment}.vtt": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "summary": "WebVTT segment aligned with the video segment of the same index; cue times are on the media timeline.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stream",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/transcode/{token}": {
       "delete": {
         "tags": [
@@ -5490,7 +5605,7 @@
         "tags": [
           "Transcoding"
         ],
-        "summary": "Starts an HLS transcode of a live stream capability (or a test sample) and returns its playlist capability.",
+        "summary": "Starts an HLS rendition (remux or transcode; mode defaults to transcode) of a live stream capability or a test sample.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5671,7 +5786,7 @@
         "tags": [
           "Transcoding"
         ],
-        "summary": "Explains what a transcode of this source would do for this client, without starting ffmpeg.",
+        "summary": "Explains direct play → remux → transcode for this client (mode defaults to auto), without starting ffmpeg.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -9673,6 +9788,24 @@
           "supports10Bit": {
             "type": "boolean",
             "nullable": true
+          },
+          "hdrFormats": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "HDR formats the display renders: hdr10, hlg, dolbyvision (overrides supportsHdr when set).",
+            "nullable": true
+          },
+          "subtitleFormats": {
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subtitle formats the player renders from the original file (srt, ass, webvtt, pgs, vobsub, …).",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -10764,6 +10897,41 @@
         "additionalProperties": false,
         "description": "Write model for indexer create/update. Secret Streamarr.Server.Config.IndexerWrite.ApiKey is write-only."
       },
+      "KeyframeIndexResponse": {
+        "required": [
+          "buildMs",
+          "keyframes",
+          "maxSegmentSeconds",
+          "segments",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "`matroska-cues`, `mp4-sample-table` or `ffprobe-scan`.",
+            "nullable": true
+          },
+          "keyframes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "buildMs": {
+            "type": "number",
+            "format": "double"
+          },
+          "segments": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxSegmentSeconds": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Where a remux's keyframe-accurate segment plan came from."
+      },
       "LocalReleaseAvailabilityEntry": {
         "required": [
           "releaseId",
@@ -11525,6 +11693,28 @@
         },
         "additionalProperties": false,
         "description": "The raw parser output for a release (BRIEF §7.1), surfaced for tuning."
+      },
+      "PlanReasonResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A decision reason: stable `code` for clients (localizable with `params`) and an English message."
       },
       "PlatformResponse": {
         "type": "object",
@@ -13956,6 +14146,55 @@
         "additionalProperties": false,
         "description": "One event in the cross-front-end streaming history."
       },
+      "SubtitleTrackResponse": {
+        "required": [
+          "codec",
+          "deliveredAs",
+          "forced",
+          "index",
+          "isDefault",
+          "name",
+          "textBased"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "forced": {
+            "type": "boolean"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "textBased": {
+            "type": "boolean"
+          },
+          "deliveredAs": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A source subtitle stream and how this plan delivers it: `webvtt` rendition, `embedded` (direct play) or `none`."
+      },
       "TmdbPerson": {
         "required": [
           "name",
@@ -14085,7 +14324,12 @@
           "hardwareDecodeReason",
           "hardwareEncode",
           "hardwareEncodeReason",
+          "mode",
+          "reasons",
+          "remuxBlockers",
+          "remuxPossible",
           "source",
+          "subtitles",
           "target",
           "toneMap",
           "videoFilters",
@@ -14093,6 +14337,39 @@
         ],
         "type": "object",
         "properties": {
+          "mode": {
+            "type": "string",
+            "description": "`direct` (play the original file), `remux` (stream copy into HLS) or `transcode`.",
+            "nullable": true
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanReasonResponse"
+            },
+            "description": "Why this mode: direct-play blockers a remux solves, audio handling, or why the video must be re-encoded.",
+            "nullable": true
+          },
+          "remuxPossible": {
+            "type": "boolean"
+          },
+          "remuxBlockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanReasonResponse"
+            },
+            "nullable": true
+          },
+          "subtitles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtitleTrackResponse"
+            },
+            "nullable": true
+          },
+          "keyframeIndex": {
+            "$ref": "#/components/schemas/KeyframeIndexResponse"
+          },
           "directPlayPossible": {
             "type": "boolean"
           },
@@ -14189,6 +14466,12 @@
             "format": "int32",
             "nullable": true
           },
+          "subtitleStreamIndex": {
+            "type": "integer",
+            "description": "The subtitle stream the viewer wants; image-based streams are reported as not deliverable by a remux.",
+            "format": "int32",
+            "nullable": true
+          },
           "startPositionSeconds": {
             "type": "number",
             "format": "double",
@@ -14197,6 +14480,12 @@
           "clientName": {
             "maxLength": 64,
             "type": "string",
+            "nullable": true
+          },
+          "mode": {
+            "maxLength": 16,
+            "type": "string",
+            "description": "`auto` (remux when the video can be copied), `remux` (fail with 422 otherwise) or `transcode`. Sessions default to `transcode`, the plan endpoint to `auto`.",
             "nullable": true
           }
         },
@@ -14207,6 +14496,7 @@
           "durationSeconds",
           "handle",
           "mediaPlaylistUrl",
+          "mode",
           "plan",
           "playlistUrl",
           "segmentCount",
@@ -14216,6 +14506,11 @@
         "properties": {
           "handle": {
             "type": "string",
+            "nullable": true
+          },
+          "mode": {
+            "type": "string",
+            "description": "`remux` or `transcode`.",
             "nullable": true
           },
           "playlistUrl": {
@@ -14252,6 +14547,7 @@
           "handle",
           "lastAccessAt",
           "lastRequestedSegment",
+          "mode",
           "plan",
           "restarts",
           "segmentCount",
@@ -14264,6 +14560,11 @@
         "properties": {
           "handle": {
             "type": "string",
+            "nullable": true
+          },
+          "mode": {
+            "type": "string",
+            "description": "`remux` or `transcode`.",
             "nullable": true
           },
           "title": {
@@ -14386,6 +14687,11 @@
             "type": "string",
             "nullable": true
           },
+          "dolbyVisionProfile": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
           "interlaced": {
             "type": "boolean"
           },
@@ -14452,6 +14758,7 @@
           "level",
           "videoBitrateKbps",
           "videoCodec",
+          "videoRange",
           "width"
         ],
         "type": "object",
@@ -14484,6 +14791,15 @@
             "type": "string",
             "nullable": true
           },
+          "videoCopy": {
+            "type": "boolean",
+            "description": "True for a remux: the video bitstream is copied, not re-encoded."
+          },
+          "videoRange": {
+            "type": "string",
+            "description": "HLS VIDEO-RANGE of the output: SDR, PQ or HLG.",
+            "nullable": true
+          },
           "audioStreamIndex": {
             "type": "integer",
             "format": "int32",
@@ -14491,6 +14807,11 @@
           },
           "audioSourceCodec": {
             "type": "string",
+            "nullable": true
+          },
+          "audioCodec": {
+            "type": "string",
+            "description": "Output audio codec (the source codec when copied).",
             "nullable": true
           },
           "audioCopy": {
@@ -14642,6 +14963,7 @@
           "hardwareEncoding",
           "jobIdleTimeoutSeconds",
           "maxBitrateKbps",
+          "maxConcurrentRemuxes",
           "maxConcurrentTranscodes",
           "maxHeight",
           "nvencDevice",
@@ -14733,6 +15055,11 @@
           },
           "maxConcurrentTranscodes": {
             "type": "integer",
+            "format": "int32"
+          },
+          "maxConcurrentRemuxes": {
+            "type": "integer",
+            "description": "Concurrent stream-copy (remux) runs; a separate pool because a copy costs a fraction of an encode.",
             "format": "int32"
           },
           "jobIdleTimeoutSeconds": {
@@ -14895,6 +15222,11 @@
             "nullable": true
           },
           "maxConcurrentTranscodes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxConcurrentRemuxes": {
             "type": "integer",
             "format": "int32",
             "nullable": true

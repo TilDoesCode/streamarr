@@ -98,8 +98,22 @@ Chromecast, trickplay thumbnails, light theme, store release/EAS.
   colors in components — use design tokens.
 - Screenshots as evidence go to `docs/client/screenshots/<TASK-ID>/<target>-<name>.png`
   (keep them small; PNG from Argent is fine).
-- Ports: Dev World Core Server `39300` (Android emulator reaches it as
-  `http://10.0.2.2:39300`), Expo web dev server `39301`, Metro `8081`.
+- Ports: Dev World for client work `39300` (Android emulator reaches it as
+  `http://10.0.2.2:39300`), Dev World for backend self-tests `39310`, Expo web dev server
+  `39301`, Metro `8081`.
+- **Dev World isolation.** Backend and client work run concurrently, so client agents never
+  build the server from the working tree. `scripts/devworld.sh` (created in M1.1) offers
+  `publish` (build + publish the current Dev World into
+  `~/.cache/streamarr-devworld/current` atomically — backend agents run it only when their
+  work builds and tests green), `start [port]` (run the published snapshot in the
+  background, wait for health, log to `/tmp/devworld-<port>.log`), `stop [port]` and
+  `status`. Client agents use `start 39300`; backend agents test their own tree on `39310`.
+  Generated media is cached in `server/tests/Streamarr.DevWorld/cache/` and shared (write
+  via temp file + rename so concurrent instances cannot corrupt it).
+- Web verification with Argent: launch Playwright's Chromium
+  (`~/Library/Caches/ms-playwright/chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium`)
+  with `--remote-debugging-port=9222 --user-data-dir=/tmp/argent-chromium` and drive it as a
+  `chromium` device; close it when done.
 
 ## 4. Journal protocol (mandatory — this is how work survives a crashed session)
 
@@ -148,8 +162,8 @@ A one-command local world for developing and testing the client without real Use
   release (missing articles) ranked first somewhere to exercise auto-fallback · one
   degraded release. Burn the title + variant + running timecode into the picture
   (ffmpeg `drawtext`) so screenshots prove the right item/position is playing.
-- **Memory budget:** the mock NNTP server keeps articles in memory; keep total published
-  payload ≲ 600 MB (short clips: movies 3–6 min, episodes 2–3 min, low bitrates; the
+- **Memory budget:** the mock NNTP server keeps articles in memory and two instances may
+  run at once (ports 39300 + 39310); keep total published payload ≲ 450 MB (short clips: movies 3–6 min, episodes 2–3 min, low bitrates; the
   4K HDR sample may be ~60 s). Generate media once into
   `server/tests/Streamarr.DevWorld/cache/` (git-ignored), reuse on later boots.
 - **Viewer module enabled** with seeded accounts (print them): `anna` (adult, transcoding
@@ -258,7 +272,12 @@ initialised, lucide, Reanimated 4, expo-image, lint/format/jest-expo, app config
 name **Streamarr**, bundle id / package `dev.streamarr.app`, scheme `streamarr`, dark
 `userInterfaceStyle`, Android TV banner + leanback launcher, placeholder icons.
 Scripts: `web`, `ios`, `android`, `tv:android` (`EXPO_TV=1` prebuild + run), `tv:ios`,
-`typecheck`, `lint`, `test`, `gen:api`. Verify a placeholder screen with a focusable
+`typecheck`, `lint`, `test`, `gen:api`. Continuous Native Generation: `client/android` and
+`client/ios` are generated and git-ignored; all native config lives in `app.config.ts` and
+config plugins. Prefer **one Android build that runs on both Google TV and phones**
+(leanback launcher + `android.software.leanback`/touchscreen not required; UI decides via
+`Platform.isTV`) so switching targets does not need a clean prebuild — verify it works.
+iOS vs tvOS need separate prebuilds (`EXPO_TV=1` for tvOS). Verify a placeholder screen with a focusable
 button on: web (Chromium via Argent), Google TV emulator (D-pad moves focus, visible
 focus style), Android phone emulator; iOS/tvOS if Xcode exists. Add Codecraft actions
 `client-web` (port 39301) and `client-metro`.

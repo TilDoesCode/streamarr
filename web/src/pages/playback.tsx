@@ -137,8 +137,8 @@ export function PlaybackPage() {
             {resolved.streamUrl ? (
               <>
                 <PlaybackModeSwitch mode={mode} onChange={setMode} />
-                {mode === "transcode" && streamTokenFromUrl(resolved.streamUrl) ? (
-                  <TranscodePreview key={resolved.streamUrl} streamToken={streamTokenFromUrl(resolved.streamUrl)!} />
+                {mode !== "direct" && streamTokenFromUrl(resolved.streamUrl) ? (
+                  <TranscodePreview key={`${resolved.streamUrl}-${mode}`} streamToken={streamTokenFromUrl(resolved.streamUrl)!} mode={mode} />
                 ) : (
                   <Player streamUrl={resolved.streamUrl} onUnplayable={() => setMode("transcode")} />
                 )}

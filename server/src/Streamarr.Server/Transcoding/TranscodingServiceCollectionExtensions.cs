@@ -13,6 +13,12 @@ public static class TranscodingServiceCollectionExtensions
         services.AddSingleton<FfmpegCapabilityProbe>();
         services.AddSingleton<FfmpegCapabilityService>();
         services.AddSingleton<SourceMediaProber>();
+        services.AddHttpClient(KeyframeIndexService.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(FfmpegArgumentBuilder.UserAgent);
+        });
+        services.AddSingleton<KeyframeIndexService>();
         services.AddSingleton<TranscodingSampleLibrary>();
         services.AddSingleton<TranscodeSourceResolver>();
         services.AddSingleton<TranscodeSessionManager>();

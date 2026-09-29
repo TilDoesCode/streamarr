@@ -16,7 +16,11 @@ internal static class TranscodeTestData
         int channels = 6,
         double duration = 600,
         long? bitRate = 6_000_000,
-        double fps = 24000d / 1001) => new()
+        double fps = 24000d / 1001,
+        int? dvProfile = null,
+        int? dvCompatibility = null,
+        string? colorTransfer = null,
+        params SourceSubtitleStream[] subtitles) => new()
     {
         DurationSeconds = duration,
         BitRate = bitRate,
@@ -32,12 +36,32 @@ internal static class TranscodeTestData
             FrameRate = fps,
             Hdr = hdr,
             Interlaced = interlaced,
+            DolbyVisionProfile = dvProfile,
+            DolbyVisionCompatibility = dvCompatibility,
+            ColorTransfer = colorTransfer,
         },
         Audio =
         [
-            new SourceAudioStream { Index = 1, Codec = audioCodec, Channels = channels, Profile = audioCodec == "aac" ? "LC" : null },
+            new SourceAudioStream { Index = 1, Codec = audioCodec, Channels = channels, Profile = audioCodec == "aac" ? "LC" : null, SampleRate = 48_000 },
         ],
+        Subtitles = subtitles,
     };
+
+    public static SourceSubtitleStream Subtitle(int index, string codec, string? language = "eng", bool forced = false, string? title = null)
+        => new() { Index = index, Codec = codec, Language = language, IsForced = forced, Title = title };
+
+    public static TranscodePlan Decide(
+        SourceMediaInfo media,
+        ClientProfile client,
+        ModePreference preference = ModePreference.Auto,
+        bool allowDirect = true,
+        TranscodeLimits? limits = null,
+        TranscodingSettings? settings = null,
+        PlanReason? remuxUnavailable = null)
+        => TranscodePlanner.Decide(
+            media, client, limits ?? new TranscodeLimits(), settings ?? new TranscodingSettings(),
+            Capabilities() with { Encoders = new HashSet<string>(Capabilities().Encoders) { "ac3", "eac3" } },
+            preference, allowDirect, remuxUnavailable);
 
     public static FfmpegCapabilities Capabilities(
         params AcceleratorCapability[] accelerators) => new()

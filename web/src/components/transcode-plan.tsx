@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowRight, Check, Cpu, Minus, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, Copy, Cpu, Minus, Play, X } from "lucide-react";
 import type { TranscodePlanResponse } from "@/api/types";
 import {
   audioSummary,
@@ -7,8 +7,11 @@ import {
   codecLabel,
   formatBitrate,
   hdrLabel,
+  indexSourceLabel,
   isHdr,
+  modeMeta,
   planSummary,
+  toneTextClass,
 } from "@/lib/transcoding";
 import { cn } from "@/lib/utils";
 
@@ -39,15 +42,21 @@ export function CheckMark({ passed, className }: { passed: boolean | null | unde
 }
 
 export function PlanSummaryLine({ plan, className }: { plan: TranscodePlanResponse; className?: string }) {
+  const mode = (plan.mode ?? "transcode").toLowerCase();
+  const Icon = mode === "remux" ? Copy : mode === "direct" ? Play : Cpu;
   return (
     <p className={cn("flex items-start gap-2 text-sm font-medium", className)}>
-      <Cpu className="mt-0.5 size-4 shrink-0 text-lime-600 dark:text-lime-400" aria-hidden />
+      <Icon className={cn("mt-0.5 size-4 shrink-0", mode === "transcode" ? "text-lime-600 dark:text-lime-400" : toneTextClass[modeMeta(mode).tone])} aria-hidden />
       <span>{planSummary(plan)}</span>
     </p>
   );
 }
 
-/** Why the server transcodes and how: source vs output, hardware decisions, filters and warnings. */
+const RANGE_LABELS: Record<string, string> = { PQ: "HDR10 (PQ)", HLG: "HLG", SDR: "SDR" };
+
+const DELIVERY_LABELS: Record<string, string> = { webvtt: "WebVTT rendition", embedded: "in the original file", none: "not delivered" };
+
+/** Why the server delivers the stream this way and how: mode and reasons, source vs output, hardware decisions, subtitles, warnings. */
 export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
   const source = plan.source;
   const target = plan.target;
@@ -55,6 +64,12 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
   const toneMap = (plan.toneMap ?? "notneeded").toLowerCase();
   const blockers = plan.directPlayBlockers ?? [];
   const warnings = plan.warnings ?? [];
+  const mode = (plan.mode ?? "transcode").toLowerCase();
+  const meta = modeMeta(mode);
+  const copy = mode === "remux";
+  const reasons = plan.reasons ?? [];
+  const subtitles = plan.subtitles ?? [];
+  const index = plan.keyframeIndex;
 
   return (
     <div className="space-y-4 text-sm">
@@ -79,27 +94,54 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
         <div className="flex items-center justify-center text-muted-foreground" aria-hidden>
           <ArrowRight className="size-4 rotate-90 sm:rotate-0" />
         </div>
-        <MediaBox title="Output (HLS fMP4)">
-          <MediaLine label="Video" value={`${codecLabel(target.videoCodec)} level ${target.level ?? "—"}`} />
-          <MediaLine label="Frame" value={`${target.width}×${target.height} · 8-bit ${isHdr(source.hdr) && (toneMap === "hardware" || toneMap === "software") ? "SDR (tone-mapped)" : isHdr(source.hdr) ? hdrLabel(source.hdr) : "SDR"}`} />
+        <MediaBox title={copy ? "Output (HLS fMP4, stream copy)" : mode === "direct" ? "Output (original file)" : "Output (HLS fMP4)"}>
+          {copy ? (
+            <>
+              <MediaLine label="Video" value={`${codecLabel(target.videoCodec)}${target.level ? ` level ${target.level}` : ""} · copied`} />
+              <MediaLine label="Frame" value={`${target.width}×${target.height} · ${source.bitDepth}-bit ${RANGE_LABELS[target.videoRange ?? "SDR"] ?? target.videoRange}`} />
+            </>
+          ) : (
+            <>
+              <MediaLine label="Video" value={`${codecLabel(target.videoCodec)} level ${target.level ?? "—"}`} />
+              <MediaLine label="Frame" value={`${target.width}×${target.height} · 8-bit ${isHdr(source.hdr) && (toneMap === "hardware" || toneMap === "software") ? "SDR (tone-mapped)" : isHdr(source.hdr) ? hdrLabel(source.hdr) : "SDR"}`} />
+            </>
+          )}
           <MediaLine label="Rate" value={`${target.frameRate} fps`} />
           <MediaLine label="Bitrate" value={formatBitrate(target.videoBitrateKbps)} />
           {audio && <MediaLine label="Audio" value={audio} />}
           {target.codecs && <MediaLine label="CODECS" value={target.codecs} mono />}
+          {index && <MediaLine label="Segments" value={`${index.segments} keyframe-aligned, up to ${index.maxSegmentSeconds} s`} />}
         </MediaBox>
       </div>
 
       <dl className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs sm:grid-cols-2 dark:bg-zinc-900/40">
-        <Decision label="Hardware decode" passed={plan.hardwareDecode} reason={plan.hardwareDecodeReason} />
-        <Decision label="Hardware encode" passed={plan.hardwareEncode} reason={plan.hardwareEncodeReason} />
-        <Decision label="Encoder" value={plan.encoder ?? "—"} reason={plan.accelerationLabel ?? undefined} />
-        <Decision
-          label="Tone mapping"
-          value={{ notneeded: "Not needed (SDR source)", hardware: "On the GPU", software: "On the CPU (zscale)", disabled: "Disabled in settings", unavailable: "Unavailable" }[toneMap] ?? toneMap}
-          passed={toneMap === "notneeded" ? null : toneMap === "hardware" || toneMap === "software"}
-        />
-        <Decision label="Deinterlace" value={plan.deinterlace ? "Yes" : "No"} />
+        <Decision label="Mode" value={meta.label} reason={meta.hint} />
+        {copy ? (
+          <>
+            <Decision
+              label="Keyframe index"
+              value={index ? `${indexSourceLabel(index.source)} · ${index.keyframes} keyframes` : "—"}
+              reason={index ? `built in ${index.buildMs} ms` : undefined}
+            />
+            <Decision label="Encoder" value="None — video and copied audio are not re-encoded" />
+          </>
+        ) : (
+          <>
+            <Decision label="Hardware decode" passed={plan.hardwareDecode} reason={plan.hardwareDecodeReason} />
+            <Decision label="Hardware encode" passed={plan.hardwareEncode} reason={plan.hardwareEncodeReason} />
+            <Decision label="Encoder" value={plan.encoder ?? "—"} reason={plan.accelerationLabel ?? undefined} />
+            <Decision
+              label="Tone mapping"
+              value={{ notneeded: "Not needed (SDR source)", hardware: "On the GPU", software: "On the CPU (zscale)", disabled: "Disabled in settings", unavailable: "Unavailable" }[toneMap] ?? toneMap}
+              passed={toneMap === "notneeded" ? null : toneMap === "hardware" || toneMap === "software"}
+            />
+            <Decision label="Deinterlace" value={plan.deinterlace ? "Yes" : "No"} />
+          </>
+        )}
         <Decision label="Direct play" value={plan.directPlayPossible ? "Possible — the client could play the source as-is" : `Not possible (${blockers.length} ${blockers.length === 1 ? "blocker" : "blockers"})`} />
+        {!copy && mode !== "direct" && (
+          <Decision label="Remux (stream copy)" passed={plan.remuxPossible} value={plan.remuxPossible ? "Possible" : "Not possible — the video must be re-encoded"} />
+        )}
         {plan.videoFilters && (
           <div className="sm:col-span-2">
             <dt className="font-medium text-muted-foreground">Video filters</dt>
@@ -108,11 +150,36 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
         )}
       </dl>
 
-      {blockers.length > 0 && (
+      {reasons.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">Why {meta.label.toLowerCase()}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
+            {reasons.map((reason) => <li key={`${reason.code}-${reason.message}`}>{reason.message}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {!copy && blockers.length > 0 && (
         <div>
           <p className="text-xs font-medium text-muted-foreground">Why direct play is not possible</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
             {blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {subtitles.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">Subtitles</p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {subtitles.map((track) => (
+              <li key={track.index} className="flex items-start gap-1.5">
+                <CheckMark passed={track.deliveredAs !== "none"} className="mt-px [&_svg]:size-3.5" />
+                <span>
+                  #{track.index} {track.name} ({codecLabel(track.codec)}) — {DELIVERY_LABELS[track.deliveredAs ?? "none"] ?? track.deliveredAs}
+                </span>
+              </li>
+            ))}
           </ul>
         </div>
       )}

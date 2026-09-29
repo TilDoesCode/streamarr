@@ -27,6 +27,25 @@ public sealed record SourceVideoStream
     public string? ColorPrimaries { get; init; }
     public HdrFormat Hdr { get; init; }
     public bool Interlaced { get; init; }
+    public int? Level { get; init; }
+    public int? DolbyVisionProfile { get; init; }
+    public int? DolbyVisionCompatibility { get; init; }
+
+    /// <summary>What a player without Dolby Vision sees: the base layer's range, or null when no compatible base layer exists (profile 5).</summary>
+    public HdrFormat? BaseLayerHdr => Hdr != HdrFormat.DolbyVision
+        ? Hdr
+        : DolbyVisionCompatibility switch
+        {
+            1 or 6 => HdrFormat.Hdr10,
+            4 => HdrFormat.Hlg,
+            2 => HdrFormat.None,
+            _ => DolbyVisionProfile is 5 or null ? null : ColorTransfer switch
+            {
+                "smpte2084" => HdrFormat.Hdr10,
+                "arib-std-b67" => HdrFormat.Hlg,
+                _ => null,
+            },
+        };
 }
 
 public sealed record SourceAudioStream
@@ -43,6 +62,24 @@ public sealed record SourceAudioStream
     public bool IsDefault { get; init; }
 }
 
+public sealed record SourceSubtitleStream
+{
+    private static readonly HashSet<string> TextCodecs = new(StringComparer.Ordinal)
+    {
+        "subrip", "srt", "ass", "ssa", "webvtt", "mov_text", "text",
+    };
+
+    public required int Index { get; init; }
+    public required string Codec { get; init; }
+    public string? Language { get; init; }
+    public string? Title { get; init; }
+    public bool IsDefault { get; init; }
+    public bool IsForced { get; init; }
+
+    /// <summary>Text formats convert to WebVTT; bitmap formats (PGS, VobSub, DVB) cannot be delivered without burning in.</summary>
+    public bool TextBased => TextCodecs.Contains(Codec);
+}
+
 public sealed record SourceMediaInfo
 {
     public double DurationSeconds { get; init; }
@@ -50,7 +87,11 @@ public sealed record SourceMediaInfo
     public string? Container { get; init; }
     public SourceVideoStream? Video { get; init; }
     public IReadOnlyList<SourceAudioStream> Audio { get; init; } = [];
-    public int SubtitleCount { get; init; }
+    public IReadOnlyList<SourceSubtitleStream> Subtitles { get; init; } = [];
+    public int SubtitleCount => Subtitles.Count;
+
+    /// <summary>Format start time; <c>-copyts -start_at_zero</c> subtracts it, so output time = source PTS − StartTime.</summary>
+    public double StartTime { get; init; }
 
     public long? EstimatedVideoBitRate
         => Video?.BitRate ?? (BitRate is { } total ? Math.Max(0, total - Audio.Sum(a => a.BitRate ?? 0)) : null);
@@ -109,19 +150,20 @@ public sealed class SourceMediaProber(
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        double duration = 0;
+        double duration = 0, startTime = 0;
         long? bitRate = null;
         string? container = null;
         if (root.TryGetProperty("format", out var format))
         {
             duration = ParseDouble(Str(format, "duration")) ?? 0;
+            startTime = ParseDouble(Str(format, "start_time")) ?? 0;
             bitRate = ParseLong(Str(format, "bit_rate"));
             container = Str(format, "format_name");
         }
 
         SourceVideoStream? video = null;
         var audio = new List<SourceAudioStream>();
-        var subtitles = 0;
+        var subtitles = new List<SourceSubtitleStream>();
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
             foreach (var stream in streams.EnumerateArray().Take(128))
@@ -150,7 +192,15 @@ public sealed class SourceMediaProber(
                         });
                         break;
                     case "subtitle":
-                        subtitles++;
+                        subtitles.Add(new SourceSubtitleStream
+                        {
+                            Index = index,
+                            Codec = Str(stream, "codec_name") ?? "unknown",
+                            Language = Tag(stream, "language"),
+                            Title = Tag(stream, "title"),
+                            IsDefault = Disposition(stream, "default"),
+                            IsForced = Disposition(stream, "forced"),
+                        });
                         break;
                 }
             }
@@ -172,7 +222,8 @@ public sealed class SourceMediaProber(
             Container = container,
             Video = video,
             Audio = audio,
-            SubtitleCount = subtitles,
+            Subtitles = subtitles,
+            StartTime = Math.Abs(startTime) < 86_400 ? startTime : 0,
         };
     }
 
@@ -187,10 +238,17 @@ public sealed class SourceMediaProber(
             "arib-std-b67" => HdrFormat.Hlg,
             _ => HdrFormat.None,
         };
-        if (stream.TryGetProperty("side_data_list", out var sideData) && sideData.ValueKind == JsonValueKind.Array
-            && sideData.EnumerateArray().Any(e => Str(e, "side_data_type")?.Contains("DOVI", StringComparison.OrdinalIgnoreCase) == true))
+        int? dvProfile = null, dvCompatibility = null;
+        if (stream.TryGetProperty("side_data_list", out var sideData) && sideData.ValueKind == JsonValueKind.Array)
         {
-            hdr = HdrFormat.DolbyVision;
+            foreach (var entry in sideData.EnumerateArray())
+            {
+                if (Str(entry, "side_data_type")?.Contains("DOVI", StringComparison.OrdinalIgnoreCase) != true)
+                    continue;
+                hdr = HdrFormat.DolbyVision;
+                dvProfile = Int(entry, "dv_profile");
+                dvCompatibility = Int(entry, "dv_bl_signal_compatibility_id");
+            }
         }
 
         var fieldOrder = Str(stream, "field_order");
@@ -209,6 +267,9 @@ public sealed class SourceMediaProber(
             ColorPrimaries = Str(stream, "color_primaries"),
             Hdr = hdr,
             Interlaced = fieldOrder is "tt" or "bb" or "tb" or "bt",
+            Level = Int(stream, "level") is { } level and > 0 ? level : null,
+            DolbyVisionProfile = dvProfile,
+            DolbyVisionCompatibility = dvCompatibility,
         };
     }
 

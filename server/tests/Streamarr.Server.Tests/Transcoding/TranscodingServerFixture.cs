@@ -42,6 +42,13 @@ public class TranscodingServerFixture : IAsyncLifetime
 
     public static string ReleaseIdFor(int copy) => copy == 0 ? ReleaseId : $"{ReleaseId}-{copy}";
 
+    /// <summary>An additional source published as its own release (e.g. the remux fixtures' media matrix).</summary>
+    public sealed record FixtureRelease(string ReleaseId, string WorkId, string FileName, byte[] Data);
+
+    /// <summary>Extra releases to publish next to the transcode source; none by default.</summary>
+    protected virtual Task<IReadOnlyList<FixtureRelease>> GenerateExtraReleasesAsync(string directory)
+        => Task.FromResult<IReadOnlyList<FixtureRelease>>([]);
+
     public MockNntpServer Nntp { get; private set; } = null!;
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _bodies = new();
@@ -97,6 +104,16 @@ public class TranscodingServerFixture : IAsyncLifetime
             nzbPaths.Add(nzbPath);
         }
 
+        var extras = await GenerateExtraReleasesAsync(_tempDir);
+        var extraNzbs = new List<string>();
+        foreach (var extra in extras)
+        {
+            var published = NzbTestFixtures.PublishFile(Nntp, extra.FileName, extra.Data, $"extra-{extra.ReleaseId}", partSize: ArticleBytes);
+            var nzbPath = Path.Combine(_tempDir, $"{extra.ReleaseId}.nzb");
+            await File.WriteAllTextAsync(nzbPath, NzbTestFixtures.BuildNzbXml(published));
+            extraNzbs.Add(nzbPath);
+        }
+
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = Environments.Production });
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -146,13 +163,27 @@ public class TranscodingServerFixture : IAsyncLifetime
                 NzbUrl = nzbPaths[copy],
             });
         }
+        for (var i = 0; i < extras.Count; i++)
+        {
+            store.Register(extras[i].WorkId, new Release
+            {
+                ReleaseId = extras[i].ReleaseId,
+                Title = Path.GetFileNameWithoutExtension(extras[i].FileName),
+                Indexer = "mock-indexer",
+                SizeBytes = extras[i].Data.Length,
+                Score = 800 - i,
+                NzbUrl = extraNzbs[i],
+            });
+        }
     }
 
     /// <summary>Resolves the release like a client would and returns the direct-play stream capability.</summary>
-    public async Task<string> ResolveStreamTokenAsync(HttpClient client, int copy = 0)
+    public Task<string> ResolveStreamTokenAsync(HttpClient client, int copy = 0) => ResolveStreamTokenAsync(client, ReleaseIdFor(copy), WorkId);
+
+    public async Task<string> ResolveStreamTokenAsync(HttpClient client, string releaseId, string workId)
     {
         var response = await client.PostAsJsonAsync("/api/v1/resolve",
-            new ResolveRequest { ReleaseId = ReleaseIdFor(copy), WorkId = WorkId, Client = "transcoding-it" });
+            new ResolveRequest { ReleaseId = releaseId, WorkId = workId, Client = "transcoding-it" });
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var streamUrl = body.GetProperty("streamUrl").GetString()!;

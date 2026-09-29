@@ -119,6 +119,9 @@ export type TranscodeJobResponse = S["TranscodeJobResponse"];
 export type GpuDeviceResponse = S["GpuDeviceResponse"];
 export type DeviceCheckResponse = S["DeviceCheckResponse"];
 export type TranscodeStartupResponse = S["TranscodeStartupResponse"];
+export type PlanReasonResponse = S["PlanReasonResponse"];
+export type SubtitleTrackResponse = S["SubtitleTrackResponse"];
+export type KeyframeIndexResponse = S["KeyframeIndexResponse"];
 
 export type ViewerSettingsResponse = S["ViewerSettingsResponse"];
 export type ViewerSettingsWrite = S["ViewerSettingsWrite"];

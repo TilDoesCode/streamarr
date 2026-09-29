@@ -111,6 +111,7 @@ export function config(overrides: Partial<TranscodingConfigResponse> = {}): Tran
     throttleEnabled: true,
     throttleBufferSeconds: 120,
     maxConcurrentTranscodes: 2,
+    maxConcurrentRemuxes: 8,
     jobIdleTimeoutSeconds: 60,
     sessionIdleTimeoutSeconds: 1_800,
     segmentRetentionSeconds: 900,
@@ -169,6 +170,13 @@ export const samples: TranscodingSampleResponse[] = [
 
 export function plan(overrides: Partial<TranscodePlanResponse> = {}): TranscodePlanResponse {
   return {
+    mode: "transcode",
+    reasons: [
+      { code: "transcode_requested", message: "A full transcode was requested.", params: null },
+    ],
+    remuxPossible: true,
+    remuxBlockers: [],
+    subtitles: [],
     directPlayPossible: false,
     directPlayBlockers: [
       "Container 'mkv' is not supported by the player.",
@@ -196,8 +204,11 @@ export function plan(overrides: Partial<TranscodePlanResponse> = {}): TranscodeP
       frameRate: 23.976,
       level: "4.1",
       codecs: "avc1.640029,mp4a.40.2",
+      videoCopy: false,
+      videoRange: "SDR",
       audioStreamIndex: 1,
       audioSourceCodec: "ac3",
+      audioCodec: "aac",
       audioCopy: false,
       audioChannels: 2,
       audioBitrateKbps: 192,
@@ -213,6 +224,62 @@ export function plan(overrides: Partial<TranscodePlanResponse> = {}): TranscodeP
     deinterlace: false,
     videoFilters: "scale_vt=w=1280:h=720",
     warnings: [],
+    ...overrides,
+  };
+}
+
+/** A 4K HDR10 MKV copied into HLS for an HDR-capable client: TrueHD → E-AC-3, two WebVTT renditions, one PGS not delivered. */
+export function remuxPlan(overrides: Partial<TranscodePlanResponse> = {}): TranscodePlanResponse {
+  const base = plan();
+  return {
+    ...base,
+    mode: "remux",
+    reasons: [
+      { code: "container_unsupported", message: "Container 'mkv' is not supported by the player.", params: { container: "mkv" } },
+      { code: "audio_converted", message: "Audio 'truehd' 6 ch is converted to 'eac3' 6 ch because 'truehd' cannot be carried in HLS.", params: { from: "truehd", to: "eac3", channels: "6" } },
+    ],
+    subtitles: [
+      { index: 2, codec: "subrip", language: "en", title: "English", name: "English", forced: false, isDefault: false, textBased: true, deliveredAs: "webvtt" },
+      { index: 3, codec: "ass", language: "de", title: null, name: "German (forced)", forced: true, isDefault: false, textBased: true, deliveredAs: "webvtt" },
+      { index: 4, codec: "hdmv_pgs_subtitle", language: "fr", title: null, name: "French", forced: false, isDefault: false, textBased: false, deliveredAs: "none" },
+    ],
+    keyframeIndex: { source: "matroska-cues", keyframes: 30, buildMs: 12, segments: 10, maxSegmentSeconds: 6.005 },
+    directPlayBlockers: ["Container 'mkv' is not supported by the player.", "Audio codec 'truehd' is not supported by the player."],
+    source: {
+      ...base.source,
+      videoCodec: "hevc",
+      videoProfile: "Main 10",
+      width: 3840,
+      height: 2160,
+      bitDepth: 10,
+      frameRate: 24,
+      hdr: "hdr10",
+      audio: [{ index: 1, codec: "truehd", channels: 6, language: "eng", title: null, isDefault: true }],
+    },
+    target: {
+      ...base.target,
+      videoCodec: "hevc",
+      width: 3840,
+      height: 2160,
+      videoBitrateKbps: 22_400,
+      frameRate: 24,
+      level: "5.0",
+      codecs: "hvc1.2.4.L150.90,ec-3",
+      videoCopy: true,
+      videoRange: "PQ",
+      audioSourceCodec: "truehd",
+      audioCodec: "eac3",
+      audioChannels: 6,
+      audioBitrateKbps: 640,
+    },
+    acceleration: "none",
+    accelerationLabel: "Software (CPU)",
+    hardwareDecode: false,
+    hardwareDecodeReason: "Stream copy: the video is not decoded.",
+    hardwareEncode: false,
+    hardwareEncodeReason: "Stream copy: the video is not encoded.",
+    encoder: "copy",
+    videoFilters: "",
     ...overrides,
   };
 }
@@ -275,6 +342,7 @@ export function benchmark(overrides: Partial<BenchmarkResponse> = {}): Benchmark
 export function createdSession(overrides: Partial<TranscodeSessionCreatedResponse> = {}): TranscodeSessionCreatedResponse {
   return {
     handle: "a53f5b44829f",
+    mode: "transcode",
     playlistUrl: "/api/v1/transcode/cap-token-123/master.m3u8",
     mediaPlaylistUrl: "/api/v1/transcode/cap-token-123/main.m3u8",
     durationSeconds: 30,
@@ -288,6 +356,7 @@ export function createdSession(overrides: Partial<TranscodeSessionCreatedRespons
 export function liveSession(overrides: Partial<TranscodeSessionResponse> = {}): TranscodeSessionResponse {
   return {
     handle: "a53f5b44829f",
+    mode: "transcode",
     title: "Example.Movie.2021.1080p.WEB-DL.x264",
     client: "web playback preview",
     sourceKind: "stream",

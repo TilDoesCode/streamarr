@@ -10,10 +10,12 @@ import {
   config,
   liveSession,
   multiGpuCapabilities,
+  remuxPlan,
   samples,
   vaapiNoDevice,
   videoToolboxReady,
 } from "@/test/transcoding-fixtures";
+import { PlanExplanation } from "@/components/transcode-plan";
 import { OverviewTab } from "./overview-tab";
 import { SettingsTab } from "./settings-tab";
 import { SessionsTab } from "./sessions-tab";
@@ -169,6 +171,29 @@ describe("Transcoding settings", () => {
     expect(body).not.toHaveProperty("hardwareDecodingCodecs");
   });
 
+  it("edits the separate remux capacity", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/transcoding/config": () => config(),
+      "GET /api/v1/transcoding/capabilities": () => capabilities(),
+      "PUT /api/v1/transcoding/config": (request) => config(request.body as object),
+    });
+    renderWithProviders(<SettingsTab />);
+
+    const remuxes = await screen.findByLabelText("Concurrent remuxes");
+    expect(remuxes).toHaveValue(8);
+    await user.clear(remuxes);
+    await user.type(remuxes, "99");
+    await user.click(screen.getByRole("button", { name: /save transcoding settings/i }));
+    expect(await screen.findByText(/must not exceed 64/i)).toBeVisible();
+
+    await user.clear(remuxes);
+    await user.type(remuxes, "12");
+    await user.click(screen.getByRole("button", { name: /save transcoding settings/i }));
+    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    expect(requests.find((r) => r.method === "PUT")!.body).toMatchObject({ maxConcurrentRemuxes: 12, maxConcurrentTranscodes: 2 });
+  });
+
   it("blocks out-of-range values before they reach the server", async () => {
     const user = userEvent.setup();
     const { requests } = installFetchRoutes({
@@ -255,6 +280,40 @@ describe("Transcoding sessions", () => {
 
     await user.click(within(list).getByRole("button", { name: /stop/i }));
     await waitFor(() => expect(requests.some((r) => r.method === "DELETE")).toBe(true));
+  });
+
+  it("labels each session's mode and describes a remux as a keyframe-aligned stream copy", async () => {
+    installFetchRoutes({
+      "GET /api/v1/transcoding/sessions": () => [
+        liveSession(),
+        liveSession({ handle: "b61c2e7f9a01", mode: "remux", title: "Big.Buck.Bunny.2008.2160p.HDR10", segmentCount: 10, segmentLengthSeconds: 6, plan: remuxPlan() }),
+      ],
+    });
+    renderWithProviders(<SessionsTab />);
+
+    const list = await screen.findByRole("list", { name: "Live transcode sessions" });
+    const [transcode, remux] = within(list).getAllByRole("listitem");
+    expect(within(transcode).getByText("Transcode")).toBeVisible();
+    expect(within(remux).getByText("Remux")).toBeVisible();
+    expect(within(remux).getByText("HEVC 4K HDR10 · stream copy (remux) · audio TrueHD 5.1 → E-AC-3 5.1 · 640 kbps")).toBeVisible();
+    expect(within(remux).getByText("10 keyframe-aligned segments (~6 s)")).toBeVisible();
+  });
+
+  it("explains a remux plan: reasons, copied HDR output, keyframe index and subtitle delivery", () => {
+    renderWithProviders(<PlanExplanation plan={remuxPlan()} />);
+
+    expect(screen.getByText("Output (HLS fMP4, stream copy)")).toBeVisible();
+    expect(screen.getByText("HEVC level 5.0 · copied")).toBeVisible();
+    expect(screen.getByText("3840×2160 · 10-bit HDR10 (PQ)")).toBeVisible();
+    expect(screen.getByText("hvc1.2.4.L150.90,ec-3")).toBeVisible();
+    expect(screen.getByText("10 keyframe-aligned, up to 6.005 s")).toBeVisible();
+    expect(screen.getByText("Matroska Cues · 30 keyframes")).toBeVisible();
+    expect(screen.getByText("Why remux")).toBeVisible();
+    expect(screen.getByText(/converted to 'eac3' 6 ch/)).toBeVisible();
+    expect(screen.queryByText("Hardware decode")).toBeNull();
+    expect(screen.queryByText("Why direct play is not possible")).toBeNull();
+    expect(screen.getByText(/#2 English \(SRT\) — WebVTT rendition/)).toBeVisible();
+    expect(screen.getByText(/#4 French \(PGS\) — not delivered/)).toBeVisible();
   });
 
   it("explains how sessions come about when none are live", async () => {

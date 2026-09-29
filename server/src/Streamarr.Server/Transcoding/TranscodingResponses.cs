@@ -33,6 +33,7 @@ public static class TranscodingResponses
         ThrottleEnabled = s.ThrottleEnabled,
         ThrottleBufferSeconds = s.ThrottleBufferSeconds,
         MaxConcurrentTranscodes = s.MaxConcurrentTranscodes,
+        MaxConcurrentRemuxes = s.MaxConcurrentRemuxes,
         JobIdleTimeoutSeconds = s.JobIdleTimeoutSeconds,
         SessionIdleTimeoutSeconds = s.SessionIdleTimeoutSeconds,
         SegmentRetentionSeconds = s.SegmentRetentionSeconds,
@@ -85,6 +86,7 @@ public static class TranscodingResponses
             ThrottleEnabled = w.ThrottleEnabled ?? current.ThrottleEnabled,
             ThrottleBufferSeconds = w.ThrottleBufferSeconds ?? current.ThrottleBufferSeconds,
             MaxConcurrentTranscodes = w.MaxConcurrentTranscodes ?? current.MaxConcurrentTranscodes,
+            MaxConcurrentRemuxes = w.MaxConcurrentRemuxes ?? current.MaxConcurrentRemuxes,
             JobIdleTimeoutSeconds = w.JobIdleTimeoutSeconds ?? current.JobIdleTimeoutSeconds,
             SessionIdleTimeoutSeconds = w.SessionIdleTimeoutSeconds ?? current.SessionIdleTimeoutSeconds,
             SegmentRetentionSeconds = w.SegmentRetentionSeconds ?? current.SegmentRetentionSeconds,
@@ -182,6 +184,30 @@ public static class TranscodingResponses
 
     public static TranscodePlanResponse Plan(TranscodePlan plan, SourceMediaInfo media) => new()
     {
+        Mode = plan.Mode.ToApi(),
+        Reasons = plan.Reasons.Select(Reason).ToList(),
+        RemuxPossible = plan.RemuxPossible,
+        RemuxBlockers = plan.RemuxBlockers.Select(Reason).ToList(),
+        Subtitles = plan.Subtitles.Select(s => new SubtitleTrackResponse
+        {
+            Index = s.Stream.Index,
+            Codec = s.Stream.Codec,
+            Language = s.Language,
+            Title = s.Stream.Title,
+            Name = s.Name,
+            Forced = s.Stream.IsForced,
+            IsDefault = s.Stream.IsDefault,
+            TextBased = s.Stream.TextBased,
+            DeliveredAs = s.DeliveredAs,
+        }).ToList(),
+        KeyframeIndex = plan.KeyframeIndex is not { } index ? null : new KeyframeIndexResponse
+        {
+            Source = index.Source.ToApi(),
+            Keyframes = index.Keyframes.Count,
+            BuildMs = Math.Round(index.BuildMs),
+            Segments = plan.RemuxTimeline?.Count ?? 0,
+            MaxSegmentSeconds = Math.Round(plan.RemuxTimeline?.MaxDuration ?? 0, 3),
+        },
         DirectPlayPossible = plan.DirectPlayPossible,
         DirectPlayBlockers = plan.DirectPlayBlockers,
         Source = new TranscodeSourceResponse
@@ -196,6 +222,7 @@ public static class TranscodingResponses
             BitDepth = plan.SourceVideo.BitDepth,
             FrameRate = plan.SourceVideo.FrameRate is { } f ? Math.Round(f, 3) : null,
             Hdr = plan.SourceVideo.Hdr.ToString().ToLowerInvariant(),
+            DolbyVisionProfile = plan.SourceVideo.DolbyVisionProfile,
             Interlaced = plan.SourceVideo.Interlaced,
             Audio = media.Audio.Select(a => new SourceAudioResponse(a.Index, a.Codec, a.Channels, a.Language, a.Title, a.IsDefault)).ToList(),
         },
@@ -208,8 +235,11 @@ public static class TranscodingResponses
             FrameRate = Math.Round(plan.Video.FrameRate, 3),
             Level = plan.Video.Level,
             Codecs = plan.CodecsAttribute,
+            VideoCopy = plan.Mode == DeliveryMode.Remux,
+            VideoRange = plan.Mode == DeliveryMode.Transcode ? "SDR" : plan.VideoRange,
             AudioStreamIndex = plan.Audio?.SourceIndex,
             AudioSourceCodec = plan.Audio?.SourceCodec,
+            AudioCodec = plan.Audio?.Codec,
             AudioCopy = plan.Audio?.Copy ?? false,
             AudioChannels = plan.Audio?.Channels,
             AudioBitrateKbps = plan.Audio?.BitrateKbps,
@@ -223,9 +253,11 @@ public static class TranscodingResponses
         Encoder = plan.Encoder,
         ToneMap = plan.ToneMap.ToString().ToLowerInvariant(),
         Deinterlace = plan.Deinterlace,
-        VideoFilters = FfmpegArgumentBuilder.BuildVideoFilters(plan),
+        VideoFilters = plan.Mode == DeliveryMode.Transcode ? FfmpegArgumentBuilder.BuildVideoFilters(plan) : string.Empty,
         Warnings = plan.Warnings,
     };
+
+    private static PlanReasonResponse Reason(PlanReason reason) => new(reason.Code, reason.Message, reason.Params);
 
     public static TranscodeSessionResponse Session(TranscodeSession s)
     {
@@ -233,6 +265,7 @@ public static class TranscodingResponses
         return new TranscodeSessionResponse
         {
             Handle = s.Handle,
+            Mode = s.Mode.ToApi(),
             Title = s.Title,
             Client = s.Client,
             SourceKind = s.Source.Kind,

@@ -57,6 +57,9 @@ public sealed class MockNntpServer : IAsyncDisposable
     /// <summary>Optional per-connection body throughput cap in bytes/second (0 = unlimited).</summary>
     public int BodyBytesPerSecond { get; init; }
 
+    /// <summary>Optional pause between the flushed BODY/ARTICLE status and headers and the payload, so the client reads them separately.</summary>
+    public TimeSpan BodyPayloadDelay { get; init; } = TimeSpan.Zero;
+
     /// <summary>Invoked with the message-id for every served BODY/ARTICLE (duplicate tracking).</summary>
     public Action<string>? OnBodyServed { get; init; }
 
@@ -66,6 +69,12 @@ public sealed class MockNntpServer : IAsyncDisposable
     /// <summary>message-id (no brackets) → raw yEnc article text (CRLF lines, not dot-stuffed).</summary>
     public ConcurrentDictionary<string, string> Articles { get; } = new();
     public ConcurrentDictionary<string, byte> StatOnlyArticles { get; } = new();
+
+    /// <summary>Optional lazy store consulted for ids missing from <see cref="Articles"/> (large fixtures encoded on demand).</summary>
+    public IMockArticleSource? ArticleSource { get; init; }
+
+    /// <summary>STAT of these ids drops the connection, so a health probe counts them as indeterminate, not missing.</summary>
+    public ConcurrentDictionary<string, byte> StatDisconnects { get; } = new();
 
     /// <summary>
     /// Per-message-id BODY script: called with the 1-based BODY attempt count and returns
@@ -261,6 +270,8 @@ public sealed class MockNntpServer : IAsyncDisposable
     private async Task RespondStat(StreamWriter writer, string[] parts)
     {
         var id = ExtractMessageId(parts);
+        if (id != null && StatDisconnects.ContainsKey(id))
+            throw new IOException("scripted mock STAT disconnect");
         if (id != null && StatScripts.TryGetValue(id, out var script))
         {
             var call = _statCalls.AddOrUpdate(id, 1, (_, v) => v + 1);
@@ -269,7 +280,7 @@ public sealed class MockNntpServer : IAsyncDisposable
                 : "430 No article with that message-id\r\n");
             return;
         }
-        if (!RejectBodies && id != null && (Articles.ContainsKey(id) || StatOnlyArticles.ContainsKey(id)))
+        if (!RejectBodies && id != null && (HasArticle(id) || StatOnlyArticles.ContainsKey(id)))
             await writer.WriteAsync($"223 0 <{id}>\r\n");
         else
             await writer.WriteAsync("430 No article with that message-id\r\n");
@@ -294,7 +305,7 @@ public sealed class MockNntpServer : IAsyncDisposable
     private async Task RespondHead(StreamWriter writer, string[] parts)
     {
         var id = ExtractMessageId(parts);
-        if (id == null || !Articles.ContainsKey(id))
+        if (id == null || !HasArticle(id))
         {
             await writer.WriteAsync("430 No article with that message-id\r\n");
             return;
@@ -331,7 +342,7 @@ public sealed class MockNntpServer : IAsyncDisposable
             throw new IOException("scripted mock disconnect");
 
         string? article = null;
-        var present = id != null && Articles.TryGetValue(id, out article);
+        var present = id != null && (Articles.TryGetValue(id, out article) || (article = ArticleSource?.Get(id)) != null);
         if (RejectBodies || behavior == MockBodyBehavior.Missing || id == null || !present)
         {
             await writer.WriteAsync("430 No article with that message-id\r\n");
@@ -355,6 +366,9 @@ public sealed class MockNntpServer : IAsyncDisposable
         {
             await writer.WriteAsync($"222 0 <{id}>\r\n");
         }
+
+        if (BodyPayloadDelay > TimeSpan.Zero)
+            await Task.Delay(BodyPayloadDelay, _cts.Token);
 
         // BODY payloads are normally delivered by an NNTP server in network-sized
         // chunks. AutoFlush would instead turn every 128-character yEnc line into a
@@ -392,6 +406,8 @@ public sealed class MockNntpServer : IAsyncDisposable
         await writer.FlushAsync();
         writer.AutoFlush = true;
     }
+
+    private bool HasArticle(string id) => Articles.ContainsKey(id) || ArticleSource?.Contains(id) == true;
 
     private static string? ExtractMessageId(string[] parts)
     {
@@ -456,6 +472,15 @@ public sealed class MockNntpServer : IAsyncDisposable
         }
         return string.Join("\r\n", lines);
     }
+}
+
+/// <summary>Lazy article store for <see cref="MockNntpServer"/>: existence checks stay cheap, bodies are built on demand.</summary>
+public interface IMockArticleSource
+{
+    bool Contains(string messageId);
+
+    /// <summary>Raw yEnc article text (CRLF lines, not dot-stuffed), or null when the article does not exist.</summary>
+    string? Get(string messageId);
 }
 
 /// <summary>Scripted per-call BODY behavior for one message-id.</summary>
