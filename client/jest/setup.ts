@@ -12,3 +12,6 @@ jest.mock(
 );
 // react-native-mmkv switches to its in-memory mock under Jest but still imports Nitro at load time.
 jest.mock('react-native-nitro-modules', () => ({ NitroModules: {} }));
+jest.mock('@react-native-community/netinfo', () =>
+  require('@react-native-community/netinfo/jest/netinfo-mock.js')
+);

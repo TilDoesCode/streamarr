@@ -19,7 +19,126 @@
   },
   "home": {
     "openGallery": "Component gallery",
-    "placeholder": "The home screen arrives with the navigation shells."
+    "greeting": "Hi, {name}",
+    "server": "Watching on {server}",
+    "placeholder": "Browsing arrives with the navigation shells. These rows come live from your server.",
+    "switchProfile": "Switch profile",
+    "signOut": "Sign out",
+    "rows": {
+      "trending-movies": "Trending movies",
+      "trending-series": "Trending series",
+      "popular-movies": "Popular movies",
+      "popular-series": "Popular series",
+      "other": "Recommended"
+    },
+    "updating": "Updating…"
+  },
+  "onboarding": {
+    "server": {
+      "title": "Connect to your server",
+      "subtitle": "Enter the address of your Streamarr server. You can find it in the server’s management UI.",
+      "label": "Server address",
+      "placeholder": "streamarr.example.com or 192.168.1.20:8080",
+      "connect": "Connect",
+      "known": "Your servers",
+      "insecureTitle": "This connection isn’t encrypted",
+      "insecureMessage": "{host} is reached over plain http outside your home network. Your password and everything you watch could be read on the way. Use the server’s https address if it has one.",
+      "continueAnyway": "Connect anyway",
+      "changeAddress": "Change address"
+    },
+    "signIn": {
+      "title": "Sign in",
+      "subtitle": "to {server}",
+      "login": "Username or email",
+      "password": "Password",
+      "submit": "Sign in",
+      "emailCode": "Email me a sign-in code",
+      "forgot": "Forgot password?",
+      "changeServer": "Change server",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password"
+    },
+    "secondFactor": {
+      "title": "Two-step verification",
+      "subtitle": "Enter the 6-digit code from your authenticator app.",
+      "recoverySubtitle": "Enter one of your recovery codes. Each code works once.",
+      "code": "Code",
+      "recoveryCode": "Recovery code",
+      "useRecovery": "Use a recovery code",
+      "useAuthenticator": "Use the authenticator app",
+      "submit": "Verify",
+      "restart": "Start over"
+    },
+    "emailCode": {
+      "title": "Sign in with a code",
+      "subtitle": "We’ll email a one-time code to the address saved in your account.",
+      "send": "Send code",
+      "verifyTitle": "Enter your code",
+      "verifySubtitle": "If {login} has an email address on this server, a code is on its way. It’s valid for 10 minutes.",
+      "code": "Code",
+      "codePlaceholder": "ABCD-EFGH",
+      "resend": "Send a new code",
+      "resent": "A new code is on its way.",
+      "submit": "Sign in"
+    },
+    "forgot": {
+      "title": "Reset your password",
+      "subtitle": "We’ll email a reset code to the address saved in your account.",
+      "send": "Send reset code",
+      "resetTitle": "Choose a new password",
+      "resetSubtitle": "If {login} has an email address on this server, a reset code is on its way. It’s valid for 30 minutes. Resetting signs you out on every device.",
+      "code": "Reset code",
+      "submit": "Change password",
+      "done": "Password changed. Sign in with your new password."
+    },
+    "changePassword": {
+      "title": "Choose a new password",
+      "subtitle": "Your password was set by the server admin. Choose your own to continue.",
+      "current": "Current password",
+      "submit": "Save and continue",
+      "signOut": "Sign out",
+      "done": "Password changed."
+    },
+    "fields": {
+      "newPassword": "New password",
+      "confirmPassword": "Repeat new password",
+      "passwordHint": "At least {min, plural, one {# character} other {# characters}}."
+    },
+    "validation": {
+      "addressRequired": "Enter the server address.",
+      "loginRequired": "Enter your username or email address.",
+      "passwordRequired": "Enter your password.",
+      "codeRequired": "Enter the code.",
+      "codeDigits": "Enter the 6 digits from your app.",
+      "tooShort": "Use at least {min, plural, one {# character} other {# characters}}.",
+      "tooLong": "Use at most {max, plural, one {# character} other {# characters}}.",
+      "sameAsUsername": "The password can’t be your username.",
+      "repetitive": "Use at least 3 different characters.",
+      "mismatch": "The passwords don’t match.",
+      "unchanged": "Choose a password that differs from the current one."
+    },
+    "serverChip": "{name} · {url}"
+  },
+  "profiles": {
+    "title": "Who’s watching?",
+    "manageTitle": "Manage profiles",
+    "add": "Add profile",
+    "manage": "Manage profiles",
+    "done": "Done",
+    "signedOut": "Signed out",
+    "onServer": "on {server}",
+    "signOut": "Sign out",
+    "signIn": "Sign in",
+    "remove": "Remove from this device",
+    "removeTitle": "Remove {name}?",
+    "removeMessage": "The profile is signed out and removed from this device. Its watch history stays on the server.",
+    "removeConfirm": "Remove",
+    "edit": "Edit {name}",
+    "current": "Current profile"
+  },
+  "accounts": {
+    "sessionEnded": "{name} was signed out. Sign in again to continue.",
+    "signedOut": "{name} is signed out."
   },
   "notFound": {
     "title": "Page not found",
@@ -158,6 +277,270 @@
       "playback_failed": {
         "title": "Playback failed",
         "message": "This version couldn’t be played. Try another version or a lower quality."
+      },
+      "tls_error": {
+        "title": "Secure connection failed",
+        "message": "The server’s certificate isn’t trusted by this device, or the connection was interrupted. Check the address and the server’s certificate."
+      },
+      "mixed_content": {
+        "title": "Unencrypted server blocked",
+        "message": "This page is loaded over https, so the browser blocks the server’s plain http address. Use the server’s https address."
+      },
+      "aborted": {
+        "title": "Request cancelled",
+        "message": "The request was cancelled before it finished."
+      },
+      "invalid_url": {
+        "title": "That’s not a server address",
+        "message": "Enter an address like streamarr.example.com or 192.168.1.20:8080."
+      },
+      "not_streamarr": {
+        "title": "No Streamarr server found",
+        "message": "Something answered at this address, but it isn’t a Streamarr server with viewer sign-in. Check the address and the port."
+      },
+      "session_ended": {
+        "title": "Signed out",
+        "message": "The session on this device has ended. Sign in again to continue."
+      },
+      "invalid_request": {
+        "title": "Invalid request",
+        "message": "The server couldn’t read this request. Update the app or try again."
+      },
+      "invalid_login": {
+        "title": "Enter your sign-in details",
+        "message": "Enter your username or email address and your password."
+      },
+      "invalid_credentials": {
+        "title": "Wrong username or password",
+        "message": "Check your username and password and try again."
+      },
+      "invalid_code": {
+        "title": "Wrong code",
+        "message": "The code is wrong, expired or was replaced by a newer one."
+      },
+      "mfa_expired": {
+        "title": "Sign-in timed out",
+        "message": "The sign-in took too long. Start again with your password."
+      },
+      "account_disabled": {
+        "title": "Account disabled",
+        "message": "This account has been disabled on the server. Ask the server admin for help."
+      },
+      "account_locked": {
+        "title": "Account temporarily locked",
+        "message": "Too many failed sign-in attempts. Wait a few minutes and try again, or reset your password."
+      },
+      "email_login_unavailable": {
+        "title": "Email codes are turned off",
+        "message": "This server doesn’t send sign-in codes. Sign in with your password."
+      },
+      "password_reset_unavailable": {
+        "title": "Password reset is turned off",
+        "message": "This server can’t send reset codes. Ask the server admin to set a new password."
+      },
+      "rate_limited": {
+        "title": "Too many attempts",
+        "message": "Wait a minute before you try again."
+      },
+      "refresh_token_reused": {
+        "title": "Signed out for your security",
+        "message": "This sign-in was used somewhere else, so the server ended it. Sign in again."
+      },
+      "refresh_session_expired": {
+        "title": "Your session has ended",
+        "message": "The session expired, was ended on another device, or the account was disabled. Sign in again."
+      },
+      "password_change_required": {
+        "title": "Choose a new password",
+        "message": "Your password was set by the server admin. Choose your own password to continue."
+      },
+      "invalid_password": {
+        "title": "Password not accepted",
+        "message": "The new password doesn’t meet the server’s rules or matches the current one."
+      },
+      "invalid_display_name": {
+        "title": "Invalid name",
+        "message": "Names can have up to 64 printable characters."
+      },
+      "invalid_email": {
+        "title": "Invalid email address",
+        "message": "Check the email address and try again."
+      },
+      "email_taken": {
+        "title": "Email address in use",
+        "message": "Another account on this server already uses this email address."
+      },
+      "email_unavailable": {
+        "title": "Email isn’t set up",
+        "message": "This server can’t send email, so the address can’t be verified."
+      },
+      "email_delivery_failed": {
+        "title": "Email not sent",
+        "message": "The server couldn’t deliver the email. Try again later."
+      },
+      "totp_already_enabled": {
+        "title": "Two-step verification is on",
+        "message": "Two-step verification is already turned on for this account."
+      },
+      "totp_not_enabled": {
+        "title": "Two-step verification is off",
+        "message": "Two-step verification isn’t turned on for this account."
+      },
+      "totp_not_allowed": {
+        "title": "Two-step verification unavailable",
+        "message": "This server doesn’t allow authenticator apps."
+      },
+      "totp_setup_missing": {
+        "title": "Setup expired",
+        "message": "Start the two-step verification setup again."
+      },
+      "session_not_found": {
+        "title": "Device not found",
+        "message": "This device was already signed out."
+      },
+      "invalid_work_id": {
+        "title": "Unknown title",
+        "message": "This title can’t be opened from here."
+      },
+      "invalid_work_ids": {
+        "title": "Unknown titles",
+        "message": "Some of these titles can’t be updated."
+      },
+      "invalid_event": {
+        "title": "Progress not saved",
+        "message": "The server rejected this progress update."
+      },
+      "missing_query": {
+        "title": "Enter a search term",
+        "message": "Type what you’re looking for."
+      },
+      "invalid_query": {
+        "title": "Search not possible",
+        "message": "Try a different search term."
+      },
+      "title_not_found": {
+        "title": "Title not found",
+        "message": "This title isn’t available on the server anymore."
+      },
+      "season_not_found": {
+        "title": "Season not found",
+        "message": "This season isn’t available."
+      },
+      "episode_not_found": {
+        "title": "Episode not found",
+        "message": "This episode isn’t available."
+      },
+      "capacity_reached": {
+        "title": "Server is busy",
+        "message": "The server is handling a lot right now. Try again in a moment."
+      },
+      "search_temporarily_unavailable": {
+        "title": "Versions unavailable",
+        "message": "The server can’t search for versions right now. Try again later."
+      },
+      "invalid_device_profile": {
+        "title": "Device not supported",
+        "message": "The server couldn’t read what this device can play. Update the app."
+      },
+      "invalid_playback_request": {
+        "title": "Playback request rejected",
+        "message": "The server rejected this playback request. Update the app or try again."
+      },
+      "playback_not_found": {
+        "title": "Playback ended",
+        "message": "This playback has ended or expired. Start it again."
+      },
+      "too_many_playbacks": {
+        "title": "Too many playbacks",
+        "message": "Too many playbacks are being prepared. Stop one and try again."
+      },
+      "release_dead": {
+        "title": "Version unavailable",
+        "message": "This version (and every fallback) is missing data. Choose another version."
+      },
+      "repair_failed": {
+        "title": "Repair failed",
+        "message": "The server couldn’t repair this version. Choose another version."
+      },
+      "no_versions": {
+        "title": "No versions found",
+        "message": "The server found no version of this title."
+      },
+      "release_not_found": {
+        "title": "Version not found",
+        "message": "This version doesn’t belong to the title anymore. Choose another version."
+      },
+      "transcoding_not_allowed": {
+        "title": "Conversion not allowed",
+        "message": "This version would need a conversion, which isn’t allowed for this profile. Choose another version."
+      },
+      "transcoding_unavailable": {
+        "title": "Conversion unavailable",
+        "message": "This version needs a conversion, but the server can’t convert video right now."
+      },
+      "no_playable_method": {
+        "title": "Can’t play on this device",
+        "message": "No playback method fits this device. Try another version."
+      },
+      "no_more_methods": {
+        "title": "No more options",
+        "message": "Every playback method was tried. Try another version."
+      },
+      "unknown_audio_stream": {
+        "title": "Audio track not found",
+        "message": "This version has no such audio track."
+      },
+      "unknown_subtitle_stream": {
+        "title": "Subtitle track not found",
+        "message": "This version has no such subtitle track."
+      },
+      "transcode_capacity": {
+        "title": "Server is busy",
+        "message": "The server is converting too many videos right now. Try again in a moment."
+      },
+      "remux_capacity": {
+        "title": "Server is busy",
+        "message": "The server is preparing too many streams right now. Try again in a moment."
+      },
+      "probe_failed": {
+        "title": "File can’t be read",
+        "message": "The server couldn’t read this version. Try another version."
+      },
+      "stream_expired": {
+        "title": "Stream expired",
+        "message": "The stream expired. Start playback again."
+      },
+      "no_playable_file": {
+        "title": "No video file",
+        "message": "This version contains no playable video file. Choose another version."
+      },
+      "invalid_release": {
+        "title": "Broken version",
+        "message": "This version can’t be used. Choose another version."
+      },
+      "nzb_fetch_failed": {
+        "title": "Download source unavailable",
+        "message": "The server couldn’t fetch this version. Try again or choose another version."
+      },
+      "nzb_host_not_allowed": {
+        "title": "Download source blocked",
+        "message": "The server doesn’t allow this version’s source. Choose another version."
+      },
+      "usenet_unreachable": {
+        "title": "Source unreachable",
+        "message": "The server can’t reach its download source right now. Try again later."
+      },
+      "resolve_failed": {
+        "title": "Version couldn’t be prepared",
+        "message": "The server couldn’t prepare this version. Try again or choose another version."
+      },
+      "segment_timeout": {
+        "title": "Conversion too slow",
+        "message": "The server couldn’t convert the video fast enough. Try a lower quality."
+      },
+      "transcode_failed": {
+        "title": "Conversion failed",
+        "message": "The server couldn’t convert this video. Try another version."
       }
     },
     "actions": {
@@ -168,7 +551,9 @@
       "signIn": "Sign in again",
       "goHome": "Go to start",
       "back": "Go back"
-    }
+    },
+    "ageRestricted": "{reason, select, above_age_limit {This title is above the age limit set for this profile.} unrated_blocked {This profile can only watch titles with a known age rating.} rating_unavailable {The age rating of this title couldn’t be checked, so it’s blocked for this profile.} other {This title isn’t available for this profile.}}",
+    "tooManyStreamsOn": "This profile is already watching on {device}. Stop playback there to watch here."
   },
   "gallery": {
     "title": "Component gallery",

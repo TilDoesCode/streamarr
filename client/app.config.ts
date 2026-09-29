@@ -62,6 +62,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-font',
     'expo-image',
     'expo-localization',
+    // Keeps Keystore-encrypted tokens out of Android backups (they cannot be decrypted after a restore).
+    ['expo-secure-store', { configureAndroidBackup: true, faceIDPermission: false }],
     [
       '@react-native-tvos/config-tv',
       {

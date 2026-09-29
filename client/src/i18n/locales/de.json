@@ -19,7 +19,126 @@
   },
   "home": {
     "openGallery": "Komponenten-Galerie",
-    "placeholder": "Der Startbildschirm kommt mit der Navigation."
+    "greeting": "Hallo, {name}",
+    "server": "Du schaust auf {server}",
+    "placeholder": "Stöbern kommt mit der Navigation. Diese Reihen kommen live von deinem Server.",
+    "switchProfile": "Profil wechseln",
+    "signOut": "Abmelden",
+    "rows": {
+      "trending-movies": "Filme im Trend",
+      "trending-series": "Serien im Trend",
+      "popular-movies": "Beliebte Filme",
+      "popular-series": "Beliebte Serien",
+      "other": "Empfohlen"
+    },
+    "updating": "Wird aktualisiert …"
+  },
+  "onboarding": {
+    "server": {
+      "title": "Mit deinem Server verbinden",
+      "subtitle": "Gib die Adresse deines Streamarr-Servers ein. Du findest sie in der Verwaltung des Servers.",
+      "label": "Serveradresse",
+      "placeholder": "streamarr.example.com oder 192.168.1.20:8080",
+      "connect": "Verbinden",
+      "known": "Deine Server",
+      "insecureTitle": "Diese Verbindung ist nicht verschlüsselt",
+      "insecureMessage": "{host} wird außerhalb deines Heimnetzes über unverschlüsseltes http erreicht. Dein Passwort und alles, was du schaust, könnten unterwegs mitgelesen werden. Verwende die https-Adresse des Servers, falls es eine gibt.",
+      "continueAnyway": "Trotzdem verbinden",
+      "changeAddress": "Adresse ändern"
+    },
+    "signIn": {
+      "title": "Anmelden",
+      "subtitle": "bei {server}",
+      "login": "Benutzername oder E-Mail",
+      "password": "Passwort",
+      "submit": "Anmelden",
+      "emailCode": "Anmeldecode per E-Mail",
+      "forgot": "Passwort vergessen?",
+      "changeServer": "Server wechseln",
+      "showPassword": "Passwort anzeigen",
+      "hidePassword": "Passwort verbergen"
+    },
+    "secondFactor": {
+      "title": "Bestätigung in zwei Schritten",
+      "subtitle": "Gib den 6-stelligen Code aus deiner Authenticator-App ein.",
+      "recoverySubtitle": "Gib einen deiner Wiederherstellungscodes ein. Jeder Code funktioniert einmal.",
+      "code": "Code",
+      "recoveryCode": "Wiederherstellungscode",
+      "useRecovery": "Wiederherstellungscode verwenden",
+      "useAuthenticator": "Authenticator-App verwenden",
+      "submit": "Bestätigen",
+      "restart": "Neu beginnen"
+    },
+    "emailCode": {
+      "title": "Mit Code anmelden",
+      "subtitle": "Wir schicken einen Einmalcode an die E-Mail-Adresse deines Kontos.",
+      "send": "Code senden",
+      "verifyTitle": "Code eingeben",
+      "verifySubtitle": "Falls {login} auf diesem Server eine E-Mail-Adresse hat, ist ein Code unterwegs. Er gilt 10 Minuten.",
+      "code": "Code",
+      "codePlaceholder": "ABCD-EFGH",
+      "resend": "Neuen Code senden",
+      "resent": "Ein neuer Code ist unterwegs.",
+      "submit": "Anmelden"
+    },
+    "forgot": {
+      "title": "Passwort zurücksetzen",
+      "subtitle": "Wir schicken einen Code zum Zurücksetzen an die E-Mail-Adresse deines Kontos.",
+      "send": "Code senden",
+      "resetTitle": "Neues Passwort wählen",
+      "resetSubtitle": "Falls {login} auf diesem Server eine E-Mail-Adresse hat, ist ein Code unterwegs. Er gilt 30 Minuten. Das Zurücksetzen meldet dich auf allen Geräten ab.",
+      "code": "Code zum Zurücksetzen",
+      "submit": "Passwort ändern",
+      "done": "Passwort geändert. Melde dich mit dem neuen Passwort an."
+    },
+    "changePassword": {
+      "title": "Neues Passwort wählen",
+      "subtitle": "Dein Passwort wurde vom Server-Admin gesetzt. Wähle ein eigenes, um weiterzumachen.",
+      "current": "Aktuelles Passwort",
+      "submit": "Speichern und weiter",
+      "signOut": "Abmelden",
+      "done": "Passwort geändert."
+    },
+    "fields": {
+      "newPassword": "Neues Passwort",
+      "confirmPassword": "Neues Passwort wiederholen",
+      "passwordHint": "Mindestens {min, plural, one {# Zeichen} other {# Zeichen}}."
+    },
+    "validation": {
+      "addressRequired": "Gib die Serveradresse ein.",
+      "loginRequired": "Gib deinen Benutzernamen oder deine E-Mail-Adresse ein.",
+      "passwordRequired": "Gib dein Passwort ein.",
+      "codeRequired": "Gib den Code ein.",
+      "codeDigits": "Gib die 6 Ziffern aus deiner App ein.",
+      "tooShort": "Verwende mindestens {min, plural, one {# Zeichen} other {# Zeichen}}.",
+      "tooLong": "Verwende höchstens {max, plural, one {# Zeichen} other {# Zeichen}}.",
+      "sameAsUsername": "Das Passwort darf nicht dein Benutzername sein.",
+      "repetitive": "Verwende mindestens 3 verschiedene Zeichen.",
+      "mismatch": "Die Passwörter stimmen nicht überein.",
+      "unchanged": "Wähle ein Passwort, das sich vom aktuellen unterscheidet."
+    },
+    "serverChip": "{name} · {url}"
+  },
+  "profiles": {
+    "title": "Wer schaut?",
+    "manageTitle": "Profile verwalten",
+    "add": "Profil hinzufügen",
+    "manage": "Profile verwalten",
+    "done": "Fertig",
+    "signedOut": "Abgemeldet",
+    "onServer": "auf {server}",
+    "signOut": "Abmelden",
+    "signIn": "Anmelden",
+    "remove": "Von diesem Gerät entfernen",
+    "removeTitle": "{name} entfernen?",
+    "removeMessage": "Das Profil wird abgemeldet und von diesem Gerät entfernt. Der Verlauf bleibt auf dem Server.",
+    "removeConfirm": "Entfernen",
+    "edit": "{name} bearbeiten",
+    "current": "Aktuelles Profil"
+  },
+  "accounts": {
+    "sessionEnded": "{name} wurde abgemeldet. Melde dich erneut an, um weiterzumachen.",
+    "signedOut": "{name} ist abgemeldet."
   },
   "notFound": {
     "title": "Seite nicht gefunden",
@@ -158,6 +277,270 @@
       "playback_failed": {
         "title": "Wiedergabe fehlgeschlagen",
         "message": "Diese Version ließ sich nicht abspielen. Wähle eine andere Version oder eine niedrigere Qualität."
+      },
+      "tls_error": {
+        "title": "Sichere Verbindung fehlgeschlagen",
+        "message": "Dieses Gerät vertraut dem Zertifikat des Servers nicht, oder die Verbindung wurde unterbrochen. Prüfe die Adresse und das Zertifikat des Servers."
+      },
+      "mixed_content": {
+        "title": "Unverschlüsselter Server blockiert",
+        "message": "Diese Seite läuft über https, deshalb blockiert der Browser die http-Adresse des Servers. Verwende die https-Adresse des Servers."
+      },
+      "aborted": {
+        "title": "Anfrage abgebrochen",
+        "message": "Die Anfrage wurde abgebrochen, bevor sie fertig war."
+      },
+      "invalid_url": {
+        "title": "Das ist keine Serveradresse",
+        "message": "Gib eine Adresse wie streamarr.example.com oder 192.168.1.20:8080 ein."
+      },
+      "not_streamarr": {
+        "title": "Kein Streamarr-Server gefunden",
+        "message": "Unter dieser Adresse antwortet etwas, aber kein Streamarr-Server mit Anmeldung für Zuschauer. Prüfe Adresse und Port."
+      },
+      "session_ended": {
+        "title": "Abgemeldet",
+        "message": "Die Sitzung auf diesem Gerät ist beendet. Melde dich erneut an, um weiterzumachen."
+      },
+      "invalid_request": {
+        "title": "Ungültige Anfrage",
+        "message": "Der Server konnte diese Anfrage nicht lesen. Aktualisiere die App oder versuche es noch einmal."
+      },
+      "invalid_login": {
+        "title": "Anmeldedaten fehlen",
+        "message": "Gib deinen Benutzernamen oder deine E-Mail-Adresse und dein Passwort ein."
+      },
+      "invalid_credentials": {
+        "title": "Benutzername oder Passwort falsch",
+        "message": "Prüfe Benutzername und Passwort und versuche es noch einmal."
+      },
+      "invalid_code": {
+        "title": "Falscher Code",
+        "message": "Der Code ist falsch, abgelaufen oder wurde durch einen neueren ersetzt."
+      },
+      "mfa_expired": {
+        "title": "Anmeldung abgelaufen",
+        "message": "Die Anmeldung hat zu lange gedauert. Beginne noch einmal mit deinem Passwort."
+      },
+      "account_disabled": {
+        "title": "Konto deaktiviert",
+        "message": "Dieses Konto wurde auf dem Server deaktiviert. Wende dich an den Server-Admin."
+      },
+      "account_locked": {
+        "title": "Konto vorübergehend gesperrt",
+        "message": "Zu viele fehlgeschlagene Anmeldeversuche. Warte ein paar Minuten und versuche es dann noch einmal, oder setze dein Passwort zurück."
+      },
+      "email_login_unavailable": {
+        "title": "E-Mail-Codes sind ausgeschaltet",
+        "message": "Dieser Server verschickt keine Anmeldecodes. Melde dich mit deinem Passwort an."
+      },
+      "password_reset_unavailable": {
+        "title": "Zurücksetzen ist ausgeschaltet",
+        "message": "Dieser Server kann keine Codes zum Zurücksetzen verschicken. Bitte den Server-Admin, ein neues Passwort zu setzen."
+      },
+      "rate_limited": {
+        "title": "Zu viele Versuche",
+        "message": "Warte eine Minute, bevor du es noch einmal versuchst."
+      },
+      "refresh_token_reused": {
+        "title": "Zu deiner Sicherheit abgemeldet",
+        "message": "Diese Anmeldung wurde anderswo verwendet, deshalb hat der Server sie beendet. Melde dich erneut an."
+      },
+      "refresh_session_expired": {
+        "title": "Deine Sitzung ist beendet",
+        "message": "Die Sitzung ist abgelaufen, wurde auf einem anderen Gerät beendet oder das Konto wurde deaktiviert. Melde dich erneut an."
+      },
+      "password_change_required": {
+        "title": "Neues Passwort wählen",
+        "message": "Dein Passwort wurde vom Server-Admin gesetzt. Wähle ein eigenes, um weiterzumachen."
+      },
+      "invalid_password": {
+        "title": "Passwort nicht akzeptiert",
+        "message": "Das neue Passwort erfüllt die Regeln des Servers nicht oder entspricht dem aktuellen."
+      },
+      "invalid_display_name": {
+        "title": "Ungültiger Name",
+        "message": "Namen dürfen bis zu 64 druckbare Zeichen haben."
+      },
+      "invalid_email": {
+        "title": "Ungültige E-Mail-Adresse",
+        "message": "Prüfe die E-Mail-Adresse und versuche es noch einmal."
+      },
+      "email_taken": {
+        "title": "E-Mail-Adresse vergeben",
+        "message": "Ein anderes Konto auf diesem Server verwendet diese E-Mail-Adresse bereits."
+      },
+      "email_unavailable": {
+        "title": "E-Mail ist nicht eingerichtet",
+        "message": "Dieser Server kann keine E-Mails senden, deshalb lässt sich die Adresse nicht bestätigen."
+      },
+      "email_delivery_failed": {
+        "title": "E-Mail nicht gesendet",
+        "message": "Der Server konnte die E-Mail nicht zustellen. Versuche es später noch einmal."
+      },
+      "totp_already_enabled": {
+        "title": "Zwei-Faktor ist aktiv",
+        "message": "Die Zwei-Faktor-Anmeldung ist für dieses Konto bereits eingeschaltet."
+      },
+      "totp_not_enabled": {
+        "title": "Zwei-Faktor ist aus",
+        "message": "Die Zwei-Faktor-Anmeldung ist für dieses Konto nicht eingeschaltet."
+      },
+      "totp_not_allowed": {
+        "title": "Zwei-Faktor nicht verfügbar",
+        "message": "Dieser Server erlaubt keine Authenticator-Apps."
+      },
+      "totp_setup_missing": {
+        "title": "Einrichtung abgelaufen",
+        "message": "Starte die Einrichtung der Zwei-Faktor-Anmeldung noch einmal."
+      },
+      "session_not_found": {
+        "title": "Gerät nicht gefunden",
+        "message": "Dieses Gerät wurde bereits abgemeldet."
+      },
+      "invalid_work_id": {
+        "title": "Unbekannter Titel",
+        "message": "Dieser Titel lässt sich von hier aus nicht öffnen."
+      },
+      "invalid_work_ids": {
+        "title": "Unbekannte Titel",
+        "message": "Einige dieser Titel lassen sich nicht aktualisieren."
+      },
+      "invalid_event": {
+        "title": "Fortschritt nicht gespeichert",
+        "message": "Der Server hat diese Fortschrittsmeldung abgelehnt."
+      },
+      "missing_query": {
+        "title": "Suchbegriff fehlt",
+        "message": "Gib ein, wonach du suchst."
+      },
+      "invalid_query": {
+        "title": "Suche nicht möglich",
+        "message": "Versuche einen anderen Suchbegriff."
+      },
+      "title_not_found": {
+        "title": "Titel nicht gefunden",
+        "message": "Dieser Titel ist auf dem Server nicht mehr verfügbar."
+      },
+      "season_not_found": {
+        "title": "Staffel nicht gefunden",
+        "message": "Diese Staffel ist nicht verfügbar."
+      },
+      "episode_not_found": {
+        "title": "Folge nicht gefunden",
+        "message": "Diese Folge ist nicht verfügbar."
+      },
+      "capacity_reached": {
+        "title": "Server ist ausgelastet",
+        "message": "Der Server hat gerade viel zu tun. Versuche es gleich noch einmal."
+      },
+      "search_temporarily_unavailable": {
+        "title": "Versionen nicht verfügbar",
+        "message": "Der Server kann gerade nicht nach Versionen suchen. Versuche es später noch einmal."
+      },
+      "invalid_device_profile": {
+        "title": "Gerät nicht unterstützt",
+        "message": "Der Server konnte nicht lesen, was dieses Gerät abspielen kann. Aktualisiere die App."
+      },
+      "invalid_playback_request": {
+        "title": "Wiedergabe abgelehnt",
+        "message": "Der Server hat diese Wiedergabe-Anfrage abgelehnt. Aktualisiere die App oder versuche es noch einmal."
+      },
+      "playback_not_found": {
+        "title": "Wiedergabe beendet",
+        "message": "Diese Wiedergabe ist beendet oder abgelaufen. Starte sie noch einmal."
+      },
+      "too_many_playbacks": {
+        "title": "Zu viele Wiedergaben",
+        "message": "Es werden zu viele Wiedergaben vorbereitet. Beende eine und versuche es noch einmal."
+      },
+      "release_dead": {
+        "title": "Version nicht verfügbar",
+        "message": "Dieser Version (und jeder Ausweichversion) fehlen Daten. Wähle eine andere Version."
+      },
+      "repair_failed": {
+        "title": "Reparatur fehlgeschlagen",
+        "message": "Der Server konnte diese Version nicht reparieren. Wähle eine andere Version."
+      },
+      "no_versions": {
+        "title": "Keine Versionen gefunden",
+        "message": "Der Server hat keine Version dieses Titels gefunden."
+      },
+      "release_not_found": {
+        "title": "Version nicht gefunden",
+        "message": "Diese Version gehört nicht mehr zu diesem Titel. Wähle eine andere Version."
+      },
+      "transcoding_not_allowed": {
+        "title": "Umwandlung nicht erlaubt",
+        "message": "Diese Version müsste umgewandelt werden, was für dieses Profil nicht erlaubt ist. Wähle eine andere Version."
+      },
+      "transcoding_unavailable": {
+        "title": "Umwandlung nicht verfügbar",
+        "message": "Diese Version muss umgewandelt werden, aber der Server kann gerade kein Video umwandeln."
+      },
+      "no_playable_method": {
+        "title": "Auf diesem Gerät nicht abspielbar",
+        "message": "Keine Wiedergabeart passt zu diesem Gerät. Versuche eine andere Version."
+      },
+      "no_more_methods": {
+        "title": "Keine Möglichkeiten mehr",
+        "message": "Alle Wiedergabearten wurden versucht. Versuche eine andere Version."
+      },
+      "unknown_audio_stream": {
+        "title": "Tonspur nicht gefunden",
+        "message": "Diese Version hat keine solche Tonspur."
+      },
+      "unknown_subtitle_stream": {
+        "title": "Untertitel nicht gefunden",
+        "message": "Diese Version hat keine solche Untertitelspur."
+      },
+      "transcode_capacity": {
+        "title": "Server ist ausgelastet",
+        "message": "Der Server wandelt gerade zu viele Videos um. Versuche es gleich noch einmal."
+      },
+      "remux_capacity": {
+        "title": "Server ist ausgelastet",
+        "message": "Der Server bereitet gerade zu viele Streams vor. Versuche es gleich noch einmal."
+      },
+      "probe_failed": {
+        "title": "Datei nicht lesbar",
+        "message": "Der Server konnte diese Version nicht lesen. Versuche eine andere Version."
+      },
+      "stream_expired": {
+        "title": "Stream abgelaufen",
+        "message": "Der Stream ist abgelaufen. Starte die Wiedergabe noch einmal."
+      },
+      "no_playable_file": {
+        "title": "Keine Videodatei",
+        "message": "Diese Version enthält keine abspielbare Videodatei. Wähle eine andere Version."
+      },
+      "invalid_release": {
+        "title": "Fehlerhafte Version",
+        "message": "Diese Version ist nicht verwendbar. Wähle eine andere Version."
+      },
+      "nzb_fetch_failed": {
+        "title": "Quelle nicht verfügbar",
+        "message": "Der Server konnte diese Version nicht abrufen. Versuche es noch einmal oder wähle eine andere Version."
+      },
+      "nzb_host_not_allowed": {
+        "title": "Quelle blockiert",
+        "message": "Der Server erlaubt die Quelle dieser Version nicht. Wähle eine andere Version."
+      },
+      "usenet_unreachable": {
+        "title": "Quelle nicht erreichbar",
+        "message": "Der Server erreicht seine Quelle gerade nicht. Versuche es später noch einmal."
+      },
+      "resolve_failed": {
+        "title": "Version nicht vorbereitet",
+        "message": "Der Server konnte diese Version nicht vorbereiten. Versuche es noch einmal oder wähle eine andere Version."
+      },
+      "segment_timeout": {
+        "title": "Umwandlung zu langsam",
+        "message": "Der Server konnte das Video nicht schnell genug umwandeln. Versuche eine niedrigere Qualität."
+      },
+      "transcode_failed": {
+        "title": "Umwandlung fehlgeschlagen",
+        "message": "Der Server konnte dieses Video nicht umwandeln. Versuche eine andere Version."
       }
     },
     "actions": {
@@ -168,7 +551,9 @@
       "signIn": "Erneut anmelden",
       "goHome": "Zum Start",
       "back": "Zurück"
-    }
+    },
+    "ageRestricted": "{reason, select, above_age_limit {Dieser Titel liegt über der Altersgrenze dieses Profils.} unrated_blocked {Dieses Profil darf nur Titel mit bekannter Altersfreigabe sehen.} rating_unavailable {Die Altersfreigabe dieses Titels ließ sich nicht prüfen, deshalb ist er für dieses Profil gesperrt.} other {Dieser Titel ist für dieses Profil nicht verfügbar.}}",
+    "tooManyStreamsOn": "Dieses Profil schaut bereits auf {device}. Beende die Wiedergabe dort, um hier zu schauen."
   },
   "gallery": {
     "title": "Komponenten-Galerie",

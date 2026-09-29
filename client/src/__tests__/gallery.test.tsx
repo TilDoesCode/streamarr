@@ -2,7 +2,6 @@ import { Stack } from 'expo-router';
 import { userEvent } from '@testing-library/react-native';
 import { act, renderRouter, screen } from 'expo-router/testing-library';
 
-import IndexScreen from '@/app/index';
 import { ToastProvider } from '@/components/ui/toast';
 import i18n, { setLanguagePreference } from '@/i18n';
 import { GalleryScreen } from '@/screens/gallery/gallery-screen';
@@ -23,7 +22,7 @@ function TestLayout() {
   );
 }
 
-const routes = { _layout: TestLayout, index: IndexScreen, 'dev/gallery': GalleryScreen };
+const routes = { _layout: TestLayout, 'dev/gallery': GalleryScreen };
 
 beforeEach(async () => {
   await act(async () => {
@@ -31,12 +30,10 @@ beforeEach(async () => {
   });
 });
 
-it('opens the gallery from the placeholder home and renders every section', async () => {
-  const user = userEvent.setup();
+it('renders every gallery section', async () => {
   // RNTL 14 render() is async; expo-router attaches getPathname to the returned promise.
-  const router = renderRouter(routes, { initialUrl: '/' });
+  const router = renderRouter(routes, { initialUrl: '/dev/gallery' });
   await router;
-  await user.press(screen.getByTestId('open-gallery'));
   expect(router.getPathname()).toBe('/dev/gallery');
   for (const id of [
     'hero-play',

@@ -95,5 +95,23 @@ adb shell am start -a android.intent.action.VIEW \
   formatters in `src/i18n/format.ts`. Tests enforce de/en key + argument parity and no literal UI text
   (JSX text and children incl. ternaries/fragments, text props, and text-prop keys in object literals,
   `.ts` and `.tsx`).
+- Data layer (`src/api`, `src/accounts`, `src/query`): `npm run gen:api` types `openapi-fetch` from
+  `server/openapi/v1.json`. Every account gets its own client (`useActiveAccount().client`, or
+  `useAccountsApi().clientFor(id)`); its middleware sends the bearer token, refreshes shortly before expiry
+  and after a 401 with one shared refresh per account, replays the request once, and signs the account out
+  when the server rejects the refresh (`refresh_token_reused`, `refresh_session_expired`). Call it through
+  `unwrap()`, which throws `AppError { code, status, params }`; `describeError()` / `ErrorState` localize any
+  code (every documented viewer code is in `error-codes.ts` and both locales; a test scans `docs/api.md`).
+- Accounts: the list lives in MMKV (`streamarr.accounts`, web localStorage), tokens in expo-secure-store on
+  native and localStorage on web (cookie mode would allow one session per server and browser). Browser tabs
+  share that list: `AccountStore` re-reads it before every change and follows other tabs' `storage` events
+  (`src/accounts/browser-tabs.ts`); the active profile stays per tab (sessionStorage). Query keys of
+  account data start with `['account', id]` (`src/query/keys.ts`); switching profiles clears the cache. Home rows
+  persist per account in MMKV (`accountPersister(id)`). The `(app)` layout sends everyone else to `/server`,
+  `/profiles` or `/sign-in/change-password`. Dev builds expose `globalThis.__streamarr` (store, query client,
+  `clientFor`) for Argent's `debugger-evaluate`.
+- Forms: `TextField` / `PasswordField`. On TV the field is a `Focusable` and only becomes an editable input
+  while the keyboard is up (OK opens it), so Up/Down never get stuck moving the text cursor; `initialFocus`
+  gives remote focus on TV and keyboard focus on desktop web.
 - `/dev/gallery` renders every component and state (linked from the placeholder home in dev builds).
 - `scripts/render-placeholder-assets.mjs` regenerates the placeholder icons, splash and TV art.
