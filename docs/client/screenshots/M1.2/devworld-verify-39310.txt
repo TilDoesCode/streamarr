@@ -1,0 +1,85 @@
+PASS harness ready - {'ready': True}
+PASS manifest served
+PASS CORS preflight on /api/v1/viewer - 204 *
+PASS admin login - 200
+PASS search 'Big Buck Bunny' ranks fixture releases - 3 releases
+PASS search 'Sintel' ranks fixture releases - 3 releases
+PASS search 'Tears of Steel' ranks fixture releases - 3 releases
+PASS search 'Elephants Dream' ranks fixture releases - 2 releases
+PASS search 'Cosmos Laundromat' ranks fixture releases - 3 releases
+PASS search 'Sprite Fright' ranks fixture releases - 3 releases
+PASS search 'Night of the Living Dead' ranks fixture releases - 2 releases
+PASS search 'Agent 327: Operation Barbershop' ranks fixture releases - 0 releases
+PASS search 'Wing It!' ranks fixture releases - 0 releases
+PASS tv season Pioneer One S01 lists ranked releases - 200
+PASS tv season Sherlock S01 lists ranked releases - 200
+PASS tv season Sherlock S02 lists ranked releases - 200
+PASS tv season Sherlock S03 lists ranked releases - 200
+PASS resolve Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD - 200 ready
+PASS ffprobe stream [mkv-hevc-hdr10-truehd-2160p] - [('video', 'hevc'), ('audio', 'truehd'), ('subtitle', 'subrip')]
+PASS resolve Big.Buck.Bunny.2008.1080p.BluRay.DDP5.1.x264-DEVWORLD - 200 ready
+PASS ffprobe stream [mkv-h264-eac3-srt-1080p] - [('video', 'h264'), ('audio', 'eac3'), ('subtitle', 'subrip'), ('subtitle', 'subrip')]
+PASS resolve Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD - 200 ready
+PASS ffprobe stream [mp4-h264-aac-1080p] - [('video', 'h264'), ('audio', 'aac')]
+PASS resolve Sintel.2010.1080p.BluRay.DTS.5.1.HDR10.10bit.x265-DEVWORLD - 200 ready
+PASS ffprobe stream [mkv-hevc-hdr10-dts-1080p] - [('video', 'hevc'), ('audio', 'dts'), ('subtitle', 'subrip')]
+PASS resolve Sintel.2010.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD - 200 ready
+PASS ffprobe stream [mkv-dualaudio-ass-1080p] - [('video', 'h264'), ('audio', 'ac3'), ('audio', 'ac3'), ('subtitle', 'ass'), ('subtitle', 'ass'), ('subtitle', 'subrip')]
+PASS resolve Sintel.2010.1080p.WEB-DL.Opus.5.1.AV1-DEVWORLD - 200 ready
+PASS ffprobe stream [mkv-av1-opus-1080p] - [('video', 'av1'), ('audio', 'opus'), ('subtitle', 'subrip')]
+PASS resolve Tears.of.Steel.2012.720p.WEB-DL.AAC2.0.H.264-DEVWORLD - 200 ready
+PASS ffprobe stream [mp4-h264-aac-720p] - [('video', 'h264'), ('audio', 'aac')]
+PASS resolve Tears.of.Steel.2012.576p.PAL.DVD.MPEG-2.DD2.0-DEVWORLD - 200 ready
+PASS ffprobe stream [mpg-mpeg2-ac3-576p] - [('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]
+PASS resolve Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-DEVWORLD - 200 ready
+PASS ffprobe stream [mkv-hevc-hdr10-truehd-1080p] - [('video', 'hevc'), ('audio', 'truehd'), ('subtitle', 'subrip')]
+PASS resolve Night.of.the.Living.Dead.1968.480p.NTSC.DVD.MPEG-2.DD2.0-DEVWORLD - 200 ready
+PASS ffprobe stream [mpg-mpeg2-ac3-480p] - [('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]
+PASS dead Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST (rank 1) falls back - attempts=['dead', 'ready']
+PASS fallback stream probes - [('video', 'hevc'), ('audio', 'truehd'), ('subtitle', 'subrip')]
+PASS dead Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST (rank 1) falls back - attempts=['dead', 'ready']
+PASS fallback stream probes - [('video', 'h264'), ('audio', 'ac3'), ('audio', 'ac3'), ('subtitle', 'ass'), ('subtitle', 'ass'), ('subtitle', 'subrip')]
+PASS degraded Tears.of.Steel.2012.1080p.BluRay.DDP5.1.x264-FLAKY resolves as degraded and streams - 200 degraded
+PASS season pack resolves tmdb-tv-33050-s01e02 to the episode file - 200 size=8209891
+PASS viewer auth options (module enabled) - {'serverName': 'Streamarr Dev World', 'passwordLogin': True, 'emailCodeLogin': True, 'passwordReset': True, 'twoFactor': True, 'passwordMinLength': 8}
+PASS viewer anna signs in - 200
+PASS viewer ben needs second factor - {'status': 'mfa_required', 'mfaToken': 'svm_gJBGq_R6w17Eqd07vfsFQps-njYBn7u9H8U2V2cRxU8', 'mfaExpiresAt': '2026-09-29T04:09:38.84203+00:00', 'session': None, 'viewer': None}
+PASS viewer ben signs in - 200
+PASS viewer kind signs in - 200
+PASS viewer gast signs in - 200
+PASS viewer me - 200
+PASS watch progress accepted - 200
+PASS continue watching lists the movie - 200
+PASS next up offers the next episode - ['tmdb-tv-19885-s01e02']
+PASS age gate for kind on Tears of Steel = False - {'workId': 'tmdb-movie-133701', 'allowed': False, 'reason': 'unrated_blocked', 'rating': 'NR', 'minimumAge': None, 'viewerMaxAge': 12}
+PASS age gate for kind on Big Buck Bunny = True - {'workId': 'tmdb-movie-10378', 'allowed': True, 'reason': 'within_age_limit', 'rating': '6', 'minimumAge': 6, 'viewerMaxAge': 12}
+PASS gast permissions (no transcoding, 1 stream) - {'maxAge': None, 'blockUnrated': False, 'allowTranscoding': False, 'maxConcurrentStreams': 1}
+PASS catalog discover rows follow the fixture lists - {'trending-movies': ['tmdb-movie-891761', 'tmdb-movie-10378', 'tmdb-movie-358332', 'tmdb-movie-45745', 'tmdb-movie-457784', 'tmdb-movie-133701', 'tmdb-movie-10331'], 'trending-series': ['tmdb-tv-19885', 'tmdb-tv-33050'], 'popular-movies': ['tmdb-movie-10378', 'tmdb-movie-45745', 'tmdb-movie-133701', 'tmdb-movie-9761', 'tmdb-movie-1177628', 'tmdb-movie-358332', 'tmdb-movie-891761', 'tmdb-movie-10331'], 'popular-series': ['tmdb-tv-33050', 'tmdb-tv-19885']}
+PASS catalog search finds Sintel - {'items': [{'workId': 'tmdb-movie-45745', 'mediaType': 'movie', 'tmdbId': 45745, 'title': 'Sintel', 'originalTitle': 'Sintel', 'year': 2010, 'overview': 'A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.', 'posterUrl': 'https://image.tmdb.org/t/p/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg', 'backdropUrl': 'https://image.tmdb.org/t/p/w1280/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg', 'voteAverage': 7.3}]}
+PASS catalog details of Big Buck Bunny (logo, certification, watch position) - position 950000000
+PASS catalog versions of Big Buck Bunny (3) match the fixture ranking without internal fields - 200 got ['f29ed808cabfd41df60c0baabe89c1cd42549c585f87b3d968ae56aa17b00a9d', 'f008c88196a25a3755f424a574b2b579ba3579e1e2856fdc97f6960d1e385c8b', 'e86659d514d5e52880f9515c76f4523e2356b5776071685989ed48ef6a4dd460'] want ['f29ed808cabfd41df60c0baabe89c1cd42549c585f87b3d968ae56aa17b00a9d', 'f008c88196a25a3755f424a574b2b579ba3579e1e2856fdc97f6960d1e385c8b', 'e86659d514d5e52880f9515c76f4523e2356b5776071685989ed48ef6a4dd460']
+PASS catalog versions of Sintel (3) match the fixture ranking without internal fields - 200 got ['1ac24a9aa5a568f402a4bf4c34f1260138638a62d3e55fabae085fae21dffc2d', '1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687', '8389ae40289b5f88c8e4196947636fdb493a14ffa35a90f4be02c281e10ab15c'] want ['1ac24a9aa5a568f402a4bf4c34f1260138638a62d3e55fabae085fae21dffc2d', '1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687', '8389ae40289b5f88c8e4196947636fdb493a14ffa35a90f4be02c281e10ab15c']
+PASS catalog versions of Tears of Steel (3) match the fixture ranking without internal fields - 200 got ['fa5bba29155956f3a34ea668bced6d3b0b51c882f29f20951c04cd6723ada490', '1162bc8c4b10b7f3810b2f5443b47c8b5ff5658c0f8f4c93277a58842443402b', '5d44ca054e873784e37fd133f0b427f20b165b585e730a91e94652de2a1cc11d'] want ['fa5bba29155956f3a34ea668bced6d3b0b51c882f29f20951c04cd6723ada490', '1162bc8c4b10b7f3810b2f5443b47c8b5ff5658c0f8f4c93277a58842443402b', '5d44ca054e873784e37fd133f0b427f20b165b585e730a91e94652de2a1cc11d']
+PASS catalog versions of Elephants Dream (2) match the fixture ranking without internal fields - 200 got ['fd7182eb3edeafd84f62942910c72b3e2884faac7e7cd7c08ea4b663ad8a7058', '57df612b75fce7f4e65293a0ba22decb2f67d81fbdad69ded2d42fd3c74ed8ac'] want ['fd7182eb3edeafd84f62942910c72b3e2884faac7e7cd7c08ea4b663ad8a7058', '57df612b75fce7f4e65293a0ba22decb2f67d81fbdad69ded2d42fd3c74ed8ac']
+PASS catalog versions of Cosmos Laundromat (2) match the fixture ranking without internal fields - 200 got ['0aafeb1a2587d66bbfbedad0bc83e2a133e0aa44841e8f3a04df3091680055a6', 'a9b0825a6f34dc27359a77b1b60d5ec27d0e2bf6135356b20fa483ad34f171fe'] want ['29474776ae0319143cdd7c5a7caedff4f2cd15a49f417e2d9f1e89b9e7215a9b', '0aafeb1a2587d66bbfbedad0bc83e2a133e0aa44841e8f3a04df3091680055a6', 'a9b0825a6f34dc27359a77b1b60d5ec27d0e2bf6135356b20fa483ad34f171fe']
+PASS catalog versions of Sprite Fright (3) match the fixture ranking without internal fields - 200 got ['a4516ce1aef2c157f21563d7867cf50ab5f711020f7404fda99599161220659e', 'f60389743db3abdbaa81c1418190cb394a88e78aa05f7a89ee216da954f6b940', 'dbedaa2a3b15c73a176dd1f2031cc96dd5facef42d69290d0e7925f8c0289a0b'] want ['a4516ce1aef2c157f21563d7867cf50ab5f711020f7404fda99599161220659e', 'f60389743db3abdbaa81c1418190cb394a88e78aa05f7a89ee216da954f6b940', 'dbedaa2a3b15c73a176dd1f2031cc96dd5facef42d69290d0e7925f8c0289a0b']
+PASS catalog versions of Night of the Living Dead (2) match the fixture ranking without internal fields - 200 got ['54120028d4df3ce7592b349cf8a1371df88f97954e9992245bd239552200af1e', '579684f3f15dc1a487394e4e6f3da4f62347661da64848d370798d209d039944'] want ['54120028d4df3ce7592b349cf8a1371df88f97954e9992245bd239552200af1e', '579684f3f15dc1a487394e4e6f3da4f62347661da64848d370798d209d039944']
+PASS catalog versions of Agent 327: Operation Barbershop (0) match the fixture ranking without internal fields - 200 got [] want []
+PASS catalog versions of Wing It! (0) match the fixture ranking without internal fields - 200 got [] want []
+PASS catalog versions come from the cache on a repeat - {'workId': 'tmdb-movie-10378', 'mediaType': 'movie', 'versions': [{'releaseId': 'f29ed808cabfd41df60c0baabe89c1cd42549c585f87b3d968ae56aa17b00a9d', 'name': 'Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD
+PASS catalog: Agent 327: Operation Barbershop has no versions - 200
+PASS catalog: Wing It! has no versions - 200
+PASS catalog predicts direct play of Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD for an H.264/AAC player - [{'code': 'container_assumed', 'params': {'container': 'mkv'}}, {'code': 'direct_play', 'params': None}]
+PASS catalog series Pioneer One suggests a next episode - tmdb-tv-33050-s01e01 (start), first episode ['tmdb-tv-33050-s01e01']
+PASS catalog season Pioneer One S01 overlays version counts - {'tmdb-tv-33050-s01e01': 3, 'tmdb-tv-33050-s01e02': 3, 'tmdb-tv-33050-s01e03': 3, 'tmdb-tv-33050-s01e04': 3, 'tmdb-tv-33050-s01e05': 3, 'tmdb-tv-33050-s01e06': 3}
+PASS catalog series Sherlock suggests a next episode - tmdb-tv-19885-s01e02 (next), first episode ['tmdb-tv-19885-s01e01']
+PASS catalog season Sherlock S01 overlays version counts - {'tmdb-tv-19885-s01e01': 2, 'tmdb-tv-19885-s01e02': 2, 'tmdb-tv-19885-s01e03': 2}
+PASS catalog season Sherlock S02 overlays version counts - {'tmdb-tv-19885-s02e01': 2, 'tmdb-tv-19885-s02e02': 2, 'tmdb-tv-19885-s02e03': 2}
+PASS catalog season Sherlock S03 overlays version counts - {'tmdb-tv-19885-s03e01': 0, 'tmdb-tv-19885-s03e02': 0, 'tmdb-tv-19885-s03e03': 0}
+PASS catalog hides age-restricted and unrated titles from kind - visible ['Big Buck Bunny', 'Cosmos Laundromat', 'Sherlock', 'Sintel']
+PASS catalog details of Sprite Fright are age_restricted for kind - {'error': {'code': 'age_restricted', 'message': 'This title is not available for this profile (above_age_limit).', 'host': None, 'indexerId': None, 'params': {'reason': 'above_age_limit', 'rating': 'PG-13', 'minimumAge': '13', 'viewerMaxAge': '12'}}}
+PASS catalog versions of Sprite Fright are age_restricted for kind - 403
+PASS catalog rejects the admin token - 401
+PASS email code lands in the test outbox - 202 1 message(s)
+
+OK: 0 failure(s)

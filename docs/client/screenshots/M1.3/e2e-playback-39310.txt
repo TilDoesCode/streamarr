@@ -1,0 +1,317 @@
+PASS manifest
+PASS validation: a bad device profile is 400 invalid_device_profile - {'error': {'code': 'invalid_device_profile', 'message': "'device.platform' must be one of: ios, ipados, tvos, android, androidtv, web.", 'host': None, 'indexerId': None}}
+PASS auth: anonymous POST is 401 - 401
+PASS mp4-h264-aac-1080p on androidtv: POST 202 - {'playbackId': '8446cead7e355f6fa38f5df7b5d5164f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:32:57.5499+00:00', 'updatedAt': '2026-09-29T09:32:57.5499
+PASS mp4-h264-aac-1080p on androidtv: ready as direct/native - ready direct/native states=['resolving', 'ready']
+PASS mp4-h264-aac-1080p on androidtv: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-1080p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-1080p on androidtv: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-1080p on androidtv: stop 204
+PASS mp4-h264-aac-1080p on appletv: POST 202 - {'playbackId': 'bb805a876081fd133262f3eebbd1edf2', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:32:58.141173+00:00', 'updatedAt': '2026-09-29T09:32:58.14
+PASS mp4-h264-aac-1080p on appletv: ready as direct/native - ready direct/native states=['resolving', 'ready']
+PASS mp4-h264-aac-1080p on appletv: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-1080p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-1080p on appletv: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-1080p on appletv: stop 204
+PASS mp4-h264-aac-1080p on chrome: POST 202 - {'playbackId': '8566013a35886beda6faf9f14c335595', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:32:58.434621+00:00', 'updatedAt': '2026-09-29T09:32:58.43
+PASS mp4-h264-aac-1080p on chrome: ready as direct/web - ready direct/web states=['ready']
+PASS mp4-h264-aac-1080p on chrome: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-1080p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-1080p on chrome: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-1080p on chrome: stop 204
+PASS mp4-h264-aac-1080p on safari: POST 202 - {'playbackId': '148c6ec8452c37a6a2e8c206ff79c409', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:32:58.46803+00:00', 'updatedAt': '2026-09-29T09:32:58.468
+PASS mp4-h264-aac-1080p on safari: ready as direct/web - ready direct/web states=['ready']
+PASS mp4-h264-aac-1080p on safari: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-1080p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-1080p on safari: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-1080p on safari: stop 204
+PASS mp4-h264-aac-720p on androidtv: POST 202 - {'playbackId': '9655c4b8cf6781c1e6a46f216abe57ce', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:32:58.500901+00:00', 'updatedAt': '2026-09-29T09:32:58.5
+PASS mp4-h264-aac-720p on androidtv: ready as direct/native - ready direct/native states=['resolving', 'ready']
+PASS mp4-h264-aac-720p on androidtv: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-720p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-720p on androidtv: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-720p on androidtv: stop 204
+PASS mp4-h264-aac-720p on appletv: POST 202 - {'playbackId': 'e404d679f5e757e0b64e6aaa54daf35c', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:32:58.784435+00:00', 'updatedAt': '2026-09-29T09:32:58.7
+PASS mp4-h264-aac-720p on appletv: ready as direct/native - ready direct/native states=['ready']
+PASS mp4-h264-aac-720p on appletv: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-720p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-720p on appletv: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-720p on appletv: stop 204
+PASS mp4-h264-aac-720p on chrome: POST 202 - {'playbackId': '0eecf4e3ec804d79b7f66ecd1d203675', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:32:58.815499+00:00', 'updatedAt': '2026-09-29T09:32:58.8
+PASS mp4-h264-aac-720p on chrome: ready as direct/web - ready direct/web states=['ready']
+PASS mp4-h264-aac-720p on chrome: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-720p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-720p on chrome: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-720p on chrome: stop 204
+PASS mp4-h264-aac-720p on safari: POST 202 - {'playbackId': 'fa5861cec07df5546d3c5c5b8d7805a2', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:32:58.847018+00:00', 'updatedAt': '2026-09-29T09:32:58.8
+PASS mp4-h264-aac-720p on safari: ready as direct/web - ready direct/web states=['ready']
+PASS mp4-h264-aac-720p on safari: decision reasons carry stable codes - audio_language,direct_play
+PASS mp4-h264-aac-720p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mp4-h264-aac-720p on safari: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mp4-h264-aac-720p on safari: stop 204
+PASS mkv-h264-eac3-srt-1080p on androidtv: POST 202 - {'playbackId': '65c7e448a26d50324a80203493745216', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:32:58.880306+00:00', 'updatedAt': '2026-09-29T09:32:58.88
+PASS mkv-h264-eac3-srt-1080p on androidtv: ready as direct/native - ready direct/native states=['resolving', 'planning', 'ready']
+PASS mkv-h264-eac3-srt-1080p on androidtv: decision reasons carry stable codes - audio_language,direct_play
+PASS mkv-h264-eac3-srt-1080p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=2
+PASS mkv-h264-eac3-srt-1080p on androidtv: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'eac3'), ('subtitle', 'subrip'), ('subtitle', 'subrip')]
+PASS mkv-h264-eac3-srt-1080p on androidtv: stop 204
+PASS mkv-h264-eac3-srt-1080p on appletv: POST 202 - {'playbackId': 'b485edb2720dfdb6008fcf4ed5e0d03b', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:32:59.439386+00:00', 'updatedAt': '2026-09-29T09:32:59.43
+PASS mkv-h264-eac3-srt-1080p on appletv: ready as remux/native - ready remux/native states=['starting', 'ready']
+PASS mkv-h264-eac3-srt-1080p on appletv: decision reasons carry stable codes - audio_language,container_unsupported,audio_copied
+PASS mkv-h264-eac3-srt-1080p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=2
+PASS mkv-h264-eac3-srt-1080p on appletv: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'eac3')]
+PASS mkv-h264-eac3-srt-1080p on appletv: hlssim plays the HLS URL without credentials - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,ec-3
+PASS mkv-h264-eac3-srt-1080p on appletv: stop 204
+PASS mkv-h264-eac3-srt-1080p on chrome: POST 202 - {'playbackId': 'ac5088e89bde6c506ed02a07c539ee43', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:33:00.102999+00:00', 'updatedAt': '2026-09-29T09:33:00.10
+PASS mkv-h264-eac3-srt-1080p on chrome: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-h264-eac3-srt-1080p on chrome: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-h264-eac3-srt-1080p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=2
+PASS mkv-h264-eac3-srt-1080p on chrome: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'aac')]
+PASS mkv-h264-eac3-srt-1080p on chrome: hlssim plays the HLS URL without credentials - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2
+PASS mkv-h264-eac3-srt-1080p on chrome: stop 204
+PASS mkv-h264-eac3-srt-1080p on safari: POST 202 - {'playbackId': 'cd0260de4b7e4c18e197cd29bf757f8e', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:33:01.264175+00:00', 'updatedAt': '2026-09-29T09:33:01.26
+PASS mkv-h264-eac3-srt-1080p on safari: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-h264-eac3-srt-1080p on safari: decision reasons carry stable codes - audio_language,container_unsupported,audio_converted
+PASS mkv-h264-eac3-srt-1080p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=2
+PASS mkv-h264-eac3-srt-1080p on safari: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'aac')]
+PASS mkv-h264-eac3-srt-1080p on safari: hlssim plays the HLS URL without credentials - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2
+PASS mkv-h264-eac3-srt-1080p on safari: stop 204
+PASS mkv-hevc-hdr10-dts-1080p on androidtv: POST 202 - {'playbackId': '13033bc7264510a411e7893b2a32b0ae', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:02.456854+00:00', 'updatedAt': '2026-09-29T09:33:02.45
+PASS mkv-hevc-hdr10-dts-1080p on androidtv: ready as direct/native - ready direct/native states=['resolving', 'ready']
+PASS mkv-hevc-hdr10-dts-1080p on androidtv: decision reasons carry stable codes - audio_language,direct_play
+PASS mkv-hevc-hdr10-dts-1080p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-dts-1080p on androidtv: ffprobe reads stream URL - [('video', 'hevc'), ('audio', 'dts'), ('subtitle', 'subrip')]
+PASS mkv-hevc-hdr10-dts-1080p on androidtv: stop 204
+PASS mkv-hevc-hdr10-dts-1080p on appletv: POST 202 - {'playbackId': 'a19198f8b51adc8531f7d8f2235aad75', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:03.0053+00:00', 'updatedAt': '2026-09-29T09:33:03.0053
+PASS mkv-hevc-hdr10-dts-1080p on appletv: ready as remux/native - ready remux/native states=['starting', 'ready']
+PASS mkv-hevc-hdr10-dts-1080p on appletv: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-dts-1080p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-dts-1080p on appletv: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]
+PASS mkv-hevc-hdr10-dts-1080p on appletv: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS mkv-hevc-hdr10-dts-1080p on appletv: stop 204
+PASS mkv-hevc-hdr10-dts-1080p on chrome: POST 202 - {'playbackId': 'fc4de9d41deeac076b2977910e11b20d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:04.279093+00:00', 'updatedAt': '2026-09-29T09:33:04.27
+PASS mkv-hevc-hdr10-dts-1080p on chrome: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-hevc-hdr10-dts-1080p on chrome: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-dts-1080p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-dts-1080p on chrome: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]
+PASS mkv-hevc-hdr10-dts-1080p on chrome: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2
+PASS mkv-hevc-hdr10-dts-1080p on chrome: stop 204
+PASS mkv-hevc-hdr10-dts-1080p on safari: POST 202 - {'playbackId': '5ef2f3abf09c7669bc7ef78f651da69b', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:05.853665+00:00', 'updatedAt': '2026-09-29T09:33:05.85
+PASS mkv-hevc-hdr10-dts-1080p on safari: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-hevc-hdr10-dts-1080p on safari: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-dts-1080p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-dts-1080p on safari: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]
+PASS mkv-hevc-hdr10-dts-1080p on safari: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2
+PASS mkv-hevc-hdr10-dts-1080p on safari: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p on androidtv: POST 202 - {'playbackId': '837713d46b7ec54f9bf2cd2a1faacf5d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:33:07.364491+00:00', 'updatedAt': '2026-09-29T09:33:07.3
+PASS mkv-hevc-hdr10-truehd-1080p on androidtv: ready as remux/native - ready remux/native states=['resolving', 'planning', 'ready']
+PASS mkv-hevc-hdr10-truehd-1080p on androidtv: decision reasons carry stable codes - audio_language,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-1080p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-1080p on androidtv: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]
+PASS mkv-hevc-hdr10-truehd-1080p on androidtv: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS mkv-hevc-hdr10-truehd-1080p on androidtv: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p on appletv: POST 202 - {'playbackId': 'c78212a6cad28655358db9dbdc86f0f6', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:33:08.765283+00:00', 'updatedAt': '2026-09-29T09:33:08.7
+PASS mkv-hevc-hdr10-truehd-1080p on appletv: ready as remux/native - ready remux/native states=['starting', 'ready']
+PASS mkv-hevc-hdr10-truehd-1080p on appletv: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-1080p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-1080p on appletv: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]
+PASS mkv-hevc-hdr10-truehd-1080p on appletv: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS mkv-hevc-hdr10-truehd-1080p on appletv: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p on chrome: POST 202 - {'playbackId': '0b9effe5d5ba7c5593ee67da2b511b49', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:33:09.879006+00:00', 'updatedAt': '2026-09-29T09:33:09.8
+PASS mkv-hevc-hdr10-truehd-1080p on chrome: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-hevc-hdr10-truehd-1080p on chrome: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-1080p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-1080p on chrome: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]
+PASS mkv-hevc-hdr10-truehd-1080p on chrome: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-1080p on chrome: stop 204
+PASS mkv-hevc-hdr10-truehd-1080p on safari: POST 202 - {'playbackId': '99d7dde68920a54ffc614b3b7196e273', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:33:11.017279+00:00', 'updatedAt': '2026-09-29T09:33:11.0
+PASS mkv-hevc-hdr10-truehd-1080p on safari: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-hevc-hdr10-truehd-1080p on safari: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-1080p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-1080p on safari: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]
+PASS mkv-hevc-hdr10-truehd-1080p on safari: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-1080p on safari: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p on androidtv: POST 202 - {'playbackId': '29a66cafb4a81a291be9be85e2c2dbe4', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:33:12.198082+00:00', 'updatedAt': '2026-09-29T09:33:12.19
+PASS mkv-hevc-hdr10-truehd-2160p on androidtv: ready as remux/native - ready remux/native states=['resolving', 'planning', 'ready']
+PASS mkv-hevc-hdr10-truehd-2160p on androidtv: decision reasons carry stable codes - audio_language,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-2160p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-2160p on androidtv: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]
+PASS mkv-hevc-hdr10-truehd-2160p on androidtv: hlssim plays the HLS URL without credentials - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,ec-3
+PASS mkv-hevc-hdr10-truehd-2160p on androidtv: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p on appletv: POST 202 - {'playbackId': '9d83edaaac53770325575f8ac6ed4c8e', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:33:15.018392+00:00', 'updatedAt': '2026-09-29T09:33:15.01
+PASS mkv-hevc-hdr10-truehd-2160p on appletv: ready as remux/native - ready remux/native states=['starting', 'ready']
+PASS mkv-hevc-hdr10-truehd-2160p on appletv: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-2160p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-2160p on appletv: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]
+PASS mkv-hevc-hdr10-truehd-2160p on appletv: hlssim plays the HLS URL without credentials - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,ec-3
+PASS mkv-hevc-hdr10-truehd-2160p on appletv: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p on chrome: POST 202 - {'playbackId': 'e356057ffea8eb97886353247cafc4dc', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:33:17.513283+00:00', 'updatedAt': '2026-09-29T09:33:17.51
+PASS mkv-hevc-hdr10-truehd-2160p on chrome: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-hevc-hdr10-truehd-2160p on chrome: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-2160p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-2160p on chrome: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]
+PASS mkv-hevc-hdr10-truehd-2160p on chrome: hlssim plays the HLS URL without credentials - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-2160p on chrome: stop 204
+PASS mkv-hevc-hdr10-truehd-2160p on safari: POST 202 - {'playbackId': '284b396075d195add93abdd0c48a088f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:33:20.140166+00:00', 'updatedAt': '2026-09-29T09:33:20.14
+PASS mkv-hevc-hdr10-truehd-2160p on safari: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-hevc-hdr10-truehd-2160p on safari: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-hevc-hdr10-truehd-2160p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-hevc-hdr10-truehd-2160p on safari: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]
+PASS mkv-hevc-hdr10-truehd-2160p on safari: hlssim plays the HLS URL without credentials - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,mp4a.40.2
+PASS mkv-hevc-hdr10-truehd-2160p on safari: stop 204
+PASS mkv-av1-opus-1080p on androidtv: POST 202 - {'playbackId': 'c847dc13a02b323902731fce50130ec5', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:23.237468+00:00', 'updatedAt': '2026-09-29T09:33:23.23
+PASS mkv-av1-opus-1080p on androidtv: ready as direct/native - ready direct/native states=['resolving', 'ready']
+PASS mkv-av1-opus-1080p on androidtv: decision reasons carry stable codes - audio_language,direct_play
+PASS mkv-av1-opus-1080p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-av1-opus-1080p on androidtv: ffprobe reads stream URL - [('video', 'av1'), ('audio', 'opus'), ('subtitle', 'subrip')]
+PASS mkv-av1-opus-1080p on androidtv: stop 204
+PASS mkv-av1-opus-1080p on appletv: POST 202 - {'playbackId': 'b5626687e89e117ecd70c7c618d388aa', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:23.526523+00:00', 'updatedAt': '2026-09-29T09:33:23.52
+PASS mkv-av1-opus-1080p on appletv: ready as direct/vlc - ready direct/vlc states=['ready']
+PASS mkv-av1-opus-1080p on appletv: decision reasons carry stable codes - audio_language,vlc_fallback,direct_play
+PASS mkv-av1-opus-1080p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-av1-opus-1080p on appletv: ffprobe reads stream URL - [('video', 'av1'), ('audio', 'opus'), ('subtitle', 'subrip')]
+PASS mkv-av1-opus-1080p on appletv: stop 204
+PASS mkv-av1-opus-1080p on chrome: POST 202 - {'playbackId': 'd770b82130d20ae45613464abf520fd2', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:23.555395+00:00', 'updatedAt': '2026-09-29T09:33:23.55
+PASS mkv-av1-opus-1080p on chrome: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-av1-opus-1080p on chrome: decision reasons carry stable codes - audio_language,container_unsupported,audio_converted
+PASS mkv-av1-opus-1080p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-av1-opus-1080p on chrome: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'av1'), ('audio', 'aac')]
+PASS mkv-av1-opus-1080p on chrome: hlssim plays the HLS URL without credentials - playlist 30 × 6.007s = 180.0s, codecs av01.0.08M.08,mp4a.40.2
+PASS mkv-av1-opus-1080p on chrome: stop 204
+PASS mkv-av1-opus-1080p on safari: POST 202 - {'playbackId': '91af295c8824a3d87c5148b7ed277cbe', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:24.845049+00:00', 'updatedAt': '2026-09-29T09:33:24.84
+PASS mkv-av1-opus-1080p on safari: ready as transcode/web - ready transcode/web states=['starting', 'ready']
+PASS mkv-av1-opus-1080p on safari: decision reasons carry stable codes - audio_language,video_codec_unsupported
+PASS mkv-av1-opus-1080p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=1
+PASS mkv-av1-opus-1080p on safari: ffprobe reads transcode URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mkv-av1-opus-1080p on safari: hlssim plays the HLS URL without credentials - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mkv-av1-opus-1080p on safari: stop 204
+PASS mkv-dualaudio-ass-1080p on androidtv: POST 202 - {'playbackId': '281724286fe83a13da0c9d336d44b98a', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:26.619493+00:00', 'updatedAt': '2026-09-29T09:33:26.61
+PASS mkv-dualaudio-ass-1080p on androidtv: ready as direct/native - ready direct/native states=['resolving', 'ready']
+PASS mkv-dualaudio-ass-1080p on androidtv: decision reasons carry stable codes - audio_language,direct_play
+PASS mkv-dualaudio-ass-1080p on androidtv: mediaInfo lists audio + subtitle tracks - audio=2 subs=3
+PASS mkv-dualaudio-ass-1080p on androidtv: ffprobe reads stream URL - [('video', 'h264'), ('audio', 'ac3'), ('audio', 'ac3'), ('subtitle', 'ass'), ('subtitle', 'ass'), ('subtitle', 'subrip')]
+PASS mkv-dualaudio-ass-1080p on androidtv: stop 204
+PASS mkv-dualaudio-ass-1080p on appletv: POST 202 - {'playbackId': '8efaebe1810eb618c9348d8aab90cf7d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:27.162203+00:00', 'updatedAt': '2026-09-29T09:33:27.16
+PASS mkv-dualaudio-ass-1080p on appletv: ready as remux/native - ready remux/native states=['starting', 'ready']
+PASS mkv-dualaudio-ass-1080p on appletv: decision reasons carry stable codes - audio_language,container_unsupported,audio_copied
+PASS mkv-dualaudio-ass-1080p on appletv: mediaInfo lists audio + subtitle tracks - audio=2 subs=3
+PASS mkv-dualaudio-ass-1080p on appletv: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'ac3')]
+PASS mkv-dualaudio-ass-1080p on appletv: hlssim plays the HLS URL without credentials - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,ac-3
+PASS mkv-dualaudio-ass-1080p on appletv: stop 204
+PASS mkv-dualaudio-ass-1080p on chrome: POST 202 - {'playbackId': '67027d0d1076071000c7800ac66b4cbf', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:27.792827+00:00', 'updatedAt': '2026-09-29T09:33:27.79
+PASS mkv-dualaudio-ass-1080p on chrome: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-dualaudio-ass-1080p on chrome: decision reasons carry stable codes - audio_language,container_unsupported,audio_codec_unsupported,audio_converted
+PASS mkv-dualaudio-ass-1080p on chrome: mediaInfo lists audio + subtitle tracks - audio=2 subs=3
+PASS mkv-dualaudio-ass-1080p on chrome: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'aac')]
+PASS mkv-dualaudio-ass-1080p on chrome: hlssim plays the HLS URL without credentials - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2
+PASS mkv-dualaudio-ass-1080p on chrome: stop 204
+PASS mkv-dualaudio-ass-1080p on safari: POST 202 - {'playbackId': '7e4ae46cd35dfdf965d3632c46bc1326', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:33:28.975078+00:00', 'updatedAt': '2026-09-29T09:33:28.97
+PASS mkv-dualaudio-ass-1080p on safari: ready as remux/web - ready remux/web states=['starting', 'ready']
+PASS mkv-dualaudio-ass-1080p on safari: decision reasons carry stable codes - audio_language,container_unsupported,audio_copied
+PASS mkv-dualaudio-ass-1080p on safari: mediaInfo lists audio + subtitle tracks - audio=2 subs=3
+PASS mkv-dualaudio-ass-1080p on safari: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'ac3')]
+PASS mkv-dualaudio-ass-1080p on safari: hlssim plays the HLS URL without credentials - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,ac-3
+PASS mkv-dualaudio-ass-1080p on safari: stop 204
+PASS mpg-mpeg2-ac3-576p on androidtv: POST 202 - {'playbackId': 'c05ce1d6d26855e049e9eb18a69ffedb', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:33:29.629645+00:00', 'updatedAt': '2026-09-29T09:33:29.6
+PASS mpg-mpeg2-ac3-576p on androidtv: ready as direct/vlc - ready direct/vlc states=['resolving', 'planning', 'ready']
+PASS mpg-mpeg2-ac3-576p on androidtv: decision reasons carry stable codes - audio_language_unavailable,vlc_fallback,direct_play
+PASS mpg-mpeg2-ac3-576p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-576p on androidtv: ffprobe reads stream URL - [('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]
+PASS mpg-mpeg2-ac3-576p on androidtv: stop 204
+PASS mpg-mpeg2-ac3-576p on appletv: POST 202 - {'playbackId': '37456ed557cf717bd7986f3858bce343', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:33:30.188835+00:00', 'updatedAt': '2026-09-29T09:33:30.1
+PASS mpg-mpeg2-ac3-576p on appletv: ready as direct/vlc - ready direct/vlc states=['ready']
+PASS mpg-mpeg2-ac3-576p on appletv: decision reasons carry stable codes - audio_language_unavailable,vlc_fallback,direct_play
+PASS mpg-mpeg2-ac3-576p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-576p on appletv: ffprobe reads stream URL - [('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]
+PASS mpg-mpeg2-ac3-576p on appletv: stop 204
+PASS mpg-mpeg2-ac3-576p on chrome: POST 202 - {'playbackId': '2891e0982d5fac21419f7fdbbb9ff1e7', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:33:30.216979+00:00', 'updatedAt': '2026-09-29T09:33:30.2
+PASS mpg-mpeg2-ac3-576p on chrome: ready as transcode/web - ready transcode/web states=['starting', 'ready']
+PASS mpg-mpeg2-ac3-576p on chrome: decision reasons carry stable codes - audio_language_unavailable,video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-576p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-576p on chrome: ffprobe reads transcode URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mpg-mpeg2-ac3-576p on chrome: hlssim plays the HLS URL without credentials - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-576p on chrome: stop 204
+PASS mpg-mpeg2-ac3-576p on safari: POST 202 - {'playbackId': '55df1b1f6510d6544e07078e226f8c7f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:33:30.977458+00:00', 'updatedAt': '2026-09-29T09:33:30.9
+PASS mpg-mpeg2-ac3-576p on safari: ready as transcode/web - ready transcode/web states=['starting', 'ready']
+PASS mpg-mpeg2-ac3-576p on safari: decision reasons carry stable codes - audio_language_unavailable,video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-576p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-576p on safari: ffprobe reads transcode URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mpg-mpeg2-ac3-576p on safari: hlssim plays the HLS URL without credentials - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-576p on safari: stop 204
+PASS mpg-mpeg2-ac3-480p on androidtv: POST 202 - {'playbackId': '5e6b63f1168d5672b577f8ac9316e97d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:33:31.656333+00:00', 'updatedAt': '2026-09-29T09:33:31.65
+PASS mpg-mpeg2-ac3-480p on androidtv: ready as direct/vlc - ready direct/vlc states=['resolving', 'planning', 'ready']
+PASS mpg-mpeg2-ac3-480p on androidtv: decision reasons carry stable codes - audio_language_unavailable,vlc_fallback,direct_play
+PASS mpg-mpeg2-ac3-480p on androidtv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-480p on androidtv: ffprobe reads stream URL - [('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]
+PASS mpg-mpeg2-ac3-480p on androidtv: stop 204
+PASS mpg-mpeg2-ac3-480p on appletv: POST 202 - {'playbackId': '80543e33d45d1340bde0ef3b848d0eb4', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:33:32.253077+00:00', 'updatedAt': '2026-09-29T09:33:32.25
+PASS mpg-mpeg2-ac3-480p on appletv: ready as direct/vlc - ready direct/vlc states=['ready']
+PASS mpg-mpeg2-ac3-480p on appletv: decision reasons carry stable codes - audio_language_unavailable,vlc_fallback,direct_play
+PASS mpg-mpeg2-ac3-480p on appletv: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-480p on appletv: ffprobe reads stream URL - [('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]
+PASS mpg-mpeg2-ac3-480p on appletv: stop 204
+PASS mpg-mpeg2-ac3-480p on chrome: POST 202 - {'playbackId': '8e8116ad6c65aab19384b29abb6916a0', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:33:32.284421+00:00', 'updatedAt': '2026-09-29T09:33:32.28
+PASS mpg-mpeg2-ac3-480p on chrome: ready as transcode/web - ready transcode/web states=['starting', 'ready']
+PASS mpg-mpeg2-ac3-480p on chrome: decision reasons carry stable codes - audio_language_unavailable,video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-480p on chrome: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-480p on chrome: ffprobe reads transcode URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mpg-mpeg2-ac3-480p on chrome: hlssim plays the HLS URL without credentials - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-480p on chrome: stop 204
+PASS mpg-mpeg2-ac3-480p on safari: POST 202 - {'playbackId': '0afc26065bfc2a2ccc6237fe164b3456', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:33:33.064472+00:00', 'updatedAt': '2026-09-29T09:33:33.06
+PASS mpg-mpeg2-ac3-480p on safari: ready as transcode/web - ready transcode/web states=['starting', 'ready']
+PASS mpg-mpeg2-ac3-480p on safari: decision reasons carry stable codes - audio_language_unavailable,video_codec_not_remuxable
+PASS mpg-mpeg2-ac3-480p on safari: mediaInfo lists audio + subtitle tracks - audio=1 subs=0
+PASS mpg-mpeg2-ac3-480p on safari: ffprobe reads transcode URL - [('video', 'h264'), ('audio', 'aac')]
+PASS mpg-mpeg2-ac3-480p on safari: hlssim plays the HLS URL without credentials - playlist 60 × 3s = 180.0s, codecs avc1.640029,mp4a.40.2
+PASS mpg-mpeg2-ac3-480p on safari: stop 204
+PASS dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: POST 202 - {'playbackId': 'c0ea111eaa659f19d04847c04331d853', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:33:33.896461+00:00', 'updatedAt': '2026-09-29T09:33:33.8
+PASS dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: attempts show the dead release then the fallback - ['dead', 'ready'] states=['resolving', 'ready']
+PASS dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: fallbackFrom names the requested release - {'releaseId': '29474776ae0319143cdd7c5a7caedff4f2cd15a49f417e2d9f1e89b9e7215a9b', 'name': 'Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST'}
+PASS dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: version is the fallback release
+PASS dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: reasons include fallback_used
+PASS dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]
+PASS dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: hlssim plays the HLS URL without credentials - playlist 30 × 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3
+PASS dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: POST 202 - {'playbackId': '6e8bd73243464eba7ba1412184d770ca', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-tv-19885-s01e02', 'createdAt': '2026-09-29T09:33:35.072483+00:00', 'updatedAt': '2026-09-29T09:33:3
+PASS dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: attempts show the dead release then the fallback - ['dead', 'ready'] states=['resolving', 'planning', 'ready']
+PASS dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: fallbackFrom names the requested release - {'releaseId': 'b60322ea0e12689c1efcaefa7c6b7b58b44452a5ad8e596168a8bc39ab6e4139', 'name': 'Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST'}
+PASS dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: version is the fallback release
+PASS dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: reasons include fallback_used
+PASS dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'ac3')]
+PASS dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: hlssim plays the HLS URL without credentials - playlist 20 × 6.005s = 120.0s, codecs avc1.640028,ac-3
+PASS gast: HEVC 2160p TrueHD on Chrome is a remux (allowed without transcoding) - ready remux
+PASS gast remux: ffprobe reads transcode URL - [('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]
+PASS gast remux: hlssim plays the HLS URL without credentials - playlist 10 × 6s = 60.0s, codecs hvc1.2.4.L150.90,mp4a.40.2
+PASS gast: a second device gets 409 too_many_streams naming the first device - 409 {'error': {'code': 'too_many_streams', 'message': "This profile may play 1 stream(s) at a time and 'Gast TV' is already playing.", 'host': None, 'indexerId': None, 'params': {'limit': '1', 'device': 'Gast TV', 'workId': 'tmdb-movie-10378', 'title': 'Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD'}}}
+PASS gast: the same device may replace its own playback - {'playbackId': '5bbb5bb958acfda53c554ac750d497c4', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:33:39.244392+00:
+PASS gast: the replaced playback is gone (404) - 404
+PASS gast: MPEG-2 on Chrome needs a transcode → failed transcoding_not_allowed - {'code': 'transcoding_not_allowed', 'message': 'This version needs a full transcode on this device, and transcoding is not allowed for this profile.', 'params': None} ['otherVersion']
+PASS gast: the failed decision lists why each method was skipped
+PASS gast: a failed playback frees the slot for another device - 202 {'playbackId': '364f212f24531070e1cbf66eae463827', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:33:39.500881+00:0
+PASS kind: Night of the Living Dead → 403 age_restricted (above_age_limit) - 403 {'error': {'code': 'age_restricted', 'message': 'This title is not available for this profile (above_age_limit).', 'host': None, 'indexerId': None, 'params': {'reason': 'above_age_limit', 'rating': '16', 'minimumAge': '16', 'viewerMaxAge': '12'}}}
+PASS kind: Tears of Steel → 403 age_restricted (unrated_blocked) - 403 {'error': {'code': 'age_restricted', 'message': 'This title is not available for this profile (unrated_blocked).', 'host': None, 'indexerId': None, 'params': {'reason': 'unrated_blocked', 'rating': 'NR', 'viewerMaxAge': '12'}}}
+PASS kind: Big Buck Bunny (6) is allowed - 202
+PASS kind: Big Buck Bunny becomes ready - ready
+PASS switch: German audio chosen from the language preference - [{"index": 1, "codec": "ac3", "channels": 6, "language": "de", "title": "Deutsch AC3 5.1", "default": true, "selected": true, "deliveredAs": "copy", "deliveredCodec": "ac3", "deliveredChannels": 6}, {"index": 2, "codec": "ac3", "channels": 2, "language": "en", "title": "English AC3 2.0", "default": false, "selected": false, "deliveredAs": "none", "deliveredCodec": null, "deliveredChannels": null}]
+PASS switch: forced German subtitle chosen for subtitleMode forced - [{"index": 3, "codec": "ass", "language": "de", "title": "Deutsch (styled)", "forced": false, "default": false, "textBased": true, "selected": false, "deliveredAs": "webvtt"}, {"index": 4, "codec": "ass", "language": "en", "title": "English (styled)", "forced": false, "default": false, "textBased": true, "selected": false, "deliveredAs": "webvtt"}, {"index": 5, "codec": "subrip", "language": "de", "title": "Deutsch (forced)", "forced": true, "default": false, "textBased": true, "selected": true, "deliveredAs": "webvtt"}]
+PASS switch: 202 with a new revision - 202 planning
+PASS switch: ready again with English audio and the English ASS subtitle as WebVTT - states=['starting', 'ready']
+PASS switch: new URL, starting at 60 s - /api/v1/transcode/iwCpngjAoI0hSmgc8pd9kEPIAbN7aZrgp2HtMrlcmAc/master.m3u8
+PASS switch: the previous URL keeps working during the grace period - 200
+PASS switch: hlssim plays the switched rendition - playlist 30 × 6.005s = 180.0s, codecs avc1.640028,ac-3
+PASS heartbeat: watch progress with playbackId fills the release - 200 1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687
+PASS heartbeat: the shared event stream got source streamarr-viewer with the stream token - [{'id': 1, 'releaseId': '1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687', 'workId': 'tmdb-movie-45745', 'title': 'Sintel.2010.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD', 'event': 'progress', 'positionTicks': 900000000, 'durationTicks': 1800000000, 'sessionToken': 'acbfb1be823f49bb40c0fbe0cda01671e380e126a3adeeae', 'source': 'streamarr-viewer', 'playbackSessionId': 'ebc6c7a591a53bbde867b47ccc93617d', 'externalUserId': '5ae57329790847a9bc9b147827345a11', 'externalUserName': 'anna', 'deviceName': 'Anna TV', 'receivedAt': '2026-09-29T09:33:41.211569+00:00'}]
+PASS ownership: another viewer gets 404 - 404
+PASS ownership: the same viewer on another device gets 404 - 404
+PASS ownership: another device cannot stop it (404) - 404
+PASS stop: 204
+PASS stop: the playback is gone (404) - 404
+PASS stop: its HLS session is closed (404) - 404
+PASS stop: the switched-away HLS session is closed too (404) - 404
+PASS preferences: engine vlc plays an MP4 with VLC - direct/vlc
+PASS preferences: engine native on Apple TV transcodes AV1 instead of VLC - transcode/native
+PASS preferences: maxHeight 720 on the 2160p HEVC release transcodes to 720p - transcode {'index': 0, 'codec': 'hevc', 'profile': 'Main 10', 'bitDepth': 10, 'width': 3840, 'height': 2160, 'fps': 24, 'hdr': 'hdr10', 'dolbyVisionProfile': None, 'interlaced': False, 'videoRange': 'SDR', 'deliveredCodec': 'h264', 'deliveredHeight': 720}
+PASS preferences: hlssim plays the 720p transcode - playlist 20 × 3s = 60.0s, codecs avc1.640029,mp4a.40.2
+PASS switch: stepDown excludes the transcode that failed on the device; with maxHeight 2160 the remux follows - remux
+PASS recommended: an episode without releaseId plays its rank-1 version - ready Sherlock.S01E01.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD states=['resolving', 'planning', 'ready']
+PASS recommended: an episode without versions fails with no_versions - {'code': 'no_versions', 'message': 'No version of this title is available right now.', 'params': None}
+OK: 316 passed, 0 failed

@@ -1,0 +1,1587 @@
+{
+ "base": "http://127.0.0.1:39310",
+ "passed": 316,
+ "failed": [],
+ "results": [
+  {
+   "check": "manifest",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "validation: a bad device profile is 400 invalid_device_profile",
+   "ok": true,
+   "detail": "{'error': {'code': 'invalid_device_profile', 'message': \"'device.platform' must be one of: ios, ipados, tvos, android, androidtv, web.\", 'host': None, 'indexerId': None}}"
+  },
+  {
+   "check": "auth: anonymous POST is 401",
+   "ok": true,
+   "detail": "401"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '0271f94dd47f7d6bd76af37f29dabc42', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:21.695207+00:00', 'updatedAt': '2026-09-29T09:40:21.69"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on androidtv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mp4-h264-aac-1080p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '7ae54a44241a9ed7069630fe04352a47', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:22.27017+00:00', 'updatedAt': '2026-09-29T09:40:22.270"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on appletv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on appletv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mp4-h264-aac-1080p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'dd66a730b8f9c8cd701669ce43b60c31', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:22.55634+00:00', 'updatedAt': '2026-09-29T09:40:22.556"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on chrome: ready as direct/web",
+   "ok": true,
+   "detail": "ready direct/web states=['ready']"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on chrome: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mp4-h264-aac-1080p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '613e474598b1123a9e6350aed8e0f741', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:22.589009+00:00', 'updatedAt': '2026-09-29T09:40:22.58"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on safari: ready as direct/web",
+   "ok": true,
+   "detail": "ready direct/web states=['ready']"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on safari: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-1080p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mp4-h264-aac-720p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '31878101783fd7111297182ca5724ed3', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:22.621409+00:00', 'updatedAt': '2026-09-29T09:40:22.6"
+  },
+  {
+   "check": "mp4-h264-aac-720p on androidtv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mp4-h264-aac-720p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-720p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-720p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-720p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mp4-h264-aac-720p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'a31a2636f0bb4c7ca29745ab2ae1ef01', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:22.908302+00:00', 'updatedAt': '2026-09-29T09:40:22.9"
+  },
+  {
+   "check": "mp4-h264-aac-720p on appletv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['ready']"
+  },
+  {
+   "check": "mp4-h264-aac-720p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-720p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-720p on appletv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-720p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mp4-h264-aac-720p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'aa37c5a3365043f8875b60b649cc01a0', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:22.938672+00:00', 'updatedAt': '2026-09-29T09:40:22.9"
+  },
+  {
+   "check": "mp4-h264-aac-720p on chrome: ready as direct/web",
+   "ok": true,
+   "detail": "ready direct/web states=['ready']"
+  },
+  {
+   "check": "mp4-h264-aac-720p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-720p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-720p on chrome: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-720p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mp4-h264-aac-720p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'bb46a36e9f630d80efffd87b27bcffda', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:22.970092+00:00', 'updatedAt': '2026-09-29T09:40:22.9"
+  },
+  {
+   "check": "mp4-h264-aac-720p on safari: ready as direct/web",
+   "ok": true,
+   "detail": "ready direct/web states=['ready']"
+  },
+  {
+   "check": "mp4-h264-aac-720p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mp4-h264-aac-720p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mp4-h264-aac-720p on safari: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mp4-h264-aac-720p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '49582afa2ec6aa423caa763ad1b6d857', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:23.000578+00:00', 'updatedAt': '2026-09-29T09:40:23.00"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on androidtv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=2"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'eac3'), ('subtitle', 'subrip'), ('subtitle', 'subrip')]"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '63f1bf6431fa8b16646e946806bc916e', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:23.284527+00:00', 'updatedAt': '2026-09-29T09:40:23.28"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on appletv: ready as remux/native",
+   "ok": true,
+   "detail": "ready remux/native states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_copied"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=2"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on appletv: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'eac3')]"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on appletv: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.005s = 180.0s, codecs avc1.640028,ec-3"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '3122a40d7707ffe73129c529554bba5d', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:23.932008+00:00', 'updatedAt': '2026-09-29T09:40:23.93"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on chrome: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=2"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on chrome: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '55ba27ee16af08d08800cca5bc5ef637', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:25.059593+00:00', 'updatedAt': '2026-09-29T09:40:25.05"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on safari: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=2"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on safari: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2"
+  },
+  {
+   "check": "mkv-h264-eac3-srt-1080p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'c548ca0a7c7e5ebf82cb37c88237984e', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:26.11498+00:00', 'updatedAt': '2026-09-29T09:40:26.114"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on androidtv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['resolving', 'planning', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'hevc'), ('audio', 'dts'), ('subtitle', 'subrip')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '4084aad7502e4f02c3301e765c459726', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:26.648331+00:00', 'updatedAt': '2026-09-29T09:40:26.64"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on appletv: ready as remux/native",
+   "ok": true,
+   "detail": "ready remux/native states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on appletv: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on appletv: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '0ffae95ca68617f50cf02c9dbabbefb8', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:27.831717+00:00', 'updatedAt': '2026-09-29T09:40:27.83"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on chrome: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on chrome: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '2103b593607d917628c5f22d9fde7ade', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:29.3462+00:00', 'updatedAt': '2026-09-29T09:40:29.3462"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on safari: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on safari: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2"
+  },
+  {
+   "check": "mkv-hevc-hdr10-dts-1080p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'a22539d21cf63346f6808150bf64c984', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:40:30.737816+00:00', 'updatedAt': '2026-09-29T09:40:30.7"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on androidtv: ready as remux/native",
+   "ok": true,
+   "detail": "ready remux/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on androidtv: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on androidtv: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '9b6d6a88f75917e5c0dc5eeee84ff2e2', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:40:31.85541+00:00', 'updatedAt': '2026-09-29T09:40:31.85"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on appletv: ready as remux/native",
+   "ok": true,
+   "detail": "ready remux/native states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on appletv: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on appletv: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '30552a10832f6d276a8b2f5b0bf61e80', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:40:32.970759+00:00', 'updatedAt': '2026-09-29T09:40:32.9"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on chrome: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on chrome: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '2a2168e68625df72d34a6644b9d8df48', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:40:34.258269+00:00', 'updatedAt': '2026-09-29T09:40:34.2"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on safari: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on safari: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,mp4a.40.2"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-1080p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'c40dff3d3473d997e93bbdf929d16a6e', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:35.539654+00:00', 'updatedAt': '2026-09-29T09:40:35.53"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on androidtv: ready as remux/native",
+   "ok": true,
+   "detail": "ready remux/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on androidtv: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on androidtv: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 10 \u00d7 6s = 60.0s, codecs hvc1.2.4.L150.90,ec-3"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '795bd6c0002b09e11f24fdf487b9439e', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:38.383546+00:00', 'updatedAt': '2026-09-29T09:40:38.38"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on appletv: ready as remux/native",
+   "ok": true,
+   "detail": "ready remux/native states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on appletv: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on appletv: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 10 \u00d7 6s = 60.0s, codecs hvc1.2.4.L150.90,ec-3"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '48e158c7fab71dffbf0dcaa97c1b16b4', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:41.038657+00:00', 'updatedAt': '2026-09-29T09:40:41.03"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on chrome: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on chrome: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 10 \u00d7 6s = 60.0s, codecs hvc1.2.4.L150.90,mp4a.40.2"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'dc0cabcea54b49a041e95e5bab284045', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:40:43.942561+00:00', 'updatedAt': '2026-09-29T09:40:43.94"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on safari: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on safari: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 10 \u00d7 6s = 60.0s, codecs hvc1.2.4.L150.90,mp4a.40.2"
+  },
+  {
+   "check": "mkv-hevc-hdr10-truehd-2160p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-av1-opus-1080p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'fd41d8ccbb7577af8230011186596f97', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:46.683866+00:00', 'updatedAt': '2026-09-29T09:40:46.68"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on androidtv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'av1'), ('audio', 'opus'), ('subtitle', 'subrip')]"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-av1-opus-1080p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '559eb2577c4ac425ca9b0e6440cbdbc6', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:46.968803+00:00', 'updatedAt': '2026-09-29T09:40:46.96"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on appletv: ready as direct/vlc",
+   "ok": true,
+   "detail": "ready direct/vlc states=['ready']"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,vlc_fallback,direct_play"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on appletv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'av1'), ('audio', 'opus'), ('subtitle', 'subrip')]"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-av1-opus-1080p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'ee372f09672e1939f1dbf706d310ddee', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:46.995836+00:00', 'updatedAt': '2026-09-29T09:40:46.99"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on chrome: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on chrome: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'av1'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.007s = 180.0s, codecs av01.0.08M.08,mp4a.40.2"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-av1-opus-1080p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'e6ac1468fc938a30ee9105900933ebbf', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:48.257573+00:00', 'updatedAt': '2026-09-29T09:40:48.25"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on safari: ready as transcode/web",
+   "ok": true,
+   "detail": "ready transcode/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,video_codec_unsupported"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=1"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on safari: ffprobe reads the transcode URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 60 \u00d7 3s = 180.0s, codecs avc1.640029,mp4a.40.2"
+  },
+  {
+   "check": "mkv-av1-opus-1080p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'f4b356dda8aefd9eeedf854cedb753d7', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:50.094735+00:00', 'updatedAt': '2026-09-29T09:40:50.09"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on androidtv: ready as direct/native",
+   "ok": true,
+   "detail": "ready direct/native states=['resolving', 'ready']"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,direct_play"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=2 subs=3"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'ac3'), ('audio', 'ac3'), ('subtitle', 'ass'), ('subtitle', 'ass'), ('subtitle', 'subrip')]"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '94c893ba3445d3a3f97036767a545219', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:50.380776+00:00', 'updatedAt': '2026-09-29T09:40:50.38"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on appletv: ready as remux/native",
+   "ok": true,
+   "detail": "ready remux/native states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_copied"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=2 subs=3"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on appletv: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'ac3')]"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on appletv: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.005s = 180.0s, codecs avc1.640028,ac-3"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '3ee7111674741fbc523b97c0c63f4411', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:51.009247+00:00', 'updatedAt': '2026-09-29T09:40:51.00"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on chrome: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_codec_unsupported,audio_converted"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=2 subs=3"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on chrome: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.005s = 180.0s, codecs avc1.640028,mp4a.40.2"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '3ea1ac2f9261ec760ce76cd550ff292c', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-45745', 'createdAt': '2026-09-29T09:40:52.143174+00:00', 'updatedAt': '2026-09-29T09:40:52.14"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on safari: ready as remux/web",
+   "ok": true,
+   "detail": "ready remux/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language,container_unsupported,audio_copied"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=2 subs=3"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on safari: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'ac3')]"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.005s = 180.0s, codecs avc1.640028,ac-3"
+  },
+  {
+   "check": "mkv-dualaudio-ass-1080p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '37f39ea9310a29d563016a1e2ca77f3f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:52.787095+00:00', 'updatedAt': '2026-09-29T09:40:52.7"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on androidtv: ready as direct/vlc",
+   "ok": true,
+   "detail": "ready direct/vlc states=['resolving', 'ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,vlc_fallback,direct_play"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '10f30e2dba1871a04fda6892b29b6d5f', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:53.069318+00:00', 'updatedAt': '2026-09-29T09:40:53.0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on appletv: ready as direct/vlc",
+   "ok": true,
+   "detail": "ready direct/vlc states=['ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,vlc_fallback,direct_play"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on appletv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'd733a680322f294b92b4b421a5b81abb', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:53.098154+00:00', 'updatedAt': '2026-09-29T09:40:53.0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on chrome: ready as transcode/web",
+   "ok": true,
+   "detail": "ready transcode/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,video_codec_not_remuxable"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on chrome: ffprobe reads the transcode URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 60 \u00d7 3s = 180.0s, codecs avc1.640029,mp4a.40.2"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '5043f417f974d9efd190f8878bc948b4', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:40:53.853629+00:00', 'updatedAt': '2026-09-29T09:40:53.8"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on safari: ready as transcode/web",
+   "ok": true,
+   "detail": "ready transcode/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,video_codec_not_remuxable"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on safari: ffprobe reads the transcode URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 60 \u00d7 3s = 180.0s, codecs avc1.640029,mp4a.40.2"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-576p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on androidtv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'c1fba9cfcb58f4692fb912a5821825e7', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:40:54.610455+00:00', 'updatedAt': '2026-09-29T09:40:54.61"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on androidtv: ready as direct/vlc",
+   "ok": true,
+   "detail": "ready direct/vlc states=['resolving', 'ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on androidtv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,vlc_fallback,direct_play"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on androidtv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on androidtv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on androidtv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on appletv: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '7910d9c5e84af7d67a8745710ec8cf74', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:40:54.892109+00:00', 'updatedAt': '2026-09-29T09:40:54.89"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on appletv: ready as direct/vlc",
+   "ok": true,
+   "detail": "ready direct/vlc states=['ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on appletv: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,vlc_fallback,direct_play"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on appletv: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on appletv: ffprobe reads the direct URL",
+   "ok": true,
+   "detail": "[('data', 'dvd_nav_packet'), ('video', 'mpeg2video'), ('audio', 'ac3')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on appletv: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on chrome: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '6322b862aa76b7df23c6ab2e9bf72f89', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:40:54.920255+00:00', 'updatedAt': '2026-09-29T09:40:54.92"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on chrome: ready as transcode/web",
+   "ok": true,
+   "detail": "ready transcode/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on chrome: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,video_codec_not_remuxable"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on chrome: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on chrome: ffprobe reads the transcode URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on chrome: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 60 \u00d7 3s = 180.0s, codecs avc1.640029,mp4a.40.2"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on chrome: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on safari: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': 'ed0a1b01db0af317bef0e1a7f37ef3ce', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10331', 'createdAt': '2026-09-29T09:40:55.684345+00:00', 'updatedAt': '2026-09-29T09:40:55.68"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on safari: ready as transcode/web",
+   "ok": true,
+   "detail": "ready transcode/web states=['starting', 'ready']"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on safari: decision reasons carry stable codes",
+   "ok": true,
+   "detail": "audio_language_unavailable,video_codec_not_remuxable"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on safari: mediaInfo lists audio + subtitle tracks",
+   "ok": true,
+   "detail": "audio=1 subs=0"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on safari: ffprobe reads the transcode URL",
+   "ok": true,
+   "detail": "[('video', 'h264'), ('audio', 'aac')]"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on safari: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 60 \u00d7 3s = 180.0s, codecs avc1.640029,mp4a.40.2"
+  },
+  {
+   "check": "mpg-mpeg2-ac3-480p on safari: stop 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '1f026c1ca647e164621bdf29b6d6e354', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-358332', 'createdAt': '2026-09-29T09:40:56.422589+00:00', 'updatedAt': '2026-09-29T09:40:56.4"
+  },
+  {
+   "check": "dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: attempts show the dead release then the fallback",
+   "ok": true,
+   "detail": "['dead', 'ready'] states=['resolving', 'ready']"
+  },
+  {
+   "check": "dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: fallbackFrom names the requested release",
+   "ok": true,
+   "detail": "{'releaseId': '29474776ae0319143cdd7c5a7caedff4f2cd15a49f417e2d9f1e89b9e7215a9b', 'name': 'Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST'}"
+  },
+  {
+   "check": "dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: version is the fallback release",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: reasons include fallback_used",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'eac3')]"
+  },
+  {
+   "check": "dead release Cosmos.Laundromat.2015.1080p.BluRay.TrueHD.5.1.HDR10.10bit.x265-GHOST: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6s = 180.0s, codecs hvc1.2.4.L120.90,ec-3"
+  },
+  {
+   "check": "dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: POST 202",
+   "ok": true,
+   "detail": "{'playbackId': '556c22fb3657f2a2558f17ef98433f26', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-tv-19885-s01e02', 'createdAt': '2026-09-29T09:40:57.56377+00:00', 'updatedAt': '2026-09-29T09:40:57"
+  },
+  {
+   "check": "dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: attempts show the dead release then the fallback",
+   "ok": true,
+   "detail": "['dead', 'ready'] states=['resolving', 'ready']"
+  },
+  {
+   "check": "dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: fallbackFrom names the requested release",
+   "ok": true,
+   "detail": "{'releaseId': 'b60322ea0e12689c1efcaefa7c6b7b58b44452a5ad8e596168a8bc39ab6e4139', 'name': 'Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST'}"
+  },
+  {
+   "check": "dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: version is the fallback release",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: reasons include fallback_used",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('subtitle', 'webvtt'), ('video', 'h264'), ('audio', 'ac3')]"
+  },
+  {
+   "check": "dead release Sherlock.S01E02.German.DL.1080p.BluRay.DD5.1.x264-GHOST: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 20 \u00d7 6.005s = 120.0s, codecs avc1.640028,ac-3"
+  },
+  {
+   "check": "gast: HEVC 2160p TrueHD on Chrome is a remux (allowed without transcoding)",
+   "ok": true,
+   "detail": "ready remux"
+  },
+  {
+   "check": "gast remux: ffprobe reads the remux URL",
+   "ok": true,
+   "detail": "[('subtitle', 'webvtt'), ('video', 'hevc'), ('audio', 'aac')]"
+  },
+  {
+   "check": "gast remux: hlssim plays the HLS URL without credentials",
+   "ok": true,
+   "detail": "playlist 10 \u00d7 6s = 60.0s, codecs hvc1.2.4.L150.90,mp4a.40.2"
+  },
+  {
+   "check": "gast: a second device gets 409 too_many_streams naming the first device",
+   "ok": true,
+   "detail": "409 {'error': {'code': 'too_many_streams', 'message': \"This profile may play 1 stream(s) at a time and 'Gast TV' is already playing.\", 'host': None, 'indexerId': None, 'params': {'limit': '1', 'device': 'Gast TV', 'workId': 'tmdb-movie-10378', 'releaseName': 'Big.Buck.Bunny.2008.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-DEVWORLD'}}}"
+  },
+  {
+   "check": "gast: the same device may replace its own playback",
+   "ok": true,
+   "detail": "{'playbackId': '45f8712e3d9d8b211dcfe4a04276efd5', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-133701', 'createdAt': '2026-09-29T09:41:01.448139+00:"
+  },
+  {
+   "check": "gast: the replaced playback is gone (404)",
+   "ok": true,
+   "detail": "404"
+  },
+  {
+   "check": "gast: MPEG-2 on Chrome needs a transcode \u2192 failed transcoding_not_allowed",
+   "ok": true,
+   "detail": "{'code': 'transcoding_not_allowed', 'message': 'This version needs a full transcode on this device, and transcoding is not allowed for this profile.', 'params': None} ['otherVersion']"
+  },
+  {
+   "check": "gast: the failed decision lists why each method was skipped",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "gast: a failed playback frees the slot for another device",
+   "ok": true,
+   "detail": "202 {'playbackId': 'dc0e4f673bb89c234b5dadf2c6ea3267', 'revision': 0, 'state': 'queued', 'workId': 'tmdb-movie-10378', 'createdAt': '2026-09-29T09:41:01.707113+00:0"
+  },
+  {
+   "check": "kind: Night of the Living Dead \u2192 403 age_restricted (above_age_limit)",
+   "ok": true,
+   "detail": "403 {'error': {'code': 'age_restricted', 'message': 'This title is not available for this profile (above_age_limit).', 'host': None, 'indexerId': None, 'params': {'reason': 'above_age_limit', 'rating': '16', 'minimumAge': '16', 'viewerMaxAge': '12'}}}"
+  },
+  {
+   "check": "kind: Tears of Steel \u2192 403 age_restricted (unrated_blocked)",
+   "ok": true,
+   "detail": "403 {'error': {'code': 'age_restricted', 'message': 'This title is not available for this profile (unrated_blocked).', 'host': None, 'indexerId': None, 'params': {'reason': 'unrated_blocked', 'rating': 'NR', 'viewerMaxAge': '12'}}}"
+  },
+  {
+   "check": "kind: Big Buck Bunny (6) is allowed",
+   "ok": true,
+   "detail": "202"
+  },
+  {
+   "check": "kind: Big Buck Bunny becomes ready",
+   "ok": true,
+   "detail": "ready"
+  },
+  {
+   "check": "switch: German audio chosen from the language preference",
+   "ok": true,
+   "detail": "[{\"index\": 1, \"codec\": \"ac3\", \"channels\": 6, \"language\": \"de\", \"title\": \"Deutsch AC3 5.1\", \"default\": true, \"selected\": true, \"deliveredAs\": \"copy\", \"deliveredCodec\": \"ac3\", \"deliveredChannels\": 6}, {\"index\": 2, \"codec\": \"ac3\", \"channels\": 2, \"language\": \"en\", \"title\": \"English AC3 2.0\", \"default\": false, \"selected\": false, \"deliveredAs\": \"none\", \"deliveredCodec\": null, \"deliveredChannels\": null}]"
+  },
+  {
+   "check": "switch: forced German subtitle chosen for subtitleMode forced",
+   "ok": true,
+   "detail": "[{\"index\": 3, \"codec\": \"ass\", \"language\": \"de\", \"title\": \"Deutsch (styled)\", \"forced\": false, \"default\": false, \"textBased\": true, \"selected\": false, \"deliveredAs\": \"webvtt\"}, {\"index\": 4, \"codec\": \"ass\", \"language\": \"en\", \"title\": \"English (styled)\", \"forced\": false, \"default\": false, \"textBased\": true, \"selected\": false, \"deliveredAs\": \"webvtt\"}, {\"index\": 5, \"codec\": \"subrip\", \"language\": \"de\", \"title\": \"Deutsch (forced)\", \"forced\": true, \"default\": false, \"textBased\": true, \"selected\": true, \"deliveredAs\": \"webvtt\"}]"
+  },
+  {
+   "check": "switch: 202 with a new revision",
+   "ok": true,
+   "detail": "202 planning"
+  },
+  {
+   "check": "switch: ready again with English audio and the English ASS subtitle as WebVTT",
+   "ok": true,
+   "detail": "states=['starting', 'ready']"
+  },
+  {
+   "check": "switch: new URL, starting at 60 s",
+   "ok": true,
+   "detail": "/api/v1/transcode/b4ztzZ7quSS8eJKEsrCFcf5c4Xn-5lHyNZjMHaDVocY/master.m3u8"
+  },
+  {
+   "check": "switch: the previous URL keeps working during the grace period",
+   "ok": true,
+   "detail": "200"
+  },
+  {
+   "check": "switch: hlssim plays the switched rendition",
+   "ok": true,
+   "detail": "playlist 30 \u00d7 6.005s = 180.0s, codecs avc1.640028,ac-3"
+  },
+  {
+   "check": "heartbeat: watch progress with playbackId fills the release",
+   "ok": true,
+   "detail": "200 1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687"
+  },
+  {
+   "check": "heartbeat: the shared event stream got source streamarr-viewer with the stream token",
+   "ok": true,
+   "detail": "[{'id': 1, 'releaseId': '1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687', 'workId': 'tmdb-movie-45745', 'title': 'Sintel.2010.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD', 'event': 'progress', 'positionTicks': 900000000, 'durationTicks': 1800000000, 'sessionToken': '7495edb4846d52820f2e167e0f507fd291f0fd067be9de60', 'source': 'streamarr-viewer', 'playbackSessionId': '9bd653f6b8f389fe9b192b792c43f78b', 'externalUserId': '2c872fc425cf4bd08bc04c8d5a6b4b16', 'externalUserName': 'anna', 'deviceName': 'Anna TV', 'receivedAt': '2026-09-29T09:41:03.334372+00:00'}]"
+  },
+  {
+   "check": "ownership: another viewer gets 404",
+   "ok": true,
+   "detail": "404"
+  },
+  {
+   "check": "ownership: the same viewer on another device gets 404",
+   "ok": true,
+   "detail": "404"
+  },
+  {
+   "check": "ownership: another device cannot stop it (404)",
+   "ok": true,
+   "detail": "404"
+  },
+  {
+   "check": "stop: 204",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "stop: the playback is gone (404)",
+   "ok": true,
+   "detail": "404"
+  },
+  {
+   "check": "stop: its HLS session is closed (404)",
+   "ok": true,
+   "detail": "404"
+  },
+  {
+   "check": "stop: the switched-away HLS session is closed too (404)",
+   "ok": true,
+   "detail": "404"
+  },
+  {
+   "check": "preferences: engine vlc plays an MP4 with VLC",
+   "ok": true,
+   "detail": "direct/vlc"
+  },
+  {
+   "check": "preferences: engine native on Apple TV transcodes AV1 instead of VLC",
+   "ok": true,
+   "detail": "transcode/native"
+  },
+  {
+   "check": "preferences: maxHeight 720 on the 2160p HEVC release transcodes to 720p",
+   "ok": true,
+   "detail": "transcode {'index': 0, 'codec': 'hevc', 'profile': 'Main 10', 'bitDepth': 10, 'width': 3840, 'height': 2160, 'fps': 24, 'hdr': 'hdr10', 'dolbyVisionProfile': None, 'interlaced': False, 'videoRange': 'SDR', 'deliveredCodec': 'h264', 'deliveredHeight': 720}"
+  },
+  {
+   "check": "preferences: hlssim plays the 720p transcode",
+   "ok": true,
+   "detail": "playlist 20 \u00d7 3s = 60.0s, codecs avc1.640029,mp4a.40.2"
+  },
+  {
+   "check": "switch: stepDown excludes the transcode that failed on the device; with maxHeight 2160 the remux follows",
+   "ok": true,
+   "detail": "remux"
+  },
+  {
+   "check": "recommended: an episode without releaseId plays its rank-1 version",
+   "ok": true,
+   "detail": "ready Sherlock.S01E01.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD states=['resolving', 'ready']"
+  },
+  {
+   "check": "recommended: an episode without versions fails with no_versions",
+   "ok": true,
+   "detail": "{'code': 'no_versions', 'message': 'No version of this title is available right now.', 'params': None}"
+  }
+ ]
+}
