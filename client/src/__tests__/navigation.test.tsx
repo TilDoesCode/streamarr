@@ -129,6 +129,16 @@ beforeEach(async () => {
   });
 });
 
+it('opens the play route with the work id of the movie', async () => {
+  await signIn();
+  const router = renderRouter(routes, { initialUrl: '/movie/123' });
+  await router;
+  const play = await screen.findByTestId('movie-play');
+  await userEvent.setup().press(play);
+  await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
+  expect(router.getSearchParams()).toMatchObject({ workId: 'tmdb-movie-123', title: 'Sintel' });
+});
+
 it('sends signed-out visitors of any app route to onboarding', async () => {
   const router = renderRouter(routes, { initialUrl: '/movie/123' });
   await router;

@@ -2,6 +2,8 @@ import { experimental_createQueryPersister } from '@tanstack/query-persist-clien
 import Constants from 'expo-constants';
 import { createMMKV, deleteMMKV } from 'react-native-mmkv';
 
+import { deleteRecentSearches } from '@/lib/recent-searches';
+
 type QueryPersister = ReturnType<typeof experimental_createQueryPersister>;
 
 const DAY = 24 * 60 * 60_000;
@@ -34,6 +36,7 @@ export function accountPersister(accountId: string): QueryPersister {
 
 /** Drops everything persisted for an account (on remove). */
 export function deleteAccountCache(accountId: string): void {
+  deleteRecentSearches(accountId);
   persisters.delete(accountId);
   deleteMMKV(storageId(accountId));
 }

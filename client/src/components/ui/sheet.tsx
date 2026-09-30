@@ -127,16 +127,28 @@ export type SheetProps = {
   title: string;
   /** SheetItems (one radio group); the list scrolls when it is taller than the panel. */
   children: ReactNode;
+  /** Wider side panel for rich options (version cards). */
+  wide?: boolean;
+  /** Non-focusable line under the title (counts, hints). */
+  subtitle?: string;
   testID?: string;
 };
 
 /** Phone: bottom sheet (drag down to dismiss). Tablet, desktop, TV: side panel from the right. */
-export function Sheet({ open, onClose, title, children, testID }: SheetProps) {
+export function Sheet({
+  open,
+  onClose,
+  title,
+  children,
+  wide = false,
+  subtitle,
+  testID,
+}: SheetProps) {
   const design = useDesign();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const side = design.formFactor !== 'phone';
-  const panelWidth = Math.min(design.px(400), design.window.width * 0.9);
+  const panelWidth = Math.min(design.px(wide ? 600 : 400), design.window.width * 0.9);
   const [mounted, setMounted] = useState(open);
   const [extent, setExtent] = useState(design.window.height * 0.6);
   const [viewport, setViewport] = useState(0);
@@ -271,6 +283,11 @@ export function Sheet({ open, onClose, title, children, testID }: SheetProps) {
                           />
                         )}
                         <Text variant="heading">{title}</Text>
+                        {subtitle ? (
+                          <Text variant="caption" tone="muted">
+                            {subtitle}
+                          </Text>
+                        ) : null}
                       </View>
                     </GestureDetector>
                     <ScrollView
@@ -323,6 +340,14 @@ export function Sheet({ open, onClose, title, children, testID }: SheetProps) {
       </FocusLayer>
     </Modal>
   );
+}
+
+/** Web keyboard roving for custom Sheet options: pass the result to the option's Focusable. */
+export function useSheetRoving(): { focusable?: boolean; onFocus?: () => void } {
+  const roving = use(RovingContext);
+  return Platform.OS === 'web' && roving
+    ? { focusable: roving.tabStop, onFocus: roving.onFocus }
+    : {};
 }
 
 export type SheetItemProps = {

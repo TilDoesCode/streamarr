@@ -15,3 +15,7 @@ jest.mock('react-native-nitro-modules', () => ({ NitroModules: {} }));
 jest.mock('@react-native-community/netinfo', () =>
   require('@react-native-community/netinfo/jest/netinfo-mock.js')
 );
+jest.mock('@modules/media-caps/src/MediaCapsModule', () => ({
+  getCapabilitiesAsync: () => Promise.reject(new Error('media-caps is native only')),
+  readCodecLogAsync: () => Promise.resolve([]),
+}));

@@ -1,33 +1,35 @@
-import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
 import { Film } from 'lucide-react-native';
+import { useEffect, useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
-import { unwrap } from '@/api/client';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
-import type { components } from '@/api/schema';
 import { displayServerUrl } from '@/api/server-url';
-import { PosterCard } from '@/components/media/poster-card';
+import {
+  useContinueWatching,
+  useHomeRows,
+  useNextUp,
+  type CatalogItem,
+  type CatalogRow,
+} from '@/browse/queries';
 import { Shelf } from '@/components/media/shelf';
-import { titleHref } from '@/navigation/routes';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
-import { PosterCardSkeleton } from '@/components/ui/skeleton';
+import { LandscapeCardSkeleton, PosterCardSkeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { queryKeys } from '@/query/keys';
-import { accountPersister } from '@/query/persist';
-import { STALE } from '@/query/query-client';
 import { aspect, colors, useDesign } from '@/theme';
 
-type Row = components['schemas']['CatalogRowDto'];
-type Item = components['schemas']['CatalogItemDto'];
+import { FeaturedStore } from './featured';
+import { ContinueCard, DiscoverCard, featuredFromItem, NextUpCard } from './home-cards';
+import { HandheldHomeHero, TvHomeBackdrop, TvHomeInfo } from './home-hero';
+
+export { useHomeRows } from '@/browse/queries';
 
 const ROW_KEYS = [
   'trending-movies',
@@ -41,168 +43,258 @@ function rowKey(id: string | null): RowKey | 'other' {
   return ROW_KEYS.includes(id as RowKey) ? (id as RowKey) : 'other';
 }
 
-/** Discover rows of the active account; persisted per account in MMKV so they show instantly. */
-export function useHomeRows() {
-  const { account, client } = useActiveAccount();
-  return useQuery({
-    queryKey: queryKeys.discover(account.id),
-    queryFn: ({ signal }) =>
-      unwrap(client.GET('/api/v1/viewer/catalog/discover', { signal })).then(
-        (response) => response.rows ?? []
-      ),
-    staleTime: STALE.homeRows,
-    persister: accountPersister(account.id).persisterFn,
-  });
-}
+type ShelfSpec = {
+  key: string;
+  title: string;
+  kind: 'landscape' | 'poster';
+  items: readonly unknown[];
+  render: (index: number, preferred: boolean) => ReactElement;
+  itemKey: (index: number) => string;
+};
 
-/** Home tab: greeting and the live discover rows (M4.1 adds hero, continue watching and next up). */
+/** Home: hero, continue watching, next up and the discover rows. TV: the hero follows the focused card. */
 export function HomeScreen() {
   const { t } = useTranslation();
   const design = useDesign();
   const insets = useSafeAreaInsets();
   const { account } = useActiveAccount();
   const rows = useHomeRows();
-  const posterWidth = design.layout.posterWidth;
+  const resume = useContinueWatching();
+  const nextUp = useNextUp();
+  const [store] = useState(() => new FeaturedStore());
+  useEffect(() => () => store.dispose(), [store]);
+
+  const discover = (rows.data ?? []).filter(
+    (row): row is CatalogRow & { items: CatalogItem[] } => !!row.items?.length
+  );
+  const continueItems = resume.data ?? [];
+  const resumeIds = new Set(continueItems.map((item) => item.workId));
+  const nextItems = (nextUp.data ?? []).filter((item) => !resumeIds.has(item.workId));
+  const firstItem = discover[0]?.items[0];
+  const firstRowTitle = discover[0] ? t(`home.rows.${rowKey(discover[0].id)}`) : '';
+  const topPick = firstItem ? featuredFromItem(firstItem, firstRowTitle) : undefined;
+  useEffect(() => store.initial(topPick), [store, topPick]);
+
+  const feature = design.isTV
+    ? (item: Parameters<FeaturedStore['set']>[0]) => store.set(item)
+    : undefined;
+  const { posterWidth, landscapeWidth } = design.layout;
+  const continueTitle = t('home.continueWatching');
+  const nextTitle = t('home.nextUp');
+
+  const shelves: ShelfSpec[] = [];
+  if (continueItems.length)
+    shelves.push({
+      key: 'continue',
+      title: continueTitle,
+      kind: 'landscape',
+      items: continueItems,
+      itemKey: (index) => continueItems[index]?.workId ?? String(index),
+      render: (index, preferred) => (
+        <ContinueCard
+          testID={`home-card-continue-${index}`}
+          state={continueItems[index]!}
+          width={landscapeWidth}
+          eyebrow={continueTitle}
+          onFeature={feature}
+          hasTVPreferredFocus={preferred}
+        />
+      ),
+    });
+  if (nextItems.length)
+    shelves.push({
+      key: 'next-up',
+      title: nextTitle,
+      kind: 'landscape',
+      items: nextItems,
+      itemKey: (index) => nextItems[index]?.workId ?? String(index),
+      render: (index, preferred) => (
+        <NextUpCard
+          testID={`home-card-next-up-${index}`}
+          item={nextItems[index]!}
+          width={landscapeWidth}
+          eyebrow={nextTitle}
+          onFeature={feature}
+          hasTVPreferredFocus={preferred}
+        />
+      ),
+    });
+  for (const row of discover) {
+    const title = t(`home.rows.${rowKey(row.id)}`);
+    shelves.push({
+      key: row.id ?? title,
+      title,
+      kind: 'poster',
+      items: row.items,
+      itemKey: (index) => row.items[index]?.workId ?? String(index),
+      render: (index, preferred) => (
+        <DiscoverCard
+          testID={`home-card-${row.id}-${index}`}
+          item={row.items[index]!}
+          width={posterWidth}
+          eyebrow={title}
+          onFeature={feature}
+          hasTVPreferredFocus={preferred}
+        />
+      ),
+    });
+  }
+
+  const failed = [rows, resume, nextUp].filter((query) => query.error);
+  const retryAll = () => {
+    for (const query of [rows, resume, nextUp]) if (query.error) void query.refetch();
+  };
+  const loading = rows.data === undefined && !rows.error;
+
+  const body =
+    rows.data === undefined && rows.error ? (
+      <ErrorState
+        testID="home-error"
+        code={toAppError(rows.error).code}
+        actions={['retry']}
+        autoFocus
+        onAction={retryAll}
+      />
+    ) : loading ? (
+      <HomeSkeleton />
+    ) : (
+      <>
+        {failed.length ? (
+          <View style={{ paddingHorizontal: design.layout.gutter }}>
+            <FormMessage
+              testID="home-refresh-error"
+              tone="warning"
+              title={describeError(t, toAppError(failed[0]!.error)).title}
+              actions={
+                <Button
+                  testID="home-refresh-retry"
+                  size="sm"
+                  variant="secondary"
+                  label={t('common.retry')}
+                  onPress={retryAll}
+                />
+              }
+            />
+          </View>
+        ) : null}
+        {shelves.length ? (
+          shelves.map((shelf, shelfIndex) => {
+            const width = shelf.kind === 'poster' ? posterWidth : landscapeWidth;
+            return (
+              <Shelf
+                key={shelf.key}
+                testID={`home-row-${shelf.key}`}
+                memoryKey={`home-${shelf.key}`}
+                title={shelf.title}
+                data={shelf.items}
+                keyExtractor={(_, index) => shelf.itemKey(index)}
+                itemWidth={width}
+                artworkHeight={width / (shelf.kind === 'poster' ? aspect.poster : aspect.landscape)}
+                renderItem={({ index }) => shelf.render(index, shelfIndex === 0 && index === 0)}
+              />
+            );
+          })
+        ) : (
+          <EmptyState
+            testID="home-empty"
+            icon={Film}
+            title={t('states.empty.title')}
+            message={t('states.empty.message')}
+          />
+        )}
+      </>
+    );
+
+  if (design.isTV)
+    return (
+      <View testID="home-screen" style={{ flex: 1, backgroundColor: colors.background }}>
+        <TvHomeBackdrop store={store} />
+        <TvHomeInfo store={store} />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingBottom: design.layout.edgeVertical + design.space['3xl'],
+            gap: design.layout.sectionGap,
+          }}
+          snapToAlignment="item"
+          snapToItemPadding={0}>
+          {body}
+        </ScrollView>
+      </View>
+    );
 
   return (
     <View testID="home-screen" style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
         contentInsetAdjustmentBehavior="never"
         contentContainerStyle={{
-          paddingTop: design.isTV ? design.layout.edgeVertical : insets.top + design.space.lg,
           paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
           gap: design.layout.sectionGap,
-        }}
-        snapToAlignment={design.isTV ? 'item' : undefined}
-        snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: design.space.lg,
-            paddingHorizontal: design.layout.gutter,
-          }}>
-          <Avatar
-            name={account.displayName}
-            color={account.color}
-            size={design.px(design.isTV ? 44 : 48)}
-          />
-          <View style={{ flex: 1, gap: design.space.xxs }}>
-            <Text testID="home-greeting" variant="title" numberOfLines={1}>
-              {t('home.greeting', { name: account.displayName })}
-            </Text>
-            <Text variant="callout" tone="muted" numberOfLines={1}>
-              {rows.isFetching && rows.data
-                ? t('home.updating')
-                : t('home.server', {
-                    server: t('onboarding.serverChip', {
-                      name: account.serverName,
-                      url: displayServerUrl(account.serverUrl),
-                    }),
-                  })}
-            </Text>
+        }}>
+        <View>
+          {topPick ? (
+            <HandheldHomeHero featured={topPick} />
+          ) : loading ? (
+            <View style={{ height: design.layout.heroHeight }} />
+          ) : null}
+          <View
+            style={{
+              position: topPick || loading ? 'absolute' : 'relative',
+              top: insets.top + design.space.lg,
+              left: 0,
+              right: 0,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: design.space.md,
+              paddingHorizontal: design.layout.gutter,
+              paddingTop: topPick || loading ? 0 : insets.top + design.space.lg,
+            }}>
+            <Avatar name={account.displayName} color={account.color} size={design.px(36)} />
+            <View style={{ flex: 1 }}>
+              <Text testID="home-greeting" variant="subheading" numberOfLines={1}>
+                {t('home.greeting', { name: account.displayName })}
+              </Text>
+              <Text variant="caption" tone="muted" numberOfLines={1}>
+                {rows.isFetching && rows.data
+                  ? t('home.updating')
+                  : t('home.server', {
+                      server: t('onboarding.serverChip', {
+                        name: account.serverName,
+                        url: displayServerUrl(account.serverUrl),
+                      }),
+                    })}
+              </Text>
+            </View>
           </View>
         </View>
-        <HomeRows rows={rows} posterWidth={posterWidth} />
+        {body}
       </ScrollView>
     </View>
   );
 }
 
-function HomeRows({
-  rows,
-  posterWidth,
-}: {
-  rows: ReturnType<typeof useHomeRows>;
-  posterWidth: number;
-}) {
-  const { t } = useTranslation();
+function HomeSkeleton() {
   const design = useDesign();
-  const router = useRouter();
-  const artworkHeight = posterWidth / aspect.poster;
-
-  if (rows.data === undefined) {
-    if (rows.error)
-      return (
-        <ErrorState
-          testID="home-error"
-          code={toAppError(rows.error).code}
-          actions={['retry']}
-          onAction={() => void rows.refetch()}
-        />
-      );
-    return (
-      <View testID="home-loading" style={{ gap: design.layout.sectionGap }}>
-        {[0, 1].map((row) => (
-          <View
-            key={row}
-            style={{
-              flexDirection: 'row',
-              gap: design.layout.cardGap,
-              paddingHorizontal: design.layout.gutter,
-              overflow: 'hidden',
-            }}>
-            {Array.from({ length: 8 }, (_, index) => (
-              <PosterCardSkeleton key={index} width={posterWidth} />
-            ))}
-          </View>
-        ))}
-      </View>
-    );
-  }
-
-  const visible = rows.data.filter((row): row is Row & { items: Item[] } => !!row.items?.length);
   return (
-    <>
-      {rows.error ? (
-        <View style={{ paddingHorizontal: design.layout.gutter }}>
-          <FormMessage
-            testID="home-refresh-error"
-            tone="warning"
-            title={describeError(t, toAppError(rows.error)).title}
-            actions={
-              <Button
-                size="sm"
-                variant="secondary"
-                label={t('common.retry')}
-                onPress={() => void rows.refetch()}
-              />
-            }
-          />
+    <View testID="home-loading" style={{ gap: design.layout.sectionGap }}>
+      {(['landscape', 'poster'] as const).map((kind) => (
+        <View
+          key={kind}
+          style={{
+            flexDirection: 'row',
+            gap: design.layout.cardGap,
+            paddingHorizontal: design.layout.gutter,
+            overflow: 'hidden',
+          }}>
+          {Array.from({ length: 8 }, (_, index) =>
+            kind === 'poster' ? (
+              <PosterCardSkeleton key={index} width={design.layout.posterWidth} />
+            ) : (
+              <LandscapeCardSkeleton key={index} width={design.layout.landscapeWidth} />
+            )
+          )}
         </View>
-      ) : null}
-      {visible.length ? (
-        visible.map((row, rowIndex) => (
-          <Shelf
-            key={row.id ?? rowIndex}
-            testID={`home-row-${row.id}`}
-            memoryKey={`home-${row.id}`}
-            title={t(`home.rows.${rowKey(row.id)}`)}
-            data={row.items}
-            keyExtractor={(item, itemIndex) => item.workId ?? String(itemIndex)}
-            itemWidth={posterWidth}
-            artworkHeight={artworkHeight}
-            renderItem={({ item, index }) => (
-              <PosterCard
-                testID={`home-card-${row.id}-${index}`}
-                title={item.title ?? ''}
-                subtitle={item.year ? String(item.year) : undefined}
-                imageUri={item.posterUrl}
-                width={posterWidth}
-                hasTVPreferredFocus={rowIndex === 0 && index === 0}
-                onPress={() => router.push(titleHref(item))}
-              />
-            )}
-          />
-        ))
-      ) : (
-        <EmptyState
-          testID="home-empty"
-          icon={Film}
-          title={t('states.empty.title')}
-          message={t('states.empty.message')}
-        />
-      )}
-    </>
+      ))}
+    </View>
   );
 }

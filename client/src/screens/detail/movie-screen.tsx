@@ -1,30 +1,26 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Play } from 'lucide-react-native';
+import { useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useMovieDetail } from '@/browse/queries';
+import { ResumeProgress, resumeSeconds, TitleActions, usePlay } from '@/browse/title-actions';
+import { VersionPicker } from '@/browse/version-picker';
+import { VersionSummary } from '@/browse/version-summary';
 import { Hero } from '@/components/media/hero';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useFormat } from '@/i18n/format';
-import { playHref } from '@/navigation/routes';
 
-import {
-  DetailError,
-  DetailScroll,
-  HeroSkeleton,
-  routeNumber,
-  SkeletonSection,
-  useMovieDetail,
-} from './detail-parts';
+import { DetailError, DetailScroll, HeroSkeleton, routeNumber } from './detail-parts';
 
-/** Movie placeholder: live header; versions and more arrive with M4.1. */
+/** Movie: hero with logo, play/resume, versions and the watched toggle. */
 export function MovieScreen() {
   const { t } = useTranslation();
-  const router = useRouter();
   const format = useFormat();
+  const play = usePlay();
   const params = useLocalSearchParams<{ id: string }>();
   const tmdbId = routeNumber(params.id);
   const movie = useMovieDetail(tmdbId);
+  const [versionsOpen, setVersionsOpen] = useState(false);
 
   if (tmdbId === undefined || (movie.error && !movie.data))
     return <DetailError error={movie.error} onRetry={() => void movie.refetch()} />;
@@ -38,27 +34,59 @@ export function MovieScreen() {
           eyebrow={t('detail.movie')}
           title={title}
           backdropUri={data.backdropUrl}
+          logoUri={data.logoUrl}
           meta={[
             data.year ? String(data.year) : null,
             data.runtimeMinutes ? format.duration(data.runtimeMinutes * 60) : null,
-            data.genres?.slice(0, 2).join(', ') || null,
+            data.genres?.slice(0, 3).join(', ') || null,
           ].filter((part): part is string => !!part)}
-          badges={data.certification ? <Badge label={data.certification} /> : undefined}
+          badges={
+            <>
+              {data.certification ? (
+                <Badge testID="movie-certification" label={data.certification} variant="outline" />
+              ) : null}
+              {data.watch.played ? <Badge label={t('media.played')} variant="accent" /> : null}
+            </>
+          }
           overview={data.overview ?? undefined}
           actions={
-            <Button
-              testID="movie-play"
-              icon={Play}
-              label={t('common.play')}
-              hasTVPreferredFocus
-              onPress={() => router.push(playHref('preview', { workId: data.workId, title }))}
+            <TitleActions
+              testIDPrefix="movie"
+              workId={data.workId}
+              title={title}
+              watch={data.watch}
+              onVersions={() => setVersionsOpen(true)}
             />
-          }
-        />
+          }>
+          <ResumeProgress testID="movie-progress" watch={data.watch} />
+        </Hero>
       ) : (
         <HeroSkeleton />
       )}
-      <SkeletonSection title={t('common.versions')} testID="movie-versions" />
+      {data ? (
+        <VersionSummary
+          workId={data.workId}
+          currentReleaseId={data.watch.lastReleaseId}
+          onOpen={() => setVersionsOpen(true)}
+        />
+      ) : null}
+      <VersionPicker
+        open={versionsOpen}
+        onClose={() => setVersionsOpen(false)}
+        workId={data?.workId}
+        title={title}
+        currentReleaseId={data?.watch.lastReleaseId}
+        onPlay={(version) => {
+          setVersionsOpen(false);
+          if (data?.workId)
+            play({
+              workId: data.workId,
+              title,
+              releaseId: version.releaseId,
+              startSeconds: resumeSeconds(data.watch),
+            });
+        }}
+      />
     </DetailScroll>
   );
 }

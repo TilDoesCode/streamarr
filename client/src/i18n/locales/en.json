@@ -27,7 +27,9 @@
       "popular-series": "Popular series",
       "other": "Recommended"
     },
-    "updating": "Updating…"
+    "updating": "Updating…",
+    "continueWatching": "Continue watching",
+    "nextUp": "Next up"
   },
   "tabs": {
     "home": "Home",
@@ -43,17 +45,54 @@
     "label": "Search",
     "placeholder": "Movies and series",
     "promptTitle": "Find something to watch",
-    "promptMessage": "Search movies and series by title."
+    "promptMessage": "Search movies and series by title.",
+    "clear": "Clear search",
+    "filter": "Type",
+    "types": {
+      "any": "All",
+      "movie": "Movies",
+      "tv": "Series"
+    },
+    "recent": "Recent searches",
+    "clearRecent": "Clear"
   },
   "detail": {
     "movie": "Movie",
     "series": "Series",
     "seasons": "Seasons",
-    "moreLikeThis": "More like this"
+    "markPlayed": "Mark as watched",
+    "markUnplayed": "Mark as unwatched",
+    "markedPlayed": "“{title}” marked as watched",
+    "markedUnplayed": "“{title}” marked as unwatched",
+    "markFailed": "The watch state couldn’t be saved. Try again.",
+    "noEpisodesTitle": "No episodes yet",
+    "noEpisodesMessage": "This season has no episodes listed yet.",
+    "episodeTitle": "{series} · {code} · {title}",
+    "episodeVersions": "Versions of {title}",
+    "markEpisodePlayed": "Mark {title} as watched",
+    "markEpisodeUnplayed": "Mark {title} as unwatched",
+    "watchedCount": "{played} of {total} watched",
+    "next": {
+      "start": "Play {code}",
+      "resume": "Resume {code}",
+      "next": "Play {code}"
+    },
+    "upNextLine": "Up next: {code} · {title}",
+    "allWatched": "You’ve watched every episode.",
+    "seasonTag": "{title} · {played}/{total}"
   },
   "player": {
     "title": "Player",
-    "placeholder": "Playback isn’t available in this version yet."
+    "play": "Play",
+    "pause": "Pause",
+    "states": {
+      "queued": "Getting ready…",
+      "resolving": "Checking the version…",
+      "fallback": "Switching to another version…",
+      "repairing": "Repairing the download…",
+      "planning": "Choosing the best way to play…",
+      "starting": "Starting playback…"
+    }
   },
   "settings": {
     "account": {
@@ -768,6 +807,87 @@
       "subtitle": "Subtitles · {label}",
       "off": "Subtitles off",
       "delivery": "{codec} · {channels, select, none {} other {{channels} ch · }}{delivered}"
+    }
+  },
+  "versions": {
+    "title": "Versions",
+    "subtitle": "{title} · {count, plural, one {# version} other {# versions}}",
+    "incomplete": "{title} · some sources didn’t answer, the list may be incomplete",
+    "emptyTitle": "No versions found",
+    "emptyMessage": "There is no version of this title to play yet.",
+    "current": "Last played",
+    "local": {
+      "ready": "Instant",
+      "downloading": "Preparing"
+    },
+    "health": {
+      "ready": "Verified",
+      "degraded": "Degraded"
+    },
+    "bitrate": "≈ {mbps, number, ::.#} Mbit/s",
+    "age": "{days, plural, =0 {Today} one {# day old} other {# days old}}",
+    "predicted": "Expected on this device",
+    "method": {
+      "direct": "Direct play",
+      "remux": "Direct stream",
+      "transcode": "Transcode",
+      "unknown": "Unknown"
+    },
+    "openAll": "Show all {count, plural, one {# version} other {# versions}}",
+    "bitDepth": "{codec} {bits}-bit",
+    "audioLanguages": "Audio: {languages}",
+    "multiLanguage": "Several audio languages",
+    "subtitles": "Subtitles: {languages}",
+    "subtitlesUnknown": "Subtitles",
+    "proper": "Proper",
+    "repack": "Repack",
+    "seasonPack": "Season pack",
+    "reasons": {
+      "audio_codec_unknown": "audio format unknown",
+      "audio_codec_unsupported": "{codec} audio isn’t supported",
+      "audio_converted": "audio converted from {from} to {to}",
+      "audio_copied": "{codec} audio passed through",
+      "bit_depth_assumed": "bit depth assumed",
+      "bit_depth_unsupported": "{bitDepth}-bit video isn’t supported",
+      "bitrate_exceeds_limit": "bitrate above the {max} kbit/s limit",
+      "container_assumed": "container assumed ({container})",
+      "container_unsupported": "{container} container isn’t supported",
+      "direct_play": "plays the original file",
+      "dolby_vision_profile_unknown": "Dolby Vision profile unknown",
+      "dolby_vision_profile_unsupported": "Dolby Vision profile isn’t supported",
+      "hdr_unsupported": "{hdr} isn’t supported by this screen",
+      "resolution_assumed": "resolution assumed ({height}p)",
+      "resolution_exceeds_limit": "resolution above the {max}p limit",
+      "subtitle_burned_in": "subtitles burned in",
+      "subtitle_format_unsupported": "subtitle format isn’t supported",
+      "subtitle_not_deliverable": "subtitles can’t be delivered",
+      "transcoding_disabled": "the server doesn’t transcode",
+      "transcoding_not_allowed": "transcoding isn’t allowed for this profile",
+      "video_codec_not_remuxable": "video can’t be repackaged",
+      "video_codec_unknown": "video format unknown",
+      "video_codec_unsupported": "{codec} video isn’t supported",
+      "video_profile_unsupported": "video profile isn’t supported"
+    },
+    "languages": {
+      "de": "German",
+      "en": "English",
+      "fr": "French",
+      "es": "Spanish",
+      "it": "Italian",
+      "ja": "Japanese",
+      "ko": "Korean",
+      "zh": "Chinese",
+      "ru": "Russian",
+      "pt": "Portuguese",
+      "nl": "Dutch",
+      "sv": "Swedish",
+      "da": "Danish",
+      "no": "Norwegian",
+      "fi": "Finnish",
+      "pl": "Polish",
+      "tr": "Turkish",
+      "cs": "Czech",
+      "hu": "Hungarian"
     }
   }
 }

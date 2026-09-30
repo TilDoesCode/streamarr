@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { Image } from 'expo-image';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { END_OF_ROW, FocusGuide, type FocusGuideProps } from '@/components/focus';
@@ -10,12 +11,16 @@ import { useDesign } from '@/theme';
 export type HeroProps = {
   title: string;
   backdropUri?: string | null;
+  /** Title treatment (transparent PNG); the title text is the fallback. */
+  logoUri?: string | null;
   eyebrow?: string;
   /** Short facts joined with a middle dot: year, runtime, genres. */
   meta?: readonly string[];
   /** Inline badges after the meta line (age rating, 4K, HDR). */
   badges?: ReactNode;
   overview?: string;
+  /** Extra content between the overview and the actions (resume progress). */
+  children?: ReactNode;
   /** Buttons; grouped as one focus row that remembers the last focused action. */
   actions?: ReactNode;
   onActionsFocusEnter?: FocusGuideProps['onFocusEnter'];
@@ -26,10 +31,12 @@ export type HeroProps = {
 export function Hero({
   title,
   backdropUri,
+  logoUri,
   eyebrow,
   meta,
   badges,
   overview,
+  children,
   actions,
   onActionsFocusEnter,
   onActionsFocusLeave,
@@ -42,7 +49,7 @@ export function Hero({
     <View
       collapsable={false}
       scrollSnapAlign={design.isTV ? 'start' : undefined}
-      style={{ height: heroHeight }}>
+      style={{ minHeight: heroHeight, justifyContent: 'flex-end' }}>
       <Artwork uri={backdropUri} title={title} />
       <Scrim
         direction="down"
@@ -60,10 +67,9 @@ export function Hero({
       ) : null}
       <View
         style={{
-          position: 'absolute',
-          left: gutter,
-          right: gutter,
-          bottom: design.space['2xl'],
+          marginHorizontal: gutter,
+          marginBottom: design.space['2xl'],
+          paddingTop: heroHeight * 0.35,
           maxWidth: contentWidth,
           gap: design.space.sm,
         }}>
@@ -72,9 +78,7 @@ export function Hero({
             {eyebrow}
           </Text>
         ) : null}
-        <Text variant="display" numberOfLines={2}>
-          {title}
-        </Text>
+        <HeroTitle title={title} logoUri={logoUri} />
         {meta?.length || badges ? (
           <View
             style={{
@@ -96,6 +100,7 @@ export function Hero({
             {overview}
           </Text>
         ) : null}
+        {children}
         {actions ? (
           <FocusGuide
             remember
@@ -112,6 +117,45 @@ export function Hero({
           </FocusGuide>
         ) : null}
       </View>
+    </View>
+  );
+}
+
+/** The logo when it loads, else the title as display text (always the accessible name). */
+export function HeroTitle({
+  title,
+  logoUri,
+  logoHeight,
+}: {
+  title: string;
+  logoUri?: string | null;
+  logoHeight?: number;
+}) {
+  const design = useDesign();
+  const [failed, setFailed] = useState<string | null>(null);
+  const height = logoHeight ?? design.px(design.formFactor === 'phone' ? 72 : 96);
+  if (!logoUri || failed === logoUri)
+    return (
+      <Text variant="display" numberOfLines={2} role="heading">
+        {title}
+      </Text>
+    );
+  return (
+    <View
+      role="heading"
+      accessible
+      accessibilityLabel={title}
+      style={{ height, maxWidth: design.px(380) }}>
+      <Image
+        testID="hero-logo"
+        source={{ uri: logoUri }}
+        style={{ width: '100%', height: '100%' }}
+        contentFit="contain"
+        contentPosition="left"
+        transition={200}
+        recyclingKey={logoUri}
+        onError={() => setFailed(logoUri)}
+      />
     </View>
   );
 }

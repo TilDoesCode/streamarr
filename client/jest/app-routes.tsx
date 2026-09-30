@@ -1,5 +1,4 @@
 import AppLayout from '@/app/(app)/_layout';
-import PlayRoute from '@/app/(app)/play/[playbackId]';
 import MovieRoute from '@/app/(app)/(tabs)/(home,search)/movie/[id]';
 import SeriesRoute from '@/app/(app)/(tabs)/(home,search)/series/[id]/index';
 import SeasonRoute from '@/app/(app)/(tabs)/(home,search)/series/[id]/season/[n]';
@@ -36,7 +35,8 @@ export const appRoutes = {
   '(app)/(tabs)/(home,search)/movie/[id]': MovieRoute,
   '(app)/(tabs)/(home,search)/series/[id]/index': SeriesRoute,
   '(app)/(tabs)/(home,search)/series/[id]/season/[n]': SeasonRoute,
-  '(app)/play/[playbackId]': PlayRoute,
+  // The player needs native video modules; tests check the route and its params.
+  '(app)/play/[playbackId]': () => null,
   // The player lab needs native video modules; tests only need the route to exist.
   '(app)/dev/player': () => null,
   '(onboarding)/server': ServerRoute,

@@ -32,15 +32,23 @@ export type BadgeProps = {
   icon?: LucideIcon;
   /** Over artwork: adds a dark backing so the badge stays legible. */
   onMedia?: boolean;
+  testID?: string;
 };
 
 /** Compact, non-interactive label: quality (4K, HDR10), status (Ready, New), age rating. */
-export function Badge({ label, variant = 'neutral', icon: IconComponent, onMedia }: BadgeProps) {
+export function Badge({
+  label,
+  variant = 'neutral',
+  icon: IconComponent,
+  onMedia,
+  testID,
+}: BadgeProps) {
   const design = useDesign();
   const style = VARIANTS[variant];
   const iconSize = design.px(12);
   return (
     <View
+      testID={testID}
       style={{
         flexDirection: 'row',
         alignItems: 'center',

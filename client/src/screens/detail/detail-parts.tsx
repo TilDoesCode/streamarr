@@ -1,69 +1,17 @@
-import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useActiveAccount } from '@/accounts/accounts-provider';
-import { unwrap } from '@/api/client';
 import { toAppError } from '@/api/errors';
-import { FocusSection } from '@/components/focus';
 import { ErrorState } from '@/components/states/error-state';
-import { LoaderMotionContext } from '@/components/ui/loader-motion';
-import { LandscapeCardSkeleton, Skeleton, SkeletonText } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
-import { accountKey } from '@/query/keys';
+import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { colors, useDesign } from '@/theme';
 
 /** A positive TMDB id / season number from a route param, else undefined. */
 export function routeNumber(value: string | string[] | undefined): number | undefined {
   const number = Number(Array.isArray(value) ? value[0] : value);
   return Number.isInteger(number) && number >= 0 ? number : undefined;
-}
-
-export function useMovieDetail(tmdbId: number | undefined) {
-  const { account, client } = useActiveAccount();
-  return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/movies/{tmdbId}', {
-          params: { path: { tmdbId: tmdbId ?? 0 } },
-          signal,
-        })
-      ),
-    enabled: tmdbId !== undefined,
-  });
-}
-
-export function useSeriesDetail(tmdbId: number | undefined) {
-  const { account, client } = useActiveAccount();
-  return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'series', tmdbId),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/series/{tmdbId}', {
-          params: { path: { tmdbId: tmdbId ?? 0 } },
-          signal,
-        })
-      ),
-    enabled: tmdbId !== undefined,
-  });
-}
-
-export function useSeasonDetail(tmdbId: number | undefined, season: number | undefined) {
-  const { account, client } = useActiveAccount();
-  return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, 'season', season),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}', {
-          params: { path: { tmdbId: tmdbId ?? 0, seasonNumber: season ?? 0 } },
-          signal,
-        })
-      ),
-    enabled: tmdbId !== undefined && season !== undefined,
-  });
 }
 
 /** Scrolling page of a title screen (TV: item snapping like the other pages). */
@@ -123,33 +71,6 @@ export function HeroSkeleton() {
   );
 }
 
-/** Section whose content arrives with the browse screens (M4.1): heading plus a still skeleton row. */
-export function SkeletonSection({ title, testID }: { title: string; testID?: string }) {
-  const design = useDesign();
-  return (
-    <FocusSection testID={testID}>
-      <View style={{ gap: design.space.md }}>
-        <Text variant="heading" style={{ paddingHorizontal: design.layout.gutter }}>
-          {title}
-        </Text>
-        <View
-          style={{
-            flexDirection: 'row',
-            gap: design.layout.cardGap,
-            paddingHorizontal: design.layout.gutter,
-            overflow: 'hidden',
-          }}>
-          <LoaderMotionContext value={false}>
-            {[0, 1, 2, 3].map((index) => (
-              <LandscapeCardSkeleton key={index} />
-            ))}
-          </LoaderMotionContext>
-        </View>
-      </View>
-    </FocusSection>
-  );
-}
-
 /** Full-screen error of a title screen: retry (transient failures), or go back. */
 export function DetailError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   const router = useRouter();
@@ -159,6 +80,7 @@ export function DetailError({ error, onRetry }: { error: unknown; onRetry: () =>
       <ErrorState
         testID="detail-error"
         code={appError?.code ?? 'not_found'}
+        params={appError?.params}
         actions={appError?.isTransient ? ['retry', 'back'] : ['back']}
         autoFocus
         onAction={(action) => {

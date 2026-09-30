@@ -169,7 +169,7 @@ it('connects, rejects a wrong password and signs in', async () => {
   await user.press(screen.getByTestId('sign-in-submit'));
   expect(await screen.findByText('Hi, Anna')).toBeOnTheScreen();
   expect(router.getPathname()).toBe('/');
-  expect(await screen.findByText('Trending movies')).toBeOnTheScreen();
+  expect(await screen.findByTestId('home-row-trending-movies')).toBeOnTheScreen();
   expect(store.active()).toMatchObject({ username: 'anna', signedIn: true });
 });
 

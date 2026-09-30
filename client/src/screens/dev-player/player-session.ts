@@ -38,6 +38,10 @@ export type SessionOptions = {
   engineOptions?: EngineOptions;
   preferences: PlaybackPreferences;
   variant: VariantCase;
+  /** Start position in seconds (browse: resume or start over). */
+  startSeconds?: number;
+  /** Lab diagnostics (decoder log via logcat); off for normal playback. */
+  diagnostics?: boolean;
 };
 
 /** One row of the comparison table. */
@@ -112,12 +116,20 @@ export class PlayerSession {
   }
 
   async start(): Promise<void> {
-    const { client, variant, profile, preferences } = this.options;
+    const { client, variant, profile, preferences, startSeconds = 0 } = this.options;
     const began = Date.now();
     try {
       const created = await startPlayback(
         client,
-        { workId: variant.workId, releaseId: variant.releaseId, device: profile, preferences },
+        {
+          workId: variant.workId,
+          releaseId: variant.releaseId,
+          startPositionTicks: startSeconds
+            ? Math.round(startSeconds * TICKS_PER_SECOND)
+            : undefined,
+          device: profile,
+          preferences,
+        },
         this.abort.signal
       );
       const ready = await waitForPlayback(
@@ -133,10 +145,10 @@ export class PlayerSession {
         this.changed();
         return;
       }
-      await this.attach(ready, 0);
-      void reportProgress(client, ready, 'start', 0, 0).catch(() => undefined);
+      await this.attach(ready, startSeconds);
+      void reportProgress(client, ready, 'start', startSeconds, 0).catch(() => undefined);
       this.timers.push(setInterval(() => this.heartbeat(), HEARTBEAT_MS));
-      if (Platform.OS === 'android')
+      if (Platform.OS === 'android' && this.options.diagnostics !== false)
         this.timers.push(setInterval(() => void this.pollCodecs(), 2000));
     } catch (error) {
       if (this.closed) return;

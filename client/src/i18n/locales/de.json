@@ -27,7 +27,9 @@
       "popular-series": "Beliebte Serien",
       "other": "Empfohlen"
     },
-    "updating": "Wird aktualisiert …"
+    "updating": "Wird aktualisiert …",
+    "continueWatching": "Weiterschauen",
+    "nextUp": "Als Nächstes"
   },
   "tabs": {
     "home": "Start",
@@ -43,17 +45,54 @@
     "label": "Suche",
     "placeholder": "Filme und Serien",
     "promptTitle": "Finde etwas zum Anschauen",
-    "promptMessage": "Suche Filme und Serien nach Titel."
+    "promptMessage": "Suche Filme und Serien nach Titel.",
+    "clear": "Suche löschen",
+    "filter": "Art",
+    "types": {
+      "any": "Alle",
+      "movie": "Filme",
+      "tv": "Serien"
+    },
+    "recent": "Letzte Suchen",
+    "clearRecent": "Löschen"
   },
   "detail": {
     "movie": "Film",
     "series": "Serie",
     "seasons": "Staffeln",
-    "moreLikeThis": "Ähnliche Titel"
+    "markPlayed": "Als gesehen markieren",
+    "markUnplayed": "Als ungesehen markieren",
+    "markedPlayed": "„{title}“ als gesehen markiert",
+    "markedUnplayed": "„{title}“ als ungesehen markiert",
+    "markFailed": "Der Status konnte nicht gespeichert werden. Versuch es noch einmal.",
+    "noEpisodesTitle": "Noch keine Folgen",
+    "noEpisodesMessage": "Für diese Staffel sind noch keine Folgen eingetragen.",
+    "episodeTitle": "{series} · {code} · {title}",
+    "episodeVersions": "Versionen von {title}",
+    "markEpisodePlayed": "{title} als gesehen markieren",
+    "markEpisodeUnplayed": "{title} als ungesehen markieren",
+    "watchedCount": "{played} von {total} gesehen",
+    "next": {
+      "start": "{code} abspielen",
+      "resume": "{code} fortsetzen",
+      "next": "{code} abspielen"
+    },
+    "upNextLine": "Als Nächstes: {code} · {title}",
+    "allWatched": "Du hast alle Folgen gesehen.",
+    "seasonTag": "{title} · {played}/{total}"
   },
   "player": {
     "title": "Player",
-    "placeholder": "Die Wiedergabe ist in dieser Version noch nicht verfügbar."
+    "play": "Abspielen",
+    "pause": "Pause",
+    "states": {
+      "queued": "Wird vorbereitet…",
+      "resolving": "Version wird geprüft…",
+      "fallback": "Wechsel zu einer anderen Version…",
+      "repairing": "Download wird repariert…",
+      "planning": "Beste Wiedergabe wird gewählt…",
+      "starting": "Wiedergabe startet…"
+    }
   },
   "settings": {
     "account": {
@@ -768,6 +807,87 @@
       "subtitle": "Untertitel · {label}",
       "off": "Untertitel aus",
       "delivery": "{codec} · {channels, select, none {} other {{channels} Kan. · }}{delivered}"
+    }
+  },
+  "versions": {
+    "title": "Versionen",
+    "subtitle": "{title} · {count, plural, one {# Version} other {# Versionen}}",
+    "incomplete": "{title} · einige Quellen haben nicht geantwortet, die Liste ist evtl. unvollständig",
+    "emptyTitle": "Keine Versionen gefunden",
+    "emptyMessage": "Für diesen Titel gibt es noch keine abspielbare Version.",
+    "current": "Zuletzt gespielt",
+    "local": {
+      "ready": "Sofort",
+      "downloading": "Wird vorbereitet"
+    },
+    "health": {
+      "ready": "Geprüft",
+      "degraded": "Eingeschränkt"
+    },
+    "bitrate": "≈ {mbps, number, ::.#} Mbit/s",
+    "age": "{days, plural, =0 {Heute} one {# Tag alt} other {# Tage alt}}",
+    "predicted": "Voraussichtlich auf diesem Gerät",
+    "method": {
+      "direct": "Direkte Wiedergabe",
+      "remux": "Direkt-Stream",
+      "transcode": "Transkodierung",
+      "unknown": "Unbekannt"
+    },
+    "openAll": "{count, plural, one {# Version} other {Alle # Versionen}} anzeigen",
+    "bitDepth": "{codec} {bits} Bit",
+    "audioLanguages": "Audio: {languages}",
+    "multiLanguage": "Mehrere Audiosprachen",
+    "subtitles": "Untertitel: {languages}",
+    "subtitlesUnknown": "Untertitel",
+    "proper": "Proper",
+    "repack": "Repack",
+    "seasonPack": "Staffelpaket",
+    "reasons": {
+      "audio_codec_unknown": "Audioformat unbekannt",
+      "audio_codec_unsupported": "{codec}-Audio wird nicht unterstützt",
+      "audio_converted": "Audio wird von {from} in {to} umgewandelt",
+      "audio_copied": "{codec}-Audio wird durchgereicht",
+      "bit_depth_assumed": "Farbtiefe angenommen",
+      "bit_depth_unsupported": "{bitDepth}-Bit-Video wird nicht unterstützt",
+      "bitrate_exceeds_limit": "Bitrate über dem Limit von {max} kbit/s",
+      "container_assumed": "Container angenommen ({container})",
+      "container_unsupported": "{container}-Container wird nicht unterstützt",
+      "direct_play": "spielt die Originaldatei",
+      "dolby_vision_profile_unknown": "Dolby-Vision-Profil unbekannt",
+      "dolby_vision_profile_unsupported": "Dolby-Vision-Profil wird nicht unterstützt",
+      "hdr_unsupported": "{hdr} wird von diesem Bildschirm nicht unterstützt",
+      "resolution_assumed": "Auflösung angenommen ({height}p)",
+      "resolution_exceeds_limit": "Auflösung über dem Limit von {max}p",
+      "subtitle_burned_in": "Untertitel werden eingebrannt",
+      "subtitle_format_unsupported": "Untertitelformat wird nicht unterstützt",
+      "subtitle_not_deliverable": "Untertitel können nicht geliefert werden",
+      "transcoding_disabled": "der Server transkodiert nicht",
+      "transcoding_not_allowed": "Transkodieren ist für dieses Profil nicht erlaubt",
+      "video_codec_not_remuxable": "Video kann nicht neu verpackt werden",
+      "video_codec_unknown": "Videoformat unbekannt",
+      "video_codec_unsupported": "{codec}-Video wird nicht unterstützt",
+      "video_profile_unsupported": "Videoprofil wird nicht unterstützt"
+    },
+    "languages": {
+      "de": "Deutsch",
+      "en": "Englisch",
+      "fr": "Französisch",
+      "es": "Spanisch",
+      "it": "Italienisch",
+      "ja": "Japanisch",
+      "ko": "Koreanisch",
+      "zh": "Chinesisch",
+      "ru": "Russisch",
+      "pt": "Portugiesisch",
+      "nl": "Niederländisch",
+      "sv": "Schwedisch",
+      "da": "Dänisch",
+      "no": "Norwegisch",
+      "fi": "Finnisch",
+      "pl": "Polnisch",
+      "tr": "Türkisch",
+      "cs": "Tschechisch",
+      "hu": "Ungarisch"
     }
   }
 }

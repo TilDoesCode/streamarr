@@ -1,6 +1,9 @@
 import { CircleAlert, Lock, WifiOff, type LucideIcon } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
+import { describeError } from '@/api/error-text';
+import type { ErrorParams } from '@/api/errors';
+
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { colors } from '@/theme';
@@ -19,6 +22,8 @@ const ICONS: Record<string, LucideIcon> = {
 export type ErrorStateProps = {
   /** Stable server/client error code; unknown codes fall back to a generic message. */
   code?: string;
+  /** Server error params (age-gate reason, other device) for a more specific message. */
+  params?: ErrorParams;
   /** Actions in priority order; the first is rendered as the primary button. */
   actions?: readonly ErrorAction[];
   onAction?: (action: ErrorAction) => void;
@@ -29,21 +34,21 @@ export type ErrorStateProps = {
 
 export function ErrorState({
   code = 'unknown',
+  params,
   actions = ['retry'],
   onAction,
   autoFocus = false,
   testID,
 }: ErrorStateProps) {
-  const { t, i18n } = useTranslation();
-  const known = i18n.exists(`errors.codes.${code}.title`);
-  const key = (known ? code : 'unknown') as 'unknown';
+  const { t } = useTranslation();
+  const text = describeError(t, { code, params });
   return (
     <EmptyState
       testID={testID}
       icon={ICONS[code] ?? CircleAlert}
       iconColor={colors.danger.DEFAULT}
-      title={t(`errors.codes.${key}.title`)}
-      message={t(`errors.codes.${key}.message`)}
+      title={text.title}
+      message={text.message}
       detail={t('errors.codeLabel', { code })}
       actions={
         onAction && actions.length

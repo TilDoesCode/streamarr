@@ -1,31 +1,37 @@
-import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Search } from 'lucide-react-native';
+import { Search, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
-import { unwrap } from '@/api/client';
 import { toAppError } from '@/api/errors';
-import type { components } from '@/api/schema';
+import { useSearch, type CatalogItem, type SearchType } from '@/browse/queries';
+import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { PosterCard } from '@/components/media/poster-card';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { PosterCardSkeleton } from '@/components/ui/skeleton';
+import { Tag } from '@/components/ui/tag';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+import {
+  addRecentSearch,
+  clearRecentSearches,
+  removeRecentSearch,
+  useRecentSearches,
+} from '@/lib/recent-searches';
 import { titleHref } from '@/navigation/routes';
-import { accountKey } from '@/query/keys';
 import { colors, useDesign } from '@/theme';
 
 const MIN_QUERY = 2;
 const DEBOUNCE_MS = 350;
-// Server maximum (ViewerCatalogService.MaxSearchResults); more is rejected as invalid_query.
-const SEARCH_LIMIT = 20;
+const TYPES: readonly SearchType[] = ['any', 'movie', 'tv'];
 
-type SearchItem = components['schemas']['CatalogItemDto'];
+type SearchItem = CatalogItem;
 
 function itemKey(item: SearchItem, index = 0): string {
   return item.workId ?? `${item.tmdbId}-${index}`;
@@ -47,29 +53,21 @@ function useDebounced(value: string, delay: number): string {
   return debounced;
 }
 
-/** Search tab: title search as you type (M4.1 adds filters and recent searches). */
+/** Search tab: debounced title search with a type filter and this profile's recent searches. */
 export function SearchScreen() {
   const { t } = useTranslation();
   const design = useDesign();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { account, client } = useActiveAccount();
+  const { account } = useActiveAccount();
   const [text, setText] = useState('');
+  const [type, setType] = useState<SearchType>('any');
   const query = useDebounced(text.trim(), DEBOUNCE_MS);
+  const recent = useRecentSearches(account.id);
   // Window width until the first layout (TV: the rail takes part of it).
   const [width, setWidth] = useState(design.window.width);
-  const results = useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'search', query),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/search', {
-          params: { query: { q: query, type: 'any', limit: SEARCH_LIMIT } },
-          signal,
-        })
-      ).then((response) => response.items ?? []),
-    enabled: query.length >= MIN_QUERY,
-    placeholderData: (previous) => previous,
-  });
+  const results = useSearch(query, type, query.length >= MIN_QUERY);
+  const remember = () => addRecentSearch(account.id, text);
 
   const { gutter, cardGap, posterWidth } = design.layout;
   const columns = Math.max(2, Math.floor((width - 2 * gutter + cardGap) / (posterWidth + cardGap)));
@@ -93,26 +91,89 @@ export function SearchScreen() {
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"
+        onSubmitEditing={remember}
         initialFocus={Platform.OS === 'web'}
+        trailing={
+          text && !design.isTV ? (
+            <IconButton
+              testID="search-clear"
+              icon={X}
+              size="sm"
+              variant="ghost"
+              accessibilityLabel={t('search.clear')}
+              onPress={() => setText('')}
+            />
+          ) : undefined
+        }
       />
+      <FocusGuide
+        remember
+        trap={END_OF_ROW}
+        role="radiogroup"
+        aria-label={t('search.filter')}
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
+        {TYPES.map((value) => (
+          <Tag
+            key={value}
+            testID={`search-type-${value}`}
+            role="radio"
+            aria-checked={type === value}
+            label={t(`search.types.${value}`)}
+            selected={type === value}
+            onPress={() => setType(value)}
+          />
+        ))}
+      </FocusGuide>
     </View>
   );
+
+  const recentSearches = recent.length ? (
+    <View testID="search-recent" style={{ paddingHorizontal: gutter, gap: design.space.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text variant="heading">{t('search.recent')}</Text>
+        <Button
+          testID="search-recent-clear"
+          size="sm"
+          variant="ghost"
+          label={t('search.clearRecent')}
+          onPress={() => clearRecentSearches(account.id)}
+        />
+      </View>
+      <FocusGuide
+        remember
+        trap={END_OF_ROW}
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
+        {recent.map((item, index) => (
+          <Tag
+            key={item}
+            testID={`search-recent-${index}`}
+            label={item}
+            onPress={() => setText(item)}
+            onLongPress={() => removeRecentSearch(account.id, item)}
+          />
+        ))}
+      </FocusGuide>
+    </View>
+  ) : null;
 
   const body = () => {
     if (!active)
       return (
-        <EmptyState
-          testID="search-idle"
-          icon={Search}
-          title={t('search.promptTitle')}
-          message={t('search.promptMessage')}
-        />
+        recentSearches ?? (
+          <EmptyState
+            testID="search-idle"
+            icon={Search}
+            title={t('search.promptTitle')}
+            message={t('search.promptMessage')}
+          />
+        )
       );
     if (results.error && !results.data)
       return (
         <ErrorState
           testID="search-error"
           code={toAppError(results.error).code}
+          params={toAppError(results.error).params}
           actions={toAppError(results.error).isTransient ? ['retry'] : []}
           onAction={() => void results.refetch()}
         />
@@ -173,10 +234,22 @@ export function SearchScreen() {
                   key={itemKey(item, index)}
                   testID={`search-result-${index}`}
                   title={item.title ?? ''}
-                  subtitle={item.year ? String(item.year) : undefined}
+                  subtitle={[
+                    t(
+                      item.mediaType === 'tv' || item.mediaType === 'series'
+                        ? 'detail.series'
+                        : 'detail.movie'
+                    ),
+                    item.year ? String(item.year) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                   imageUri={item.posterUrl}
                   width={cardWidth}
-                  onPress={() => router.push(titleHref(item))}
+                  onPress={() => {
+                    remember();
+                    router.push(titleHref(item));
+                  }}
                 />
               );
             })}

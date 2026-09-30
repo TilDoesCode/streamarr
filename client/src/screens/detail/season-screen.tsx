@@ -1,24 +1,21 @@
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Tv } from 'lucide-react-native';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EpisodeList } from '@/browse/episode-list';
+import { useSeasonDetail } from '@/browse/queries';
 import { FocusSection } from '@/components/focus';
-import { EpisodeRow } from '@/components/media/episode-row';
-import { EmptyState } from '@/components/states/empty-state';
-import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
+import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { playHref } from '@/navigation/routes';
-import { aspect, useDesign } from '@/theme';
+import { useDesign } from '@/theme';
 
-import { DetailError, DetailScroll, routeNumber, useSeasonDetail } from './detail-parts';
+import { DetailError, DetailScroll, routeNumber } from './detail-parts';
 
-/** Season placeholder: the live episode list; episodes open the player placeholder. */
+/** One season as its own page (deep links): the episode list with played state and progress. */
 export function SeasonScreen() {
   const { t } = useTranslation();
   const design = useDesign();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; n: string }>();
   const tmdbId = routeNumber(params.id);
@@ -60,61 +57,16 @@ export function SeasonScreen() {
         )}
       </View>
       <FocusSection>
-        <View style={{ paddingHorizontal: design.layout.gutter, gap: design.space.sm }}>
-          {data ? (
-            episodes.length ? (
-              episodes.map((episode, index) => (
-                <EpisodeRow
-                  key={episode.episodeNumber}
-                  testID={`episode-${episode.episodeNumber}`}
-                  episodeNumber={episode.episodeNumber}
-                  title={
-                    episode.title ?? t('media.episodeNumber', { episode: episode.episodeNumber })
-                  }
-                  overview={episode.overview ?? undefined}
-                  stillUri={episode.stillUrl}
-                  runtimeMinutes={episode.runtimeMinutes ?? undefined}
-                  airDate={episode.airDate ?? undefined}
-                  played={episode.watch.played}
-                  progress={(episode.watch.progressPercent ?? 0) / 100 || undefined}
-                  hasTVPreferredFocus={index === 0}
-                  onPress={() =>
-                    router.push(
-                      playHref('preview', {
-                        workId: episode.workId,
-                        title: episode.title ?? seasonTitle,
-                      })
-                    )
-                  }
-                />
-              ))
-            ) : (
-              <EmptyState
-                icon={Tv}
-                title={t('states.empty.title')}
-                message={t('states.empty.message')}
-              />
-            )
-          ) : (
-            [0, 1, 2].map((index) => <EpisodeRowSkeleton key={index} />)
-          )}
+        <View style={{ paddingHorizontal: design.layout.gutter }}>
+          <EpisodeList
+            episodes={data ? episodes : undefined}
+            seriesTitle={data?.seriesTitle ?? ''}
+            seasonNumber={seasonNumber}
+            takeFocus
+            columns={design.formFactor === 'desktop-web' && design.window.width >= 1280 ? 2 : 1}
+          />
         </View>
       </FocusSection>
     </DetailScroll>
-  );
-}
-
-function EpisodeRowSkeleton() {
-  const design = useDesign();
-  const thumb = design.layout.episodeThumbWidth;
-  return (
-    <View style={{ flexDirection: 'row', gap: design.space.lg, padding: design.space.sm }}>
-      <Skeleton width={thumb} aspectRatio={aspect.landscape} />
-      <View style={{ flex: 1, gap: design.space.xs, justifyContent: 'center' }}>
-        <SkeletonText width="50%" variant="heading" />
-        <SkeletonText width="30%" variant="caption" />
-        <SkeletonText width="90%" />
-      </View>
-    </View>
   );
 }
