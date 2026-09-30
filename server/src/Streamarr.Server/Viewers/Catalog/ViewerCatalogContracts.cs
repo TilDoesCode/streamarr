@@ -21,6 +21,15 @@ public sealed record CatalogItemDto
 
     /// <summary>TMDB vote average (0–10).</summary>
     public float? VoteAverage { get; init; }
+
+    /// <summary>Vivid accent from the artwork (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
+    public string? Tint { get; init; }
+
+    /// <summary>Deep shade from the artwork (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
+    public string? Tint2 { get; init; }
+
+    /// <summary>Best known version by quality (from the last version lookup); null when none is known yet.</summary>
+    public CatalogSpecDto? Spec { get; init; }
 }
 
 public sealed record CatalogSearchResponse
@@ -70,6 +79,11 @@ public sealed record CatalogMovieResponse
     public string? BackdropUrl { get; init; }
     public string? LogoUrl { get; init; }
     public string? TrailerUrl { get; init; }
+    /// <summary>Vivid accent from the artwork (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
+    public string? Tint { get; init; }
+
+    /// <summary>Deep shade from the artwork (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
+    public string? Tint2 { get; init; }
     public IReadOnlyList<TmdbPerson> People { get; init; } = [];
     public required WatchStateResponse Watch { get; init; }
     public required ContentAccessResponse Access { get; init; }
@@ -96,6 +110,11 @@ public sealed record CatalogSeriesResponse
     public string? BackdropUrl { get; init; }
     public string? LogoUrl { get; init; }
     public string? TrailerUrl { get; init; }
+    /// <summary>Vivid accent from the artwork (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
+    public string? Tint { get; init; }
+
+    /// <summary>Deep shade from the artwork (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
+    public string? Tint2 { get; init; }
     public IReadOnlyList<TmdbPerson> People { get; init; } = [];
 
     /// <summary>Regular seasons (specials excluded).</summary>
@@ -172,6 +191,11 @@ public sealed record CatalogSeasonResponse
     public string? Overview { get; init; }
     public string? AirDate { get; init; }
     public string? PosterUrl { get; init; }
+    /// <summary>Vivid accent of the series (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
+    public string? Tint { get; init; }
+
+    /// <summary>Deep shade of the series (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
+    public string? Tint2 { get; init; }
     public required IReadOnlyList<CatalogEpisodeDto> Episodes { get; init; }
 
     /// <summary>Present only with <c>?availability=true</c>.</summary>
@@ -198,6 +222,9 @@ public sealed record CatalogEpisodeDto
 
     /// <summary>Playable versions (season packs included); null unless availability was requested and checked.</summary>
     public int? VersionCount { get; init; }
+
+    /// <summary>Best known version by quality (from the last version lookup); null when none is known yet.</summary>
+    public CatalogSpecDto? Spec { get; init; }
 }
 
 /// <summary>How fresh the version overlay is.</summary>

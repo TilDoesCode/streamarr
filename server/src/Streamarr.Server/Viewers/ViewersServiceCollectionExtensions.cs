@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Streamarr.Server.Modules;
 using Streamarr.Server.Options;
+using Streamarr.Server.Services;
 using Streamarr.Server.Viewers.Access;
+using Streamarr.Server.Viewers.Artwork;
 using Streamarr.Server.Viewers.Auth;
 using Streamarr.Server.Viewers.Catalog;
 using Streamarr.Server.Viewers.Email;
@@ -34,6 +36,18 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<ViewerContentPolicy>();
         services.AddSingleton<ViewerVersionCache>();
         services.AddSingleton<PlaybackPredictor>();
+        services.AddSingleton<ArtworkPaletteService>();
+        services.AddHostedService(sp => sp.GetRequiredService<ArtworkPaletteService>());
+        services.AddHttpClient(ArtworkPaletteService.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(20);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Streamarr");
+        })
+            .ConfigurePrimaryHttpMessageHandler(OutboundHttpHandlerFactory.CreateDirect)
+            .RemoveAllLoggers();
+        services.AddSingleton<CatalogSpecStore>();
+        services.AddHostedService(sp => sp.GetRequiredService<CatalogSpecStore>());
+        services.AddSingleton<CatalogDecorations>();
         services.AddSingleton<ViewerCatalogService>();
         services.AddSingleton<IPlaybackResolver, ServerPlaybackResolver>();
         services.AddSingleton<IPlaybackMedia, ServerPlaybackMedia>();

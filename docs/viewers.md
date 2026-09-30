@@ -146,6 +146,10 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
 | Versions | The releases of a movie or episode the server would play, best first, with parsed attributes (resolution, codec, HDR incl. Dolby Vision, audio, languages, size, estimated bitrate, age, health, local pre-download) and the recommended one. | One indexer search per movie or season, cached |
 
 - Rows and search results are TMDB data: a title can appear there and still have no versions.
+- Every title carries a **palette** (`tint` accent, `tint2` deep shade) extracted from its artwork in
+  the background and cached; the first listing of a new title may come without it.
+- List items carry a small **spec summary** (resolution, HDR, codec, audio) of the best version
+  known from the last version lookup; it stays empty until someone opened the title's versions.
 - When TMDB cannot be reached, the catalog says so (`503 catalog_unavailable`, retry) instead of
   answering "not found" or an empty list; home rows leave out only the rows that failed.
 - Versions never contain NZB links, indexer names or keys.

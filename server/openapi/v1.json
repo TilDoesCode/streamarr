@@ -13300,6 +13300,14 @@
             "description": "Playable versions (season packs included); null unless availability was requested and checked.",
             "format": "int32",
             "nullable": true
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogSpecDto"
+              }
+            ],
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -13356,6 +13364,24 @@
             "type": "number",
             "description": "TMDB vote average (0–10).",
             "format": "float",
+            "nullable": true
+          },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
+            "nullable": true
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogSpecDto"
+              }
+            ],
             "nullable": true
           }
         },
@@ -13441,6 +13467,16 @@
           },
           "trailerUrl": {
             "type": "string",
+            "nullable": true
+          },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
             "nullable": true
           },
           "people": {
@@ -13614,6 +13650,16 @@
             "type": "string",
             "nullable": true
           },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent of the series (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
+            "nullable": true
+          },
           "episodes": {
             "type": "array",
             "items": {
@@ -13763,6 +13809,16 @@
             "type": "string",
             "nullable": true
           },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
+            "nullable": true
+          },
           "people": {
             "type": "array",
             "items": {
@@ -13795,6 +13851,33 @@
           }
         },
         "additionalProperties": false
+      },
+      "CatalogSpecDto": {
+        "type": "object",
+        "properties": {
+          "resolution": {
+            "type": "string",
+            "description": "`8K`, `4K`, `1080p`, `720p`, `576p`, `480p`, … or `SD`.",
+            "nullable": true
+          },
+          "hdr": {
+            "type": "string",
+            "description": "`DV`, `HDR10+`, `HDR10`, `HLG`; null = SDR or not stated.",
+            "nullable": true
+          },
+          "videoCodec": {
+            "type": "string",
+            "description": "`AV1`, `HEVC`, `H.264`, `VC-1`, `MPEG-2`, `XviD` or `DivX`.",
+            "nullable": true
+          },
+          "audio": {
+            "type": "string",
+            "description": "`Atmos`, a channel layout such as `7.1`, `5.1`, `2.0`, else the codec (e.g. `DTS`).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Display labels of the best version by quality; device-independent (it describes what exists)."
       },
       "CatalogVersionsResponse": {
         "required": [
@@ -15548,6 +15631,24 @@
           "lastActivityAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent of the series (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
+            "nullable": true
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogSpecDto"
+              }
+            ],
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -21883,6 +21984,24 @@
           "playedAt": {
             "type": "string",
             "format": "date-time",
+            "nullable": true
+          },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent of the title (series for episodes) (`#RRGGBB`, at least 3:1 against `#0A0C12`); continue watching only, null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade of the title (series for episodes) (`#RRGGBB`, white text reaches 4.5:1 on it); continue watching only, null until computed.",
+            "nullable": true
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogSpecDto"
+              }
+            ],
             "nullable": true
           }
         },

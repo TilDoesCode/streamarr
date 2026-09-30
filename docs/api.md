@@ -957,10 +957,28 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
 
 **Items and rows.** A `CatalogItem` is a card: `workId` (`tmdb-movie-603` or `tmdb-tv-1396`),
 `mediaType` (`movie` or `series`), `tmdbId`, `title`, `originalTitle`, `year`, `overview`,
-`posterUrl`, `backdropUrl`, `voteAverage`. `search` accepts `type=movie`, `tv` (alias `series`)
+`posterUrl`, `backdropUrl`, `voteAverage`, `tint`, `tint2` and `spec`. `search` accepts `type=movie`, `tv` (alias `series`)
 or `any`. `discover` rows are `trending-movies`, `trending-series`, `popular-movies`,
 `popular-series` (in that order; a row without any title the viewer may watch is left out).
 Rows are TMDB data only: a title in a row may have no versions.
+
+**Palette (`tint`, `tint2`).** Two `#RRGGBB` colours extracted from the title artwork (backdrop,
+poster when the backdrop has none): `tint` is the vivid accent, adjusted to at least 3:1 contrast
+against `#0A0C12`; `tint2` is a deep shade on which white text reaches 4.5:1. They are computed in
+the background the first time a title is listed (only for images on the TMDB image host), cached
+per image URL in the database, and `null` until then — a later request carries them. They appear
+on catalog items, movie and series details, season responses (the series palette; episodes
+inherit it), and on the continue-watching (`/viewer/watch/resume`) and next-up items.
+
+**Spec summary (`spec`).** On list items (catalog items, season episodes, continue watching, next
+up): `{ resolution, hdr, videoCodec, audio }` display labels of the best version by quality
+(`qualityRank` 1, dead releases skipped) — e.g. `{ "resolution": "4K", "hdr": "DV", "videoCodec":
+"HEVC", "audio": "Atmos" }`. `resolution` is `8K`/`4K`/`1080p`/`720p`/…/`SD`; `hdr` `DV`, `HDR10+`,
+`HDR10`, `HLG` or `null`; `videoCodec` `AV1`, `HEVC`, `H.264`, …; `audio` `Atmos`, the channel
+layout (`7.1`, `5.1`, `2.0`) or else the codec. It is device-independent and comes from the last
+version lookup of that work (a versions request, a season `availability=true` or a playback) —
+lists never search the indexers, so `spec` is `null` for titles nobody has looked up yet. A series
+item shows the best of its seasons.
 
 **Details.** `movies/{id}`: `title`, `originalTitle`, `year`, `overview`, `tagline`, `genres`,
 `runtimeMinutes`, `certification` (the value the age gate uses), `voteAverage`, `posterUrl`,

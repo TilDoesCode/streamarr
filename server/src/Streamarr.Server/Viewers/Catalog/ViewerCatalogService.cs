@@ -5,6 +5,7 @@ using Streamarr.Server.Controllers;
 using Streamarr.Server.Persistence.Entities;
 using Streamarr.Server.Services;
 using Streamarr.Server.Viewers.Access;
+using Streamarr.Server.Viewers.Artwork;
 using Streamarr.Server.Viewers.Watch;
 
 using Streamarr.Server.Viewers.Playback;
@@ -38,6 +39,8 @@ public sealed class ViewerCatalogService(
     PlaybackPredictor predictor,
     IPlaybackMedia media,
     IReleaseStore releaseStore,
+    ArtworkPaletteService palettes,
+    CatalogSpecStore specs,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -101,8 +104,11 @@ public sealed class ViewerCatalogService(
         var key = new WorkKey($"tmdb-movie-{tmdbId}", WorkKind.Movie, tmdbId, null, null);
         var access = Gate(viewer, key.WorkId, movie.OfficialRating);
         var state = (await watch.GetAsync(viewer.Id, [key.WorkId], ct)).FirstOrDefault();
+        var palette = palettes.For(movie.BackdropUrl, movie.PosterUrl);
         return new CatalogMovieResponse
         {
+            Tint = palette?.Tint,
+            Tint2 = palette?.Tint2,
             WorkId = key.WorkId,
             TmdbId = tmdbId,
             ImdbId = movie.ImdbId,
@@ -134,8 +140,11 @@ public sealed class ViewerCatalogService(
         var states = await watch.GetSeriesAsync(viewer.Id, seriesWorkId, ct);
         var regular = catalog.Seasons.Where(s => s.SeasonNumber > 0).ToList();
         var (next, incomplete) = await NextEpisodeAsync(viewer.Id, catalog, states, ct);
+        var palette = palettes.For(series.BackdropUrl, series.PosterUrl);
         return new CatalogSeriesResponse
         {
+            Tint = palette?.Tint,
+            Tint2 = palette?.Tint2,
             WorkId = seriesWorkId,
             TmdbId = tmdbId,
             ImdbId = series.ImdbId,
@@ -212,8 +221,11 @@ public sealed class ViewerCatalogService(
 
         var summary = catalog.Seasons.FirstOrDefault(s => s.SeasonNumber == seasonNumber);
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        var palette = palettes.For(catalog.Series.BackdropUrl, catalog.Series.PosterUrl);
         return new CatalogSeasonResponse
         {
+            Tint = palette?.Tint,
+            Tint2 = palette?.Tint2,
             SeriesWorkId = seriesWorkId,
             SeriesTitle = catalog.Series.Title,
             WorkId = TvCatalogService.SeasonWorkId(tmdbId, seasonNumber),
@@ -238,6 +250,7 @@ public sealed class ViewerCatalogService(
                     StillUrl = episode.StillUrl,
                     VoteAverage = episode.CommunityRating,
                     Watch = states.TryGetValue(key.WorkId, out var state) ? ViewerMappings.State(state) : ViewerMappings.EmptyState(key),
+                    Spec = specs.Get(key.WorkId),
                     VersionCount = versions is null
                         ? null
                         : versions.Episodes.GetValueOrDefault(episode.EpisodeNumber, []).Count(r => !IsDead(r.Release)),
@@ -268,6 +281,7 @@ public sealed class ViewerCatalogService(
                 var lookup = await versionCache.GetAsync(
                     $"movie:{movieId}", refresh, _ => MovieVersionsAsync(movie, key.WorkId), v => !v.Incomplete, ct);
                 (releases, runtime, packEpisodes) = (lookup.Value.Releases, movie.RuntimeMinutes, 1);
+                specs.Record(key.WorkId, BestSpec(releases));
                 (checkedAt, fromCache, incomplete) = (lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete);
                 break;
             }
@@ -384,8 +398,32 @@ public sealed class ViewerCatalogService(
             .GroupBy(a => a.ReleaseId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Any(a => a.State == "ready") ? "ready" : "downloading", StringComparer.Ordinal);
 
-    private Task<CachedLookup<SeasonVersions>> SeasonVersionsAsync(int tmdbId, int seasonNumber, bool refresh, CancellationToken ct)
-        => versionCache.GetAsync($"season:{tmdbId}:{seasonNumber}", refresh, _ => ComputeSeasonAsync(tmdbId, seasonNumber), v => !v.Incomplete, ct);
+    private async Task<CachedLookup<SeasonVersions>> SeasonVersionsAsync(int tmdbId, int seasonNumber, bool refresh, CancellationToken ct)
+    {
+        var lookup = await versionCache.GetAsync($"season:{tmdbId}:{seasonNumber}", refresh, _ => ComputeSeasonAsync(tmdbId, seasonNumber), v => !v.Incomplete, ct);
+        CatalogSpecDto? seasonBest = null;
+        foreach (var (episode, releases) in lookup.Value.Episodes)
+        {
+            var best = BestSpec(releases);
+            specs.Record(WorkKey.ForEpisode(tmdbId, seasonNumber, episode).WorkId, best);
+            if (best is not null && (seasonBest is null || CatalogSpecMapper.Score(best) > CatalogSpecMapper.Score(seasonBest)))
+                seasonBest = best;
+        }
+        specs.Record(TvCatalogService.SeasonWorkId(tmdbId, seasonNumber), seasonBest);
+        return lookup;
+    }
+
+    /// <summary>Spec labels of the first version by quality that is not known dead.</summary>
+    private CatalogSpecDto? BestSpec(IReadOnlyList<ParsedRelease> releases)
+    {
+        foreach (var (release, parsed) in releases)
+        {
+            var health = healthCache.Get(release.ReleaseId) ?? release.Health;
+            if (health != ReleaseHealth.Dead)
+                return CatalogSpecMapper.From(VersionMapper.Map(release, parsed, 1, health, null, null, null));
+        }
+        return null;
+    }
 
     private async Task<MovieVersions> MovieVersionsAsync(TmdbMatch movie, string workId)
     {
@@ -582,19 +620,26 @@ public sealed class ViewerCatalogService(
 
     private static ParsedRelease Parse(Release release) => new(release, ReleaseParser.Parse(release.Title));
 
-    private static CatalogItemDto Item(TmdbMatch match) => new()
+    private CatalogItemDto Item(TmdbMatch match)
     {
-        WorkId = WorkId(match),
-        MediaType = MediaTypeName(match.MediaType),
-        TmdbId = match.TmdbId,
-        Title = match.Title,
-        OriginalTitle = match.OriginalTitle,
-        Year = match.Year,
-        Overview = match.Overview,
-        PosterUrl = match.PosterUrl,
-        BackdropUrl = match.BackdropUrl,
-        VoteAverage = match.CommunityRating,
-    };
+        var palette = palettes.For(match.BackdropUrl, match.PosterUrl);
+        return new CatalogItemDto
+        {
+            WorkId = WorkId(match),
+            MediaType = MediaTypeName(match.MediaType),
+            TmdbId = match.TmdbId,
+            Title = match.Title,
+            OriginalTitle = match.OriginalTitle,
+            Year = match.Year,
+            Overview = match.Overview,
+            PosterUrl = match.PosterUrl,
+            BackdropUrl = match.BackdropUrl,
+            VoteAverage = match.CommunityRating,
+            Tint = palette?.Tint,
+            Tint2 = palette?.Tint2,
+            Spec = specs.Get(WorkId(match)),
+        };
+    }
 
     private static string WorkId(TmdbMatch match)
         => match.MediaType == MediaType.Tv ? TvCatalogService.SeriesWorkId(match.TmdbId) : $"tmdb-movie-{match.TmdbId}";

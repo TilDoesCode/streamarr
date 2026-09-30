@@ -297,6 +297,31 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task ListItems_CarryTheSpecOfTheBestKnownVersion_AndPaletteFields()
+    {
+        using var viewer = await ViewerAsync("spec");
+
+        await OkAsync(viewer, $"{Base}/works/tmdb-movie-501/versions");
+        var season = await OkAsync(viewer, $"{Base}/series/600/seasons/1?availability=true");
+        var search = await OkAsync(viewer, $"{Base}/search?q=catalog");
+
+        var items = search.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("tmdbId").GetInt32());
+        Assert.Equal(("4K", "DV", "HEVC", "Atmos"), Spec(items[501]));
+        Assert.Equal(("1080p", null, "H.264", "5.1"), Spec(items[600]));
+        Assert.Equal(("1080p", null, "H.264", "5.1"), Spec(season.GetProperty("episodes")[2]));
+        foreach (var item in items.Values)
+            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null), (item.GetProperty("tint").ValueKind, item.GetProperty("tint2").ValueKind));
+        Assert.Equal(JsonValueKind.Null, season.GetProperty("tint").ValueKind);
+    }
+
+    private static (string?, string?, string?, string?) Spec(JsonElement item)
+    {
+        var spec = item.GetProperty("spec");
+        return (spec.GetProperty("resolution").GetString(), spec.GetProperty("hdr").GetString(),
+            spec.GetProperty("videoCodec").GetString(), spec.GetProperty("audio").GetString());
+    }
+
+    [Fact]
     public async Task MovieVersions_AreRankedParsedAndCached_UntilRefreshed()
     {
         using var viewer = await ViewerAsync("versions");

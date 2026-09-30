@@ -32,6 +32,8 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<ViewerOneTimeCodeEntity> ViewerOneTimeCodes => Set<ViewerOneTimeCodeEntity>();
     public DbSet<ViewerRecoveryCodeEntity> ViewerRecoveryCodes => Set<ViewerRecoveryCodeEntity>();
     public DbSet<ViewerWatchStateEntity> ViewerWatchStates => Set<ViewerWatchStateEntity>();
+    public DbSet<ArtworkPaletteEntity> ArtworkPalettes => Set<ArtworkPaletteEntity>();
+    public DbSet<CatalogSpecSummaryEntity> CatalogSpecSummaries => Set<CatalogSpecSummaryEntity>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -180,6 +182,9 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        model.Entity<ArtworkPaletteEntity>(e => e.HasKey(x => x.ImageUrl));
+        model.Entity<CatalogSpecSummaryEntity>(e => e.HasKey(x => x.WorkId));
+
         // Unix milliseconds keep expiry and ordering predicates translatable on SQLite.
         var unixMilliseconds = new ValueConverter<DateTimeOffset, long>(
             value => value.ToUnixTimeMilliseconds(),
@@ -188,6 +193,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
         [
             typeof(ViewerConfigEntity), typeof(ViewerEntity), typeof(ViewerSessionEntity),
             typeof(ViewerOneTimeCodeEntity), typeof(ViewerRecoveryCodeEntity), typeof(ViewerWatchStateEntity),
+            typeof(ArtworkPaletteEntity), typeof(CatalogSpecSummaryEntity),
         ];
         foreach (var table in viewerTables)
         {

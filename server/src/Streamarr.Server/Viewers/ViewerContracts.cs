@@ -1,3 +1,5 @@
+using Streamarr.Server.Viewers.Catalog;
+
 namespace Streamarr.Server.Viewers;
 
 public sealed record ViewerAuthOptionsResponse
@@ -207,6 +209,15 @@ public sealed record WatchStateResponse
     public string? LastReleaseId { get; init; }
     public DateTimeOffset? LastPlayedAt { get; init; }
     public DateTimeOffset? PlayedAt { get; init; }
+
+    /// <summary>Vivid accent of the title (series for episodes) (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); continue watching only, null until computed.</summary>
+    public string? Tint { get; init; }
+
+    /// <summary>Deep shade of the title (series for episodes) (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); continue watching only, null until computed.</summary>
+    public string? Tint2 { get; init; }
+
+    /// <summary>Best known version by quality (from the last version lookup); continue watching only; null when none is known yet.</summary>
+    public CatalogSpecDto? Spec { get; init; }
 }
 
 public sealed record WatchHistoryResponse
@@ -237,6 +248,15 @@ public sealed record NextUpItemResponse
     public long? DurationTicks { get; init; }
     public required string LastWatchedWorkId { get; init; }
     public required DateTimeOffset LastActivityAt { get; init; }
+
+    /// <summary>Vivid accent of the series (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
+    public string? Tint { get; init; }
+
+    /// <summary>Deep shade of the series (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
+    public string? Tint2 { get; init; }
+
+    /// <summary>Best known version by quality (from the last version lookup); null when none is known yet.</summary>
+    public CatalogSpecDto? Spec { get; init; }
 }
 
 public sealed record NextUpResponse

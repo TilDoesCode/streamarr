@@ -4,6 +4,7 @@ using Streamarr.Server.Contracts;
 using Streamarr.Server.Modules;
 using Streamarr.Server.Viewers.Access;
 using Streamarr.Server.Viewers.Auth;
+using Streamarr.Server.Viewers.Catalog;
 using Streamarr.Server.Viewers.Playback;
 using Streamarr.Server.Viewers.Watch;
 
@@ -22,7 +23,8 @@ public sealed class ViewerWatchController(
     NextUpService nextUp,
     ViewerAccountService accounts,
     ViewerContentPolicy policy,
-    ViewerPlaybackService playbacks) : ControllerBase
+    ViewerPlaybackService playbacks,
+    CatalogDecorations decorations) : ControllerBase
 {
     private static readonly HashSet<string> Events = new(StringComparer.Ordinal) { "start", "progress", "stop" };
 
@@ -82,7 +84,7 @@ public sealed class ViewerWatchController(
     [HttpGet("resume")]
     [ProducesResponseType(typeof(IReadOnlyList<WatchStateResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<WatchStateResponse>>> Resume([FromQuery] int limit = 20, CancellationToken ct = default)
-        => Ok((await watch.ResumeAsync(User.ViewerId(), limit, ct)).Select(ViewerMappings.State).ToList());
+        => Ok(await decorations.ResumeAsync((await watch.ResumeAsync(User.ViewerId(), limit, ct)).Select(ViewerMappings.State).ToList(), ct));
 
     /// <summary>Hide a work from continue watching without changing its played state.</summary>
     [HttpDelete("resume/{workId}")]
@@ -105,7 +107,7 @@ public sealed class ViewerWatchController(
             series = key.SeriesWorkId ?? throw ViewerProblem.BadRequest("invalid_work_id", "'seriesWorkId' must be a TV work id.");
         }
         var result = await nextUp.GetAsync(User.ViewerId(), series, limit, ct);
-        return Ok(new NextUpResponse { Items = result.Items.Select(ViewerMappings.NextUp).ToList(), Incomplete = result.Incomplete });
+        return Ok(new NextUpResponse { Items = result.Items.Select(decorations.NextUp).ToList(), Incomplete = result.Incomplete });
     }
 
     /// <summary>Everything the viewer has played or started, most recent first.</summary>

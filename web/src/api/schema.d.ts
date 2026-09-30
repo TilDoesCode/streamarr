@@ -9128,6 +9128,7 @@ export interface components {
              * @description Playable versions (season packs included); null unless availability was requested and checked.
              */
             versionCount?: number | null;
+            spec?: components["schemas"]["CatalogSpecDto"] | null;
         };
         /** @description A movie or series card for search results and home rows (TMDB data only, no availability). */
         CatalogItemDto: {
@@ -9149,6 +9150,11 @@ export interface components {
              * @description TMDB vote average (0–10).
              */
             voteAverage?: number | null;
+            /** @description Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
+            tint?: string | null;
+            /** @description Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
+            tint2?: string | null;
+            spec?: components["schemas"]["CatalogSpecDto"] | null;
         };
         CatalogMovieResponse: {
             workId: string | null;
@@ -9172,6 +9178,10 @@ export interface components {
             backdropUrl?: string | null;
             logoUrl?: string | null;
             trailerUrl?: string | null;
+            /** @description Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
+            tint?: string | null;
+            /** @description Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
+            tint2?: string | null;
             people?: components["schemas"]["TmdbPerson"][] | null;
             watch: components["schemas"]["WatchStateResponse"];
             access: components["schemas"]["ContentAccessResponse"];
@@ -9220,6 +9230,10 @@ export interface components {
             overview?: string | null;
             airDate?: string | null;
             posterUrl?: string | null;
+            /** @description Vivid accent of the series (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
+            tint?: string | null;
+            /** @description Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
+            tint2?: string | null;
             episodes: components["schemas"]["CatalogEpisodeDto"][] | null;
             availability?: components["schemas"]["CatalogAvailabilityDto"] | null;
         };
@@ -9266,6 +9280,10 @@ export interface components {
             backdropUrl?: string | null;
             logoUrl?: string | null;
             trailerUrl?: string | null;
+            /** @description Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
+            tint?: string | null;
+            /** @description Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
+            tint2?: string | null;
             people?: components["schemas"]["TmdbPerson"][] | null;
             /**
              * Format: int32
@@ -9280,6 +9298,17 @@ export interface components {
             seasons: components["schemas"]["CatalogSeasonSummaryDto"][] | null;
             watch: components["schemas"]["SeriesWatchSummaryDto"];
             access: components["schemas"]["ContentAccessResponse"];
+        };
+        /** @description Display labels of the best version by quality; device-independent (it describes what exists). */
+        CatalogSpecDto: {
+            /** @description `8K`, `4K`, `1080p`, `720p`, `576p`, `480p`, … or `SD`. */
+            resolution?: string | null;
+            /** @description `DV`, `HDR10+`, `HDR10`, `HLG`; null = SDR or not stated. */
+            hdr?: string | null;
+            /** @description `AV1`, `HEVC`, `H.264`, `VC-1`, `MPEG-2`, `XviD` or `DivX`. */
+            videoCodec?: string | null;
+            /** @description `Atmos`, a channel layout such as `7.1`, `5.1`, `2.0`, else the codec (e.g. `DTS`). */
+            audio?: string | null;
         };
         CatalogVersionsResponse: {
             workId: string | null;
@@ -9836,6 +9865,11 @@ export interface components {
             lastWatchedWorkId: string | null;
             /** Format: date-time */
             lastActivityAt: string;
+            /** @description Vivid accent of the series (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
+            tint?: string | null;
+            /** @description Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
+            tint2?: string | null;
+            spec?: components["schemas"]["CatalogSpecDto"] | null;
         };
         NextUpResponse: {
             items: components["schemas"]["NextUpItemResponse"][] | null;
@@ -11980,6 +12014,11 @@ export interface components {
             lastPlayedAt?: string | null;
             /** Format: date-time */
             playedAt?: string | null;
+            /** @description Vivid accent of the title (series for episodes) (`#RRGGBB`, at least 3:1 against `#0A0C12`); continue watching only, null until computed. */
+            tint?: string | null;
+            /** @description Deep shade of the title (series for episodes) (`#RRGGBB`, white text reaches 4.5:1 on it); continue watching only, null until computed. */
+            tint2?: string | null;
+            spec?: components["schemas"]["CatalogSpecDto"] | null;
         };
         WatchWorkIdsRequest: {
             /** @description Movie/episode ids; for played/unplayed also season (`tmdb-tv-1-s02`) or series (`tmdb-tv-1`) ids. */

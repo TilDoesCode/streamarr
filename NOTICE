@@ -100,3 +100,6 @@ as NuGet package dependencies for SMTP delivery of viewer emails.
 
 qrcode.react (https://github.com/zpao/qrcode.react, ISC) is used as an npm
 dependency of the management UI to render authenticator setup QR codes.
+
+SkiaSharp (https://github.com/mono/SkiaSharp, MIT; bundles Skia, BSD-3-Clause) is
+used as a NuGet package dependency to decode artwork for per-title colour palettes.
