@@ -17,12 +17,12 @@ import SignInRoute from '@/app/(onboarding)/sign-in/index';
 import SecondFactorRoute from '@/app/(onboarding)/sign-in/second-factor';
 import ProfilesRoute from '@/app/(onboarding)/profiles';
 import ServerRoute from '@/app/(onboarding)/server';
-import { WebShell } from '@/navigation/web-shell';
+import { LargeShell } from '@/navigation/large-shell';
 
-// Unit tests render the headless web shell: NativeTabs needs the native tab host.
+// Unit tests render the headless large-screen shell (the jest window is tablet-sized): NativeTabs needs the native tab host.
 export const appRoutes = {
   '(app)/_layout': AppLayout,
-  '(app)/(tabs)/_layout': WebShell,
+  '(app)/(tabs)/_layout': LargeShell,
   '(app)/(tabs)/(home)/_layout': { default: HomeLayout, unstable_settings: homeSettings },
   '(app)/(tabs)/(home)/index': HomeRoute,
   '(app)/(tabs)/(search)/_layout': { default: SearchLayout, unstable_settings: searchSettings },

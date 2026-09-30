@@ -187,17 +187,27 @@ export type FocusLiftProps = {
   radius?: number;
   /** Title tint for the focus glow (Aurora); defaults to the neutral accent glow. */
   tint?: string | null;
+  /** Overrides the kind's focus scale (large-shell cards that must stay clear of their neighbours). */
+  scale?: number;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 };
 
 /** Spring lift + white ring + tinted glow for the nearest Focusable (TV focus, web hover and keyboard focus, press). */
-export function FocusLift({ kind = 'card', radius = 0, tint, style, children }: FocusLiftProps) {
+export function FocusLift({
+  kind = 'card',
+  radius = 0,
+  tint,
+  scale,
+  style,
+  children,
+}: FocusLiftProps) {
   const { focus, pressed, hover } = useFocusState();
   const design = useDesign();
   const reduced = useReducedMotion();
   const liftScale =
-    kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1;
+    scale ??
+    (kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1);
   const pressedScale = design.focus.pressedScale;
   const hoverWeight = Platform.OS === 'web' ? 1 : 0;
 

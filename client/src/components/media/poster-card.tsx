@@ -2,9 +2,11 @@ import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
-import { CardCaption, PlayedMark } from '@/components/media/card-parts';
+import { CardCaption, PlayedMark, useCardScale } from '@/components/media/card-parts';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress-bar';
+import type { CatalogSpec } from '@/components/spec';
+import { useShell } from '@/shell/use-shell';
 import { aspect, useDesign } from '@/theme';
 
 export type PosterCardProps = Omit<FocusableProps, 'children'> & {
@@ -16,6 +18,10 @@ export type PosterCardProps = Omit<FocusableProps, 'children'> & {
   played?: boolean;
   badge?: string;
   width?: number;
+  /** Signal spec summary (large shell). */
+  spec?: CatalogSpec | null;
+  /** Title tint for the focus glow. */
+  tint?: string | null;
 };
 
 export function PosterCard({
@@ -26,13 +32,17 @@ export function PosterCard({
   played = false,
   badge,
   width,
+  spec,
+  tint,
   style,
   ...props
 }: PosterCardProps) {
   const design = useDesign();
   const cardWidth = width ?? design.layout.posterWidth;
   const height = cardWidth / aspect.poster;
-  const radius = design.radius.md;
+  const shell = useShell();
+  const radius = shell.large ? shell.s(20) : design.radius.md;
+  const scale = useCardScale(cardWidth);
   const inset = design.space.sm;
   return (
     <Focusable
@@ -40,7 +50,7 @@ export function PosterCard({
       accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
       style={[{ width: cardWidth }, style]}
       {...props}>
-      <FocusLift kind="card" radius={radius}>
+      <FocusLift kind="card" radius={radius} tint={tint} scale={scale}>
         <View
           style={{
             width: cardWidth,
@@ -69,7 +79,10 @@ export function PosterCard({
         title={title}
         subtitle={subtitle}
         artworkHeight={height}
-        revealOnFocus={design.isTV}
+        scale={scale}
+        spec={spec}
+        maxSpec={2}
+        revealOnFocus={design.isTV && !shell.large}
       />
     </Focusable>
   );

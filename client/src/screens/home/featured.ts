@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
+import type { CatalogSpec } from '@/components/spec';
+
 /** What the home hero shows: the focused card on TV, the top pick elsewhere. */
 export type Featured = {
   key: string;
@@ -13,9 +15,13 @@ export type Featured = {
   /** Episode line of continue watching / next up. */
   detail?: string;
   progress?: number;
+  tint?: string | null;
+  tint2?: string | null;
+  spec?: CatalogSpec | null;
 };
 
-const DELAY_MS = 250;
+// The ambient backdrop debounces again (150 ms); the hero itself settles quickly.
+const DELAY_MS = 150;
 
 function sameFeatured(a: Featured, b: Featured): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof Featured)[]);
@@ -27,6 +33,8 @@ export class FeaturedStore {
   private current: Featured | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private listeners = new Set<() => void>();
+  /** Something was focused or hovered; defaults no longer replace it. */
+  private chosen = false;
 
   get = () => this.current;
 
@@ -40,17 +48,28 @@ export class FeaturedStore {
   set(item: Featured, immediate = false) {
     clearTimeout(this.timer);
     const apply = () => {
-      if (this.current && sameFeatured(this.current, item)) return;
-      this.current = item;
-      for (const listener of this.listeners) listener();
+      this.chosen = true;
+      this.replace(item);
     };
     if (immediate) apply();
     else this.timer = setTimeout(apply, DELAY_MS);
   }
 
+  /** The first card's title: shown until something else is featured, kept current while it loads. */
+  lead(item: Featured) {
+    if (this.chosen && this.current?.key !== item.key) return;
+    this.replace(item);
+  }
+
   /** Sets a default only while nothing was featured yet. */
   initial(item: Featured | undefined) {
-    if (item && !this.current) this.set(item, true);
+    if (item && !this.current) this.replace(item);
+  }
+
+  private replace(item: Featured) {
+    if (this.current && sameFeatured(this.current, item)) return;
+    this.current = item;
+    for (const listener of this.listeners) listener();
   }
 
   dispose() {

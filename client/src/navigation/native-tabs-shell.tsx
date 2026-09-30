@@ -8,7 +8,7 @@ import { TABS } from './tabs';
 
 const android = Platform.OS === 'android';
 
-/** Platform tab bar: Liquid Glass on iOS 26+ (sidebar on iPad), top tab bar on tvOS, Material bar on Android. */
+/** Phone/Apple TV tab bar: Liquid Glass on iOS 26+, top tab bar on tvOS, Aurora-styled Material bar on Android. */
 export function NativeTabsShell() {
   const { t } = useTranslation();
   return (
@@ -23,9 +23,9 @@ export function NativeTabsShell() {
         default: { color: colors.foreground.muted },
         selected: { color: colors.foreground.DEFAULT },
       }}
-      // iOS keeps the system material (Liquid Glass); Android gets the dark surface.
-      backgroundColor={android ? colors.surface.DEFAULT : undefined}
-      indicatorColor={android ? colors.accent.muted : undefined}
+      // iOS keeps the system material (Liquid Glass); Android gets Aurora's solid glass and a glass pill.
+      backgroundColor={android ? colors.glass.solid : undefined}
+      indicatorColor={android ? colors.glass.strong : undefined}
       rippleColor={android ? colors.muted : undefined}>
       {TABS.map((tab) => (
         <NativeTabs.Trigger

@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { View, type TextStyle } from 'react-native';
 
 import { END_OF_ROW, FocusGuide, type FocusGuideProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
@@ -126,17 +126,21 @@ export function HeroTitle({
   title,
   logoUri,
   logoHeight,
+  logoWidth,
+  textStyle,
 }: {
   title: string;
   logoUri?: string | null;
   logoHeight?: number;
+  logoWidth?: number;
+  textStyle?: TextStyle;
 }) {
   const design = useDesign();
   const [failed, setFailed] = useState<string | null>(null);
   const height = logoHeight ?? design.px(design.formFactor === 'phone' ? 72 : 96);
   if (!logoUri || failed === logoUri)
     return (
-      <Text variant="display" numberOfLines={2} role="heading">
+      <Text variant="display" numberOfLines={2} role="heading" style={textStyle}>
         {title}
       </Text>
     );
@@ -145,7 +149,7 @@ export function HeroTitle({
       role="heading"
       accessible
       accessibilityLabel={title}
-      style={{ height, maxWidth: design.px(380) }}>
+      style={{ height, maxWidth: logoWidth ?? design.px(380) }}>
       <Image
         testID="hero-logo"
         source={{ uri: logoUri }}

@@ -26,23 +26,37 @@ export type AvatarProps = {
   color: number;
   size: number;
   dimmed?: boolean;
+  /** Circle instead of the rounded square (shell rail). */
+  round?: boolean;
 };
 
-export function Avatar({ name, color, size, dimmed = false }: AvatarProps) {
+export function Avatar({ name, color, size, dimmed = false, round = false }: AvatarProps) {
   const design = useDesign();
+  const radius = round ? size / 2 : design.radius.lg * (size / design.px(64));
   return (
     <View
       aria-hidden
       style={{
         width: size,
         height: size,
-        borderRadius: design.radius.lg * (size / design.px(64)),
+        borderRadius: radius,
         borderCurve: 'continuous',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: avatarColor(color),
-        opacity: dimmed ? 0.45 : 1,
+        backgroundColor: dimmed ? colors.surface.raised : avatarColor(color),
       }}>
+      {/* Dimmed (signed out): only the colour fades, the initials keep full contrast. */}
+      {dimmed ? (
+        <View
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: radius,
+            backgroundColor: avatarColor(color),
+            opacity: 0.35,
+          }}
+        />
+      ) : null}
       <Text
         style={{
           fontSize: size * 0.4,

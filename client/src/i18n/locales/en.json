@@ -745,7 +745,7 @@
       "tintsOff": "Tints not extracted yet",
       "clear": "Clear backdrop",
       "glassMode": "Glass mode on this device: {mode}",
-      "glassBody": "Surfaces blur what lies behind them.",
+      "glassBody": "Surfaces blur what lies behind them where the platform can (web, iOS); Android TV uses a solid translucent surface.",
       "intensity": {
         "subtle": "Subtle",
         "regular": "Regular",

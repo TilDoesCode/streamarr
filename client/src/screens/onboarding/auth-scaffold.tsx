@@ -6,11 +6,15 @@ import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AmbientBackdrop } from '@/components/ambient';
+
 import { displayServerUrl } from '@/api/server-url';
 import { FocusGuide } from '@/components/focus';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { ShellDesign } from '@/shell/shell-design';
+import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
 export type AuthScaffoldProps = {
@@ -23,21 +27,42 @@ export type AuthScaffoldProps = {
 };
 
 /** Onboarding step layout. Handheld/web: one centred column. TV: title left, form top-right (clear of the IME). */
-export function AuthScaffold({ title, subtitle, server, children, testID }: AuthScaffoldProps) {
+export function AuthScaffold(props: AuthScaffoldProps) {
+  return (
+    <ShellDesign>
+      <AuthLayout {...props} />
+    </ShellDesign>
+  );
+}
+
+function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldProps) {
   const design = useDesign();
   const { t } = useTranslation();
   useScreenTitle(title);
   const router = useRouter();
-  const logo = design.px(design.isTV ? 56 : 48);
+  const { large } = useShell();
+  const split = design.isTV || large;
+  const logo = design.px(split ? 56 : 48);
+  const back =
+    !design.isTV && router.canGoBack() ? (
+      <IconButton
+        icon={ArrowLeft}
+        variant="ghost"
+        accessibilityLabel={t('common.back')}
+        onPress={() => router.back()}
+        style={{ alignSelf: 'flex-start', marginLeft: -design.space.sm }}
+      />
+    ) : null;
   const heading = (
     <View style={{ gap: design.space.md }}>
+      {split ? back : null}
       <Image
         source={require('@/assets/images/splash-icon.png')}
         style={{ width: logo, height: logo }}
         contentFit="contain"
         accessibilityIgnoresInvertColors
       />
-      <Text variant={design.isTV ? 'display' : 'title'}>{title}</Text>
+      <Text variant={split ? 'display' : 'title'}>{title}</Text>
       {subtitle ? (
         <Text variant="body" tone="muted">
           {subtitle}
@@ -47,8 +72,8 @@ export function AuthScaffold({ title, subtitle, server, children, testID }: Auth
     </View>
   );
 
-  if (design.isTV) {
-    // Heading and form start high on the screen: the TV keyboard covers the lower half.
+  if (split) {
+    // One large-screen layout: heading left, form right, both high on the screen (clear of the TV keyboard).
     const top = design.layout.edgeVertical + design.px(40);
     return (
       <View
@@ -60,9 +85,11 @@ export function AuthScaffold({ title, subtitle, server, children, testID }: Auth
           paddingHorizontal: design.layout.gutter,
           backgroundColor: colors.background,
         }}>
+        <AmbientBackdrop />
         <View style={{ width: '42%', paddingTop: top }}>{heading}</View>
         <ScrollView
           style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             paddingTop: top,
@@ -81,6 +108,7 @@ export function AuthScaffold({ title, subtitle, server, children, testID }: Auth
 
   return (
     <SafeAreaView testID={testID} style={{ flex: 1, backgroundColor: colors.background }}>
+      <AmbientBackdrop />
       <ScrollView
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
@@ -96,15 +124,7 @@ export function AuthScaffold({ title, subtitle, server, children, testID }: Auth
             alignSelf: 'center',
             gap: design.space['2xl'],
           }}>
-          {router.canGoBack() ? (
-            <IconButton
-              icon={ArrowLeft}
-              variant="ghost"
-              accessibilityLabel={t('common.back')}
-              onPress={() => router.back()}
-              style={{ alignSelf: 'flex-start', marginLeft: -design.space.sm }}
-            />
-          ) : null}
+          {back}
           {heading}
           <View style={{ gap: design.space.lg }}>{children}</View>
         </View>

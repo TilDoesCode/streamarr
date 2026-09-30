@@ -9,6 +9,7 @@ import { useActiveAccount } from '@/accounts/accounts-provider';
 import { toAppError } from '@/api/errors';
 import { useSearch, type CatalogItem, type SearchType } from '@/browse/queries';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
+import { useSetAmbient } from '@/components/ambient';
 import { PosterCard } from '@/components/media/poster-card';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -26,6 +27,8 @@ import {
 } from '@/lib/recent-searches';
 import { titleHref } from '@/navigation/routes';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
 const MIN_QUERY = 2;
@@ -78,9 +81,16 @@ export function SearchScreen() {
   const results = useSearch(query, type, query.length >= MIN_QUERY);
   const remember = () => addRecentSearch(account.id, text);
 
-  const { gutter, cardGap, posterWidth } = design.layout;
+  const shell = useShell();
+  const { gutter } = design.layout;
+  const setAmbient = useSetAmbient();
+  const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
+  const posterWidth = shell.large ? shell.s(SHELL.poster.width) : design.layout.posterWidth;
   const columns = Math.max(2, Math.floor((width - 2 * gutter + cardGap) / (posterWidth + cardGap)));
-  const cardWidth = Math.floor((width - 2 * gutter - (columns - 1) * cardGap) / columns);
+  // Large shell: Home's fixed poster size; phones stretch the columns to the width.
+  const cardWidth = shell.large
+    ? posterWidth
+    : Math.floor((width - 2 * gutter - (columns - 1) * cardGap) / columns);
   const pageHeading = design.isTV || Platform.OS === 'web';
   const active = query.length >= MIN_QUERY;
   const items = active ? (results.data ?? []) : [];
@@ -90,7 +100,11 @@ export function SearchScreen() {
   const header = (
     <View
       style={{ paddingHorizontal: gutter, gap: design.space.lg, paddingBottom: design.space.lg }}>
-      {pageHeading ? <Text variant="title">{t('tabs.search')}</Text> : null}
+      {pageHeading ? (
+        <Text variant="title" role="heading" style={shell.pageTitle}>
+          {t('tabs.search')}
+        </Text>
+      ) : null}
       <TextField
         testID="search-field"
         label={t('search.label')}
@@ -215,7 +229,7 @@ export function SearchScreen() {
   return (
     <View
       testID="search-screen"
-      style={{ flex: 1, backgroundColor: colors.background }}
+      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
       <FlatList
         data={rows}
@@ -225,7 +239,11 @@ export function SearchScreen() {
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
-          paddingTop: pageHeading ? design.layout.edgeVertical + insets.top : design.space.lg,
+          paddingTop: shell.large
+            ? shell.s(SHELL.page.top)
+            : pageHeading
+              ? design.layout.edgeVertical + insets.top
+              : design.space.lg,
           paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
         }}
         renderItem={({ item: row, index: rowIndex }) => (
@@ -255,6 +273,10 @@ export function SearchScreen() {
                     .join(' · ')}
                   imageUri={item.posterUrl}
                   width={cardWidth}
+                  spec={item.spec}
+                  tint={item.tint}
+                  onFocus={() => setAmbient(ambientOf(item))}
+                  onHoverIn={() => setAmbient(ambientOf(item))}
                   onPress={() => {
                     remember();
                     router.push(titleHref(item));
@@ -267,4 +289,13 @@ export function SearchScreen() {
       />
     </View>
   );
+}
+
+function ambientOf(item: {
+  backdropUrl?: string | null;
+  posterUrl?: string | null;
+  tint?: string | null;
+  tint2?: string | null;
+}) {
+  return { image: item.backdropUrl ?? item.posterUrl, tint: item.tint, tint2: item.tint2 };
 }

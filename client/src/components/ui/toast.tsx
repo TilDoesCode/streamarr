@@ -4,8 +4,10 @@ import { AccessibilityInfo, Platform, View } from 'react-native';
 import Animated, { Easing, FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Glass } from '@/components/glass';
 import { Text } from '@/components/ui/text';
-import { colors, easing, motion, useDesign } from '@/theme';
+import { useShell } from '@/shell/use-shell';
+import { colors, easing, fonts, motion, useDesign } from '@/theme';
 
 export type ToastTone = 'info' | 'success' | 'error';
 export type ToastInput = { message: string; tone?: ToastTone; duration?: number };
@@ -16,6 +18,9 @@ const TONES: Record<ToastTone, { icon: LucideIcon; color: string }> = {
   success: { icon: CircleCheck, color: colors.success.DEFAULT },
   error: { icon: CircleAlert, color: colors.danger.DEFAULT },
 };
+
+/** TV: read from the couch, so a toast stays at least this long. */
+const TV_MIN_DURATION = 6000;
 
 const ENTER = FadeInDown.duration(motion.enter).easing(Easing.bezier(...easing.out));
 const EXIT = FadeOutDown.duration(motion.exit);
@@ -44,7 +49,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     if (!toast) return;
     const timer = setTimeout(
       () => setToast((current) => (current?.id === toast.id ? null : current)),
-      toast.duration ?? motion.toast
+      Platform.isTV
+        ? Math.max(toast.duration ?? motion.toast, TV_MIN_DURATION)
+        : (toast.duration ?? motion.toast)
     );
     return () => clearTimeout(timer);
   }, [toast]);
@@ -78,8 +85,54 @@ function ToastViewport({ toast }: { toast: ToastItem | null }) {
 
 function ToastView({ toast }: { toast: ToastItem }) {
   const design = useDesign();
+  const { large, s } = useShell();
   const tone = TONES[toast.tone ?? 'info'];
   const IconComponent = tone.icon;
+  if (large)
+    return (
+      <Animated.View
+        entering={ENTER}
+        exiting={EXIT}
+        accessible
+        role="alert"
+        accessibilityLiveRegion="polite"
+        focusable={false}
+        style={{ maxWidth: s(880), boxShadow: design.shadow.overlay, borderRadius: s(24) }}>
+        <Glass intensity="strong" tint={tone.color} radius={s(24)}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: s(18),
+              paddingVertical: s(20),
+              paddingLeft: s(24),
+              paddingRight: s(32),
+            }}>
+            <View
+              style={{
+                width: s(44),
+                height: s(44),
+                borderRadius: s(22),
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: tone.color,
+              }}>
+              <IconComponent size={s(26)} color={colors.foreground.DEFAULT} strokeWidth={2.5} />
+            </View>
+            <Text
+              style={{
+                flexShrink: 1,
+                fontFamily: fonts.bodyMedium,
+                fontSize: s(24),
+                lineHeight: s(32),
+                color: colors.foreground.DEFAULT,
+              }}>
+              {toast.message}
+            </Text>
+          </View>
+        </Glass>
+      </Animated.View>
+    );
   return (
     <Animated.View
       entering={ENTER}

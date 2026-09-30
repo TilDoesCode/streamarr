@@ -1,3 +1,10 @@
 import { SettingsScreen } from '@/screens/settings/settings-screen';
+import { ShellDesign } from '@/shell/shell-design';
 
-export default SettingsScreen;
+export default function SettingsRoute() {
+  return (
+    <ShellDesign>
+      <SettingsScreen />
+    </ShellDesign>
+  );
+}

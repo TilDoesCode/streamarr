@@ -25,6 +25,8 @@ type CardProps = {
   eyebrow: string;
   onFeature?: (featured: Featured) => void;
   hasTVPreferredFocus?: boolean;
+  /** The first card: features its title before anything is focused or hovered (and while it stays featured). */
+  onLead?: (featured: Featured) => void;
 };
 
 /** A started movie or episode: resumes on press, opens the title on long press. */
@@ -72,6 +74,9 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
         overview: episode?.overview ?? movie.data?.overview,
         detail: code ? [code, episode?.title].filter(Boolean).join(' · ') : undefined,
         progress,
+        tint: state.tint,
+        tint2: state.tint2,
+        spec: state.spec,
       }
     : undefined;
   // Details that load while the card is focused (season, movie) update the hero too.
@@ -80,6 +85,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
   const signature = featured ? JSON.stringify(featured) : '';
   useEffect(() => {
     if (focused.current && featured) onFeature?.(featured);
+    if (featured) props.onLead?.(featured);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
@@ -91,7 +97,10 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
       imageUri={image}
       progress={progress}
       width={props.width}
+      spec={state.spec}
+      tint={state.tint}
       hasTVPreferredFocus={props.hasTVPreferredFocus}
+      onHoverIn={() => featured && props.onFeature?.(featured)}
       onFocus={() => {
         focused.current = true;
         if (featured) props.onFeature?.(featured);
@@ -124,6 +133,26 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
     durationTicks: item.durationTicks,
     played: false,
   });
+  const featured: Featured | undefined = ref && {
+    key: `next-${item.workId}`,
+    kind: 'series',
+    tmdbId: ref.tmdbId,
+    title,
+    eyebrow: props.eyebrow,
+    backdropUrl: item.stillUrl,
+    detail: [code, item.episodeTitle].filter(Boolean).join(' · '),
+    progress,
+    tint: item.tint,
+    tint2: item.tint2,
+    spec: item.spec,
+  };
+  const feature = () => featured && props.onFeature?.(featured);
+  const { onLead } = props;
+  const signature = featured ? JSON.stringify(featured) : '';
+  useEffect(() => {
+    if (featured) onLead?.(featured);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
   return (
     <LandscapeCard
       testID={props.testID}
@@ -132,20 +161,11 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
       imageUri={item.stillUrl ?? item.seriesPosterUrl}
       progress={progress}
       width={props.width}
+      spec={item.spec}
+      tint={item.tint}
       hasTVPreferredFocus={props.hasTVPreferredFocus}
-      onFocus={() =>
-        ref &&
-        props.onFeature?.({
-          key: `next-${item.workId}`,
-          kind: 'series',
-          tmdbId: ref.tmdbId,
-          title,
-          eyebrow: props.eyebrow,
-          backdropUrl: item.stillUrl,
-          detail: [code, item.episodeTitle].filter(Boolean).join(' · '),
-          progress,
-        })
-      }
+      onHoverIn={feature}
+      onFocus={feature}
       onPress={() =>
         item.workId &&
         play({
@@ -177,6 +197,9 @@ export function featuredFromItem(item: CatalogItem, eyebrow: string): Featured {
     backdropUrl: item.backdropUrl ?? item.posterUrl,
     year: item.year,
     overview: item.overview,
+    tint: item.tint,
+    tint2: item.tint2,
+    spec: item.spec,
   };
 }
 
@@ -190,7 +213,10 @@ export function DiscoverCard({ item, ...props }: CardProps & { item: CatalogItem
       subtitle={item.year ? String(item.year) : undefined}
       imageUri={item.posterUrl}
       width={props.width}
+      spec={item.spec}
+      tint={item.tint}
       hasTVPreferredFocus={props.hasTVPreferredFocus}
+      onHoverIn={() => props.onFeature?.(featuredFromItem(item, props.eyebrow))}
       onFocus={() => props.onFeature?.(featuredFromItem(item, props.eyebrow))}
       onPress={() => router.push(titleHref(item))}
     />

@@ -1,13 +1,14 @@
 import { Film } from 'lucide-react-native';
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
-import { displayServerUrl } from '@/api/server-url';
 import {
   useContinueWatching,
   useHomeRows,
@@ -16,6 +17,7 @@ import {
   type CatalogRow,
   useWatchRefreshOnFocus,
 } from '@/browse/queries';
+import { FocusGuide } from '@/components/focus';
 import { Shelf } from '@/components/media/shelf';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -23,15 +25,27 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { LandscapeCardSkeleton, PosterCardSkeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
 import { useScreenTitle } from '@/navigation/screen-title';
-import { aspect, colors, useDesign } from '@/theme';
+import { BrandMark } from '@/shell/brand-mark';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
+import { aspect, colors, motion, useDesign } from '@/theme';
 
-import { FeaturedStore } from './featured';
+import { FeaturedStore, useFeatured, type Featured } from './featured';
 import { ContinueCard, DiscoverCard, featuredFromItem, NextUpCard } from './home-cards';
-import { HandheldHomeHero, TvHomeBackdrop, TvHomeInfo } from './home-hero';
+import { HandheldHomeHero } from './home-hero';
+import { ShellHero } from './shell-hero';
 
 export { useHomeRows } from '@/browse/queries';
+
+function isKeyboardFocus(event: unknown): boolean {
+  const target = (event as { target?: { matches?: (selector: string) => boolean } })?.target;
+  try {
+    return target?.matches?.(':focus-visible') ?? false;
+  } catch {
+    return false;
+  }
+}
 
 const ROW_KEYS = [
   'trending-movies',
@@ -60,13 +74,46 @@ export function HomeScreen() {
   useScreenTitle(t('tabs.home'));
   useWatchRefreshOnFocus();
   const design = useDesign();
+  const shell = useShell();
+  const { s } = shell;
   const insets = useSafeAreaInsets();
   const { account } = useActiveAccount();
+  const router = useRouter();
   const rows = useHomeRows();
   const resume = useContinueWatching();
   const nextUp = useNextUp();
   const [store] = useState(() => new FeaturedStore());
   useEffect(() => () => store.dispose(), [store]);
+  // TV (Apple TV style): the focused row sits at a fixed height, the hero steps back below the first row.
+  const [focusedRow, setFocusedRow] = useState(0);
+  const [heroTarget, setHeroTarget] = useState<View | null>(null);
+  const [inHero, setInHero] = useState(false);
+  const rowFrames = useRef<{ y: number; height: number }[]>([]);
+  const [framesVersion, setFramesVersion] = useState(0);
+  const rowsRef = useRef<ScrollView>(null);
+  const rowsOffset = useRef(0);
+  // Web keyboard focus below the first row: rows take the TV lift geometry (row at focusTop, hero copy hidden).
+  const [raisedRow, setRaisedRow] = useState(0);
+  const raised = raisedRow > 0;
+  const revealRow = (index: number, event: unknown) => {
+    if (!isKeyboardFocus(event)) return;
+    const frame = rowFrames.current[index];
+    if (!frame) return;
+    setRaisedRow(index);
+    const y = index > 0 ? frame.y : 0;
+    if (Math.abs(y - rowsOffset.current) > 1) rowsRef.current?.scrollTo({ y, animated: true });
+  };
+  const lift = useSharedValue(0);
+  const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -lift.get() }] }));
+  useEffect(() => {
+    const frame = rowFrames.current[focusedRow];
+    if (!frame) return;
+    const target =
+      focusedRow === 0
+        ? Math.max(0, frame.y + frame.height - design.window.height)
+        : frame.y - s(SHELL.row.focusTop);
+    lift.set(withTiming(target, { duration: motion.enter }));
+  }, [focusedRow, framesVersion, lift, s, design.window.height]);
 
   const discover = (rows.data ?? []).filter(
     (row): row is CatalogRow & { items: CatalogItem[] } => !!row.items?.length
@@ -79,10 +126,15 @@ export function HomeScreen() {
   const topPick = firstItem ? featuredFromItem(firstItem, firstRowTitle) : undefined;
   useEffect(() => store.initial(topPick), [store, topPick]);
 
-  const feature = design.isTV
+  // Large shell: the hero follows the focused (TV) or hovered (web) card.
+  const feature = shell.large
     ? (item: Parameters<FeaturedStore['set']>[0]) => store.set(item)
     : undefined;
-  const { posterWidth, landscapeWidth } = design.layout;
+  // Every form factor opens on the same featured title: the first Continue watching card, else the top pick.
+  const lead = (item: Featured) => store.lead(item);
+  const phoneHero = useFeatured(store) ?? topPick;
+  const posterWidth = shell.large ? s(SHELL.poster.width) : design.layout.posterWidth;
+  const landscapeWidth = shell.large ? s(SHELL.landscape.width) : design.layout.landscapeWidth;
   const continueTitle = t('home.continueWatching');
   const nextTitle = t('home.nextUp');
 
@@ -101,6 +153,7 @@ export function HomeScreen() {
           width={landscapeWidth}
           eyebrow={continueTitle}
           onFeature={feature}
+          onLead={preferred ? lead : undefined}
           hasTVPreferredFocus={preferred}
         />
       ),
@@ -119,6 +172,7 @@ export function HomeScreen() {
           width={landscapeWidth}
           eyebrow={nextTitle}
           onFeature={feature}
+          onLead={preferred ? lead : undefined}
           hasTVPreferredFocus={preferred}
         />
       ),
@@ -163,7 +217,7 @@ export function HomeScreen() {
         onAction={retryAll}
       />
     ) : loading ? (
-      <HomeSkeleton />
+      <HomeSkeleton posterWidth={posterWidth} landscapeWidth={landscapeWidth} />
     ) : (
       <>
         {failed.length ? (
@@ -187,7 +241,7 @@ export function HomeScreen() {
         {shelves.length ? (
           shelves.map((shelf, shelfIndex) => {
             const width = shelf.kind === 'poster' ? posterWidth : landscapeWidth;
-            return (
+            const node = (
               <Shelf
                 key={shelf.key}
                 testID={`home-row-${shelf.key}`}
@@ -199,6 +253,33 @@ export function HomeScreen() {
                 artworkHeight={width / (shelf.kind === 'poster' ? aspect.poster : aspect.landscape)}
                 renderItem={({ index }) => shelf.render(index, shelfIndex === 0 && index === 0)}
               />
+            );
+            if (!shell.large) return node;
+            return (
+              <View
+                key={shelf.key}
+                collapsable={false}
+                style={{ opacity: shelfIndex < (design.isTV ? focusedRow : raisedRow) ? 0 : 1 }}
+                onLayout={(event) => {
+                  const { y, height } = event.nativeEvent.layout;
+                  const known = rowFrames.current[shelfIndex];
+                  if (known?.y === y && known.height === height) return;
+                  rowFrames.current[shelfIndex] = { y, height };
+                  setFramesVersion((version) => version + 1);
+                }}
+                onFocus={(event) =>
+                  design.isTV ? setFocusedRow(shelfIndex) : revealRow(shelfIndex, event)
+                }>
+                {design.isTV && shelfIndex === 0 && heroTarget && !inHero ? (
+                  // Up from the first row lands on the hero's first button; Down returns through the row memory.
+                  <FocusGuide
+                    remember={false}
+                    destinations={[heroTarget]}
+                    style={{ height: 2, marginBottom: -2 }}
+                  />
+                ) : null}
+                {node}
+              </View>
             );
           })
         ) : (
@@ -212,21 +293,61 @@ export function HomeScreen() {
       </>
     );
 
-  if (design.isTV)
+  if (shell.large && design.isTV)
     return (
-      <View testID="home-screen" style={{ flex: 1, backgroundColor: colors.background }}>
-        <TvHomeBackdrop store={store} />
-        <TvHomeInfo store={store} />
+      <View testID="home-screen" style={{ flex: 1, overflow: 'hidden' }}>
+        <ShellHero
+          store={store}
+          collapsed={focusedRow > 0}
+          targetRef={setHeroTarget}
+          onButtonFocus={(focused) => {
+            setInHero(focused);
+            if (focused) setFocusedRow(0);
+          }}
+        />
+        <Animated.View
+          testID="home-rows"
+          style={[
+            {
+              pointerEvents: 'box-none',
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              paddingTop: s(SHELL.row.top),
+              paddingBottom: s(SHELL.height / 2),
+              gap: s(8),
+            },
+            liftStyle,
+          ]}>
+          {body}
+        </Animated.View>
+      </View>
+    );
+
+  if (shell.large)
+    return (
+      <View testID="home-screen" style={{ flex: 1 }}>
+        <ShellHero store={store} collapsed={raised} />
         <ScrollView
-          style={{ flex: 1 }}
+          ref={rowsRef}
+          onScroll={(event) => {
+            rowsOffset.current = event.nativeEvent.contentOffset.y;
+            if (rowsOffset.current <= 0) setRaisedRow(0);
+          }}
+          scrollEventThrottle={100}
+          testID="home-rows"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: s(raised ? SHELL.row.focusTop : SHELL.row.top),
+          }}
           // D-pad presses during the skeleton must not scroll away from the first row.
           scrollEnabled={!loading}
-          contentContainerStyle={{
-            paddingBottom: design.layout.edgeVertical + design.space['3xl'],
-            gap: design.layout.sectionGap,
-          }}
-          snapToAlignment="item"
-          snapToItemPadding={0}>
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: s(SHELL.height / 2), gap: s(8) }}>
           {body}
         </ScrollView>
       </View>
@@ -241,40 +362,42 @@ export function HomeScreen() {
           gap: design.layout.sectionGap,
         }}>
         <View>
-          {topPick ? (
-            <HandheldHomeHero featured={topPick} />
+          {phoneHero ? (
+            <HandheldHomeHero featured={phoneHero} />
           ) : loading ? (
             <View style={{ height: design.layout.heroHeight }} />
           ) : null}
-          <View
-            style={{
-              position: topPick || loading ? 'absolute' : 'relative',
-              top: insets.top + design.space.lg,
-              left: 0,
-              right: 0,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: design.space.md,
-              paddingHorizontal: design.layout.gutter,
-              paddingTop: topPick || loading ? 0 : insets.top + design.space.lg,
-            }}>
-            <Avatar name={account.displayName} color={account.color} size={design.px(36)} />
-            <View style={{ flex: 1 }}>
-              <Text testID="home-greeting" variant="subheading" numberOfLines={1}>
-                {t('home.greeting', { name: account.displayName })}
-              </Text>
-              <Text variant="caption" tone="muted" numberOfLines={1}>
-                {rows.isFetching && rows.data
-                  ? t('home.updating')
-                  : t('home.server', {
-                      server: t('onboarding.serverChip', {
-                        name: account.serverName,
-                        url: displayServerUrl(account.serverUrl),
-                      }),
-                    })}
-              </Text>
+          {Platform.OS === 'web' ? null : (
+            <View
+              style={{
+                position: phoneHero || loading ? 'absolute' : 'relative',
+                top: insets.top + design.space.sm,
+                left: 0,
+                right: 0,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: design.layout.gutter,
+                paddingTop: phoneHero || loading ? 0 : insets.top + design.space.sm,
+              }}>
+              <BrandMark size={design.px(32)} />
+              <Pressable
+                testID="home-profile"
+                role="button"
+                accessibilityLabel={t('settings.account.switchNamed', {
+                  name: account.displayName,
+                })}
+                onPress={() => router.push('/profiles')}
+                hitSlop={design.space.sm}>
+                <Avatar
+                  name={account.displayName}
+                  color={account.color}
+                  size={design.px(34)}
+                  round
+                />
+              </Pressable>
             </View>
-          </View>
+          )}
         </View>
         {body}
       </ScrollView>
@@ -282,7 +405,13 @@ export function HomeScreen() {
   );
 }
 
-function HomeSkeleton() {
+function HomeSkeleton({
+  posterWidth,
+  landscapeWidth,
+}: {
+  posterWidth: number;
+  landscapeWidth: number;
+}) {
   const design = useDesign();
   return (
     <View testID="home-loading" style={{ gap: design.layout.sectionGap }}>
@@ -297,9 +426,9 @@ function HomeSkeleton() {
           }}>
           {Array.from({ length: 8 }, (_, index) =>
             kind === 'poster' ? (
-              <PosterCardSkeleton key={index} width={design.layout.posterWidth} />
+              <PosterCardSkeleton key={index} width={posterWidth} />
             ) : (
-              <LandscapeCardSkeleton key={index} width={design.layout.landscapeWidth} />
+              <LandscapeCardSkeleton key={index} width={landscapeWidth} />
             )
           )}
         </View>

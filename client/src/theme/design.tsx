@@ -110,3 +110,8 @@ export function useDesign(): Design {
   if (!design) throw new Error('useDesign must be used inside <DesignProvider>');
   return design;
 }
+
+/** Provides an explicit design value to a subtree (e.g. the large shell's shared 10-foot ramp). */
+export function DesignScope({ value, children }: { value: Design; children: ReactNode }) {
+  return <DesignContext value={value}>{children}</DesignContext>;
+}

@@ -1,9 +1,13 @@
 import { Platform } from 'react-native';
 
-import { NativeTabsShell } from './native-tabs-shell';
-import { TvRailShell } from './tv-rail-shell';
+import { useShell } from '@/shell/use-shell';
 
-/** Signed-in tab shell: Android TV rail; native tab bars on iPhone, iPad, Apple TV and Android phones. */
+import { LargeShell } from './large-shell';
+import { NativeTabsShell } from './native-tabs-shell';
+
+/** Signed-in tab shell: the large-screen shell on Android TV and tablets; native tab bars on phones and Apple TV. */
 export function AppTabs() {
-  return Platform.isTV && Platform.OS === 'android' ? <TvRailShell /> : <NativeTabsShell />;
+  const { large } = useShell();
+  const appleTV = Platform.OS === 'ios' && Platform.isTV;
+  return large && !appleTV ? <LargeShell /> : <NativeTabsShell />;
 }

@@ -13,3 +13,9 @@ export const NAV_THEME: Theme = {
     text: colors.foreground.DEFAULT,
   },
 };
+
+/** Inside the large-screen shell: scene containers stay clear so the ambient backdrop shows through. */
+export const SHELL_NAV_THEME: Theme = {
+  ...NAV_THEME,
+  colors: { ...NAV_THEME.colors, background: colors.scrim.clear },
+};

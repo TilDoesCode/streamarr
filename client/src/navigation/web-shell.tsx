@@ -14,20 +14,16 @@ import { colors, useDesign } from '@/theme';
 
 import { TAB_TRIGGERS, TABS, type TabSpec } from './tabs';
 
-/** Window width from which the web shell shows a sidebar instead of a top bar. */
-export const SIDEBAR_MIN_WIDTH = 1200;
-
 type KeyEvent = { key: string; preventDefault: () => void };
 
 type Click = Partial<Pick<MouseEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'button'>> & {
   preventDefault?: () => void;
 };
 
-/** Web shell: a sidebar on wide windows, a top bar otherwise; arrow keys move between items. */
+/** Web phone-width shell: a top bar; arrow keys move between items (larger windows use LargeShell). */
 export function WebShell() {
   // Compiled memoization would keep NavigationContent (and the TabSlot) on stale state after a push.
   'use no memo';
-  const design = useDesign();
   const router = useRouter();
   const { state, navigation, NavigationContent } = useTabsWithTriggers({
     triggers: TAB_TRIGGERS,
@@ -35,7 +31,6 @@ export function WebShell() {
     backBehavior: 'fullHistory',
   });
   const activeName = state.routes[state.index]?.name;
-  const sidebar = design.window.width >= SIDEBAR_MIN_WIDTH;
   const items = useRef<(View | null)[]>([]);
 
   const select = (tab: TabSpec) => {
@@ -49,14 +44,10 @@ export function WebShell() {
       <View
         style={{
           flex: 1,
-          flexDirection: sidebar ? 'row' : 'column',
+          flexDirection: 'column',
           backgroundColor: colors.background,
         }}>
-        {sidebar ? (
-          <Sidebar activeName={activeName} items={items} onSelect={select} />
-        ) : (
-          <TopBar activeName={activeName} items={items} onSelect={select} />
-        )}
+        <TopBar activeName={activeName} items={items} onSelect={select} />
         <View role="main" style={{ flex: 1 }}>
           <TabSlot />
         </View>
@@ -84,58 +75,6 @@ function arrowKeys(items: RefObject<(View | null)[]>, previous: string, next: st
       list[(index + step + list.length) % list.length]?.focus();
     },
   };
-}
-
-function Sidebar({ activeName, items, onSelect }: BarProps) {
-  const { t } = useTranslation();
-  const design = useDesign();
-  const main = TABS.filter((tab) => tab.id !== 'settings');
-  const settings = TABS.filter((tab) => tab.id === 'settings');
-  return (
-    <View
-      testID="web-sidebar"
-      role="navigation"
-      aria-label={t('tabs.navigation')}
-      {...arrowKeys(items, 'ArrowUp', 'ArrowDown')}
-      style={{
-        width: design.px(248),
-        paddingVertical: design.space['2xl'],
-        paddingHorizontal: design.space.lg,
-        gap: design.space['2xl'],
-        backgroundColor: colors.surface.DEFAULT,
-        borderRightWidth: 1,
-        borderRightColor: colors.border,
-      }}>
-      <Brand />
-      <View style={{ flex: 1, gap: design.space.xs }}>
-        {main.map((tab, index) => (
-          <NavItem
-            key={tab.name}
-            tab={tab}
-            active={tab.name === activeName}
-            onPress={() => onSelect(tab)}
-            ref={(view) => {
-              items.current[index] = view;
-            }}
-          />
-        ))}
-      </View>
-      <View style={{ gap: design.space.md }}>
-        <ProfileChip />
-        {settings.map((tab) => (
-          <NavItem
-            key={tab.name}
-            tab={tab}
-            active={tab.name === activeName}
-            onPress={() => onSelect(tab)}
-            ref={(view) => {
-              items.current[main.length] = view;
-            }}
-          />
-        ))}
-      </View>
-    </View>
-  );
 }
 
 function TopBar({ activeName, items, onSelect }: BarProps) {

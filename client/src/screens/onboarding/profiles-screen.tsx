@@ -10,6 +10,10 @@ import { useAccounts, useAccountsApi } from '@/accounts/accounts-provider';
 import type { Account } from '@/accounts/types';
 import { describeError } from '@/api/error-text';
 import { CENTRED_ROW, FocusGuide, Focusable, FocusLift, useFocusState } from '@/components/focus';
+import { displayServerUrl } from '@/api/server-url';
+import { AmbientBackdrop } from '@/components/ambient';
+import { ShellBrand } from '@/shell/brand-mark';
+import { ShellDesign } from '@/shell/shell-design';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -23,6 +27,14 @@ import { enterApp } from './use-onboarding';
 
 /** "Who's watching?": pick, add, sign out or remove profiles (accounts on one or more servers). */
 export function ProfilesScreen() {
+  return (
+    <ShellDesign>
+      <ProfilesContent />
+    </ShellDesign>
+  );
+}
+
+function ProfilesContent() {
   const { t } = useTranslation();
   useScreenTitle(t('profiles.title'));
   const design = useDesign();
@@ -36,7 +48,19 @@ export function ProfilesScreen() {
   if (!accounts.length) return <Redirect href="/server" />;
 
   const servers = new Set(accounts.map((account) => account.serverUrl));
-  const tile = design.px(design.isTV ? 104 : design.formFactor === 'phone' ? 88 : 120);
+  // Two servers with the same name: the address tells the tiles apart.
+  const serverLabel = (account: Account) => {
+    const twin = accounts.some(
+      (other) => other.serverName === account.serverName && other.serverUrl !== account.serverUrl
+    );
+    return twin
+      ? t('onboarding.serverChip', {
+          name: account.serverName,
+          url: displayServerUrl(account.serverUrl),
+        })
+      : account.serverName;
+  };
+  const tile = design.px(design.formFactor === 'phone' ? 88 : 104);
 
   const choose = (account: Account) => {
     if (managing) return setSelected(account);
@@ -57,6 +81,8 @@ export function ProfilesScreen() {
 
   return (
     <SafeAreaView testID="profiles-screen" style={{ flex: 1, backgroundColor: colors.background }}>
+      <AmbientBackdrop />
+      <ShellBrand />
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -92,7 +118,7 @@ export function ProfilesScreen() {
                     ? describeError(t, { code: account.endedReason }).title
                     : t('profiles.signedOut')
                   : servers.size > 1
-                    ? t('profiles.onServer', { server: account.serverName })
+                    ? t('profiles.onServer', { server: serverLabel(account) })
                     : undefined
               }
               dimmed={!account.signedIn}

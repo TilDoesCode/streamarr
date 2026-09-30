@@ -26,6 +26,8 @@ import {
 import { platformKey } from '@/lib/platform';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { accountKey } from '@/query/keys';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
 /** Server build of the active account's server (anonymous health endpoint). */
@@ -46,22 +48,31 @@ export function SettingsScreen() {
   const design = useDesign();
   const insets = useSafeAreaInsets();
   const pageHeading = design.isTV || Platform.OS === 'web';
+  const shell = useShell();
   return (
     <ScrollView
       testID="settings-screen"
-      style={{ flex: 1, backgroundColor: colors.background }}
+      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
-        paddingTop: pageHeading ? design.layout.edgeVertical + insets.top : design.space.lg,
+        paddingTop: shell.large
+          ? shell.s(SHELL.page.top)
+          : pageHeading
+            ? design.layout.edgeVertical + insets.top
+            : design.space.lg,
         paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
         paddingHorizontal: design.layout.gutter,
         gap: design.layout.sectionGap,
         width: '100%',
-        maxWidth: design.layout.maxContentWidth,
+        maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
       }}
       snapToAlignment={design.isTV ? 'item' : undefined}
       snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
-      {pageHeading ? <Text variant="title">{t('tabs.settings')}</Text> : null}
+      {pageHeading ? (
+        <Text variant="title" role="heading" style={shell.pageTitle}>
+          {t('tabs.settings')}
+        </Text>
+      ) : null}
       <AccountSection />
       <LanguageSection />
       <AboutSection />

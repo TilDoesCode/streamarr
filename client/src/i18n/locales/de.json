@@ -745,7 +745,7 @@
       "tintsOff": "Farbtöne noch nicht ermittelt",
       "clear": "Hintergrund leeren",
       "glassMode": "Glasmodus auf diesem Gerät: {mode}",
-      "glassBody": "Flächen zeichnen weich, was hinter ihnen liegt.",
+      "glassBody": "Flächen zeichnen weich, was hinter ihnen liegt, wo die Plattform es kann (Web, iOS); Android TV nutzt eine feste, durchscheinende Fläche.",
       "intensity": {
         "subtle": "Dezent",
         "regular": "Normal",

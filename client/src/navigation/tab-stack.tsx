@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
+import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
 import { ScreenFocusScope } from './screen-focus';
@@ -26,6 +27,7 @@ const ARTWORK_HEADER = (shown: boolean) => ({
 export function TabStack({ tab }: { tab: TabId }) {
   const { t } = useTranslation();
   const design = useDesign();
+  const shell = useShell();
   // Phones and tablets use native headers; TV and web show their own headings and the shell.
   const nativeHeaders = !design.isTV && Platform.OS !== 'web';
   const detailHeader = !design.isTV;
@@ -48,6 +50,8 @@ export function TabStack({ tab }: { tab: TabId }) {
           headerShown: nativeHeaders && tab !== 'home',
           headerLargeTitleEnabled: Platform.OS === 'ios',
           title: t(`tabs.${tab}`),
+          // Large shell: the tab's first screen sits on the shell's ambient backdrop.
+          ...(shell.large ? { contentStyle: { backgroundColor: colors.scrim.clear } } : null),
         }}
       />
       {/* Stack children must be screens: no fragments. */}

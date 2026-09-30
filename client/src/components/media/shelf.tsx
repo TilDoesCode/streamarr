@@ -1,13 +1,21 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react-native';
 import { useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Platform, View, type ListRenderItemInfo } from 'react-native';
 
-import { END_OF_ROW, FocusGuide } from '@/components/focus';
+import {
+  END_OF_ROW,
+  FocusGuide,
+  Focusable,
+  FocusLift,
+  type FocusableProps,
+} from '@/components/focus';
+import { Glass } from '@/components/glass';
 import { useFocusRoom } from '@/components/media/card-parts';
-import { IconButton } from '@/components/ui/icon-button';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
-import { useDesign } from '@/theme';
+import { colors, fonts, useDesign } from '@/theme';
 
 // TV: last focused index per shelf `memoryKey`; survives the shelf unmounting (tab switch, refetch).
 const shelfMemory = new Map<string, number>();
@@ -42,8 +50,11 @@ export function Shelf<T>({
 }: ShelfProps<T>) {
   const { t } = useTranslation();
   const design = useDesign();
-  const { gutter, cardGap } = design.layout;
+  const shell = useShell();
+  const { gutter } = design.layout;
+  const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
   const focusRoom = useFocusRoom(artworkHeight);
+  const headerGap = shell.large ? shell.s(SHELL.row.headerGap) : 0;
   const listRef = useRef<FlatList<T>>(null);
   const offset = useRef(0);
   const stride = itemWidth + cardGap;
@@ -56,12 +67,30 @@ export function Shelf<T>({
   const restoreIndex = restore?.index;
   const [restoreTarget, setRestoreTarget] = useState<View | null>(null);
   const [restoring, setRestoring] = useState(restore !== undefined);
-  const pager = design.formFactor === 'desktop-web';
+  const pager = Platform.OS === 'web' && shell.large;
+  const viewport = useRef(0);
+  const [edges, setEdges] = useState({ start: true, end: false });
+  const contentWidth = gutter * 2 + data.length * stride - cardGap;
 
   const page = (direction: 1 | -1) => {
-    const pageWidth = Math.max(itemWidth, design.window.width - gutter * 2);
+    const pageWidth = Math.max(
+      itemWidth,
+      Math.floor((viewport.current - gutter * 2 + cardGap) / stride) * stride
+    );
     const next = Math.max(0, offset.current + direction * pageWidth);
     listRef.current?.scrollToOffset({ offset: next, animated: true });
+  };
+
+  // Web keyboard focus: scroll a partly hidden card fully into the row (pointer hover never scrolls).
+  const revealItem = (index: number) => {
+    const start = gutter + index * stride;
+    const end = start + itemWidth;
+    const visible = viewport.current;
+    if (!visible) return;
+    if (end > offset.current + visible - gutter)
+      listRef.current?.scrollToOffset({ offset: end - visible + gutter, animated: true });
+    else if (start < offset.current + gutter)
+      listRef.current?.scrollToOffset({ offset: Math.max(0, start - gutter), animated: true });
   };
 
   // Gaps are cell margins, not `gap`: a container gap would also follow VirtualizedList's spacers.
@@ -73,6 +102,7 @@ export function Shelf<T>({
       ref={index === restoreIndex ? setRestoreTarget : undefined}
       onFocus={() => {
         if (memoryKey && design.isTV) shelfMemory.set(memoryKey, index);
+        if (Platform.OS === 'web') revealItem(index);
       }}>
       {renderItem({ item, index })}
     </View>
@@ -87,8 +117,24 @@ export function Shelf<T>({
           justifyContent: 'space-between',
           paddingHorizontal: gutter,
           gap: design.space.lg,
+          minHeight: shell.large ? shell.s(SHELL.row.header) : undefined,
+          // The focus room already spaces the cards; the header keeps the mockup's 16 pt.
+          marginBottom: shell.large && !design.isTV ? Math.min(0, headerGap - focusRoom) : 0,
+          zIndex: 1,
         }}>
-        <Text variant="heading" numberOfLines={1} style={{ flexShrink: 1 }}>
+        <Text
+          variant="heading"
+          numberOfLines={1}
+          role="heading"
+          style={[
+            { flexShrink: 1 },
+            shell.large && {
+              fontFamily: fonts.display,
+              fontSize: shell.s(SHELL.type.rowTitle),
+              lineHeight: shell.s(SHELL.row.header),
+              letterSpacing: -shell.s(0.4),
+            },
+          ]}>
           {title}
         </Text>
         {!design.isTV && (action || pager) ? (
@@ -96,17 +142,15 @@ export function Shelf<T>({
             {action}
             {pager ? (
               <>
-                <IconButton
+                <ShellArrow
                   icon={ChevronLeft}
-                  size="sm"
-                  variant="ghost"
+                  lit={!edges.start}
                   accessibilityLabel={t('a11y.scrollBack')}
                   onPress={() => page(-1)}
                 />
-                <IconButton
+                <ShellArrow
                   icon={ChevronRight}
-                  size="sm"
-                  variant="ghost"
+                  lit={!edges.end}
                   accessibilityLabel={t('a11y.scrollForward')}
                   onPress={() => page(1)}
                 />
@@ -127,8 +171,24 @@ export function Shelf<T>({
           keyExtractor={keyExtractor}
           renderItem={renderCell}
           showsHorizontalScrollIndicator={false}
+          onLayout={(event) => {
+            viewport.current = event.nativeEvent.layout.width;
+            if (pager)
+              setEdges({
+                start: offset.current <= 1,
+                end: offset.current + viewport.current >= contentWidth - 1,
+              });
+          }}
           onScroll={(event) => {
             offset.current = event.nativeEvent.contentOffset.x;
+            if (!pager) return;
+            const next = {
+              start: offset.current <= 1,
+              end: offset.current + viewport.current >= contentWidth - 1,
+            };
+            setEdges((current) =>
+              current.start === next.start && current.end === next.end ? current : next
+            );
           }}
           scrollEventThrottle={100}
           contentContainerStyle={{ paddingHorizontal: gutter, paddingVertical: focusRoom }}
@@ -157,4 +217,30 @@ const EMPTY: View[] = [];
 function clampIndex(index: number | undefined, length: number) {
   if (index === undefined || length === 0) return undefined;
   return Math.min(Math.max(0, index), length - 1);
+}
+
+/** Web row pager arrow: a glass disc, dimmed at the row's end. */
+function ShellArrow({
+  icon: Icon,
+  lit,
+  ...props
+}: Omit<FocusableProps, 'children'> & { icon: LucideIcon; lit: boolean }) {
+  const { s } = useShell();
+  const size = s(SHELL.row.arrow);
+  return (
+    <Focusable role="button" {...props}>
+      <FocusLift kind="button" radius={size / 2}>
+        <Glass interactive intensity={lit ? 'strong' : 'subtle'} radius={size / 2}>
+          <View
+            style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon
+              size={s(24)}
+              color={lit ? colors.foreground.DEFAULT : colors.foreground.subtle}
+              strokeWidth={2.25}
+            />
+          </View>
+        </Glass>
+      </FocusLift>
+    </Focusable>
+  );
 }

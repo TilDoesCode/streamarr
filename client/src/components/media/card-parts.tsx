@@ -8,8 +8,11 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useFocusState } from '@/components/focus';
+import { SpecLabels, type CatalogSpec } from '@/components/spec';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
-import { colors, useDesign } from '@/theme';
+import { colors, fonts, useDesign } from '@/theme';
 
 /** Accent disc with a check: the item is fully watched. */
 export function PlayedMark() {
@@ -35,27 +38,52 @@ export function PlayedMark() {
   );
 }
 
+/** Large shell: the focused card (scaled ring included) stays inside the row gap, clear of its neighbours. */
+export function useCardScale(cardWidth: number): number {
+  const design = useDesign();
+  const { large, s } = useShell();
+  const { cardScale, ringOffset, ringWidth } = design.focus;
+  if (!large) return cardScale;
+  const room = s(SHELL.row.gap) - design.px(2);
+  const half = cardWidth / 2;
+  return Math.max(1, Math.min(cardScale, (room + half) / (half + ringOffset + ringWidth)));
+}
+
 /** Title + subtitle under a card; slides clear of the lifted artwork and brightens (or appears) on focus. */
 export function CardCaption({
   title,
   subtitle,
   artworkHeight,
   revealOnFocus = false,
+  spec,
+  maxSpec = 3,
+  scale,
 }: {
+  /** The card's focus scale (useCardScale); large shell captions sit below it and never move. */
+  scale?: number;
   title: string;
   subtitle?: string;
   artworkHeight: number;
+  /** Signal spec chips under the caption (large shell). */
+  spec?: CatalogSpec | null;
+  maxSpec?: number;
   /** Only the focused card shows its caption (TV poster rows). */
   revealOnFocus?: boolean;
 }) {
   const design = useDesign();
+  const { large, s } = useShell();
   const reduced = useReducedMotion();
   const { focus } = useFocusState();
-  const shift = reduced
-    ? design.focus.ringOffset + design.focus.ringWidth
-    : ((design.focus.cardScale - 1) * artworkHeight) / 2 +
-      design.focus.ringOffset +
-      design.focus.ringWidth;
+  const ring = design.focus.ringOffset + design.focus.ringWidth;
+  const lifted = scale ?? design.focus.cardScale;
+  const clear = Math.ceil(((lifted - 1) * artworkHeight) / 2 + lifted * ring + design.px(2));
+  const shift = large
+    ? 0
+    : reduced
+      ? design.focus.ringOffset + design.focus.ringWidth
+      : ((design.focus.cardScale - 1) * artworkHeight) / 2 +
+        design.focus.ringOffset +
+        design.focus.ringWidth;
   const moveStyle = useAnimatedStyle(
     () => ({
       opacity: revealOnFocus ? focus.get() : 1,
@@ -71,15 +99,49 @@ export function CardCaption({
     ),
   }));
   return (
-    <Animated.View style={[{ paddingTop: design.space.sm, gap: design.px(1) }, moveStyle]}>
-      <Animated.Text numberOfLines={1} style={[design.type.callout, titleStyle]}>
+    <Animated.View
+      style={[
+        {
+          paddingTop: large ? Math.max(s(16), clear) : design.space.sm,
+          gap: large ? s(4) : design.px(1),
+        },
+        moveStyle,
+      ]}>
+      <Animated.Text
+        numberOfLines={1}
+        style={[
+          large
+            ? {
+                fontFamily: fonts.bodySemiBold,
+                fontSize: s(SHELL.type.cardTitle),
+                lineHeight: s(28),
+              }
+            : design.type.callout,
+          titleStyle,
+        ]}>
         {title}
       </Animated.Text>
-      {subtitle ? (
-        <Text variant="caption" tone="subtle" numberOfLines={1}>
-          {subtitle}
-        </Text>
-      ) : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+        {subtitle ? (
+          <Text
+            variant="caption"
+            tone="subtle"
+            numberOfLines={1}
+            style={[
+              { flexShrink: 1 },
+              large && { fontSize: s(SHELL.type.cardSubline), lineHeight: s(24) },
+            ]}>
+            {subtitle}
+          </Text>
+        ) : null}
+        {large && spec ? (
+          <SpecLabels
+            spec={spec}
+            max={maxSpec}
+            style={{ flexShrink: 0, flexWrap: 'nowrap', marginLeft: 'auto' }}
+          />
+        ) : null}
+      </View>
     </Animated.View>
   );
 }

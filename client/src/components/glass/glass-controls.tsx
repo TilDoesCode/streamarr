@@ -3,7 +3,9 @@ import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Text } from '@/components/ui/text';
-import { colors, useDesign } from '@/theme';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
+import { colors, fonts, useDesign } from '@/theme';
 
 import { Glass } from './glass';
 
@@ -26,19 +28,33 @@ export function GlassButton({
   ...props
 }: GlassButtonProps) {
   const design = useDesign();
-  const height = design.layout.controlHeight.lg;
+  const { large, s } = useShell();
+  // Large shell: the mockup's 64 pt pill with 22 pt text on TV, web and tablet alike.
+  const height = large ? s(SHELL.button) : design.layout.controlHeight.lg;
   const fg = tone === 'solid' ? colors.primary.foreground : colors.foreground.DEFAULT;
   const content = (
     <View
       style={{
         height,
-        paddingHorizontal: design.space.xl,
+        paddingHorizontal: large ? s(30) : design.space.xl,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: design.space.sm,
+        gap: large ? s(12) : design.space.sm,
       }}>
-      {Icon ? <Icon size={design.layout.iconSize.lg} color={fg} strokeWidth={2.25} /> : null}
-      <Text variant="label" numberOfLines={1} style={{ color: fg }}>
+      {Icon ? (
+        <Icon size={large ? s(26) : design.layout.iconSize.lg} color={fg} strokeWidth={2.25} />
+      ) : null}
+      <Text
+        variant="label"
+        numberOfLines={1}
+        style={[
+          { color: fg },
+          large && {
+            fontFamily: fonts.bodySemiBold,
+            fontSize: s(SHELL.type.button),
+            lineHeight: s(28),
+          },
+        ]}>
         {label}
       </Text>
     </View>

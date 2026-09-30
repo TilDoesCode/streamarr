@@ -1,6 +1,8 @@
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
 import { specChips, type CatalogSpec, type SpecTone } from './spec-model';
@@ -22,20 +24,27 @@ export type SpecLabelProps = {
 /** Signal-style spec chip: JetBrains Mono caps (resolution, HDR, codec, audio, playback method). */
 export function SpecLabel({ label, tone = 'neutral', testID }: SpecLabelProps) {
   const design = useDesign();
+  const { large, s } = useShell();
   const palette = SPEC_TONES[tone];
   return (
     <View
       testID={testID}
       style={{
-        paddingHorizontal: design.px(7),
-        paddingVertical: design.px(3),
+        paddingHorizontal: large ? s(9) : design.px(7),
+        paddingVertical: large ? s(3) : design.px(3),
         borderRadius: design.radius.sm,
         borderCurve: 'continuous',
         borderWidth: 1,
         borderColor: palette.border,
         backgroundColor: palette.bg,
       }}>
-      <Text variant="spec" numberOfLines={1} style={{ color: palette.fg }}>
+      <Text
+        variant="spec"
+        numberOfLines={1}
+        style={[
+          { color: palette.fg },
+          large && { fontSize: s(SHELL.type.spec), lineHeight: s(20), letterSpacing: s(0.6) },
+        ]}>
         {label}
       </Text>
     </View>
@@ -47,13 +56,16 @@ export function SpecLabels({
   spec,
   style,
   testID,
+  max,
 }: {
   spec: CatalogSpec | null | undefined;
+  /** At most this many chips, in reading order (narrow cards). */
+  max?: number;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
   const design = useDesign();
-  const chips = specChips(spec);
+  const chips = specChips(spec).slice(0, max);
   if (chips.length === 0) return null;
   return (
     <View

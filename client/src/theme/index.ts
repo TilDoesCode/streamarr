@@ -1,4 +1,11 @@
-export { createDesign, DesignGutter, DesignProvider, useDesign, type Design } from './design';
+export {
+  createDesign,
+  DesignGutter,
+  DesignProvider,
+  DesignScope,
+  useDesign,
+  type Design,
+} from './design';
 export { detectFormFactor, tvScale, TV_CANVAS_WIDTH } from './form-factor';
 export { NAV_THEME } from './navigation';
 export {

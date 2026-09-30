@@ -160,7 +160,7 @@ it('opens a deep link to a movie on top of Home', async () => {
     navigate.back();
   });
   expect(router.getPathname()).toBe('/');
-  expect(screen.getByText('Hi, Anna')).toBeOnTheScreen();
+  expect(screen.getByTestId('home-screen')).toBeOnTheScreen();
 });
 
 it('keeps every tab switch in the back history (web: one browser entry each)', async () => {

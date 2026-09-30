@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -63,6 +63,8 @@ export function AmbientBackdrop({
 }
 
 function AmbientLayer({ scene, animateIn }: { scene: AmbientScene; animateIn: boolean }) {
+  // Per-layer gradient ids: on web, SVG ids are document-global and the incoming layer would reuse the old tint.
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const opacity = useSharedValue(animateIn ? 0 : 1);
   useEffect(() => {
     opacity.set(withTiming(1, { duration: motion.ambient, easing: EASE }));
@@ -83,17 +85,17 @@ function AmbientLayer({ scene, animateIn }: { scene: AmbientScene; animateIn: bo
         preserveAspectRatio="none"
         viewBox="0 0 100 100">
         <Defs>
-          <RadialGradient id="tint" cx="18" cy="12" r="70" gradientUnits="userSpaceOnUse">
+          <RadialGradient id={`tint-${id}`} cx="18" cy="12" r="70" gradientUnits="userSpaceOnUse">
             <Stop offset="0" stopColor={scene.tint} stopOpacity={scene.neutral ? 0.35 : 0.42} />
             <Stop offset="1" stopColor={scene.tint} stopOpacity={0} />
           </RadialGradient>
-          <RadialGradient id="tint2" cx="88" cy="92" r="75" gradientUnits="userSpaceOnUse">
+          <RadialGradient id={`tint2-${id}`} cx="88" cy="92" r="75" gradientUnits="userSpaceOnUse">
             <Stop offset="0" stopColor={scene.tint2} stopOpacity={0.7} />
             <Stop offset="1" stopColor={scene.tint2} stopOpacity={0} />
           </RadialGradient>
         </Defs>
-        <Ellipse cx="50" cy="50" rx="100" ry="100" fill="url(#tint2)" />
-        <Ellipse cx="50" cy="50" rx="100" ry="100" fill="url(#tint)" />
+        <Ellipse cx="50" cy="50" rx="100" ry="100" fill={`url(#tint2-${id})`} />
+        <Ellipse cx="50" cy="50" rx="100" ry="100" fill={`url(#tint-${id})`} />
       </Svg>
     </Animated.View>
   );

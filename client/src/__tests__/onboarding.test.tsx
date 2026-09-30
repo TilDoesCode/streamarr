@@ -169,7 +169,8 @@ it('connects, rejects a wrong password and signs in', async () => {
   await user.clear(screen.getByTestId('sign-in-password'));
   await user.type(screen.getByTestId('sign-in-password'), 'streamarr');
   await user.press(screen.getByTestId('sign-in-submit'));
-  expect(await screen.findByText('Hi, Anna')).toBeOnTheScreen();
+  expect(await screen.findByTestId('home-screen')).toBeOnTheScreen();
+  expect(screen.getByLabelText(/Anna/)).toBeOnTheScreen();
   expect(router.getPathname()).toBe('/');
   expect(await screen.findByTestId('home-row-trending-movies')).toBeOnTheScreen();
   expect(store.active()).toMatchObject({ username: 'anna', signedIn: true });
@@ -196,7 +197,8 @@ it('validates and verifies the second factor', async () => {
   await user.clear(screen.getByTestId('second-factor-code'));
   await user.type(screen.getByTestId('second-factor-code'), '123456');
   await user.press(screen.getByTestId('second-factor-submit'));
-  expect(await screen.findByText('Hi, Ben')).toBeOnTheScreen();
+  expect(await screen.findByTestId('home-screen')).toBeOnTheScreen();
+  expect(screen.getByLabelText(/Ben/)).toBeOnTheScreen();
   expect(store.active()?.username).toBe('ben');
 });
 
