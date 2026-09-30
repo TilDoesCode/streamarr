@@ -38,7 +38,7 @@ export function playHref({ workId, title, releaseId, startSeconds }: PlayRequest
       workId,
       title,
       ...(releaseId ? { releaseId } : null),
-      ...(startSeconds ? { start: String(Math.floor(startSeconds)) } : null),
+      ...(startSeconds !== undefined ? { start: String(Math.floor(startSeconds)) } : null),
     },
   };
 }

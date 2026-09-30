@@ -127,7 +127,16 @@ type ReasonCode = typeof REASONS extends Set<infer T> ? T : never;
 
 /** Localized prediction reasons; codes the client does not know are left out. */
 export function predictionReasons(version: Version, t: TFunction): string[] {
-  return (version.predictionReasons ?? []).flatMap((reason) => {
+  return reasonTexts(version.predictionReasons, t);
+}
+
+/** Localized planner reasons (`decision.reasons`, prediction reasons); unknown codes are left out. */
+export function reasonTexts(
+  reasons:
+    readonly { code?: string | null; params?: Record<string, string> | null }[] | null | undefined,
+  t: TFunction
+): string[] {
+  return (reasons ?? []).flatMap((reason) => {
     if (!reason.code || !REASONS.has(reason.code)) return [];
     const params = reason.params ?? {};
     const codecLabel = reason.code.startsWith('audio_') ? audioCodecLabel : videoCodecLabel;

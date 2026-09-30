@@ -102,14 +102,30 @@ export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
   });
 }
 
-export function useSeasonDetail(tmdbId: number | undefined, season: number | undefined) {
+/** `availability` adds per-episode version counts (a cached indexer search on the server). */
+export function useSeasonDetail(
+  tmdbId: number | undefined,
+  season: number | undefined,
+  availability = false
+) {
   const { account, client } = useActiveAccount();
   return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, 'season', season),
+    queryKey: accountKey(
+      account.id,
+      'catalog',
+      'series',
+      tmdbId,
+      'season',
+      season,
+      ...(availability ? ['availability'] : [])
+    ),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}', {
-          params: { path: { tmdbId: tmdbId ?? 0, seasonNumber: season ?? 0 } },
+          params: {
+            path: { tmdbId: tmdbId ?? 0, seasonNumber: season ?? 0 },
+            query: availability ? { availability: true } : undefined,
+          },
           signal,
         })
       ),

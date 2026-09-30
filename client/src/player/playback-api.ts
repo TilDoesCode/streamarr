@@ -11,6 +11,8 @@ export type StartRequest = {
   workId: string;
   releaseId?: string;
   startPositionTicks?: number;
+  audioStreamIndex?: number;
+  subtitleStreamIndex?: number;
   device: DeviceProfile;
   preferences?: PlaybackPreferences;
 };

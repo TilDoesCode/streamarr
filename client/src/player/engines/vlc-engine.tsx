@@ -20,10 +20,20 @@ function decodingOptions({ directRendering = false }: VlcOptions): string[] {
   ];
 }
 
+type VlcStats = { displayedPictures?: number; lostPictures?: number };
+// getStats is added by patches/expo-libvlc-player (Android); elsewhere it is missing.
+type VlcViewRef = LibVlcPlayerViewRef & { getStats?: () => Promise<VlcStats> };
+
+/** Clock seconds without a new picture before libVLC's video output counts as stalled. */
+const STALL_SECONDS = 3;
+const MAX_RECOVERIES = 4;
+
 type Props = {
   source: string | null;
   options: string[];
   tracks: { audio?: number; subtitle: number };
+  /** Milliseconds; `:start-time` made libVLC report time and length relative to the start. */
+  time?: number;
   nonce: number;
 };
 
@@ -36,20 +46,23 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     tracks: { subtitle: -1 },
     nonce: 0,
   });
-  private readonly view = createRef<LibVlcPlayerViewRef>();
+  private readonly view = createRef<VlcViewRef>();
   private raw: MediaTracks = { audio: [], video: [], subtitle: [] };
   private started = false;
   private onStopped: (() => void) | null = null;
+  private seekGuard: { target: number; until: number } | null = null;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  private stall = { pictures: -1, position: 0, recoveries: 0 };
 
   constructor(private readonly options: VlcOptions = {}) {
     super();
   }
 
-  readonly Surface = createPropsSurface(this.props, (props, style) =>
-    this.renderView(props, style)
+  readonly Surface = createPropsSurface(this.props, (props, style, fit) =>
+    this.renderView(props, style, fit)
   );
 
-  private renderView(props: Props, style: SurfaceProps['style']) {
+  private renderView(props: Props, style: SurfaceProps['style'], fit: SurfaceProps['fit']) {
     if (!props.source) return null;
     return (
       <LibVlcPlayerView
@@ -59,8 +72,9 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
         source={props.source}
         options={props.options}
         tracks={props.tracks}
+        time={props.time}
         autoplay
-        contentFit="contain"
+        contentFit={fit ?? 'contain'}
         onBuffering={() => {
           if (this.started) this.emit({ type: 'buffering', buffering: true });
         }}
@@ -99,14 +113,67 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     );
   }
 
-  private onTime(position: number): void {
-    const snapshot = this.getSnapshot();
+  private onTime(reported: number): void {
+    const guard = this.seekGuard;
+    // libVLC keeps reporting the pre-seek time for a moment; those events would move the clock back.
+    if (
+      guard &&
+      Date.now() < guard.until &&
+      (reported < guard.target - 0.5 || reported > guard.target + 3)
+    )
+      return;
+    const start = this.source?.startPosition ?? 0;
     // The clock advancing is the closest observable to a first rendered frame in libVLC.
-    if (!this.started && position > (this.source?.startPosition ?? 0) + 0.05) {
+    if (!this.started && reported > start + 0.05) {
       this.started = true;
       this.emit({ type: 'firstFrame' });
     }
-    this.emit({ type: 'time', position, duration: snapshot.duration });
+    this.emitTime(this.started ? reported : Math.max(reported, start));
+  }
+
+  /** libVLC can keep its clock running while the picture freezes (seen after seeks and fresh loads). */
+  private async checkStall(): Promise<void> {
+    const view = this.view.current;
+    const { state, position } = this.getSnapshot();
+    if (!view?.getStats || !this.started || state !== 'playing') {
+      this.stall.pictures = -1;
+      return;
+    }
+    const stats = await view.getStats().catch(() => null);
+    const pictures = stats?.displayedPictures;
+    if (!pictures || this.released) return;
+    this.emit({
+      type: 'stats',
+      stats: { droppedFrames: stats.lostPictures, totalFrames: pictures },
+    });
+    const stall = this.stall;
+    if (pictures !== stall.pictures || position < stall.position) {
+      if (stall.pictures >= 0 && pictures !== stall.pictures) stall.recoveries = 0;
+      stall.pictures = pictures;
+      stall.position = position;
+      return;
+    }
+    if (position - stall.position < STALL_SECONDS) return;
+    this.recoverStall(position);
+  }
+
+  private recoverStall(position: number): void {
+    const stall = this.stall;
+    stall.recoveries += 1;
+    stall.pictures = -1;
+    if (stall.recoveries > MAX_RECOVERIES) {
+      this.emit({ type: 'error', reason: 'vlc_video_stalled' });
+      this.setState('error');
+    } else if (stall.recoveries % 2 === 1 || !this.source) this.seek(position);
+    else {
+      const { recoveries } = stall;
+      this.load({ ...this.source, startPosition: position });
+      this.stall.recoveries = recoveries;
+    }
+  }
+
+  private emitTime(position: number): void {
+    this.emit({ type: 'time', position, duration: this.getSnapshot().duration });
   }
 
   private publishTracks(width?: number, height?: number): void {
@@ -134,12 +201,15 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   load(source: EngineSource): void {
     this.resetForLoad(source);
     this.started = false;
+    this.seekGuard = null;
+    this.stall = { pictures: -1, position: 0, recoveries: 0 };
+    if (!this.watchdog) this.watchdog = setInterval(() => void this.checkStall(), 1000);
     this.raw = { audio: [], video: [], subtitle: [] };
-    const start = source.startPosition ? [`:start-time=${source.startPosition}`] : [];
     this.props.set({
       source: source.uri,
-      options: [...decodingOptions(this.options), ...start],
+      options: decodingOptions(this.options),
       tracks: { subtitle: -1 },
+      time: source.startPosition ? Math.round(source.startPosition * 1000) : undefined,
       nonce: this.props.get().nonce + 1,
     });
   }
@@ -157,7 +227,12 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   }
 
   seek(position: number): void {
-    void this.view.current?.seek(Math.max(0, position) * 1000, 'time');
+    const target = Math.max(0, position);
+    void this.view.current?.seek(target * 1000, 'time');
+    // No time event follows a seek while paused, so publish the target right away.
+    this.seekGuard = { target, until: Date.now() + 2000 };
+    this.stall.pictures = -1;
+    this.emitTime(target);
   }
 
   setAudioTrack(id: string): void {
@@ -188,6 +263,8 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   }
 
   release(): void {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
     super.release();
     this.props.set({ source: null });
   }

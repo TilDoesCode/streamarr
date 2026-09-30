@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -226,11 +227,7 @@ function nextReason(next: NextEpisode): 'start' | 'resume' | 'next' {
   return next.reason === 'resume' || next.reason === 'next' ? next.reason : 'start';
 }
 
-function episodeLabel(
-  t: ReturnType<typeof useTranslation>['t'],
-  series: string,
-  next: NextEpisode
-) {
+function episodeLabel(t: TFunction, series: string, next: NextEpisode) {
   return t('detail.episodeTitle', {
     series,
     code: t('media.episodeCode', { season: next.seasonNumber, episode: next.episodeNumber }),

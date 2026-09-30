@@ -19,20 +19,25 @@ const KEYBOARD: Readonly<Record<string, RemoteAction>> = {
   MediaStop: 'stop',
   MediaRewind: 'rewind',
   MediaFastForward: 'fastForward',
+  f: 'fullscreen',
+  m: 'mute',
 };
 
 /** Keyboard and media keys in the browser, same actions as the TV remote. */
-export function useRemoteKeys(dpad: boolean, handler: (action: RemoteAction, key: string) => void) {
+export function useRemoteKeys(
+  dpad: boolean,
+  handler: (action: RemoteAction, key: string, repeat: number) => void | 'release'
+) {
   const onKey = useEffectEvent(handler);
   useEffect(() => {
     if (!dpad) return;
     const listener = (event: KeyboardEvent) => {
       const action = KEYBOARD[event.key];
-      if (!action) return;
+      if (!action || event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
       event.preventDefault();
-      onKey(action, event.key);
+      onKey(action, event.key, event.repeat ? 1 : 0);
     };
     window.addEventListener('keydown', listener);
     return () => window.removeEventListener('keydown', listener);

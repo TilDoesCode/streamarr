@@ -67,7 +67,7 @@ export type EngineSnapshot = {
   stats: EngineStats;
 };
 
-export type SurfaceProps = { style?: StyleProp<ViewStyle> };
+export type SurfaceProps = { style?: StyleProp<ViewStyle>; fit?: 'contain' | 'cover' };
 
 /** One playback engine: commands in, events out, and the view that renders its picture. */
 export interface PlayerEngine {
@@ -81,6 +81,7 @@ export interface PlayerEngine {
   setAudioTrack(id: string): void;
   /** `null` turns subtitles off. */
   setSubtitleTrack(id: string | null): void;
+  setMuted?(muted: boolean): void;
   subscribe(listener: (event: EngineEvent) => void): () => void;
   getSnapshot(): EngineSnapshot;
   /** Stops decoding before the Surface unmounts (libVLC must not be released while it decodes). */

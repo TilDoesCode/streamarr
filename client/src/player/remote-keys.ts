@@ -12,7 +12,9 @@ export type RemoteAction =
   | 'fastForward'
   | 'up'
   | 'down'
-  | 'stop';
+  | 'stop'
+  | 'fullscreen'
+  | 'mute';
 
 /** Remote / media keys (Android `player-keys` names = react-native-tvos event types) mapped to player actions. */
 export const REMOTE_KEYS: Readonly<Record<string, RemoteAction>> = {
@@ -35,17 +37,22 @@ const DPAD_KEYS = ['select', 'left', 'right', 'up', 'down'];
  * Player keys while `dpad` is true (D-pad + media keys) or only media keys otherwise (a panel owns focus).
  * Android captures them natively; tvOS uses react-native-tvos key events.
  */
-export function useRemoteKeys(dpad: boolean, handler: (action: RemoteAction, key: string) => void) {
-  const dispatch = (key: string) => {
+export function useRemoteKeys(
+  dpad: boolean,
+  handler: (action: RemoteAction, key: string, repeat: number) => void | 'release'
+) {
+  const dispatch = (key: string, repeat = 0) => {
     const action = REMOTE_KEYS[key];
-    if (action && (dpad || !DPAD_KEYS.includes(key))) handler(action, key);
+    if (!action || (!dpad && DPAD_KEYS.includes(key))) return;
+    // Hand the D-pad back to native focus now, not after the next render, so a quick next key moves focus.
+    if (handler(action, key, repeat) === 'release' && playerKeysAvailable) setKeyCapture(['media']);
   };
   const onKey = useEffectEvent(dispatch);
 
   useEffect(() => {
     if (!playerKeysAvailable) return;
     setKeyCapture(dpad ? ['dpad', 'media'] : ['media']);
-    const subscription = addKeyListener((event) => onKey(event.key));
+    const subscription = addKeyListener((event) => onKey(event.key, event.repeat));
     return () => {
       subscription?.remove();
       setKeyCapture([]);

@@ -17,6 +17,8 @@ import {
 } from './languages';
 import de from './locales/de.json';
 import en from './locales/en.json';
+import playerDe from './locales/player.de.json';
+import playerEn from './locales/player.en.json';
 
 export {
   LANGUAGE_PREFERENCES,
@@ -25,7 +27,10 @@ export {
   type LanguagePreference,
 } from './languages';
 
-export const resources = { en: { translation: en }, de: { translation: de } } as const;
+export const resources = {
+  en: { translation: en, player: playerEn },
+  de: { translation: de, player: playerDe },
+} as const;
 
 const i18n = createInstance();
 

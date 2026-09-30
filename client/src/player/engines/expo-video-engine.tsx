@@ -22,13 +22,13 @@ function createExpoVideoSurface(
   player: VideoPlayer,
   onFirstFrame: () => void
 ): ComponentType<SurfaceProps> {
-  function ExpoVideoSurface({ style }: SurfaceProps) {
+  function ExpoVideoSurface({ style, fit }: SurfaceProps) {
     return (
       <VideoView
         player={player}
         style={style}
         nativeControls={false}
-        contentFit="contain"
+        contentFit={fit ?? 'contain'}
         allowsPictureInPicture={false}
         onFirstFrameRender={onFirstFrame}
       />
@@ -150,6 +150,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   play(): void {
     if (this.getSnapshot().state === 'ended') this.player.currentTime = 0;
     this.player.play();
+  }
+
+  setMuted(muted: boolean): void {
+    this.player.muted = muted;
   }
 
   pause(): void {

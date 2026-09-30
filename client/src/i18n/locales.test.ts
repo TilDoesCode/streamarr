@@ -2,6 +2,8 @@ import { parse, TYPE, type MessageFormatElement } from '@formatjs/icu-messagefor
 
 import de from './locales/de.json';
 import en from './locales/en.json';
+import playerDe from './locales/player.de.json';
+import playerEn from './locales/player.en.json';
 
 type Table = Record<string, unknown>;
 
@@ -55,7 +57,10 @@ function pluralsWithoutOther(elements: MessageFormatElement[]): number {
   }, 0);
 }
 
-const tables = { en: leaves(en), de: leaves(de) };
+const tables = {
+  en: leaves({ translation: en, player: playerEn }),
+  de: leaves({ translation: de, player: playerDe }),
+};
 
 describe('locales', () => {
   it('de and en have exactly the same keys', () => {

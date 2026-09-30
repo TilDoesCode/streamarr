@@ -28,13 +28,13 @@ export function prefersNativeHls(): boolean {
 function createWebSurface(
   ref: (element: HTMLVideoElement | null) => void
 ): ComponentType<SurfaceProps> {
-  function WebSurface({ style }: SurfaceProps) {
+  function WebSurface({ style, fit }: SurfaceProps) {
     return (
       <View style={[{ backgroundColor: colors.video }, style]}>
         {createElement('video', {
           ref,
           playsInline: true,
-          style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' },
+          style: { width: '100%', height: '100%', objectFit: fit ?? 'contain', display: 'block' },
         })}
       </View>
     );
@@ -269,6 +269,10 @@ export class WebEngine extends EngineBase implements PlayerEngine {
 
   play(): void {
     if (this.video) void this.autoplay(this.video);
+  }
+
+  setMuted(muted: boolean): void {
+    if (this.video) this.video.muted = muted;
   }
 
   pause(): void {

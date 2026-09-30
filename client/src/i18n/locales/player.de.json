@@ -1,0 +1,113 @@
+{
+  "stepper": {
+    "title": "Wiedergabe wird vorbereitet",
+    "switching": "Wird umgeschaltet…",
+    "steps": {
+      "resolving": "Version prüfen",
+      "fallback": "Ausweichen",
+      "repairing": "Reparatur",
+      "planning": "Methode wählen",
+      "starting": "Stream starten"
+    },
+    "explain": {
+      "queued": "Warte auf den Server.",
+      "resolving": "Prüft, ob alle Teile dieser Version verfügbar sind.",
+      "fallback": "{name} ist unvollständig, deshalb wird die nächste Version versucht.",
+      "repairing": "Fehlende Teile werden aus Wiederherstellungsdaten neu erzeugt.",
+      "planning": "Wählt die beste Wiedergabe für dieses Gerät.",
+      "starting": "Stream wird geöffnet."
+    },
+    "attempt": {
+      "resolving": "wird geprüft",
+      "ready": "bereit",
+      "degraded": "eingeschränkt",
+      "dead": "unvollständig"
+    },
+    "repair": "{percent, number, percent} repariert · noch etwa {eta}",
+    "repairProgress": "{percent, number, percent} repariert"
+  },
+  "resume": {
+    "title": "Weiterschauen?",
+    "resume": "Fortsetzen ab {time}",
+    "fromStart": "Von vorne"
+  },
+  "methods": {
+    "direct": "Direkte Wiedergabe",
+    "remux": "Neu verpackt",
+    "transcode": "Konvertiert"
+  },
+  "engines": {
+    "native": "Nativer Player",
+    "web": "Browser",
+    "vlc": "VLC"
+  },
+  "controls": {
+    "back10": "10 Sekunden zurück",
+    "forward30": "30 Sekunden vor",
+    "audio": "Audio",
+    "subtitles": "Untertitel",
+    "version": "Version",
+    "quality": "Qualität",
+    "engine": "Player",
+    "info": "Info",
+    "close": "Player schließen",
+    "seek": "Wiedergabeposition",
+    "fullscreen": "Vollbild",
+    "exitFullscreen": "Vollbild beenden",
+    "mute": "Stumm",
+    "unmute": "Ton an",
+    "pip": "Bild im Bild",
+    "fill": "Bildschirm füllen",
+    "fit": "Einpassen",
+    "play": "Abspielen",
+    "pause": "Pause"
+  },
+  "subtitlesOff": "Aus",
+  "forced": "erzwungen",
+  "trackFallback": "Spur {index}",
+  "quality": {
+    "original": "Original",
+    "height": "{height}p",
+    "hint": "Eine niedrigere Qualität konvertiert das Video auf dem Server."
+  },
+  "enginePref": {
+    "auto": "Automatisch",
+    "native": "Nativer Player",
+    "vlc": "VLC",
+    "hint": "VLC spielt Formate, die der native Player nicht kann."
+  },
+  "info": {
+    "title": "Wiedergabe-Info",
+    "method": "Methode",
+    "engine": "Player",
+    "version": "Version",
+    "container": "Container",
+    "video": "Video",
+    "hdr": "Dynamikumfang",
+    "audio": "Audio",
+    "subtitle": "Untertitel",
+    "bitrate": "Bitrate",
+    "resolution": "Auflösung",
+    "decoder": "Decoder",
+    "droppedFrames": "Verlorene Bilder",
+    "reasons": "Warum",
+    "unknown": "—",
+    "kbps": "{value} kbit/s",
+    "sdr": "SDR",
+    "hardware": "Hardware",
+    "software": "Software",
+    "from": "{method} – {skipped} nicht möglich",
+    "and": "und"
+  },
+  "notice": {
+    "stepDown": "Wiedergabe mit {from} fehlgeschlagen. Weiter mit {to}.",
+    "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter."
+  },
+  "upNext": {
+    "title": "Als Nächstes",
+    "countdown": "{seconds, plural, one {Startet in # Sekunde} other {Startet in # Sekunden}}",
+    "playNow": "Jetzt abspielen",
+    "cancel": "Abbrechen"
+  },
+  "ended": "Nochmal ansehen"
+}
