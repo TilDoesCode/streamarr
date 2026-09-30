@@ -8,6 +8,7 @@ survives a crashed or ended session (unlike the harness's temporary workflow jou
 | [`plan.html`](./plan.html) | Human plan (German): architecture, player strategy, milestones |
 | [`PLAN.md`](./PLAN.md) | Binding agent spec: decisions, conventions, task definitions |
 | [`JOURNAL.md`](./JOURNAL.md) | Chronological one-line log of every task outcome |
+| [`BACKLOG.md`](./BACKLOG.md) | Consolidated follow-ups and open decisions after the core loop |
 | `journal/<TASK-ID>.md` | Source of truth per task: status, decisions, evidence, follow-ups |
 | `screenshots/<TASK-ID>/` | Visual evidence captured with Argent |
 | [`orchestrator.js`](./orchestrator.js) | Current orchestration script; relaunch with `args.skip` = finished task ids |

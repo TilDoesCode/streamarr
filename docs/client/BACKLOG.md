@@ -1,0 +1,80 @@
+# Streamarr Client — backlog after the core loop (M0–M4.2)
+
+Consolidated from the open-issue sections of `journal/M1.5`, `M2.3`, `M2.4`, `M3.1`, `M4.1` and `M4.2` (state 2026-09-30).
+The journals hold the evidence and reproduction details for each item.
+
+## Decisions for the user
+
+- **"Recommended" version:** the server ranks by quality only, so web recommends a 4K HDR10 transcode over a 1080p
+  direct stream. Proposal: rank the best version that plays without transcoding first on each device, and fall back to
+  transcoding only when none exists (also decides what a plain "Play" starts).
+- **Web client hosting:** served by the server (same origin) or from another origin (needs a CORS setting for viewer
+  endpoints; Dev World allows `*`).
+
+## Needs Xcode (pending-ios)
+
+- iPhone/iPad: NativeTabs with Liquid Glass (iOS 26+), iPad sidebar, large titles and transparent detail headers,
+  version side panel on iPad, Keychain vault, phone forms and keyboard insets.
+- Apple TV: native top tab bar, focus restore (`ScreenFocusScope`), Menu-key Back chain, tvOS keyboard, remote via
+  `useTVEventHandler`.
+- Playback: expo-video on AVPlayer, VLCKit fallback, Swift media-caps (VideoToolbox, HDR/DV, audio route), Safari
+  native HLS/HEVC/HDR, AirPlay and picture-in-picture.
+
+## Needs real hardware (Android TV, ideally a 2 GB device)
+
+- HEVC Main10 / HDR10 / Dolby Vision decode and HDR display modes; AC-3 / E-AC-3 / DTS / TrueHD passthrough; 4K on a TV SoC.
+- VLC: direct rendering (zero copy, black on emulators), first-seek latency in MKV (2.7–7.3 s on emulators), HDR output
+  (the TextureView cannot carry HDR), stall watchdog on a real stall.
+- Hold-scrub tiers 30/60/120 s on a real remote (emulator sends one repeat; unit-tested).
+- Memory: home screen uses ~520 MB native in the dev build; measure a release build.
+
+## Player polish
+
+- Paused step-down to VLC shows frame 0 for ~13 s after resuming (clock and saved position are correct; the watchdog
+  only runs while playing).
+- Frozen end frame without controls after a cancelled up-next.
+- Continue watching for a played item starts at 0 (the server returns no resume position for played items).
+- ▶ pressed in the same frame as ▲ from the seek bar may be ignored (never seeks).
+- Picture-in-picture on Android (expo-video `supportsPictureInPicture` + native rebuild).
+- Decoder and dropped-frame figures are "—" for expo-video on Android; VLC decoder labels are best effort.
+- expo-libvlc-player logs `VLCObject (Media) finalized but not natively released` (small native leak per playback).
+
+## Browse and UX polish
+
+- Series "mark watched" toast names the next episode instead of the series.
+- A hanging server shows the skeleton ~110 s before the timeout error (20 s timeout × retries).
+- "Play" is offered for titles without versions (e.g. Agent 327) and ends in `no_versions`.
+- A fully watched series offers no "watch again from the start".
+- Watch state changed on another device appears only after the 1-minute stale time.
+- TV hero eyebrow can keep "Continue watching" while focus is on the same title in another row; it can miss the
+  episode title if focused before its season loaded.
+- German UI shows server season names ("Season 1").
+- Search type filter persists across a profile switch.
+- Opaque header band above the hero on web and Android detail screens.
+- Back from the player focuses Play/Resume, not the version card that started playback.
+- Version cards show both "container assumed (mkv)" and "mkv not supported"; simplify the wording for viewers.
+- TV: D-pad presses in the first 1–2 s after Home renders can land in the content; the rail reopens on the last focused
+  item, not the active tab.
+- Web: one page title for every route; a duplicate history entry after popping the active tab; Back after sign-in
+  returns to `/server` or `/sign-in`.
+
+## Accounts
+
+- Every re-sign-in after a server reset adds another profile tile for the same user (dedupe by server + user).
+- Settings UI for sessions/devices, email change, two-factor setup and profile editing.
+- TLS failure message not exercised against a real self-signed server; only Gboard tested as TV keyboard.
+
+## Tests and tooling
+
+- Screen-level tests for home, search, detail and the version picker (current tests are logic-level).
+- Dev only: after a JS reload the `player-keys` native listener is dead until a cold start (native fix in the M4.2 journal);
+  nothing is focused on TV after a JS reload until the first D-pad press; the dev client can start with a cached bundle.
+- Dev World restart wipes its database (sessions end, profiles duplicate).
+
+## Server (deferred in the M1.5 triage)
+
+- Multi-rendition audio in HLS (#4), double probe on start (#27); see the triage table in `journal/M1.5.md`.
+
+## Next update (out of scope for the core loop)
+
+- Offline downloads of series and movies on phones and tablets.
