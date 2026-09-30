@@ -68,7 +68,7 @@ and BBFC-style values (`U`, `12A`, `15`, `18`, `R18`). If TMDB does not know the
 a restricted viewer is denied (`rating_unavailable`); while TMDB cannot be reached (and the rating
 is not cached) the request answers `503 catalog_unavailable` so the app can retry.
 
-The same rule runs through the [catalog](#catalog): search results and home rows simply leave
+The same rule runs through the [catalog](#catalog): search results, home rows and the Movies/Series pages simply leave
 out titles the viewer may not watch (and unrated ones when **Block unrated** is on), while
 details, seasons and versions of such a title answer `403 age_restricted` with the reason.
 
@@ -141,11 +141,12 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
 |---|---|---|
 | Search | TMDB movie and series candidates for a query. | TMDB only (cached) |
 | Home rows | TMDB **trending** and **popular** movies and series. | TMDB only, cached for `Tmdb:DiscoverCacheTtlHours` (default 6 h) |
+| Movies / Series pages | One page of TMDB discover for movies or series, filtered by genre and sorted by popular, top rated or newest, with paging; the genre list comes from TMDB. | TMDB only, each page cached like the home rows; genres for `Tmdb:CacheTtlHours` |
 | Movie / series details | Metadata (incl. title logo, certification), the viewer's watch state, and for series the season list with played counts and the **next episode** to play (`start`, `next` or `resume`). | TMDB only (cached) |
 | Season | Every episode with its watch state; with `availability=true` also how many versions each episode has. | TMDB only; `availability=true` runs one season-wide indexer search |
 | Versions | The releases of a movie or episode the server would play, best first, with parsed attributes (resolution, codec, HDR incl. Dolby Vision, audio, languages, size, estimated bitrate, age, health, local pre-download) and the recommended one. | One indexer search per movie or season, cached |
 
-- Rows and search results are TMDB data: a title can appear there and still have no versions.
+- Rows, pages and search results are TMDB data: a title can appear there and still have no versions.
 - Every title carries a **palette** (`tint` accent, `tint2` deep shade) extracted from its artwork in
   the background and cached; the first listing of a new title may come without it.
 - List items carry a small **spec summary** (resolution, HDR, codec, audio) of the best version
@@ -161,7 +162,8 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
 - A client can send a compact device profile with the versions request to get a
   **predicted playback method** (`direct`, `remux`, `transcode`; `vlc` with `vlcAvailable=true`) per
   version. It is a prediction from the release name, labelled with every assumption it makes; the
-  server decides for real when playback starts.
+  server decides for real when playback starts. Once the server has opened a release (a playback
+  probe or a live stream), the prediction uses its real container instead of assuming MKV.
 - **Recommended depends on the device.** With a device profile, the recommended version is the best
   quality that plays **without a server transcode** (the device's player directly, a server remux, or
   VLC); at the same resolution direct beats remux beats VLC, and health and the ranker score order

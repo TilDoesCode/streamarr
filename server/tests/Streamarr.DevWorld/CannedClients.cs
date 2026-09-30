@@ -170,6 +170,59 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
     public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
         => Task.FromResult(List(mediaType == MediaType.Movie ? catalog.Discover.PopularMovies : catalog.Discover.PopularSeries, mediaType));
 
+    /// <summary>Small pages so paging is testable with the few fixture titles.</summary>
+    public const int DiscoverPageSize = 4;
+
+    /// <summary>TMDB's genre ids by English name (movie and tv lists share the common ones).</summary>
+    public static readonly IReadOnlyDictionary<string, int> GenreIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Action"] = 28, ["Adventure"] = 12, ["Animation"] = 16, ["Comedy"] = 35, ["Crime"] = 80, ["Documentary"] = 99,
+        ["Drama"] = 18, ["Family"] = 10751, ["Fantasy"] = 14, ["History"] = 36, ["Horror"] = 27, ["Music"] = 10402,
+        ["Mystery"] = 9648, ["Romance"] = 10749, ["Science Fiction"] = 878, ["TV Movie"] = 10770, ["Thriller"] = 53,
+        ["War"] = 10752, ["Western"] = 37, ["Action & Adventure"] = 10759, ["Kids"] = 10762, ["News"] = 10763,
+        ["Reality"] = 10764, ["Sci-Fi & Fantasy"] = 10765, ["Soap"] = 10766, ["Talk"] = 10767, ["War & Politics"] = 10768,
+    };
+
+    public Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+    {
+        var titles = Titles(query.MediaType)
+            .Where(t => query.GenreId is not { } genre || t.Genres.Any(name => GenreIds.GetValueOrDefault(name) == genre));
+        var sorted = query.Sort switch
+        {
+            TmdbDiscoverSort.TopRated => titles.OrderByDescending(t => t.CommunityRating ?? 0),
+            TmdbDiscoverSort.Newest => titles.OrderByDescending(t => t.Year ?? 0),
+            _ => titles.OrderBy(t => Popularity(t, query.MediaType)),
+        };
+        var all = sorted.ThenBy(t => t.TmdbId).Select(t => t.Key).ToList();
+        var totalPages = (all.Count + DiscoverPageSize - 1) / DiscoverPageSize;
+        var page = all.Skip((query.Page - 1) * DiscoverPageSize).Take(DiscoverPageSize);
+        return Task.FromResult(new TmdbDiscoverPage(List(page, query.MediaType), query.Page, totalPages, all.Count));
+    }
+
+    public Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<TmdbGenre>>(Titles(mediaType)
+            .SelectMany(t => t.Genres)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(GenreIds.ContainsKey)
+            .Select(name => new TmdbGenre(GenreIds[name], name))
+            .OrderBy(g => g.Name, StringComparer.Ordinal)
+            .ToList());
+
+    private IEnumerable<TitleEntry> Titles(MediaType type)
+        => type == MediaType.Movie ? catalog.Movies : catalog.Series;
+
+    /// <summary>Position in the popular row, then the trending row; titles in neither come last.</summary>
+    private int Popularity(TitleEntry title, MediaType type)
+    {
+        var popular = type == MediaType.Movie ? catalog.Discover.PopularMovies : catalog.Discover.PopularSeries;
+        var trending = type == MediaType.Movie ? catalog.Discover.TrendingMovies : catalog.Discover.TrendingSeries;
+        var index = popular.IndexOf(title.Key);
+        if (index >= 0)
+            return index;
+        index = trending.IndexOf(title.Key);
+        return index >= 0 ? 1_000 + index : int.MaxValue;
+    }
+
     /// <summary>Like TMDB list results: card fields only, so certifications need a detail lookup.</summary>
     private IReadOnlyList<TmdbMatch> List(IEnumerable<string> keys, MediaType type)
         => keys

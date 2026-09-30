@@ -86,6 +86,14 @@ public interface ITmdbClient
     Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<TmdbMatch>>([]);
 
+    /// <summary>One page of TMDB discover (movie or tv) filtered by genre and sorted; empty by default.</summary>
+    Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+        => Task.FromResult(TmdbDiscoverPage.Empty);
+
+    /// <summary>TMDB's genre list for one media type; empty by default.</summary>
+    Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<TmdbGenre>>([]);
+
     /// <summary>A view that surfaces transient failures as <see cref="TmdbTransientException"/> instead of a decorator's fallback.</summary>
     ITmdbClient Strict => this;
 }

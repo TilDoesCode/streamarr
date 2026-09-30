@@ -41,6 +41,7 @@ public sealed class ViewerCatalogService(
     IReleaseStore releaseStore,
     ArtworkPaletteService palettes,
     CatalogSpecStore specs,
+    ReleaseContainerStore containers,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -97,6 +98,43 @@ public sealed class ViewerCatalogService(
             throw Unavailable();
         return new CatalogDiscoverResponse { Rows = result };
     }
+
+    public async Task<CatalogBrowseResponse> BrowseAsync(ViewerEntity viewer, TmdbDiscoverQuery query, CancellationToken ct)
+    {
+        var page = await TmdbAsync(() => _tmdb.DiscoverAsync(query, ct));
+        var items = page.Items.Where(m => m.MediaType == query.MediaType).DistinctBy(m => m.TmdbId).ToList();
+        var (allowed, lookupsFailed) = await AllowedAsync(viewer, items, ct);
+        if (allowed.Count == 0 && lookupsFailed)
+            throw Unavailable();
+        var totalPages = Math.Min(page.TotalPages, TmdbDiscoverQuery.MaxPage);
+        return new CatalogBrowseResponse
+        {
+            MediaType = MediaTypeName(query.MediaType),
+            Genre = query.GenreId,
+            Sort = SortName(query.Sort),
+            Page = query.Page,
+            TotalPages = totalPages,
+            HasMore = query.Page < totalPages,
+            Items = allowed.Select(Item).ToList(),
+        };
+    }
+
+    public async Task<CatalogGenresResponse> GenresAsync(MediaType type, CancellationToken ct)
+    {
+        var genres = await TmdbAsync(() => _tmdb.GetGenresAsync(type, ct));
+        return new CatalogGenresResponse
+        {
+            MediaType = MediaTypeName(type),
+            Genres = genres.Select(g => new CatalogGenreDto { Id = g.Id, Name = g.Name }).ToList(),
+        };
+    }
+
+    public static string SortName(TmdbDiscoverSort sort) => sort switch
+    {
+        TmdbDiscoverSort.TopRated => "top_rated",
+        TmdbDiscoverSort.Newest => "newest",
+        _ => "popular",
+    };
 
     public async Task<CatalogMovieResponse> MovieAsync(ViewerEntity viewer, int tmdbId, CancellationToken ct)
     {
@@ -319,6 +357,9 @@ public sealed class ViewerCatalogService(
         return versions.FirstOrDefault(v => v.Recommended) ?? versions.FirstOrDefault();
     }
 
+    /// <summary>Remembers the real container of a played version so its prediction matches the playback.</summary>
+    public void RecordContainer(string? releaseId, string? container) => containers.Record(releaseId, container);
+
     /// <summary>One release as a version: ranked from the cached list when present (no indexer search), else from its registration with rank 0.</summary>
     public async Task<VersionDto?> VersionAsync(ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct)
     {
@@ -370,8 +411,9 @@ public sealed class ViewerCatalogService(
             if (health == ReleaseHealth.Dead)
                 continue;
             var estimated = VersionMapper.EstimatedKbps(release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
-            var playClass = play is null ? null : predictor.Classify(parsed, estimated, runtime, play, viewer.AllowTranscoding);
-            var prediction = device is null ? null : predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding);
+            var container = play is null && device is null ? null : containers.Get(release.ReleaseId);
+            var playClass = play is null ? null : predictor.Classify(parsed, estimated, runtime, play, viewer.AllowTranscoding, container);
+            var prediction = device is null ? null : predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
             if (prediction is not null && playClass == PlayClass.Vlc)
                 prediction = prediction with { Method = PlayClass.Vlc };
             var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction);

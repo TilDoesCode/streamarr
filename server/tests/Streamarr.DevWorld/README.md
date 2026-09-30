@@ -92,6 +92,13 @@ otherwise), so the rows only show what the Dev World can play plus the empty-ver
 real TMDB list results, the canned lists carry card fields only, so the viewer age gate has to look
 up each certification.
 
+The canned TMDB also answers discover (`discover/movie`, `discover/tv`, behind the viewer Movies and
+Series pages) and the genre lists from the catalog: a title matches a genre id when one of its
+`genres` names maps to that TMDB id; the genre list holds only genres some title of that type has.
+`popular` follows the popular row, then the trending row, then the rest; `top_rated` orders by
+`communityRating`, `newest` by `year`. Pages hold 4 titles (`CannedTmdbClient.DiscoverPageSize`),
+so the 9 movies span 3 pages.
+
 - `dead`: every second article is missing (health check finds 430s) -> auto-fallback.
 - `degraded`: small parts (> 80 articles); STAT of the last article drops the connection, so
   the health check counts one indeterminate probe -> `degraded`, still playable.

@@ -45,10 +45,11 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
     [GeneratedRegex(@"(?<![A-Za-z0-9])MP4(?![A-Za-z0-9])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Mp4Pattern();
 
-    public PlaybackPrediction Predict(ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, DeviceHints device, bool allowTranscoding)
+    public PlaybackPrediction Predict(
+        ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, DeviceHints device, bool allowTranscoding, string? knownContainer = null)
     {
         var notes = new List<PredictionReasonDto>();
-        if (Source(parsed, estimatedKbps, runtimeMinutes, notes) is not { } media)
+        if (Source(parsed, estimatedKbps, runtimeMinutes, notes, knownContainer) is not { } media)
             return new PlaybackPrediction("unknown", [Reason("video_codec_unknown")]);
 
         TranscodePlan plan;
@@ -72,9 +73,10 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
     }
 
     /// <summary>The playback decider's first choice for a version built from its name (see <see cref="PlayClass"/>).</summary>
-    public string Classify(ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, PlayContext play, bool allowTranscoding)
+    public string Classify(
+        ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, PlayContext play, bool allowTranscoding, string? knownContainer = null)
     {
-        if (Source(parsed, estimatedKbps, runtimeMinutes, []) is not { } media)
+        if (Source(parsed, estimatedKbps, runtimeMinutes, [], knownContainer) is not { } media)
             return PlayClass.Unknown;
         var best = PlaybackDecider.Decide(media, play.Device, play.Preferences, allowTranscoding, play.Server, null, null, NoExclusions).Viable.FirstOrDefault();
         return best switch
@@ -89,7 +91,8 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
 
     private static readonly IReadOnlySet<string> NoExclusions = new HashSet<string>();
 
-    private static SourceMediaInfo? Source(ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, List<PredictionReasonDto> notes)
+    private static SourceMediaInfo? Source(
+        ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, List<PredictionReasonDto> notes, string? knownContainer)
     {
         var codec = VideoCodec(parsed.VideoCodec);
         if (codec is null)
@@ -102,8 +105,8 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
             notes.Add(Reason("resolution_assumed", ("height", "1080")));
         }
 
-        var mp4 = Mp4Pattern().IsMatch(parsed.ReleaseName);
-        if (!mp4)
+        var family = ReleaseContainerStore.Family(knownContainer) ?? (Mp4Pattern().IsMatch(parsed.ReleaseName) ? "mp4" : null);
+        if (family is null)
             notes.Add(Reason("container_assumed", ("container", "mkv")));
 
         var formats = parsed.HdrFormats;
@@ -130,7 +133,7 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
         {
             DurationSeconds = (runtimeMinutes is > 0 ? runtimeMinutes.Value : 90) * 60,
             BitRate = estimatedKbps is > 0 ? estimatedKbps.Value * 1000L : null,
-            Container = mp4 ? "mov,mp4,m4a,3gp,3g2,mj2" : "matroska,webm",
+            Container = ReleaseContainerStore.FormatName(family ?? "mkv"),
             Video = new SourceVideoStream
             {
                 Index = 0,

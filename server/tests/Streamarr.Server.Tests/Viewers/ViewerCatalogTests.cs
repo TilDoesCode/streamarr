@@ -144,6 +144,96 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task Browse_PagesTmdbDiscover_AsCatalogItems_WithoutAnyIndexerSearch()
+    {
+        using var viewer = await ViewerAsync("browse");
+        var searches = factory.Newznab.Searches;
+
+        var first = await OkAsync(viewer, $"{Base}/browse?type=movie");
+        var last = await OkAsync(viewer, $"{Base}/browse?type=movie&page=3");
+        var series = await OkAsync(viewer, $"{Base}/browse?type=series&sort=top_rated");
+
+        Assert.Equal(("movie", "popular", 1, 3, true), (first.GetProperty("mediaType").GetString(), first.GetProperty("sort").GetString(),
+            first.GetProperty("page").GetInt32(), first.GetProperty("totalPages").GetInt32(), first.GetProperty("hasMore").GetBoolean()));
+        Assert.Equal(JsonValueKind.Null, first.GetProperty("genre").ValueKind);
+        Assert.Equal([501, 502], Ids(first.GetProperty("items")));
+        var item = first.GetProperty("items")[0];
+        Assert.Equal(("tmdb-movie-501", "movie"), (item.GetProperty("workId").GetString(), item.GetProperty("mediaType").GetString()));
+        Assert.True(item.TryGetProperty("tint", out _) && item.TryGetProperty("tint2", out _) && item.TryGetProperty("spec", out _));
+        Assert.Equal([505], Ids(last.GetProperty("items")));
+        Assert.False(last.GetProperty("hasMore").GetBoolean());
+        Assert.Equal([600, 601], Ids(series.GetProperty("items")));
+        Assert.Equal(("series", "top_rated"), (series.GetProperty("mediaType").GetString(), series.GetProperty("sort").GetString()));
+        Assert.Equal("tmdb-tv-600", series.GetProperty("items")[0].GetProperty("workId").GetString());
+        Assert.Equal(searches, factory.Newznab.Searches);
+    }
+
+    [Fact]
+    public async Task Browse_PassesGenreAndSortToTmdb()
+    {
+        using var viewer = await ViewerAsync("browsegenre");
+
+        var drama = await OkAsync(viewer, $"{Base}/browse?type=movie&genre={CatalogTmdbFake.DramaGenre}&sort=newest");
+
+        Assert.Equal([501], Ids(drama.GetProperty("items")));
+        Assert.Equal((CatalogTmdbFake.DramaGenre, "newest", false), (drama.GetProperty("genre").GetInt32(), drama.GetProperty("sort").GetString(),
+            drama.GetProperty("hasMore").GetBoolean()));
+        Assert.Equal(new Streamarr.Core.Tmdb.TmdbDiscoverQuery(MediaType.Movie, CatalogTmdbFake.DramaGenre, Streamarr.Core.Tmdb.TmdbDiscoverSort.Newest, 1),
+            factory.Tmdb.LastDiscover);
+        var newest = await OkAsync(viewer, $"{Base}/browse?type=tv&sort=NEWEST&page=1");
+        Assert.Equal([602, 601], Ids(newest.GetProperty("items")));
+    }
+
+    [Fact]
+    public async Task Browse_HidesTitlesAboveTheAgeLimit_ButKeepsPaging()
+    {
+        using var kid = await KidAsync();
+
+        var first = await OkAsync(kid, $"{Base}/browse?type=movie&page=1");
+        var second = await OkAsync(kid, $"{Base}/browse?type=movie&page=2");
+
+        Assert.Empty(first.GetProperty("items").EnumerateArray());
+        Assert.True(first.GetProperty("hasMore").GetBoolean());
+        Assert.Equal([504], Ids(second.GetProperty("items")));
+        Assert.Equal(3, second.GetProperty("totalPages").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("", "invalid_query")]
+    [InlineData("?type=music", "invalid_query")]
+    [InlineData("?type=movie&genre=0", "invalid_query")]
+    [InlineData("?type=movie&sort=best", "invalid_query")]
+    [InlineData("?type=movie&page=0", "invalid_query")]
+    [InlineData("?type=movie&page=501", "invalid_query")]
+    [InlineData("?type=movie&page=two", "invalid_request")]
+    [InlineData("?type=movie&genre=drama", "invalid_request")]
+    public async Task Browse_RejectsInvalidQueries(string query, string code)
+    {
+        using var viewer = await ViewerAsync("badbrowse");
+
+        var error = await ErrorAsync(viewer, $"{Base}/browse{query}", HttpStatusCode.BadRequest);
+
+        Assert.Equal(code, error.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Genres_ListTmdbGenresPerType()
+    {
+        using var viewer = await ViewerAsync("genres");
+
+        var movies = await OkAsync(viewer, $"{Base}/genres?type=movie");
+        var series = await OkAsync(viewer, $"{Base}/genres?type=series");
+
+        Assert.Equal("movie", movies.GetProperty("mediaType").GetString());
+        Assert.Equal([(18, "Drama"), (9648, "Mystery")],
+            movies.GetProperty("genres").EnumerateArray().Select(g => (g.GetProperty("id").GetInt32(), g.GetProperty("name").GetString())));
+        Assert.Equal("series", series.GetProperty("mediaType").GetString());
+        Assert.Equal(10765, series.GetProperty("genres")[0].GetProperty("id").GetInt32());
+        Assert.Equal("invalid_query", (await ErrorAsync(viewer, $"{Base}/genres", HttpStatusCode.BadRequest)).GetProperty("code").GetString());
+        Assert.Equal("invalid_query", (await ErrorAsync(viewer, $"{Base}/genres?type=books", HttpStatusCode.BadRequest)).GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task MovieDetails_CarryMetadataWatchStateAndAccess()
     {
         using var viewer = await ViewerAsync("movie");

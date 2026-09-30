@@ -2,6 +2,7 @@ using Streamarr.Server.Viewers.Playback;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Streamarr.Core.Media;
+using Streamarr.Core.Tmdb;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Modules;
 using Streamarr.Server.Transcoding;
@@ -55,6 +56,43 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<CatalogDiscoverResponse>> Discover(CancellationToken ct)
         => Ok(await catalog.DiscoverAsync(await ViewerAsync(ct), ct));
+
+    /// <summary>One page of a Movies or Series library page (TMDB discover by genre and sort); titles the viewer may not watch are hidden.</summary>
+    [HttpGet("browse")]
+    [ProducesResponseType(typeof(CatalogBrowseResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<CatalogBrowseResponse>> Browse(
+        [FromQuery] string? type,
+        [FromQuery] int? genre = null,
+        [FromQuery] string? sort = null,
+        [FromQuery] int page = 1,
+        CancellationToken ct = default)
+    {
+        var mediaType = BrowseType(type);
+        if (genre is <= 0)
+            throw ViewerProblem.BadRequest("invalid_query", "'genre' must be a positive TMDB genre id.");
+        var order = sort?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "popular" => TmdbDiscoverSort.Popular,
+            "top_rated" => TmdbDiscoverSort.TopRated,
+            "newest" => TmdbDiscoverSort.Newest,
+            _ => throw ViewerProblem.BadRequest("invalid_query", "'sort' must be popular, top_rated or newest."),
+        };
+        if (page is < 1 or > TmdbDiscoverQuery.MaxPage)
+            throw ViewerProblem.BadRequest("invalid_query", $"'page' must be between 1 and {TmdbDiscoverQuery.MaxPage}.");
+        return Ok(await catalog.BrowseAsync(await ViewerAsync(ct), new TmdbDiscoverQuery(mediaType, genre, order, page), ct));
+    }
+
+    /// <summary>TMDB genres of movies or series for the browse filter, cached for hours.</summary>
+    [HttpGet("genres")]
+    [ProducesResponseType(typeof(CatalogGenresResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<CatalogGenresResponse>> Genres([FromQuery] string? type, CancellationToken ct)
+    {
+        var mediaType = BrowseType(type);
+        await ViewerAsync(ct);
+        return Ok(await catalog.GenresAsync(mediaType, ct));
+    }
 
     /// <summary>Movie details with the viewer's watch state and age-gate decision.</summary>
     [HttpGet("movies/{tmdbId}")]
@@ -161,6 +199,14 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
             client.MaxAudioChannels);
         return new DeviceCaps("web", native, vlcAvailable ? EngineCaps.DefaultVlc : null, hints.Limits.MaxBitrateKbps);
     }
+
+    private static MediaType BrowseType(string? type) => type?.Trim().ToLowerInvariant() switch
+    {
+        null or "" => throw ViewerProblem.BadRequest("invalid_query", "Provide 'type' (movie or series)."),
+        "movie" => MediaType.Movie,
+        "series" or "tv" => MediaType.Tv,
+        _ => throw ViewerProblem.BadRequest("invalid_query", "'type' must be movie or series."),
+    };
 
     private async Task<Persistence.Entities.ViewerEntity> ViewerAsync(CancellationToken ct)
         => await accounts.GetAsync(User.ViewerId(), ct);

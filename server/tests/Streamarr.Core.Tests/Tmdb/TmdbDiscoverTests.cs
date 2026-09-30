@@ -111,6 +111,63 @@ public class TmdbDiscoverTests
         Assert.Equal(3, inner.Trending);
     }
 
+    [Theory]
+    [InlineData(MediaType.Movie, null, TmdbDiscoverSort.Popular, 1, "discover/movie?include_adult=false&include_video=false&page=1&sort_by=popularity.desc")]
+    [InlineData(MediaType.Movie, 16, TmdbDiscoverSort.TopRated, 2,
+        "discover/movie?include_adult=false&include_video=false&page=2&sort_by=vote_average.desc&vote_count.gte=300&with_genres=16")]
+    [InlineData(MediaType.Tv, 18, TmdbDiscoverSort.Newest, 3,
+        "discover/tv?include_adult=false&include_video=false&page=3&sort_by=first_air_date.desc&first_air_date.lte=2026-09-30&vote_count.gte=10&with_genres=18")]
+    [InlineData(MediaType.Movie, null, TmdbDiscoverSort.Newest, 1,
+        "discover/movie?include_adult=false&include_video=false&page=1&sort_by=primary_release_date.desc&primary_release_date.lte=2026-09-30&vote_count.gte=10")]
+    public void DiscoverRoute_MapsGenreSortAndPage(MediaType type, int? genre, TmdbDiscoverSort sort, int page, string expected)
+        => Assert.Equal(expected, TmdbClient.DiscoverRoute(new TmdbDiscoverQuery(type, genre, sort, page), new DateOnly(2026, 9, 30)));
+
+    [Fact]
+    public async Task Discover_ReadsCardsAndPaging_AndGenres_ReadIdsAndNames()
+    {
+        var handler = new StubHttpMessageHandler(req => req.RequestUri!.AbsolutePath switch
+        {
+            "/3/discover/tv" => Json("""{"page":2,"total_pages":900,"total_results":17990,"results":[{"id":20,"name":"Twenty","first_air_date":"2019-05-01"}]}"""),
+            "/3/genre/movie/list" => Json("""{"genres":[{"id":28,"name":"Action"},{"id":0,"name":"Bad"},{"id":16,"name":""},{"id":35,"name":"Komödie"}]}"""),
+            _ => StubHttpMessageHandler.Status(HttpStatusCode.NotFound),
+        });
+        var client = Client(handler, "de-DE");
+
+        var page = await client.DiscoverAsync(new TmdbDiscoverQuery(MediaType.Tv, 10765, TmdbDiscoverSort.Popular, 2), default);
+        var genres = await client.GetGenresAsync(MediaType.Movie, default);
+
+        var twenty = Assert.Single(page.Items);
+        Assert.Equal((MediaType.Tv, 20, "Twenty", 2019), (twenty.MediaType, twenty.TmdbId, twenty.Title, twenty.Year));
+        Assert.Equal((2, TmdbDiscoverQuery.MaxPage, 17990), (page.Page, page.TotalPages, page.TotalResults));
+        Assert.Contains("with_genres=10765", handler.Requests[0].Query, StringComparison.Ordinal);
+        Assert.Contains("language=de-DE", handler.Requests[1].Query, StringComparison.Ordinal);
+        Assert.Equal([new TmdbGenre(28, "Action"), new TmdbGenre(35, "Komödie")], genres);
+    }
+
+    [Fact]
+    public async Task CachingClient_KeepsDiscoverPagesPerQuery_AndGenresForTheFullLifetime()
+    {
+        var inner = new CountingLists();
+        var time = new ManualTime();
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(24), time, listTtl: TimeSpan.FromHours(6));
+        var query = new TmdbDiscoverQuery(MediaType.Movie, 16, TmdbDiscoverSort.TopRated, 2);
+
+        await caching.DiscoverAsync(query, default);
+        await caching.DiscoverAsync(query with { }, default);
+        await caching.DiscoverAsync(query with { Page = 3 }, default);
+        await caching.DiscoverAsync(query with { GenreId = null }, default);
+        await caching.DiscoverAsync(query with { Sort = TmdbDiscoverSort.Newest }, default);
+        await caching.DiscoverAsync(query with { MediaType = MediaType.Tv }, default);
+        await caching.GetGenresAsync(MediaType.Movie, default);
+        await caching.GetGenresAsync(MediaType.Movie, default);
+        Assert.Equal((5, 1), (inner.Discover, inner.Genres));
+
+        time.Advance(TimeSpan.FromHours(7));
+        await caching.DiscoverAsync(query, default);
+        await caching.GetGenresAsync(MediaType.Movie, default);
+        Assert.Equal((6, 1), (inner.Discover, inner.Genres));
+    }
+
     [Fact]
     public async Task DefaultInterfaceLists_AreEmpty()
     {
@@ -118,6 +175,8 @@ public class TmdbDiscoverTests
 
         Assert.Empty(await legacy.GetTrendingAsync(MediaType.Movie, default));
         Assert.Empty(await legacy.GetPopularAsync(MediaType.Tv, default));
+        Assert.Empty((await legacy.DiscoverAsync(new TmdbDiscoverQuery(MediaType.Movie, null, TmdbDiscoverSort.Popular, 1), default)).Items);
+        Assert.Empty(await legacy.GetGenresAsync(MediaType.Tv, default));
     }
 
     private sealed class ManualTime : TimeProvider
@@ -152,6 +211,20 @@ public class TmdbDiscoverTests
         {
             Popular++;
             return Task.FromResult<IReadOnlyList<TmdbMatch>>([]);
+        }
+        public int Discover;
+        public int Genres;
+
+        public Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+        {
+            Discover++;
+            return Task.FromResult(new TmdbDiscoverPage([], query.Page, 1, 0));
+        }
+
+        public Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+        {
+            Genres++;
+            return Task.FromResult<IReadOnlyList<TmdbGenre>>([new TmdbGenre(1, "One")]);
         }
     }
 }

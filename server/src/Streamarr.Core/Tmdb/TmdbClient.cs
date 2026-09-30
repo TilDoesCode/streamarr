@@ -262,6 +262,59 @@ public sealed class TmdbClient(
     public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
         => ListAsync($"{Route(mediaType)}/popular", mediaType, cancellationToken);
 
+    public async Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+    {
+        if (!HasCredential)
+            return TmdbDiscoverPage.Empty;
+        using var doc = await GetAsync(DiscoverRoute(query, DateOnly.FromDateTime(DateTime.UtcNow)), cancellationToken);
+        if (doc is null)
+            return TmdbDiscoverPage.Empty;
+        var root = doc.RootElement;
+        var totalPages = Math.Clamp(GetInt(root, "total_pages") ?? 0, 0, TmdbDiscoverQuery.MaxPage);
+        return new TmdbDiscoverPage(DiscoveryResults(doc, query.MediaType), query.Page, totalPages, Math.Max(0, GetInt(root, "total_results") ?? 0));
+    }
+
+    /// <summary>The discover route; top rated needs a vote floor and newest excludes unreleased titles, like TMDB's own lists.</summary>
+    internal static string DiscoverRoute(TmdbDiscoverQuery query, DateOnly today)
+    {
+        var movie = query.MediaType == MediaType.Movie;
+        var dateField = movie ? "primary_release_date" : "first_air_date";
+        var sb = new StringBuilder("discover/").Append(Route(query.MediaType))
+            .Append("?include_adult=false&include_video=false&page=").Append(query.Page.ToString(CultureInfo.InvariantCulture));
+        switch (query.Sort)
+        {
+            case TmdbDiscoverSort.TopRated:
+                sb.Append("&sort_by=vote_average.desc&vote_count.gte=").Append(movie ? "300" : "200");
+                break;
+            case TmdbDiscoverSort.Newest:
+                sb.Append("&sort_by=").Append(dateField).Append(".desc&").Append(dateField).Append(".lte=")
+                    .Append(today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append("&vote_count.gte=10");
+                break;
+            default:
+                sb.Append("&sort_by=popularity.desc");
+                break;
+        }
+        if (query.GenreId is { } genre)
+            sb.Append("&with_genres=").Append(genre.ToString(CultureInfo.InvariantCulture));
+        return sb.ToString();
+    }
+
+    public async Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+    {
+        if (!HasCredential)
+            return [];
+        using var doc = await GetAsync($"genre/{Route(mediaType)}/list", cancellationToken);
+        if (doc is null || !doc.RootElement.TryGetProperty("genres", out var genres) || genres.ValueKind != JsonValueKind.Array)
+            return [];
+        var result = new List<TmdbGenre>();
+        foreach (var genre in genres.EnumerateArray().Take(100))
+        {
+            if (PositiveIdOrNull(GetInt(genre, "id")) is { } id && NullIfEmpty(GetBoundedString(genre, "name", 128)) is { } name)
+                result.Add(new TmdbGenre(id, name));
+        }
+        return result.DistinctBy(g => g.Id).ToList();
+    }
+
     private async Task<IReadOnlyList<TmdbMatch>> ListAsync(string route, MediaType mediaType, CancellationToken cancellationToken)
     {
         if (!HasCredential)

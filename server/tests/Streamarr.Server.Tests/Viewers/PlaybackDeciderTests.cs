@@ -154,6 +154,27 @@ public sealed class PlaybackDeciderTests
     }
 
     [Fact]
+    public void NativePreference_AfterVlcAlreadyFailed_DoesNotSuggestVlcAgain()
+    {
+        var mpeg2 = Media(codec: "mpeg2video", width: 720, height: 576, container: "mpeg", audioCodec: "ac3", channels: 2);
+        var excluded = new HashSet<string> { PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc) };
+
+        var decision = Decide(mpeg2, AppleTv(vlc: true), Prefs(EnginePreference.Native), allowTranscoding: false, excluded: excluded);
+
+        Assert.Equal([SuggestedActions.OtherVersion], decision.Failure!.SuggestedActions);
+    }
+
+    [Theory]
+    [InlineData(404, "title_not_found", new string[0])]
+    [InlineData(404, "episode_not_found", new string[0])]
+    [InlineData(403, "age_restricted", new string[0])]
+    [InlineData(503, "catalog_unavailable", new[] { "retry" })]
+    [InlineData(429, "capacity_reached", new[] { "retry" })]
+    [InlineData(400, "invalid_work_id", new[] { "otherVersion" })]
+    public void CatalogProblems_DuringPlayback_OnlySuggestActionsThatCanHelp(int status, string code, string[] actions)
+        => Assert.Equal(actions, ViewerPlaybackService.ProblemActions(new ViewerProblem(status, code, code)));
+
+    [Fact]
     public void MaxHeightPreference_BelowTheSource_ForcesATranscodeAtThatHeight()
     {
         var uhd = Media(codec: "hevc", width: 3840, height: 2160, bitDepth: 10, hdr: HdrFormat.Hdr10, audioCodec: "eac3", channels: 6, colorTransfer: "smpte2084");

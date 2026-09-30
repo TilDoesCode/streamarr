@@ -6290,6 +6290,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/catalog/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One page of a Movies or Series library page (TMDB discover by genre and sort); titles the viewer may not watch are hidden. */
+        get: {
+            parameters: {
+                query?: {
+                    type?: string;
+                    genre?: number;
+                    sort?: string;
+                    page?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogBrowseResponse"];
+                        "application/json": components["schemas"]["CatalogBrowseResponse"];
+                        "text/json": components["schemas"]["CatalogBrowseResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/catalog/genres": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** TMDB genres of movies or series for the browse filter, cached for hours. */
+        get: {
+            parameters: {
+                query?: {
+                    type?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CatalogGenresResponse"];
+                        "application/json": components["schemas"]["CatalogGenresResponse"];
+                        "text/json": components["schemas"]["CatalogGenresResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/catalog/movies/{tmdbId}": {
         parameters: {
             query?: never;
@@ -9103,6 +9296,32 @@ export interface components {
             /** @description Why the overlay is missing (`capacity_reached`, `search_temporarily_unavailable`); null on success. */
             error?: string | null;
         };
+        /** @description One page of a Movies or Series library page. */
+        CatalogBrowseResponse: {
+            /** @description "movie" or "series". */
+            mediaType: string | null;
+            /**
+             * Format: int32
+             * @description TMDB genre id the page is filtered by, or null for all genres.
+             */
+            genre?: number | null;
+            /** @description "popular", "top_rated" or "newest". */
+            sort: string | null;
+            /**
+             * Format: int32
+             * @description 1-based page number.
+             */
+            page: number;
+            /**
+             * Format: int32
+             * @description Pages TMDB has for this query (at most 500); the age gate may leave a page with fewer or no items.
+             */
+            totalPages: number;
+            /** @description True while a later page exists; keep paging on this, not on the item count. */
+            hasMore: boolean;
+            /** @description Titles of this page the viewer may watch, in TMDB order. */
+            items: components["schemas"]["CatalogItemDto"][] | null;
+        };
         CatalogDiscoverResponse: {
             /** @description Rows in display order; rows without any title the viewer may watch are omitted. */
             rows: components["schemas"]["CatalogRowDto"][] | null;
@@ -9129,6 +9348,21 @@ export interface components {
              */
             versionCount?: number | null;
             spec?: components["schemas"]["CatalogSpecDto"] | null;
+        };
+        /** @description A TMDB genre for the browse filter. */
+        CatalogGenreDto: {
+            /**
+             * Format: int32
+             * @description TMDB genre id (pass as `genre` to browse).
+             */
+            id: number;
+            /** @description Genre name in the server's TMDB language. */
+            name: string | null;
+        };
+        CatalogGenresResponse: {
+            /** @description "movie" or "series". */
+            mediaType: string | null;
+            genres: components["schemas"]["CatalogGenreDto"][] | null;
         };
         /** @description A movie or series card for search results and home rows (TMDB data only, no availability). */
         CatalogItemDto: {

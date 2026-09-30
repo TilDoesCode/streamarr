@@ -58,6 +58,49 @@ public sealed record CatalogDiscoverResponse
     public required IReadOnlyList<CatalogRowDto> Rows { get; init; }
 }
 
+/// <summary>One page of a Movies or Series library page.</summary>
+public sealed record CatalogBrowseResponse
+{
+    /// <summary>"movie" or "series".</summary>
+    public required string MediaType { get; init; }
+
+    /// <summary>TMDB genre id the page is filtered by, or null for all genres.</summary>
+    public int? Genre { get; init; }
+
+    /// <summary>"popular", "top_rated" or "newest".</summary>
+    public required string Sort { get; init; }
+
+    /// <summary>1-based page number.</summary>
+    public required int Page { get; init; }
+
+    /// <summary>Pages TMDB has for this query (at most 500); the age gate may leave a page with fewer or no items.</summary>
+    public required int TotalPages { get; init; }
+
+    /// <summary>True while a later page exists; keep paging on this, not on the item count.</summary>
+    public required bool HasMore { get; init; }
+
+    /// <summary>Titles of this page the viewer may watch, in TMDB order.</summary>
+    public required IReadOnlyList<CatalogItemDto> Items { get; init; }
+}
+
+/// <summary>A TMDB genre for the browse filter.</summary>
+public sealed record CatalogGenreDto
+{
+    /// <summary>TMDB genre id (pass as <c>genre</c> to browse).</summary>
+    public required int Id { get; init; }
+
+    /// <summary>Genre name in the server's TMDB language.</summary>
+    public required string Name { get; init; }
+}
+
+public sealed record CatalogGenresResponse
+{
+    /// <summary>"movie" or "series".</summary>
+    public required string MediaType { get; init; }
+
+    public required IReadOnlyList<CatalogGenreDto> Genres { get; init; }
+}
+
 public sealed record CatalogMovieResponse
 {
     public required string WorkId { get; init; }

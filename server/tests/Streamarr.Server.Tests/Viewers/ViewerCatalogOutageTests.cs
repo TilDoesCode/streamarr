@@ -54,13 +54,23 @@ public sealed class FlakyTmdb(ITmdbClient inner) : ITmdbClient
 
     public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
         => Call(ListsDown, () => inner.GetPopularAsync(mediaType, cancellationToken));
+
+    public Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+        => Call(ListsDown, () => inner.DiscoverAsync(query, cancellationToken));
+
+    public Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Call(ListsDown, () => inner.GetGenresAsync(mediaType, cancellationToken));
 }
 
 public sealed class ViewerCatalogOutageFactory : WebApplicationFactory<Program>
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("streamarr-outage-").FullName;
 
-    public FlakyTmdb Tmdb { get; } = new(new CatalogTmdbFake());
+    private FlakyTmdb? _tmdb;
+
+    public CatalogTmdbFake Fake { get; } = new();
+
+    public FlakyTmdb Tmdb => _tmdb ??= new(Fake);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -155,6 +165,29 @@ public sealed class ViewerCatalogOutageTests(ViewerCatalogOutageFactory factory)
         Assert.Equal("Catalog Movie", movie.GetProperty("title").GetString());
         var discover = await viewer.GetFromJsonAsync<JsonElement>($"{Base}/discover");
         Assert.Equal(4, discover.GetProperty("rows").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Browse_AndGenres_AreRetryable503sInAnOutage_AndCachedPerQueryAfterwards()
+    {
+        using var viewer = await ViewerAsync("browseoutage");
+        factory.Tmdb.ListsDown = true;
+
+        await AssertUnavailableAsync(viewer, $"{Base}/browse?type=movie&sort=newest&page=2");
+        await AssertUnavailableAsync(viewer, $"{Base}/genres?type=series");
+
+        factory.Tmdb.ListsDown = false;
+        var (discover, genres) = (factory.Fake.DiscoverCalls, factory.Fake.GenreCalls);
+        var first = await viewer.GetFromJsonAsync<JsonElement>($"{Base}/browse?type=movie&sort=newest&page=2");
+        var again = await viewer.GetFromJsonAsync<JsonElement>($"{Base}/browse?type=movie&sort=newest&page=2");
+        await viewer.GetFromJsonAsync<JsonElement>($"{Base}/browse?type=movie&sort=newest&page=3");
+        await viewer.GetFromJsonAsync<JsonElement>($"{Base}/browse?type=movie&sort=newest&page=2&genre={CatalogTmdbFake.DramaGenre}");
+        await viewer.GetFromJsonAsync<JsonElement>($"{Base}/genres?type=series");
+        await viewer.GetFromJsonAsync<JsonElement>($"{Base}/genres?type=series");
+
+        Assert.Equal(first.GetRawText(), again.GetRawText());
+        Assert.Equal(discover + 3, factory.Fake.DiscoverCalls);
+        Assert.Equal(genres + 1, factory.Fake.GenreCalls);
     }
 
     [Fact]

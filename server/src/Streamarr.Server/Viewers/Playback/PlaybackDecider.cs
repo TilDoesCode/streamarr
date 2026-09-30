@@ -310,7 +310,7 @@ public static class PlaybackDecider
             viable.Add(new PlaybackCandidate(step.Method, step.Engine, client, limits, plan, candidateNotes));
         }
 
-        var failure = viable.Count > 0 ? null : Failure(skipped, device, preference);
+        var failure = viable.Count > 0 ? null : Failure(skipped, device, preference, excluded);
         return new PlaybackDecision(viable.DistinctBy(c => c.Key).ToList(), skipped, tracks, notes, failure);
     }
 
@@ -392,11 +392,11 @@ public static class PlaybackDecider
         return reasons;
     }
 
-    private static PlaybackFailure Failure(IReadOnlyList<SkippedCandidate> skipped, DeviceCaps device, EnginePreference preference)
+    private static PlaybackFailure Failure(IReadOnlyList<SkippedCandidate> skipped, DeviceCaps device, EnginePreference preference, IReadOnlySet<string> excluded)
     {
         var codes = skipped.SelectMany(s => s.Reasons).Select(r => r.Code).ToHashSet(StringComparer.Ordinal);
         var suggestions = new List<string> { SuggestedActions.OtherVersion };
-        if (device.Vlc is not null && preference == EnginePreference.Native)
+        if (device.Vlc is not null && preference == EnginePreference.Native && !excluded.Contains(Key(DeliveryMode.Direct, EngineCaps.Vlc)))
             suggestions.Add(SuggestedActions.UseVlc);
         if (codes.Contains("step_down"))
             return new PlaybackFailure("no_more_methods", "Every playback method left for this device has failed on it.", null, suggestions);

@@ -114,4 +114,27 @@ public class CannedClientsTests(FakeWorld world) : IClassFixture<FakeWorld>
         Assert.NotNull(sherlock!.PosterUrl);
         Assert.All(sherlock.Episodes, e => Assert.NotNull(e.StillUrl));
     }
+
+    [Fact]
+    public async Task TmdbDiscover_PagesEveryTitleOnce_AndHonoursGenreAndSort()
+    {
+        var movies = world.Plan.Catalog.Movies;
+        var pages = new List<Streamarr.Core.Tmdb.TmdbDiscoverPage>();
+        for (var page = 1; page <= 3; page++)
+            pages.Add(await Tmdb.DiscoverAsync(new(MediaType.Movie, null, Streamarr.Core.Tmdb.TmdbDiscoverSort.Popular, page), CancellationToken.None));
+        var topRated = await Tmdb.DiscoverAsync(new(MediaType.Movie, null, Streamarr.Core.Tmdb.TmdbDiscoverSort.TopRated, 1), CancellationToken.None);
+        var horror = await Tmdb.DiscoverAsync(new(MediaType.Movie, 27, Streamarr.Core.Tmdb.TmdbDiscoverSort.Newest, 1), CancellationToken.None);
+        var genres = await Tmdb.GetGenresAsync(MediaType.Tv, CancellationToken.None);
+
+        Assert.All(pages, p => Assert.Equal((movies.Count + CannedTmdbClient.DiscoverPageSize - 1) / CannedTmdbClient.DiscoverPageSize, p.TotalPages));
+        Assert.Equal(movies.Select(m => m.TmdbId).Order(), pages.SelectMany(p => p.Items).Select(m => m.TmdbId).Order());
+        Assert.All(pages.SelectMany(p => p.Items), m => Assert.Null(m.OfficialRating));
+        Assert.Equal(world.Plan.Catalog.Discover.PopularMovies[0], movies.Single(m => m.TmdbId == pages[0].Items[0].TmdbId).Key);
+        var ratings = topRated.Items.Select(m => m.CommunityRating ?? 0).ToList();
+        Assert.Equal(ratings.OrderByDescending(r => r), ratings);
+        Assert.All(horror.Items, m => Assert.Contains("Horror", movies.Single(e => e.TmdbId == m.TmdbId).Genres));
+        Assert.Equal(horror.Items.Select(m => m.Year).OrderByDescending(y => y), horror.Items.Select(m => m.Year));
+        Assert.Contains(new Streamarr.Core.Tmdb.TmdbGenre(80, "Crime"), genres);
+        Assert.DoesNotContain(genres, g => g.Name == "Horror");
+    }
 }

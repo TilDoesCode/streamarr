@@ -63,6 +63,12 @@ public sealed class CachingTmdbClient(
     public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
         => Popular(mediaType, false, cancellationToken);
 
+    public Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+        => Discover(query, false, cancellationToken);
+
+    public Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+        => Genres(mediaType, false, cancellationToken);
+
     private Task<IReadOnlyList<TmdbMatch>> Candidates(string query, MediaType? mediaType, bool strict, CancellationToken ct)
         => GetOrAddAsync(
             $"search-candidates|{mediaType?.ToString().ToLowerInvariant() ?? "any"}|{query.ToLowerInvariant()}",
@@ -112,6 +118,23 @@ public sealed class CachingTmdbClient(
             strict,
             ct,
             _listTtl);
+
+    private Task<TmdbDiscoverPage> Discover(TmdbDiscoverQuery query, bool strict, CancellationToken ct)
+        => GetOrAddAsync(
+            $"discover|{query.MediaType.ToString().ToLowerInvariant()}|{query.GenreId}|{query.Sort.ToString().ToLowerInvariant()}|{query.Page}",
+            c => inner.DiscoverAsync(query, c),
+            TmdbDiscoverPage.Empty,
+            strict,
+            ct,
+            _listTtl);
+
+    private Task<IReadOnlyList<TmdbGenre>> Genres(MediaType mediaType, bool strict, CancellationToken ct)
+        => GetOrAddAsync(
+            $"genres|{mediaType.ToString().ToLowerInvariant()}",
+            c => inner.GetGenresAsync(mediaType, c),
+            Array.Empty<TmdbGenre>(),
+            strict,
+            ct);
 
     private Task<T> GetOrAddAsync<T>(
         string key,
@@ -369,5 +392,11 @@ public sealed class CachingTmdbClient(
 
         public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
             => owner.Popular(mediaType, true, cancellationToken);
+
+        public Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+            => owner.Discover(query, true, cancellationToken);
+
+        public Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+            => owner.Genres(mediaType, true, cancellationToken);
     }
 }

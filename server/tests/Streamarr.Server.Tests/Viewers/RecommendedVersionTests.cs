@@ -1,4 +1,5 @@
 using Streamarr.Core.Parser;
+using Streamarr.Server.Transcoding;
 using Streamarr.Server.Viewers.Catalog;
 using Streamarr.Server.Viewers.Playback;
 
@@ -102,5 +103,45 @@ public sealed class RecommendedVersionTests
         Assert.Equal(Mpeg2, Assert.Single(order, v => v.Recommended).ReleaseId);
         Assert.Equal(PlayClass.Vlc, Predictor.Classify(ReleaseParser.Parse(Mpeg2), 8000, 120,
             new PlayContext(withVlc, PlaybackPreferences.Default, FakePlaybackMedia.Available()), true));
+    }
+
+    private const string WebDl = "Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD";
+
+    [Fact]
+    public void Prediction_WithoutAContainerHint_AssumesMkv_UntilTheRealContainerIsKnown()
+    {
+        var parsed = ReleaseParser.Parse(WebDl);
+        var play = new PlayContext(PlaybackDeciderTests.Chrome(), PlaybackPreferences.Default, FakePlaybackMedia.Available());
+        var predictor = new PlaybackPredictor(new TranscodingSettingsService(null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<TranscodingSettingsService>.Instance));
+        var hints = new DeviceHints(new ClientProfile { VideoCodecs = ["h264"], AudioCodecs = ["aac"], Containers = ["mp4"] }, new TranscodeLimits(null, null));
+
+        var assumed = predictor.Predict(parsed, 4000, 10, hints, allowTranscoding: true);
+        var known = predictor.Predict(parsed, 4000, 10, hints, allowTranscoding: true, knownContainer: "mp4");
+
+        Assert.Equal("remux", assumed.Method);
+        Assert.Contains(assumed.Reasons, r => r.Code == "container_assumed");
+        Assert.Equal("direct", known.Method);
+        Assert.DoesNotContain(known.Reasons, r => r.Code == "container_assumed");
+        Assert.Equal(PlayClass.Remux, predictor.Classify(parsed, 4000, 10, play, true));
+        Assert.Equal(PlayClass.Direct, predictor.Classify(parsed, 4000, 10, play, true, "mov,mp4,m4a,3gp,3g2,mj2"));
+        Assert.Equal(PlayClass.Remux, predictor.Classify(ReleaseParser.Parse("Movie.2019.1080p.WEB.MP4.H264.AAC-GRP"), 4000, 10, play, true, "mkv"));
+    }
+
+    [Theory]
+    [InlineData("mp4", "mp4")]
+    [InlineData(".M4V", "mp4")]
+    [InlineData("mov,mp4,m4a,3gp,3g2,mj2", "mp4")]
+    [InlineData("matroska,webm", "mkv")]
+    [InlineData("mkv", "mkv")]
+    [InlineData("m2ts", "ts")]
+    [InlineData("avi", "avi")]
+    [InlineData("", null)]
+    public void ContainerStore_NormalizesExtensionsAndProbeFormats(string container, string? family)
+    {
+        var store = new ReleaseContainerStore();
+        store.Record("r1", container);
+
+        Assert.Equal(family, store.Get("r1"));
+        Assert.Null(store.Get("r2"));
     }
 }

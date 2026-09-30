@@ -361,9 +361,7 @@ public sealed class ViewerPlaybackService(
         }
         catch (ViewerProblem problem)
         {
-            var transient = problem.Status is StatusCodes.Status429TooManyRequests or StatusCodes.Status503ServiceUnavailable;
-            Fail(playback, revision, new PlaybackFailure(problem.Code, problem.Message, problem.Parameters,
-                new[] { transient ? SuggestedActions.Retry : SuggestedActions.OtherVersion }));
+            Fail(playback, revision, new PlaybackFailure(problem.Code, problem.Message, problem.Parameters, ProblemActions(problem)));
         }
         catch (Exception e)
         {
@@ -531,6 +529,10 @@ public sealed class ViewerPlaybackService(
             throw new PlaybackFailure("probe_failed", "The server could not read the streams of this version.", null,
                 [SuggestedActions.Retry, SuggestedActions.OtherVersion]);
         }
+        string? resolvedRelease;
+        lock (playback.Gate)
+            resolvedRelease = playback.ResolvedReleaseId;
+        catalog.RecordContainer(resolvedRelease, probe.Container);
 
         var server = await media.ServerAsync(ct);
         var decision = PlaybackDecider.Decide(probe, device, preferences, allowTranscoding, server, audioIndex, subtitleIndex, excluded);
@@ -585,7 +587,7 @@ public sealed class ViewerPlaybackService(
         var suggestions = new List<string> { SuggestedActions.Retry };
         if (code is "segment_timeout" or "transcode_failed")
             suggestions.Add(SuggestedActions.LowerQuality);
-        if (device.Vlc is not null && preferences.Engine != EnginePreference.Vlc)
+        if (device.Vlc is not null && preferences.Engine != EnginePreference.Vlc && !excluded.Contains(PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc)))
             suggestions.Add(SuggestedActions.UseVlc);
         suggestions.Add(SuggestedActions.OtherVersion);
         Update(playback, revision, p => p.Decision = DecisionDto(null, decision, skipped, ResolveNotes(p)));
@@ -834,6 +836,14 @@ public sealed class ViewerPlaybackService(
             }).ToList(),
         };
     }
+
+    /// <summary>What can still help after a catalog problem: a missing or age-restricted title has no other version to pick.</summary>
+    internal static IReadOnlyList<string> ProblemActions(ViewerProblem problem) => problem.Status switch
+    {
+        StatusCodes.Status429TooManyRequests or StatusCodes.Status503ServiceUnavailable => [SuggestedActions.Retry],
+        StatusCodes.Status404NotFound or StatusCodes.Status403Forbidden => [],
+        _ => [SuggestedActions.OtherVersion],
+    };
 
     private static PlaybackFailure Map(Exception e) => e switch
     {

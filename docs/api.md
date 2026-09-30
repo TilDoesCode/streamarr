@@ -930,7 +930,7 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
   machine API keys and anonymous calls get `401 unauthorized`.
 - **Module gate:** while the module is off, every catalog endpoint answers `404 module_disabled`.
 - **Password change:** while an admin-assigned password must be changed, `403 password_change_required`.
-- **Age policy:** lists (search, discover) silently leave out titles the viewer may not watch.
+- **Age policy:** lists (search, discover, browse) silently leave out titles the viewer may not watch.
   Details, seasons and versions of such a title answer `403 age_restricted` with `params`
   (`reason`: `above_age_limit`, `unrated_blocked` or `rating_unavailable`; plus `rating`,
   `minimumAge`, `viewerMaxAge` when known). For a restricted viewer, every list item needs its TMDB
@@ -938,7 +938,7 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
 - **Errors:** the standard envelope (§ 2). `429 capacity_reached` and `503 …` carry `Retry-After: 1`.
   Malformed query values (e.g. `limit=abc`) answer `400 invalid_request` on every viewer endpoint.
 - **TMDB outages** are never shown as "not found" or "nothing there": when TMDB cannot be reached
-  (and nothing is cached), search, details, seasons and versions answer `503 catalog_unavailable`.
+  (and nothing is cached), search, browse, genres, details, seasons and versions answer `503 catalog_unavailable`.
   `discover` leaves out a row whose list failed and answers `503 catalog_unavailable` only when no
   row is left; for a restricted viewer, a list whose certification lookups failed and left nothing
   to show answers the same. The age gate of a restricted viewer (playback start and switch,
@@ -949,6 +949,8 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
 |---|---|---|
 | `GET …/search?q&type=movie\|tv\|any&limit` | `{ items: CatalogItem[] }`, TMDB relevance order, `limit` 1–20 (default 20) | One TMDB search; **no indexer call** |
 | `GET …/discover` | `{ rows: [{ id, kind, mediaType, items }] }` | TMDB trending/popular lists (cached `Tmdb:DiscoverCacheTtlHours`, default 6 h); **no indexer call** |
+| `GET …/browse?type=movie\|series&genre&sort&page` | `{ mediaType, genre, sort, page, totalPages, hasMore, items: CatalogItem[] }` | One TMDB discover page (cached per type, genre, sort and page for `Tmdb:DiscoverCacheTtlHours`); **no indexer call** |
+| `GET …/genres?type=movie\|series` | `{ mediaType, genres: [{ id, name }] }` | One TMDB genre list (cached `Tmdb:CacheTtlHours`, default 24 h); **no indexer call** |
 | `GET …/movies/{tmdbId}` | Movie details + `watch` + `access` | One TMDB detail call (cached); **no indexer call** |
 | `GET …/series/{tmdbId}` | Series details, season summaries, `watch` summary + `access` | TMDB series detail (+ up to a few season lists for the next episode); **no indexer call** |
 | `GET …/series/{tmdbId}/seasons/{n}` | TMDB episodes with per-episode `watch` | One TMDB season call; **no indexer call** |
@@ -961,6 +963,17 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
 or `any`. `discover` rows are `trending-movies`, `trending-series`, `popular-movies`,
 `popular-series` (in that order; a row without any title the viewer may watch is left out).
 Rows are TMDB data only: a title in a row may have no versions.
+
+**Browse (Movies and Series pages).** `browse` pages TMDB discover (`discover/movie`, `discover/tv`)
+for one `type` (`movie` or `series`, alias `tv`; required), optionally one TMDB `genre` id (from
+`genres`), `sort` `popular` (default), `top_rated` (vote average, with a vote floor) or `newest`
+(release / first air date up to today), and a 1-based `page` (1–500, TMDB's limit). Items are
+`CatalogItem`s in TMDB order, including `tint`, `tint2` and `spec`. `totalPages` is TMDB's count and
+`hasMore` says whether a later page exists; the age policy may leave a page with fewer items or
+none, so page on `hasMore`, not on the item count. `genres` lists TMDB's genres for one `type`
+(names in the server's TMDB language). Invalid values answer `400 invalid_query` (missing or
+unknown `type`, `genre` ≤ 0, unknown `sort`, `page` outside 1–500); non-numeric `genre`/`page`
+answer `400 invalid_request`.
 
 **Palette (`tint`, `tint2`).** Two `#RRGGBB` colours extracted from the title artwork (backdrop,
 poster when the backdrop has none): `tint` is the vivid accent, adjusted to at least 3:1 contrast
@@ -1064,7 +1077,8 @@ GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,
 server runs the transcoding planner (§ 11) on a source made up from the release name, because
 nothing has been downloaded yet. `predictionReasons` lists the planner's reason codes (with
 `params`) plus every assumption: `container_assumed` (names rarely say MKV or MP4; MKV is assumed
-unless the name says MP4), `audio_codec_unknown`, `resolution_assumed`, `bit_depth_assumed`,
+unless the name says MP4; once the server has opened the release — a playback probe or a live
+stream session — its real container is used and the note disappears), `audio_codec_unknown`, `resolution_assumed`, `bit_depth_assumed`,
 `dolby_vision_profile_unknown` (a Dolby Vision name without an HDR10/HLG base layer),
 `video_codec_unknown` (→ `unknown`), and `transcoding_not_allowed` / `transcoding_disabled` when the
 viewer or server could not do what the prediction needs. The real decision (with the probed file)
@@ -1235,7 +1249,12 @@ directly.
 | `probe_failed`, `stream_expired`, `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable` | As named. |
 | `playback_failed` | Anything else; `params.reason` names the internal start code when there is one. |
 
-Only the codes in this table reach `error.code`; a remux or transcode start error is mapped onto them
+A catalog problem while picking the version keeps its catalog code: `title_not_found`,
+`season_not_found`, `episode_not_found` and `age_restricted` suggest nothing (no other version can
+help), `catalog_unavailable`, `capacity_reached` and `search_temporarily_unavailable` suggest `retry`.
+`useVlc` is only suggested while VLC has not already failed for this playback.
+
+Apart from those, only the codes in this table reach `error.code`; a remux or transcode start error is mapped onto them
 (`transcoding_disabled`, `ffmpeg_unavailable`, `no_local_listener` → `transcoding_unavailable`).
 
 HTTP errors (standard envelope): `400 invalid_work_id` (movie and episode ids only),

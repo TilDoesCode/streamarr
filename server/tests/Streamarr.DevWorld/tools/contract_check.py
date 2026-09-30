@@ -3,7 +3,8 @@
 Usage: contract_check.py [base_url] [--frozen server/openapi/v1.json]
 Default base_url http://127.0.0.1:39310. Every response's status must be declared for its path and method and its JSON
 body must match the declared schema. Covers the M1.5 changes: long-poll, switch validation, model-state errors, WebVTT in
-transcodes, the 1080p transcode default, HDR tone mapping on VLC, version refresh coalescing and HLS routes after stop.
+transcodes, the 1080p transcode default, HDR tone mapping on VLC, version refresh coalescing, HLS routes after stop,
+browse/genres (B1) and failed playbacks of unknown titles.
 Exits non-zero when any check fails.
 """
 import json
@@ -110,6 +111,34 @@ def main():
     conforms("anonymous discover", "/api/v1/viewer/catalog/discover", "get", status, body)
     status, body = http("GET", "/api/v1/viewer/catalog/discover", token=anna)
     conforms("discover", "/api/v1/viewer/catalog/discover", "get", status, body)
+    browse, genres = "/api/v1/viewer/catalog/browse", "/api/v1/viewer/catalog/genres"
+    kid = e2e.login("kind", "Contract Kid")
+    pages = []
+    for query, token in (("type=movie", anna), ("type=movie&page=3", anna), ("type=series&sort=top_rated", anna),
+                         ("type=movie&genre=27&sort=newest", anna), ("type=movie&page=2", kid)):
+        status, body = http("GET", f"{browse}?{query}", token=token)
+        conforms(f"browse?{query}", browse, "get", status, body)
+        pages.append(body)
+    check("browse pages by 4 with hasMore", [len(pages[0]["items"]), pages[0]["hasMore"], len(pages[1]["items"]), pages[1]["hasMore"]]
+          == [4, True, 1, False], str([(p.get("page"), p.get("totalPages"), p.get("hasMore")) for p in pages[:2]]))
+    check("browse filters by genre", {i["title"] for i in pages[3]["items"]} == {"Sprite Fright", "Night of the Living Dead"},
+          str([i["title"] for i in pages[3]["items"]]))
+    check("browse hides titles above the kid's age", [i["title"] for i in pages[4]["items"]] == ["Cosmos Laundromat"],
+          str([i["title"] for i in pages[4]["items"]]))
+    for query in ("type=movie", "type=series"):
+        status, body = http("GET", f"{genres}?{query}", token=anna)
+        conforms(f"genres?{query}", genres, "get", status, body)
+    for path, code in ((f"{browse}?type=music", "invalid_query"), (f"{browse}?type=movie&page=501", "invalid_query"),
+                       (f"{browse}?type=movie&page=x", "invalid_request"), (f"{genres}", "invalid_query")):
+        status, body = http("GET", path, token=anna)
+        conforms(path.split("/")[-1], path.split("?")[0], "get", status, body)
+        check(f"{path.split('/')[-1]} is 400 {code}", status == 400 and body["error"]["code"] == code, str(body)[:160])
+    status, body = http("GET", f"{browse}?type=movie")
+    conforms("anonymous browse", browse, "get", status, body)
+    status, created = e2e.start(anna, "tmdb-movie-999999", e2e.CHROME)
+    missing, _ = ready(anna, created, "unknown title")
+    check("title_not_found suggests no otherVersion", missing["state"] == "failed" and missing["error"]["code"] == "title_not_found"
+          and "otherVersion" not in (missing.get("suggestedActions") or []), str(missing.get("error")) + str(missing.get("suggestedActions")))
     status, body = http("GET", "/api/v1/viewer/watch/resume?limit=abc", token=anna)
     conforms("resume?limit=abc", "/api/v1/viewer/watch/resume", "get", status, body)
     check("malformed query is 400 invalid_request", status == 400 and body["error"]["code"] == "invalid_request", str(body)[:160])

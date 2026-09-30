@@ -116,6 +116,39 @@ public sealed class CatalogTmdbFake : ITmdbClient
     public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
         => Task.FromResult(List(mediaType == MediaType.Movie ? [KidsMovie, Movie] : [AdultShow], mediaType));
 
+    public const int DiscoverPageSize = 2;
+    public const int DramaGenre = 18;
+
+    private int _discoverCalls, _genreCalls;
+
+    public int DiscoverCalls => Volatile.Read(ref _discoverCalls);
+    public int GenreCalls => Volatile.Read(ref _genreCalls);
+    public TmdbDiscoverQuery? LastDiscover { get; private set; }
+
+    /// <summary>All titles of the type in id order (reversed for newest), two per page; only the main movie is a drama.</summary>
+    public Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _discoverCalls);
+        LastDiscover = query;
+        var all = (query.MediaType == MediaType.Movie ? Movies : Shows)
+            .Where(m => query.GenreId is null || (query.GenreId == DramaGenre && m.TmdbId == Movie))
+            .Select(m => m.TmdbId)
+            .ToList();
+        if (query.Sort == TmdbDiscoverSort.Newest)
+            all.Reverse();
+        var pages = (all.Count + DiscoverPageSize - 1) / DiscoverPageSize;
+        var ids = all.Skip((query.Page - 1) * DiscoverPageSize).Take(DiscoverPageSize).ToArray();
+        return Task.FromResult(new TmdbDiscoverPage(List(ids, query.MediaType), query.Page, pages, all.Count));
+    }
+
+    public Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _genreCalls);
+        return Task.FromResult<IReadOnlyList<TmdbGenre>>(mediaType == MediaType.Movie
+            ? [new TmdbGenre(DramaGenre, "Drama"), new TmdbGenre(9648, "Mystery")]
+            : [new TmdbGenre(10765, "Sci-Fi & Fantasy")]);
+    }
+
     private static IReadOnlyList<TmdbMatch> List(int[] ids, MediaType type)
         => ids.Select(id => (type == MediaType.Movie ? Movies : Shows).Single(m => m.TmdbId == id)).Select(Card).ToList();
 

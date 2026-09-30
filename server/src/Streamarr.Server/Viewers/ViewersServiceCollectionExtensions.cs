@@ -36,6 +36,7 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<ViewerContentPolicy>();
         services.AddSingleton<ViewerVersionCache>();
         services.AddSingleton<PlaybackPredictor>();
+        services.AddSingleton<ReleaseContainerStore>();
         services.AddSingleton<ArtworkPaletteService>();
         services.AddHostedService(sp => sp.GetRequiredService<ArtworkPaletteService>());
         services.AddHttpClient(ArtworkPaletteService.HttpClientName, client =>
