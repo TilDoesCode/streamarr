@@ -78,3 +78,15 @@ The journals hold the evidence and reproduction details for each item.
 ## Next update (out of scope for the core loop)
 
 - Offline downloads of series and movies on phones and tablets.
+
+## Found during the polish round (2026-09-30)
+
+- **Server: VLC limits on the versions endpoint.** `vlcAvailable=true` makes the server assume VLC plays every file,
+  so on Google TV it recommended a 4K HEVC file "with VLC" while the device's VLC only decodes HEVC up to 1080p and
+  plain Play (full device profile) chose the 1080p WEB-DL. The client stopped sending `vlcAvailable` (P2). Fix: let the
+  versions request carry the VLC engine caps (or the full device profile), then send it again from Android.
+- **Server: orphaned capability-probe ffmpeg.** A hardware capability probe (`FfmpegCapabilityProbe`, VideoToolbox)
+  outlived a killed Dev World and hung for ~13 h at 0 % CPU (needed SIGKILL). Kill the probe's process tree when the
+  host stops, and make sure step timeouts use SIGKILL.
+- **Player: black frame on a remux resume** seen once on the Google TV emulator at 0:34 while reporting "playing"
+  (being checked in the P2 verification).
