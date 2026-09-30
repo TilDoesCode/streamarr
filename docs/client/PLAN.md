@@ -358,3 +358,25 @@ shortcuts, responsive), accessibility labels, i18n completeness.
 Argent flows for the loop on every target, adversarial review (correctness, security of
 tokens/capabilities, UX states, i18n), screenshots of every screen per form factor, docs
 (`client/README.md`, `docs/client/*`), Codecraft actions.
+
+### P — polishing round (user request 2026-09-30)
+No Xcode and no real hardware in this round: every pending-ios and hardware item in
+[`BACKLOG.md`](./BACKLOG.md) stays open. Tasks P1–P3 below; their guidance and acceptance
+lists live in `orchestrator.js` (`node docs/client/prompt-cli.mjs build P1`).
+- **P1 player polish** (client): paused step-down frame, end card after a cancelled up-next,
+  focus back to the opener, Android phone picture-in-picture, native leaks and dev key listener.
+- **P2 browse, navigation and accounts polish** (client): the "Browse and UX polish" and
+  "Accounts" items of the backlog, web titles and history, screen-level tests.
+- **P3 backend polish** (server): continue watching and played items, the double probe, and
+  the product decisions the user makes in this round.
+
+### R — visual identity and one large-screen shell (user request 2026-09-30)
+The user: the app is "very plain and boring", has "no visual identity", and web and TV
+"diverge too much". Dark only, as before.
+- **D1 design directions** (docs only, no app code): three distinct identities with mockups
+  on real Dev World artwork in `docs/client/design/`; the user picks one.
+- **R-tasks** implement the chosen direction; defined after the choice. Principle for every
+  R-task: TV, web desktop and tablet share **one** large-screen layout (navigation, hero,
+  rows, detail, version panel, player overlay, motion); only the input model differs
+  (focus + D-pad on TV, pointer + keyboard on web). Phones get the compact variant of the
+  same components.
