@@ -45,3 +45,5 @@ subagents' completion messages, so its turns never host running work.
 - The runner reports a subagent as failed after 60 min of waiting even if it still runs: check `subagent_status`
   and the task journal before starting anything new.
 - Checkpoint commits are made by the orchestrating session itself, path-scoped (`git commit -- <paths>`).
+- Large builds (M4.2) run in time-boxed slices of about 50 minutes: each slice ends with status `partial`, the journal
+  lists what remains, and the next slice is a fresh subagent with the same build prompt.
