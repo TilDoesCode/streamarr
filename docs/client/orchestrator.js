@@ -215,9 +215,11 @@ const TASKS = {
       '- Web: a page title per route (title of the movie/series on detail pages), no duplicate history entries, Back after sign-in never returns to /server or /sign-in.',
       '- Accounts: signing in again to the same server and user updates the existing profile tile instead of adding a duplicate (dedupe by server + viewer id, migrate existing duplicates).',
       '- Tests: screen-level tests (jest + testing library) for home, search, movie/series detail and the version picker, covering loading, empty, error and the main interaction.',
+      '- User decisions (see docs/client/runs/driver/P3-decisions.md): (1) the version marked Recommended and a plain Play are the best version that plays without transcoding on this device (server side in P3; apply any client change P3 lists under "Notes for next tasks" in journal/P3.md). (2) The web client is served by the Streamarr server under /watch: set experiments.baseUrl from the EXPO_BASE_URL env var in client/app.config.ts, and on web default the server URL to the page origin (skip the server step when the origin is a Streamarr server). Verify with an export served by the server if P3 is committed, otherwise with a local static server under /watch.',
       '- Leave the visual style as it is (a redesign follows in later tasks); only add what these items need using the existing components.',
     ].join('\n'),
     acceptance: [
+      'web export under /watch works (deep links, reload, assets) and connects to the page origin without the server step; Play and the Recommended badge agree',
       'toast, timeout (error within ~20 s with a working Retry), no-versions state and Watch again verified on web and Google TV',
       'a watch-state change made with curl appears on Home and detail after focus regain / foreground / player exit without waiting a minute',
       'TV hero label and episode title correct for continue watching, next up and discover rows; German season names localized',
