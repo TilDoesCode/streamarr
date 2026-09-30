@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr Client — polish round and redesign plan</title>
+<style>
+  :root {
+    --bg: var(--cc-bg, #ffffff); --fg: var(--cc-fg, #15171c);
+    --muted: var(--cc-muted, #f3f4f7); --muted-fg: var(--cc-muted-fg, #5d6270);
+    --border: var(--cc-border, #e2e4ea); --primary: var(--cc-primary, #5b5bd6);
+    --radius: var(--cc-radius, 10px);
+    --font: var(--cc-font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+    --mono: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    --run: #1f9d55; --wait: #c27c0e; --next: #6b7280;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f1115); --fg: var(--cc-fg, #e7e9ee);
+      --muted: var(--cc-muted, #181b22); --muted-fg: var(--cc-muted-fg, #9aa0ad);
+      --border: var(--cc-border, #2a2e38); --primary: var(--cc-primary, #8b8bf5);
+      --run: #3fbf7f; --wait: #e0a33a; --next: #9aa0ad;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h2 { font-size: 18px; margin: 36px 0 12px; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--muted-fg); max-width: 780px; }
+  code { font-family: var(--mono); font-size: 0.9em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  .lanes { display: grid; grid-template-columns: 150px 1fr; gap: 10px 14px; align-items: center; }
+  .lane-name { font-weight: 600; font-size: 13px; color: var(--muted-fg); }
+  .track { display: flex; gap: 8px; flex-wrap: wrap; }
+  .step { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; font-size: 13px; min-width: 150px; }
+  .step b { display: block; font-size: 13px; }
+  .step span { color: var(--muted-fg); font-size: 12px; }
+  .run  { border-left: 4px solid var(--run); }
+  .wait { border-left: 4px solid var(--wait); }
+  .next { border-left: 4px solid var(--next); opacity: 0.85; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted-fg); margin: 10px 0 0; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .card h3 { margin: 0 0 8px; font-size: 15px; }
+  .card ul { margin: 0; padding-left: 18px; }
+  .card li { margin: 3px 0; }
+  .shell { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .shell div { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-size: 13px; }
+  .shell h4 { margin: 0 0 6px; font-size: 13px; }
+  .shared { background: var(--muted); grid-column: 1 / -1; }
+  .muted { color: var(--muted-fg); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Polish round and redesign</h1>
+  <p class="lede">Two goals: close every backlog item that needs neither Xcode nor real hardware, and give the app a real visual identity with one shared large-screen layout for TV and web. Each task is built, verified independently on devices and committed.</p>
+
+  <h2>What runs when</h2>
+  <div class="lanes">
+    <div class="lane-name">Client (emulators)</div>
+    <div class="track">
+      <div class="step run"><b>P1 player polish</b><span>end card, paused VLC frame, focus back to opener, Android PiP, native leaks</span></div>
+      <div class="step next"><b>P2 browse + accounts polish</b><span>timeouts, no-versions state, watch again, freshness, web titles, /watch base URL, dedupe profiles, screen tests</span></div>
+      <div class="step next"><b>R-tasks</b><span>implement the chosen identity</span></div>
+    </div>
+    <div class="lane-name">Server</div>
+    <div class="track">
+      <div class="step run"><b>P3 backend polish</b><span>played items leave Continue watching, single probe, device-aware Recommended, web app under /watch</span></div>
+    </div>
+    <div class="lane-name">Design (docs only)</div>
+    <div class="track">
+      <div class="step run"><b>D1 three directions</b><span>mockups on real artwork: large-screen home, detail + versions, player, phone</span></div>
+      <div class="step wait"><b>You pick one</b><span>with your Infuse / Apple TV references in mind</span></div>
+    </div>
+  </div>
+  <div class="legend"><span><i style="background:var(--run)"></i>running now</span><span><i style="background:var(--wait)"></i>needs you</span><span><i style="background:var(--next)"></i>next</span></div>
+  <p class="muted" style="margin-top:12px">Only one emulator fits in memory, so client tasks run one after another; server and design work run beside them. Every test is silent (emulators without audio, Chromium muted).</p>
+
+  <h2>Your decisions (recorded)</h2>
+  <div class="grid2">
+    <div class="card"><h3>„Recommended“ and plain „Play“</h3><p>The best version that plays <b>without transcoding</b> on this device; transcoding only when nothing else works. Server side in P3, client side in P2.</p></div>
+    <div class="card"><h3>Web client hosting</h3><p>Served by the Streamarr server under <code>/watch</code>, same origin, no CORS setup. The web app connects to its own origin without asking for a server URL.</p></div>
+  </div>
+
+  <h2>One large-screen shell</h2>
+  <p>Today TV and web look like two different apps: TV has an icon rail and a hero that follows focus; web has a sidebar, a greeting bar, a fixed „top pick“ hero and arrow buttons, and switches to a top bar at tablet size. After the redesign they share one layout; only the input differs.</p>
+  <div class="shell">
+    <div class="shared"><h4>Shared by TV, web desktop and tablet</h4>Navigation rail with brand mark and profile · hero that follows the focused or hovered title · row and card sizes · section headers · detail layout · version panel · player overlay · motion and transitions</div>
+    <div><h4>TV</h4>D-pad focus with a strong focus state, remote key map, overscan-safe margins</div>
+    <div><h4>Web desktop</h4>Pointer hover instead of focus, scroll arrows on rows, keyboard shortcuts, visible focus for keyboard users</div>
+    <div><h4>Phone</h4>Compact variant of the same components: bottom tabs, stacked hero, sheets instead of panels</div>
+  </div>
+
+  <h2>Out of scope this round</h2>
+  <p class="muted">iPhone, iPad, Apple TV, Liquid Glass (need Xcode) · HDR, Dolby Vision, passthrough, 4K and memory on a 2 GB TV (need real hardware) · offline downloads (next update). All stay in <code>docs/client/BACKLOG.md</code>.</p>
+</main>
+</body>
+</html>
