@@ -90,3 +90,10 @@ The journals hold the evidence and reproduction details for each item.
   host stops, and make sure step timeouts use SIGKILL.
 - **Player: black frame on a remux resume** seen once on the Google TV emulator at 0:34 while reporting "playing"
   (being checked in the P2 verification).
+- **Server: palette queue silently drops work.** `ArtworkPaletteService` uses a bounded channel (2048) with
+  `DropWrite`; `TryWrite` still returns true, so URLs beyond the limit stay marked as queued and never get a tint until
+  a restart (and `WhenIdleAsync` never returns). Matters on the first load of a large library. Fix: wait or re-queue
+  instead of dropping, and clear the queued marker on drop.
+- **Server: palette/spec failures log only at Debug.** A broken image host or a missing native Skia library goes
+  unnoticed in production; log the first failure per cause at Warning.
+- **Server: series spec lookup scans all stored summaries per list item** (`CatalogSpecStore.Get`); index by series.
