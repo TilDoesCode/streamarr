@@ -12,14 +12,14 @@
     --radius: var(--cc-radius, 10px);
     --font: var(--cc-font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
     --mono: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-    --run: #1f9d55; --wait: #c27c0e; --next: #6b7280;
+    --run: #1f9d55; --wait: #c27c0e; --next: #6b7280; --done: #5b5bd6;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: var(--cc-bg, #0f1115); --fg: var(--cc-fg, #e7e9ee);
       --muted: var(--cc-muted, #181b22); --muted-fg: var(--cc-muted-fg, #9aa0ad);
       --border: var(--cc-border, #2a2e38); --primary: var(--cc-primary, #8b8bf5);
-      --run: #3fbf7f; --wait: #e0a33a; --next: #9aa0ad;
+      --run: #3fbf7f; --wait: #e0a33a; --next: #9aa0ad; --done: #8b8bf5;
     }
   }
   * { box-sizing: border-box; }
@@ -39,6 +39,12 @@
   .run  { border-left: 4px solid var(--run); }
   .wait { border-left: 4px solid var(--wait); }
   .next { border-left: 4px solid var(--next); opacity: 0.85; }
+  .done { border-left: 4px solid var(--done); }
+  .wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted-fg); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .wrap tr:last-child td { border-bottom: 0; }
   .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted-fg); margin: 10px 0 0; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
@@ -62,40 +68,50 @@
   <div class="lanes">
     <div class="lane-name">Client (emulators)</div>
     <div class="track">
-      <div class="step run"><b>P1 player polish</b><span>end card, paused VLC frame, focus back to opener, Android PiP, native leaks</span></div>
-      <div class="step next"><b>P2 browse + accounts polish</b><span>timeouts, no-versions state, watch again, freshness, web titles, /watch base URL, dedupe profiles, screen tests</span></div>
-      <div class="step next"><b>R-tasks</b><span>implement the chosen identity</span></div>
+      <div class="step done"><b>P1 player polish</b><span>committed e836ab5</span></div>
+      <div class="step run"><b>P2 browse + accounts polish</b><span>building now, then verified</span></div>
+      <div class="step next"><b>R1 foundation</b><span>Aurora tokens, fonts, Glass, ambient backdrop, spec labels, brand assets</span></div>
+      <div class="step next"><b>R2 one large-screen shell</b><span>rail, hero, rows, search, settings, profiles, sign-in — same on TV, web, tablet</span></div>
+      <div class="step next"><b>R3 detail, player, phone</b><span>glass version panel, player overlay + panels, phone compact</span></div>
     </div>
     <div class="lane-name">Server</div>
     <div class="track">
-      <div class="step run"><b>P3 backend polish</b><span>played items leave Continue watching, single probe, device-aware Recommended, web app under /watch</span></div>
+      <div class="step done"><b>P3 backend polish</b><span>committed ab22dd1</span></div>
+      <div class="step run"><b>R0 tint + spec summary</b><span>colour per title from artwork, resolution/HDR/codec/audio on cards</span></div>
     </div>
-    <div class="lane-name">Design (docs only)</div>
+    <div class="lane-name">Design</div>
     <div class="track">
-      <div class="step run"><b>D1 three directions</b><span>mockups on real artwork: large-screen home, detail + versions, player, phone</span></div>
-      <div class="step wait"><b>You pick one</b><span>with your Infuse / Apple TV references in mind</span></div>
+      <div class="step done"><b>D1 three directions</b><span>committed 956d4f0</span></div>
+      <div class="step done"><b>Your pick</b><span>Aurora + Signal spec labels</span></div>
     </div>
   </div>
-  <div class="legend"><span><i style="background:var(--run)"></i>running now</span><span><i style="background:var(--wait)"></i>needs you</span><span><i style="background:var(--next)"></i>next</span></div>
-  <p class="muted" style="margin-top:12px">Only one emulator fits in memory, so client tasks run one after another; server and design work run beside them. Every test is silent (emulators without audio, Chromium muted).</p>
+  <div class="legend"><span><i style="background:var(--done)"></i>done</span><span><i style="background:var(--run)"></i>running now</span><span><i style="background:var(--next)"></i>next</span></div>
+  <p class="muted" style="margin-top:12px">Only one emulator fits in memory, so client tasks run one after another; server work runs beside them. Every task is built, verified independently on devices, then committed. Every test is silent.</p>
 
   <h2>Your decisions (recorded)</h2>
   <div class="grid2">
-    <div class="card"><h3>„Recommended“ and plain „Play“</h3><p>The best version that plays <b>without transcoding</b> on this device; transcoding only when nothing else works. Server side in P3, client side in P2.</p></div>
-    <div class="card"><h3>Web client hosting</h3><p>Served by the Streamarr server under <code>/watch</code>, same origin, no CORS setup. The web app connects to its own origin without asking for a server URL.</p></div>
+    <div class="card"><h3>Look: Aurora + Signal spec labels</h3><p>Artwork-driven ambient backdrop and a colour per title, soft glass surfaces, Outfit + Figtree; Signal's monospace labels for resolution, HDR, codec, audio and playback method, and signal bars for health.</p></div>
+    <div class="card"><h3>Real Liquid Glass on iOS</h3><p>Native glass first (tab bar, headers, sheets, menus), then <code>expo-glass-effect</code> for our own surfaces and controls, <code>@expo/ui</code> glass containers only for morphing. No imitation on iOS.</p></div>
+    <div class="card"><h3>„Recommended“ and plain „Play“</h3><p>The best version that plays <b>without transcoding</b> on this device. Server done (P3), app side in P2.</p></div>
+    <div class="card"><h3>Web client hosting</h3><p>Served by the Streamarr server under <code>/watch</code>, same origin. Server done (P3), app side in P2.</p></div>
   </div>
+
+  <h2>Glass per platform</h2>
+  <div class="wrap"><table>
+    <tr><th>Platform</th><th>Glass</th><th>Tested this round</th></tr>
+    <tr><td>iOS 26+ (iPhone, iPad)</td><td>Real Liquid Glass: NativeTabs, native headers and form sheets, <code>GlassView</code> / <code>GlassContainer</code>, <code>GlassEffectContainer</code> for the player controls</td><td>typecheck + unit tests only (no Xcode)</td></tr>
+    <tr><td>iOS &lt; 26 · Reduce Transparency</td><td>system blur · solid surface</td><td>unit tests only</td></tr>
+    <tr><td>tvOS</td><td>Liquid Glass where supported, otherwise system blur</td><td>pending (no Xcode)</td></tr>
+    <tr><td>Web</td><td>CSS backdrop blur + saturation + top highlight</td><td>yes (Chromium)</td></tr>
+    <tr><td>Android phone / tablet</td><td>translucent tinted surface</td><td>yes (emulator)</td></tr>
+    <tr><td>Android TV</td><td>solid translucent surface, no runtime blur</td><td>yes (Google TV emulator)</td></tr>
+  </table></div>
 
   <h2>One large-screen shell</h2>
-  <p>Today TV and web look like two different apps: TV has an icon rail and a hero that follows focus; web has a sidebar, a greeting bar, a fixed „top pick“ hero and arrow buttons, and switches to a top bar at tablet size. After the redesign they share one layout; only the input differs.</p>
-  <div class="shell">
-    <div class="shared"><h4>Shared by TV, web desktop and tablet</h4>Navigation rail with brand mark and profile · hero that follows the focused or hovered title · row and card sizes · section headers · detail layout · version panel · player overlay · motion and transitions</div>
-    <div><h4>TV</h4>D-pad focus with a strong focus state, remote key map, overscan-safe margins</div>
-    <div><h4>Web desktop</h4>Pointer hover instead of focus, scroll arrows on rows, keyboard shortcuts, visible focus for keyboard users</div>
-    <div><h4>Phone</h4>Compact variant of the same components: bottom tabs, stacked hero, sheets instead of panels</div>
-  </div>
+  <p>After R2, TV, web desktop and tablet render the same layout: glass rail with brand and profile, a hero that follows the focused (TV) or hovered (web) title over the ambient backdrop, the same rows and cards, the same detail page and version panel, the same player overlay. Only the input differs; phones get the compact variant.</p>
 
   <h2>Out of scope this round</h2>
-  <p class="muted">iPhone, iPad, Apple TV, Liquid Glass (need Xcode) · HDR, Dolby Vision, passthrough, 4K and memory on a 2 GB TV (need real hardware) · offline downloads (next update). All stay in <code>docs/client/BACKLOG.md</code>.</p>
+  <p class="muted">Running and visually checking iPhone, iPad and Apple TV, including Liquid Glass (need Xcode) · HDR, Dolby Vision, passthrough, 4K and memory on a 2 GB TV (need real hardware) · offline downloads (next update). All stay in <code>docs/client/BACKLOG.md</code>.</p>
 </main>
 </body>
 </html>
