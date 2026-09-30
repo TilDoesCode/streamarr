@@ -151,6 +151,12 @@ for a future Streamarr-native viewer app. The module is off by default; switch i
 sign in to the management UI. For password reset and sign-in codes, configure SMTP or use
 the in-memory test outbox. See [Viewer accounts and watch state](viewers.md).
 
+### Viewer web app
+
+The Docker image also serves the viewer web app at `https://<server>/watch`. It reads the export
+from `ViewerWebPath` (default: a `viewer-web` folder next to the app, `/app/viewer-web` in the
+image). When that folder has no `index.html`, `/watch` is simply not served.
+
 ### Jellyfin logs in Streamarr
 
 The Logs view always includes a bounded, sanitized Core feed. It can optionally merge

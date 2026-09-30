@@ -182,6 +182,7 @@ public sealed class ResolveService(
         if (!string.IsNullOrWhiteSpace(streamAttemptId))
             scopeProperties[LogPropertyNames.StreamAttemptId] = streamAttemptId;
         using var resolveScope = logger.BeginScope(scopeProperties);
+        _probeOverride.Value = observer as IResolveProbe;
 
         try
         {
@@ -253,6 +254,11 @@ public sealed class ResolveService(
             _resolveGate.Release();
         }
     }
+
+    private static readonly AsyncLocal<IResolveProbe?> _probeOverride = new();
+
+    private Task<FfprobeResult?> ProbeCapabilityAsync(string token, Func<string, string> localStreamUrlForToken, CancellationToken ct)
+        => _probeOverride.Value is { } probe ? probe.ProbeCapabilityAsync(token, ct) : ffprobe.ProbeAsync(localStreamUrlForToken(token), ct);
 
     private async Task<ResolveResponse> ResolveCoreAsync(
         string releaseId,
@@ -608,7 +614,7 @@ public sealed class ResolveService(
                 probe = await mediaProbeCache.GetOrCreateAsync(
                     releaseId,
                     media,
-                    token => ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), token),
+                    token => ProbeCapabilityAsync(session.Token, localStreamUrlForToken, token),
                     ct);
         }
         catch
@@ -790,7 +796,7 @@ public sealed class ResolveService(
                 probe = await mediaProbeCache.GetOrCreateAsync(
                     releaseId,
                     media,
-                    token => ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), token),
+                    token => ProbeCapabilityAsync(session.Token, localStreamUrlForToken, token),
                     ct);
         }
         catch
@@ -928,7 +934,7 @@ public sealed class ResolveService(
                     probe = await mediaProbeCache.GetOrCreateAsync(
                         releaseId,
                         media,
-                        token => ffprobe.ProbeAsync(localStreamUrlForToken(session.Token), token),
+                        token => ProbeCapabilityAsync(session.Token, localStreamUrlForToken, token),
                         ct);
             }
             catch
@@ -1104,4 +1110,10 @@ public interface IResolveObserver
 
     /// <summary><paramref name="status"/> is ready, degraded or dead.</summary>
     void HopFinished(string releaseId, string status);
+}
+
+/// <summary>An observer that probes the stream capability itself, so a caller needing the full probe runs ffprobe once.</summary>
+public interface IResolveProbe
+{
+    Task<FfprobeResult?> ProbeCapabilityAsync(string streamToken, CancellationToken ct);
 }

@@ -62,9 +62,11 @@ static files — **single container, single origin** (BRIEF §4). The multi-stag
 [`server/Dockerfile`](../server/Dockerfile) does all of it:
 
 1. builds the React SPA (`node`),
-2. publishes the ASP.NET Core app (`dotnet sdk`), copying `web/dist/*` into
+2. exports the viewer web app from `client/` (`expo export --platform web`) into
+   `/app/viewer-web`,
+3. publishes the ASP.NET Core app (`dotnet sdk`), copying `web/dist/*` into
    `wwwroot/`,
-3. ships a slim `aspnet` runtime with **ffmpeg** (supplies `ffprobe` for `/resolve`)
+4. ships a slim `aspnet` runtime with **ffmpeg** (supplies `ffprobe` for `/resolve`)
    and **curl** (backs the healthcheck).
 
 ```bash
@@ -117,6 +119,12 @@ When `wwwroot/index.html` exists the server enables static-file serving + an SPA
 fallback (client routes like `/settings` resolve to `index.html`), while `/api` and
 `/openapi` keep their own behavior. In development you instead run Vite (`npm run dev`)
 proxying to Kestrel — both paths are supported.
+
+The viewer web app is built into the same image and served at `https://<server>/watch`
+(`/watch/*` client routes resolve to its `index.html`; hashed assets under `_expo/` and
+`assets/` are cached for a year, `index.html` is never cached). It uses the viewer API on the
+same origin, so it needs no CORS setting. The route is inert when the export folder
+(`ViewerWebPath`) has no `index.html`.
 
 Cookie-authenticated state changes require a same-origin request. When the Management UI
 is reached through a TLS-terminating tunnel or a forwarded per-app URL (e.g. Codecraft dev
@@ -334,6 +342,7 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `ViewerPlaybackHeartbeatSeconds` | `60` | A ready viewer playback counts toward the viewer's max concurrent streams this long after its last progress report (heartbeat), ready, switch or HLS fetch of its remux/transcode (15–3600). |
 | `ViewerPlaybackIdleSeconds` | `600` | A viewer playback without polls, progress reports, switches or HLS fetches for this long is stopped and its remux/transcode closed (60–86400). |
 | `ViewerCorsOrigins` | `[]` | Origins (`scheme://host[:port]`, or `*`) of viewer apps served elsewhere; they get CORS (without credentials) for `/api/v1/viewer/*`, `/api/v1/stream/*` and `/api/v1/transcode/*`. Empty: same-origin only. |
+| `ViewerWebPath` | `""` | Directory of the exported viewer web app served at `/watch`. Empty → a `viewer-web` folder in the content root (`/app/viewer-web` in the image); relative paths resolve against the content root. Without an `index.html` there the route is inert. |
 | `MaxWatchEvents` | `10000` | Maximum retained playback-event rows; oldest rows are pruned on write. |
 | `DeepHealthCacheSeconds` | `30` | Shared cache lifetime for admin-only dependency probes. |
 | `Admin` | — | First-run admin bootstrap (below). |

@@ -6586,7 +6586,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod`. */
+        /** Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod` and orders by what plays without a server transcode. */
         get: {
             parameters: {
                 query?: {
@@ -6599,6 +6599,7 @@ export interface paths {
                     maxAudioChannels?: number;
                     maxHeight?: number;
                     maxBitrateKbps?: number;
+                    vlcAvailable?: boolean;
                 };
                 header?: never;
                 path: {
@@ -11558,10 +11559,15 @@ export interface components {
             name: string | null;
             /**
              * Format: int32
-             * @description 1 = best.
+             * @description Position in the default order, 1 = first. With a device profile: the best quality that plays without a server transcode first (see `qualityRank`).
              */
             rank: number;
-            /** @description The version the server picks when the client does not choose one (rank 1). */
+            /**
+             * Format: int32
+             * @description Position by quality and health alone, independent of the device (1 = best).
+             */
+            qualityRank?: number;
+            /** @description The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play. */
             recommended?: boolean;
             /** @description `2160p`, `1080p`, `720p`, `576p`, `540p`, `480p`, `360p` or `SD`. */
             resolution?: string | null;
@@ -11616,7 +11622,7 @@ export interface components {
             health: string | null;
             /** @description `ready` or `downloading` when a pre-download of this version exists for the viewer; else null. */
             local?: string | null;
-            /** @description Prediction only (`direct`, `remux`, `transcode`, `unknown`) from the name and the sent device profile; the server decides at playback. */
+            /** @description Prediction only (`direct`, `remux`, `transcode`, `unknown`; `vlc` when the request sent `vlcAvailable=true`) from the name and the sent device profile; the server decides at playback. */
             predictedMethod?: string | null;
             /** @description Why, plus every assumption the prediction made (e.g. `container_assumed`). */
             predictionReasons?: components["schemas"]["PredictionReasonDto"][] | null;

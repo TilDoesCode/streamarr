@@ -8949,7 +8949,7 @@
         "tags": [
           "ViewerCatalog"
         ],
-        "summary": "Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod`.",
+        "summary": "Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod` and orders by what plays without a server transcode.",
         "parameters": [
           {
             "name": "workId",
@@ -9024,6 +9024,14 @@
             "schema": {
               "type": "integer",
               "format": "int32"
+            }
+          },
+          {
+            "name": "vlcAvailable",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
             }
           }
         ],
@@ -20595,12 +20603,17 @@
           },
           "rank": {
             "type": "integer",
-            "description": "1 = best.",
+            "description": "Position in the default order, 1 = first. With a device profile: the best quality that plays without a server transcode first (see `qualityRank`).",
+            "format": "int32"
+          },
+          "qualityRank": {
+            "type": "integer",
+            "description": "Position by quality and health alone, independent of the device (1 = best).",
             "format": "int32"
           },
           "recommended": {
             "type": "boolean",
-            "description": "The version the server picks when the client does not choose one (rank 1)."
+            "description": "The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play."
           },
           "resolution": {
             "type": "string",
@@ -20723,7 +20736,7 @@
           },
           "predictedMethod": {
             "type": "string",
-            "description": "Prediction only (`direct`, `remux`, `transcode`, `unknown`) from the name and the sent device profile; the server decides at playback.",
+            "description": "Prediction only (`direct`, `remux`, `transcode`, `unknown`; `vlc` when the request sent `vlcAvailable=true`) from the name and the sent device profile; the server decides at playback.",
             "nullable": true
           },
           "predictionReasons": {

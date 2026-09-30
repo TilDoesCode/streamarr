@@ -883,6 +883,19 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.Equal(0, created.GetProperty("startPositionTicks").GetInt64());
     }
 
+    [Fact]
+    public async Task ResumePosition_OfARewatchedPlayedWork_IsOffered()
+    {
+        var (viewer, _) = await ViewerAsync("rewatch");
+        await viewer.PostAsJsonAsync("/api/v1/viewer/watch/played", new { workIds = new[] { Movie } });
+        await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+            new { @event = "progress", workId = Movie, positionTicks = 36_000_000_000L, durationTicks = 72_000_000_000L, playbackId = "second-run" });
+
+        var created = await StartAsync(viewer, Play(Release(Mp4()), AppleTv));
+
+        Assert.Equal(36_000_000_000L, created.GetProperty("resumePositionTicks").GetInt64());
+    }
+
     public static TheoryData<string, string> InvalidRequests => new()
     {
         { """{"device":{"platform":"tvos","engines":[{"engine":"native"}]}}""", "invalid_work_id" },

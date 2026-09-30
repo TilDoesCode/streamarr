@@ -104,6 +104,7 @@ SAFARI = {"platform": "web", "vlcAvailable": False, "engines": [
      "videoCodecs": [{"codec": "h264"}, {"codec": "hevc", "maxBitDepth": 10, "hdrFormats": ["hdr10", "hlg", "dolbyvision"]}],
      "audioCodecs": [{"codec": "aac"}, {"codec": "ac3"}, {"codec": "eac3"}, {"codec": "mp3"}, {"codec": "flac"}],
      "subtitleFormats": ["webvtt"]}]}
+CHROME_HINTS = "videoCodecs=h264,vp9,av1,hevc&audioCodecs=aac,mp3,opus,flac&containers=mp4,webm&supports10Bit=true&maxAudioChannels=2"
 DEVICES = {"androidtv": ANDROID_TV, "appletv": APPLE_TV, "chrome": CHROME, "safari": SAFARI}
 
 # Expected (method, engine) per variant and device for anna (transcoding allowed).
@@ -380,11 +381,23 @@ def preference_checks(manifest, picks, anna):
 def recommended_checks(manifest, anna):
     sherlock = next(t for t in manifest["titles"] if t["title"] == "Sherlock")
     episode = sherlock["seasons"][0]["episodes"][0]
+    _, listed = http("GET", f"/api/v1/viewer/catalog/works/{episode['workId']}/versions?{CHROME_HINTS}", token=anna)
+    picked = next((v for v in listed["versions"] if v["recommended"]), None)
     status, created = start(anna, episode["workId"], CHROME, None, {"audioLanguage": "en"})
     _, body, seen = wait(anna, created["playbackId"])
-    check("recommended: an episode without releaseId plays its rank-1 version", body["state"] == "ready" and body["version"]["rank"] == 1,
-          f"{body['state']} {body.get('version', {}) and body['version'].get('name')} states={seen}")
+    check("recommended: an episode without releaseId plays the version recommended for the device",
+          body["state"] == "ready" and picked is not None and body["version"]["releaseId"] == picked["releaseId"],
+          f"{body['state']} {body.get('version', {}) and body['version'].get('name')} vs {picked and picked['name']} states={seen}")
     stop(anna, created["playbackId"])
+    for title in (t for t in manifest["titles"] if t["type"] == "movie"):
+        _, listed = http("GET", f"/api/v1/viewer/catalog/works/{title['workId']}/versions?{CHROME_HINTS}", token=anna)
+        versions = listed.get("versions", []) if isinstance(listed, dict) else []
+        if any(v["predictedMethod"] in ("direct", "remux") for v in versions):
+            first = versions[0]
+            check(f"recommended: {title['title']} on Chrome recommends a version without transcode",
+                  first["recommended"] and first["predictedMethod"] in ("direct", "remux") and first["rank"] == 1
+                  and sorted(v["qualityRank"] for v in versions) == list(range(1, len(versions) + 1)),
+                  f"{first['name']} {first['predictedMethod']} q{first['qualityRank']}")
     status, body = start(anna, "tmdb-tv-19885-s03e01", CHROME)
     _, body, _ = wait(anna, body["playbackId"])
     check("recommended: an episode without versions fails with no_versions", body["state"] == "failed" and body["error"]["code"] == "no_versions",

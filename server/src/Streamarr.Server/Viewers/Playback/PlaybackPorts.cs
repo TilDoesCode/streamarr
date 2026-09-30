@@ -42,7 +42,8 @@ public interface IPlaybackMedia
 }
 
 /// <summary>Resolves with client <c>streamarr-viewer</c> and the viewer id as requester, so pre-downloads and capability reuse stay per viewer.</summary>
-public sealed class ServerPlaybackResolver(ResolveService resolve, TranscodeSourceResolver sources, RepairCoordinator? repair = null) : IPlaybackResolver
+public sealed class ServerPlaybackResolver(
+    ResolveService resolve, TranscodeSourceResolver sources, TranscodeSessionManager transcodes, RepairCoordinator? repair = null) : IPlaybackResolver
 {
     public Task<ResolveResponse> ResolveAsync(PlaybackResolveCall call, IResolveObserver observer, CancellationToken ct)
     {
@@ -65,7 +66,22 @@ public sealed class ServerPlaybackResolver(ResolveService resolve, TranscodeSour
             (token, _) => $"/api/v1/stream/{token}",
             token => $"{local}/api/v1/stream/{token}",
             ct,
-            observer);
+            new ProbingObserver(observer, sources, transcodes));
+    }
+
+    /// <summary>Serves the resolve's probe from the transcoder's full probe, which the plan then reuses (one ffprobe per start).</summary>
+    private sealed class ProbingObserver(IResolveObserver inner, TranscodeSourceResolver sources, TranscodeSessionManager transcodes)
+        : IResolveObserver, IResolveProbe
+    {
+        public void HopStarted(string releaseId, int hop) => inner.HopStarted(releaseId, hop);
+
+        public void HopFinished(string releaseId, string status) => inner.HopFinished(releaseId, status);
+
+        public async Task<FfprobeResult?> ProbeCapabilityAsync(string streamToken, CancellationToken ct)
+        {
+            var json = await transcodes.ProbeForResolveAsync(sources.FromStreamToken(streamToken, out _), ct);
+            return json is null ? null : FfprobeClient.Parse(json);
+        }
     }
 
     public RepairStatusInfo? RepairStatus(string releaseId)

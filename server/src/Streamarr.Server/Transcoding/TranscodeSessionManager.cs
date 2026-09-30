@@ -69,6 +69,15 @@ public sealed class TranscodeSessionManager(
         }
     }
 
+    /// <summary>Runs the full probe for a resolve and keeps it for the plan; returns ffprobe's JSON (null when it failed).</summary>
+    public async Task<string?> ProbeForResolveAsync(TranscodeSource source, CancellationToken ct)
+    {
+        var (media, json) = await prober.ProbeRawAsync(source, ct);
+        if (media is not null)
+            _probeCache[source.Input] = (DateTimeOffset.UtcNow, media);
+        return media is null ? null : json;
+    }
+
     private sealed record TimedPlan(
         SourceMediaInfo Media, TranscodePlan Plan, TranscodingSettings Settings, FfmpegCapabilities Capabilities,
         double CapabilitiesMs, double ProbeMs, bool ProbeCached, double PlanMs);

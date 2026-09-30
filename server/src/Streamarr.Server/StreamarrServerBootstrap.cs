@@ -518,6 +518,9 @@ public static class StreamarrServerBootstrap
         if (app.Environment.IsDevelopment())
             app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "Streamarr v1"));
 
+        // Viewer web app under /watch; ahead of the Management SPA, routing and auth.
+        app.UseStreamarrViewerWeb();
+
         // --- Management SPA, production single-origin path (BRIEF §4) -------------------
         // In development the Vite dev server proxies /api to Kestrel; in production the
         // Core Server itself serves the built SPA from wwwroot as static files, with an
@@ -583,10 +586,10 @@ public static class StreamarrServerBootstrap
 
         if (spaEnabled)
         {
-            // Any GET that is not an API or OpenAPI route and did not match a static file
+            // Any GET that is not an API, OpenAPI or /watch route and did not match a static file
             // falls through to the SPA shell. Anonymous: the shell (incl. the login page)
             // must load before the user has a token; the API stays auth-gated (BRIEF §6.4).
-            app.MapFallbackToFile("{*path:regex(^(?!api/|openapi/).*$)}", "index.html")
+            app.MapFallbackToFile("{*path:regex(^(?!api/|openapi/|watch/|watch$).*$)}", "index.html")
                 .AllowAnonymous();
         }
 

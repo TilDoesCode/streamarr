@@ -65,6 +65,18 @@ public sealed class ViewerRulesTests
     }
 
     [Fact]
+    public void Late_Reports_Of_The_Completing_Playback_Keep_No_Resume_Point()
+    {
+        var state = State();
+        WatchProgressRules.Apply(state, Report("progress", Hour * 92 / 100, Hour, "p1"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("progress", Hour * 88 / 100, Hour, "p1"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("stop", Hour * 60 / 100, Hour, "p1"), Settings, Now);
+        Assert.True(state.Played);
+        Assert.Equal(0, state.PositionTicks);
+        Assert.Equal(1, state.PlayCount);
+    }
+
+    [Fact]
     public void Completion_Without_Playback_Id_Counts_Only_Transitions()
     {
         var state = State();

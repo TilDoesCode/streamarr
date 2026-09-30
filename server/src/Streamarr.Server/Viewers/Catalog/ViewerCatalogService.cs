@@ -7,6 +7,8 @@ using Streamarr.Server.Services;
 using Streamarr.Server.Viewers.Access;
 using Streamarr.Server.Viewers.Watch;
 
+using Streamarr.Server.Viewers.Playback;
+
 namespace Streamarr.Server.Viewers.Catalog;
 
 /// <summary>A release with its parsed name, as cached for the version lists.</summary>
@@ -34,6 +36,7 @@ public sealed class ViewerCatalogService(
     IReleaseHealthCache healthCache,
     ViewerVersionCache versionCache,
     PlaybackPredictor predictor,
+    IPlaybackMedia media,
     IReleaseStore releaseStore,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
@@ -245,7 +248,11 @@ public sealed class ViewerCatalogService(
     }
 
     public async Task<CatalogVersionsResponse> VersionsAsync(
-        ViewerEntity viewer, WorkKey key, bool refresh, DeviceHints? device, CancellationToken ct)
+        ViewerEntity viewer, WorkKey key, bool refresh, DeviceHints? device, CancellationToken ct, DeviceCaps? caps = null)
+        => await VersionsAsync(viewer, key, refresh, device, caps is null ? null : new PlayContext(caps, PlaybackPreferences.Default, await media.ServerAsync(ct)), ct);
+
+    private async Task<CatalogVersionsResponse> VersionsAsync(
+        ViewerEntity viewer, WorkKey key, bool refresh, DeviceHints? device, PlayContext? play, CancellationToken ct)
     {
         IReadOnlyList<ParsedRelease> releases;
         int? runtime;
@@ -279,7 +286,7 @@ public sealed class ViewerCatalogService(
                 throw ViewerProblem.BadRequest("invalid_work_id", "Versions are listed for TMDB movie and episode ids only.");
         }
 
-        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device);
+        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play);
         return new CatalogVersionsResponse
         {
             WorkId = key.WorkId,
@@ -291,9 +298,12 @@ public sealed class ViewerCatalogService(
         };
     }
 
-    /// <summary>The recommended (rank 1) version, searching the indexers when the ranking is not cached.</summary>
-    public async Task<VersionDto?> RecommendedAsync(ViewerEntity viewer, WorkKey key, CancellationToken ct)
-        => (await VersionsAsync(viewer, key, refresh: false, device: null, ct)).Versions.FirstOrDefault();
+    /// <summary>The version a plain "Play" starts on this device (the one marked recommended), searching the indexers when the ranking is not cached.</summary>
+    public async Task<VersionDto?> RecommendedAsync(ViewerEntity viewer, WorkKey key, PlayContext? play, CancellationToken ct)
+    {
+        var versions = (await VersionsAsync(viewer, key, refresh: false, device: null, play, ct)).Versions;
+        return versions.FirstOrDefault(v => v.Recommended) ?? versions.FirstOrDefault();
+    }
 
     /// <summary>One release as a version: ranked from the cached list when present (no indexer search), else from its registration with rank 0.</summary>
     public async Task<VersionDto?> VersionAsync(ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct)
@@ -324,7 +334,7 @@ public sealed class ViewerCatalogService(
             logger.LogDebug(e, "Runtime lookup for {WorkId} failed", key.WorkId);
         }
 
-        if (releases is not null && MapVersions(viewer, key, releases, runtime, packEpisodes, null).FirstOrDefault(v => v.ReleaseId == releaseId) is { } ranked)
+        if (releases is not null && MapVersions(viewer, key, releases, runtime, packEpisodes, null, null).FirstOrDefault(v => v.ReleaseId == releaseId) is { } ranked)
             return ranked;
         if (releaseStore.Get(releaseId, key.WorkId) is not { } registered)
             return null;
@@ -336,20 +346,37 @@ public sealed class ViewerCatalogService(
     }
 
     private List<VersionDto> MapVersions(
-        ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, int? runtime, int packEpisodes, DeviceHints? device)
+        ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, int? runtime, int packEpisodes, DeviceHints? device, PlayContext? play)
     {
         var local = LocalAvailability(viewer, key);
-        var versions = new List<VersionDto>(releases.Count);
+        var versions = new List<(VersionDto Version, string? Class, int Height)>(releases.Count);
         foreach (var (release, parsed) in releases)
         {
             var health = healthCache.Get(release.ReleaseId) ?? release.Health;
             if (health == ReleaseHealth.Dead)
                 continue;
             var estimated = VersionMapper.EstimatedKbps(release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
+            var playClass = play is null ? null : predictor.Classify(parsed, estimated, runtime, play, viewer.AllowTranscoding);
             var prediction = device is null ? null : predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding);
-            versions.Add(VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction));
+            if (prediction is not null && playClass == PlayClass.Vlc)
+                prediction = prediction with { Method = PlayClass.Vlc };
+            var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction);
+            versions.Add((version, playClass, VersionMapper.Height(parsed.Resolution)));
         }
-        return versions;
+        return play is null ? versions.Select(v => v.Version).ToList() : DeviceOrder(versions);
+    }
+
+    /// <summary>Best quality that plays without a server transcode first (direct > remux > VLC within a resolution), then transcodes, unplayable last.</summary>
+    internal static List<VersionDto> DeviceOrder(IReadOnlyList<(VersionDto Version, string? Class, int Height)> versions)
+    {
+        static int Group(string? playClass) => playClass is null ? 1 : PlayClass.WithoutTranscode(playClass) ? 0 : playClass == PlayClass.Unplayable ? 2 : 1;
+        return versions
+            .OrderBy(v => Group(v.Class))
+            .ThenByDescending(v => v.Height)
+            .ThenBy(v => PlayClass.Order(v.Class ?? PlayClass.Unknown))
+            .ThenBy(v => v.Version.QualityRank)
+            .Select((v, i) => v.Version with { Rank = i + 1, Recommended = i == 0 && Group(v.Class) < 2 })
+            .ToList();
     }
 
     private Dictionary<string, string> LocalAvailability(ViewerEntity viewer, WorkKey key)

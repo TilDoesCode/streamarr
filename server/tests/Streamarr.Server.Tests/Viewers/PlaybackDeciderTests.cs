@@ -29,7 +29,7 @@ public sealed class PlaybackDeciderTests
         Engines = [Engine("native", ["mp4"], [V("h264"), V("hevc", 10, null, "hdr10", "hlg")], [A("aac"), A("ac3"), A("eac3")], ["webvtt", "mov_text"])],
     });
 
-    private static DeviceCaps AndroidTv() => DeviceCaps.Parse(new DeviceProfileDto
+    internal static DeviceCaps AndroidTv() => DeviceCaps.Parse(new DeviceProfileDto
     {
         Platform = "androidtv",
         VlcAvailable = true,
@@ -40,7 +40,7 @@ public sealed class PlaybackDeciderTests
         ],
     });
 
-    private static DeviceCaps Chrome(bool hdr = false) => DeviceCaps.Parse(new DeviceProfileDto
+    internal static DeviceCaps Chrome(bool hdr = false) => DeviceCaps.Parse(new DeviceProfileDto
     {
         Platform = "web",
         Engines = [Engine("web", ["mp4", "webm"], [V("h264"), V("av1", 10), V("hevc", 10, null, hdr ? ["hdr10"] : [])], [A("aac"), A("opus")], ["webvtt"], channels: 2)],

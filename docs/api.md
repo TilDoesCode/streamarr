@@ -994,7 +994,7 @@ ranking is the normal search ranking (default quality profile); episodes include
 
 ```json
 { "releaseId": "…", "name": "Movie.2021.2160p.UHD.BluRay.TrueHD.Atmos.7.1.DV.HDR10.x265-GRP",
-  "rank": 1, "recommended": true, "resolution": "2160p", "source": "BluRay",
+  "rank": 1, "qualityRank": 1, "recommended": true, "resolution": "2160p", "source": "BluRay",
   "videoCodec": "hevc", "bitDepth": 10, "hdr": "dolbyvision", "hdrFormats": ["dolbyvision", "hdr10"],
   "audioCodec": "truehd", "audioChannels": "7.1", "atmos": true, "languages": [], "multiLanguage": false,
   "subtitleHints": [], "subtitleLanguages": [], "edition": null, "releaseGroup": "GRP",
@@ -1010,7 +1010,11 @@ ranking is the normal search ranking (default quality profile); episodes include
   stated depth (`10bit`, `Hi10P`, `Main10` …) or 10 when the name names an HDR format.
   `subtitleHints` (`subbed`, `multi`, `hardcoded`) and `subtitleLanguages` only reflect what the
   name says; empty means unknown.
-- `rank` 1 is `recommended`: the version the server picks when the client does not choose.
+- `rank` 1 is `recommended`: the version the server picks when the client does not choose. Without a device
+  profile `rank` is the quality order. With one (`videoCodecs=…`, optional `vlcAvailable=true`) the list is
+  ordered for the device: versions that play without a server transcode first (highest resolution first,
+  then direct > remux > VLC, then quality), then transcodes, versions the device cannot play last and never
+  `recommended`. `qualityRank` is always the device-independent quality order (1 = best).
 - `estimatedBitrateKbps` = size ÷ TMDB runtime (per episode for season packs; `null` without a runtime).
 - `health`: `unknown` until a resolve checked it, then `ready` or `degraded` (current health cache).
 - `local`: `ready` or `downloading` when a pre-download of this version exists for this viewer
@@ -1028,7 +1032,9 @@ ranking is the normal search ranking (default quality profile); episodes include
 **Predicted method (optional).** Sending a compact device profile adds a prediction per version:
 `videoCodecs` (required to enable it), `audioCodecs`, `containers`, `hdrFormats` (comma-separated,
 the codec/container names of `/transcoding` `client`), `supports10Bit`, `maxAudioChannels`,
-`maxHeight`, `maxBitrateKbps`. Missing lists use the transcoding defaults (`aac,mp3`, `mp4`, 2 channels).
+`maxHeight`, `maxBitrateKbps`, `vlcAvailable` (the app bundles VLC: versions only VLC plays directly are
+predicted as `vlc` and count as playing without a transcode). Missing lists use the transcoding defaults
+(`aac,mp3`, `mp4`, 2 channels). The profile also orders the list for the device (see `rank` above).
 A profile with `hdrFormats` implies `supports10Bit=true` (HDR is always 10-bit) unless
 `supports10Bit=false` is sent.
 
@@ -1066,7 +1072,7 @@ State responses carry `Cache-Control: private, no-store`.
 ```json
 // PlaybackStartRequest
 { "workId": "tmdb-movie-10378",
-  "releaseId": "…",                 // optional: a version from …/versions; omitted = rank 1 (recommended)
+  "releaseId": "…",                 // optional: a version from …/versions; omitted = the version recommended for this device
   "startPositionTicks": 0,           // optional; the answer's resumePositionTicks is the saved position
   "audioStreamIndex": 1,             // optional source stream index; omitted = from preferences.audioLanguage
   "subtitleStreamIndex": -1,         // optional; -1 = none; omitted = from subtitleMode + subtitleLanguage

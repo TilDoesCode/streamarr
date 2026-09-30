@@ -1,5 +1,6 @@
 # Streamarr Core Server — multi-stage image (BRIEF §4 "Packaging").
 #   1. build the React SPA           (node)
+#   1b. export the viewer web app    (node, Expo web export of client/, served under /watch)
 #   2. publish the ASP.NET Core app  (dotnet sdk), embedding the SPA in wwwroot
 #   3. slim runtime with ffmpeg      (aspnet + ffmpeg for /resolve ffprobe)
 #
@@ -13,6 +14,16 @@ RUN npm ci
 COPY web/ ./
 # schema.d.ts is committed, so the build needs no live OpenAPI generation.
 RUN npm run build
+
+# ---- 1b. Viewer web app -------------------------------------------------------------
+FROM node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169 AS viewer-web
+WORKDIR /client
+# patches/ must be present for the patch-package postinstall hook.
+COPY client/package.json client/package-lock.json client/.npmrc ./
+COPY client/patches/ patches/
+RUN npm ci
+COPY client/ ./
+RUN EXPO_BASE_URL=/watch npx expo export --platform web --output-dir dist
 
 # ---- 2. .NET publish ----------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:2ae6f287fa860c15f121474cf864b86765beb87507bbc3f48661a4f6f1ffc2b5 AS build
@@ -36,6 +47,8 @@ WORKDIR /app
 RUN mkdir -p /app/data /app/keys \
     && chown -R app:app /app
 COPY --from=build --chown=app:app /app ./
+# Default Streamarr:ViewerWebPath (<ContentRoot>/viewer-web).
+COPY --from=viewer-web --chown=app:app /client/dist/ ./viewer-web/
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV Streamarr__ConnectionString="Data Source=/app/data/streamarr.db"

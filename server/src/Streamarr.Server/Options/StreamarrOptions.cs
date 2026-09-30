@@ -67,6 +67,13 @@ public sealed class StreamarrOptions
     public List<string> ViewerCorsOrigins { get; set; } = [];
 
     /// <summary>
+    /// Directory holding the exported viewer web app, served under <c>/watch</c>. Empty defaults to a
+    /// "viewer-web" folder in the content root; relative paths resolve against the content root. The route
+    /// is inert while the directory has no index.html.
+    /// </summary>
+    public string ViewerWebPath { get; set; } = string.Empty;
+
+    /// <summary>
     /// Directory the Data Protection key ring (secret encryption) persists to; empty
     /// defaults to a "keys" folder next to the app so ciphertext survives restarts.
     /// </summary>

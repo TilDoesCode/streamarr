@@ -114,6 +114,10 @@ public sealed class SourceMediaProber(
     ILogger<SourceMediaProber> logger)
 {
     public async Task<SourceMediaInfo?> ProbeAsync(TranscodeSource source, CancellationToken ct)
+        => (await ProbeRawAsync(source, ct)).Media;
+
+    /// <summary>The parsed probe plus ffprobe's JSON, which the resolve-time model can be parsed from as well.</summary>
+    public async Task<(SourceMediaInfo? Media, string? Json)> ProbeRawAsync(TranscodeSource source, CancellationToken ct)
     {
         var o = options.Value;
         var args = new List<string>
@@ -135,17 +139,17 @@ public sealed class SourceMediaProber(
             logger.LogWarning(
                 "Transcode source probe failed (exit {ExitCode}, timeout {TimedOut}): {Error}",
                 result.ExitCode, result.TimedOut, TranscodeRedaction.Tail(result.StandardError, 5));
-            return null;
+            return (null, null);
         }
 
         try
         {
-            return Parse(result.StandardOutput);
+            return (Parse(result.StandardOutput), result.StandardOutput);
         }
         catch (JsonException e)
         {
             logger.LogWarning(e, "Transcode source probe returned malformed JSON");
-            return null;
+            return (null, null);
         }
     }
 

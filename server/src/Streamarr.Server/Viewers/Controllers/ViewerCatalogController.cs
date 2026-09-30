@@ -1,3 +1,4 @@
+using Streamarr.Server.Viewers.Playback;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Streamarr.Core.Media;
@@ -101,7 +102,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         return Ok(await catalog.SeasonAsync(await ViewerAsync(ct), tmdbId, seasonNumber, availability, refresh, ct));
     }
 
-    /// <summary>Ranked versions (cached indexer search, <c>refresh=true</c> repeats it); a <c>videoCodecs</c> device profile adds <c>predictedMethod</c>.</summary>
+    /// <summary>Ranked versions (cached indexer search, <c>refresh=true</c> repeats it); a <c>videoCodecs</c> device profile adds <c>predictedMethod</c> and orders by what plays without a server transcode.</summary>
     [HttpGet("works/{workId}/versions")]
     [ProducesResponseType(typeof(CatalogVersionsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
@@ -119,6 +120,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         [FromQuery] int? maxAudioChannels = null,
         [FromQuery] int? maxHeight = null,
         [FromQuery] int? maxBitrateKbps = null,
+        [FromQuery] bool vlcAvailable = false,
         CancellationToken ct = default)
     {
         var key = ViewerMappings.RequireWork(workId, playableOnly: true);
@@ -139,7 +141,25 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
                 maxHeight is { } h ? Math.Clamp(h, 144, 4320) : null,
                 maxBitrateKbps is { } b ? Math.Clamp(b, 300, 200_000) : null));
         }
-        return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct));
+        var caps = device is null ? null : DeviceCapsFor(device, vlcAvailable);
+        return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct, caps));
+    }
+
+    private static DeviceCaps DeviceCapsFor(DeviceHints hints, bool vlcAvailable)
+    {
+        var client = hints.Client;
+        var depth = client.Supports10Bit ? 10 : 8;
+        var hdr = (client.HdrFormats ?? []).Select(h => h == "dv" ? "dolbyvision" : h).ToList();
+        var native = new EngineCaps(
+            EngineCaps.Native,
+            client.Containers.Select(DeviceNames.Container).Distinct().ToList(),
+            client.VideoCodecs.Select(DeviceNames.Video).Distinct()
+                .Select(c => new VideoCaps(c, null, hints.Limits.MaxHeight, c == "h264" ? 8 : depth, c == "h264" ? [] : hdr)).ToList(),
+            client.AudioCodecs.Select(DeviceNames.Audio).Distinct().Select(c => new AudioCaps(c, null, false)).ToList(),
+            null,
+            true,
+            client.MaxAudioChannels);
+        return new DeviceCaps("web", native, vlcAvailable ? EngineCaps.DefaultVlc : null, hints.Limits.MaxBitrateKbps);
     }
 
     private async Task<Persistence.Entities.ViewerEntity> ViewerAsync(CancellationToken ct)

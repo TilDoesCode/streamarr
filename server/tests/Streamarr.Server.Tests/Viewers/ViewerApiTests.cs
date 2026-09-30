@@ -381,6 +381,31 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task Played_Episode_Leaves_Continue_Watching_And_Next_Up_Advances_Despite_Late_Reports()
+    {
+        await NewViewerAsync("late-viewer");
+        using var anon = factory.CreateClient();
+        using var viewer = factory.Viewer(await ViewerApi.AccessTokenAsync(anon, "late-viewer", Password));
+        var episode = ViewerApi.Ticks(45);
+        async Task Report(string kind, long position) => (await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+            new { @event = kind, workId = "tmdb-tv-100-s01e01", positionTicks = position, durationTicks = episode, playbackId = "pb-late" })).EnsureSuccessStatusCode();
+
+        await Report("progress", episode / 2);
+        await Report("progress", episode * 92 / 100);
+        await Report("progress", episode * 88 / 100);
+        await Report("stop", episode * 89 / 100);
+
+        Assert.Empty((await viewer.GetFromJsonAsync<JsonElement>("/api/v1/viewer/watch/resume")).EnumerateArray());
+        var item = Assert.Single((await viewer.GetFromJsonAsync<JsonElement>("/api/v1/viewer/watch/next-up")).GetProperty("items").EnumerateArray());
+        Assert.Equal("tmdb-tv-100-s01e02", item.GetProperty("workId").GetString());
+        Assert.Equal(0, item.GetProperty("positionTicks").GetInt64());
+        var state = (await (await viewer.PostAsJsonAsync("/api/v1/viewer/watch/state", new { workIds = new[] { "tmdb-tv-100-s01e01" } }))
+            .Content.ReadFromJsonAsync<JsonElement>())[0];
+        Assert.True(state.GetProperty("played").GetBoolean());
+        Assert.Equal(0, state.GetProperty("positionTicks").GetInt64());
+    }
+
+    [Fact]
     public async Task Watch_State_Is_Private_Per_Viewer()
     {
         await NewViewerAsync("private-a");

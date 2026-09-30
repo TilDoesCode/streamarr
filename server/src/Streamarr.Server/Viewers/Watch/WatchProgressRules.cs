@@ -48,9 +48,16 @@ public static class WatchProgressRules
             return;
         }
 
+        // Late or post-credits reports of the playback that completed the work must not revive a resume point.
+        if (CompletedBy(state, report.PlaybackId))
+            return;
+
         var tooShort = duration < TimeSpan.FromSeconds(settings.MinResumeDurationSeconds).Ticks;
         state.PositionTicks = tooShort || percent < settings.MinResumePercent ? 0 : position;
     }
+
+    public static bool CompletedBy(ViewerWatchStateEntity state, string? playbackId)
+        => state.Played && playbackId is not null && string.Equals(state.CountedPlaybackId, playbackId, StringComparison.Ordinal);
 
     public static void MarkCompleted(ViewerWatchStateEntity state, string? playbackId, DateTimeOffset now)
     {

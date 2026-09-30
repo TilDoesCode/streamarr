@@ -21,6 +21,7 @@ public static class VersionMapper
             ReleaseId = release.ReleaseId,
             Name = release.Title,
             Rank = rank,
+            QualityRank = rank,
             Recommended = rank == 1,
             Resolution = parsed.Resolution,
             Source = parsed.Source,
@@ -49,6 +50,19 @@ public static class VersionMapper
             PredictionReasons = prediction?.Reasons,
         };
     }
+
+    /// <summary>Vertical resolution of a parsed resolution tag; 0 when unknown.</summary>
+    public static int Height(string? resolution) => resolution switch
+    {
+        "2160p" => 2160,
+        "1080p" or "1080i" => 1080,
+        "720p" => 720,
+        "576p" => 576,
+        "540p" => 540,
+        "480p" or "SD" => 480,
+        "360p" => 360,
+        _ => 0,
+    };
 
     public static bool IsSeasonPack(ParsedReleaseInfo parsed) => parsed.SeasonPack && parsed.MediaType == ParsedMediaType.Tv;
 

@@ -113,7 +113,12 @@ Clients report playback with `POST /api/v1/viewer/watch/progress`
 | Minimum resumable length | 300 s | Shorter items never get a resume point. |
 | Next-up window | 365 days | Series without activity for longer are left out of next up. |
 
-- **Continue watching** lists works with a resume position, most recent first.
+- **Continue watching** lists works with a resume position, most recent first. Once a playback
+  crosses the played threshold, later reports of that same playback (late or out-of-order progress,
+  seeking back during the credits) leave the work played without a resume point, so it leaves
+  continue watching and next up moves on to the next episode. Watching a played work again
+  (a new `playbackId`) keeps it played and gives it a resume point that playback starts offer
+  (`resumePositionTicks`).
 - **Next up** takes the furthest played episode of each recently watched series and
   suggests the first unplayed, already aired episode after it, crossing into the next
   season when needed. Episode lists come from TMDB (cached; no indexer searches). If
@@ -150,9 +155,16 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   local pre-downloads are always current: a release a playback just found dead drops out
   immediately.
 - A client can send a compact device profile with the versions request to get a
-  **predicted playback method** (`direct`, `remux`, `transcode`) per version. It is a prediction from
-  the release name, labelled with every assumption it makes; the server decides for real when
-  playback starts.
+  **predicted playback method** (`direct`, `remux`, `transcode`; `vlc` with `vlcAvailable=true`) per
+  version. It is a prediction from the release name, labelled with every assumption it makes; the
+  server decides for real when playback starts.
+- **Recommended depends on the device.** With a device profile, the recommended version is the best
+  quality that plays **without a server transcode** (the device's player directly, a server remux, or
+  VLC); at the same resolution direct beats remux beats VLC, and health and the ranker score order
+  the rest. Only when nothing plays without a transcode is the best transcode recommended; a version
+  the device cannot play at all is never recommended. The list follows that order (`rank`);
+  `qualityRank` keeps the device-independent quality order. A plain "Play" (playback without a
+  version) starts the same pick for the device it sends.
 
 See [API reference § 13](api.md#13-viewer-catalog-and-playback) for the contract.
 
@@ -170,7 +182,7 @@ subtitle language, subtitle mode). The server then works asynchronously and the 
 - **Resolve** is the same pipeline the Jellyfin plugin uses: a Usenet health check, automatic
   fallback to the next healthy version when the chosen one is dead (every hop is listed in
   `attempts`), and a PAR2 repair with progress and ETA when nothing else is left. Without a version,
-  the catalog's recommended one plays.
+  the version recommended for the sent device profile plays.
 - **Decision.** The server probes the file and picks, in this order: the device's own player
   playing the original file, the device's player via a server **remux** (video copied, audio copied
   or converted, text subtitles as WebVTT), **VLC** playing the original file (only when the app

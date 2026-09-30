@@ -240,10 +240,13 @@ public sealed record VersionDto
     /// <summary>The raw release name.</summary>
     public required string Name { get; init; }
 
-    /// <summary>1 = best.</summary>
+    /// <summary>Position in the default order, 1 = first. With a device profile: the best quality that plays without a server transcode first (see <c>qualityRank</c>).</summary>
     public required int Rank { get; init; }
 
-    /// <summary>The version the server picks when the client does not choose one (rank 1).</summary>
+    /// <summary>Position by quality and health alone, independent of the device (1 = best).</summary>
+    public int QualityRank { get; init; }
+
+    /// <summary>The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play.</summary>
     public bool Recommended { get; init; }
 
     /// <summary><c>2160p</c>, <c>1080p</c>, <c>720p</c>, <c>576p</c>, <c>540p</c>, <c>480p</c>, <c>360p</c> or <c>SD</c>.</summary>
@@ -307,7 +310,7 @@ public sealed record VersionDto
     /// <summary><c>ready</c> or <c>downloading</c> when a pre-download of this version exists for the viewer; else null.</summary>
     public string? Local { get; init; }
 
-    /// <summary>Prediction only (<c>direct</c>, <c>remux</c>, <c>transcode</c>, <c>unknown</c>) from the name and the sent device profile; the server decides at playback.</summary>
+    /// <summary>Prediction only (<c>direct</c>, <c>remux</c>, <c>transcode</c>, <c>unknown</c>; <c>vlc</c> when the request sent <c>vlcAvailable=true</c>) from the name and the sent device profile; the server decides at playback.</summary>
     public string? PredictedMethod { get; init; }
 
     /// <summary>Why, plus every assumption the prediction made (e.g. <c>container_assumed</c>).</summary>

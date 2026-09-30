@@ -94,7 +94,7 @@ public sealed class ViewerPlaybackService(
             AudioIndex = request.AudioStreamIndex,
             SubtitleIndex = request.SubtitleStreamIndex,
             StartTicks = start,
-            ResumeTicks = saved is { PositionTicks: > 0, Played: false } ? saved.PositionTicks : null,
+            ResumeTicks = saved is { PositionTicks: > 0 } ? saved.PositionTicks : null,
             State = States.Queued,
             UpdatedAt = now,
             LastActivity = now,
@@ -371,6 +371,15 @@ public sealed class ViewerPlaybackService(
         }
     }
 
+    private async Task<PlayContext> PlayContextAsync(Playback playback, CancellationToken ct)
+    {
+        DeviceCaps device;
+        PlaybackPreferences preferences;
+        lock (playback.Gate)
+            (device, preferences) = (playback.Device, playback.Preferences);
+        return new PlayContext(device, preferences, await media.ServerAsync(ct));
+    }
+
     private async Task ResolveAsync(Playback playback, int revision, CancellationToken ct)
     {
         Update(playback, revision, p => p.State = States.Resolving);
@@ -379,7 +388,7 @@ public sealed class ViewerPlaybackService(
             releaseId = playback.RequestedReleaseId ?? string.Empty;
         if (releaseId.Length == 0)
         {
-            var recommended = await catalog.RecommendedAsync(playback.Viewer, playback.Work, ct)
+            var recommended = await catalog.RecommendedAsync(playback.Viewer, playback.Work, await PlayContextAsync(playback, ct), ct)
                               ?? throw new PlaybackFailure("no_versions", "No version of this title is available right now.", null, [SuggestedActions.Retry]);
             releaseId = recommended.ReleaseId;
             Update(playback, revision, p => p.RequestedReleaseId = releaseId);
@@ -388,7 +397,7 @@ public sealed class ViewerPlaybackService(
         {
             try
             {
-                await catalog.RecommendedAsync(playback.Viewer, playback.Work, ct);
+                await catalog.RecommendedAsync(playback.Viewer, playback.Work, null, ct);
             }
             catch (ViewerProblem e)
             {

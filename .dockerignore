@@ -28,6 +28,13 @@ docs
 web/node_modules
 web/dist
 web/*.tsbuildinfo
+client/node_modules
+client/dist
+client/.expo
+client/android
+client/ios
+client/web-build
+client/modules/*/android/build
 server/tests
 server/tools
 server/benchmarks

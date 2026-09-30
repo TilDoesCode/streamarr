@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Streamarr.Core.Parser;
 using Streamarr.Server.Transcoding;
+using Streamarr.Server.Viewers.Playback;
 
 namespace Streamarr.Server.Viewers.Catalog;
 
@@ -9,6 +10,32 @@ public sealed record PlaybackPrediction(string Method, IReadOnlyList<PredictionR
 
 /// <summary>The compact device profile a client may send with a versions request.</summary>
 public sealed record DeviceHints(ClientProfile Client, TranscodeLimits Limits);
+
+/// <summary>What the playback decider needs to rank versions for one device (the full profile of a playback, or the compact hints).</summary>
+public sealed record PlayContext(DeviceCaps Device, PlaybackPreferences Preferences, ServerHls Server);
+
+/// <summary>How a version would play on a device, best first: <c>direct</c>, <c>remux</c>, <c>vlc</c>, <c>transcode</c>, <c>unknown</c>, <c>unplayable</c>.</summary>
+public static class PlayClass
+{
+    public const string Direct = "direct";
+    public const string Remux = "remux";
+    public const string Vlc = "vlc";
+    public const string Transcode = "transcode";
+    public const string Unknown = "unknown";
+    public const string Unplayable = "unplayable";
+
+    public static bool WithoutTranscode(string value) => value is Direct or Remux or Vlc;
+
+    public static int Order(string value) => value switch
+    {
+        Direct => 0,
+        Remux => 1,
+        Vlc => 2,
+        Transcode => 3,
+        Unknown => 4,
+        _ => 5,
+    };
+}
 
 /// <summary>Guesses a version's playback method by running the transcode planner on a source built from its name; assumptions are reported.</summary>
 public sealed partial class PlaybackPredictor(TranscodingSettingsService settings)
@@ -21,9 +48,52 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
     public PlaybackPrediction Predict(ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, DeviceHints device, bool allowTranscoding)
     {
         var notes = new List<PredictionReasonDto>();
+        if (Source(parsed, estimatedKbps, runtimeMinutes, notes) is not { } media)
+            return new PlaybackPrediction("unknown", [Reason("video_codec_unknown")]);
+
+        TranscodePlan plan;
+        var current = settings.Current;
+        try
+        {
+            plan = TranscodePlanner.Decide(media, device.Client, device.Limits, current, NoProbe, ModePreference.Auto, allowDirect: true);
+        }
+        catch (TranscodePlanningException e)
+        {
+            return new PlaybackPrediction("unknown", [.. notes, Reason(e.Code)]);
+        }
+
+        var method = plan.Mode.ToApi();
+        notes.AddRange(plan.Reasons.Select(r => new PredictionReasonDto { Code = r.Code, Params = r.Params }));
+        if (method == "transcode" && !allowTranscoding)
+            notes.Add(Reason("transcoding_not_allowed"));
+        if (method != "direct" && !current.Enabled)
+            notes.Add(Reason("transcoding_disabled"));
+        return new PlaybackPrediction(method, notes);
+    }
+
+    /// <summary>The playback decider's first choice for a version built from its name (see <see cref="PlayClass"/>).</summary>
+    public string Classify(ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, PlayContext play, bool allowTranscoding)
+    {
+        if (Source(parsed, estimatedKbps, runtimeMinutes, []) is not { } media)
+            return PlayClass.Unknown;
+        var best = PlaybackDecider.Decide(media, play.Device, play.Preferences, allowTranscoding, play.Server, null, null, NoExclusions).Viable.FirstOrDefault();
+        return best switch
+        {
+            null => PlayClass.Unplayable,
+            { Method: DeliveryMode.Direct } when best.Engine.Name == EngineCaps.Vlc => PlayClass.Vlc,
+            { Method: DeliveryMode.Direct } => PlayClass.Direct,
+            { Method: DeliveryMode.Remux } => PlayClass.Remux,
+            _ => PlayClass.Transcode,
+        };
+    }
+
+    private static readonly IReadOnlySet<string> NoExclusions = new HashSet<string>();
+
+    private static SourceMediaInfo? Source(ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, List<PredictionReasonDto> notes)
+    {
         var codec = VideoCodec(parsed.VideoCodec);
         if (codec is null)
-            return new PlaybackPrediction("unknown", [Reason("video_codec_unknown")]);
+            return null;
 
         var height = Height(parsed.Resolution);
         if (height is null)
@@ -56,7 +126,7 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
         if (audio is null)
             notes.Add(Reason("audio_codec_unknown"));
 
-        var media = new SourceMediaInfo
+        return new SourceMediaInfo
         {
             DurationSeconds = (runtimeMinutes is > 0 ? runtimeMinutes.Value : 90) * 60,
             BitRate = estimatedKbps is > 0 ? estimatedKbps.Value * 1000L : null,
@@ -82,25 +152,6 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
             },
             Audio = audio is null ? [] : [new SourceAudioStream { Index = 1, Codec = audio, Channels = Channels(parsed.AudioChannels) }],
         };
-
-        TranscodePlan plan;
-        var current = settings.Current;
-        try
-        {
-            plan = TranscodePlanner.Decide(media, device.Client, device.Limits, current, NoProbe, ModePreference.Auto, allowDirect: true);
-        }
-        catch (TranscodePlanningException e)
-        {
-            return new PlaybackPrediction("unknown", [.. notes, Reason(e.Code)]);
-        }
-
-        var method = plan.Mode.ToApi();
-        notes.AddRange(plan.Reasons.Select(r => new PredictionReasonDto { Code = r.Code, Params = r.Params }));
-        if (method == "transcode" && !allowTranscoding)
-            notes.Add(Reason("transcoding_not_allowed"));
-        if (method != "direct" && !current.Enabled)
-            notes.Add(Reason("transcoding_disabled"));
-        return new PlaybackPrediction(method, notes);
     }
 
     private static PredictionReasonDto Reason(string code, params (string Key, string Value)[] parameters)
@@ -129,17 +180,7 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
         var code => code,
     };
 
-    private static int? Height(string? resolution) => resolution switch
-    {
-        "2160p" => 2160,
-        "1080p" or "1080i" => 1080,
-        "720p" => 720,
-        "576p" => 576,
-        "540p" => 540,
-        "480p" or "SD" => 480,
-        "360p" => 360,
-        _ => null,
-    };
+    private static int? Height(string? resolution) => VersionMapper.Height(resolution) is > 0 and var height ? height : null;
 
     private static int Width(int height) => height switch
     {
