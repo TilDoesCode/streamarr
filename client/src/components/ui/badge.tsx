@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import { Text, type TextTone } from '@/components/ui/text';
-import { colors, useDesign } from '@/theme';
+import { colors, fonts, useDesign } from '@/theme';
 
 export type BadgeVariant =
   'neutral' | 'solid' | 'outline' | 'accent' | 'success' | 'warning' | 'danger' | 'info';
@@ -65,7 +65,11 @@ export function Badge({
       {IconComponent ? (
         <IconComponent size={iconSize} color={style.icon} strokeWidth={2.5} />
       ) : null}
-      <Text variant="caption" tone={style.tone} style={{ fontWeight: '700' }} numberOfLines={1}>
+      <Text
+        variant="caption"
+        tone={style.tone}
+        style={{ fontFamily: fonts.bodyBold }}
+        numberOfLines={1}>
         {label}
       </Text>
     </View>

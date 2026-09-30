@@ -97,3 +97,8 @@ The journals hold the evidence and reproduction details for each item.
 - **Server: palette/spec failures log only at Debug.** A broken image host or a missing native Skia library goes
   unnoticed in production; log the first failure per cause at Warning.
 - **Server: series spec lookup scans all stored summaries per list item** (`CatalogSpecStore.Get`); index by series.
+
+## From R1 verify (2026-09-30)
+- Brand PNGs are large (icon 554 KB, top shelf 2.2-2.6 MB) because Chrome dithers the gradients; pngquant 80-95 cuts them 5x but bands the dark gradients visibly. Revisit with a render that avoids dithering (e.g. noise-free SVG export) if bundle size matters.
+- Web font gate waits up to ~12 s (expo-font timeout) when font requests hang; a shorter timeout with system-font fallback would avoid the blank page.
+- Phone blur cost: software-GL AVD shows RenderThread ~84 % with the blurred ambient backdrop; re-measure on a real phone before shipping the phone ambient.

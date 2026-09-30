@@ -51,7 +51,7 @@ export function Text({
       className={cn('text-foreground', tone && TONE_CLASS[tone], className)}
       style={[
         design.type[variant],
-        variant === 'overline' && { textTransform: 'uppercase' },
+        (variant === 'overline' || variant === 'spec') && { textTransform: 'uppercase' },
         style,
       ]}
       {...props}

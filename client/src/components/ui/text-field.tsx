@@ -19,7 +19,7 @@ import {
 
 import { Focusable } from '@/components/focus';
 import { Text } from '@/components/ui/text';
-import { colors, useDesign } from '@/theme';
+import { colors, fonts, useDesign } from '@/theme';
 
 // Web: our border replaces the browser focus outline (RN's types lack 'none').
 const NO_OUTLINE = { outlineStyle: 'none' } as unknown as TextStyle;
@@ -142,7 +142,7 @@ export function TextField({
           paddingVertical: 0,
           color: colors.foreground.DEFAULT,
           fontSize,
-          fontWeight: '500',
+          fontFamily: fonts.bodyMedium,
         },
         Platform.OS === 'web' && NO_OUTLINE,
       ]}

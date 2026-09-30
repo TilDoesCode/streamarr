@@ -1,0 +1,47 @@
+{
+  "sprite-fright": {
+    "tint": "#3FCF7A",
+    "tint2": "#0F3A26",
+    "spec": {
+      "resolution": "4K",
+      "hdr": "HDR10",
+      "videoCodec": "HEVC",
+      "audio": "5.1"
+    }
+  },
+  "big-buck-bunny": {
+    "tint": "#9CCC52",
+    "tint2": "#26361A",
+    "spec": {
+      "resolution": "1080p",
+      "hdr": null,
+      "videoCodec": "H.264",
+      "audio": "2.0"
+    }
+  },
+  "cosmos-laundromat": {
+    "tint": "#D99A3E",
+    "tint2": "#5A3A1C",
+    "spec": {
+      "resolution": "4K",
+      "hdr": "DV",
+      "videoCodec": "HEVC",
+      "audio": "Atmos"
+    }
+  },
+  "sintel": {
+    "tint": "#E0663C",
+    "tint2": "#4A1F16",
+    "spec": null
+  },
+  "tears-of-steel": {
+    "tint": "#5AA0E6",
+    "tint2": "#15304A",
+    "spec": null
+  },
+  "elephants-dream": {
+    "tint": null,
+    "tint2": null,
+    "spec": null
+  }
+}

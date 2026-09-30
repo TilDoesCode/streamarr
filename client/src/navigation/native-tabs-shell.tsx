@@ -14,8 +14,10 @@ export function NativeTabsShell() {
   return (
     <NativeTabs
       sidebarAdaptable
+      // iOS 26: the Liquid Glass tab bar shrinks while content scrolls down.
+      minimizeBehavior="onScrollDown"
       backBehavior="initialRoute"
-      tintColor={colors.foreground.DEFAULT}
+      tintColor={android ? colors.foreground.DEFAULT : colors.accent.DEFAULT}
       iconColor={{ default: colors.foreground.muted, selected: colors.foreground.DEFAULT }}
       labelStyle={{
         default: { color: colors.foreground.muted },

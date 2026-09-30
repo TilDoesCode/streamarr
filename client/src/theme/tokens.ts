@@ -35,49 +35,92 @@ export type TypeVariant =
   | 'callout'
   | 'caption'
   | 'overline'
-  | 'label';
+  | 'label'
+  | 'spec';
 
-type TypeStep = Pick<TextStyle, 'fontSize' | 'lineHeight' | 'fontWeight' | 'letterSpacing'> & {
+/** Font family names = PostScript names, so embedded (Android/iOS) and web-loaded faces match. */
+export const fonts = {
+  displayBold: 'Outfit-Bold',
+  display: 'Outfit-SemiBold',
+  body: 'Figtree-Regular',
+  bodyMedium: 'Figtree-Medium',
+  bodySemiBold: 'Figtree-SemiBold',
+  bodyBold: 'Figtree-Bold',
+  mono: 'JetBrainsMono-Medium',
+} as const;
+export type FontKey = keyof typeof fonts;
+
+type TypeStep = Pick<TextStyle, 'letterSpacing'> & {
   fontSize: number;
   lineHeight: number;
+  fontFamily: string;
 };
 
-const handheldType: Record<TypeVariant, TypeStep> = {
-  display: { fontSize: 34, lineHeight: 40, fontWeight: '700', letterSpacing: -0.6 },
-  title: { fontSize: 26, lineHeight: 32, fontWeight: '700', letterSpacing: -0.4 },
-  heading: { fontSize: 20, lineHeight: 26, fontWeight: '600', letterSpacing: -0.2 },
-  subheading: { fontSize: 17, lineHeight: 22, fontWeight: '600', letterSpacing: -0.1 },
-  body: { fontSize: 15, lineHeight: 22, fontWeight: '400', letterSpacing: 0 },
-  callout: { fontSize: 14, lineHeight: 20, fontWeight: '500', letterSpacing: 0 },
-  caption: { fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0 },
-  overline: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 0.9 },
-  label: { fontSize: 15, lineHeight: 20, fontWeight: '600', letterSpacing: 0 },
+const FAMILY: Record<TypeVariant, string> = {
+  display: fonts.displayBold,
+  title: fonts.displayBold,
+  heading: fonts.display,
+  subheading: fonts.bodySemiBold,
+  body: fonts.body,
+  callout: fonts.bodyMedium,
+  caption: fonts.bodyMedium,
+  overline: fonts.bodyBold,
+  label: fonts.bodySemiBold,
+  spec: fonts.mono,
 };
 
-const largeType: Record<TypeVariant, TypeStep> = {
-  display: { fontSize: 44, lineHeight: 50, fontWeight: '700', letterSpacing: -0.9 },
-  title: { fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.5 },
-  heading: { fontSize: 22, lineHeight: 28, fontWeight: '600', letterSpacing: -0.2 },
-  subheading: { fontSize: 18, lineHeight: 24, fontWeight: '600', letterSpacing: -0.1 },
-  body: { fontSize: 16, lineHeight: 24, fontWeight: '400', letterSpacing: 0 },
-  callout: { fontSize: 15, lineHeight: 21, fontWeight: '500', letterSpacing: 0 },
-  caption: { fontSize: 13, lineHeight: 18, fontWeight: '500', letterSpacing: 0 },
-  overline: { fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1 },
-  label: { fontSize: 16, lineHeight: 20, fontWeight: '600', letterSpacing: 0 },
-};
+type Step = [fontSize: number, lineHeight: number, letterSpacing: number];
+
+function ramp(steps: Record<TypeVariant, Step>): Record<TypeVariant, TypeStep> {
+  return Object.fromEntries(
+    Object.entries(steps).map(([variant, value]) => {
+      const [fontSize, lineHeight, letterSpacing] = value as Step;
+      const fontFamily = FAMILY[variant as TypeVariant];
+      return [variant, { fontSize, lineHeight, letterSpacing, fontFamily }];
+    })
+  ) as Record<TypeVariant, TypeStep>;
+}
+
+// Aurora: Outfit display with tight tracking, Figtree text, JetBrains Mono caps for spec labels.
+const handheldType = ramp({
+  display: [34, 38, -0.85],
+  title: [26, 31, -0.5],
+  heading: [20, 26, -0.2],
+  subheading: [17, 22, 0],
+  body: [17, 25, 0],
+  callout: [15, 21, 0],
+  caption: [12, 16, 0],
+  overline: [11, 14, 1.1],
+  label: [16, 20, 0],
+  spec: [11, 14, 0.5],
+});
+
+const largeType = ramp({
+  display: [48, 50, -1.2],
+  title: [32, 38, -0.6],
+  heading: [24, 30, -0.3],
+  subheading: [19, 24, 0],
+  body: [17, 26, 0],
+  callout: [15, 21, 0],
+  caption: [13, 18, 0],
+  overline: [12, 16, 1.2],
+  label: [16, 20, 0],
+  spec: [12, 16, 0.5],
+});
 
 // 10-foot ramp in Android TV dp (960 × 540 canvas); scaled by the TV scale factor.
-const tvType: Record<TypeVariant, TypeStep> = {
-  display: { fontSize: 40, lineHeight: 46, fontWeight: '700', letterSpacing: -0.8 },
-  title: { fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4 },
-  heading: { fontSize: 19, lineHeight: 25, fontWeight: '600', letterSpacing: -0.1 },
-  subheading: { fontSize: 16, lineHeight: 21, fontWeight: '600', letterSpacing: 0 },
-  body: { fontSize: 14, lineHeight: 20, fontWeight: '400', letterSpacing: 0 },
-  callout: { fontSize: 13, lineHeight: 18, fontWeight: '500', letterSpacing: 0 },
-  caption: { fontSize: 11, lineHeight: 15, fontWeight: '500', letterSpacing: 0 },
-  overline: { fontSize: 10, lineHeight: 13, fontWeight: '700', letterSpacing: 0.9 },
-  label: { fontSize: 14, lineHeight: 18, fontWeight: '600', letterSpacing: 0 },
-};
+const tvType = ramp({
+  display: [44, 46, -1.1],
+  title: [28, 33, -0.5],
+  heading: [19, 25, -0.2],
+  subheading: [16, 21, 0],
+  body: [14, 20, 0],
+  callout: [13, 18, 0],
+  caption: [11, 15, 0],
+  overline: [10, 13, 1],
+  label: [14, 18, 0],
+  spec: [9.5, 12, 0.4],
+});
 
 export const typeRamp: Record<FormFactor, Record<TypeVariant, TypeStep>> = {
   phone: handheldType,
@@ -168,7 +211,7 @@ export type FocusTokens = {
 
 export const focusTokens: Record<FormFactor, FocusTokens> = {
   tv: {
-    cardScale: 1.08,
+    cardScale: 1.1,
     buttonScale: 1.06,
     pressedScale: 0.97,
     ringWidth: 3,
@@ -200,17 +243,28 @@ export const focusTokens: Record<FormFactor, FocusTokens> = {
 export const motion = {
   /** Press feedback. */
   press: 120,
-  /** Focus lift / ring. */
+  /** Focus ring fade (the lift itself uses `springs.focus`). */
   focus: 160,
   /** Small state changes (toggle, chip). */
   state: 180,
-  /** Enter/exit of overlays (toast, dialog). */
-  enter: 240,
+  /** Enter/exit of overlays (toast, dialog, glass panels). */
+  enter: 280,
   exit: 180,
+  /** Glass panels rise this far while fading in. */
+  panelRise: 24,
+  /** Ambient backdrop + tint crossfade and its debounce. */
+  ambient: 700,
+  ambientDebounce: 150,
   /** Skeleton shimmer period. */
   pulse: 1400,
   /** Toast visibility. */
   toast: 4000,
+} as const;
+
+/** Reanimated spring configs. */
+export const springs = {
+  focus: { damping: 18, stiffness: 180, mass: 1 },
+  press: { damping: 22, stiffness: 320, mass: 1 },
 } as const;
 
 /** cubic-bezier control points; build Reanimated easings from these. */

@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { colors, useDesign } from '@/theme';
+import { colors, fonts, useDesign } from '@/theme';
 
 const PALETTE = Object.values(colors.avatar);
 
@@ -47,7 +47,7 @@ export function Avatar({ name, color, size, dimmed = false }: AvatarProps) {
         style={{
           fontSize: size * 0.4,
           lineHeight: size * 0.48,
-          fontWeight: '700',
+          fontFamily: fonts.displayBold,
           color: colors.foreground.DEFAULT,
         }}>
         {initials(name)}

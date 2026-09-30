@@ -659,7 +659,10 @@
       "episodes": "Episodes",
       "states": "Empty and error states",
       "overlays": "Dialogs, sheets and toasts",
-      "formatting": "Formatting"
+      "formatting": "Formatting",
+      "ambient": "Ambient backdrop",
+      "glass": "Glass and controls",
+      "spec": "Spec labels and signal"
     },
     "states": {
       "default": "Default",
@@ -735,7 +738,29 @@
       "size": "Size: {value}",
       "plural": "Plural: {value}"
     },
-    "animateLoaders": "Animate loaders"
+    "animateLoaders": "Animate loaders",
+    "aurora": {
+      "ambientHint": "Focus (TV), hover (web) or tap (phone) a poster: the room takes its artwork and tint. Elephants Dream has no tint yet (neutral wash).",
+      "tintsOn": "Tints loaded",
+      "tintsOff": "Tints not extracted yet",
+      "clear": "Clear backdrop",
+      "glassMode": "Glass mode on this device: {mode}",
+      "glassBody": "Surfaces blur what lies behind them.",
+      "intensity": {
+        "subtle": "Subtle",
+        "regular": "Regular",
+        "strong": "Strong",
+        "tinted": "Tinted"
+      },
+      "play": "Play",
+      "moreInfo": "More info",
+      "signal": {
+        "local-ready": "Instant",
+        "local-downloading": "Preparing",
+        "ready": "Healthy",
+        "degraded": "Degraded"
+      }
+    }
   },
   "devPlayer": {
     "title": "Player lab",

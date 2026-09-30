@@ -3,8 +3,17 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 // EXPO_TV=1 retargets the iOS project to tvOS (separate prebuild). Android is TV-capable always.
 const isTV = ['1', 'true'].includes((process.env.EXPO_TV ?? '').toLowerCase());
 
-const SURFACE = '#09090b';
-const BRAND = '#6d28d9';
+const SURFACE = '#0A0C12';
+// Same names as src/theme/font-assets.ts (PostScript names, so every platform resolves the same family).
+const FONT_FILES = [
+  'Outfit-Bold',
+  'Outfit-SemiBold',
+  'Figtree-Regular',
+  'Figtree-Medium',
+  'Figtree-SemiBold',
+  'Figtree-Bold',
+  'JetBrainsMono-Medium',
+].map((name) => `./assets/fonts/${name}.ttf`);
 const TV_BANNER = './assets/tv/android-banner.png';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
@@ -28,7 +37,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: 'dev.streamarr.app',
     adaptiveIcon: {
-      backgroundColor: BRAND,
+      backgroundColor: SURFACE,
+      backgroundImage: './assets/images/android-icon-background.png',
       foregroundImage: './assets/images/android-icon-foreground.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
@@ -42,6 +52,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundler: 'metro',
     output: 'single',
     favicon: './assets/images/favicon.png',
+    themeColor: SURFACE,
+    backgroundColor: SURFACE,
   },
   plugins: [
     'expo-router',
@@ -59,7 +71,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         android: { usesCleartextTraffic: true },
       },
     ],
-    'expo-font',
+    ['expo-font', { fonts: FONT_FILES }],
     'expo-image',
     'expo-localization',
     // Keeps Keystore-encrypted tokens out of Android backups (they cannot be decrypted after a restore).

@@ -14,12 +14,14 @@ import Animated, {
   useDerivedValue,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
   type DerivedValue,
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { colors, easing, motion, useDesign } from '@/theme';
+import { withAlpha } from '@/lib/color';
+import { colors, easing, motion, springs, useDesign } from '@/theme';
 
 import { FocusLayerContext, focusTopLayer } from './focus-layer';
 import { FocusMemoryContext } from './focus-memory';
@@ -42,6 +44,9 @@ const EASE_OUT = Easing.bezier(...easing.out);
 const NO_OUTLINE = { outlineStyle: 'none' } as unknown as ViewStyle;
 
 // Web: react-native-web activates only buttons with Space; these roles expect it too (WAI-ARIA).
+// Web hover shows the ring at reduced strength (Aurora: 2 px ring on hover, full ring on keyboard focus).
+const HOVER_RING = 0.7;
+
 const SPACE_ROLES: ReadonlySet<string> = new Set(['radio', 'checkbox', 'switch']);
 
 /** Shared values (0..1) of the nearest Focusable: focus (remote/keyboard), pressed, hover (web). */
@@ -180,30 +185,38 @@ export function Focusable({
 export type FocusLiftProps = {
   kind?: FocusLiftKind;
   radius?: number;
+  /** Title tint for the focus glow (Aurora); defaults to the neutral accent glow. */
+  tint?: string | null;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 };
 
-/** Scale + focus ring for the nearest Focusable. Put it around the part that should lift. */
-export function FocusLift({ kind = 'card', radius = 0, style, children }: FocusLiftProps) {
+/** Spring lift + white ring + tinted glow for the nearest Focusable (TV focus, web hover and keyboard focus, press). */
+export function FocusLift({ kind = 'card', radius = 0, tint, style, children }: FocusLiftProps) {
   const { focus, pressed, hover } = useFocusState();
   const design = useDesign();
   const reduced = useReducedMotion();
   const liftScale =
     kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1;
   const pressedScale = design.focus.pressedScale;
-  const hoverWeight = Platform.OS === 'web' ? 0.6 : 0;
+  const hoverWeight = Platform.OS === 'web' ? 1 : 0;
 
   const liftStyle = useAnimatedStyle(() => {
-    const raised = Math.max(focus.get(), hover.get() * hoverWeight);
-    const scale = reduced ? 1 : 1 + (liftScale - 1) * raised;
+    const raised = Math.max(focus.get() > 0.5 ? 1 : 0, hover.get() > 0.5 ? hoverWeight : 0);
+    const target = reduced ? 1 : 1 + (liftScale - 1) * raised;
     const press = reduced ? 1 : 1 - (1 - pressedScale) * pressed.get();
-    return { transform: [{ scale: scale * press }] };
+    return { transform: [{ scale: withSpring(target, springs.focus) }, { scale: press }] };
   }, [reduced, liftScale, pressedScale, hoverWeight]);
-  const ringStyle = useAnimatedStyle(() => ({ opacity: focus.get() }));
+  const ringStyle = useAnimatedStyle(
+    () => ({ opacity: Math.max(focus.get(), hover.get() * hoverWeight * HOVER_RING) }),
+    [hoverWeight]
+  );
 
   const offset = design.focus.ringOffset;
   const width = design.focus.ringWidth;
+  const glow = tint
+    ? `0 0 ${design.px(kind === 'card' ? 30 : 18)}px ${withAlpha(tint, 0.55)}`
+    : design.shadow.glow;
   return (
     <Animated.View style={[style, liftStyle]}>
       {children}
@@ -220,7 +233,7 @@ export function FocusLift({ kind = 'card', radius = 0, style, children }: FocusL
             borderWidth: width,
             borderColor: colors.focus.DEFAULT,
             borderCurve: 'continuous',
-            boxShadow: design.shadow.glow,
+            boxShadow: glow,
           },
           ringStyle,
         ]}

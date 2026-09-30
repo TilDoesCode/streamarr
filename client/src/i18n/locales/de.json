@@ -659,7 +659,10 @@
       "episodes": "Folgen",
       "states": "Leer- und Fehlerzustände",
       "overlays": "Dialoge, Sheets und Toasts",
-      "formatting": "Formatierung"
+      "formatting": "Formatierung",
+      "ambient": "Ambient-Hintergrund",
+      "glass": "Glas und Bedienelemente",
+      "spec": "Technische Labels und Signal"
     },
     "states": {
       "default": "Standard",
@@ -735,7 +738,29 @@
       "size": "Größe: {value}",
       "plural": "Plural: {value}"
     },
-    "animateLoaders": "Ladeanimationen"
+    "animateLoaders": "Ladeanimationen",
+    "aurora": {
+      "ambientHint": "Fokussiere (TV), zeige mit der Maus auf (Web) oder tippe (Telefon) ein Poster: Der Raum übernimmt Bild und Farbton. Elephants Dream hat noch keinen Farbton (neutrale Tönung).",
+      "tintsOn": "Farbtöne geladen",
+      "tintsOff": "Farbtöne noch nicht ermittelt",
+      "clear": "Hintergrund leeren",
+      "glassMode": "Glasmodus auf diesem Gerät: {mode}",
+      "glassBody": "Flächen zeichnen weich, was hinter ihnen liegt.",
+      "intensity": {
+        "subtle": "Dezent",
+        "regular": "Normal",
+        "strong": "Kräftig",
+        "tinted": "Getönt"
+      },
+      "play": "Abspielen",
+      "moreInfo": "Mehr Infos",
+      "signal": {
+        "local-ready": "Sofort",
+        "local-downloading": "Wird vorbereitet",
+        "ready": "Gesund",
+        "degraded": "Beeinträchtigt"
+      }
+    }
   },
   "devPlayer": {
     "title": "Player-Labor",

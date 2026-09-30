@@ -45,7 +45,7 @@ import {
 } from '@/components/focus';
 import { OverlayScrim } from '@/components/ui/overlay-scrim';
 import { Text } from '@/components/ui/text';
-import { colors, easing, motion, useDesign } from '@/theme';
+import { colors, easing, fonts, motion, useDesign } from '@/theme';
 
 const ENTER_MS = 300;
 const EASE_SHEET = Easing.bezier(...easing.sheet);
@@ -437,7 +437,7 @@ function SheetItemSurface({
         ) : null}
       </View>
       <View style={{ flex: 1, gap: design.px(2) }}>
-        <Text variant="body" style={{ fontWeight: selected ? '600' : '400' }}>
+        <Text variant="body" style={{ fontFamily: selected ? fonts.bodySemiBold : fonts.body }}>
           {label}
         </Text>
         {description ? (

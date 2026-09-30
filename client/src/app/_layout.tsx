@@ -9,7 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { ToastProvider } from '@/components/ui/toast';
 import { useDeviceLanguageSync } from '@/i18n';
-import { colors, DesignProvider, NAV_THEME } from '@/theme';
+import { colors, DesignProvider, NAV_THEME, useAppFonts } from '@/theme';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -18,6 +18,8 @@ colorScheme.set('dark');
 
 export default function RootLayout() {
   useDeviceLanguageSync();
+  const fontsReady = useAppFonts();
+  if (!fontsReady) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <ThemeProvider value={NAV_THEME}>

@@ -13,6 +13,15 @@ const ROOT_SCREEN: Record<TabId, string> = {
   settings: 'settings',
 };
 
+// Artwork screens: transparent native header (iOS 26 draws Liquid Glass bar buttons over the artwork).
+const ARTWORK_HEADER = (shown: boolean) => ({
+  headerShown: shown,
+  headerTransparent: true,
+  headerStyle: { backgroundColor: colors.scrim.clear },
+  headerBlurEffect: 'none' as const,
+  title: '',
+});
+
 /** The stack inside one tab; Home and Search also push the title screens. */
 export function TabStack({ tab }: { tab: TabId }) {
   const { t } = useTranslation();
@@ -42,17 +51,9 @@ export function TabStack({ tab }: { tab: TabId }) {
         }}
       />
       {/* Stack children must be screens: no fragments. */}
+      {browse ? <Stack.Screen name="movie/[id]" options={ARTWORK_HEADER(detailHeader)} /> : null}
       {browse ? (
-        <Stack.Screen
-          name="movie/[id]"
-          options={{ headerShown: detailHeader, headerTransparent: true, title: '' }}
-        />
-      ) : null}
-      {browse ? (
-        <Stack.Screen
-          name="series/[id]/index"
-          options={{ headerShown: detailHeader, headerTransparent: true, title: '' }}
-        />
+        <Stack.Screen name="series/[id]/index" options={ARTWORK_HEADER(detailHeader)} />
       ) : null}
       {browse ? (
         <Stack.Screen name="series/[id]/season/[n]" options={{ headerShown: detailHeader }} />

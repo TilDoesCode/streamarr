@@ -1,4 +1,7 @@
 // Dev World fixture titles (server/tests/Streamarr.DevWorld/fixtures/catalog.json) for the gallery.
+import type { CatalogSpec } from '@/components/spec';
+
+import auroraSamples from './gallery-samples.json';
 import type { Language } from '@/i18n';
 
 export type GalleryEpisode = {
@@ -356,3 +359,9 @@ export const GALLERY_TITLES: GalleryTitle[] = [
     ],
   },
 ];
+
+/** R0-style palette and spec samples (mockup tints) for the Aurora gallery; null = not extracted yet. */
+export const AURORA_SAMPLES: Record<
+  string,
+  { tint: string | null; tint2: string | null; spec: CatalogSpec | null }
+> = auroraSamples;
