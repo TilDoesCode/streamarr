@@ -1,8 +1,8 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { useEffect, type ReactNode, type Ref } from 'react';
+import { use, useEffect, type ReactNode, type Ref } from 'react';
 import { Platform } from 'react-native';
 
-import { Focusable } from '@/components/focus';
+import { Focusable, FocusMemoryContext, type FocusMemory } from '@/components/focus';
 import { Text } from '@/components/ui/text';
 import '@/i18n';
 import {
@@ -50,6 +50,12 @@ async function emit(type: 'focus' | 'blur') {
 }
 
 let shell: ReturnType<typeof useScreenFocusHost>;
+let memory: FocusMemory | null;
+
+function MemoryProbe() {
+  memory = use(FocusMemoryContext);
+  return null;
+}
 
 function Shell({ showScreen }: { showScreen: boolean }) {
   const host = useScreenFocusHost();
@@ -60,6 +66,7 @@ function Shell({ showScreen }: { showScreen: boolean }) {
     <ScreenFocusProvider value={host.host}>
       {showScreen ? (
         <ScreenFocusScope>
+          <MemoryProbe />
           <Focusable testID="card" onPress={jest.fn()}>
             <Text>{'a'}</Text>
           </Focusable>
@@ -157,6 +164,28 @@ describe('ScreenFocusScope on TV', () => {
     expect(last.requestTVFocus).toHaveBeenCalledTimes(1);
     await act(async () => rerender(<Shell showScreen={false} />));
     expect(shell.focusActive()).toBe(false);
+  });
+
+  it('forgets the remembered element on reset (the page replaced its content)', async () => {
+    await renderWithProviders(<Shell showScreen />);
+    const last = await focusCard();
+    memory?.reset?.();
+    shell.focusActive();
+    await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
+    expect(last.requestTVFocus).not.toHaveBeenCalled();
+    expect(guideRequests()).toBe(RESTORE_ATTEMPTS);
+  });
+
+  it('marks the rail as reached by a screen Back chain', async () => {
+    const rail = { requestTVFocus: jest.fn() };
+    await renderWithProviders(<Shell showScreen />);
+    shell.railActive.current = rail as never;
+    expect(shell.isRailByBack()).toBe(false);
+    shell.host.focusRail();
+    expect(rail.requestTVFocus).toHaveBeenCalledTimes(1);
+    expect(shell.isRailByBack()).toBe(true);
+    shell.railLeft();
+    expect(shell.isRailByBack()).toBe(false);
   });
 
   it('stops restoring when the screen is hidden again', async () => {

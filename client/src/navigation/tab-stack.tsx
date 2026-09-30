@@ -11,6 +11,8 @@ import type { TabId } from './tabs';
 const ROOT_SCREEN: Record<TabId, string> = {
   home: 'index',
   search: 'search',
+  movies: 'movies',
+  series: 'series',
   settings: 'settings',
 };
 
@@ -23,7 +25,7 @@ const ARTWORK_HEADER = (shown: boolean) => ({
   title: '',
 });
 
-/** The stack inside one tab; Home and Search also push the title screens. */
+/** The stack inside one tab; every tab but Settings also pushes the title screens. */
 export function TabStack({ tab }: { tab: TabId }) {
   const { t } = useTranslation();
   const design = useDesign();

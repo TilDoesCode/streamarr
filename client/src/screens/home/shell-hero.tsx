@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
-import { useSetAmbient } from '@/components/ambient';
+import { useClearAmbient, useSetAmbient } from '@/components/ambient';
 import { GlassButton } from '@/components/glass';
 import { Artwork } from '@/components/media/artwork';
 import { HeroTitle } from '@/components/media/hero';
@@ -53,15 +53,17 @@ export function ShellHero({ store, collapsed = false, targetRef, onButtonFocus }
   const featured = useFeatured(store);
   const detail = useFeaturedDetail(featured);
   const setAmbient = useSetAmbient();
+  const clearAmbient = useClearAmbient();
   const image = featured?.backdropUrl ?? detail?.backdropUrl ?? null;
   const tint = featured?.tint ?? null;
   const tint2 = featured?.tint2 ?? null;
   // Only the focused Home paints the room; other tabs and screens start from the neutral wash.
   useFocusEffect(
     useCallback(() => {
-      setAmbient(image ? { image, tint, tint2 } : null);
-      return () => setAmbient(null);
-    }, [setAmbient, image, tint, tint2])
+      const title = image ? { image, tint, tint2 } : null;
+      setAmbient(title);
+      return () => clearAmbient(title);
+    }, [setAmbient, clearAmbient, image, tint, tint2])
   );
 
   return (

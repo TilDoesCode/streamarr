@@ -72,6 +72,14 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 - Offline downloads of series and movies on phones and tablets.
 
+## From F2 verify (2026-10-01)
+- Android (TV and phone): the filled sort segment turns square-cornered after a sort or genre change; rounded on first mount and on web.
+- TV: Right from the rail after a genre deep link lands on "All" (native spatial focus wins over the page's focus memory); needs a forced restore in large-shell for every tab.
+- TV: a deep link that arrives while the rail has focus (e.g. streamarr://movies from Home) leaves focus on the rail.
+- Web: the last-clicked genre chip keeps a focus ring after browser Back selects another chip (cosmetic).
+- Tablet 1024 px: a poster caption's year is squeezed by two spec chips (shared PosterCard).
+- TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
+
 ## Fixed
 
 - Device-aware "Recommended" (was a decision) — P3 (server) + P2 (plain Play = Recommended).

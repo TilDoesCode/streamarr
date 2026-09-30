@@ -3,6 +3,7 @@ import { userEvent } from '@testing-library/react-native';
 import { Stack } from 'expo-router';
 import { act, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
+import { FlatList } from 'react-native';
 
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
@@ -230,6 +231,74 @@ describe('Search', () => {
       store.setActive(ben.id);
     });
     await waitFor(() => expect(screen.getByTestId('search-type-any')).toBeChecked());
+  });
+});
+
+describe('Library', () => {
+  const browseItem = (id: number, title: string) => ({
+    workId: `tmdb-movie-${id}`,
+    mediaType: 'movie',
+    tmdbId: id,
+    title,
+  });
+  const page = (items: unknown[], pageNumber: number, hasMore: boolean) =>
+    json(200, { items, page: pageNumber, totalPages: 3, hasMore });
+
+  beforeEach(() => {
+    handlers['/api/v1/viewer/catalog/genres'] = () =>
+      json(200, { genres: [{ id: 27, name: 'Horror' }] });
+  });
+
+  it('shows a skeleton grid with the URL genre selected while loading', async () => {
+    handlers['/api/v1/viewer/catalog/browse'] = never;
+    await open('/movies?genre=27');
+    expect(await screen.findByTestId('library-loading', {}, WAIT)).toBeOnTheScreen();
+    expect(await screen.findByTestId('library-genre-27', {}, WAIT)).toBeChecked();
+  });
+
+  it('shows an error, then the empty state after a retry', async () => {
+    let fail = true;
+    handlers['/api/v1/viewer/catalog/browse'] = () => (fail ? failure() : page([], 1, false));
+    await open('/movies?genre=27');
+    expect(await screen.findByTestId('library-error', {}, WAIT)).toBeOnTheScreen();
+    fail = false;
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByTestId('library-empty', {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('pages on hasMore, follows empty gated pages and drops duplicates', async () => {
+    handlers['/api/v1/viewer/catalog/browse'] = (url) => {
+      const n = Number(url.searchParams.get('page'));
+      if (n === 1) return page([browseItem(1, 'Sintel')], 1, true);
+      if (n === 2) return page([], 2, true);
+      return page([browseItem(1, 'Sintel'), browseItem(3, 'Wing It!')], 3, false);
+    };
+    await open('/movies');
+    expect(await screen.findByTestId('library-item-1', {}, WAIT)).toHaveTextContent(/Wing It!/);
+    expect(screen.queryByTestId('library-item-2')).toBeNull();
+    expect(screen.queryByTestId('library-empty')).toBeNull();
+  });
+
+  it('starts a new genre at the top of the page', async () => {
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    handlers['/api/v1/viewer/catalog/browse'] = () => page([browseItem(1, 'Sintel')], 1, false);
+    await open('/movies');
+    expect(await screen.findByTestId('library-item-0', {}, WAIT)).toBeOnTheScreen();
+    expect(scrollToOffset).not.toHaveBeenCalled();
+    const user = userEvent.setup();
+    await user.press(screen.getByTestId('library-genre-27'));
+    await waitFor(() => expect(screen.getByTestId('library-genre-27')).toBeChecked(), WAIT);
+    expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: false });
+    scrollToOffset.mockRestore();
+  });
+
+  it('falls back to All for a genre the server does not list', async () => {
+    handlers['/api/v1/viewer/catalog/browse'] = () => page([browseItem(1, 'Sintel')], 1, false);
+    await open('/movies?genre=99&sort=top_rated');
+    await waitFor(() => expect(screen.getByTestId('library-genre-all')).toBeChecked(), WAIT);
+    expect(screen.getByTestId('library-sort-top_rated')).toBeChecked();
+    expect(await screen.findByTestId('library-item-0', {}, WAIT)).toBeOnTheScreen();
   });
 });
 

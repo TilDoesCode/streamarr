@@ -5,8 +5,13 @@ import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import type { components } from '@/api/schema';
 
-import { useSetAmbient } from '@/components/ambient';
-import { FocusGuide, useBackHandler } from '@/components/focus';
+import { useClearAmbient, useSetAmbient } from '@/components/ambient';
+import {
+  FocusGuide,
+  ScrollRevealContext,
+  useBackHandler,
+  useFocusGlowRoom,
+} from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
 import { HeroTitle } from '@/components/media/hero';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
@@ -103,6 +108,9 @@ export type LargeDetailProps = {
   loading?: boolean;
 };
 
+const TITLE_SAFE = 54;
+const REVEAL_AFTER_RETURN_MS = 400;
+
 /** Large shell (TV, web, tablet): title copy on the left over the artwork, the glass version panel on the right. */
 export function LargeDetail(props: LargeDetailProps) {
   return (
@@ -135,12 +143,42 @@ function LargeDetailLayout({
   const { s } = useShell();
   const design = useDesign();
   const setAmbient = useSetAmbient();
+  const clearAmbient = useClearAmbient();
   const actionsRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const glowRoom = useFocusGlowRoom();
+  // TV: a focused episode box and its ring stay inside the title-safe area (54 of 1080 from the edges).
+  const revealed = useRef<View | null>(null);
+  const reveal = useCallback(
+    (node: View | null) => {
+      if (!design.isTV || !node) return;
+      revealed.current = node;
+      setTimeout(() =>
+        node.measureInWindow((_x, y, _width, height) => {
+          const margin = s(TITLE_SAFE) + glowRoom;
+          const below = y + height + margin - design.window.height;
+          const above = margin - y;
+          const delta = below > 0 ? below : above > 0 ? -above : 0;
+          if (delta) scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + delta) });
+        })
+      );
+    },
+    [design.isTV, design.window.height, glowRoom, s]
+  );
+  // Back from the player: focus returns during the transition, so measure the restored box again once it settled.
   useFocusEffect(
     useCallback(() => {
-      setAmbient(backdropUrl ? { image: backdropUrl, tint, tint2 } : null);
-      return () => setAmbient(null);
-    }, [setAmbient, backdropUrl, tint, tint2])
+      const timer = setTimeout(() => reveal(revealed.current), REVEAL_AFTER_RETURN_MS);
+      return () => clearTimeout(timer);
+    }, [reveal])
+  );
+  useFocusEffect(
+    useCallback(() => {
+      const title = backdropUrl ? { image: backdropUrl, tint, tint2 } : null;
+      setAmbient(title);
+      return () => clearAmbient(title);
+    }, [setAmbient, clearAmbient, backdropUrl, tint, tint2])
   );
   useBackHandler(() => {
     actionsRef.current?.requestTVFocus?.();
@@ -166,7 +204,10 @@ function LargeDetailLayout({
       </View>
       <View style={{ flex: 1, flexDirection: portrait ? 'column' : 'row' }}>
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
+          onScroll={(event) => (scrollY.current = event.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
             paddingLeft: gutter,
@@ -284,7 +325,7 @@ function LargeDetailLayout({
               </View>
             ) : null}
           </View>
-          {children}
+          <ScrollRevealContext.Provider value={reveal}>{children}</ScrollRevealContext.Provider>
         </ScrollView>
         <View
           style={

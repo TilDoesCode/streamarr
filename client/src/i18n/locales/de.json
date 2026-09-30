@@ -34,6 +34,8 @@
   "tabs": {
     "home": "Start",
     "search": "Suche",
+    "movies": "Filme",
+    "series": "Serien",
     "settings": "Einstellungen",
     "navigation": "Hauptnavigation"
   },
@@ -940,5 +942,21 @@
     "panelSubtitle": "{count, plural, one {# Version} other {# Versionen}} · erwartete Wiedergabe auf diesem Gerät",
     "panelEpisode": "{episode} · erwartete Wiedergabe auf diesem Gerät",
     "card": "Version"
+  },
+  "library": {
+    "genres": "Genres",
+    "allGenres": "Alle",
+    "sortLabel": "Sortieren nach",
+    "sort": {
+      "popular": "Beliebt",
+      "top_rated": "Bestbewertet",
+      "newest": "Neu"
+    },
+    "loadingMore": "Weitere Titel werden geladen",
+    "empty": {
+      "title": "Hier gibt es noch nichts",
+      "movie": "Keine Filme in diesem Genre.",
+      "series": "Keine Serien in diesem Genre."
+    }
   }
 }

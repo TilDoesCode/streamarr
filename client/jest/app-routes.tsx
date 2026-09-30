@@ -1,13 +1,21 @@
 import AppLayout from '@/app/(app)/_layout';
-import MovieRoute from '@/app/(app)/(tabs)/(home,search)/movie/[id]';
-import SeriesRoute from '@/app/(app)/(tabs)/(home,search)/series/[id]/index';
-import SeasonRoute from '@/app/(app)/(tabs)/(home,search)/series/[id]/season/[n]';
+import MovieRoute from '@/app/(app)/(tabs)/(home,search,movies,series)/movie/[id]';
+import SeriesRoute from '@/app/(app)/(tabs)/(home,search,movies,series)/series/[id]/index';
+import SeasonRoute from '@/app/(app)/(tabs)/(home,search,movies,series)/series/[id]/season/[n]';
 import HomeLayout, { unstable_settings as homeSettings } from '@/app/(app)/(tabs)/(home)/_layout';
 import HomeRoute from '@/app/(app)/(tabs)/(home)/index';
 import SearchLayout, {
   unstable_settings as searchSettings,
 } from '@/app/(app)/(tabs)/(search)/_layout';
 import SearchRoute from '@/app/(app)/(tabs)/(search)/search';
+import MoviesLayout, {
+  unstable_settings as moviesSettings,
+} from '@/app/(app)/(tabs)/(movies)/_layout';
+import MoviesRoute from '@/app/(app)/(tabs)/(movies)/movies';
+import SeriesLayout, {
+  unstable_settings as seriesSettings,
+} from '@/app/(app)/(tabs)/(series)/_layout';
+import SeriesTabRoute from '@/app/(app)/(tabs)/(series)/series';
 import SettingsLayout, {
   unstable_settings as settingsSettings,
 } from '@/app/(app)/(tabs)/(settings)/_layout';
@@ -28,14 +36,18 @@ export const appRoutes = {
   '(app)/(tabs)/(home)/index': HomeRoute,
   '(app)/(tabs)/(search)/_layout': { default: SearchLayout, unstable_settings: searchSettings },
   '(app)/(tabs)/(search)/search': SearchRoute,
+  '(app)/(tabs)/(movies)/_layout': { default: MoviesLayout, unstable_settings: moviesSettings },
+  '(app)/(tabs)/(movies)/movies': MoviesRoute,
+  '(app)/(tabs)/(series)/_layout': { default: SeriesLayout, unstable_settings: seriesSettings },
+  '(app)/(tabs)/(series)/series': SeriesTabRoute,
   '(app)/(tabs)/(settings)/_layout': {
     default: SettingsLayout,
     unstable_settings: settingsSettings,
   },
   '(app)/(tabs)/(settings)/settings': SettingsRoute,
-  '(app)/(tabs)/(home,search)/movie/[id]': MovieRoute,
-  '(app)/(tabs)/(home,search)/series/[id]/index': SeriesRoute,
-  '(app)/(tabs)/(home,search)/series/[id]/season/[n]': SeasonRoute,
+  '(app)/(tabs)/(home,search,movies,series)/movie/[id]': MovieRoute,
+  '(app)/(tabs)/(home,search,movies,series)/series/[id]/index': SeriesRoute,
+  '(app)/(tabs)/(home,search,movies,series)/series/[id]/season/[n]': SeasonRoute,
   // The player needs native video modules; tests check the route and its params.
   '(app)/play/[playbackId]': () => null,
   // The player lab needs native video modules; tests only need the route to exist.

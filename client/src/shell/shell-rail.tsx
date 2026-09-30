@@ -33,10 +33,12 @@ export type ShellRailProps = {
   onSelect: (tab: TabSpec) => void;
   /** TV: rail focus enters/leaves (back chain). */
   onFocusChange?: (focused: boolean) => void;
+  /** Receives the active tab's node (TV: a screen's Back chain hands focus to it). */
+  activeRef?: { current: View | null };
 };
 
 /** Glass navigation rail of the large-screen shell: brand mark, tabs, settings and the active profile. */
-export function ShellRail({ activeName, onSelect, onFocusChange }: ShellRailProps) {
+export function ShellRail({ activeName, onSelect, onFocusChange, activeRef }: ShellRailProps) {
   const { t } = useTranslation();
   const design = useDesign();
   const { s } = useShell();
@@ -73,7 +75,9 @@ export function ShellRail({ activeName, onSelect, onFocusChange }: ShellRailProp
       onPress={() => onSelect(tab)}
       itemRef={(view) => {
         items.current[index] = view;
-        if (tab.name === activeName) setActiveNode(view);
+        if (tab.name !== activeName) return;
+        setActiveNode(view);
+        if (activeRef) activeRef.current = view;
       }}
     />
   );
@@ -127,7 +131,7 @@ export function ShellRail({ activeName, onSelect, onFocusChange }: ShellRailProp
         testID="tv-rail"
         remember={false}
         destinations={design.isTV && activeNode ? [activeNode] : undefined}
-        trap={design.isTV ? ['up', 'down', 'left'] : undefined}
+        trap={design.isTV ? ['up', 'down', 'left', 'right'] : undefined}
         onFocusEnter={() => setOpen(true)}
         onFocusLeave={() => setOpen(false)}
         style={{ flex: 1, alignItems: 'center', gap: s(rail.gap), paddingBottom: s(20) }}>

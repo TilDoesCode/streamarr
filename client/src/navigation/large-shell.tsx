@@ -3,7 +3,7 @@ import { ThemeProvider } from 'expo-router/react-navigation';
 import { TabSlot, useTabsWithTriggers } from 'expo-router/ui';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BackHandler, Platform, View } from 'react-native';
+import { BackHandler, Platform, useTVEventHandler, View } from 'react-native';
 
 import { AmbientBackdrop, AmbientProvider } from '@/components/ambient';
 import { useBackHandler } from '@/components/focus';
@@ -17,6 +17,8 @@ import { SHELL_NAV_THEME } from '@/theme/navigation';
 import { ScreenFocusProvider, useScreenFocusHost } from './screen-focus';
 import { HOME_TAB, TAB_TRIGGERS, type TabSpec } from './tabs';
 import { exitDialogReducer, tvBackAction } from './tv-back';
+
+const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
 /** One large-screen shell for TV, web desktop and tablet: ambient backdrop, glass rail, tab content. */
 export function LargeShell() {
@@ -45,6 +47,7 @@ export function LargeShell() {
   useBackHandler(() => {
     const action = tvBackAction({
       railFocused: railFocused.current,
+      railByBack: screens.isRailByBack(),
       canGoBack: router.canGoBack(),
       atHome: pathname === HOME_TAB.href,
     });
@@ -53,6 +56,13 @@ export function LargeShell() {
     if (action === 'confirmExit') setExitOpen(true);
     return action !== 'navigate';
   }, design.isTV);
+
+  // TV: Right from the rail returns to the screen's remembered element (the full-bleed content starts under the rail).
+  useTVEvents((event) => {
+    const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
+    if (design.isTV && event.eventType === 'right' && railFocused.current && keyAction !== 0)
+      screens.focusActive();
+  });
 
   // A screen pushed over the shell (deep link to the player) hides the dialog's Modal; keep the state in step.
   useFocusEffect(useCallback(() => () => dispatchExit({ type: 'close' }), []));
@@ -85,10 +95,12 @@ export function LargeShell() {
 
   const rail = (
     <ShellRail
+      activeRef={screens.railActive}
       activeName={activeName}
       onSelect={select}
       onFocusChange={(focused) => {
         railFocused.current = focused;
+        if (!focused) screens.railLeft();
       }}
     />
   );

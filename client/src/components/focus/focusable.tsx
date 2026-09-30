@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Animated, {
   Easing,
+  useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
   useReducedMotion,
@@ -190,6 +191,8 @@ export type FocusLiftProps = {
   tint?: string | null;
   /** Overrides the kind's focus scale (large-shell cards that must stay clear of their neighbours). */
   scale?: number;
+  /** Receives the ring strength (0..1) instead of drawing the ring, for a parent box that wraps more than this Focusable. */
+  ringTo?: SharedValue<number>;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 };
@@ -208,6 +211,7 @@ export function FocusLift({
   radius = 0,
   tint,
   scale,
+  ringTo,
   style,
   children,
 }: FocusLiftProps) {
@@ -230,6 +234,11 @@ export function FocusLift({
     () => ({ opacity: Math.max(focus.get(), hover.get() * hoverWeight * HOVER_RING) }),
     [hoverWeight]
   );
+  useAnimatedReaction(
+    () => Math.max(focus.get(), hover.get() * hoverWeight * HOVER_RING),
+    (value) => ringTo?.set(value),
+    [ringTo, hoverWeight]
+  );
 
   const offset = design.focus.ringOffset;
   const width = design.focus.ringWidth;
@@ -239,24 +248,26 @@ export function FocusLift({
   return (
     <Animated.View style={[style, liftStyle]}>
       {children}
-      <Animated.View
-        style={[
-          {
-            pointerEvents: 'none',
-            position: 'absolute',
-            top: -offset - width,
-            left: -offset - width,
-            right: -offset - width,
-            bottom: -offset - width,
-            borderRadius: radius > 0 ? radius + offset + width : 0,
-            borderWidth: width,
-            borderColor: colors.focus.DEFAULT,
-            borderCurve: 'continuous',
-            boxShadow: glow,
-          },
-          ringStyle,
-        ]}
-      />
+      {ringTo ? null : (
+        <Animated.View
+          style={[
+            {
+              pointerEvents: 'none',
+              position: 'absolute',
+              top: -offset - width,
+              left: -offset - width,
+              right: -offset - width,
+              bottom: -offset - width,
+              borderRadius: radius > 0 ? radius + offset + width : 0,
+              borderWidth: width,
+              borderColor: colors.focus.DEFAULT,
+              borderCurve: 'continuous',
+              boxShadow: glow,
+            },
+            ringStyle,
+          ]}
+        />
+      )}
     </Animated.View>
   );
 }

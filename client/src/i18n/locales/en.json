@@ -34,6 +34,8 @@
   "tabs": {
     "home": "Home",
     "search": "Search",
+    "movies": "Movies",
+    "series": "Series",
     "settings": "Settings",
     "navigation": "Main navigation"
   },
@@ -940,5 +942,21 @@
     "panelSubtitle": "{count, plural, one {# version} other {# versions}} · playback method expected on this device",
     "panelEpisode": "{episode} · playback method expected on this device",
     "card": "Version"
+  },
+  "library": {
+    "genres": "Genres",
+    "allGenres": "All",
+    "sortLabel": "Sort by",
+    "sort": {
+      "popular": "Popular",
+      "top_rated": "Top rated",
+      "newest": "Newest"
+    },
+    "loadingMore": "Loading more titles",
+    "empty": {
+      "title": "Nothing here yet",
+      "movie": "No movies match this genre.",
+      "series": "No series match this genre."
+    }
   }
 }

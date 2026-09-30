@@ -13,6 +13,8 @@ type ScreenFocusHost = {
   show: (restore: () => void) => () => void;
   /** True once after the shell asked the next visible screen to take focus. */
   takeFocusRequest: () => boolean;
+  /** Moves focus to the rail's active tab (a screen's Back chain ends there). */
+  focusRail: () => void;
 };
 
 const ScreenFocusHostContext = createContext<ScreenFocusHost | null>(null);
@@ -24,6 +26,8 @@ export const ScreenFocusProvider = ScreenFocusHostContext;
 export function useScreenFocusHost() {
   const active = useRef<(() => void) | null>(null);
   const requested = useRef(false);
+  const railActive = useRef<View | null>(null);
+  const railByBack = useRef(false);
   const host = useMemo<ScreenFocusHost>(
     () => ({
       show: (restore) => {
@@ -37,11 +41,23 @@ export function useScreenFocusHost() {
         requested.current = false;
         return value;
       },
+      focusRail: () => {
+        railByBack.current = true;
+        railActive.current?.requestTVFocus?.();
+      },
     }),
     []
   );
   return {
     host,
+    /** The rail's active tab node, set by the rail. */
+    railActive,
+    /** True while the rail holds the focus a screen's Back chain handed to it. */
+    isRailByBack: () => railByBack.current,
+    /** The rail lost focus: its next entry is no longer a screen's Back step. */
+    railLeft: () => {
+      railByBack.current = false;
+    },
     /** Moves focus back into the visible screen (its last focused element, else its first). */
     focusActive: (): boolean => {
       const restore = active.current;
@@ -53,6 +69,12 @@ export function useScreenFocusHost() {
       requested.current = true;
     },
   };
+}
+
+/** TV: focuses the shell rail's active tab; no-op outside the TV shell. */
+export function useFocusRail(): () => void {
+  const host = use(ScreenFocusHostContext);
+  return () => host?.focusRail();
 }
 
 /** TV: each stack screen remembers its focused element and gets it back on return (Back lands on the opener). */
@@ -72,6 +94,9 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
       },
       forget: (view) => {
         if (last.current === view) last.current = null;
+      },
+      reset: () => {
+        last.current = null;
       },
     }),
     []

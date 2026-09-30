@@ -11,6 +11,7 @@ import { ToastProvider } from '@/components/ui/toast';
 import { setLanguagePreference } from '@/i18n';
 import { readLanguagePreference } from '@/i18n/languages';
 import { exitDialogReducer, tvBackAction } from '@/navigation/tv-back';
+import { backToChip, libraryBackStep, type LibraryZone } from '@/screens/library/library-back';
 import { DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
@@ -263,6 +264,38 @@ describe('TV back chain', () => {
     expect(tvBackAction({ railFocused: false, canGoBack: true })).toBe('navigate');
     expect(tvBackAction({ railFocused: false, canGoBack: false })).toBe('confirmExit');
     expect(tvBackAction({ railFocused: false, canGoBack: false, atHome: false })).toBe('home');
+  });
+
+  it('leaves a library page for Home once its own steps handed focus to the rail', () => {
+    let zone: LibraryZone = 'grid';
+    const back = () => {
+      const result = libraryBackStep(zone);
+      zone = result.zone;
+      return result.step;
+    };
+    expect(back()).toBe('chip');
+    zone = 'genres'; // the selected chip took focus
+    expect(back()).toBe('rail');
+    expect(back()).toBeNull();
+    const shell = { railFocused: true, railByBack: true, canGoBack: false };
+    expect(tvBackAction({ ...shell, atHome: false })).toBe('home');
+    expect(tvBackAction({ ...shell, atHome: true })).toBe('confirmExit');
+    expect(libraryBackStep('sort').step).toBe('chip');
+  });
+
+  it('scrolls a lifted grid back to the top before the chip takes focus', () => {
+    const calls: string[] = [];
+    const frames: (() => void)[] = [];
+    const list = { scrollToOffset: (p: { offset: number }) => calls.push(`scroll ${p.offset}`) };
+    const chip = { requestTVFocus: () => calls.push('focus') };
+    backToChip(
+      list,
+      () => chip,
+      (run) => frames.push(run)
+    );
+    expect(calls).toEqual(['scroll 0']);
+    frames.forEach((run) => run());
+    expect(calls).toEqual(['scroll 0', 'focus']);
   });
 });
 

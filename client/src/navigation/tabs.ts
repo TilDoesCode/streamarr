@@ -1,15 +1,15 @@
-import { House, Search, Settings, type LucideIcon } from 'lucide-react-native';
+import { Film, House, Search, Settings, Tv, type LucideIcon } from 'lucide-react-native';
 
 import type { UseTabsWithTriggersOptions } from 'expo-router/ui';
 import type { AndroidSymbol, SFSymbol } from 'expo-symbols';
 
-export type TabId = 'home' | 'search' | 'settings';
+export type TabId = 'home' | 'search' | 'movies' | 'series' | 'settings';
 
 export type TabSpec = {
   id: TabId;
   /** Route group of the tab (its own stack). */
   name: `(${TabId})`;
-  href: '/' | '/search' | '/settings';
+  href: '/' | '/search' | '/movies' | '/series' | '/settings';
   icon: LucideIcon;
   /** SF Symbol (iOS/tvOS NativeTabs). */
   sf: { default: SFSymbol; selected: SFSymbol };
@@ -33,6 +33,22 @@ export const TABS: readonly TabSpec[] = [
     icon: Search,
     sf: { default: 'magnifyingglass', selected: 'magnifyingglass' },
     md: 'search',
+  },
+  {
+    id: 'movies',
+    name: '(movies)',
+    href: '/movies',
+    icon: Film,
+    sf: { default: 'film', selected: 'film.fill' },
+    md: 'movie',
+  },
+  {
+    id: 'series',
+    name: '(series)',
+    href: '/series',
+    icon: Tv,
+    sf: { default: 'tv', selected: 'tv.fill' },
+    md: 'tv',
   },
   {
     id: 'settings',

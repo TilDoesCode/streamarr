@@ -1,0 +1,423 @@
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Film, Tv } from 'lucide-react-native';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { FlatList, Platform, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { toAppError } from '@/api/errors';
+import {
+  LIBRARY_SORTS,
+  libraryItems,
+  libraryParams,
+  type LibraryKind,
+  type LibraryParams,
+  type LibrarySort,
+} from '@/browse/library';
+import { useGenres, useLibrary, type CatalogItem } from '@/browse/queries';
+import { useClearAmbient, useSetAmbient, type AmbientInput } from '@/components/ambient';
+import {
+  END_OF_ROW,
+  FocusGuide,
+  FocusMemoryContext,
+  Focusable,
+  FocusLift,
+  useBackHandler,
+  useFocusGlowRoom,
+} from '@/components/focus';
+import { Glass, GlassChip } from '@/components/glass';
+import { PosterCard } from '@/components/media/poster-card';
+import { EmptyState } from '@/components/states/empty-state';
+import { ErrorState } from '@/components/states/error-state';
+import { PosterCardSkeleton } from '@/components/ui/skeleton';
+import { Text } from '@/components/ui/text';
+import { titleHref } from '@/navigation/routes';
+import { useFocusRail } from '@/navigation/screen-focus';
+import { useScreenTitle } from '@/navigation/screen-title';
+import { SHELL } from '@/shell/shell-metrics';
+import { useShell } from '@/shell/use-shell';
+import { colors, gutterPadding, useDesign } from '@/theme';
+
+import { backToChip, libraryBackStep, type LibraryZone } from './library-back';
+
+// Request the next page while the last loaded rows are this close to the viewport.
+const PAGING_ROWS = 2;
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let start = 0; start < items.length; start += size)
+    rows.push(items.slice(start, start + size));
+  return rows;
+}
+
+function itemKey(item: CatalogItem): string {
+  return item.workId ?? `${item.mediaType}-${item.tmdbId}`;
+}
+
+/** Title-safe margin of a TV screen in 1080 shell points. */
+const TITLE_SAFE = 54;
+
+/** Movies or Series page: genre chips, sort, a paged poster grid with loading, empty and error states. */
+export function LibraryScreen({ kind }: { kind: LibraryKind }) {
+  const { t } = useTranslation();
+  const tab = kind === 'movie' ? 'movies' : 'series';
+  useScreenTitle(t(`tabs.${tab}`));
+  const design = useDesign();
+  const shell = useShell();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const setAmbient = useSetAmbient();
+  const clearAmbient = useClearAmbient();
+  const focusRail = useFocusRail();
+  const { genre, sort } = libraryParams(useLocalSearchParams<LibraryParams>());
+  const genres = useGenres(kind);
+  const library = useLibrary(kind, genre, sort);
+  const items = libraryItems(library.data?.pages);
+
+  const [size, setSize] = useState(design.window);
+  const [selectedGenreNode, setSelectedGenreNode] = useState<View | null>(null);
+  const selectedGenre = useRef<View>(null);
+  useEffect(() => setSelectedGenreNode(selectedGenre.current), [genre, genres.data]);
+  const width = size.width;
+  const pad = gutterPadding(design);
+  const across = pad.paddingLeft + pad.paddingRight;
+  const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
+  const posterWidth = shell.large ? shell.s(SHELL.poster.width) : design.layout.posterWidth;
+  const columns = Math.max(2, Math.floor((width - across + cardGap) / (posterWidth + cardGap)));
+  const cardWidth = shell.large
+    ? posterWidth
+    : Math.floor((width - across - (columns - 1) * cardGap) / columns);
+  const rows = chunk(items, columns);
+  const glowRoom = useFocusGlowRoom();
+  // TV: a lifted row's ring sits title-safe; the row gap matches, so the row above is fully off screen.
+  const liftTop = shell.s(TITLE_SAFE) + glowRoom;
+  const rowGap = design.isTV ? Math.max(cardGap, liftTop) : cardGap;
+  const pageHeading = design.isTV || Platform.OS === 'web';
+
+  // The ambient starts on the first title, then follows the focused or hovered card (kept for the return from a title).
+  const first = items[0];
+  const ambient = useRef<AmbientInput | null>(null);
+  const showAmbient = (item: CatalogItem) => {
+    ambient.current = ambientOf(item);
+    setAmbient(ambient.current);
+  };
+  const screenFocused = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      screenFocused.current = true;
+      if (!ambient.current && first) ambient.current = ambientOf(first);
+      if (ambient.current) setAmbient(ambient.current);
+      return () => {
+        screenFocused.current = false;
+        clearAmbient(ambient.current);
+      };
+    }, [first, setAmbient, clearAmbient])
+  );
+
+  // TV Back chain: grid or sort -> the selected genre chip -> the rail's active tab.
+  const zone = useRef<LibraryZone>(null);
+  const list = useRef<FlatList<CatalogItem[]>>(null);
+  useBackHandler(() => {
+    if (!screenFocused.current) return false;
+    const back = libraryBackStep(zone.current);
+    zone.current = back.zone;
+    if (back.step === 'rail') focusRail();
+    if (back.step === 'chip') backToChip(list.current, () => selectedGenre.current);
+    return back.step !== null;
+  }, design.isTV);
+
+  // TV: the first row shows the whole header; later rows lift to liftTop with the header scrolled away.
+  const liftRow = (rowIndex: number) => {
+    if (!design.isTV) return;
+    if (rowIndex === 0) list.current?.scrollToOffset({ offset: 0, animated: true });
+    else list.current?.scrollToIndex({ index: rowIndex, viewOffset: liftTop, animated: true });
+  };
+
+  // A new genre or sort starts at the top: header in view, no lifted row, no memory of the old grid; TV focus on the chip.
+  const memory = use(FocusMemoryContext);
+  const query = `${genre}|${sort}`;
+  const shownQuery = useRef(query);
+  const focusChip = useRef(false);
+  useEffect(() => {
+    if (shownQuery.current === query) return;
+    shownQuery.current = query;
+    list.current?.scrollToOffset({ offset: 0, animated: false });
+    zone.current = null;
+    ambient.current = null;
+    memory?.reset?.();
+    focusChip.current = design.isTV;
+  }, [query, memory, design.isTV]);
+  const firstPageShown = !library.isPending;
+  useEffect(() => {
+    if (!focusChip.current || !firstPageShown || !selectedGenreNode) return;
+    const frame = requestAnimationFrame(() => {
+      focusChip.current = false;
+      const chip = selectedGenre.current;
+      if (!chip) return;
+      // Also the screen's memory: a tab-entry restore after a deep link from another tab lands on the chip too.
+      memory?.remember(chip);
+      chip.requestTVFocus?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [firstPageShown, query, selectedGenreNode, memory]);
+
+  const setFilter = (next: { genre?: number | null; sort?: LibrarySort }) => {
+    const nextGenre = next.genre === undefined ? genre : next.genre;
+    const nextSort = next.sort ?? sort;
+    const params = {
+      genre: nextGenre ? String(nextGenre) : undefined,
+      sort: nextSort === 'popular' ? undefined : nextSort,
+    };
+    // Web: every filter is a history entry (Back restores the previous one); native keeps one screen.
+    if (Platform.OS === 'web') router.push({ pathname: `/${tab}`, params });
+    else router.setParams(params);
+  };
+
+  // A genre id the server does not list (old link, other type) falls back to All.
+  const knownGenre = !genre || !genres.data || genres.data.some((item) => item.id === genre);
+  useEffect(() => {
+    if (knownGenre) return;
+    const params = { genre: undefined, sort: sort === 'popular' ? undefined : sort };
+    if (Platform.OS === 'web') router.replace({ pathname: `/${tab}`, params });
+    else router.setParams(params);
+  }, [knownGenre, router, sort, tab]);
+
+  const loadMore = () => {
+    if (library.hasNextPage && !library.isFetchingNextPage && !library.error)
+      void library.fetchNextPage();
+  };
+
+  // A grid shorter than the viewport never scrolls: keep loading until it covers it plus the paging rows.
+  const rowHeight = cardWidth * 1.5 + cardGap + design.space['3xl'];
+  const wantedRows = Math.ceil(size.height / rowHeight) + PAGING_ROWS;
+  useEffect(() => {
+    if (!library.isFetching && library.hasNextPage && !library.error && rows.length < wantedRows)
+      void library.fetchNextPage();
+  }, [library, rows.length, wantedRows]);
+
+  const genreChips = [
+    { id: null as number | null, name: t('library.allGenres') },
+    ...(genres.data ?? []).map((item) => ({ id: item.id, name: item.name ?? '' })),
+  ];
+
+  const chips = genreChips.map((chip) => (
+    <GlassChip
+      key={chip.id ?? 'all'}
+      testID={`library-genre-${chip.id ?? 'all'}`}
+      role="radio"
+      aria-checked={genre === chip.id}
+      label={chip.name}
+      selected={genre === chip.id}
+      ref={genre === chip.id ? selectedGenre : undefined}
+      onFocus={() => (zone.current = 'genres')}
+      onPress={() => setFilter({ genre: chip.id })}
+    />
+  ));
+
+  const header = (
+    <View style={{ gap: design.space.lg, paddingBottom: design.space.lg }}>
+      {pageHeading ? (
+        <Text variant="title" role="heading" style={[pad, shell.pageTitle]}>
+          {t(`tabs.${tab}`)}
+        </Text>
+      ) : null}
+      {shell.large ? (
+        <FocusGuide
+          remember
+          trap={END_OF_ROW}
+          destinations={selectedGenreNode ? [selectedGenreNode] : undefined}
+          role="radiogroup"
+          aria-label={t('library.genres')}
+          testID="library-genres"
+          style={{ ...pad, flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
+          {chips}
+        </FocusGuide>
+      ) : (
+        // Phones: one swipeable chip row instead of several wrapped lines above the grid.
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          role="radiogroup"
+          aria-label={t('library.genres')}
+          testID="library-genres"
+          contentContainerStyle={{ ...pad, gap: design.space.sm }}>
+          {chips}
+        </ScrollView>
+      )}
+      <View style={{ ...pad, flexDirection: 'row' }}>
+        <SortControl
+          value={sort}
+          label={t('library.sortLabel')}
+          labelOf={(value) => t(`library.sort.${value}`)}
+          onChange={(value) => setFilter({ sort: value })}
+          onFocus={() => (zone.current = 'sort')}
+        />
+      </View>
+    </View>
+  );
+
+  const skeletons = (count: number, testID: string) => (
+    <View testID={testID} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: cardGap, ...pad }}>
+      {Array.from({ length: count }, (_, index) => (
+        <PosterCardSkeleton key={index} width={cardWidth} />
+      ))}
+    </View>
+  );
+
+  const retry = () => void (library.data ? library.fetchNextPage() : library.refetch());
+  const errorState = library.error ? (
+    <ErrorState
+      testID="library-error"
+      code={toAppError(library.error).code}
+      params={toAppError(library.error).params}
+      actions={['retry']}
+      onAction={retry}
+    />
+  ) : null;
+
+  const body = () => {
+    if (library.isPending) return skeletons(columns * 2, 'library-loading');
+    if (errorState) return errorState;
+    return (
+      <EmptyState
+        testID="library-empty"
+        icon={kind === 'movie' ? Film : Tv}
+        title={t('library.empty.title')}
+        message={t(`library.empty.${kind}`)}
+      />
+    );
+  };
+
+  const footer = library.isFetchingNextPage
+    ? skeletons(columns, 'library-loading-more')
+    : items.length && library.error
+      ? errorState
+      : null;
+
+  return (
+    <View
+      testID={`library-${kind}`}
+      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
+      onLayout={(event) => setSize(event.nativeEvent.layout)}>
+      {/* TV: the page scrolls only by the row lift; Down past the last row stays in the grid. */}
+      <FocusGuide remember={false} trap={design.isTV ? ['down'] : undefined} style={{ flex: 1 }}>
+        <FlatList
+          ref={list}
+          scrollEnabled={!design.isTV}
+          removeClippedSubviews={false}
+          data={rows}
+          keyExtractor={(row) => row.map(itemKey).join('|')}
+          ListHeaderComponent={header}
+          ListEmptyComponent={body()}
+          ListFooterComponent={footer}
+          showsVerticalScrollIndicator={!design.isTV}
+          onEndReached={loadMore}
+          onEndReachedThreshold={PAGING_ROWS / Math.max(1, Math.min(rows.length, 4))}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{
+            paddingTop: shell.large
+              ? shell.s(SHELL.page.top)
+              : pageHeading
+                ? design.layout.edgeVertical + insets.top
+                : design.space.lg,
+            // TV: room below the last row so any focused row can scroll up to the page top.
+            paddingBottom: design.isTV
+              ? Math.max(0, size.height - rowHeight)
+              : Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+          }}
+          renderItem={({ item: row, index: rowIndex }) => (
+            <View style={{ flexDirection: 'row', gap: cardGap, ...pad, marginBottom: rowGap }}>
+              {row.map((item, column) => (
+                <PosterCard
+                  key={itemKey(item)}
+                  testID={`library-item-${rowIndex * columns + column}`}
+                  title={item.title ?? ''}
+                  subtitle={item.year ? String(item.year) : ''}
+                  imageUri={item.posterUrl}
+                  width={cardWidth}
+                  spec={item.spec}
+                  tint={item.tint}
+                  onFocus={() => {
+                    zone.current = 'grid';
+                    showAmbient(item);
+                    liftRow(rowIndex);
+                    // TV focus walks the grid without scrolling events reaching the end first.
+                    if (rowIndex >= rows.length - PAGING_ROWS) loadMore();
+                  }}
+                  onHoverIn={() => showAmbient(item)}
+                  onPress={() => router.push(titleHref(item))}
+                />
+              ))}
+            </View>
+          )}
+        />
+      </FocusGuide>
+    </View>
+  );
+}
+
+function ambientOf(item: CatalogItem) {
+  return { image: item.backdropUrl ?? item.posterUrl, tint: item.tint, tint2: item.tint2 };
+}
+
+/** One glass pill with a segment per sort order; the selected one is filled (reads apart from the genre chips). */
+function SortControl({
+  value,
+  label,
+  labelOf,
+  onChange,
+  onFocus,
+}: {
+  value: LibrarySort;
+  label: string;
+  labelOf: (value: LibrarySort) => string;
+  onChange: (value: LibrarySort) => void;
+  onFocus: () => void;
+}) {
+  const design = useDesign();
+  const height = design.layout.controlHeight.sm;
+  const inset = design.space.xs;
+  return (
+    <Glass intensity="subtle" radius={(height + 2 * inset) / 2} style={{ padding: inset }}>
+      <FocusGuide
+        remember
+        trap={END_OF_ROW}
+        role="radiogroup"
+        aria-label={label}
+        testID="library-sort"
+        style={{ flexDirection: 'row', gap: inset }}>
+        {LIBRARY_SORTS.map((option) => {
+          const selected = option === value;
+          return (
+            <Focusable
+              key={option}
+              testID={`library-sort-${option}`}
+              role="radio"
+              aria-checked={selected}
+              accessibilityLabel={labelOf(option)}
+              onFocus={onFocus}
+              onPress={() => onChange(option)}>
+              <FocusLift kind="button" radius={height / 2}>
+                <View
+                  style={{
+                    height,
+                    borderRadius: height / 2,
+                    paddingHorizontal: design.space.lg,
+                    justifyContent: 'center',
+                    backgroundColor: selected ? colors.primary.DEFAULT : undefined,
+                  }}>
+                  <Text
+                    variant="callout"
+                    numberOfLines={1}
+                    style={selected ? { color: colors.primary.foreground } : undefined}>
+                    {labelOf(option)}
+                  </Text>
+                </View>
+              </FocusLift>
+            </Focusable>
+          );
+        })}
+      </FocusGuide>
+    </Glass>
+  );
+}

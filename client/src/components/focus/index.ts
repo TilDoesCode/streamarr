@@ -17,5 +17,6 @@ export {
   type FocusLiftKind,
   type FocusLiftProps,
 } from './focusable';
+export { ScrollRevealContext, useScrollReveal } from './scroll-reveal';
 export { useBackHandler } from './use-back-handler';
 export { useInitialFocus } from './use-initial-focus';

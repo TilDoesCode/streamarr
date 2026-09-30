@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr Client – wie es weitergeht</title>
+<style>
+  :root {
+    --bg: var(--cc-bg, #ffffff);
+    --fg: var(--cc-fg, #14161c);
+    --muted: var(--cc-muted, #f2f3f6);
+    --muted-fg: var(--cc-muted-fg, #5b6170);
+    --border: var(--cc-border, #dfe2e8);
+    --primary: var(--cc-primary, #0f8a9a);
+    --primary-fg: var(--cc-primary-fg, #ffffff);
+    --radius: var(--cc-radius, 12px);
+    --font: var(--cc-font-sans, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+    --mono: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    --ok: #1f8f4e; --warn: #b7791f; --risk: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0d0f14);
+      --fg: var(--cc-fg, #e9ecf2);
+      --muted: var(--cc-muted, #181b23);
+      --muted-fg: var(--cc-muted-fg, #9aa1b2);
+      --border: var(--cc-border, #2a2f3b);
+      --primary: var(--cc-primary, #6fd3e0);
+      --primary-fg: var(--cc-primary-fg, #0a0c12);
+      --ok: #4cc97f; --warn: #e3b04b; --risk: #ff7a6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); line-height: 1.5; }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 40px 0 12px; }
+  p.lead { color: var(--muted-fg); margin: 0 0 24px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .card p { margin: 6px 0; }
+  .card ul { margin: 6px 0 0; padding-left: 18px; }
+  .card li { margin: 3px 0; }
+  .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+         border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; color: var(--muted-fg); }
+  .tag.rec { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
+  .tag.ok { color: var(--ok); border-color: var(--ok); }
+  .tag.warn { color: var(--warn); border-color: var(--warn); }
+  .tag.risk { color: var(--risk); border-color: var(--risk); }
+  .meta { color: var(--muted-fg); font-size: 14px; }
+  .done { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .done div { border-left: 3px solid var(--ok); padding: 4px 10px; background: var(--muted); border-radius: 6px; font-size: 14px; }
+  .done b { font-family: var(--mono); font-size: 12px; color: var(--muted-fg); display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted-fg); font-weight: 600; }
+  .order { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .order li { counter-increment: step; display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: start; }
+  .order li::before { content: counter(step); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+                      background: var(--primary); color: var(--primary-fg); font-weight: 700; }
+  code { font-family: var(--mono); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Streamarr Client – wie es weitergeht</h1>
+  <p class="lead">Stand 30.09.2026, Ende der F-Runde (Befunde aus deinem Screenshot, offene Kleinigkeiten, Seiten „Filme“ und „Serien“).</p>
+
+  <h2>Was heute fertig geworden ist</h2>
+  <div class="done">
+    <div><b>P1–P3</b>Player-, Stöber- und Backend-Politur</div>
+    <div><b>R0–R3</b>Redesign Aurora: Farben, Glas, gemeinsame Oberfläche, Detail, Player, Telefon</div>
+    <div><b>B1</b>Server: Stöbern nach Genre/Sortierung, bessere Fehler-Aktionen, echte Container</div>
+    <div><b>F1</b>Artwork unter der Leiste, getöntes TV-Glas, ein Fokus-Rahmen, alle offenen Befunde</div>
+    <div><b>F2</b>Seiten „Filme“ und „Serien“ auf TV, Web und Telefon</div>
+  </div>
+
+  <h2>Deine Entscheidungen</h2>
+  <table>
+    <tr><th>Frage</th><th>Optionen</th><th>Mein Vorschlag</th></tr>
+    <tr><td>Glas auf dem TV (heute 70 % Deckkraft)</td><td>So lassen, oder durchsichtiger mit 3:1 Kontrast für große Schrift (4,5:1 bleibt für Fließtext)</td><td>Durchsichtiger mit 3:1 für große Schrift – so steht es auch in der WCAG-Regel für großen Text</td></tr>
+    <tr><td>Technik-Chips: Karte zeigt beste Version (4K), Detail die Geräteversion (1080p)</td><td>Detail zeigt beides („4K vorhanden · hier 1080p“) oder Karten zeigen Geräteversion</td><td>Detail zeigt beides – die Karte bleibt ehrlich über das Vorhandene</td></tr>
+    <tr><td>Sprache der Metadaten (Beschreibungen, Genre-Namen)</td><td>Server-weit eine Sprache (heute) oder pro Zuschauer</td><td>Pro Zuschauer, aus der App-Sprache – als Teil der Backend-Runde</td></tr>
+    <tr><td>Zählt nur Ton umwandeln als „Transkodierung“?</td><td>Nein (heute) oder ja</td><td>Nein – kostet kaum Leistung, Bild bleibt unangetastet</td></tr>
+  </table>
+
+  <h2>Mögliche nächste Pakete</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>1 · iPhone, iPad, Apple TV <span class="tag rec">empfohlen</span> <span class="tag risk">größte Lücke</span></h3>
+      <p>Das iPhone war in deiner ursprünglichen Liste Priorität, ist aber noch nie gelaufen. Liquid Glass, NativeTabs, AVPlayer, VLCKit, AirPlay und Bild-in-Bild sind nur geschrieben und typgeprüft.</p>
+      <ul>
+        <li>Voraussetzung: Xcode installieren (~40 GB)</li>
+        <li>Simulator-Tests iPhone, iPad, Apple TV, dann ein echtes iPhone</li>
+        <li>Erwartung: einige Tage Nacharbeit an nativen Stellen</li>
+      </ul>
+      <p class="meta">Aufwand: groß · braucht dich einmal für die Installation</p>
+    </div>
+    <div class="card">
+      <h3>2 · Echtes Android-TV-Gerät <span class="tag warn">hoher Nutzen</span></h3>
+      <p>Alles lief bisher im Emulator. HDR, Dolby Vision, Ton-Durchleitung, 4K und der echte Speicherverbrauch lassen sich nur auf Hardware prüfen. Zwei Einfrierer im Emulator sollten dort gemessen werden.</p>
+      <ul>
+        <li>Z. B. Chromecast mit Google TV (2 GB) oder Nvidia Shield per adb über WLAN</li>
+        <li>Release-Build statt Dev-Build messen</li>
+      </ul>
+      <p class="meta">Aufwand: mittel · braucht ein Gerät im Netz</p>
+    </div>
+    <div class="card">
+      <h3>3 · Backend-Runde B2 <span class="tag ok">klein, parallel möglich</span></h3>
+      <ul>
+        <li>Metadaten in der Sprache des Zuschauers</li>
+        <li>Technik-Chips für alle Titel (Vorab-Abfrage im Hintergrund), nicht erst nach dem Öffnen</li>
+        <li>VLC-Fähigkeiten an den Versions-Endpunkt, damit Android VLC wieder melden kann</li>
+        <li>Container-Wissen dauerhaft speichern; Dev World behält seine Datenbank beim Neustart</li>
+        <li>Aufräumen: ffmpeg-Waisen, Paletten-Warteschlange, Logging</li>
+      </ul>
+      <p class="meta">Aufwand: ca. ein Abend, kann neben Paket 4 laufen</p>
+    </div>
+    <div class="card">
+      <h3>4 · Client-Runde F3 <span class="tag ok">klein</span></h3>
+      <ul>
+        <li>Deine Entscheidungen oben umsetzen (Glas, Chips)</li>
+        <li>Geteilter Bildschirm / Fenstergröße: Navigation nicht mehr neu aufbauen</li>
+        <li>Einstellungen: Sitzungen und Geräte, E-Mail, Zwei-Faktor, Profil bearbeiten</li>
+        <li>Kleinkram: Scrollbalken im Web, abgeschnittene Titel im Telefon-Raster</li>
+      </ul>
+      <p class="meta">Aufwand: ca. ein Abend</p>
+    </div>
+    <div class="card">
+      <h3>5 · Veröffentlichen</h3>
+      <ul>
+        <li>Release-Builds und Signierung, interner Test im Play Store / TestFlight</li>
+        <li>Docker-Image mit <code>/watch</code> end-to-end prüfen</li>
+        <li>Absturzberichte und ein Update-Kanal</li>
+      </ul>
+      <p class="meta">Aufwand: mittel · sinnvoll nach Paket 1 und 2</p>
+    </div>
+    <div class="card">
+      <h3>6 · Neue Funktionen</h3>
+      <ul>
+        <li>Offline-Downloads für Telefon und Tablet (bisher bewusst ausgeklammert)</li>
+        <li>„Meine Liste“, Filter „nur sofort abspielbar“, Einträge aus „Weiterschauen“ entfernen</li>
+        <li>Ton- und Untertitelsprache pro Profil, Untertitel-Stil, PIN für Profilwechsel</li>
+      </ul>
+      <p class="meta">Aufwand: je nach Auswahl</p>
+    </div>
+  </div>
+
+  <h2>Meine Reihenfolge</h2>
+  <ol class="order">
+    <li><div><b>Heute Nacht / morgen, ohne dich:</b> Pakete 3 und 4 parallel (Backend + Client), jeweils mit unabhängiger Prüfung – sobald du die vier Fragen oben beantwortet hast.</div></li>
+    <li><div><b>Sobald Xcode installiert ist:</b> Paket 1. Das ist das größte Risiko, weil das iPhone Priorität hat und noch nie gelaufen ist.</div></li>
+    <li><div><b>Sobald ein Android-TV-Gerät im Netz ist:</b> Paket 2, am besten mit Release-Build.</div></li>
+    <li><div><b>Danach:</b> Paket 5, dann neue Funktionen aus Paket 6.</div></li>
+  </ol>
+</main>
+</body>
+</html>

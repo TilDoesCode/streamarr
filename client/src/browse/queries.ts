@@ -1,6 +1,7 @@
 import {
   focusManager,
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -13,6 +14,8 @@ import { useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import type { components } from '@/api/schema';
 import { useDeviceProfile, versionHints } from '@/player/device-profile';
+
+import { fetchLibraryPage, type LibraryKind, type LibrarySort } from './library';
 import { accountKey, queryKeys } from '@/query/keys';
 import { accountPersister } from '@/query/persist';
 import { STALE } from '@/query/query-client';
@@ -28,6 +31,40 @@ export type WatchState = components['schemas']['WatchStateResponse'];
 export type NextUpItem = components['schemas']['NextUpItemResponse'];
 export type Version = components['schemas']['VersionDto'];
 export type SearchType = 'any' | 'movie' | 'tv';
+export type Genre = components['schemas']['CatalogGenreDto'];
+/** Movies/Series page: TMDB discover by genre and sort, paged on `hasMore`. */
+export function useLibrary(kind: LibraryKind, genre: number | null, sort: LibrarySort) {
+  const { account, client } = useActiveAccount();
+  return useInfiniteQuery({
+    queryKey: accountKey(account.id, 'catalog', 'browse', kind, genre, sort),
+    initialPageParam: 1,
+    queryFn: ({ pageParam, signal }) =>
+      fetchLibraryPage(
+        (page) =>
+          unwrap(
+            client.GET('/api/v1/viewer/catalog/browse', {
+              params: { query: { type: kind, sort, page, ...(genre ? { genre } : null) } },
+              signal,
+            })
+          ),
+        pageParam
+      ),
+    getNextPageParam: (last) => last.nextPage,
+    staleTime: STALE.homeRows,
+  });
+}
+
+export function useGenres(kind: LibraryKind) {
+  const { account, client } = useActiveAccount();
+  return useQuery({
+    queryKey: accountKey(account.id, 'catalog', 'genres', kind),
+    queryFn: ({ signal }) =>
+      unwrap(
+        client.GET('/api/v1/viewer/catalog/genres', { params: { query: { type: kind } }, signal })
+      ).then((response) => response.genres ?? []),
+    staleTime: STALE.homeRows,
+  });
+}
 
 // Server maximum (ViewerCatalogService.MaxSearchResults); more is rejected as invalid_query.
 export const SEARCH_LIMIT = 20;

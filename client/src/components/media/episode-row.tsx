@@ -6,9 +6,10 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
-import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
+import { Focusable, FocusLift, useScrollReveal, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
 import { PlayedMark } from '@/components/media/card-parts';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
@@ -113,7 +114,7 @@ export function EpisodeRow({
     .join(' · ');
   return (
     <EpisodeRowBox radius={radius} dimmed={unavailable} style={style}>
-      {(light) => (
+      {(light, ring) => (
         <>
           <Focusable
             role="button"
@@ -138,7 +139,7 @@ export function EpisodeRow({
               onHoverOut?.(event);
             }}
             {...props}>
-            <FocusLift kind="none" radius={radius}>
+            <FocusLift kind="none" radius={radius} ringTo={ring}>
               {selected ? (
                 <View
                   testID="episode-row-selected"
@@ -224,17 +225,26 @@ function EpisodeRowBox({
   radius: number;
   dimmed: boolean;
   style: FocusableProps['style'];
-  children: (light: Light) => ReactNode;
+  children: (light: Light, ring: SharedValue<number>) => ReactNode;
 }) {
+  const design = useDesign();
   const lit = useSharedValue(0);
+  // The row part's ring wraps the whole box (its actions sit inside it and draw their own ring).
+  const ring = useSharedValue(0);
+  const ringStyle = useAnimatedStyle(() => ({ opacity: ring.get() }));
+  const offset = design.focus.ringOffset;
+  const width = design.focus.ringWidth;
   const [sources] = useState(() => new Set<string>());
+  const [box, setBox] = useState<View | null>(null);
+  const reveal = useScrollReveal();
   const light = useCallback<Light>(
     (key, on) => {
+      if (on && key.endsWith(':focus')) reveal(box);
       if (on) sources.add(key);
       else sources.delete(key);
       lit.set(withTiming(sources.size ? 1 : 0, { duration: 150 }));
     },
-    [lit, sources]
+    [lit, sources, reveal, box]
   );
   const surfaceStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(lit.get(), [0, 1], [colors.scrim.clear, colors.glass.strong]),
@@ -242,6 +252,7 @@ function EpisodeRowBox({
   }));
   return (
     <Animated.View
+      ref={setBox}
       style={[
         {
           flexDirection: 'row',
@@ -254,7 +265,25 @@ function EpisodeRowBox({
         style,
         surfaceStyle,
       ]}>
-      {children(light)}
+      {children(light, ring)}
+      <Animated.View
+        style={[
+          {
+            pointerEvents: 'none',
+            position: 'absolute',
+            top: -offset - width - 1,
+            left: -offset - width - 1,
+            right: -offset - width - 1,
+            bottom: -offset - width - 1,
+            borderRadius: radius + offset + width,
+            borderWidth: width,
+            borderColor: colors.focus.DEFAULT,
+            borderCurve: 'continuous',
+            boxShadow: design.shadow.glow,
+          },
+          ringStyle,
+        ]}
+      />
     </Animated.View>
   );
 }
