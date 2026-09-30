@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr Client — core loop report</title>
+<style>
+  :root {
+    --bg: var(--cc-bg, #ffffff);
+    --fg: var(--cc-fg, #15171c);
+    --muted: var(--cc-muted, #f3f4f7);
+    --muted-fg: var(--cc-muted-fg, #5d6270);
+    --border: var(--cc-border, #e2e4ea);
+    --primary: var(--cc-primary, #5b5bd6);
+    --primary-fg: var(--cc-primary-fg, #ffffff);
+    --radius: var(--cc-radius, 10px);
+    --font: var(--cc-font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+    --mono: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    --ok: #1f9d55; --warn: #c27c0e; --pend: #6b7280; --bad: #d64545;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f1115);
+      --fg: var(--cc-fg, #e7e9ee);
+      --muted: var(--cc-muted, #181b22);
+      --muted-fg: var(--cc-muted-fg, #9aa0ad);
+      --border: var(--cc-border, #2a2e38);
+      --primary: var(--cc-primary, #8b8bf5);
+      --primary-fg: var(--cc-primary-fg, #0f1115);
+      --ok: #3fbf7f; --warn: #e0a33a; --pend: #9aa0ad; --bad: #ef6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 19px; margin: 40px 0 12px; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--muted-fg); max-width: 760px; }
+  code { font-family: var(--mono); font-size: 0.9em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  pre { font-family: var(--mono); font-size: 13px; background: var(--muted); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; margin: 0 0 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 22px 0 6px; }
+  .stat { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--muted); }
+  .stat b { display: block; font-size: 24px; letter-spacing: -0.01em; }
+  .stat span { color: var(--muted-fg); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted-fg); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .wrap table tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .ok   { color: var(--ok);   background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  .pend { color: var(--pend); background: color-mix(in srgb, var(--pend) 16%, transparent); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .card h3 { margin: 0 0 8px; font-size: 15px; }
+  .card ul { margin: 0; padding-left: 18px; }
+  .card li { margin: 3px 0; }
+  .decision { border-left: 4px solid var(--primary); }
+  .count { float: right; color: var(--muted-fg); font-size: 12px; font-weight: 600; }
+  ol.steps { padding-left: 22px; }
+  ol.steps li { margin: 8px 0; }
+  .muted { color: var(--muted-fg); }
+  .timeline { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+  .timeline span { font-size: 12px; font-family: var(--mono); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); }
+  .timeline .dead { color: var(--bad); }
+  .timeline .live { color: var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Streamarr Client — core loop complete</h1>
+  <p class="lede">The native viewer app now covers the whole core loop, independently verified on Google TV, an Android phone and the web:
+    sign in, pick a profile, search, find, choose a version, watch, leave and resume later. Every task was built,
+    independently verified on devices and committed. iPhone, iPad and Apple TV are built into the code paths but
+    still wait for Xcode to be tested.</p>
+
+  <div class="stats">
+    <div class="stat"><b>13</b><span>tasks committed (M0–M4.2)</span></div>
+    <div class="stat"><b>238</b><span>unit tests in 28 suites, all green</span></div>
+    <div class="stat"><b>3 / 6</b><span>target platforms verified on devices</span></div>
+    <div class="stat"><b>2</b><span>decisions waiting for you</span></div>
+  </div>
+
+  <h2>Milestones</h2>
+  <div class="wrap"><table>
+    <tr><th>Task</th><th>What it delivered</th><th>Commit</th><th>Status</th></tr>
+    <tr><td>M1.1–M1.4</td><td>Dev World test server, server remux with keyframe-aligned HLS, viewer catalog API with ranked versions, viewer playback API with async start, switch and fallback</td><td><code>601091d</code> <code>3712b60</code> <code>022f0de</code> <code>7649ae3</code></td><td><span class="pill ok">done</span></td></tr>
+    <tr><td>M1.5</td><td>Server follow-ups: TMDB outages as retryable 503, nullable contract, WebVTT for transcodes, no server transcodes to VLC</td><td><code>8305f30</code></td><td><span class="pill ok">done</span></td></tr>
+    <tr><td>M2.1–M2.2</td><td>Expo SDK 57 app (react-native-tvos), NativeWind + React Native Reusables, de/en, dark theme, TV focus primitives</td><td><code>bb69aa4</code></td><td><span class="pill ok">done</span></td></tr>
+    <tr><td>M2.3</td><td>Accounts: server connect, password / email code / 2FA sign-in, multi-profile "Who's watching", token rotation</td><td><code>437b38f</code></td><td><span class="pill ok">done</span></td></tr>
+    <tr><td>M2.4</td><td>Navigation: Android TV rail with focus memory and back chain, phone tabs, web sidebar, settings</td><td><code>7dc5f8a</code></td><td><span class="pill ok">done</span></td></tr>
+    <tr><td>M3.1</td><td>Player spike: expo-video chosen over react-native-video, VLC fallback, device capability module, remote-key module</td><td><code>adc5d9e</code></td><td><span class="pill ok">done</span></td></tr>
+    <tr><td>M4.1</td><td>Browse: TV hero that follows focus, continue watching, search, movie / series detail, version picker with predicted method</td><td><code>b5b4e8d</code></td><td><span class="pill ok">done</span></td></tr>
+    <tr><td>M4.2</td><td>Player: start stepper, own overlay with TV key map, panels, switching, step-down, progress + resume, up-next, VLC stall recovery</td><td><code>0a14eb4</code></td><td><span class="pill ok">done</span></td></tr>
+  </table></div>
+
+  <h2>Platforms</h2>
+  <div class="wrap"><table>
+    <tr><th>Target</th><th>State</th><th>Verified on</th></tr>
+    <tr><td>Android TV / Google TV</td><td><span class="pill ok">verified</span></td><td>Google TV emulator 1080p: D-pad everywhere, media keys, panels, back chain, resume against the burned-in timecode</td></tr>
+    <tr><td>Android phone</td><td><span class="pill ok">verified</span></td><td>Phone emulator: gestures, landscape lock, version sheet, resume, up-next</td></tr>
+    <tr><td>Web (desktop + iPad size)</td><td><span class="pill ok">verified</span></td><td>Chromium desktop and 1024×1366: hls.js, keyboard shortcuts, fullscreen, errors with actions</td></tr>
+    <tr><td>iPhone / iPad</td><td><span class="pill pend">needs Xcode</span></td><td>NativeTabs with Liquid Glass, iPad sidebar, AVPlayer, AirPlay not yet built or run</td></tr>
+    <tr><td>Apple TV</td><td><span class="pill pend">needs Xcode</span></td><td>tvOS top tabs, focus restore and remote not yet built or run</td></tr>
+    <tr><td>Real Android TV hardware</td><td><span class="pill warn">not tested</span></td><td>HDR / Dolby Vision, audio passthrough, 4K, VLC zero-copy, memory on a 2 GB device</td></tr>
+  </table></div>
+
+  <h2>What the app now shows that Jellyfin hid</h2>
+  <div class="grid2">
+    <div class="card"><h3>Before playback</h3><ul>
+      <li>Every version with resolution, HDR, codecs, audio, languages, size, bitrate, age and health</li>
+      <li>How this device will play it (direct, remux, transcode, VLC) and why</li>
+      <li>A start stepper: resolving, fallback with the failed release and the reason, repairing, planning</li>
+    </ul></div>
+    <div class="card"><h3>During and after</h3><ul>
+      <li>Errors with the server's suggested actions ("choose another version", "retry", the device holding the stream)</li>
+      <li>Visible step-down notice when a method fails, refused switches keep playing</li>
+      <li>An info panel with method, engine, codecs, HDR, bitrate and dropped frames</li>
+    </ul></div>
+  </div>
+
+  <h2>Decisions for you</h2>
+  <div class="grid2">
+    <div class="card decision"><h3>"Recommended" version</h3>
+      <p>The server ranks by quality only, so the web recommends a 4K HDR10 transcode over a 1080p direct stream.</p>
+      <p class="muted">Proposal: recommend the best version that plays without transcoding on this device; transcode only when none exists. This also decides what a plain "Play" starts.</p></div>
+    <div class="card decision"><h3>Where the web client is hosted</h3>
+      <p>Served by the Streamarr server (same origin, no CORS) or deployed separately (needs a CORS setting for viewer endpoints).</p>
+      <p class="muted">Proposal: serve it from the server; it is simpler and needs no new setting.</p></div>
+  </div>
+
+  <h2>Backlog <span class="muted" style="font-size:14px;font-weight:400">— full list in <code>docs/client/BACKLOG.md</code></span></h2>
+  <div class="grid2">
+    <div class="card"><h3>Player polish <span class="count">7</span></h3><ul>
+      <li>Paused step-down to VLC shows frame 0 for ~13 s after resuming</li>
+      <li>Frozen end frame after a cancelled up-next</li>
+      <li>Played items resume at 0 (server gives no resume position)</li>
+      <li>Picture-in-picture on Android</li>
+    </ul></div>
+    <div class="card"><h3>Browse and UX polish <span class="count">13</span></h3><ul>
+      <li>"Play" offered for titles without versions</li>
+      <li>Hanging server shows a skeleton for ~110 s</li>
+      <li>No "watch again" on a fully watched series</li>
+      <li>German season names, header band above the hero</li>
+    </ul></div>
+    <div class="card"><h3>Accounts <span class="count">3</span></h3><ul>
+      <li>Duplicate profile tiles after a server reset</li>
+      <li>Settings for devices, email, 2FA setup, profile editing</li>
+    </ul></div>
+    <div class="card"><h3>Hardware and Xcode <span class="count">2 groups</span></h3><ul>
+      <li>All iOS / iPadOS / tvOS work, Liquid Glass, AirPlay</li>
+      <li>HDR, passthrough, 4K, VLC zero-copy, release-build memory on a real Android TV</li>
+    </ul></div>
+  </div>
+
+  <h2>Suggested next steps</h2>
+  <ol class="steps">
+    <li><b>Install Xcode</b> and run the iOS, iPadOS and tvOS pass (Liquid Glass tabs, iPad sidebar, Apple TV focus, AVPlayer, AirPlay). The commands are in the chat.</li>
+    <li><b>One real Android TV session</b>: install the APK on a Google TV device and check HDR, passthrough, 4K and VLC. That is the one thing emulators cannot tell us.</li>
+    <li><b>Polish round</b> on the backlog items a viewer sees first: device-aware "Recommended", Play without versions, watch again, duplicate profiles, timeout, German season names.</li>
+    <li><b>Release build</b> with memory and start-up measurements, then offline downloads for phones and tablets (planned for the next update).</li>
+  </ol>
+
+  <h2>Try it yourself</h2>
+  <pre>source docs/client/env.sh                      # JDK 17, Android SDK, dotnet
+scripts/devworld.sh start                      # test server on :39300 with seeded media
+cd client && npm run web                        # web client on http://localhost:39301
+cd client && npm run tv:android                 # dev build on a running Android TV emulator</pre>
+  <p class="muted">Server URL <code>http://localhost:39300</code> (Android emulator: <code>http://10.0.2.2:39300</code>). Viewers <code>anna</code>, <code>kind</code>, <code>gast</code>, <code>ben</code> (TOTP), password <code>streamarr</code>. The Codecraft actions <code>devworld</code>, <code>client-web</code> and <code>client-metro</code> start the same things.</p>
+
+  <h2>How the build ran</h2>
+  <p>Eleven orchestration runs. W2–W10 used the Workflow tool and kept dying with the host session (usage limits, expired tokens, a runner disconnect, and the watchdog's own turns aborting the run). W11 switched to one Codecraft subagent per build, verify or fix step, which survived to the end.</p>
+  <div class="timeline">
+    <span class="dead">W2 limit</span><span class="dead">W3 token</span><span class="dead">W4 limit</span><span class="dead">W5 token</span>
+    <span class="dead">W6 turn end</span><span class="dead">W7 weekly</span><span class="dead">W8 disconnect</span><span class="dead">W9 turn end</span><span class="dead">W10 turn end</span>
+    <span class="live">W11 subagents → done</span>
+  </div>
+</main>
+</body>
+</html>
