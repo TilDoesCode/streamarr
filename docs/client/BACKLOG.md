@@ -102,3 +102,4 @@ The journals hold the evidence and reproduction details for each item.
 - Brand PNGs are large (icon 554 KB, top shelf 2.2-2.6 MB) because Chrome dithers the gradients; pngquant 80-95 cuts them 5x but bands the dark gradients visibly. Revisit with a render that avoids dithering (e.g. noise-free SVG export) if bundle size matters.
 - Web font gate waits up to ~12 s (expo-font timeout) when font requests hang; a shorter timeout with system-font fallback would avoid the blank page.
 - Phone blur cost: software-GL AVD shows RenderThread ~84 % with the blurred ambient backdrop; re-measure on a real phone before shipping the phone ambient.
+- Backend: TMDB metadata uses one server-wide language (TmdbClient `options.Language`), so a German viewer UI shows English overviews. Consider a per-request language on the viewer catalog/detail endpoints (from the client's i18n locale) with a cached per-language overview.
