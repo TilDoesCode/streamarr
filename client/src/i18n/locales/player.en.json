@@ -1,6 +1,7 @@
 {
   "stepper": {
     "title": "Preparing playback",
+    "failed": "Can’t play",
     "switching": "Switching…",
     "steps": {
       "resolving": "Check version",
@@ -60,7 +61,8 @@
     "fill": "Fill screen",
     "fit": "Fit to screen",
     "play": "Play",
-    "pause": "Pause"
+    "pause": "Pause",
+    "nowPlaying": "Now playing"
   },
   "subtitlesOff": "Off",
   "forced": "forced",
@@ -97,10 +99,20 @@
     "hardware": "hardware",
     "software": "software",
     "from": "{method} – {skipped} not possible",
-    "and": "and"
+    "and": "and",
+    "why": "Why",
+    "buffer": "Buffer",
+    "bufferAhead": "{seconds} s ahead",
+    "dropped": "{count} dropped frames",
+    "better": "{version} plays without conversion on this device.",
+    "switch": "Switch version"
   },
   "notice": {
-    "stepDown": "Playback failed with {from}. Continuing with {to}.",
+    "stepDown": "Switched to a different stream to keep playing.",
+    "stepDownVlc": "Switched to VLC to keep playing.",
+    "stepDownDirect": "Switched to the original file to keep playing.",
+    "stepDownRemux": "Switched to a repackaged stream to keep playing.",
+    "stepDownTranscode": "Switched to a converted stream to keep playing.",
     "switchFailed": "Couldn’t switch. {reason} Playback continues as before."
   },
   "upNext": {

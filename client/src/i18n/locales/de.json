@@ -79,7 +79,16 @@
     },
     "upNextLine": "Als Nächstes: {code} · {title}",
     "allWatched": "Du hast alle Folgen gesehen.",
-    "seasonTag": "{title} · {played}/{total}"
+    "seasonTag": "{title} · {played}/{total}",
+    "credits": {
+      "director": "Regie",
+      "writer": "Drehbuch",
+      "cast": "Mit"
+    },
+    "watched": "Gesehen",
+    "unwatch": "Ungesehen",
+    "details": "Details",
+    "lessDetails": "Weniger"
   },
   "player": {
     "title": "Player",
@@ -248,7 +257,8 @@
     "versions": "Versionen",
     "episodes": "Folgen",
     "settings": "Einstellungen",
-    "search": "Suche"
+    "search": "Suche",
+    "versionsCount": "Versionen · {count}"
   },
   "a11y": {
     "progress": "{progress, number, percent} gesehen",
@@ -871,30 +881,30 @@
     "repack": "Repack",
     "seasonPack": "Staffelpaket",
     "reasons": {
-      "audio_codec_unknown": "Audioformat unbekannt",
-      "audio_codec_unsupported": "{codec}-Audio wird nicht unterstützt",
-      "audio_converted": "Audio wird von {from} in {to} umgewandelt",
-      "audio_copied": "{codec}-Audio wird durchgereicht",
+      "audio_codec_unknown": "Tonformat unbekannt",
+      "audio_codec_unsupported": "{codec}-Ton wird für dieses Gerät umgewandelt",
+      "audio_converted": "Ton wird von {from} in {to} umgewandelt",
+      "audio_copied": "{codec}-Ton wird durchgereicht",
       "bit_depth_assumed": "Farbtiefe angenommen",
-      "bit_depth_unsupported": "{bitDepth}-Bit-Video wird nicht unterstützt",
-      "bitrate_exceeds_limit": "Bitrate über dem Limit von {max} kbit/s",
+      "bit_depth_unsupported": "{bitDepth}-Bit-Video wird für dieses Gerät umgewandelt",
+      "bitrate_exceeds_limit": "Bitrate wird auf das Limit von {max} kbit/s gesenkt",
       "container_assumed": "Container angenommen ({container})",
-      "container_unsupported": "{container}-Container wird nicht unterstützt",
-      "direct_play": "spielt die Originaldatei",
+      "container_unsupported": "{container}-Container wird zu HLS umverpackt",
+      "direct_play": "Spielt die Originaldatei",
       "dolby_vision_profile_unknown": "Dolby-Vision-Profil unbekannt",
-      "dolby_vision_profile_unsupported": "Dolby-Vision-Profil wird nicht unterstützt",
-      "hdr_unsupported": "{hdr} wird von diesem Bildschirm nicht unterstützt",
+      "dolby_vision_profile_unsupported": "Dolby Vision wird umgewandelt, das Profil wird nicht unterstützt",
+      "hdr_unsupported": "{hdr} wird für diesen Bildschirm in SDR umgewandelt",
       "resolution_assumed": "Auflösung angenommen ({height}p)",
-      "resolution_exceeds_limit": "Auflösung über dem Limit von {max}p",
-      "subtitle_burned_in": "Untertitel werden eingebrannt",
-      "subtitle_format_unsupported": "Untertitelformat wird nicht unterstützt",
+      "resolution_exceeds_limit": "Video wird auf das Limit von {max}p verkleinert",
+      "subtitle_burned_in": "Untertitel werden ins Bild eingebrannt",
+      "subtitle_format_unsupported": "Untertitel werden umgewandelt, das Format wird nicht unterstützt",
       "subtitle_not_deliverable": "Untertitel können nicht geliefert werden",
-      "transcoding_disabled": "der Server transkodiert nicht",
+      "transcoding_disabled": "Der Server transkodiert nicht",
       "transcoding_not_allowed": "Transkodieren ist für dieses Profil nicht erlaubt",
-      "video_codec_not_remuxable": "Video kann nicht neu verpackt werden",
+      "video_codec_not_remuxable": "Video kann nicht umverpackt werden und wird umgewandelt",
       "video_codec_unknown": "Videoformat unbekannt",
-      "video_codec_unsupported": "{codec}-Video wird nicht unterstützt",
-      "video_profile_unsupported": "Videoprofil wird nicht unterstützt"
+      "video_codec_unsupported": "{codec}-Video wird für dieses Gerät umgewandelt",
+      "video_profile_unsupported": "Video wird umgewandelt, das Profil wird nicht unterstützt"
     },
     "languages": {
       "de": "Deutsch",
@@ -925,6 +935,9 @@
       "unknown": "Wie es läuft, lässt sich vorab nicht sagen."
     },
     "showDetails": "Technische Details anzeigen",
-    "hideDetails": "Technische Details ausblenden"
+    "hideDetails": "Technische Details ausblenden",
+    "panelSubtitle": "{count, plural, one {# Version} other {# Versionen}} · erwartete Wiedergabe auf diesem Gerät",
+    "panelEpisode": "{episode} · erwartete Wiedergabe auf diesem Gerät",
+    "card": "Version"
   }
 }

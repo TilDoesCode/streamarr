@@ -1,7 +1,14 @@
 import type { EngineKind, PlayerEngine } from './types';
 import { createWebEngine } from './web-engine';
 
-export type { EngineKind, EngineEvent, EngineSnapshot, EngineTrack, PlayerEngine } from './types';
+export type {
+  EngineKind,
+  EngineEvent,
+  EngineSnapshot,
+  EngineState,
+  EngineTrack,
+  PlayerEngine,
+} from './types';
 export type EngineOptions = { vlc?: { directRendering?: boolean } };
 
 /** Technical engine names (not UI copy). */

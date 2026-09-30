@@ -3,7 +3,12 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import { toAppError, type ErrorParams } from '@/api/errors';
-import { createEngine, type EngineKind, type PlayerEngine } from '@/player/engines';
+import {
+  createEngine,
+  type EngineKind,
+  type EngineState,
+  type PlayerEngine,
+} from '@/player/engines';
 import {
   mediaUrl,
   startPlayback,
@@ -44,6 +49,7 @@ const MIN_RESUME_SECONDS = 30;
 
 const HEARTBEAT_MS = 10_000;
 const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
+const STEADY_STATES = new Set<EngineState>(['playing', 'paused', 'buffering', 'ended']);
 
 /** One playback on this device: server start flow, engine, switches, step-down and progress reporting. */
 export class PlaybackController {
@@ -66,6 +72,7 @@ export class PlaybackController {
   private engineOff: (() => void) | null = null;
   private appState: NativeEventSubscription | null = null;
   private stepDownRevision = -1;
+  private lastGoodPosition = 0;
   private noticeId = 0;
   private lastError = '';
   private resumeChoice: ((seconds: number) => void) | null = null;
@@ -96,6 +103,13 @@ export class PlaybackController {
 
   get position(): number {
     return this.engine?.getSnapshot().position ?? 0;
+  }
+
+  /** Where a switch continues: a loading or failed engine may already report 0. */
+  get resumePosition(): number {
+    const snapshot = this.engine?.getSnapshot();
+    if (!snapshot) return this.lastGoodPosition;
+    return STEADY_STATES.has(snapshot.state) ? snapshot.position : this.lastGoodPosition;
   }
 
   get duration(): number {
@@ -219,6 +233,8 @@ export class PlaybackController {
         else if (event.type === 'ended') this.onEnded();
         // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
         else if (event.type === 'time') {
+          if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle'))
+            this.lastGoodPosition = event.position;
           if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
             this.report('progress');
         } else if (event.type === 'pip') {
@@ -239,6 +255,7 @@ export class PlaybackController {
     this.playback = playback;
     this.phase = 'playing';
     this.ended = false;
+    this.lastGoodPosition = position;
     this.applyServerTracks(engine, playback);
     engine.load({
       uri: mediaUrl(this.options.serverUrl, playback.url ?? ''),
@@ -322,7 +339,12 @@ export class PlaybackController {
     const from = playback.method ?? '';
     const ok = await this.serverSwitch({ stepDown: true }, false);
     if (ok) {
-      this.showNotice('stepDown', { from, to: this.playback?.method ?? '', reason: reason ?? '' });
+      this.showNotice('stepDown', {
+        from,
+        to: this.playback?.method ?? '',
+        engine: this.playback?.engine === 'vlc' && playback.engine !== 'vlc' ? 'vlc' : '',
+        reason: reason ?? '',
+      });
     }
   }
 
@@ -330,7 +352,7 @@ export class PlaybackController {
   async serverSwitch(body: PlaybackSwitch, notifyFailure = true): Promise<boolean> {
     const playback = this.playback;
     if (!playback?.playbackId || this.closed) return false;
-    const position = this.position;
+    const position = this.resumePosition;
     const previousPreferences = this.preferences;
     if (body.preferences) this.preferences = body.preferences;
     this.phase = 'switching';

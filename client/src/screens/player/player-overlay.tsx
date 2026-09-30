@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Platform,
   StyleSheet,
@@ -33,9 +34,10 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { languageName } from '@/browse/version-format';
+import { Glass, GlassButton, GlassGroup } from '@/components/glass';
 import { Scrim } from '@/components/media/scrim';
 import { CENTRED_ROW, FocusGuide, Focusable, FocusLift } from '@/components/focus';
-import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import type { PlaybackController } from '@/player/controller';
 import { clock as formatClock, scrubStep } from '@/player/format';
@@ -47,8 +49,10 @@ import {
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
 import type { Clock } from '@/player/use-clock';
+import { channelLayout, qualityLabel } from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
-import { colors, useDesign } from '@/theme';
+import { useShell } from '@/shell/use-shell';
+import { colors, fonts, useDesign } from '@/theme';
 
 import { PANELS, type PanelKind } from './player-panels';
 
@@ -76,7 +80,11 @@ export type PlayerOverlayProps = {
   title: string;
   /** A panel or the up-next card owns the keys and focus. */
   suspended: boolean;
+  /** The end card covers the video: controls hide, the picture stays. */
+  ended?: boolean;
   onPanel: (panel: PanelKind) => void;
+  /** The open side panel (its chip shows as selected). */
+  panel?: PanelKind | null;
   onClose: () => void;
   /** Registers the overlay's Back step: true when it hid the overlay. */
   backRef: RefObject<(() => boolean) | null>;
@@ -88,12 +96,19 @@ export function PlayerOverlay({
   clock,
   title,
   suspended,
+  ended = false,
   onPanel,
+  panel: openPanel = null,
   onClose,
   backRef,
 }: PlayerOverlayProps) {
   const pt = usePlayerT();
   const design = useDesign();
+  const { large, s, font } = useShell();
+  // Narrow phones: the row drops its Play (the centre cluster has it) and uses smaller chips.
+  const narrow = design.window.width < 420;
+  const chip = narrow ? 40 : 44;
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const [visible, setVisible] = useState(true);
@@ -321,12 +336,49 @@ export function PlayerOverlay({
       (panel !== 'subtitles' || (controller.playback?.mediaInfo?.subtitleTracks?.length ?? 0) > 0)
   );
 
+  const info = controller.playback?.mediaInfo;
+  const audioTrack = info?.audioTracks?.find((track) => track.index === controller.currentAudio());
+  const subtitleTrack = info?.subtitleTracks?.find(
+    (track) => track.index === controller.currentSubtitle()
+  );
+  const engineVideo = controller.engine?.getSnapshot().tracks.video;
+  const chipLabel: Record<PanelKind, string> = {
+    audio: audioTrack
+      ? [
+          audioTrack.language ? languageName(audioTrack.language, i18n.language, t) : '',
+          channelLayout(audioTrack.deliveredChannels ?? audioTrack.channels),
+        ]
+          .filter(Boolean)
+          .join(' ') || pt('controls.audio')
+      : pt('controls.audio'),
+    subtitles: subtitleTrack?.language
+      ? languageName(subtitleTrack.language, i18n.language, t)
+      : subtitleTrack
+        ? pt('controls.subtitles')
+        : pt('subtitlesOff'),
+    version:
+      qualityLabel(
+        engineVideo?.height ?? info?.video?.deliveredHeight ?? info?.video?.height,
+        info?.video?.videoRange || info?.video?.hdr
+      ) || pt('controls.version'),
+    quality: pt('controls.quality'),
+    engine: pt('controls.engine'),
+    info: pt('controls.info'),
+  };
+  const timeText = {
+    fontSize: font(22, 14),
+    lineHeight: font(30, 19),
+    color: colors.foreground.DEFAULT,
+  };
+  const labelled = (panel: PanelKind) =>
+    panel === 'audio' || panel === 'subtitles' || panel === 'version' || panel === 'info';
+
   return (
     <View
       style={StyleSheet.absoluteFill}
       onPointerMove={Platform.OS === 'web' ? () => show() : undefined}>
       {Surface ? <Surface style={StyleSheet.absoluteFill} fit={fit} /> : null}
-      {controller.pictureInPicture ? null : (
+      {controller.pictureInPicture || ended ? null : (
         <>
           {tv ? null : (
             <GestureDetector gesture={surfaceGestures}>
@@ -352,115 +404,218 @@ export function PlayerOverlay({
               color={colors.scrim.DEFAULT}
               style={[styles.bottomShade, { height: bottom + design.px(tv ? 340 : 210) }]}
             />
-            <View
-              pointerEvents="box-none"
-              style={{
-                position: 'absolute',
-                top,
-                left: design.layout.gutter,
-                right: design.layout.gutter,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: design.space.md,
-              }}>
-              {tv ? null : (
-                <IconButton
-                  testID="player-close"
-                  icon={ArrowLeft}
-                  variant="ghost"
-                  accessibilityLabel={pt('controls.close')}
-                  onPress={onClose}
-                />
-              )}
-              <Text
-                testID="player-title"
-                variant={tv ? 'heading' : 'subheading'}
-                numberOfLines={1}
-                style={{ flex: 1 }}>
-                {title}
-              </Text>
-              {controller.phase === 'switching' ? (
-                <Text variant="caption" tone="muted">
-                  {pt('stepper.switching')}
+            {large ? (
+              <View
+                pointerEvents="box-none"
+                style={{
+                  position: 'absolute',
+                  top: Math.max(insets.top, s(64)),
+                  left: s(96),
+                  right: s(96),
+                  gap: s(14),
+                  alignItems: 'flex-start',
+                }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(16) }}>
+                  {tv ? null : (
+                    <GlassButton
+                      testID="player-close"
+                      iconOnly
+                      icon={ArrowLeft}
+                      label={pt('controls.close')}
+                      onPress={onClose}
+                    />
+                  )}
+                  <Glass
+                    testID="player-now-playing"
+                    intensity="subtle"
+                    radius={s(20)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: s(10),
+                      height: s(40),
+                      paddingHorizontal: s(18),
+                    }}>
+                    <View
+                      style={{
+                        width: s(10),
+                        height: s(10),
+                        borderRadius: s(5),
+                        backgroundColor: colors.success.DEFAULT,
+                      }}
+                    />
+                    <Text style={{ fontSize: font(18, 13), lineHeight: font(24, 17) }}>
+                      {pt('controls.nowPlaying')}
+                    </Text>
+                  </Glass>
+                  {controller.phase === 'switching' ? (
+                    <Text variant="caption" tone="muted">
+                      {pt('stepper.switching')}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text
+                  testID="player-title"
+                  numberOfLines={1}
+                  style={{
+                    maxWidth: '62%',
+                    fontFamily: fonts.displayBold,
+                    fontSize: s(56),
+                    lineHeight: s(68),
+                    letterSpacing: -s(1),
+                    color: colors.foreground.DEFAULT,
+                  }}>
+                  {title}
                 </Text>
-              ) : null}
-            </View>
-            {tv ? null : (
-              <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.centre]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xl }}>
-                  <View style={styles.centreBacking}>
-                    <IconButton
-                      testID="player-back10"
-                      icon={RotateCcw}
-                      variant="ghost"
-                      size="lg"
-                      accessibilityLabel={pt('controls.back10')}
-                      onPress={() => controller.seekBy(-10)}
+              </View>
+            ) : (
+              <View
+                pointerEvents="box-none"
+                style={{
+                  position: 'absolute',
+                  top,
+                  left: design.layout.gutter,
+                  right: design.layout.gutter,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: design.space.md,
+                }}>
+                {tv ? null : (
+                  <GlassButton
+                    testID="player-close"
+                    iconOnly
+                    size={44}
+                    icon={ArrowLeft}
+                    label={pt('controls.close')}
+                    onPress={onClose}
+                  />
+                )}
+                <View style={{ flex: 1, gap: 2 }}>
+                  <View
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
+                    <View
+                      testID="player-now-playing"
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: colors.success.DEFAULT,
+                      }}
                     />
+                    <Text variant="caption" tone="muted" numberOfLines={1}>
+                      {controller.phase === 'switching'
+                        ? pt('stepper.switching')
+                        : pt('controls.nowPlaying')}
+                    </Text>
                   </View>
-                  <View style={styles.centreBacking}>
-                    <IconButton
-                      testID="player-toggle-centre"
-                      icon={paused ? Play : Pause}
-                      size="lg"
-                      accessibilityLabel={pt(paused ? 'controls.play' : 'controls.pause')}
-                      onPress={() => controller.togglePlay()}
-                    />
-                  </View>
-                  <View style={styles.centreBacking}>
-                    <IconButton
-                      testID="player-forward30"
-                      icon={RotateCw}
-                      variant="ghost"
-                      size="lg"
-                      accessibilityLabel={pt('controls.forward30')}
-                      onPress={() => controller.seekBy(30)}
-                    />
-                  </View>
+                  <Text
+                    testID="player-title"
+                    numberOfLines={1}
+                    style={{
+                      fontFamily: fonts.displayBold,
+                      fontSize: tv ? 28 : 20,
+                      lineHeight: tv ? 34 : 26,
+                      color: colors.foreground.DEFAULT,
+                    }}>
+                    {title}
+                  </Text>
                 </View>
               </View>
             )}
-            <View
-              pointerEvents="box-none"
-              style={{
-                position: 'absolute',
-                left: design.layout.gutter,
-                right: design.layout.gutter,
-                bottom,
-                gap: design.space.sm,
-              }}>
-              <SeekBar
-                seekRef={seekRef}
-                position={position}
-                buffered={clock.buffered}
-                duration={duration}
-                scrubbing={scrub !== null}
-                label={pt('controls.seek')}
-                onFocus={() => {
-                  rowFocused.current = false;
-                  setZone('progress');
-                }}
-                onScrub={(target) => scrubTo(target, 60_000)}
-                onScrubEnd={commitScrub}
-              />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text testID="player-position" variant="caption" tone="muted">
-                  {formatClock(position)}
-                </Text>
-                <Text testID="player-remaining" variant="caption" tone="muted">
-                  {`−${formatClock(remaining)}`}
-                </Text>
+            {tv || large ? null : (
+              <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.centre]}>
+                <GlassGroup
+                  spacing={design.space.xl}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xl }}>
+                  <GlassButton
+                    testID="player-back10"
+                    iconOnly
+                    size={56}
+                    icon={RotateCcw}
+                    label={pt('controls.back10')}
+                    onPress={() => controller.seekBy(-10)}
+                  />
+                  <GlassButton
+                    testID="player-toggle-centre"
+                    tone="solid"
+                    iconOnly
+                    size={72}
+                    icon={paused ? Play : Pause}
+                    label={pt(paused ? 'controls.play' : 'controls.pause')}
+                    onPress={() => controller.togglePlay()}
+                  />
+                  <GlassButton
+                    testID="player-forward30"
+                    iconOnly
+                    size={56}
+                    icon={RotateCw}
+                    label={pt('controls.forward30')}
+                    onPress={() => controller.seekBy(30)}
+                  />
+                </GlassGroup>
               </View>
-              <FocusGuide
-                remember
-                trap={CENTRED_ROW}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
-                {tv || Platform.OS === 'web' ? (
-                  <IconButton
+            )}
+            {large ? (
+              <Glass
+                testID="player-bar"
+                intensity="regular"
+                radius={s(40)}
+                style={{
+                  position: 'absolute',
+                  left: s(64),
+                  right: s(64),
+                  bottom: Math.max(insets.bottom, s(40)),
+                  paddingHorizontal: s(36),
+                  paddingTop: s(20),
+                  paddingBottom: s(24),
+                  gap: s(6),
+                }}>
+                <View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { borderRadius: s(40), backgroundColor: colors.glass.tinted, opacity: 0.55 },
+                  ]}
+                />
+                <SeekBar
+                  seekRef={seekRef}
+                  position={position}
+                  buffered={clock.buffered}
+                  duration={duration}
+                  scrubbing={scrub !== null}
+                  light
+                  label={pt('controls.seek')}
+                  onFocus={() => {
+                    rowFocused.current = false;
+                    setZone('progress');
+                  }}
+                  onScrub={(target) => scrubTo(target, 60_000)}
+                  onScrubEnd={commitScrub}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text testID="player-position" style={timeText}>
+                    {formatClock(position)}
+                  </Text>
+                  <Text testID="player-remaining" style={timeText}>
+                    {`−${formatClock(remaining)}`}
+                  </Text>
+                </View>
+                <FocusGuide
+                  remember
+                  trap={CENTRED_ROW}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: s(14),
+                    marginTop: s(8),
+                  }}>
+                  <GlassButton
                     ref={playRef}
                     testID="player-toggle"
+                    tone="solid"
+                    iconOnly
                     icon={paused ? Play : Pause}
-                    accessibilityLabel={pt(paused ? 'controls.play' : 'controls.pause')}
+                    label={pt(paused ? 'controls.play' : 'controls.pause')}
                     onFocus={onRowFocus}
                     onBlur={onRowBlur}
                     onPress={() => {
@@ -468,86 +623,228 @@ export function PlayerOverlay({
                       show('buttons');
                     }}
                   />
-                ) : null}
-                {tv ? (
-                  <>
-                    <IconButton
-                      testID="player-back10-tv"
-                      icon={RotateCcw}
-                      accessibilityLabel={pt('controls.back10')}
-                      onFocus={onRowFocus}
-                      onBlur={onRowBlur}
-                      onPress={() => {
-                        controller.seekBy(-10);
-                        show('buttons');
-                      }}
-                    />
-                    <IconButton
-                      testID="player-forward30-tv"
-                      icon={RotateCw}
-                      accessibilityLabel={pt('controls.forward30')}
-                      onFocus={onRowFocus}
-                      onBlur={onRowBlur}
-                      onPress={() => {
-                        controller.seekBy(30);
-                        show('buttons');
-                      }}
-                    />
-                  </>
-                ) : null}
-                <View style={{ flex: 1 }} />
-                {panelButtons.map((panel) => (
-                  <IconButton
-                    key={panel}
-                    testID={`player-open-${panel}`}
-                    icon={PANEL_ICONS[panel]}
-                    variant="ghost"
-                    accessibilityLabel={pt(`controls.${panel}`)}
+                  <GlassButton
+                    testID={tv ? 'player-back10-tv' : 'player-back10'}
+                    iconOnly
+                    icon={RotateCcw}
+                    label={pt('controls.back10')}
                     onFocus={onRowFocus}
                     onBlur={onRowBlur}
-                    onPress={() => onPanel(panel)}
+                    onPress={() => {
+                      controller.seekBy(-10);
+                      show('buttons');
+                    }}
                   />
-                ))}
-                {Platform.OS === 'web' ? (
-                  <IconButton
-                    testID="player-mute"
-                    icon={muted ? VolumeX : Volume2}
-                    variant="ghost"
-                    accessibilityLabel={pt(muted ? 'controls.unmute' : 'controls.mute')}
-                    onPress={toggleMute}
+                  <GlassButton
+                    testID={tv ? 'player-forward30-tv' : 'player-forward30'}
+                    iconOnly
+                    icon={RotateCw}
+                    label={pt('controls.forward30')}
+                    onFocus={onRowFocus}
+                    onBlur={onRowBlur}
+                    onPress={() => {
+                      controller.seekBy(30);
+                      show('buttons');
+                    }}
                   />
-                ) : null}
-                {fullscreenAvailable ? (
-                  <IconButton
-                    testID="player-fullscreen"
-                    icon={fullscreen ? Minimize : Maximize}
-                    variant="ghost"
-                    accessibilityLabel={pt(
-                      fullscreen ? 'controls.exitFullscreen' : 'controls.fullscreen'
-                    )}
-                    onPress={toggleFullscreen}
-                  />
-                ) : null}
-                {controller.engine?.supportsPictureInPicture ? (
-                  <IconButton
-                    testID="player-pip"
-                    icon={PictureInPicture2}
-                    variant="ghost"
-                    accessibilityLabel={pt('controls.pip')}
-                    onPress={() => controller.engine?.startPictureInPicture?.()}
-                  />
-                ) : null}
-                {!tv && Platform.OS !== 'web' ? (
-                  <IconButton
-                    testID="player-fit"
-                    icon={fit === 'cover' ? Shrink : Expand}
-                    variant="ghost"
-                    accessibilityLabel={pt(fit === 'cover' ? 'controls.fit' : 'controls.fill')}
-                    onPress={() => setFit(fit === 'cover' ? 'contain' : 'cover')}
-                  />
-                ) : null}
-              </FocusGuide>
-            </View>
+                  <View style={{ flex: 1 }} />
+                  {panelButtons.map((panel) => (
+                    <GlassButton
+                      key={panel}
+                      testID={`player-open-${panel}`}
+                      icon={PANEL_ICONS[panel]}
+                      iconOnly={!labelled(panel)}
+                      tone={openPanel === panel ? 'solid' : 'glass'}
+                      label={labelled(panel) ? chipLabel[panel] : pt(`controls.${panel}`)}
+                      accessibilityLabel={
+                        labelled(panel) && panel !== 'info'
+                          ? `${pt(`controls.${panel}`)}: ${chipLabel[panel]}`
+                          : pt(`controls.${panel}`)
+                      }
+                      onFocus={onRowFocus}
+                      onBlur={onRowBlur}
+                      onPress={() => onPanel(panel)}
+                    />
+                  ))}
+                  {Platform.OS === 'web' ? (
+                    <GlassButton
+                      testID="player-mute"
+                      iconOnly
+                      icon={muted ? VolumeX : Volume2}
+                      label={pt(muted ? 'controls.unmute' : 'controls.mute')}
+                      onPress={toggleMute}
+                    />
+                  ) : null}
+                  {fullscreenAvailable ? (
+                    <GlassButton
+                      testID="player-fullscreen"
+                      iconOnly
+                      icon={fullscreen ? Minimize : Maximize}
+                      label={pt(fullscreen ? 'controls.exitFullscreen' : 'controls.fullscreen')}
+                      onPress={toggleFullscreen}
+                    />
+                  ) : null}
+                  {controller.engine?.supportsPictureInPicture ? (
+                    <GlassButton
+                      testID="player-pip"
+                      iconOnly
+                      icon={PictureInPicture2}
+                      label={pt('controls.pip')}
+                      onPress={() => controller.engine?.startPictureInPicture?.()}
+                    />
+                  ) : null}
+                </FocusGuide>
+              </Glass>
+            ) : (
+              <View
+                pointerEvents="box-none"
+                style={{
+                  position: 'absolute',
+                  left: design.layout.gutter,
+                  right: design.layout.gutter,
+                  bottom,
+                  gap: design.space.sm,
+                }}>
+                <SeekBar
+                  seekRef={seekRef}
+                  position={position}
+                  buffered={clock.buffered}
+                  duration={duration}
+                  scrubbing={scrub !== null}
+                  light
+                  label={pt('controls.seek')}
+                  onFocus={() => {
+                    rowFocused.current = false;
+                    setZone('progress');
+                  }}
+                  onScrub={(target) => scrubTo(target, 60_000)}
+                  onScrubEnd={commitScrub}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text testID="player-position" variant="caption" tone="muted">
+                    {formatClock(position)}
+                  </Text>
+                  <Text testID="player-remaining" variant="caption" tone="muted">
+                    {`−${formatClock(remaining)}`}
+                  </Text>
+                </View>
+                <FocusGuide
+                  remember
+                  trap={CENTRED_ROW}
+                  style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <GlassGroup
+                    spacing={design.space.sm}
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: design.space.sm,
+                    }}>
+                    {tv || (Platform.OS === 'web' && !narrow) ? (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        ref={playRef}
+                        testID="player-toggle"
+                        tone="solid"
+                        icon={paused ? Play : Pause}
+                        label={pt(paused ? 'controls.play' : 'controls.pause')}
+                        onFocus={onRowFocus}
+                        onBlur={onRowBlur}
+                        onPress={() => {
+                          controller.togglePlay();
+                          show('buttons');
+                        }}
+                      />
+                    ) : null}
+                    {tv ? (
+                      <>
+                        <GlassButton
+                          iconOnly
+                          size={chip}
+                          testID="player-back10-tv"
+                          icon={RotateCcw}
+                          label={pt('controls.back10')}
+                          onFocus={onRowFocus}
+                          onBlur={onRowBlur}
+                          onPress={() => {
+                            controller.seekBy(-10);
+                            show('buttons');
+                          }}
+                        />
+                        <GlassButton
+                          iconOnly
+                          size={chip}
+                          testID="player-forward30-tv"
+                          icon={RotateCw}
+                          label={pt('controls.forward30')}
+                          onFocus={onRowFocus}
+                          onBlur={onRowBlur}
+                          onPress={() => {
+                            controller.seekBy(30);
+                            show('buttons');
+                          }}
+                        />
+                      </>
+                    ) : null}
+                    <View style={{ flex: 1 }} />
+                    {panelButtons.map((panel) => (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        key={panel}
+                        testID={`player-open-${panel}`}
+                        icon={PANEL_ICONS[panel]}
+                        label={pt(`controls.${panel}`)}
+                        onFocus={onRowFocus}
+                        onBlur={onRowBlur}
+                        onPress={() => onPanel(panel)}
+                      />
+                    ))}
+                    {Platform.OS === 'web' ? (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        testID="player-mute"
+                        icon={muted ? VolumeX : Volume2}
+                        label={pt(muted ? 'controls.unmute' : 'controls.mute')}
+                        onPress={toggleMute}
+                      />
+                    ) : null}
+                    {fullscreenAvailable ? (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        testID="player-fullscreen"
+                        icon={fullscreen ? Minimize : Maximize}
+                        label={pt(fullscreen ? 'controls.exitFullscreen' : 'controls.fullscreen')}
+                        onPress={toggleFullscreen}
+                      />
+                    ) : null}
+                    {controller.engine?.supportsPictureInPicture ? (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        testID="player-pip"
+                        icon={PictureInPicture2}
+                        label={pt('controls.pip')}
+                        onPress={() => controller.engine?.startPictureInPicture?.()}
+                      />
+                    ) : null}
+                    {!tv && Platform.OS !== 'web' ? (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        testID="player-fit"
+                        icon={fit === 'cover' ? Shrink : Expand}
+                        label={pt(fit === 'cover' ? 'controls.fit' : 'controls.fill')}
+                        onPress={() => setFit(fit === 'cover' ? 'contain' : 'cover')}
+                      />
+                    ) : null}
+                  </GlassGroup>
+                </FocusGuide>
+              </View>
+            )}
           </Animated.View>
         </>
       )}
@@ -561,6 +858,8 @@ type SeekBarProps = {
   buffered: number;
   duration: number;
   scrubbing: boolean;
+  /** Aurora: white progress on the glass bar. */
+  light?: boolean;
   label: string;
   onFocus: () => void;
   onScrub: (target: number) => void;
@@ -574,6 +873,7 @@ function SeekBar({
   buffered,
   duration,
   scrubbing,
+  light = false,
   label,
   onFocus,
   onScrub,
@@ -599,7 +899,12 @@ function SeekBar({
       }}
       style={{ height: thumb * 1.6, justifyContent: 'center' }}>
       <View
-        style={{ height, borderRadius: height, backgroundColor: colors.input, overflow: 'hidden' }}>
+        style={{
+          height,
+          borderRadius: height,
+          backgroundColor: light ? colors.glass.subtle : colors.input,
+          overflow: 'hidden',
+        }}>
         <View
           style={{
             position: 'absolute',
@@ -617,7 +922,7 @@ function SeekBar({
             top: 0,
             bottom: 0,
             width: `${fraction(position) * 100}%`,
-            backgroundColor: colors.accent.DEFAULT,
+            backgroundColor: light ? colors.foreground.DEFAULT : colors.accent.DEFAULT,
           }}
         />
       </View>
@@ -662,7 +967,6 @@ function SeekBar({
 }
 
 const styles = StyleSheet.create({
-  centreBacking: { borderRadius: 999, padding: 6, backgroundColor: colors.scrim.DEFAULT },
   centre: { alignItems: 'center', justifyContent: 'center' },
   topShade: { position: 'absolute', top: 0, left: 0, right: 0 },
   bottomShade: { position: 'absolute', bottom: 0, left: 0, right: 0 },

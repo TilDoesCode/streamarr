@@ -13,6 +13,13 @@ import { DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
 
+// Phone tests override the window (the jest default is tablet-sized).
+let mockWindow: { width: number; height: number; scale: number; fontScale: number } | undefined;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => {
+  const actual = jest.requireActual('react-native/Libraries/Utilities/useWindowDimensions');
+  return { __esModule: true, default: () => mockWindow ?? actual.default() };
+});
+
 // expo-router/testing-library installs its own Reanimated mock, which lacks useReducedMotion and makeMutable.
 const reanimatedMock = jest.requireMock<Record<string, unknown>>('react-native-reanimated');
 reanimatedMock.useReducedMotion = () => false;
@@ -309,15 +316,24 @@ describe('Series detail', () => {
 });
 
 describe('Version picker', () => {
-  it('focuses and marks the recommended version, plain wording first', async () => {
+  it('marks the recommended version, plain wording and the release name in the panel', async () => {
     await open('/movie/123');
     await userEvent.setup().press(await screen.findByTestId('movie-versions', {}, WAIT));
     const recommended = await screen.findByTestId('version-2', {}, WAIT);
     expect(recommended).toHaveTextContent(/Recommended/);
     expect(screen.getByTestId('version-2-plain')).toHaveTextContent(/only repackages/);
-    expect(screen.queryByTestId('version-2-name')).toBeNull();
-    await userEvent.setup().press(screen.getByTestId('versions-details'));
+    // Large shell: the always-visible panel shows the release name (mono) without a details toggle.
     expect(screen.getByTestId('version-2-name')).toHaveTextContent('Sintel.2010.2160p.mkv');
+  });
+
+  it('shows Recommended and Last played together on one card', async () => {
+    handlers['/api/v1/viewer/catalog/movies/123'] = () =>
+      json(200, { ...movie, watch: { ...movie.watch, lastReleaseId: 'r2' } });
+    await open('/movie/123');
+    const card = await screen.findByTestId('version-2', {}, WAIT);
+    expect(card).toHaveTextContent(/Recommended/);
+    expect(card).toHaveTextContent(/Last played/);
+    expect(screen.getByTestId('version-panel')).toBeOnTheScreen();
   });
 
   it('plays the picked version', async () => {
@@ -341,5 +357,34 @@ describe('Version picker', () => {
     await open('/movie/123');
     await userEvent.setup().press(await screen.findByTestId('movie-versions', {}, WAIT));
     expect(await screen.findByTestId('versions-error', {}, WAIT)).toBeOnTheScreen();
+  });
+});
+
+describe('Phone detail', () => {
+  beforeEach(() => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+  });
+  afterEach(() => {
+    mockWindow = undefined;
+  });
+
+  it('shows the compact detail with Play, the Version card and the watched action', async () => {
+    handlers['/api/v1/viewer/watch/played'] = () => json(200, {});
+    await open('/movie/123');
+    expect(await screen.findByTestId('movie-play', {}, WAIT)).toBeOnTheScreen();
+    expect(await screen.findByTestId('versions-summary', {}, WAIT)).toHaveTextContent(/Version/);
+    expect(screen.queryByTestId('version-panel')).toBeNull();
+    await userEvent.setup().press(screen.getByTestId('movie-mark'));
+    expect(await screen.findByText('“Sintel” marked as watched')).toBeOnTheScreen();
+  });
+
+  it('opens the native version sheet on iPhone and plays the picked version', async () => {
+    const { router } = await open('/movie/123');
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('versions-summary', {}, WAIT));
+    await waitFor(() => expect(router.getPathname()).toBe('/versions/tmdb-movie-123'));
+    await user.press(await screen.findByTestId('version-1', {}, WAIT));
+    await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
+    expect(router.getSearchParams()).toMatchObject({ releaseId: 'r1', workId: 'tmdb-movie-123' });
   });
 });

@@ -1,14 +1,17 @@
 import { Check, Circle, X } from 'lucide-react-native';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { Glass } from '@/components/glass';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/i18n/format';
 import type { Playback } from '@/player/playback-api';
 import { usePlayerT } from '@/player/use-player-t';
-import { colors, useDesign } from '@/theme';
+import { useShell } from '@/shell/use-shell';
+import { colors, fonts, useDesign } from '@/theme';
 
 type Step = 'resolving' | 'fallback' | 'repairing' | 'planning' | 'starting';
 const ORDER: Step[] = ['resolving', 'fallback', 'repairing', 'planning', 'starting'];
@@ -127,4 +130,61 @@ function Attempts({ attempts, indent }: { attempts: readonly Attempt[]; indent: 
 
 function attemptStatus(status: string | null): 'resolving' | 'ready' | 'degraded' | 'dead' {
   return status === 'ready' || status === 'degraded' || status === 'dead' ? status : 'resolving';
+}
+
+/** Centred glass card of the player's non-video states (start, resume, errors, switching). */
+export function PlayerCard({
+  children,
+  testID,
+  width = 760,
+}: {
+  children: ReactNode;
+  testID?: string;
+  width?: number;
+}) {
+  const design = useDesign();
+  const { large, s } = useShell();
+  const radius = large ? s(44) : design.radius.xl;
+  return (
+    <Glass
+      testID={testID}
+      intensity="strong"
+      radius={radius}
+      style={{
+        alignItems: 'center',
+        width: large ? s(width) : undefined,
+        maxWidth: '100%',
+        paddingHorizontal: large ? s(64) : design.space.xl,
+        paddingVertical: large ? s(52) : design.space.xl,
+        gap: large ? s(28) : design.space.lg,
+      }}>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: radius,
+          backgroundColor: colors.glass.tinted,
+          opacity: 0.7,
+        }}
+      />
+      {children}
+    </Glass>
+  );
+}
+
+/** Display-face heading of a PlayerCard. */
+export function PlayerCardTitle({ children }: { children: string }) {
+  const { large, s } = useShell();
+  return (
+    <Text
+      variant="title"
+      numberOfLines={2}
+      style={[
+        { textAlign: 'center' },
+        large && { fontFamily: fonts.displayBold, fontSize: s(52), lineHeight: s(62) },
+      ]}>
+      {children}
+    </Text>
+  );
 }

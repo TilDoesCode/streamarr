@@ -228,7 +228,8 @@ function ShellArrow({
   const { s } = useShell();
   const size = s(SHELL.row.arrow);
   return (
-    <Focusable role="button" {...props}>
+    // Mouse-only pager: keyboard users move through the cards themselves.
+    <Focusable role="button" focusable={false} {...props}>
       <FocusLift kind="button" radius={size / 2}>
         <Glass interactive intensity={lit ? 'strong' : 'subtle'} radius={size / 2}>
           <View

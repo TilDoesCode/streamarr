@@ -7,7 +7,7 @@ export type Account = {
   viewerId: string;
   username: string;
   displayName: string;
-  /** Avatar colour slot, picked unused among this device's profiles when the account is added. */
+  /** Avatar colour slot derived from the viewer id (probing past slots other local profiles use). */
   color: number;
   /** False after sign-out or when the server ended the session; the profile stays in the picker. */
   signedIn: boolean;

@@ -1,6 +1,7 @@
 {
   "stepper": {
     "title": "Wiedergabe wird vorbereitet",
+    "failed": "Wiedergabe nicht möglich",
     "switching": "Wird umgeschaltet…",
     "steps": {
       "resolving": "Version prüfen",
@@ -60,7 +61,8 @@
     "fill": "Bildschirm füllen",
     "fit": "Einpassen",
     "play": "Abspielen",
-    "pause": "Pause"
+    "pause": "Pause",
+    "nowPlaying": "Läuft gerade"
   },
   "subtitlesOff": "Aus",
   "forced": "erzwungen",
@@ -97,10 +99,20 @@
     "hardware": "Hardware",
     "software": "Software",
     "from": "{method} – {skipped} nicht möglich",
-    "and": "und"
+    "and": "und",
+    "why": "Warum",
+    "buffer": "Puffer",
+    "bufferAhead": "{seconds} s voraus",
+    "dropped": "{count} verlorene Frames",
+    "better": "{version} läuft auf diesem Gerät ohne Umwandlung.",
+    "switch": "Version wechseln"
   },
   "notice": {
-    "stepDown": "Wiedergabe mit {from} fehlgeschlagen. Weiter mit {to}.",
+    "stepDown": "Wechsel zu einem anderen Stream, damit es weiterläuft.",
+    "stepDownVlc": "Wechsel zu VLC, damit es weiterläuft.",
+    "stepDownDirect": "Wechsel zur Originaldatei, damit es weiterläuft.",
+    "stepDownRemux": "Wechsel zu einem umverpackten Stream, damit es weiterläuft.",
+    "stepDownTranscode": "Wechsel zu einem umgewandelten Stream, damit es weiterläuft.",
     "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter."
   },
   "upNext": {

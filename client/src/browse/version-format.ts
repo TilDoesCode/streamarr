@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import type { Version } from '@/browse/queries';
+import type { CatalogSpec } from '@/components/spec';
 import {
   audioCodecLabel,
   hdrLabel,
@@ -46,6 +47,54 @@ export function versionHeadline(version: Version): string {
   return [version.resolution ? resolutionLabel(version.resolution) : null, hdr, version.source]
     .filter((part): part is string => !!part)
     .join(' · ');
+}
+
+/** Spec labels (resolution, HDR, codec, audio) of one version, in the catalog summary's shape. */
+export function versionSpec(version: Version | undefined): CatalogSpec | null {
+  if (!version) return null;
+  const hdr = version.hdrFormats?.[0] ?? version.hdr;
+  return {
+    resolution: version.resolution ? resolutionLabel(version.resolution) : null,
+    hdr: hdr ? hdrLabel(hdr) : null,
+    videoCodec: version.videoCodec ? videoCodecLabel(version.videoCodec) : null,
+    audio: version.atmos
+      ? MEDIA_LABELS.atmos
+      : (version.audioChannels ??
+        (version.audioCodec ? audioCodecLabel(version.audioCodec) : null)),
+  };
+}
+
+// Assumptions and pass-throughs explain nothing to a viewer; the panel shows what changes.
+const QUIET_REASONS = new Set(['audio_copied', 'direct_play']);
+
+/** Up to `max` plain reasons why a version does not play as is (assumptions left out). */
+export function methodReasons(version: Version, t: TFunction, max = 2): string[] {
+  return plainReasons(version.predictionReasons, t, max);
+}
+
+type Reason = { code?: string | null; params?: Record<string, string> | null };
+
+/** The one reason formatter for panels and the player: what changes, max `max` lines. */
+export function plainReasons(
+  reasons: readonly Reason[] | null | undefined,
+  t: TFunction,
+  max = 2
+): string[] {
+  const shown = (reasons ?? []).filter(
+    (reason) =>
+      !!reason.code && !reason.code.endsWith('_assumed') && !QUIET_REASONS.has(reason.code)
+  );
+  return reasonTexts(
+    [...shown].sort((a, b) => reasonWeight(a.code) - reasonWeight(b.code)),
+    t
+  ).slice(0, max);
+}
+
+// Picture before sound before packaging before subtitles.
+function reasonWeight(code: string | null | undefined): number {
+  const prefix = ['video', 'hdr', 'dolby', 'bit', 'resolution', 'audio', 'container', 'bitrate'];
+  const index = prefix.findIndex((part) => code?.startsWith(part));
+  return index < 0 ? prefix.length : index;
 }
 
 /** Technical facts: video codec + bit depth, audio + channels + Atmos. */
@@ -135,13 +184,12 @@ export function predictionReasons(version: Version, t: TFunction): string[] {
 }
 
 /** Localized planner reasons (`decision.reasons`, prediction reasons); unknown codes are left out. */
-export function reasonTexts(
-  reasons:
-    readonly { code?: string | null; params?: Record<string, string> | null }[] | null | undefined,
-  t: TFunction
-): string[] {
-  return (reasons ?? []).flatMap((reason) => {
+export function reasonTexts(reasons: readonly Reason[] | null | undefined, t: TFunction): string[] {
+  const list = reasons ?? [];
+  const converted = list.some((reason) => reason.code === 'audio_converted');
+  return list.flatMap((reason) => {
     if (!reason.code || !REASONS.has(reason.code)) return [];
+    if (converted && reason.code === 'audio_codec_unsupported') return [];
     const params = reason.params ?? {};
     const codecLabel = reason.code.startsWith('audio_') ? audioCodecLabel : videoCodecLabel;
     const codec = params.codec ? codecLabel(params.codec) : '';
@@ -149,6 +197,7 @@ export function reasonTexts(
       t(`versions.reasons.${reason.code as ReasonCode}` as 'versions.reasons.direct_play', {
         ...params,
         codec,
+        container: params.container ? params.container.toUpperCase() : '',
         from: params.from ? audioCodecLabel(params.from) : '',
         to: params.to ? audioCodecLabel(params.to) : '',
         hdr: params.hdr ? hdrLabel(params.hdr) : '',

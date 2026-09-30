@@ -262,11 +262,13 @@ export function SearchScreen() {
                   testID={`search-result-${index}`}
                   title={item.title ?? ''}
                   subtitle={[
-                    t(
-                      item.mediaType === 'tv' || item.mediaType === 'series'
-                        ? 'detail.series'
-                        : 'detail.movie'
-                    ),
+                    // Spec chips share the line on the large shell: the year stays, the type word goes.
+                    !(shell.large && item.spec) &&
+                      t(
+                        item.mediaType === 'tv' || item.mediaType === 'series'
+                          ? 'detail.series'
+                          : 'detail.movie'
+                      ),
                     item.year ? String(item.year) : null,
                   ]
                     .filter(Boolean)

@@ -15,6 +15,10 @@ export type GlassButtonProps = Omit<FocusableProps, 'children'> & {
   /** `solid` = the white primary pill (Play); `glass` = a glass pill. */
   tone?: 'solid' | 'glass';
   tint?: string | null;
+  /** Round icon-only control; `label` stays the accessible name. */
+  iconOnly?: boolean;
+  /** Round control size (phone player cluster); defaults to the shell's button height. */
+  size?: number;
 };
 
 /** Pill control (Aurora): glass or solid white, spring focus/hover/press via FocusLift. */
@@ -25,38 +29,48 @@ export function GlassButton({
   tint,
   disabled,
   accessibilityLabel,
+  iconOnly = false,
+  size,
   ...props
 }: GlassButtonProps) {
   const design = useDesign();
   const { large, s } = useShell();
   // Large shell: the mockup's 64 pt pill with 22 pt text on TV, web and tablet alike.
-  const height = large ? s(SHELL.button) : design.layout.controlHeight.lg;
+  const height = size ?? (large ? s(SHELL.button) : design.layout.controlHeight.lg);
   const fg = tone === 'solid' ? colors.primary.foreground : colors.foreground.DEFAULT;
   const content = (
     <View
       style={{
         height,
-        paddingHorizontal: large ? s(30) : design.space.xl,
+        width: iconOnly ? height : undefined,
+        justifyContent: 'center',
+        paddingHorizontal: iconOnly ? 0 : large ? s(30) : design.space.xl,
         flexDirection: 'row',
         alignItems: 'center',
         gap: large ? s(12) : design.space.sm,
       }}>
       {Icon ? (
-        <Icon size={large ? s(26) : design.layout.iconSize.lg} color={fg} strokeWidth={2.25} />
+        <Icon
+          size={size ? Math.round(size * 0.42) : large ? s(26) : design.layout.iconSize.lg}
+          color={fg}
+          strokeWidth={2.25}
+        />
       ) : null}
-      <Text
-        variant="label"
-        numberOfLines={1}
-        style={[
-          { color: fg },
-          large && {
-            fontFamily: fonts.bodySemiBold,
-            fontSize: s(SHELL.type.button),
-            lineHeight: s(28),
-          },
-        ]}>
-        {label}
-      </Text>
+      {iconOnly ? null : (
+        <Text
+          variant="label"
+          numberOfLines={1}
+          style={[
+            { color: fg },
+            large && {
+              fontFamily: fonts.bodySemiBold,
+              fontSize: s(SHELL.type.button),
+              lineHeight: s(28),
+            },
+          ]}>
+          {label}
+        </Text>
+      )}
     </View>
   );
   return (

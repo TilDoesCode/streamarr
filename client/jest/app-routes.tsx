@@ -16,6 +16,7 @@ import ChangePasswordRoute from '@/app/(onboarding)/sign-in/change-password';
 import SignInRoute from '@/app/(onboarding)/sign-in/index';
 import SecondFactorRoute from '@/app/(onboarding)/sign-in/second-factor';
 import ProfilesRoute from '@/app/(onboarding)/profiles';
+import VersionsRoute from '@/app/(app)/versions/[workId]';
 import ServerRoute from '@/app/(onboarding)/server';
 import { LargeShell } from '@/navigation/large-shell';
 
@@ -39,6 +40,7 @@ export const appRoutes = {
   '(app)/play/[playbackId]': () => null,
   // The player lab needs native video modules; tests only need the route to exist.
   '(app)/dev/player': () => null,
+  '(app)/versions/[workId]': VersionsRoute,
   '(onboarding)/server': ServerRoute,
   '(onboarding)/profiles': ProfilesRoute,
   '(onboarding)/sign-in/index': SignInRoute,

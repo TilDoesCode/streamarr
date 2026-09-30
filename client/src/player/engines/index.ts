@@ -4,7 +4,14 @@ import { ExpoVideoEngine } from './expo-video-engine';
 import type { EngineKind, PlayerEngine } from './types';
 import { VlcEngine, type VlcOptions } from './vlc-engine';
 
-export type { EngineKind, EngineEvent, EngineSnapshot, EngineTrack, PlayerEngine } from './types';
+export type {
+  EngineKind,
+  EngineEvent,
+  EngineSnapshot,
+  EngineState,
+  EngineTrack,
+  PlayerEngine,
+} from './types';
 export type EngineOptions = { vlc?: VlcOptions };
 
 /** Technical engine names (not UI copy). */

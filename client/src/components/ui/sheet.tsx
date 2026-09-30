@@ -43,8 +43,10 @@ import {
   useFocusState,
   useInitialFocus,
 } from '@/components/focus';
+import { Glass } from '@/components/glass';
 import { OverlayScrim } from '@/components/ui/overlay-scrim';
 import { Text } from '@/components/ui/text';
+import { useShell } from '@/shell/use-shell';
 import { colors, easing, fonts, motion, useDesign } from '@/theme';
 
 const ENTER_MS = 300;
@@ -131,6 +133,10 @@ export type SheetProps = {
   wide?: boolean;
   /** Non-focusable line under the title (counts, hints). */
   subtitle?: string;
+  /** Large shell: floating glass panel (Aurora) without the dim; `width` in mockup px. */
+  glass?: { width: number } | false;
+  /** Right of the title (e.g. the playback method pill). */
+  accessory?: ReactNode;
   testID?: string;
 };
 
@@ -142,13 +148,20 @@ export function Sheet({
   children,
   wide = false,
   subtitle,
+  glass = false,
+  accessory,
   testID,
 }: SheetProps) {
   const design = useDesign();
+  const { s } = useShell();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const side = design.formFactor !== 'phone';
-  const panelWidth = Math.min(design.px(wide ? 600 : 400), design.window.width * 0.9);
+  const panelWidth = glass
+    ? s(glass.width)
+    : Math.min(design.px(wide ? 600 : 400), design.window.width * 0.9);
+  const glassInset = s(64);
+  const phoneSheetInset = Math.max(0, (design.window.width - 600) / 2);
   const [mounted, setMounted] = useState(open);
   const [extent, setExtent] = useState(design.window.height * 0.6);
   const [viewport, setViewport] = useState(0);
@@ -200,13 +213,15 @@ export function Sheet({
   const tabStop = active ?? Math.max(0, preferredIndex);
   const ringRoom = design.focus.ringOffset + design.focus.ringWidth + design.space.xxs;
   const bottomEdge = Math.max(insets.bottom, side ? design.layout.edgeVertical : design.space.lg);
-  const inset = side
-    ? {
-        paddingLeft: design.space['2xl'],
-        // TV: the focused option's ring stays inside the overscan-safe gutter.
-        paddingRight: design.isTV ? design.layout.gutter : design.space['2xl'],
-      }
-    : { paddingHorizontal: design.layout.gutter };
+  const inset = glass
+    ? { paddingHorizontal: s(40) }
+    : side
+      ? {
+          paddingLeft: design.space['2xl'],
+          // TV: the focused option's ring stays inside the overscan-safe gutter.
+          paddingRight: design.isTV ? design.layout.gutter : design.space['2xl'],
+        }
+      : { paddingHorizontal: design.layout.gutter };
 
   return (
     <Modal
@@ -226,7 +241,7 @@ export function Sheet({
                 exiting={BACKDROP_OUT}
                 style={StyleSheet.absoluteFill}>
                 <Animated.View style={[StyleSheet.absoluteFill, !side && backdropStyle]}>
-                  <OverlayScrim onPress={onClose} />
+                  <OverlayScrim onPress={onClose} clear={!!glass} />
                 </Animated.View>
               </Animated.View>
               <Animated.View
@@ -237,9 +252,25 @@ export function Sheet({
                 entering={transitions.enter}
                 exiting={transitions.exit}
                 style={
-                  side
-                    ? { position: 'absolute', top: 0, bottom: 0, right: 0, width: panelWidth }
-                    : { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '85%' }
+                  glass
+                    ? {
+                        position: 'absolute',
+                        top: glassInset,
+                        right: glassInset,
+                        width: panelWidth,
+                        // Ends above the player's control bar (Aurora C-player).
+                        maxHeight: design.window.height - glassInset - s(250),
+                      }
+                    : side
+                      ? { position: 'absolute', top: 0, bottom: 0, right: 0, width: panelWidth }
+                      : {
+                          position: 'absolute',
+                          // Landscape phone: a centred sheet instead of a full-width strip.
+                          left: phoneSheetInset,
+                          right: phoneSheetInset,
+                          bottom: 0,
+                          maxHeight: '85%',
+                        }
                 }>
                 <GestureDetector gesture={surfacePan}>
                   <Animated.View
@@ -247,27 +278,66 @@ export function Sheet({
                       if (!side) setExtent(event.nativeEvent.layout.height);
                     }}
                     style={[
-                      {
-                        flexShrink: 1,
-                        flexGrow: side ? 1 : 0,
-                        backgroundColor: colors.surface.raised,
-                        boxShadow: design.shadow.overlay,
-                        borderCurve: 'continuous',
-                        gap: design.space.md,
-                      },
-                      side
-                        ? {
-                            paddingTop: Math.max(insets.top, design.layout.edgeVertical),
-                            borderTopLeftRadius: design.radius.xl,
-                            borderBottomLeftRadius: design.radius.xl,
-                          }
+                      glass
+                        ? { flexShrink: 1, gap: s(8), paddingTop: s(48), borderRadius: s(44) }
                         : {
-                            paddingTop: design.space.sm,
-                            borderTopLeftRadius: design.radius.xl,
-                            borderTopRightRadius: design.radius.xl,
+                            flexShrink: 1,
+                            flexGrow: side ? 1 : 0,
+                            backgroundColor: side ? colors.surface.raised : undefined,
+                            boxShadow: design.shadow.overlay,
+                            borderCurve: 'continuous',
+                            gap: design.space.md,
                           },
+                      glass
+                        ? null
+                        : side
+                          ? {
+                              paddingTop: Math.max(insets.top, design.layout.edgeVertical),
+                              borderTopLeftRadius: design.radius.xl,
+                              borderBottomLeftRadius: design.radius.xl,
+                            }
+                          : {
+                              paddingTop: design.space.sm,
+                              borderTopLeftRadius: design.radius.xl,
+                              borderTopRightRadius: design.radius.xl,
+                            },
                       !side && dragStyle,
                     ]}>
+                    {glass ? (
+                      <Glass
+                        intensity="regular"
+                        radius={s(44)}
+                        style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
+                        <View
+                          style={[
+                            StyleSheet.absoluteFill,
+                            { backgroundColor: colors.glass.tinted, opacity: 0.7 },
+                          ]}
+                        />
+                      </Glass>
+                    ) : side ? null : (
+                      // Phone (Aurora C-phone): glass bottom sheet, smoked for legibility over the video/art.
+                      <Glass
+                        intensity="strong"
+                        radius={design.radius.xl}
+                        style={[
+                          StyleSheet.absoluteFill,
+                          {
+                            overflow: 'hidden',
+                            borderBottomLeftRadius: 0,
+                            borderBottomRightRadius: 0,
+                          },
+                        ]}>
+                        <View
+                          style={[
+                            StyleSheet.absoluteFill,
+                            Platform.OS === 'ios'
+                              ? { backgroundColor: colors.glass.tinted, opacity: 0.85 }
+                              : { backgroundColor: colors.surface.raised },
+                          ]}
+                        />
+                      </Glass>
+                    )}
                     <GestureDetector gesture={headerPan}>
                       <View style={[inset, { gap: design.space.md }]}>
                         {side ? null : (
@@ -282,9 +352,26 @@ export function Sheet({
                             }}
                           />
                         )}
-                        <Text variant="heading">{title}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(16) }}>
+                          <Text
+                            variant="heading"
+                            style={[
+                              { flex: 1 },
+                              glass && {
+                                fontFamily: fonts.displayBold,
+                                fontSize: s(40),
+                                lineHeight: s(48),
+                              },
+                            ]}>
+                            {title}
+                          </Text>
+                          {accessory}
+                        </View>
                         {subtitle ? (
-                          <Text variant="caption" tone="muted">
+                          <Text
+                            variant="caption"
+                            tone="muted"
+                            style={glass && { fontSize: s(20), lineHeight: s(28) }}>
                             {subtitle}
                           </Text>
                         ) : null}
@@ -293,7 +380,7 @@ export function Sheet({
                     <ScrollView
                       testID={testID ? `${testID}-options` : undefined}
                       style={{
-                        flexGrow: side ? 1 : 0,
+                        flexGrow: side && !glass ? 1 : 0,
                         flexShrink: 1,
                         // Options scroll under the fixed title: a divider instead of a hard cut.
                         borderTopWidth: scrolls ? design.px(1) : 0,
@@ -315,7 +402,7 @@ export function Sheet({
                         role="radiogroup"
                         aria-label={title}
                         {...(Platform.OS === 'web' ? { onKeyDown: moveWebFocus } : null)}
-                        style={{ gap: design.space.xs }}>
+                        style={{ gap: side ? design.space.xs : design.space.sm }}>
                         {/* TV: the focused option is centred as the list scrolls (clamped at the ends). */}
                         <ItemSnapContext value={design.isTV ? 'center' : undefined}>
                           {items.map((child, index) => (

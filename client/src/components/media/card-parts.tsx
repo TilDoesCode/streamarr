@@ -9,7 +9,7 @@ import Animated, {
 
 import { useFocusState } from '@/components/focus';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
-import { SHELL } from '@/shell/shell-metrics';
+import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
 import { colors, fonts, useDesign } from '@/theme';
@@ -71,7 +71,7 @@ export function CardCaption({
   revealOnFocus?: boolean;
 }) {
   const design = useDesign();
-  const { large, s } = useShell();
+  const { large, s, font } = useShell();
   const reduced = useReducedMotion();
   const { focus } = useFocusState();
   const ring = design.focus.ringOffset + design.focus.ringWidth;
@@ -113,8 +113,8 @@ export function CardCaption({
           large
             ? {
                 fontFamily: fonts.bodySemiBold,
-                fontSize: s(SHELL.type.cardTitle),
-                lineHeight: s(28),
+                fontSize: font(SHELL.type.cardTitle, MIN_TEXT.caption),
+                lineHeight: font(28, MIN_TEXT.caption + 5),
               }
             : design.type.callout,
           titleStyle,
@@ -129,7 +129,10 @@ export function CardCaption({
             numberOfLines={1}
             style={[
               { flexShrink: 1 },
-              large && { fontSize: s(SHELL.type.cardSubline), lineHeight: s(24) },
+              large && {
+                fontSize: font(SHELL.type.cardSubline, MIN_TEXT.subline),
+                lineHeight: font(24, MIN_TEXT.subline + 5),
+              },
             ]}>
             {subtitle}
           </Text>

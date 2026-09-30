@@ -119,6 +119,7 @@ export function ShellHero({ store, collapsed = false, targetRef, onButtonFocus }
           <HeroCopy
             featured={featured}
             detail={detail}
+            store={store}
             hidden={collapsed}
             targetRef={targetRef}
             onButtonFocus={onButtonFocus}
@@ -132,12 +133,14 @@ export function ShellHero({ store, collapsed = false, targetRef, onButtonFocus }
 function HeroCopy({
   featured,
   detail,
+  store,
   hidden,
   targetRef,
   onButtonFocus,
 }: {
   featured: Featured;
   detail: ReturnType<typeof useFeaturedDetail>;
+  store: FeaturedStore;
   hidden: boolean;
   targetRef?: Ref<View>;
   onButtonFocus?: (focused: boolean) => void;
@@ -173,10 +176,25 @@ function HeroCopy({
   const playFeatured = () =>
     detail?.playWorkId &&
     play({ workId: detail.playWorkId, title: detail.playTitle, startSeconds: resume });
-  // TV remote Play/Pause on a Home card or hero button starts the featured title.
+  // Set when Play/Pause hit a card the hero has not caught up with; plays once its detail is loaded.
+  const playWhenReady = useRef<string | null>(null);
+  useEffect(() => {
+    if (playWhenReady.current !== featured.key || !detail?.playWorkId) return;
+    playWhenReady.current = null;
+    playFeatured();
+  });
+  // TV remote Play/Pause on a Home card or hero button starts the focused card's title.
   useTVEvents((event) => {
     const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
-    if (event.eventType === 'playPause' && screenFocused.current && keyAction !== 0) playFeatured();
+    if (event.eventType !== 'playPause' || !screenFocused.current || keyAction === 0) return;
+    const target = store.playTarget();
+    if (!target || target.key === featured.key) {
+      if (detail?.playWorkId) playFeatured();
+      else playWhenReady.current = featured.key;
+      return;
+    }
+    playWhenReady.current = target.key;
+    store.flush();
   });
   const focusProps = {
     focusable: !hidden,

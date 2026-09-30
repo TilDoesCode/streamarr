@@ -3,8 +3,10 @@ import type { DeviceProfile } from '@modules/media-caps';
 import type { Version } from '@/browse/queries';
 import { resumeSeconds, watchProgress } from '@/browse/title-actions';
 import {
+  methodReasons,
   predictedMethod,
   predictionReasons,
+  versionSpec,
   versionDetails,
   versionFormats,
   versionHeadline,
@@ -145,8 +147,8 @@ describe('version format', () => {
     });
     expect(predictedMethod(remux)).toBe('remux');
     expect(predictionReasons(remux, t)).toEqual([
-      'audio converted from Dolby Digital+ to AAC',
-      'container assumed (mkv)',
+      'Audio is converted from Dolby Digital+ to AAC',
+      'Container assumed (MKV)',
     ]);
     expect(predictedMethod(version({ predictedMethod: 'teleport' }))).toBeUndefined();
   });
@@ -191,5 +193,70 @@ describe('versionHints', () => {
       maxHeight: 2160,
       maxBitrateKbps: undefined,
     });
+  });
+});
+
+describe('version panel wording', () => {
+  const t = i18n.t.bind(i18n);
+  const base = { releaseId: 'r', name: 'n', rank: 1, health: null } as Version;
+
+  it('leaves assumptions and pass-throughs out of the reasons and keeps two', () => {
+    const version = {
+      ...base,
+      predictionReasons: [
+        { code: 'container_assumed', params: { container: 'mkv' } },
+        { code: 'audio_copied' },
+        { code: 'hdr_unsupported', params: { hdr: 'hdr10' } },
+        { code: 'audio_converted', params: { from: 'truehd', to: 'aac' } },
+        { code: 'bitrate_exceeds_limit' },
+      ],
+    } as Version;
+    const reasons = methodReasons(version, t);
+    expect(reasons).toHaveLength(2);
+    expect(reasons.join(' ')).toMatch(/HDR10/);
+    expect(reasons.join(' ')).not.toMatch(/mkv/i);
+  });
+
+  it('says what happens, capitalised, and names a conversion only once', () => {
+    const version = {
+      ...base,
+      predictionReasons: [
+        { code: 'container_unsupported', params: { container: 'mkv' } },
+        { code: 'audio_codec_unsupported', params: { codec: 'ac3' } },
+        { code: 'audio_converted', params: { from: 'ac3', to: 'aac' } },
+      ],
+    } as Version;
+    expect(methodReasons(version, t)).toEqual([
+      'Audio is converted from Dolby Digital to AAC',
+      'MKV container is repackaged to HLS',
+    ]);
+    expect(
+      methodReasons(
+        {
+          ...version,
+          predictionReasons: [
+            { code: 'subtitle_format_unsupported' },
+            { code: 'container_unsupported', params: { container: 'mkv' } },
+          ],
+        },
+        t
+      )
+    ).toEqual([
+      'MKV container is repackaged to HLS',
+      'Subtitles are converted, the format isn’t supported',
+    ]);
+  });
+
+  it('derives spec labels from a version', () => {
+    expect(
+      versionSpec({
+        ...base,
+        resolution: '2160p',
+        hdr: 'hdr10',
+        videoCodec: 'hevc',
+        audioChannels: '5.1',
+      } as Version)
+    ).toMatchObject({ resolution: '4K', hdr: 'HDR10', videoCodec: 'HEVC', audio: '5.1' });
+    expect(versionSpec(undefined)).toBeNull();
   });
 });

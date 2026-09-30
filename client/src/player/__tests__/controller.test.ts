@@ -138,6 +138,32 @@ describe('PlaybackController', () => {
     await c.stop();
   });
 
+  it('continues a step-down at the last good position when the failing engine reset its clock', async () => {
+    mockApi.startPlayback.mockResolvedValue(ready());
+    mockApi.switchPlayback
+      .mockResolvedValueOnce(ready({ revision: 1 }))
+      .mockResolvedValueOnce(ready({ revision: 2, engine: 'vlc' } as Partial<Playback>));
+    const c = controller(0);
+    await c.start();
+    mockEngine.snapshot.position = 38;
+    mockEngine.emit({ type: 'time', position: 38, duration: 600 } as EngineEvent);
+    await c.stepDown('decoder');
+    expect(mockEngine.load).toHaveBeenLastCalledWith(
+      expect.objectContaining({ startPosition: 38 })
+    );
+    mockEngine.snapshot.state = 'loading';
+    mockEngine.snapshot.position = 0;
+    mockEngine.emit({ type: 'time', position: 0, duration: 600 } as EngineEvent);
+    mockEngine.snapshot.state = 'error';
+    await c.stepDown('source');
+    expect(mockApi.switchPlayback.mock.calls[1][2]).toMatchObject({ positionTicks: 38 * TICKS });
+    expect(mockEngine.load).toHaveBeenLastCalledWith(
+      expect.objectContaining({ startPosition: 38 })
+    );
+    mockEngine.snapshot.state = 'playing';
+    await c.stop();
+  });
+
   it('keeps a client-side subtitle pick across a quality switch, not across a version switch', async () => {
     const subtitleTracks = [3, 4].map((index) => ({ index, deliveredAs: 'webvtt' }));
     mockApi.startPlayback.mockResolvedValue(

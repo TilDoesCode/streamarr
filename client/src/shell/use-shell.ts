@@ -3,7 +3,7 @@ import type { TextStyle } from 'react-native';
 
 import { fonts, useDesign } from '@/theme';
 
-import { isLargeShell, SHELL, shellScale } from './shell-metrics';
+import { isLargeShell, SHELL, shellFont, shellScale } from './shell-metrics';
 
 export type Shell = {
   /** TV, web desktop and tablet share the large layout; phones use the compact one. */
@@ -11,6 +11,8 @@ export type Shell = {
   scale: number;
   /** Scales a 1920 × 1080 mockup value. */
   s: (value: number) => number;
+  /** Scaled text size that never drops below `min` px on web/tablet. */
+  font: (value: number, min: number) => number;
   /** Page heading of the large shell (Search, Settings); undefined on phones. */
   pageTitle?: TextStyle;
 };
@@ -28,6 +30,7 @@ export function useShell(): Shell {
       large,
       scale,
       s,
+      font: (value: number, min: number) => shellFont(formFactor, scale, value, min),
       pageTitle: large
         ? {
             fontFamily: fonts.displayBold,

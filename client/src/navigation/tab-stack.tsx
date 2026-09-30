@@ -30,7 +30,12 @@ export function TabStack({ tab }: { tab: TabId }) {
   const shell = useShell();
   // Phones and tablets use native headers; TV and web show their own headings and the shell.
   const nativeHeaders = !design.isTV && Platform.OS !== 'web';
-  const detailHeader = !design.isTV;
+  // Phones: iOS keeps the native Liquid Glass header; Android and web draw a glass back button over the art.
+  const detailHeader = !design.isTV && !shell.large && Platform.OS === 'ios';
+  const detailOptions = {
+    ...ARTWORK_HEADER(detailHeader),
+    ...(shell.large ? { contentStyle: { backgroundColor: colors.scrim.clear } } : null),
+  };
   const browse = tab !== 'settings';
   return (
     <Stack
@@ -55,12 +60,13 @@ export function TabStack({ tab }: { tab: TabId }) {
         }}
       />
       {/* Stack children must be screens: no fragments. */}
-      {browse ? <Stack.Screen name="movie/[id]" options={ARTWORK_HEADER(detailHeader)} /> : null}
+      {browse ? <Stack.Screen name="movie/[id]" options={detailOptions} /> : null}
+      {browse ? <Stack.Screen name="series/[id]/index" options={detailOptions} /> : null}
       {browse ? (
-        <Stack.Screen name="series/[id]/index" options={ARTWORK_HEADER(detailHeader)} />
-      ) : null}
-      {browse ? (
-        <Stack.Screen name="series/[id]/season/[n]" options={{ headerShown: detailHeader }} />
+        <Stack.Screen
+          name="series/[id]/season/[n]"
+          options={{ headerShown: !design.isTV && !shell.large }}
+        />
       ) : null}
     </Stack>
   );

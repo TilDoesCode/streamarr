@@ -43,6 +43,19 @@ export function isLargeShell(formFactor: FormFactor): boolean {
 }
 
 /** Logical point → dp/CSS px: TV maps 1920 onto the window width exactly; web/tablet keep a floor. */
+/** Smallest readable text on scaled-down web/tablet windows (TV scales exactly: its dp are half the pixels). */
+export const MIN_TEXT = { spec: 11, caption: 15, subline: 13 } as const;
+
+export function shellFont(
+  formFactor: FormFactor,
+  scale: number,
+  value: number,
+  min: number
+): number {
+  const size = Math.round(value * scale * 2) / 2;
+  return formFactor === 'tv' ? size : Math.max(size, min);
+}
+
 export function shellScale(formFactor: FormFactor, width: number): number {
   const fit = width / SHELL.width;
   return formFactor === 'tv' ? fit : Math.max(MIN_WEB_SCALE, fit);

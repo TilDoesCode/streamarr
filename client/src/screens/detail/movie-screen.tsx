@@ -2,17 +2,29 @@ import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useMovieDetail, useWatchRefreshOnFocus } from '@/browse/queries';
-import { ResumeProgress, resumeSeconds, TitleActions, usePlay } from '@/browse/title-actions';
-import { VersionPicker } from '@/browse/version-picker';
+import { useMovieDetail, useVersions, useWatchRefreshOnFocus } from '@/browse/queries';
+import { Check, EyeOff } from 'lucide-react-native';
+
+import {
+  ResumeProgress,
+  resumeSeconds,
+  TitleActions,
+  usePlay,
+  useWatchedToggle,
+} from '@/browse/title-actions';
+import { useOpenVersions, VersionPicker } from '@/browse/version-picker';
+import { versionSpec } from '@/browse/version-format';
+import { entryIndex, VersionPanel } from '@/browse/version-panel';
 import { VersionSummary } from '@/browse/version-summary';
-import { Hero } from '@/components/media/hero';
-import { Badge } from '@/components/ui/badge';
 import { useFormat } from '@/i18n/format';
 import { useReturnTarget } from '@/navigation/return-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 
-import { DetailError, DetailScroll, HeroSkeleton, routeNumber } from './detail-parts';
+import { useShell } from '@/shell/use-shell';
+
+import { DetailError, routeNumber } from './detail-parts';
+import { LargeDetail, peopleCredits, usePanelEntry } from './large-detail';
+import { PhoneDetail } from './phone-detail';
 
 /** Movie: hero with logo, play/resume, versions and the watched toggle. */
 export function MovieScreen() {
@@ -25,6 +37,16 @@ export function MovieScreen() {
   const [versionsOpen, setVersionsOpen] = useState(false);
   // TV: Back from the player lands on the version card that started it.
   const reopenVersions = useReturnTarget(setVersionsOpen);
+  const openVersions = useOpenVersions();
+  const shell = useShell();
+  const panel = usePanelEntry();
+  const versions = useVersions(movie.data?.workId, true);
+  const watched = useWatchedToggle({
+    ids: movie.data?.workId ? [movie.data.workId] : [],
+    played: !!movie.data?.watch.played,
+    title: movie.data?.title ?? '',
+  });
+  const list = versions.data?.versions ?? [];
   useScreenTitle(movie.data?.title);
   useWatchRefreshOnFocus();
 
@@ -33,49 +55,132 @@ export function MovieScreen() {
 
   const data = movie.data;
   const title = data?.title ?? '';
-  return (
-    <DetailScroll testID={`movie-screen-${tmdbId}`}>
-      {data ? (
-        <Hero
-          eyebrow={t('detail.movie')}
-          title={title}
-          backdropUri={data.backdropUrl}
-          logoUri={data.logoUrl}
-          meta={[
-            data.year ? String(data.year) : null,
-            data.runtimeMinutes ? format.duration(data.runtimeMinutes * 60) : null,
-            data.genres?.slice(0, 3).join(', ') || null,
-          ].filter((part): part is string => !!part)}
-          badges={
-            <>
-              {data.certification ? (
-                <Badge testID="movie-certification" label={data.certification} variant="outline" />
-              ) : null}
-              {data.watch.played ? <Badge label={t('media.played')} variant="accent" /> : null}
-            </>
-          }
-          overview={data.overview ?? undefined}
-          actions={
+  const facts = data
+    ? [
+        data.year ? String(data.year) : null,
+        data.runtimeMinutes ? format.duration(data.runtimeMinutes * 60) : null,
+        data.genres?.slice(0, 3).join(', ') || null,
+      ].filter((part): part is string => !!part)
+    : [];
+  const playVersion = (releaseId: string | null | undefined) => {
+    if (data?.workId)
+      play({ workId: data.workId, title, releaseId, startSeconds: resumeSeconds(data.watch) });
+  };
+
+  if (shell.large)
+    return (
+      <LargeDetail
+        testID={`movie-screen-${tmdbId}`}
+        kindLabel={t('detail.movie')}
+        title={title}
+        logoUrl={data?.logoUrl}
+        backdropUrl={data?.backdropUrl}
+        tint={data?.tint}
+        tint2={data?.tint2}
+        facts={facts}
+        certification={data?.certification}
+        spec={versionSpec(list[entryIndex(list)])}
+        overview={data?.overview}
+        status={
+          data ? (
+            <ResumeProgress testID="movie-progress" watch={data.watch} barWidth={shell.s(220)} />
+          ) : null
+        }
+        credits={peopleCredits(data?.people, t)}
+        panelFocused={panel.inside}
+        loading={!data}
+        actions={
+          data ? (
             <TitleActions
+              shell
+              tint={data.tint}
               testIDPrefix="movie"
               workId={data.workId}
               title={title}
               watch={data.watch}
-              onVersions={() => setVersionsOpen(true)}
+              onVersions={() => panel.enter()}
             />
-          }>
-          <ResumeProgress testID="movie-progress" watch={data.watch} />
-        </Hero>
-      ) : (
-        <HeroSkeleton />
-      )}
-      {data ? (
-        <VersionSummary
-          workId={data.workId}
-          currentReleaseId={data.watch.lastReleaseId}
-          onOpen={() => setVersionsOpen(true)}
-        />
-      ) : null}
+          ) : null
+        }
+        panel={
+          <VersionPanel
+            workId={data?.workId}
+            currentReleaseId={data?.watch.lastReleaseId}
+            tint={data?.tint}
+            entryRef={panel.entryRef}
+            highlight={panel.highlight}
+            onFocusInside={panel.setInside}
+            onEntry={panel.onEntry}
+            onPlay={(version) => playVersion(version.releaseId)}
+          />
+        }
+      />
+    );
+
+  const played = !!data?.watch.played;
+  return (
+    <>
+      <PhoneDetail
+        testID={`movie-screen-${tmdbId}`}
+        kindLabel={t('detail.movie')}
+        title={title}
+        logoUrl={data?.logoUrl}
+        backdropUrl={data?.backdropUrl}
+        tint={data?.tint}
+        facts={facts.slice(0, 2)}
+        certification={data?.certification}
+        spec={versionSpec(list[entryIndex(list)])}
+        overview={data?.overview}
+        credits={peopleCredits(data?.people, t)}
+        loading={!data}
+        status={data ? <ResumeProgress testID="movie-progress" watch={data.watch} /> : null}
+        play={
+          data ? (
+            <TitleActions
+              compact
+              tint={data.tint}
+              testIDPrefix="movie"
+              workId={data.workId}
+              title={title}
+              watch={data.watch}
+            />
+          ) : null
+        }
+        version={
+          data ? (
+            <VersionSummary
+              workId={data.workId}
+              currentReleaseId={data.watch.lastReleaseId}
+              onOpen={() =>
+                openVersions(
+                  {
+                    workId: data.workId,
+                    title,
+                    startSeconds: resumeSeconds(data.watch),
+                    currentReleaseId: data.watch.lastReleaseId,
+                  },
+                  () => setVersionsOpen(true)
+                )
+              }
+            />
+          ) : null
+        }
+        actions={
+          data?.workId
+            ? [
+                {
+                  testID: 'movie-mark',
+                  icon: played ? EyeOff : Check,
+                  label: t(played ? 'detail.unwatch' : 'detail.watched'),
+                  accessibilityLabel: t(played ? 'detail.markUnplayed' : 'detail.markPlayed'),
+                  selected: played,
+                  disabled: watched.pending,
+                  onPress: watched.toggle,
+                },
+              ]
+            : []
+        }
+      />
       <VersionPicker
         open={versionsOpen}
         onClose={() => setVersionsOpen(false)}
@@ -94,6 +199,6 @@ export function MovieScreen() {
             });
         }}
       />
-    </DetailScroll>
+    </>
   );
 }

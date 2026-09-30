@@ -1,4 +1,11 @@
-import { isLargeShell, MIN_WEB_SCALE, SHELL, shellScale } from './shell-metrics';
+import {
+  isLargeShell,
+  MIN_TEXT,
+  MIN_WEB_SCALE,
+  SHELL,
+  shellFont,
+  shellScale,
+} from './shell-metrics';
 
 describe('shell scale', () => {
   it('maps the 1920 layout onto the Android TV canvas', () => {
@@ -23,5 +30,14 @@ describe('shell scale', () => {
     expect(SHELL.row.left).toBe(SHELL.hero.copyLeft);
     expect(SHELL.landscape.width / SHELL.landscape.height).toBeCloseTo(16 / 9, 1);
     expect(SHELL.poster.height / SHELL.poster.width).toBe(1.5);
+  });
+
+  it('keeps chips and captions readable on a 1024 px tablet but scales TV exactly', () => {
+    const tablet = shellScale('tablet', 1024);
+    expect(shellFont('tablet', tablet, SHELL.type.spec, MIN_TEXT.spec)).toBeGreaterThanOrEqual(11);
+    expect(
+      shellFont('tablet', tablet, SHELL.type.cardTitle, MIN_TEXT.caption)
+    ).toBeGreaterThanOrEqual(15);
+    expect(shellFont('tv', 0.5, SHELL.type.spec, MIN_TEXT.spec)).toBe(SHELL.type.spec / 2);
   });
 });

@@ -78,6 +78,7 @@ export function ShellRail({ activeName, onSelect, onFocusChange }: ShellRailProp
         top: s(rail.top),
         bottom: s(rail.top),
         width: s(rail.pill),
+        zIndex: 2,
       }}>
       <Glass
         intensity="subtle"

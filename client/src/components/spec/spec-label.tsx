@@ -1,7 +1,7 @@
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { SHELL } from '@/shell/shell-metrics';
+import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
@@ -24,7 +24,7 @@ export type SpecLabelProps = {
 /** Signal-style spec chip: JetBrains Mono caps (resolution, HDR, codec, audio, playback method). */
 export function SpecLabel({ label, tone = 'neutral', testID }: SpecLabelProps) {
   const design = useDesign();
-  const { large, s } = useShell();
+  const { large, s, font } = useShell();
   const palette = SPEC_TONES[tone];
   return (
     <View
@@ -43,7 +43,11 @@ export function SpecLabel({ label, tone = 'neutral', testID }: SpecLabelProps) {
         numberOfLines={1}
         style={[
           { color: palette.fg },
-          large && { fontSize: s(SHELL.type.spec), lineHeight: s(20), letterSpacing: s(0.6) },
+          large && {
+            fontSize: font(SHELL.type.spec, MIN_TEXT.spec),
+            lineHeight: font(20, MIN_TEXT.spec + 4),
+            letterSpacing: s(0.6),
+          },
         ]}>
         {label}
       </Text>

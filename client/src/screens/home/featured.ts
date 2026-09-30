@@ -35,6 +35,8 @@ export class FeaturedStore {
   private listeners = new Set<() => void>();
   /** Something was focused or hovered; defaults no longer replace it. */
   private chosen = false;
+  /** The latest focused/hovered title, before the debounce applies it. */
+  private pending: Featured | null = null;
 
   get = () => this.current;
 
@@ -47,12 +49,24 @@ export class FeaturedStore {
 
   set(item: Featured, immediate = false) {
     clearTimeout(this.timer);
+    this.pending = item;
     const apply = () => {
       this.chosen = true;
+      this.pending = null;
       this.replace(item);
     };
     if (immediate) apply();
     else this.timer = setTimeout(apply, DELAY_MS);
+  }
+
+  /** What a Play key should start: the focused card, even while the hero still shows the previous title. */
+  playTarget(): Featured | null {
+    return this.pending ?? this.current;
+  }
+
+  /** Applies a pending focus change now. */
+  flush() {
+    if (this.pending) this.set(this.pending, true);
   }
 
   /** The first card's title: shown until something else is featured, kept current while it loads. */

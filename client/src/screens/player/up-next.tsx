@@ -1,15 +1,17 @@
+import { ArrowLeft, Play, RotateCcw } from 'lucide-react-native';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { useSeasonDetail } from '@/browse/queries';
 import { FocusGuide } from '@/components/focus';
-import { Button } from '@/components/ui/button';
+import { Glass, GlassButton } from '@/components/glass';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { parseEpisodeWorkId } from '@/player/format';
 import { usePlayerT } from '@/player/use-player-t';
-import { colors, useDesign } from '@/theme';
+import { useShell } from '@/shell/use-shell';
+import { colors, fonts, useDesign } from '@/theme';
 
 export type NextEpisode = { workId: string; title: string };
 
@@ -53,6 +55,7 @@ type Props = {
 export function UpNextCard({ next, onPlay, onCancel }: Props) {
   const pt = usePlayerT();
   const design = useDesign();
+  const { large, s } = useShell();
   const [left, setLeft] = useState(COUNTDOWN_SECONDS);
   const play = useEffectEvent(onPlay);
 
@@ -65,22 +68,26 @@ export function UpNextCard({ next, onPlay, onCancel }: Props) {
   }, [left]);
 
   return (
-    <View
+    <Glass
       testID="player-up-next"
+      intensity="strong"
+      radius={large ? s(36) : design.radius.lg}
       style={{
         position: 'absolute',
-        right: design.layout.gutter,
-        bottom: design.layout.edgeVertical + design.px(design.isTV ? 140 : 110),
-        width: design.px(design.isTV ? 420 : 320),
-        padding: design.space.lg,
-        gap: design.space.sm,
-        borderRadius: design.radius.lg,
-        backgroundColor: colors.surface.overlay,
+        right: large ? s(64) : design.layout.gutter,
+        bottom: large ? s(280) : design.layout.edgeVertical + design.px(110),
+        width: large ? s(560) : design.px(320),
+        padding: large ? s(32) : design.space.lg,
+        gap: large ? s(12) : design.space.sm,
       }}>
+      <Smoke radius={large ? s(36) : design.radius.lg} />
       <Text variant="overline" tone="muted">
         {pt('upNext.title')}
       </Text>
-      <Text variant="subheading" numberOfLines={2}>
+      <Text
+        variant="subheading"
+        numberOfLines={2}
+        style={large && { fontFamily: fonts.displayBold, fontSize: s(34), lineHeight: s(42) }}>
         {next.title}
       </Text>
       <Text testID="player-up-next-countdown" variant="caption" tone="muted">
@@ -89,23 +96,37 @@ export function UpNextCard({ next, onPlay, onCancel }: Props) {
       <ProgressBar value={1 - Math.max(0, left) / COUNTDOWN_SECONDS} />
       <FocusGuide
         trap={['left', 'right', 'down']}
-        style={{ flexDirection: 'row', gap: design.space.sm }}>
-        <Button
+        style={{ flexDirection: 'row', gap: large ? s(14) : design.space.sm, marginTop: s(6) }}>
+        <GlassButton
           testID="player-up-next-play"
+          tone="solid"
           label={pt('upNext.playNow')}
-          size="sm"
           hasTVPreferredFocus
           onPress={onPlay}
         />
-        <Button
+        <GlassButton
           testID="player-up-next-cancel"
           label={pt('upNext.cancel')}
-          size="sm"
-          variant="secondary"
           onPress={onCancel}
         />
       </FocusGuide>
-    </View>
+    </Glass>
+  );
+}
+
+/** Smoked underlay that keeps glass copy legible over bright video. */
+function Smoke({ radius }: { radius: number }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        borderRadius: radius,
+        backgroundColor: colors.glass.tinted,
+        opacity: 0.7,
+      }}
+    />
   );
 }
 
@@ -121,12 +142,14 @@ type EndCardProps = {
 export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps) {
   const pt = usePlayerT();
   const design = useDesign();
+  const { large, s } = useShell();
   const preferred = useRef<View>(null);
   const hasNext = !!next;
   // The overlay behind may still hold native focus (e.g. up-next dismissed with Back).
   useEffect(() => {
     if (Platform.isTV) preferred.current?.requestTVFocus?.();
   }, [hasNext]);
+  const radius = large ? s(44) : design.radius.xl;
   return (
     <View
       testID="player-end-card"
@@ -139,46 +162,68 @@ export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps)
         alignItems: 'center',
         justifyContent: 'center',
         padding: design.layout.gutter,
-        gap: design.space.lg,
         backgroundColor: colors.scrim.DEFAULT,
       }}>
-      <Text variant="overline" tone="muted">
-        {pt('endCard.title')}
-      </Text>
-      <Text variant="title" numberOfLines={2} style={{ textAlign: 'center' }}>
-        {title}
-      </Text>
-      <FocusGuide
-        trap={['left', 'right', 'up', 'down']}
+      <Glass
+        intensity="strong"
+        radius={radius}
         style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-          gap: design.space.md,
+          alignItems: 'center',
+          maxWidth: large ? s(1100) : undefined,
+          paddingHorizontal: large ? s(72) : design.space.xl,
+          paddingVertical: large ? s(56) : design.space.xl,
+          gap: large ? s(18) : design.space.lg,
         }}>
-        <Button
-          testID="player-end-replay"
-          ref={next ? undefined : preferred}
-          label={pt('endCard.replay')}
-          hasTVPreferredFocus={!next}
-          onPress={onReplay}
-        />
-        {next ? (
-          <Button
-            testID="player-end-next"
-            ref={preferred}
-            label={pt('endCard.nextEpisode', { title: next.title })}
-            hasTVPreferredFocus
-            onPress={onNext}
+        <Smoke radius={radius} />
+        <Text variant="overline" tone="muted">
+          {pt('endCard.title')}
+        </Text>
+        <Text
+          variant="title"
+          numberOfLines={2}
+          style={[
+            { textAlign: 'center' },
+            large && { fontFamily: fonts.displayBold, fontSize: s(64), lineHeight: s(74) },
+          ]}>
+          {title}
+        </Text>
+        <FocusGuide
+          trap={['left', 'right', 'up', 'down']}
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: large ? s(16) : design.space.md,
+            marginTop: large ? s(12) : 0,
+          }}>
+          <GlassButton
+            testID="player-end-replay"
+            ref={next ? undefined : preferred}
+            icon={RotateCcw}
+            tone={next ? 'glass' : 'solid'}
+            label={pt('endCard.replay')}
+            hasTVPreferredFocus={!next}
+            onPress={onReplay}
           />
-        ) : null}
-        <Button
-          testID="player-end-back"
-          label={pt('endCard.backToDetails')}
-          variant="secondary"
-          onPress={onBack}
-        />
-      </FocusGuide>
+          {next ? (
+            <GlassButton
+              testID="player-end-next"
+              ref={preferred}
+              icon={Play}
+              tone="solid"
+              label={pt('endCard.nextEpisode', { title: next.title })}
+              hasTVPreferredFocus
+              onPress={onNext}
+            />
+          ) : null}
+          <GlassButton
+            testID="player-end-back"
+            icon={ArrowLeft}
+            label={pt('endCard.backToDetails')}
+            onPress={onBack}
+          />
+        </FocusGuide>
+      </Glass>
     </View>
   );
 }

@@ -26,4 +26,18 @@ describe('FeaturedStore', () => {
     store.dispose();
     jest.useRealTimers();
   });
+
+  it('Play targets the focused card before the hero has caught up', () => {
+    jest.useFakeTimers();
+    const store = new FeaturedStore();
+    store.set(item('a'), true);
+    store.set(item('b'));
+    expect(store.get()?.key).toBe('a');
+    expect(store.playTarget()?.key).toBe('b');
+    store.flush();
+    expect(store.get()?.key).toBe('b');
+    expect(store.playTarget()?.key).toBe('b');
+    store.dispose();
+    jest.useRealTimers();
+  });
 });

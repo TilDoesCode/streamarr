@@ -86,6 +86,8 @@ export function HomeScreen() {
   useEffect(() => () => store.dispose(), [store]);
   // TV (Apple TV style): the focused row sits at a fixed height, the hero steps back below the first row.
   const [focusedRow, setFocusedRow] = useState(0);
+  // Only the first visit takes focus; a card mounted later (reordered Continue watching) must not steal it.
+  const [focusTaken, setFocusTaken] = useState(false);
   const [heroTarget, setHeroTarget] = useState<View | null>(null);
   const [inHero, setInHero] = useState(false);
   const rowFrames = useRef<{ y: number; height: number }[]>([]);
@@ -154,7 +156,7 @@ export function HomeScreen() {
           eyebrow={continueTitle}
           onFeature={feature}
           onLead={preferred ? lead : undefined}
-          hasTVPreferredFocus={preferred}
+          hasTVPreferredFocus={preferred && !focusTaken}
         />
       ),
     });
@@ -173,7 +175,7 @@ export function HomeScreen() {
           eyebrow={nextTitle}
           onFeature={feature}
           onLead={preferred ? lead : undefined}
-          hasTVPreferredFocus={preferred}
+          hasTVPreferredFocus={preferred && !focusTaken}
         />
       ),
     });
@@ -192,7 +194,7 @@ export function HomeScreen() {
           width={posterWidth}
           eyebrow={title}
           onFeature={feature}
-          hasTVPreferredFocus={preferred}
+          hasTVPreferredFocus={preferred && !focusTaken}
         />
       ),
     });
@@ -267,9 +269,11 @@ export function HomeScreen() {
                   rowFrames.current[shelfIndex] = { y, height };
                   setFramesVersion((version) => version + 1);
                 }}
-                onFocus={(event) =>
-                  design.isTV ? setFocusedRow(shelfIndex) : revealRow(shelfIndex, event)
-                }>
+                onFocus={(event) => {
+                  setFocusTaken(true);
+                  if (design.isTV) setFocusedRow(shelfIndex);
+                  else revealRow(shelfIndex, event);
+                }}>
                 {design.isTV && shelfIndex === 0 && heroTarget && !inHero ? (
                   // Up from the first row lands on the hero's first button; Down returns through the row memory.
                   <FocusGuide

@@ -1,11 +1,11 @@
-import { Check, Film, Tv, Undo2 } from 'lucide-react-native';
+import { Check, EyeOff, Film, Tv } from 'lucide-react-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useMarkPlayed, type Episode } from '@/browse/queries';
 import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
-import { VersionPicker } from '@/browse/version-picker';
+import { useOpenVersions, VersionPicker } from '@/browse/version-picker';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { EpisodeRow } from '@/components/media/episode-row';
 import { EmptyState } from '@/components/states/empty-state';
@@ -25,6 +25,10 @@ export type EpisodeListProps = {
   takeFocus?: boolean;
   /** Grid columns (wide layouts). */
   columns?: number;
+  /** Large shell: an episode's "Versions" shows it in the detail's version panel instead of a sheet. */
+  onVersions?: (episode: Episode) => void;
+  /** Episode whose versions the panel shows (marked in the list). */
+  selectedWorkId?: string | null;
 };
 
 /** Episodes of one season: play/resume on press, versions and the watched toggle beside each row. */
@@ -35,6 +39,8 @@ export function EpisodeList({
   focusWorkId,
   takeFocus = false,
   columns = 1,
+  onVersions,
+  selectedWorkId,
 }: EpisodeListProps) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -44,6 +50,7 @@ export function EpisodeList({
   const [versionsFor, setVersionsFor] = useState<Episode | null>(null);
   // TV: Back from the player lands on the version card that started it.
   const reopenVersions = useReturnTarget<Episode>(setVersionsFor);
+  const openVersions = useOpenVersions();
 
   if (!episodes)
     return (
@@ -109,6 +116,7 @@ export function EpisodeList({
                 played={played}
                 progress={watchProgress(episode.watch)}
                 unavailable={unavailable}
+                selected={!!selectedWorkId && episode.workId === selectedWorkId}
                 hasTVPreferredFocus={takeFocus && episode === preferred}
                 onPress={() =>
                   episode.workId &&
@@ -127,11 +135,23 @@ export function EpisodeList({
                     size="sm"
                     variant="ghost"
                     accessibilityLabel={t('detail.episodeVersions', { title })}
-                    onPress={() => setVersionsFor(episode)}
+                    onPress={() =>
+                      onVersions
+                        ? onVersions(episode)
+                        : openVersions(
+                            {
+                              workId: episode.workId,
+                              title: episodeTitle(episode),
+                              startSeconds: resumeSeconds(episode.watch),
+                              currentReleaseId: episode.watch.lastReleaseId,
+                            },
+                            () => setVersionsFor(episode)
+                          )
+                    }
                   />
                   <IconButton
                     testID={`episode-${episode.episodeNumber}-mark`}
-                    icon={played ? Undo2 : Check}
+                    icon={played ? EyeOff : Check}
                     size="sm"
                     variant="ghost"
                     accessibilityLabel={t(

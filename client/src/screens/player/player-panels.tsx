@@ -1,14 +1,28 @@
 'use no memo';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import { languageName, reasonTexts } from '@/browse/version-format';
+import { View } from 'react-native';
+
+import { useVersions } from '@/browse/queries';
+import { languageName, plainReasons, versionHeadline } from '@/browse/version-format';
+import { Focusable, FocusLift } from '@/components/focus';
+import { methodTone, SpecLabel } from '@/components/spec';
+import { Text } from '@/components/ui/text';
 import { VersionPicker } from '@/browse/version-picker';
 import { Sheet, SheetItem } from '@/components/ui/sheet';
-import { audioCodecLabel, hdrLabel, videoCodecLabel } from '@/lib/media-labels';
+import { audioCodecLabel } from '@/lib/media-labels';
 import type { AudioTrack, PlaybackController, SubtitleTrack } from '@/player/controller';
 import { ENGINE_LABELS } from '@/player/engines';
+import {
+  audioTransfer,
+  betterVersion,
+  containerTransfer,
+  videoTransfer,
+} from '@/player/overlay-labels';
+import type { Clock } from '@/player/use-clock';
 import { usePlayerT, type PlayerT } from '@/player/use-player-t';
+import { useShell } from '@/shell/use-shell';
+import { colors, fonts } from '@/theme';
 
 export type PanelKind = 'audio' | 'subtitles' | 'version' | 'quality' | 'engine' | 'info';
 export const PANELS: readonly PanelKind[] = [
@@ -28,6 +42,10 @@ type Props = {
   onClose: () => void;
   controller: PlaybackController;
   title: string;
+  /** Large shell (TV, web desktop): floating glass panels on the right (Aurora C-player). */
+  glass?: boolean;
+  clock?: Clock;
+  onPanel?: (panel: PanelKind) => void;
 };
 
 function trackLabel(
@@ -52,9 +70,17 @@ function subtitleDescription(track: SubtitleTrack, pt: PlayerT): string {
 }
 
 /** Audio, subtitle, version, quality, engine and info panels of the player. */
-export function PlayerPanels({ panel, onClose, controller, title }: Props) {
+export function PlayerPanels({
+  panel,
+  onClose,
+  controller,
+  title,
+  glass = false,
+  clock,
+  onPanel,
+}: Props) {
   const pt = usePlayerT();
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const locale = i18n.language;
   const playback = controller.playback;
   const info = playback?.mediaInfo;
@@ -71,6 +97,7 @@ export function PlayerPanels({ panel, onClose, controller, title }: Props) {
         workId={playback?.workId}
         title={title}
         currentReleaseId={playback?.version?.releaseId}
+        glass={glass}
         onPlay={(version) => {
           if (version.releaseId && version.releaseId !== playback?.version?.releaseId)
             pick(() => controller.selectVersion(version.releaseId ?? ''));
@@ -97,7 +124,16 @@ export function PlayerPanels({ panel, onClose, controller, title }: Props) {
             ? pt('enginePref.hint')
             : undefined
       }
-      wide={panel === 'info'}>
+      wide={panel === 'info'}
+      glass={glass ? { width: panel === 'info' ? 620 : 520 } : false}
+      accessory={
+        panel === 'info' && playback?.method ? (
+          <SpecLabel
+            label={pt(`methods.${playback.method as 'direct'}`)}
+            tone={methodTone(playback.method)}
+          />
+        ) : undefined
+      }>
       {panel === 'audio'
         ? (info?.audioTracks ?? []).map((track) => (
             <SheetItem
@@ -156,127 +192,115 @@ export function PlayerPanels({ panel, onClose, controller, title }: Props) {
             />
           ))
         : null}
-      {panel === 'info'
-        ? infoRows(controller, pt, t).map(([key, value], index) => (
-            <SheetItem
-              key={key}
-              label={value}
-              description={pt(`info.${key}`)}
-              preferred={index === 0}
-              onPress={() => undefined}
-            />
-          ))
-        : null}
+      {panel === 'info' ? (
+        <InfoTable controller={controller} clock={clock} onSwitch={() => onPanel?.('version')} />
+      ) : null}
     </Sheet>
   );
 }
 
-type InfoKey =
-  | 'method'
-  | 'engine'
-  | 'version'
-  | 'container'
-  | 'video'
-  | 'resolution'
-  | 'hdr'
-  | 'audio'
-  | 'subtitle'
-  | 'bitrate'
-  | 'decoder'
-  | 'droppedFrames'
-  | 'reasons';
-
-/** "Stats for nerds": what is played, how and why. */
-export function infoRows(
-  controller: PlaybackController,
-  pt: PlayerT,
-  t: TFunction
-): [InfoKey, string][] {
+function InfoTable({
+  controller,
+  clock,
+  onSwitch,
+}: {
+  controller: PlaybackController;
+  clock?: Clock;
+  onSwitch: () => void;
+}) {
+  const pt = usePlayerT();
+  const { t } = useTranslation();
+  const { s, font } = useShell();
   const playback = controller.playback;
   const info = playback?.mediaInfo;
-  const video = info?.video;
-  const snapshot = controller.engine?.getSnapshot();
-  const engineVideo = snapshot?.tracks.video;
-  const stats = snapshot?.stats;
-  const unknown = pt('info.unknown');
-  const method = playback?.method ? pt(`methods.${playback.method as 'direct'}`) : unknown;
-  const skippedNames = (playback?.decision?.skipped ?? [])
-    .filter((item) => item.method && item.method !== playback?.method)
-    .map((item) => pt(`methods.${item.method as 'direct'}`));
-  const skipped = [...new Set(skippedNames)];
-  const audio = info?.audioTracks?.find((track) => track.index === controller.currentAudio());
-  const subtitle = info?.subtitleTracks?.find(
-    (track) => track.index === controller.currentSubtitle()
+  const versions = useVersions(playback?.workId, !!playback?.workId);
+  const better = betterVersion(
+    versions.data?.versions ?? [],
+    playback?.version?.releaseId,
+    playback?.method
   );
-  const width = engineVideo?.width ?? video?.width;
-  const height = engineVideo?.height ?? video?.deliveredHeight ?? video?.height;
-  const range = engineVideo?.range ?? video?.videoRange ?? video?.hdr;
-  const reasons = reasonTexts(playback?.decision?.reasons, t);
-  return [
+  const stats = controller.engine?.getSnapshot().stats;
+  const audio = info?.audioTracks?.find((track) => track.index === controller.currentAudio());
+  const method = playback?.method;
+  const why =
+    plainReasons(playback?.decision?.reasons, t).join('\n') ||
+    (method ? t(`versions.plain.${method as 'direct'}`) : undefined);
+  const ahead = clock ? Math.max(0, Math.round(clock.buffered - clock.position)) : undefined;
+  const engine = [
+    controller.engine ? ENGINE_LABELS[controller.engine.kind] : '',
+    stats?.decoder ?? '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const rows: [string, string | null | undefined, boolean][] = [
+    [pt('info.method'), method ? pt(`methods.${method as 'direct'}`) : null, false],
+    [pt('info.why'), why, false],
+    [pt('info.video'), videoTransfer(info?.video), true],
+    [pt('info.audio'), audioTransfer(audio), true],
+    [pt('info.container'), containerTransfer(info?.container, method), true],
     [
-      'method',
-      skipped.length
-        ? pt('info.from', {
-            method,
-            skipped:
-              skipped.length > 1
-                ? `${skipped.slice(0, -1).join(', ')} ${pt('info.and')} ${skipped.at(-1)}`
-                : skipped[0],
-          })
-        : method,
+      pt('info.bitrate'),
+      info?.bitrateKbps ? `${Math.round(info.bitrateKbps / 100) / 10} Mbit/s` : null,
+      true,
     ],
+    [pt('info.engine'), engine, false],
     [
-      'engine',
+      pt('info.buffer'),
       [
-        playback?.engine ? pt(`engines.${playback.engine as 'native'}`) : '',
-        controller.engine ? ENGINE_LABELS[controller.engine.kind] : '',
+        ahead !== undefined ? pt('info.bufferAhead', { seconds: ahead }) : '',
+        stats?.droppedFrames !== undefined
+          ? pt('info.dropped', { count: stats.droppedFrames })
+          : '',
       ]
         .filter(Boolean)
-        .join(' · ') || unknown,
+        .join(' · '),
+      false,
     ],
-    ['version', playback?.version?.name ?? unknown],
-    ['container', info?.container?.toUpperCase() ?? unknown],
-    [
-      'video',
-      video
-        ? [
-            videoCodecLabel(video.deliveredCodec ?? video.codec ?? ''),
-            video.profile,
-            video.bitDepth ? `${video.bitDepth}-bit` : '',
-            video.fps ? `${Math.round(video.fps * 100) / 100} fps` : '',
-          ]
-            .filter(Boolean)
-            .join(' · ')
-        : unknown,
-    ],
-    ['resolution', width && height ? `${width}×${height}` : unknown],
-    ['hdr', range && range !== 'sdr' && range !== 'none' ? hdrLabel(range) : pt('info.sdr')],
-    [
-      'audio',
-      audio
-        ? [
-            audioCodecLabel(audio.deliveredCodec ?? audio.codec ?? ''),
-            `${audio.deliveredChannels ?? audio.channels}ch`,
-            audio.language ?? '',
-          ]
-            .filter(Boolean)
-            .join(' · ')
-        : unknown,
-    ],
-    [
-      'subtitle',
-      subtitle
-        ? [subtitle.language, subtitle.codec, subtitle.deliveredAs].filter(Boolean).join(' · ')
-        : pt('subtitlesOff'),
-    ],
-    ['bitrate', info?.bitrateKbps ? pt('info.kbps', { value: info.bitrateKbps }) : unknown],
-    ['decoder', stats?.decoder ?? unknown],
-    [
-      'droppedFrames',
-      stats?.droppedFrames !== undefined
-        ? `${stats.droppedFrames}${stats.totalFrames ? ` / ${stats.totalFrames}` : ''}`
-        : unknown,
-    ],
-    ['reasons', reasons.join(' · ') || unknown],
   ];
+  const text = { fontSize: font(21, 14), lineHeight: font(29, 19) };
+  return (
+    <View testID="player-info-table" style={{ gap: s(10), paddingBottom: s(8) }}>
+      {rows.map(([label, value, spec]) => (
+        <View key={label} style={{ flexDirection: 'row', gap: s(24) }}>
+          <Text tone="muted" style={[text, { width: s(150) }]}>
+            {label}
+          </Text>
+          <Text
+            style={[
+              text,
+              { flex: 1, color: colors.foreground.DEFAULT },
+              spec && { fontFamily: fonts.mono, fontSize: font(19, 13), letterSpacing: s(0.3) },
+            ]}>
+            {value || pt('info.unknown')}
+          </Text>
+        </View>
+      ))}
+      {better ? (
+        <Focusable
+          testID="player-info-better"
+          role="button"
+          onPress={onSwitch}
+          accessibilityLabel={pt('info.switch')}>
+          <FocusLift kind="none" radius={s(24)}>
+            <View
+              style={{
+                marginTop: s(10),
+                padding: s(20),
+                borderRadius: s(24),
+                backgroundColor: colors.glass.subtle,
+                gap: s(8),
+              }}>
+              <Text style={[text, { color: colors.foreground.DEFAULT }]}>
+                {pt('info.better', { version: versionHeadline(better) || better.name })}
+              </Text>
+              <Text
+                style={[text, { color: colors.accent.DEFAULT, fontFamily: fonts.bodySemiBold }]}>
+                {pt('info.switch')}
+              </Text>
+            </View>
+          </FocusLift>
+        </Focusable>
+      ) : null}
+    </View>
+  );
 }

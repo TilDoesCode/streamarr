@@ -2,7 +2,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { X } from 'lucide-react-native';
+import { Play, RotateCcw, X } from 'lucide-react-native';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
@@ -14,9 +14,8 @@ import { toAppError } from '@/api/errors';
 import { invalidateWatchQueries } from '@/browse/queries';
 import { VersionPicker } from '@/browse/version-picker';
 import { CENTRED_ROW, FocusGuide, useBackHandler } from '@/components/focus';
+import { Glass, GlassButton } from '@/components/glass';
 import { ErrorState, type ErrorAction } from '@/components/states/error-state';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { detailHref, isDetailOf, openerLeaf, playHref } from '@/navigation/routes';
 import { useScreenTitle } from '@/navigation/screen-title';
@@ -25,14 +24,16 @@ import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates } from '@/player/engines';
 import { clock } from '@/player/format';
+import { stepDownKey } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
 import { useClock } from '@/player/use-clock';
 import { usePlayerT } from '@/player/use-player-t';
+import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
-import { StartStepper } from './start-stepper';
+import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
 
 type Params = {
@@ -52,6 +53,7 @@ export function PlayScreen() {
   const pt = usePlayerT();
   const { t } = useTranslation();
   const design = useDesign();
+  const { large } = useShell();
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -195,7 +197,9 @@ export function PlayScreen() {
           clock={clockState}
           title={title}
           suspended={panel !== null || picker || showUpNext || showEndCard}
+          ended={showEndCard}
           onPanel={setPanel}
+          panel={panel}
           onClose={close}
           backRef={overlayBack}
         />
@@ -206,58 +210,75 @@ export function PlayScreen() {
             styles.centre,
             { padding: design.layout.gutter, gap: design.space.xl },
           ]}>
-          {controller?.states.length ? (
-            <StartStepper playback={controller.playback} states={controller.states} failed />
-          ) : null}
-          <ErrorState
-            testID="play-error"
-            code={code}
-            params={failure?.params}
-            actions={workId ? actions : ['back']}
-            autoFocus={!picker}
-            onAction={onFailureAction}
-          />
+          <PlayerCard testID="play-error-card" width={900}>
+            <View style={{ gap: design.space.xs, alignItems: 'center' }}>
+              <Text variant="overline" tone="muted">
+                {pt('stepper.failed')}
+              </Text>
+              {title ? <PlayerCardTitle>{title}</PlayerCardTitle> : null}
+            </View>
+            {controller?.states.length ? (
+              <StartStepper playback={controller.playback} states={controller.states} failed />
+            ) : null}
+            <ErrorState
+              testID="play-error"
+              compact
+              code={code}
+              params={failure?.params}
+              actions={workId ? actions : ['back']}
+              autoFocus={!picker}
+              onAction={onFailureAction}
+            />
+          </PlayerCard>
         </ScrollView>
       ) : phase === 'resume' && controller ? (
         <View testID="play-resume" style={[styles.fill, styles.centre, { gap: design.space.lg }]}>
-          <Text variant="title" numberOfLines={2} style={{ textAlign: 'center' }}>
-            {pt('resume.title')}
-          </Text>
-          <FocusGuide trap={CENTRED_ROW} style={{ flexDirection: 'row', gap: design.space.md }}>
-            <Button
-              testID="play-resume-yes"
-              label={pt('resume.resume', { time: clock(controller.resumeSeconds) })}
-              hasTVPreferredFocus
-              onPress={() => controller.chooseStart(true)}
-            />
-            <Button
-              testID="play-resume-no"
-              label={pt('resume.fromStart')}
-              variant="secondary"
-              onPress={() => controller.chooseStart(false)}
-            />
-          </FocusGuide>
+          <PlayerCard>
+            <Text variant="overline" tone="muted">
+              {title}
+            </Text>
+            <PlayerCardTitle>{pt('resume.title')}</PlayerCardTitle>
+            <FocusGuide trap={CENTRED_ROW} style={{ flexDirection: 'row', gap: design.space.md }}>
+              <GlassButton
+                testID="play-resume-yes"
+                tone="solid"
+                icon={Play}
+                label={pt('resume.resume', { time: clock(controller.resumeSeconds) })}
+                hasTVPreferredFocus
+                onPress={() => controller.chooseStart(true)}
+              />
+              <GlassButton
+                testID="play-resume-no"
+                icon={RotateCcw}
+                label={pt('resume.fromStart')}
+                onPress={() => controller.chooseStart(false)}
+              />
+            </FocusGuide>
+          </PlayerCard>
         </View>
       ) : !playing ? (
         <View testID="play-starting" style={[styles.fill, styles.centre, { gap: design.space.xl }]}>
-          <View style={{ gap: design.space.xs, alignItems: 'center' }}>
-            <Text variant="overline" tone="muted">
-              {pt('stepper.title')}
-            </Text>
-            <Text variant="title" numberOfLines={2} style={{ textAlign: 'center' }}>
-              {title}
-            </Text>
-          </View>
-          <StartStepper playback={controller?.playback ?? null} states={controller?.states ?? []} />
+          <PlayerCard testID="play-starting-card">
+            <View style={{ gap: design.space.xs, alignItems: 'center' }}>
+              <Text variant="overline" tone="muted">
+                {pt('stepper.title')}
+              </Text>
+              <PlayerCardTitle>{title}</PlayerCardTitle>
+            </View>
+            <StartStepper
+              playback={controller?.playback ?? null}
+              states={controller?.states ?? []}
+            />
+          </PlayerCard>
         </View>
       ) : null}
       {!playing || failed ? (
         <View style={{ position: 'absolute', top, left: design.layout.gutter }}>
-          <IconButton
+          <GlassButton
             testID="play-close"
+            iconOnly
             icon={X}
-            variant="ghost"
-            accessibilityLabel={pt('controls.close')}
+            label={pt('controls.close')}
             hasTVPreferredFocus={!failed && phase !== 'resume'}
             onPress={close}
           />
@@ -265,23 +286,17 @@ export function PlayScreen() {
       ) : null}
       {phase === 'switching' ? (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
-          <View
-            style={{
-              padding: design.space.lg,
-              borderRadius: design.radius.lg,
-              backgroundColor: colors.scrim.DEFAULT,
-              gap: design.space.md,
-            }}>
+          <PlayerCard testID="play-switching" width={640}>
             <Text variant="callout">{pt('stepper.switching')}</Text>
             <StartStepper
               playback={controller?.playback ?? null}
               states={controller?.states ?? []}
             />
-          </View>
+          </PlayerCard>
         </View>
       ) : null}
       {notice && !pip ? (
-        <View
+        <Glass
           testID={`player-notice-${notice.kind}`}
           pointerEvents="none"
           style={{
@@ -291,20 +306,17 @@ export function PlayScreen() {
             maxWidth: design.px(640),
             paddingHorizontal: design.space.lg,
             paddingVertical: design.space.sm,
-            borderRadius: design.radius.md,
-            backgroundColor: colors.surface.overlay,
-          }}>
+          }}
+          intensity="strong"
+          radius={design.radius.md}>
           <Text variant="callout">
             {notice.kind === 'stepDown'
-              ? pt('notice.stepDown', {
-                  from: methodName(pt, notice.params?.from),
-                  to: methodName(pt, notice.params?.to),
-                })
+              ? pt(stepDownKey(notice.params))
               : pt('notice.switchFailed', {
                   reason: describeError(t, { code: notice.params?.code ?? 'unknown' }).message,
                 })}
           </Text>
-        </View>
+        </Glass>
       ) : null}
       {showUpNext && next ? (
         <UpNextCard next={next} onPlay={playNext} onCancel={() => setUpNextDismissedFor(workId)} />
@@ -324,6 +336,9 @@ export function PlayScreen() {
           onClose={() => setPanel(null)}
           controller={controller}
           title={title}
+          glass={large}
+          clock={clockState}
+          onPanel={setPanel}
         />
       ) : null}
       <VersionPicker
@@ -332,6 +347,7 @@ export function PlayScreen() {
         workId={workId}
         title={title}
         currentReleaseId={controller?.playback?.version?.releaseId}
+        glass={large}
         onPlay={(version) => {
           setPicker(false);
           setReleaseId(version.releaseId ?? undefined);
@@ -340,12 +356,6 @@ export function PlayScreen() {
       />
     </View>
   );
-}
-
-function methodName(pt: ReturnType<typeof usePlayerT>, method: string | undefined): string {
-  return method === 'direct' || method === 'remux' || method === 'transcode'
-    ? pt(`methods.${method}`)
-    : (method ?? '');
 }
 
 const noopSubscribe = () => () => undefined;

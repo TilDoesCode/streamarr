@@ -15,6 +15,8 @@ export type EmptyStateProps = {
   /** Error code or other detail, shown small and selectable. */
   detail?: string;
   iconColor?: string;
+  /** Inside a card that already has padding. */
+  compact?: boolean;
   testID?: string;
 };
 
@@ -26,6 +28,7 @@ export function EmptyState({
   actions,
   detail,
   iconColor = colors.foreground.muted,
+  compact = false,
   testID,
 }: EmptyStateProps) {
   const design = useDesign();
@@ -38,8 +41,8 @@ export function EmptyState({
         alignItems: 'center',
         alignSelf: 'stretch',
         gap: design.space.md,
-        paddingVertical: design.space['3xl'],
-        paddingHorizontal: design.layout.gutter,
+        paddingVertical: compact ? 0 : design.space['3xl'],
+        paddingHorizontal: compact ? 0 : design.layout.gutter,
       }}>
       <View
         style={{

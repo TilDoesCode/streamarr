@@ -6,23 +6,17 @@ import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reani
 import { toAppError } from '@/api/errors';
 import { useVersions } from '@/browse/queries';
 import { predictedMethod, versionFormats, versionHeadline } from '@/browse/version-format';
-import {
-  END_OF_ROW,
-  Focusable,
-  FocusGuide,
-  FocusLift,
-  FocusSection,
-  useFocusState,
-} from '@/components/focus';
-import { Badge } from '@/components/ui/badge';
+import { Focusable, FocusLift, useFocusState } from '@/components/focus';
+import { Glass } from '@/components/glass';
+import { methodTone, SPEC_TONES } from '@/components/spec';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { describeError } from '@/api/error-text';
-import { colors, useDesign } from '@/theme';
+import { colors, fonts, useDesign } from '@/theme';
 
-/** Versions section of a detail screen: the version that would play, the count, and the way into the picker. */
+/** Phone: the glass "Version" card (the version that would play, its method, the count); opens the sheet. */
 export function VersionSummary({
   workId,
   currentReleaseId,
@@ -77,63 +71,66 @@ export function VersionSummary({
     );
   } else {
     const method = predictedMethod(version);
+    const tone = SPEC_TONES[methodTone(method)];
     body = (
-      <FocusGuide remember trap={END_OF_ROW}>
-        <Focusable
-          testID="versions-summary"
-          role="button"
-          accessibilityLabel={t('versions.openAll', { count: list.length })}
-          onPress={onOpen}
-          style={{ alignSelf: 'flex-start', maxWidth: design.px(640), width: '100%' }}>
-          <FocusLift kind="none" radius={design.radius.lg}>
-            <SummarySurface>
-              <View style={{ flex: 1, gap: design.space.xs }}>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.xs }}>
-                  <Badge
-                    label={
-                      version.releaseId === currentReleaseId
-                        ? t('versions.current')
-                        : t('media.recommended')
-                    }
-                    variant="accent"
-                  />
-                  {method ? (
-                    <Badge
-                      testID="versions-summary-method"
-                      label={t(`versions.method.${method}`)}
-                    />
-                  ) : null}
-                </View>
-                <Text variant="heading" numberOfLines={1}>
-                  {versionHeadline(version) || version.name}
-                </Text>
-                <Text variant="callout" tone="muted" numberOfLines={1}>
+      <Focusable
+        testID="versions-summary"
+        role="button"
+        accessibilityLabel={t('versions.openAll', { count: list.length })}
+        onPress={onOpen}>
+        <FocusLift kind="none" radius={RADIUS}>
+          <SummarySurface>
+            <View style={{ flex: 1, gap: design.space.xs }}>
+              <Text variant="overline" tone="muted">
+                {version.releaseId === currentReleaseId
+                  ? t('versions.current')
+                  : t('versions.card')}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={{ fontFamily: fonts.displayBold, fontSize: 19, lineHeight: 24 }}>
+                {versionHeadline(version) || version.name}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
+                {method ? (
+                  <View
+                    testID="versions-summary-method"
+                    style={{
+                      borderRadius: 8,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      backgroundColor: tone.bg,
+                    }}>
+                    <Text
+                      variant="caption"
+                      style={{ fontFamily: fonts.bodySemiBold, color: tone.fg }}>
+                      {t(`versions.method.${method}`)}
+                    </Text>
+                  </View>
+                ) : null}
+                <Text variant="caption" tone="muted" numberOfLines={1} style={{ flex: 1 }}>
                   {versionFormats(version, t).join(' · ')}
                 </Text>
               </View>
-              <View style={{ alignItems: 'center', flexDirection: 'row', gap: design.space.xs }}>
-                <Text variant="callout" tone="muted">
-                  {t('media.versions', { count: list.length })}
-                </Text>
-                <ChevronRight size={design.layout.iconSize.md} color={colors.foreground.muted} />
-              </View>
-            </SummarySurface>
-          </FocusLift>
-        </Focusable>
-      </FocusGuide>
+            </View>
+            <View style={{ alignItems: 'center', flexDirection: 'row', gap: 2 }}>
+              <Text variant="callout" tone="muted">
+                {list.length}
+              </Text>
+              <ChevronRight size={design.layout.iconSize.md} color={colors.foreground.muted} />
+            </View>
+          </SummarySurface>
+        </FocusLift>
+      </Focusable>
     );
   }
 
-  return (
-    <FocusSection testID="versions-section">
-      <View style={{ gap: design.space.md, paddingHorizontal: design.layout.gutter }}>
-        <Text variant="heading">{t('common.versions')}</Text>
-        {body}
-      </View>
-    </FocusSection>
-  );
+  return <View testID="versions-section">{body}</View>;
 }
 
+const RADIUS = 20;
+
+/** Glass card (Aurora C-phone); lighter while pressed or focused. */
 function SummarySurface({ children }: { children: React.ReactNode }) {
   const design = useDesign();
   const { focus, hover, pressed } = useFocusState();
@@ -141,23 +138,26 @@ function SummarySurface({ children }: { children: React.ReactNode }) {
     backgroundColor: interpolateColor(
       Math.max(focus.get(), hover.get() * 0.6, pressed.get()),
       [0, 1],
-      [colors.surface.DEFAULT, colors.surface.overlay]
+      [colors.scrim.clear, colors.glass.subtle]
     ),
   }));
   return (
-    <Animated.View
-      style={[
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: design.space.lg,
-          padding: design.space.lg,
-          borderRadius: design.radius.lg,
-          borderCurve: 'continuous',
-        },
-        style,
-      ]}>
-      {children}
-    </Animated.View>
+    <Glass radius={RADIUS} intensity="regular">
+      <Animated.View
+        style={[
+          {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: design.space.md,
+            paddingVertical: design.space.md,
+            paddingHorizontal: design.space.lg,
+            borderRadius: RADIUS,
+            borderCurve: 'continuous',
+          },
+          style,
+        ]}>
+        {children}
+      </Animated.View>
+    </Glass>
   );
 }

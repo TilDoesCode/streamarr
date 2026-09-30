@@ -23,6 +23,8 @@ export type EpisodeRowProps = Omit<FocusableProps, 'children'> & {
   played?: boolean;
   /** No release available: shown dimmed with a badge, not focusable. */
   unavailable?: boolean;
+  /** Large detail: the version panel shows this episode (accent bar). */
+  selected?: boolean;
 };
 
 /** Full-width episode row. Rows highlight (not scale) on focus; the ring marks the TV cursor. */
@@ -36,6 +38,7 @@ export function EpisodeRow({
   progress,
   played = false,
   unavailable = false,
+  selected = false,
   disabled,
   ...props
 }: EpisodeRowProps) {
@@ -55,8 +58,24 @@ export function EpisodeRow({
       role="button"
       accessibilityLabel={`${meta}. ${title}`}
       disabled={disabled || unavailable}
+      aria-selected={selected || undefined}
       {...props}>
       <FocusLift kind="none" radius={radius}>
+        {selected ? (
+          <View
+            testID="episode-row-selected"
+            style={{
+              position: 'absolute',
+              zIndex: 1,
+              left: 0,
+              top: radius,
+              bottom: radius,
+              width: 4,
+              borderRadius: 2,
+              backgroundColor: colors.accent.DEFAULT,
+            }}
+          />
+        ) : null}
         <EpisodeRowSurface radius={radius} dimmed={unavailable}>
           <View
             style={{

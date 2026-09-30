@@ -34,6 +34,17 @@ export default function AppLayout() {
             contentStyle: { backgroundColor: colors.video },
           }}
         />
+        <Stack.Screen
+          name="versions/[workId]"
+          options={{
+            presentation: 'formSheet',
+            sheetAllowedDetents: [0.6, 1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+            // Transparent content: iOS 26 renders the formSheet itself in Liquid Glass.
+            contentStyle: { backgroundColor: colors.scrim.clear },
+          }}
+        />
         <Stack.Screen name="dev/player" />
       </Stack>
     </>

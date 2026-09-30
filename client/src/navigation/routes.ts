@@ -79,3 +79,23 @@ export function openerLeaf(state: NavState | undefined): RouteLeaf | undefined {
     route = route.state.routes[route.state.index ?? route.state.routes.length - 1];
   return route && { name: route.name, params: route.params };
 }
+
+export type VersionsRequest = PlayRequest & { currentReleaseId?: string | null };
+
+/** iPhone: the version picker as a native formSheet (Liquid Glass); Play there starts the picked version. */
+export function versionsHref({
+  workId,
+  title,
+  startSeconds,
+  currentReleaseId,
+}: VersionsRequest): Href {
+  return {
+    pathname: '/versions/[workId]',
+    params: {
+      workId,
+      title,
+      ...(currentReleaseId ? { current: currentReleaseId } : null),
+      ...(startSeconds !== undefined ? { start: String(Math.floor(startSeconds)) } : null),
+    },
+  };
+}

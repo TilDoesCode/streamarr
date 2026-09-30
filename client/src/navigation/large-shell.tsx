@@ -1,7 +1,7 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ThemeProvider } from 'expo-router/react-navigation';
 import { TabSlot, useTabsWithTriggers } from 'expo-router/ui';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BackHandler, Platform, View } from 'react-native';
 
@@ -46,6 +46,9 @@ export function LargeShell() {
     return action !== 'navigate';
   }, design.isTV);
 
+  // A screen pushed over the shell (deep link to the player) hides the dialog's Modal; keep the state in step.
+  useFocusEffect(useCallback(() => () => setExitOpen(false), []));
+
   // Web keyboard shortcut: "/" opens Search (outside text fields).
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -72,11 +75,24 @@ export function LargeShell() {
     navigation.dispatch({ type: 'JUMP_TO', payload: { name: tab.name } });
   };
 
+  const rail = (
+    <ShellRail
+      activeName={activeName}
+      onSelect={select}
+      onFocusChange={(focused) => {
+        railFocused.current = focused;
+      }}
+    />
+  );
+  // Web: the rail comes first in the DOM so the first Tab lands on it (it paints above the content via zIndex).
+  const webFirst = Platform.OS === 'web';
+
   return (
     <NavigationContent>
       <AmbientProvider>
         <View style={{ flex: 1, backgroundColor: colors.background }}>
           <AmbientBackdrop testID="shell-ambient" />
+          {webFirst ? rail : null}
           <View
             testID="tv-content"
             role="main"
@@ -89,13 +105,7 @@ export function LargeShell() {
               </ScreenFocusProvider>
             </DesignGutter>
           </View>
-          <ShellRail
-            activeName={activeName}
-            onSelect={select}
-            onFocusChange={(focused) => {
-              railFocused.current = focused;
-            }}
-          />
+          {webFirst ? null : rail}
         </View>
         <Dialog
           testID="exit-dialog"

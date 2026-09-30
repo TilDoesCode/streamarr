@@ -52,10 +52,10 @@ function parseAccounts(raw: string | undefined): Account[] {
   try {
     const parsed: unknown = JSON.parse(raw ?? '[]');
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isAccount).map((account, index) => ({
-      ...account,
-      color: typeof account.color === 'number' ? account.color : index % AVATAR_COLORS,
-    }));
+    const accounts: Account[] = [];
+    for (const account of parsed.filter(isAccount))
+      accounts.push({ ...account, color: profileColor(account.viewerId, accounts) });
+    return accounts;
   } catch {
     return [];
   }
@@ -95,10 +95,19 @@ export function dedupeAccounts(accounts: readonly Account[]): {
   return { accounts: kept, dropped };
 }
 
-function freeColor(accounts: readonly Account[]): number {
+/** Colour slot derived from the viewer id (same on every device); probes on when another local profile has it. */
+export function profileColor(
+  viewerId: string,
+  accounts: readonly Pick<Account, 'color'>[]
+): number {
+  let hash = 0x811c9dc5;
+  for (const char of viewerId) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
   const used = new Set(accounts.map((account) => account.color));
-  for (let color = 0; color < AVATAR_COLORS; color += 1) if (!used.has(color)) return color;
-  return accounts.length % AVATAR_COLORS;
+  for (let step = 0; step < AVATAR_COLORS; step += 1) {
+    const color = (hash + step) % AVATAR_COLORS;
+    if (!used.has(color)) return color;
+  }
+  return hash % AVATAR_COLORS;
 }
 
 const hasId = (accounts: readonly Account[], id: string | null | undefined): id is string =>
@@ -212,7 +221,7 @@ export class AccountStore {
         viewerId: viewer.id,
         username: viewer.username,
         displayName: viewer.displayName || viewer.username,
-        color: existing?.color ?? freeColor(accounts),
+        color: existing?.color ?? profileColor(viewer.id, accounts),
         signedIn: true,
         mustChangePassword: viewer.mustChangePassword,
         addedAt: existing?.addedAt ?? now,

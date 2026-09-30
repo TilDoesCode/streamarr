@@ -111,3 +111,18 @@ The journals hold the evidence and reproduction details for each item.
 - Form factor is recomputed from window size: Android split screen (< 600 dp) or a web resize across 640 px swaps LargeShell and NativeTabsShell and remounts the navigator (tab stacks lost). Consider hysteresis or keeping the stacks.
 - HeroFade has no fallback when the masked-view native module is missing (fine for our builds; check after iOS pod install).
 - No unit test covers the LargeShell vs NativeTabs selection.
+
+## From R3 verify (2026-09-30)
+- Web 390 px phone player: a source with subtitles gives 8 bottom buttons and the fullscreen button sits half off-screen; collapse the chips into an overflow menu below ~420 px.
+- TV player side panels end ~10 px under the top of the control bar (web is fine).
+- Dead code: `predictionReasons()` is only used by a test; `VersionsButton` is unused (pre-existing).
+- One vocabulary for delivery methods: version cards say "Direct stream" for remux while the player info panel says "Repackaged".
+- Phone Version card headlines the last played release while Resume starts the Recommended one (pre-existing logic; card is labelled "Last played").
+- Big Buck Bunny WEB-DL: the web reason names an MKV container while TV playback info says MP4; check the server's container data.
+- The exit dialog stays open when a deep link opens a detail screen inside the shell (R3 fixed it only for the player route).
+- TV: once, after a long action sequence, focus returned to the Recommended card instead of Resume; not reproducible.
+- Web: the ambient backdrop makes pages ~7.5 % wider than the window, so the page can scroll sideways (pre-existing, also Home).
+- Episodes in a season without versions still offer a Versions button that opens an empty panel.
+- jest prints an ICU warning because a test fixture lacks a parameter.
+- Large-screen episode rows still use the pre-Aurora EpisodeRow look (left over from R3 slice 4).
+- Backend: `title_not_found` failures offer the `otherVersion` action although the title does not exist.

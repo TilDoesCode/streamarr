@@ -40,7 +40,7 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   const { t } = useTranslation();
   useScreenTitle(title);
   const router = useRouter();
-  const { large } = useShell();
+  const { large, s } = useShell();
   const split = design.isTV || large;
   const logo = design.px(split ? 56 : 48);
   const back =
@@ -73,8 +73,9 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   );
 
   if (split) {
-    // One large-screen layout: heading left, form right, both high on the screen (clear of the TV keyboard).
-    const top = design.layout.edgeVertical + design.px(40);
+    // TV: heading and form high on the screen (clear of the IME); web: both centred on one vertical axis.
+    const centred = !design.isTV;
+    const top = centred ? design.px(40) : design.layout.edgeVertical + design.px(40);
     return (
       <View
         testID={testID}
@@ -82,18 +83,29 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
           flex: 1,
           flexDirection: 'row',
           gap: design.px(56),
-          paddingHorizontal: design.layout.gutter,
+          paddingHorizontal: s(96),
           backgroundColor: colors.background,
+          overflow: 'hidden',
         }}>
         <AmbientBackdrop />
-        <View style={{ width: '42%', paddingTop: top }}>{heading}</View>
+        <View
+          style={{
+            width: '42%',
+            paddingTop: top,
+            paddingBottom: centred ? top : 0,
+            justifyContent: centred ? 'center' : 'flex-start',
+          }}>
+          {heading}
+        </View>
         <ScrollView
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
+            flexGrow: centred ? 1 : undefined,
+            justifyContent: centred ? 'center' : 'flex-start',
             paddingTop: top,
-            paddingBottom: design.px(200),
+            paddingBottom: centred ? top : design.px(200),
             // Room for the focus lift (scale) and ring of full-width buttons; ScrollView clips its sides.
             paddingHorizontal: design.px(28),
             gap: design.space.lg,

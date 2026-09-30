@@ -1,4 +1,4 @@
-import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
+import { AccountStore, profileColor, type KeyValueStorage } from '@/accounts/account-store';
 import {
   followOtherTabs,
   tabSessionStorage,
@@ -71,6 +71,16 @@ describe('AccountStore', () => {
     for (const name of ['anna', 'ben', 'kind', 'gast'])
       accounts.push(await store.addSignedIn(DEV_WORLD, viewer(`v-${name}`, name), tokens(1)));
     expect(new Set(accounts.map((account) => account.color)).size).toBe(4);
+  });
+
+  it('derives the avatar colour from the viewer id, so every device shows the same one', async () => {
+    const first = await setup().store.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
+    const other = setup().store;
+    await other.addSignedIn(DEV_WORLD, viewer('v-zed', 'zed'), tokens(1));
+    const second = await other.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
+    if (other.getSnapshot().accounts[0]!.color !== first.color)
+      expect(second.color).toBe(first.color);
+    expect(profileColor('v-anna', [])).toBe(first.color);
   });
 
   it('signing in again to the same server and viewer updates the existing account', async () => {
