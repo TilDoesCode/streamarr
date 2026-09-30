@@ -126,3 +126,7 @@ The journals hold the evidence and reproduction details for each item.
 - jest prints an ICU warning because a test fixture lacks a parameter.
 - Large-screen episode rows still use the pre-Aurora EpisodeRow look (left over from R3 slice 4).
 - Backend: `title_not_found` failures offer the `otherVersion` action although the title does not exist.
+
+## From B1 verify (2026-09-30)
+- Server: the release container store clears all 20,000 entries at once when full; use an LRU and persist it (small table) so predictions survive a restart.
+- Server: "useVlc offered before VLC failed" is only covered by an older decider test, not on the playback start-failure path.
