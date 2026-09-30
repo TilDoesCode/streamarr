@@ -351,6 +351,60 @@ const TASKS = {
       'no regressions in the verified browse and player behaviours; typecheck, lint and tests green',
     ],
   },
+  'B1': {
+    title: 'Server: catalog browse for Movies/Series pages and small viewer fixes',
+    track: 'Backend',
+    deps: ['R0'],
+    maxFixes: 1,
+    guide: [
+      '- Part of the F round (PLAN.md section 5, "F — follow-up round"). The client adds Movies and Series pages to the rail (task F2); they need a paged browse endpoint.',
+      '- GET /api/v1/viewer/catalog/browse?type=movie|series&genre=<tmdb genre id, optional>&sort=popular|top_rated|newest&page=<1-based>: TMDB discover (discover/movie, discover/tv) mapped to the existing catalog item DTO including tint/tint2 and spec, filtered by the viewer age gate exactly like discover/search, with paging info (page, totalPages or hasMore). Cache per (type, genre, sort, page) like the discover rows. Validate every parameter with the existing ViewerProblem codes.',
+      '- GET /api/v1/viewer/catalog/genres?type=movie|series: TMDB genre list (id + name), cached for hours.',
+      '- Dev World: its fake TMDB must answer discover/movie, discover/tv and genre/movie|tv/list from the fixtures (genres already exist per title), honour genre and sort, and page with a small page size so paging is testable with 11 titles.',
+      '- title_not_found playback failures must not offer the otherVersion action (the client shows "Choose another version" for a title that does not exist). Check the other failure codes for actions that cannot work.',
+      '- Method prediction on the versions endpoint: the Big Buck Bunny WEB-DL is predicted as an MKV remux while playback delivers the MP4 file directly. Find where the container is assumed (release name without a container hint defaults to mkv?) and use the real container once known (probe/file extension), so the version card and playback agree. Unit test it.',
+      '- You run in parallel with client task F1, which uses the emulators and Dev World 39300: never start an emulator, do not touch client/ except regenerated API types (client gen:api + typecheck, once at the end). Test your tree on Dev World port 39310; do NOT republish or restart 39300 (the orchestrator does it after your verify).',
+    ].join('\n'),
+    acceptance: [
+      'browse and genres endpoints with validation, age gate, tint/spec, caching and paging; unit and API tests; Dev World fake supports them',
+      'title_not_found without otherVersion; predicted method uses the real container (BBB WEB-DL agrees with playback); tests',
+      'OpenAPI frozen and matching real responses; web and client types regenerated and typecheck green; full server suite and e2e_playback.py green',
+    ],
+  },
+  'F1': {
+    title: 'Client fixes: mockup details, open findings, backlog triage',
+    track: 'Client',
+    deps: ['R3'],
+    maxFixes: 2,
+    guide: [
+      '- Part of the F round (PLAN.md section 5, "F — follow-up round"). Read docs/client/runs/driver/F1-notes.md first: it lists every item with the screenshot or finding it comes from.',
+      '- Visual items first (they are what the user saw): full-bleed artwork/ambient behind the rail on every shell screen, translucent tinted glass on Android TV instead of opaque grey, one tinted focus ring that is never clipped, then a mockup comparison of every large-screen screen against docs/client/design/jpg/C-*.jpg.',
+      '- Then the R3/R2/R1 verify leftovers listed in the notes, then a backlog triage: every item in docs/client/BACKLOG.md is either marked fixed (with the task that fixed it), fixed now if small, or kept with a one-line reason.',
+      '- Do not add the Movies/Series rail entries or pages (task F2 does that after the server task B1).',
+    ].join('\n'),
+    acceptance: [
+      'artwork and ambient full-bleed behind the rail; Android TV glass translucent and legible; single untruncated focus ring; large-screen screens match the C mockups except the recorded intentional differences (TV and web screenshots, before/after)',
+      'R3 verify findings 1-5, 7, 9-12 and the listed R1/R2 leftovers fixed and shown on their target',
+      'BACKLOG.md triaged and truthful; typecheck, lint and tests green; no regressions in the verified browse and player behaviours',
+    ],
+  },
+  'F2': {
+    title: 'Client library: Movies and Series pages and rail entries',
+    track: 'Client',
+    deps: ['F1', 'B1'],
+    maxFixes: 2,
+    guide: [
+      '- Part of the F round (PLAN.md section 5, "F — follow-up round"). Uses the B1 endpoints (catalog/browse and catalog/genres; regenerate nothing, the types are in client/src/api/schema.d.ts after B1).',
+      '- Rail (large shell): Home, Search, Movies, Series in the mockup order (docs/client/design/jpg/C-detail.jpg shows film and TV icons), Settings and the profile at the bottom; labels on focus/hover as today. Phone: the bottom bar gets Movies and Series too (Android bar and iOS NativeTabs code), five entries.',
+      '- Movies and Series pages on the large shell: page title, genre chips (All + genres), a sort switch (Popular, Top rated, Newest), a poster grid with the Home card sizes, captions and spec chips, paging on scroll, skeletons, empty and error states with retry. The ambient follows the focused/hovered card like Home. TV: rail -> chips -> grid focus flow, Back returns to the rail, focus memory per page; web: keyboard and hover, URL keeps genre and sort (/movies?genre=16&sort=top_rated) so reload and Back restore them; phone: the same page as a compact grid.',
+      '- Page titles, deep links (streamarr://movies, /series), i18n de/en, screen tests for loading/empty/error/paging.',
+    ].join('\n'),
+    acceptance: [
+      'Movies and Series in the rail and the phone bar; pages with genres, sort, paging, empty/error states on Google TV, web desktop and phone',
+      'TV focus flow, web keyboard/hover and URL state, deep links and page titles work; screen tests cover the states',
+      'no regressions in the verified browse and player behaviours; typecheck, lint and tests green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {

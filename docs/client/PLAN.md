@@ -422,3 +422,23 @@ Tasks (guidance and acceptance in `orchestrator.js`):
   and sign-in; TV, web desktop and tablet render the same layout.
 - **R3 detail, version panel, player, phone**: detail + glass version panel, player overlay
   and panels, phone compact variants.
+
+### F — follow-up round (user request 2026-09-30, evening)
+The user looked at the R3 detail screenshot on Google TV and asked to fix the open small
+findings and the details that do not match the mockup: the background behind the rail (the
+artwork stops at the rail and leaves a dark band), the glow on the focused version card
+(double ring, clipped at the panel's list edge) and the few rail entries.
+Decisions (orchestrator, following the approved mockups):
+- The artwork and ambient are full-bleed on every shell screen; the rail floats above them as
+  glass. Android TV glass is a translucent tinted surface without runtime blur (PLAN R rule
+  "solid translucent surface"), not an opaque grey; Reduce Transparency stays solid.
+- One focus ring per card, tinted glow, never clipped by a scroll viewport.
+- The rail gets the mockup's library entries: Movies and Series pages (browse by genre and
+  sort, poster grid, paging). The server gains a browse endpoint for that; Settings and the
+  profile stay at the bottom. No theme toggle (dark mode is fixed), no watchlist feature.
+Tasks (guidance and acceptance in `orchestrator.js`):
+- **B1 server**: catalog browse + genres endpoints (TMDB discover, age gate, tint/spec, Dev
+  World fake), `title_not_found` without "other version", prediction uses the real container.
+- **F1 client fixes**: the screenshot details, the R3 verify findings, the small R1/R2 leftovers
+  and a truthful backlog triage.
+- **F2 client library**: Movies and Series pages on every form factor and the new rail entries.
