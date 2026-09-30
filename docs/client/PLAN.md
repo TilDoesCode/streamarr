@@ -380,3 +380,45 @@ The user: the app is "very plain and boring", has "no visual identity", and web 
   rows, detail, version panel, player overlay, motion); only the input model differs
   (focus + D-pad on TV, pointer + keyboard on web). Phones get the compact variant of the
   same components.
+
+#### R — decision (user, 2026-09-30): Aurora + Signal spec labels, real Liquid Glass on iOS
+Direction **C · Aurora** from `docs/client/design/` (tokens and notes in its `README.md`,
+mockups `jpg/C-*.jpg`), plus **B · Signal**'s monospace spec labels (resolution, HDR, codec,
+audio, playback method) and signal-bar health on cards, the version panel and the player
+info panel. Fonts: Outfit (display) + Figtree (text) + JetBrains Mono (spec labels only).
+User references: Apple TV app (ambient artwork, glass, calm motion) and Infuse (rich,
+precise technical detail).
+
+**Glass rule (hard requirement from the user):** on iOS, glass is **real Liquid Glass**, never
+an imitation. Use, in this order:
+1. native chrome that adopts Liquid Glass by itself on iOS 26: `NativeTabs` (tab bar,
+   `minimizeBehavior="onScrollDown"`, search role; sidebar on iPad), native Stack headers and
+   toolbars (transparent headers on detail screens), native `formSheet` with a transparent
+   `contentStyle` for sheets (version picker on iPhone), native menus;
+2. `expo-glass-effect` (`GlassView`, `GlassContainer`) for our own surfaces and controls:
+   non-interactive for surfaces (panels, rails, info strips), `isInteractive` only for real
+   controls (player buttons, chips);
+3. `@expo/ui` SwiftUI `GlassEffectContainer` + `glassEffect`/`glassEffectId` only where glass
+   pieces must merge or morph (player control cluster).
+Guards: `isLiquidGlassAvailable() && isGlassEffectAPIAvailable()`; below iOS 26 fall back to
+`expo-blur` system material; with Reduce Transparency render a solid surface. Never animate
+opacity on a `GlassView` or its ancestors, never put `overflow: 'hidden'` on a glass ancestor
+(glass clips itself via `borderRadius` + `borderCurve: 'continuous'`). tvOS: use Liquid Glass
+where `expo-glass-effect` supports tvOS 26, otherwise the tvOS system blur. Other platforms
+get the Aurora glass look without pretending to be native: web = CSS `backdrop-filter`
+(blur 30–40 px, saturate) + 1 px top highlight; Android phone/tablet = translucent tinted
+surface (optionally `expo-blur`); Android TV = solid translucent surface, no runtime blur.
+All glass lives behind one `Glass` component with platform files, so screens never branch.
+iOS cannot be built or run this round (no Xcode): the iOS paths are written, typechecked
+and unit-tested (availability and fallback logic), and stay pending-ios for visual checks.
+
+Tasks (guidance and acceptance in `orchestrator.js`):
+- **R0 server** (parallel to client work): per-title `tint`/`tint2` extracted from artwork
+  and a spec summary (resolution, HDR, codec, audio) on catalog items.
+- **R1 client foundation**: Aurora tokens, fonts, `Glass`, ambient backdrop, focus/hover/press
+  motion, `SpecLabel` + `SignalBars`, brand assets (wordmark, icon, splash, TV banner),
+  iOS native chrome settings, a component gallery screen.
+- **R2 one large-screen shell**: rail, hero, rows and cards, search, settings, profile picker
+  and sign-in; TV, web desktop and tablet render the same layout.
+- **R3 detail, version panel, player, phone**: detail + glass version panel, player overlay
+  and panels, phone compact variants.
