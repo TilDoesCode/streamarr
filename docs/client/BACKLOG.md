@@ -103,3 +103,11 @@ The journals hold the evidence and reproduction details for each item.
 - Web font gate waits up to ~12 s (expo-font timeout) when font requests hang; a shorter timeout with system-font fallback would avoid the blank page.
 - Phone blur cost: software-GL AVD shows RenderThread ~84 % with the blurred ambient backdrop; re-measure on a real phone before shipping the phone ambient.
 - Backend: TMDB metadata uses one server-wide language (TmdbClient `options.Language`), so a German viewer UI shows English overviews. Consider a per-request language on the viewer catalog/detail endpoints (from the client's i18n locale) with a cached per-language overview.
+
+## From R2 verify (2026-09-30)
+- TV: ambient can stay on the previous title while focus sits in the rail after fast Left presses; the rail "Home" label pill overlaps a lifted row heading.
+- TV: returning to Home from the profile picker shows a 1-2 s frame of lifted rows animating over the hero copy (slow emulator; re-check on hardware).
+- Web: mouse-wheel scroll leaves the previous row's caption line above the next row header (no top fade on the rows region).
+- Form factor is recomputed from window size: Android split screen (< 600 dp) or a web resize across 640 px swaps LargeShell and NativeTabsShell and remounts the navigator (tab stacks lost). Consider hysteresis or keeping the stacks.
+- HeroFade has no fallback when the masked-view native module is missing (fine for our builds; check after iOS pod install).
+- No unit test covers the LargeShell vs NativeTabs selection.
