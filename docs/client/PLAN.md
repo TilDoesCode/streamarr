@@ -114,6 +114,9 @@ Chromecast, trickplay thumbnails, light theme, store release/EAS.
   (`~/Library/Caches/ms-playwright/chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium`)
   with `--remote-debugging-port=9222 --user-data-dir=/tmp/argent-chromium` and drive it as a
   `chromium` device; close it when done.
+- Test audio stays silent: Android emulators run with `-no-audio` (the AVDs have `hw.audioOutput=no`; with
+  Argent `boot-device` never pass `sound: true`), Chromium always gets `--mute-audio`, and nobody changes the
+  Mac's output volume or mute state.
 
 ## 4. Journal protocol (mandatory — this is how work survives a crashed session)
 
