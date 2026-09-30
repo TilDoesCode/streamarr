@@ -4,6 +4,8 @@ import { useSessionGate } from '@/accounts/accounts-provider';
 import { ProfileSync } from '@/accounts/use-profile-sync';
 import { colors } from '@/theme';
 
+export const unstable_settings = { initialRouteName: '(tabs)' };
+
 /** Signed-in part of the app; everyone else is sent to the right onboarding step. */
 export default function AppLayout() {
   const gate = useSessionGate();
@@ -19,8 +21,21 @@ export default function AppLayout() {
     <>
       {gate.account ? <ProfileSync account={gate.account} /> : null}
       <Stack
-        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}
-      />
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="play/[playbackId]"
+          options={{
+            presentation: 'fullScreenModal',
+            animation: 'fade',
+            contentStyle: { backgroundColor: colors.video },
+          }}
+        />
+        <Stack.Screen name="dev/player" />
+      </Stack>
     </>
   );
 }

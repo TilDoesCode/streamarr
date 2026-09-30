@@ -18,13 +18,8 @@
     "desktop-web": "Desktop-Web"
   },
   "home": {
-    "openGallery": "Komponenten-Galerie",
-    "openPlayerLab": "Player-Labor",
     "greeting": "Hallo, {name}",
     "server": "Du schaust auf {server}",
-    "placeholder": "Stöbern kommt mit der Navigation. Diese Reihen kommen live von deinem Server.",
-    "switchProfile": "Profil wechseln",
-    "signOut": "Abmelden",
     "rows": {
       "trending-movies": "Filme im Trend",
       "trending-series": "Serien im Trend",
@@ -33,6 +28,57 @@
       "other": "Empfohlen"
     },
     "updating": "Wird aktualisiert …"
+  },
+  "tabs": {
+    "home": "Start",
+    "search": "Suche",
+    "settings": "Einstellungen",
+    "navigation": "Hauptnavigation"
+  },
+  "exit": {
+    "title": "Streamarr beenden?",
+    "confirm": "Beenden"
+  },
+  "search": {
+    "label": "Suche",
+    "placeholder": "Filme und Serien",
+    "promptTitle": "Finde etwas zum Anschauen",
+    "promptMessage": "Suche Filme und Serien nach Titel."
+  },
+  "detail": {
+    "movie": "Film",
+    "series": "Serie",
+    "seasons": "Staffeln",
+    "moreLikeThis": "Ähnliche Titel"
+  },
+  "player": {
+    "title": "Player",
+    "placeholder": "Die Wiedergabe ist in dieser Version noch nicht verfügbar."
+  },
+  "settings": {
+    "account": {
+      "title": "Konto",
+      "signedInAs": "{username} auf {server}",
+      "switch": "Profil wechseln",
+      "switchNamed": "{name}, Profil wechseln",
+      "signOut": "Abmelden",
+      "signOutTitle": "{name} abmelden?",
+      "signOutMessage": "Das Profil bleibt auf diesem Gerät. Melde dich wieder an, um weiterzuschauen."
+    },
+    "about": {
+      "title": "Info",
+      "appVersion": "App-Version",
+      "device": "Gerät",
+      "server": "Server",
+      "address": "Adresse",
+      "serverVersion": "Server-Version",
+      "unavailable": "Nicht verfügbar"
+    },
+    "developer": {
+      "title": "Entwickler",
+      "gallery": "Komponenten-Galerie",
+      "playerLab": "Player-Labor"
+    }
   },
   "onboarding": {
     "server": {

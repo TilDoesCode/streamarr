@@ -1,0 +1,278 @@
+import { useQuery } from '@tanstack/react-query';
+import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
+import { Clapperboard, LayoutGrid, LogOut, Users } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Platform, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
+import { unwrap } from '@/api/client';
+import { displayServerUrl } from '@/api/server-url';
+import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
+import { Avatar } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
+import { SkeletonText } from '@/components/ui/skeleton';
+import { Tag } from '@/components/ui/tag';
+import { Text } from '@/components/ui/text';
+import {
+  LANGUAGE_PREFERENCES,
+  setLanguagePreference,
+  useLanguagePreference,
+  type LanguagePreference,
+} from '@/i18n';
+import { platformKey } from '@/lib/platform';
+import { accountKey } from '@/query/keys';
+import { colors, useDesign } from '@/theme';
+
+/** Server build of the active account's server (anonymous health endpoint). */
+function useServerVersion() {
+  const { account, client } = useActiveAccount();
+  return useQuery({
+    queryKey: accountKey(account.id, 'server', 'health'),
+    queryFn: ({ signal }) =>
+      unwrap(client.GET('/api/v1/health', { signal })).then((health) => health.version ?? null),
+    staleTime: 10 * 60_000,
+  });
+}
+
+/** Settings tab: account (switch, sign out), language override, app and server info. */
+export function SettingsScreen() {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const insets = useSafeAreaInsets();
+  const pageHeading = design.isTV || Platform.OS === 'web';
+  return (
+    <ScrollView
+      testID="settings-screen"
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{
+        paddingTop: pageHeading ? design.layout.edgeVertical + insets.top : design.space.lg,
+        paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+        paddingHorizontal: design.layout.gutter,
+        gap: design.layout.sectionGap,
+        width: '100%',
+        maxWidth: design.layout.maxContentWidth,
+      }}
+      snapToAlignment={design.isTV ? 'item' : undefined}
+      snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
+      {pageHeading ? <Text variant="title">{t('tabs.settings')}</Text> : null}
+      <AccountSection />
+      <LanguageSection />
+      <AboutSection />
+      {__DEV__ ? <DeveloperSection /> : null}
+    </ScrollView>
+  );
+}
+
+function Section({
+  title,
+  children,
+  testID,
+}: {
+  title: string;
+  children: ReactNode;
+  testID?: string;
+}) {
+  const design = useDesign();
+  return (
+    <FocusSection testID={testID}>
+      <View style={{ gap: design.space.md }}>
+        <Text variant="overline" tone="subtle">
+          {title}
+        </Text>
+        {children}
+      </View>
+    </FocusSection>
+  );
+}
+
+function ButtonRow({ children }: { children: ReactNode }) {
+  const design = useDesign();
+  return (
+    <FocusGuide
+      remember
+      trap={END_OF_ROW}
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.md }}>
+      {children}
+    </FocusGuide>
+  );
+}
+
+function AccountSection() {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const router = useRouter();
+  const api = useAccountsApi();
+  const { account } = useActiveAccount();
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <Section title={t('settings.account.title')} testID="settings-account">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.lg }}>
+        <Avatar name={account.displayName} color={account.color} size={design.px(48)} />
+        <View style={{ flex: 1, gap: design.space.xxs }}>
+          <Text testID="settings-account-name" variant="subheading" numberOfLines={1}>
+            {account.displayName}
+          </Text>
+          <Text variant="callout" tone="muted" numberOfLines={1}>
+            {t('settings.account.signedInAs', {
+              username: account.username,
+              server: account.serverName,
+            })}
+          </Text>
+        </View>
+      </View>
+      <ButtonRow>
+        <Button
+          testID="settings-switch-profile"
+          variant="secondary"
+          icon={Users}
+          label={t('settings.account.switch')}
+          hasTVPreferredFocus
+          onPress={() => router.push('/profiles')}
+        />
+        <Button
+          testID="settings-sign-out"
+          variant="ghost"
+          icon={LogOut}
+          label={t('settings.account.signOut')}
+          onPress={() => setConfirm(true)}
+        />
+      </ButtonRow>
+      <Dialog
+        testID="sign-out-dialog"
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title={t('settings.account.signOutTitle', { name: account.displayName })}
+        message={t('settings.account.signOutMessage')}
+        actions={[
+          {
+            label: t('common.cancel'),
+            variant: 'secondary',
+            preferred: true,
+            onPress: () => setConfirm(false),
+          },
+          {
+            label: t('settings.account.signOut'),
+            variant: 'destructive',
+            onPress: () => {
+              setConfirm(false);
+              void api.signOut(account.id);
+            },
+          },
+        ]}
+      />
+    </Section>
+  );
+}
+
+function LanguageSection() {
+  const { t, i18n } = useTranslation();
+  const design = useDesign();
+  const preference = useLanguagePreference();
+  const label = (value: LanguagePreference) => t(`language.${value}`);
+  return (
+    <Section title={t('language.title')} testID="settings-language">
+      <FocusGuide
+        remember
+        trap={END_OF_ROW}
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
+        {LANGUAGE_PREFERENCES.map((value) => (
+          <Tag
+            key={value}
+            testID={`settings-language-${value}`}
+            role="radio"
+            aria-checked={preference === value}
+            label={label(value)}
+            selected={preference === value}
+            onPress={() => void setLanguagePreference(value)}
+          />
+        ))}
+      </FocusGuide>
+      <Text testID="settings-language-current" variant="callout" tone="muted">
+        {t('language.current', { language: label(i18n.language === 'de' ? 'de' : 'en') })}
+      </Text>
+    </Section>
+  );
+}
+
+function AboutSection() {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const { account } = useActiveAccount();
+  const server = useServerVersion();
+  const serverVersion = server.data
+    ? server.data.split('+')[0]
+    : server.isPending
+      ? undefined
+      : t('settings.about.unavailable');
+  return (
+    <Section title={t('settings.about.title')} testID="settings-about">
+      <View style={{ gap: design.space.sm }}>
+        <InfoRow
+          label={t('settings.about.appVersion')}
+          value={Constants.expoConfig?.version ?? t('settings.about.unavailable')}
+        />
+        <InfoRow
+          label={t('settings.about.device')}
+          value={`${t(`platform.${platformKey()}`)} · ${t(`formFactor.${design.formFactor}`)}`}
+        />
+        <InfoRow label={t('settings.about.server')} value={account.serverName} />
+        <InfoRow label={t('settings.about.address')} value={displayServerUrl(account.serverUrl)} />
+        <InfoRow
+          testID="settings-server-version"
+          label={t('settings.about.serverVersion')}
+          value={serverVersion}
+        />
+      </View>
+    </Section>
+  );
+}
+
+function InfoRow({ label, value, testID }: { label: string; value?: string; testID?: string }) {
+  const design = useDesign();
+  return (
+    <View style={{ flexDirection: 'row', gap: design.space.lg, alignItems: 'baseline' }}>
+      <Text variant="callout" tone="muted" style={{ width: design.px(160) }}>
+        {label}
+      </Text>
+      {value === undefined ? (
+        <View style={{ flex: 1 }}>
+          <SkeletonText width="30%" />
+        </View>
+      ) : (
+        <Text testID={testID} variant="body" selectable style={{ flex: 1 }}>
+          {value}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function DeveloperSection() {
+  const { t } = useTranslation();
+  const router = useRouter();
+  return (
+    <Section title={t('settings.developer.title')} testID="settings-developer">
+      <ButtonRow>
+        <Button
+          testID="open-gallery"
+          variant="secondary"
+          icon={LayoutGrid}
+          label={t('settings.developer.gallery')}
+          onPress={() => router.push('/dev/gallery')}
+        />
+        <Button
+          testID="open-player-lab"
+          variant="secondary"
+          icon={Clapperboard}
+          label={t('settings.developer.playerLab')}
+          onPress={() => router.push('/dev/player')}
+        />
+      </ButtonRow>
+    </Section>
+  );
+}

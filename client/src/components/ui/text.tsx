@@ -1,4 +1,4 @@
-import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
+import { Platform, Text as RNText, type TextProps as RNTextProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
 import { useDesign, type TypeVariant } from '@/theme';
@@ -34,10 +34,19 @@ export type TextProps = RNTextProps & {
   className?: string;
 };
 
-export function Text({ variant = 'body', tone, className, style, ...props }: TextProps) {
+export function Text({
+  variant = 'body',
+  tone,
+  className,
+  style,
+  selectable,
+  ...props
+}: TextProps) {
   const design = useDesign();
   return (
     <RNText
+      // Android TV: a selectable TextView takes remote focus when attached, then drops it (nothing focused).
+      selectable={selectable && !Platform.isTV}
       role={HEADINGS.has(variant) ? 'heading' : undefined}
       className={cn('text-foreground', tone && TONE_CLASS[tone], className)}
       style={[

@@ -1,4 +1,4 @@
-import { createContext, use, useEffect, type ReactNode, type Ref } from 'react';
+import { createContext, use, useEffect, useRef, type ReactNode, type Ref } from 'react';
 import {
   Platform,
   Pressable,
@@ -22,6 +22,7 @@ import Animated, {
 import { colors, easing, motion, useDesign } from '@/theme';
 
 import { FocusLayerContext, focusTopLayer } from './focus-layer';
+import { FocusMemoryContext } from './focus-memory';
 import { ItemSnapContext } from './focus-section';
 
 export type FocusLiftKind = 'card' | 'button' | 'none';
@@ -96,6 +97,8 @@ export function Focusable({
     [layer, topLayer]
   );
   const snapAlign = use(ItemSnapContext);
+  const memory = use(FocusMemoryContext);
+  const remembered = useRef<View | null>(null);
   const animate = (value: SharedValue<number>, to: number, duration: number) =>
     value.set(withTiming(to, { duration, easing: EASE_OUT }));
 
@@ -104,6 +107,13 @@ export function Focusable({
     rawFocus.set(previewState === 'focused' ? 1 : 0);
     pressed.set(previewState === 'pressed' ? 1 : 0);
   }, [previewState, rawFocus, pressed]);
+
+  useEffect(() => {
+    const slot = remembered;
+    return () => {
+      if (slot.current) memory?.forget(slot.current);
+    };
+  }, [memory]);
 
   const isDisabled = !!disabled;
   const canFocus = !isDisabled && !previewState && focusable !== false;
@@ -133,6 +143,10 @@ export function Focusable({
         style={[Platform.OS === 'web' && NO_OUTLINE, style]}
         onFocus={(event) => {
           if (isKeyboardFocus(event)) animate(rawFocus, 1, motion.focus);
+          if (memory) {
+            remembered.current = event.currentTarget as unknown as View;
+            memory.remember(remembered.current);
+          }
           onFocus?.(event);
         }}
         onBlur={(event) => {

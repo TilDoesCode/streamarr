@@ -1,0 +1,65 @@
+key Tab -> {"path":"/","focus":"nav-home","label":"Home"}
+key ArrowDown -> {"path":"/","focus":"nav-search","label":"Search"}
+key Enter -> {"path":"/search","focus":"search-field","label":"Search"}
+key Tab -> {"path":"/search","focus":"BODY","label":null}
+type in -> {"path":"/search","focus":"BODY","label":null}
+"[]"
+key Tab shift -> {"path":"/search","focus":"search-field","label":"Search"}
+type in -> {"path":"/search","focus":"search-field","label":"Search"}
+"[]"
+"in"
+type of -> {"path":"/search","focus":"search-field","label":"Search"}
+"[[\"search-result-0\",\"Night of the Living Dead, 1968\",296,174],[\"search-result-1\",\"Tears of Steel, 2012\",481,174]]"
+key Tab -> {"path":"/search","focus":"search-result-0","label":"Night of the Living Dead, 1968"}
+key Enter -> {"path":"/movie/10331","focus":"BODY","label":null}
+back  -> {"path":"/search","focus":"BODY","label":null}
+back  -> {"path":"/","focus":"BODY","label":null}
+forward  -> {"path":"/search","focus":"BODY","label":null}
+"{\"w\":1024,\"h\":1366,\"sidebar\":false,\"topbar\":[\"web-topbar\",\"web-profile\"]}"
+"/search"
+"nav-home"
+key ArrowRight -> {"path":"/search","focus":"nav-search","label":"Search"}
+key ArrowRight -> {"path":"/search","focus":"nav-settings","label":"Settings"}
+key Enter -> {"path":"/settings","focus":"nav-settings","label":"Settings"}
+key ArrowLeft -> {"path":"/settings","focus":"nav-search","label":"Search"}
+key ArrowLeft -> {"path":"/settings","focus":"nav-home","label":"Home"}
+key Enter -> {"path":"/","focus":"nav-home","label":"Home"}
+back  -> {"path":"/search","focus":"nav-home","label":"Home"}
+back  -> {"path":"/","focus":"BODY","label":null}
+1
+"nav-home"
+key ArrowRight -> {"path":"/","focus":"nav-search","label":"Search"}
+key Enter -> {"path":"/search","focus":"search-field","label":"Search"}
+key ArrowRight -> {"path":"/search","focus":"search-field","label":"Search"}
+key Enter -> {"path":"/search","focus":"BODY","label":null}
+key ArrowLeft -> {"path":"/search","focus":"BODY","label":null}
+key ArrowLeft -> {"path":"/search","focus":"BODY","label":null}
+key Enter -> {"path":"/search","focus":"BODY","label":null}
+back  -> {"path":"/","focus":"BODY","label":null}
+back  -> {"path":"/","focus":"BODY","label":null}
+back  -> {"path":"/","focus":"BODY","label":null}
+forward  -> {"path":"/search","focus":"search-field","label":"Search"}
+fullHistory, desktop, fresh load at /:
+key Enter -> {"path":"/search","focus":"nav-search","label":"Search"}
+key Enter -> {"path":"/settings","focus":"nav-settings","label":"Settings"}
+key Enter -> {"path":"/","focus":"nav-home","label":"Home"}
+key Enter -> {"path":"/search","focus":"nav-search","label":"Search"}
+back  -> {"path":"/","focus":"nav-search","label":"Search"}
+back  -> {"path":"/settings","focus":"nav-search","label":"Search"}
+back  -> {"path":"/search","focus":"nav-search","label":"Search"}
+back  -> {"path":"/","focus":"BODY","label":null}
+forward  -> {"path":"/search","focus":"search-field","label":"Search"}
+forward  -> {"path":"/settings","focus":"BODY","label":null}
+push inside a tab + tab switch:
+key Enter -> {"path":"/","focus":"nav-home","label":"Home"}
+key Enter -> {"path":"/series/19885","focus":"BODY","label":null}
+key Enter -> {"path":"/settings","focus":"nav-settings","label":"Settings"}
+back  -> {"path":"/series/19885","focus":"nav-settings","label":"Settings"}
+back  -> {"path":"/","focus":"nav-settings","label":"Settings"}
+1024x1366 (CDP metrics), top bar:
+"{\"w\":1024,\"h\":1366,\"sidebar\":false,\"topbar\":true}"
+key Enter -> {"path":"/","focus":"nav-home","label":"Home"}
+key ArrowRight -> {"path":"/","focus":"nav-search","label":"Search"}
+key Enter -> {"path":"/search","focus":"search-field","label":"Search"}
+type of -> {"path":"/search","focus":"search-field","label":"Search"}
+"[\"Night of the Living Dead, 1968\",\"Tears of Steel, 2012\"]"

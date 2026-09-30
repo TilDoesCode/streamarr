@@ -8,6 +8,7 @@ import {
   FocusGuide,
   FocusLayer,
   FocusLift,
+  FocusMemoryContext,
   FocusSection,
 } from '@/components/focus';
 import { focusTopLayer } from '@/components/focus/focus-layer';
@@ -83,6 +84,17 @@ describe('EmptyState on TV', () => {
   });
 });
 
+describe('Text on TV', () => {
+  it('is never selectable (a selectable Android TextView steals remote focus when attached)', async () => {
+    await renderWithProviders(
+      <Text testID="message" selectable>
+        {'m'}
+      </Text>
+    );
+    expect(screen.getByTestId('message').props.selectable).toBe(false);
+  });
+});
+
 describe('Focusable on TV', () => {
   it('requests preferred focus only when it can take focus', async () => {
     await renderWithProviders(
@@ -97,6 +109,24 @@ describe('Focusable on TV', () => {
     );
     expect(screen.getByTestId('preferred').props.hasTVPreferredFocus).toBe(true);
     expect(screen.getByTestId('disabled').props.hasTVPreferredFocus).toBeUndefined();
+  });
+
+  it('reports its focus to the screen memory and is forgotten when it unmounts', async () => {
+    const memory = { remember: jest.fn(), forget: jest.fn() };
+    const view = { requestTVFocus: jest.fn() };
+    const { unmount } = await renderWithProviders(
+      <FocusMemoryContext value={memory}>
+        <Focusable testID="card" onPress={jest.fn()}>
+          <Text>{'a'}</Text>
+        </Focusable>
+      </FocusMemoryContext>
+    );
+    await act(async () => {
+      fireEvent(screen.getByTestId('card'), 'focus', { currentTarget: view });
+    });
+    expect(memory.remember).toHaveBeenCalledWith(view);
+    await act(async () => unmount());
+    expect(memory.forget).toHaveBeenCalledWith(view);
   });
 });
 

@@ -1,0 +1,54 @@
+# M2.4 W9 Google TV D-pad walk (Argent tv-remote per key; focused node from uiautomator dump after each press; px of 1920x1080)
+## Push a detail from row 1 and pop back to the opener
+right   FOCUSED: 'home-card-trending-movies-1 Big Buck Bunny, 2008' [436,138][644,534]
+right   FOCUSED: 'home-card-trending-movies-2 Cosmos Laundromat, 2015' [672,138][880,534]
+select  FOCUSED: 'movie-play Abspielen' [200,600][437,672]
+back    FOCUSED: 'home-card-trending-movies-2 Cosmos Laundromat, 2015' [672,138][880,534]
+## Two levels deep (series -> season), rail from a pushed screen, pop chain
+down    FOCUSED: 'home-card-trending-series-0 Sherlock, 2010' [200,138][408,534]
+right   FOCUSED: 'home-card-trending-series-1 Pioneer One, 2010' [436,138][644,534]
+select  FOCUSED: 'season-1 Season 1'
+select  FOCUSED: 'episode-1 Folge 1 · 35 Min. · 16. Juni 2010. Earthfall'   (googletv-season-pushed.png)
+down    FOCUSED: 'episode-2 Folge 2 · 35 Min. · 25. Juni 2010. The Man From Mars'
+left    FOCUSED: 'rail-home Start' [32,448][128,528]
+right   FOCUSED: 'episode-2 Folge 2 · 35 Min. · 25. Juni 2010. The Man From Mars'
+back    FOCUSED: 'season-1 Season 1'
+back    FOCUSED: 'home-card-trending-series-1 Pioneer One, 2010'
+## Before the fix: a tab switch lost Home's focused item (landed on the first card)
+down/left/select(rail-search)/left/up/select(rail-home) -> FOCUSED: 'home-card-trending-movies-0 Sprite Fright, 2024' (expected Sherlock)
+## After the fix (ScreenFocusScope JS memory)
+down    FOCUSED: 'home-card-trending-series-0 Sherlock, 2010' [200,138][408,534]
+left    FOCUSED: 'rail-home Start' [32,448][128,528]
+down    FOCUSED: 'rail-search Suche' [32,548][128,628]
+select  FOCUSED: 'search-field-field Suche' [200,198][1880,286]
+left    FOCUSED: 'rail-search Suche' [32,548][128,628]
+up      FOCUSED: 'rail-home Start' [32,448][128,528]
+select  FOCUSED: 'home-card-trending-series-0 Sherlock, 2010' [200,138][408,534]
+right   FOCUSED: 'home-card-trending-series-1 Pioneer One, 2010' [436,138][644,534]
+select  FOCUSED: 'season-1 Season 1' [200,842][372,902]
+back    FOCUSED: 'home-card-trending-series-1 Pioneer One, 2010' [436,138][644,534]
+## Back chain: rail -> content, Search tab -> Home (remembered item), Home -> exit dialog
+left    FOCUSED: 'rail-home Start' [32,448][128,528]
+back    FOCUSED: 'home-card-trending-series-0 Sherlock, 2010' [200,138][408,534]
+left    FOCUSED: 'rail-home Start'
+down    FOCUSED: 'rail-search Suche' [32,548][128,628]
+select  FOCUSED: 'search-field-field Suche' [200,198][1880,286]
+back    FOCUSED: 'home-card-trending-series-0 Sherlock, 2010' [200,138][408,534]
+back    FOCUSED: ' Abbrechen' [972,553][1173,625]   (exit dialog, googletv-exit-confirm.png)
+back    FOCUSED: 'home-card-trending-series-0 Sherlock, 2010' [200,138][408,534]   (dialog closed)
+## Deep links (adb am start -d ...)
+streamarr://movie/123    -> movie route, 'detail-error' title_not_found (id not in the Dev World), FOCUSED 'Zurück'; back -> Home Sherlock (googletv-deeplink-movie-123.png)
+streamarr://movie/10378  -> 'movie-screen-10378', FOCUSED 'movie-play Abspielen'; back -> Home Sherlock; back -> exit dialog (googletv-deeplink-movie-10378.png)
+## Player route
+up      FOCUSED: 'home-card-trending-movies-0 Sprite Fright, 2024'
+select  FOCUSED: 'movie-play Abspielen'
+select  FOCUSED: 'play-close Schließen'
+back    FOCUSED: 'movie-play Abspielen'
+back    FOCUSED: 'home-card-trending-movies-0 Sprite Fright, 2024'
+## Settings: language override, switch profile, sign out, sign in again, exit
+left/down/select(rail-settings) -> FOCUSED 'settings-switch-profile Profil wechseln'
+down right select -> 'settings-language-en English'; texts now "Switch profile", "Sign out", "Showing English"; rail content-desc Home/Search/Settings (googletv-settings-english.png)
+right up select -> profiles-screen "Who's watching?" (Anna, Mia, Anna); back -> FOCUSED 'settings-switch-profile Switch profile'
+right select right select -> sign-out dialog -> Sign out -> profiles-screen, FOCUSED 'profile-anna Anna, Signed out'
+select -> sign-in-screen (login anna) ; select + Argent keyboard "streamarr" + Enter -> home-screen, FOCUSED 'home-card-trending-movies-0'
+back -> exit dialog ' Cancel'; right ' Exit'; select -> topResumedActivity com.google.android.apps.tv.launcherx/.home.HomeActivity

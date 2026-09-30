@@ -1,19 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Clapperboard, Film, LayoutGrid, LogOut, Users } from 'lucide-react-native';
+import { Film } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
+import { useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { displayServerUrl } from '@/api/server-url';
-import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
 import { PosterCard } from '@/components/media/poster-card';
 import { Shelf } from '@/components/media/shelf';
+import { titleHref } from '@/navigation/routes';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { Avatar } from '@/components/ui/avatar';
@@ -55,13 +55,11 @@ export function useHomeRows() {
   });
 }
 
-/** Placeholder home until the navigation shells (M2.4) and browse screens (M4.1) replace it. */
+/** Home tab: greeting and the live discover rows (M4.1 adds hero, continue watching and next up). */
 export function HomeScreen() {
   const { t } = useTranslation();
   const design = useDesign();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const api = useAccountsApi();
   const { account } = useActiveAccount();
   const rows = useHomeRows();
   const posterWidth = design.layout.posterWidth;
@@ -69,6 +67,7 @@ export function HomeScreen() {
   return (
     <View testID="home-screen" style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
+        contentInsetAdjustmentBehavior="never"
         contentContainerStyle={{
           paddingTop: design.isTV ? design.layout.edgeVertical : insets.top + design.space.lg,
           paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
@@ -76,75 +75,34 @@ export function HomeScreen() {
         }}
         snapToAlignment={design.isTV ? 'item' : undefined}
         snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
-        <FocusSection>
-          <View
-            style={{
-              paddingHorizontal: design.layout.gutter,
-              gap: design.space.lg,
-            }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.lg }}>
-              <Avatar
-                name={account.displayName}
-                color={account.color}
-                size={design.px(design.isTV ? 56 : 48)}
-              />
-              <View style={{ flex: 1, gap: design.space.xxs }}>
-                <Text testID="home-greeting" variant="title" numberOfLines={1}>
-                  {t('home.greeting', { name: account.displayName })}
-                </Text>
-                <Text variant="callout" tone="muted" numberOfLines={1}>
-                  {t('home.server', {
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: design.space.lg,
+            paddingHorizontal: design.layout.gutter,
+          }}>
+          <Avatar
+            name={account.displayName}
+            color={account.color}
+            size={design.px(design.isTV ? 44 : 48)}
+          />
+          <View style={{ flex: 1, gap: design.space.xxs }}>
+            <Text testID="home-greeting" variant="title" numberOfLines={1}>
+              {t('home.greeting', { name: account.displayName })}
+            </Text>
+            <Text variant="callout" tone="muted" numberOfLines={1}>
+              {rows.isFetching && rows.data
+                ? t('home.updating')
+                : t('home.server', {
                     server: t('onboarding.serverChip', {
                       name: account.serverName,
                       url: displayServerUrl(account.serverUrl),
                     }),
                   })}
-                </Text>
-              </View>
-            </View>
-            <FocusGuide
-              remember
-              trap={END_OF_ROW}
-              style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.md }}>
-              <Button
-                testID="home-switch-profile"
-                variant="secondary"
-                icon={Users}
-                label={t('home.switchProfile')}
-                hasTVPreferredFocus
-                onPress={() => router.push('/profiles')}
-              />
-              <Button
-                testID="home-sign-out"
-                variant="ghost"
-                icon={LogOut}
-                label={t('home.signOut')}
-                onPress={() => void api.signOut(account.id)}
-              />
-              {__DEV__ ? (
-                <Button
-                  testID="open-gallery"
-                  variant="ghost"
-                  icon={LayoutGrid}
-                  label={t('home.openGallery')}
-                  onPress={() => router.push('/dev/gallery')}
-                />
-              ) : null}
-              {__DEV__ ? (
-                <Button
-                  testID="open-player-lab"
-                  variant="ghost"
-                  icon={Clapperboard}
-                  label={t('home.openPlayerLab')}
-                  onPress={() => router.push('/dev/player')}
-                />
-              ) : null}
-            </FocusGuide>
-            <Text variant="caption" tone="subtle">
-              {rows.isFetching && rows.data ? t('home.updating') : t('home.placeholder')}
             </Text>
           </View>
-        </FocusSection>
+        </View>
         <HomeRows rows={rows} posterWidth={posterWidth} />
       </ScrollView>
     </View>
@@ -160,6 +118,7 @@ function HomeRows({
 }) {
   const { t } = useTranslation();
   const design = useDesign();
+  const router = useRouter();
   const artworkHeight = posterWidth / aspect.poster;
 
   if (rows.data === undefined) {
@@ -213,9 +172,9 @@ function HomeRows({
         </View>
       ) : null}
       {visible.length ? (
-        visible.map((row, index) => (
+        visible.map((row, rowIndex) => (
           <Shelf
-            key={row.id ?? index}
+            key={row.id ?? rowIndex}
             testID={`home-row-${row.id}`}
             memoryKey={`home-${row.id}`}
             title={t(`home.rows.${rowKey(row.id)}`)}
@@ -223,12 +182,15 @@ function HomeRows({
             keyExtractor={(item, itemIndex) => item.workId ?? String(itemIndex)}
             itemWidth={posterWidth}
             artworkHeight={artworkHeight}
-            renderItem={({ item }) => (
+            renderItem={({ item, index }) => (
               <PosterCard
+                testID={`home-card-${row.id}-${index}`}
                 title={item.title ?? ''}
                 subtitle={item.year ? String(item.year) : undefined}
                 imageUri={item.posterUrl}
                 width={posterWidth}
+                hasTVPreferredFocus={rowIndex === 0 && index === 0}
+                onPress={() => router.push(titleHref(item))}
               />
             )}
           />

@@ -1,0 +1,35 @@
+# M2.4 verification round 1 - Google TV focus walk (adb keyevent + uiautomator dump of the focused node after each step)
+# Session 1 (dev build + Metro 8081, signed in as Anna)
+s1  RIGHT RIGHT DOWN RIGHT     -> home-card-trending-series-1 'Pioneer One'
+s2  LEFT                        -> home-card-trending-series-0 'Sherlock'
+s3  LEFT                        -> rail-home (rail expanded, googletv-rail-open.png)
+s4  RIGHT                       -> home-card-trending-series-0 'Sherlock' (remembered item)
+s5  LEFT DOWN                   -> rail-search
+s6  RIGHT                       -> 'Sherlock' (no tab switch, back to remembered item)
+s7  LEFT DOWN CENTER            -> rail opened on rail-search (last focused rail item), DOWN -> Settings: settings-switch-profile
+s8  LEFT                        -> rail-settings
+s9  UP CENTER (first Search visit) -> FOCUSED: (none), search-screen shown
+s10-s13 LEFT / UP CENTER / DOWN / RIGHT -> FOCUSED: (none) (D-pad dead; EditText flags VF.D..CL., no focused view in dumpsys)
+s14 BACK                        -> Home, 'Sherlock'
+s17 (second Search visit) LEFT UP CENTER from Settings -> search-field-field (works once the screen exists)
+# Session 2 (force-stop + relaunch, fresh JS)
+r1  LEFT DOWN CENTER (first Search visit) -> FOCUSED: (none); UP LEFT DOWN RIGHT CENTER -> (none) (googletv-search-first-visit-no-focus.png)
+p0  BACK                        -> Home 'Sprite Fright'
+p1  RIGHT RIGHT                 -> 'Cosmos Laundromat'; CENTER -> movie-play (movie-screen-358332); BACK -> 'Cosmos Laundromat'
+q1  DOWN RIGHT                  -> 'Pioneer One'; CENTER -> season-1 (series-screen-33050); CENTER -> episode-1 (season-screen-33050-1)
+q4  DOWN DOWN                   -> episode-3; BACK -> season-1; BACK -> 'Pioneer One'
+t1  CENTER -> season-1; LEFT -> rail-search; RIGHT -> season-1 (rail from a pushed screen)
+t4  LEFT DOWN CENTER -> Settings (switch-profile); LEFT -> rail-settings; UP UP CENTER -> Home tab: season-1 on series-screen-33050 (tab switch keeps focus + stack)
+b1  BACK -> 'Pioneer One'; BACK -> exit-dialog, focus 'Cancel' (googletv-exit-dialog.png); BACK -> 'Pioneer One'
+c1  LEFT LEFT -> rail-home; BACK -> 'Sherlock' (rail Back returns to content)
+c3  rail -> Settings; BACK -> Home 'Sherlock'
+e1  BACK -> exit-dialog 'Cancel'; RIGHT -> 'Exit'; CENTER -> topResumedActivity com.google.android.apps.tv.launcherx/.home.HomeActivity
+d1  am start streamarr://movie/123 (cold) -> dev menu -> CENTER -> detail-error 'Title not found' / title_not_found, focus 'Go back' (googletv-deeplink-movie-123.png)
+d3  CENTER (Go back) -> home-screen, focus rail-home (rail, not Home content)
+d4  am start streamarr://movie/10378 (warm) -> movie-screen-10378 focus movie-play; BACK -> 'Sprite Fright'
+g1  LEFT -> 'Sprite Fright' (rail does not open); LEFT -> same; DOWN LEFT -> rail-home (opens from row 2)
+# Session 3 (relaunch)
+h1  RIGHT RIGHT CENTER -> movie; BACK -> 'Cosmos'; LEFT x3 -> rail-home (first row opens the rail normally)
+r3  DOWN CENTER (first Search visit, 3rd reproduction) -> FOCUSED: (none); DOWN -> (none)
+l2  BACK, rail -> Settings; DOWN -> settings-language-system; RIGHT RIGHT CENTER -> Deutsch: rail Start/Suche/Einstellungen, buttons 'Profil wechseln'/'Abmelden' (googletv-settings-deutsch.png)
+l6  UP CENTER (Switch profile) -> profiles-screen 'Wer schaut?'; BACK -> settings-switch-profile; English override restored

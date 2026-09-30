@@ -8,16 +8,11 @@ import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { signInFlow } from '@/accounts/sign-in-flow';
 import { createMemoryVault } from '@/accounts/types';
-import AppLayout from '@/app/(app)/_layout';
-import HomeRoute from '@/app/(app)/index';
-import ProfilesRoute from '@/app/(onboarding)/profiles';
-import ServerRoute from '@/app/(onboarding)/server';
-import ChangePasswordRoute from '@/app/(onboarding)/sign-in/change-password';
-import SignInRoute from '@/app/(onboarding)/sign-in/index';
-import SecondFactorRoute from '@/app/(onboarding)/sign-in/second-factor';
 import { ToastProvider } from '@/components/ui/toast';
 import { setLanguagePreference } from '@/i18n';
 import { DesignProvider } from '@/theme';
+
+import { appRoutes } from '../../jest/app-routes';
 
 // expo-router/testing-library installs its own Reanimated mock, which lacks useReducedMotion and makeMutable.
 const reanimatedMock = jest.requireMock<Record<string, unknown>>('react-native-reanimated');
@@ -135,16 +130,7 @@ function RootLayout() {
   );
 }
 
-const routes = {
-  _layout: RootLayout,
-  '(app)/_layout': AppLayout,
-  '(app)/index': HomeRoute,
-  '(onboarding)/server': ServerRoute,
-  '(onboarding)/profiles': ProfilesRoute,
-  '(onboarding)/sign-in/index': SignInRoute,
-  '(onboarding)/sign-in/second-factor': SecondFactorRoute,
-  '(onboarding)/sign-in/change-password': ChangePasswordRoute,
-};
+const routes = { _layout: RootLayout, ...appRoutes };
 
 beforeEach(async () => {
   store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });

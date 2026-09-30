@@ -1,0 +1,5 @@
+Android phone (Streamarr_Phone, same dev build, Metro JS with the fix):
+- Search tab: "el" -> search-result-0 Elephants Dream; "the" -> search-result-0 Night of the Living Dead (chunked rows)
+- Back from the Search tab root -> Home (backBehavior initialRoute)
+- Search -> result -> movie-play (movie pushed in the Search stack) -> Back -> search-result-0, query kept
+- Search -> Back -> Home -> Back -> NexusLauncherActivity (topResumedActivity)

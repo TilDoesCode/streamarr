@@ -95,6 +95,16 @@ export function DesignProvider({ children }: { children: ReactNode }) {
   return <DesignContext value={design}>{children}</DesignContext>;
 }
 
+/** Content beside a navigation rail: same design with a narrower screen gutter. */
+export function DesignGutter({ gutter, children }: { gutter: number; children: ReactNode }) {
+  const design = useDesign();
+  const value = useMemo(
+    () => ({ ...design, layout: { ...design.layout, gutter } }),
+    [design, gutter]
+  );
+  return <DesignContext value={value}>{children}</DesignContext>;
+}
+
 export function useDesign(): Design {
   const design = use(DesignContext);
   if (!design) throw new Error('useDesign must be used inside <DesignProvider>');

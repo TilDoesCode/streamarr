@@ -18,13 +18,8 @@
     "desktop-web": "Desktop web"
   },
   "home": {
-    "openGallery": "Component gallery",
-    "openPlayerLab": "Player lab",
     "greeting": "Hi, {name}",
     "server": "Watching on {server}",
-    "placeholder": "Browsing arrives with the navigation shells. These rows come live from your server.",
-    "switchProfile": "Switch profile",
-    "signOut": "Sign out",
     "rows": {
       "trending-movies": "Trending movies",
       "trending-series": "Trending series",
@@ -33,6 +28,57 @@
       "other": "Recommended"
     },
     "updating": "Updating…"
+  },
+  "tabs": {
+    "home": "Home",
+    "search": "Search",
+    "settings": "Settings",
+    "navigation": "Main navigation"
+  },
+  "exit": {
+    "title": "Leave Streamarr?",
+    "confirm": "Exit"
+  },
+  "search": {
+    "label": "Search",
+    "placeholder": "Movies and series",
+    "promptTitle": "Find something to watch",
+    "promptMessage": "Search movies and series by title."
+  },
+  "detail": {
+    "movie": "Movie",
+    "series": "Series",
+    "seasons": "Seasons",
+    "moreLikeThis": "More like this"
+  },
+  "player": {
+    "title": "Player",
+    "placeholder": "Playback isn’t available in this version yet."
+  },
+  "settings": {
+    "account": {
+      "title": "Account",
+      "signedInAs": "{username} on {server}",
+      "switch": "Switch profile",
+      "switchNamed": "{name}, switch profile",
+      "signOut": "Sign out",
+      "signOutTitle": "Sign out {name}?",
+      "signOutMessage": "The profile stays on this device. Sign in again to keep watching."
+    },
+    "about": {
+      "title": "About",
+      "appVersion": "App version",
+      "device": "Device",
+      "server": "Server",
+      "address": "Address",
+      "serverVersion": "Server version",
+      "unavailable": "Unavailable"
+    },
+    "developer": {
+      "title": "Developer",
+      "gallery": "Component gallery",
+      "playerLab": "Player lab"
+    }
   },
   "onboarding": {
     "server": {
