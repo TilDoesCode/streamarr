@@ -9,6 +9,7 @@ import {
   Info,
   Layers,
   Maximize,
+  PictureInPicture2,
   Minimize,
   Pause,
   Play,
@@ -325,218 +326,231 @@ export function PlayerOverlay({
       style={StyleSheet.absoluteFill}
       onPointerMove={Platform.OS === 'web' ? () => show() : undefined}>
       {Surface ? <Surface style={StyleSheet.absoluteFill} fit={fit} /> : null}
-      {tv ? null : (
-        <GestureDetector gesture={surfaceGestures}>
-          <View testID="player-surface" style={StyleSheet.absoluteFill} />
-        </GestureDetector>
-      )}
-      {flash ? (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
-          <Text variant="title">{flash}</Text>
-        </View>
-      ) : null}
-      <Animated.View
-        testID={visible ? 'player-overlay' : 'player-overlay-hidden'}
-        pointerEvents={visible ? 'box-none' : 'none'}
-        style={[StyleSheet.absoluteFill, fade]}>
-        <Scrim
-          direction="down"
-          color={colors.scrim.DEFAULT}
-          style={[styles.topShade, { height: top + design.px(tv ? 220 : 140) }]}
-        />
-        <Scrim
-          direction="up"
-          color={colors.scrim.DEFAULT}
-          style={[styles.bottomShade, { height: bottom + design.px(tv ? 340 : 210) }]}
-        />
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            top,
-            left: design.layout.gutter,
-            right: design.layout.gutter,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: design.space.md,
-          }}>
+      {controller.pictureInPicture ? null : (
+        <>
           {tv ? null : (
-            <IconButton
-              testID="player-close"
-              icon={ArrowLeft}
-              variant="ghost"
-              accessibilityLabel={pt('controls.close')}
-              onPress={onClose}
-            />
+            <GestureDetector gesture={surfaceGestures}>
+              <View testID="player-surface" style={StyleSheet.absoluteFill} />
+            </GestureDetector>
           )}
-          <Text
-            testID="player-title"
-            variant={tv ? 'heading' : 'subheading'}
-            numberOfLines={1}
-            style={{ flex: 1 }}>
-            {title}
-          </Text>
-          {controller.phase === 'switching' ? (
-            <Text variant="caption" tone="muted">
-              {pt('stepper.switching')}
-            </Text>
-          ) : null}
-        </View>
-        {tv ? null : (
-          <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.centre]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xl }}>
-              <View style={styles.centreBacking}>
-                <IconButton
-                  testID="player-back10"
-                  icon={RotateCcw}
-                  variant="ghost"
-                  size="lg"
-                  accessibilityLabel={pt('controls.back10')}
-                  onPress={() => controller.seekBy(-10)}
-                />
-              </View>
-              <View style={styles.centreBacking}>
-                <IconButton
-                  testID="player-toggle-centre"
-                  icon={paused ? Play : Pause}
-                  size="lg"
-                  accessibilityLabel={pt(paused ? 'controls.play' : 'controls.pause')}
-                  onPress={() => controller.togglePlay()}
-                />
-              </View>
-              <View style={styles.centreBacking}>
-                <IconButton
-                  testID="player-forward30"
-                  icon={RotateCw}
-                  variant="ghost"
-                  size="lg"
-                  accessibilityLabel={pt('controls.forward30')}
-                  onPress={() => controller.seekBy(30)}
-                />
-              </View>
+          {flash ? (
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
+              <Text variant="title">{flash}</Text>
             </View>
-          </View>
-        )}
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            left: design.layout.gutter,
-            right: design.layout.gutter,
-            bottom,
-            gap: design.space.sm,
-          }}>
-          <SeekBar
-            seekRef={seekRef}
-            position={position}
-            buffered={clock.buffered}
-            duration={duration}
-            scrubbing={scrub !== null}
-            label={pt('controls.seek')}
-            onFocus={() => {
-              rowFocused.current = false;
-              setZone('progress');
-            }}
-            onScrub={(target) => scrubTo(target, 60_000)}
-            onScrubEnd={commitScrub}
-          />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text testID="player-position" variant="caption" tone="muted">
-              {formatClock(position)}
-            </Text>
-            <Text testID="player-remaining" variant="caption" tone="muted">
-              {`−${formatClock(remaining)}`}
-            </Text>
-          </View>
-          <FocusGuide
-            remember
-            trap={CENTRED_ROW}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
-            {tv || Platform.OS === 'web' ? (
-              <IconButton
-                ref={playRef}
-                testID="player-toggle"
-                icon={paused ? Play : Pause}
-                accessibilityLabel={pt(paused ? 'controls.play' : 'controls.pause')}
-                onFocus={onRowFocus}
-                onBlur={onRowBlur}
-                onPress={() => {
-                  controller.togglePlay();
-                  show('buttons');
+          ) : null}
+          <Animated.View
+            testID={visible ? 'player-overlay' : 'player-overlay-hidden'}
+            pointerEvents={visible ? 'box-none' : 'none'}
+            style={[StyleSheet.absoluteFill, fade]}>
+            <Scrim
+              direction="down"
+              color={colors.scrim.DEFAULT}
+              style={[styles.topShade, { height: top + design.px(tv ? 220 : 140) }]}
+            />
+            <Scrim
+              direction="up"
+              color={colors.scrim.DEFAULT}
+              style={[styles.bottomShade, { height: bottom + design.px(tv ? 340 : 210) }]}
+            />
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: 'absolute',
+                top,
+                left: design.layout.gutter,
+                right: design.layout.gutter,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: design.space.md,
+              }}>
+              {tv ? null : (
+                <IconButton
+                  testID="player-close"
+                  icon={ArrowLeft}
+                  variant="ghost"
+                  accessibilityLabel={pt('controls.close')}
+                  onPress={onClose}
+                />
+              )}
+              <Text
+                testID="player-title"
+                variant={tv ? 'heading' : 'subheading'}
+                numberOfLines={1}
+                style={{ flex: 1 }}>
+                {title}
+              </Text>
+              {controller.phase === 'switching' ? (
+                <Text variant="caption" tone="muted">
+                  {pt('stepper.switching')}
+                </Text>
+              ) : null}
+            </View>
+            {tv ? null : (
+              <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.centre]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xl }}>
+                  <View style={styles.centreBacking}>
+                    <IconButton
+                      testID="player-back10"
+                      icon={RotateCcw}
+                      variant="ghost"
+                      size="lg"
+                      accessibilityLabel={pt('controls.back10')}
+                      onPress={() => controller.seekBy(-10)}
+                    />
+                  </View>
+                  <View style={styles.centreBacking}>
+                    <IconButton
+                      testID="player-toggle-centre"
+                      icon={paused ? Play : Pause}
+                      size="lg"
+                      accessibilityLabel={pt(paused ? 'controls.play' : 'controls.pause')}
+                      onPress={() => controller.togglePlay()}
+                    />
+                  </View>
+                  <View style={styles.centreBacking}>
+                    <IconButton
+                      testID="player-forward30"
+                      icon={RotateCw}
+                      variant="ghost"
+                      size="lg"
+                      accessibilityLabel={pt('controls.forward30')}
+                      onPress={() => controller.seekBy(30)}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: 'absolute',
+                left: design.layout.gutter,
+                right: design.layout.gutter,
+                bottom,
+                gap: design.space.sm,
+              }}>
+              <SeekBar
+                seekRef={seekRef}
+                position={position}
+                buffered={clock.buffered}
+                duration={duration}
+                scrubbing={scrub !== null}
+                label={pt('controls.seek')}
+                onFocus={() => {
+                  rowFocused.current = false;
+                  setZone('progress');
                 }}
+                onScrub={(target) => scrubTo(target, 60_000)}
+                onScrubEnd={commitScrub}
               />
-            ) : null}
-            {tv ? (
-              <>
-                <IconButton
-                  testID="player-back10-tv"
-                  icon={RotateCcw}
-                  accessibilityLabel={pt('controls.back10')}
-                  onFocus={onRowFocus}
-                  onBlur={onRowBlur}
-                  onPress={() => {
-                    controller.seekBy(-10);
-                    show('buttons');
-                  }}
-                />
-                <IconButton
-                  testID="player-forward30-tv"
-                  icon={RotateCw}
-                  accessibilityLabel={pt('controls.forward30')}
-                  onFocus={onRowFocus}
-                  onBlur={onRowBlur}
-                  onPress={() => {
-                    controller.seekBy(30);
-                    show('buttons');
-                  }}
-                />
-              </>
-            ) : null}
-            <View style={{ flex: 1 }} />
-            {panelButtons.map((panel) => (
-              <IconButton
-                key={panel}
-                testID={`player-open-${panel}`}
-                icon={PANEL_ICONS[panel]}
-                variant="ghost"
-                accessibilityLabel={pt(`controls.${panel}`)}
-                onFocus={onRowFocus}
-                onBlur={onRowBlur}
-                onPress={() => onPanel(panel)}
-              />
-            ))}
-            {Platform.OS === 'web' ? (
-              <IconButton
-                testID="player-mute"
-                icon={muted ? VolumeX : Volume2}
-                variant="ghost"
-                accessibilityLabel={pt(muted ? 'controls.unmute' : 'controls.mute')}
-                onPress={toggleMute}
-              />
-            ) : null}
-            {fullscreenAvailable ? (
-              <IconButton
-                testID="player-fullscreen"
-                icon={fullscreen ? Minimize : Maximize}
-                variant="ghost"
-                accessibilityLabel={pt(
-                  fullscreen ? 'controls.exitFullscreen' : 'controls.fullscreen'
-                )}
-                onPress={toggleFullscreen}
-              />
-            ) : null}
-            {!tv && Platform.OS !== 'web' ? (
-              <IconButton
-                testID="player-fit"
-                icon={fit === 'cover' ? Shrink : Expand}
-                variant="ghost"
-                accessibilityLabel={pt(fit === 'cover' ? 'controls.fit' : 'controls.fill')}
-                onPress={() => setFit(fit === 'cover' ? 'contain' : 'cover')}
-              />
-            ) : null}
-          </FocusGuide>
-        </View>
-      </Animated.View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text testID="player-position" variant="caption" tone="muted">
+                  {formatClock(position)}
+                </Text>
+                <Text testID="player-remaining" variant="caption" tone="muted">
+                  {`−${formatClock(remaining)}`}
+                </Text>
+              </View>
+              <FocusGuide
+                remember
+                trap={CENTRED_ROW}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
+                {tv || Platform.OS === 'web' ? (
+                  <IconButton
+                    ref={playRef}
+                    testID="player-toggle"
+                    icon={paused ? Play : Pause}
+                    accessibilityLabel={pt(paused ? 'controls.play' : 'controls.pause')}
+                    onFocus={onRowFocus}
+                    onBlur={onRowBlur}
+                    onPress={() => {
+                      controller.togglePlay();
+                      show('buttons');
+                    }}
+                  />
+                ) : null}
+                {tv ? (
+                  <>
+                    <IconButton
+                      testID="player-back10-tv"
+                      icon={RotateCcw}
+                      accessibilityLabel={pt('controls.back10')}
+                      onFocus={onRowFocus}
+                      onBlur={onRowBlur}
+                      onPress={() => {
+                        controller.seekBy(-10);
+                        show('buttons');
+                      }}
+                    />
+                    <IconButton
+                      testID="player-forward30-tv"
+                      icon={RotateCw}
+                      accessibilityLabel={pt('controls.forward30')}
+                      onFocus={onRowFocus}
+                      onBlur={onRowBlur}
+                      onPress={() => {
+                        controller.seekBy(30);
+                        show('buttons');
+                      }}
+                    />
+                  </>
+                ) : null}
+                <View style={{ flex: 1 }} />
+                {panelButtons.map((panel) => (
+                  <IconButton
+                    key={panel}
+                    testID={`player-open-${panel}`}
+                    icon={PANEL_ICONS[panel]}
+                    variant="ghost"
+                    accessibilityLabel={pt(`controls.${panel}`)}
+                    onFocus={onRowFocus}
+                    onBlur={onRowBlur}
+                    onPress={() => onPanel(panel)}
+                  />
+                ))}
+                {Platform.OS === 'web' ? (
+                  <IconButton
+                    testID="player-mute"
+                    icon={muted ? VolumeX : Volume2}
+                    variant="ghost"
+                    accessibilityLabel={pt(muted ? 'controls.unmute' : 'controls.mute')}
+                    onPress={toggleMute}
+                  />
+                ) : null}
+                {fullscreenAvailable ? (
+                  <IconButton
+                    testID="player-fullscreen"
+                    icon={fullscreen ? Minimize : Maximize}
+                    variant="ghost"
+                    accessibilityLabel={pt(
+                      fullscreen ? 'controls.exitFullscreen' : 'controls.fullscreen'
+                    )}
+                    onPress={toggleFullscreen}
+                  />
+                ) : null}
+                {controller.engine?.supportsPictureInPicture ? (
+                  <IconButton
+                    testID="player-pip"
+                    icon={PictureInPicture2}
+                    variant="ghost"
+                    accessibilityLabel={pt('controls.pip')}
+                    onPress={() => controller.engine?.startPictureInPicture?.()}
+                  />
+                ) : null}
+                {!tv && Platform.OS !== 'web' ? (
+                  <IconButton
+                    testID="player-fit"
+                    icon={fit === 'cover' ? Shrink : Expand}
+                    variant="ghost"
+                    accessibilityLabel={pt(fit === 'cover' ? 'controls.fit' : 'controls.fill')}
+                    onPress={() => setFit(fit === 'cover' ? 'contain' : 'cover')}
+                  />
+                ) : null}
+              </FocusGuide>
+            </View>
+          </Animated.View>
+        </>
+      )}
     </View>
   );
 }

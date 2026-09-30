@@ -27,7 +27,7 @@ index 1a32e30..6ba9595 100644
  
    fun cancelPauseDelay() = player.cancelPauseDelay()
 diff --git a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
-index da483e9..7d926c0 100644
+index da483e9..f1e03e6 100644
 --- a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
 +++ b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
 @@ -234,12 +234,34 @@ class MediaPlayer(
@@ -101,7 +101,31 @@ index da483e9..7d926c0 100644
        }
  
      val audio = listOf(disableTrack) + (audios ?: emptyList())
-@@ -623,7 +645,9 @@ private fun MediaPlayer.setPlayerListener() {
+@@ -441,10 +463,19 @@ class MediaPlayer(
+   private fun getMetadata(): Metadata {
+     val media = mediaPlayer?.media ?: return Metadata()
+ 
+-    val title = media.getMeta(IMedia.Meta.Title)
+-    val artist = media.getMeta(IMedia.Meta.Artist)
+-    val album = media.getMeta(IMedia.Meta.Album)
+-    val artworkURL = media.getMeta(IMedia.Meta.ArtworkURL)
++    // MediaPlayer.getMedia() retains the Media; release it or libVLC logs a leak on finalize.
++    val title: String?
++    val artist: String?
++    val album: String?
++    val artworkURL: String?
++    try {
++      title = media.getMeta(IMedia.Meta.Title)
++      artist = media.getMeta(IMedia.Meta.Artist)
++      album = media.getMeta(IMedia.Meta.Album)
++      artworkURL = media.getMeta(IMedia.Meta.ArtworkURL)
++    } finally {
++      media.release()
++    }
+ 
+     return Metadata(
+       title = title,
+@@ -623,7 +654,9 @@ private fun MediaPlayer.setPlayerListener() {
              view.onPositionChanged(mapOf("value" to player.getPosition()))
            }
  

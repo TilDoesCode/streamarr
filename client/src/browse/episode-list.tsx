@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import { useMarkPlayed, type Episode } from '@/browse/queries';
 import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
 import { VersionPicker } from '@/browse/version-picker';
+import { useReturnTarget } from '@/navigation/return-focus';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { EpisodeRow } from '@/components/media/episode-row';
 import { EmptyState } from '@/components/states/empty-state';
@@ -41,6 +42,8 @@ export function EpisodeList({
   const mark = useMarkPlayed();
   const toast = useToast();
   const [versionsFor, setVersionsFor] = useState<Episode | null>(null);
+  // TV: Back from the player lands on the version card that started it.
+  const reopenVersions = useReturnTarget<Episode>(setVersionsFor);
 
   if (!episodes)
     return (
@@ -168,6 +171,7 @@ export function EpisodeList({
         onPlay={(version) => {
           const episode = versionsFor;
           setVersionsFor(null);
+          if (episode) reopenVersions(episode);
           if (episode?.workId)
             play({
               workId: episode.workId,

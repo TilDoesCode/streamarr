@@ -1,7 +1,7 @@
 'use no memo';
 import { useQueryClient } from '@tanstack/react-query';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,10 +18,11 @@ import { ErrorState, type ErrorAction } from '@/components/states/error-state';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
-import { playHref } from '@/navigation/routes';
+import { detailHref, isDetailOf, openerLeaf, playHref } from '@/navigation/routes';
 import { PlaybackController } from '@/player/controller';
 import { loadDeviceCaps } from '@/player/device-profile';
 import { nativeCandidates } from '@/player/engines';
+import { endOverlay } from '@/player/end-state';
 import { clock } from '@/player/format';
 import type { PlaybackPreferences } from '@/player/playback-api';
 import { useClock } from '@/player/use-clock';
@@ -31,7 +32,7 @@ import { colors, useDesign } from '@/theme';
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
 import { StartStepper } from './start-stepper';
-import { UpNextCard, useNextEpisode } from './up-next';
+import { EndCard, UpNextCard, useNextEpisode } from './up-next';
 
 type Params = {
   playbackId: string;
@@ -51,6 +52,7 @@ export function PlayScreen() {
   const { t } = useTranslation();
   const design = useDesign();
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<Params>();
   const { account, client } = useActiveAccount();
@@ -68,6 +70,11 @@ export function PlayScreen() {
   const title = params.title ?? '';
   const startSeconds = params.start === undefined ? undefined : Number(params.start) || 0;
   const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const backToDetails = () => {
+    const href = detailHref(workId);
+    if (!href || isDetailOf(openerLeaf(navigation.getState()), workId)) close();
+    else router.replace(href);
+  };
 
   useSyncExternalStore(
     controller?.subscribe ?? noopSubscribe,
@@ -129,12 +136,19 @@ export function PlayScreen() {
   const failed = phase === 'failed' || !!capsError || !workId;
   const playing = phase === 'playing' || phase === 'switching';
   const remaining = (clockState.duration || 0) - clockState.position;
-  const showUpNext =
-    !!next &&
-    playing &&
-    upNextDismissedFor !== workId &&
-    panel === null &&
-    (controller?.ended || (clockState.duration > 0 && remaining <= UP_NEXT_SECONDS));
+  const endState = endOverlay({
+    playing,
+    ended: !!controller?.ended,
+    hasNext: !!next,
+    upNextDismissed: upNextDismissedFor === workId,
+    blocked: panel !== null || picker,
+    remaining,
+    duration: clockState.duration,
+    upNextSeconds: UP_NEXT_SECONDS,
+  });
+  const pip = !!controller?.pictureInPicture;
+  const showUpNext = endState === 'upNext' && !pip;
+  const showEndCard = endState === 'endCard' && !pip;
 
   const playNext = () => {
     if (!next) return;
@@ -145,6 +159,7 @@ export function PlayScreen() {
     if (picker) setPicker(false);
     else if (panel) setPanel(null);
     else if (showUpNext) setUpNextDismissedFor(workId);
+    else if (showEndCard) close();
     else if (!(playing && overlayBack.current?.())) close();
     return true;
   });
@@ -177,7 +192,7 @@ export function PlayScreen() {
           controller={controller}
           clock={clockState}
           title={title}
-          suspended={panel !== null || picker || showUpNext}
+          suspended={panel !== null || picker || showUpNext || showEndCard}
           onPanel={setPanel}
           onClose={close}
           backRef={overlayBack}
@@ -263,7 +278,7 @@ export function PlayScreen() {
           </View>
         </View>
       ) : null}
-      {notice ? (
+      {notice && !pip ? (
         <View
           testID={`player-notice-${notice.kind}`}
           pointerEvents="none"
@@ -291,6 +306,15 @@ export function PlayScreen() {
       ) : null}
       {showUpNext && next ? (
         <UpNextCard next={next} onPlay={playNext} onCancel={() => setUpNextDismissedFor(workId)} />
+      ) : null}
+      {showEndCard && controller ? (
+        <EndCard
+          title={title}
+          next={next}
+          onReplay={() => controller.replay()}
+          onBack={backToDetails}
+          onNext={playNext}
+        />
       ) : null}
       {controller ? (
         <PlayerPanels

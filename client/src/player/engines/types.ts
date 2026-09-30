@@ -47,6 +47,7 @@ export type EngineEvent =
   | { type: 'firstFrame' }
   | { type: 'error'; reason: string }
   | { type: 'ended' }
+  | { type: 'pip'; active: boolean }
   | { type: 'stats'; stats: EngineStats };
 
 export type EngineSource = {
@@ -82,6 +83,9 @@ export interface PlayerEngine {
   /** `null` turns subtitles off. */
   setSubtitleTrack(id: string | null): void;
   setMuted?(muted: boolean): void;
+  /** Picture-in-picture (Android phones, expo-video): entered by `startPictureInPicture` or on leaving the app. */
+  readonly supportsPictureInPicture?: boolean;
+  startPictureInPicture?(): void;
   subscribe(listener: (event: EngineEvent) => void): () => void;
   getSnapshot(): EngineSnapshot;
   /** Stops decoding before the Surface unmounts (libVLC must not be released while it decodes). */

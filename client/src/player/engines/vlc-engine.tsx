@@ -49,6 +49,8 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   private readonly view = createRef<VlcViewRef>();
   private raw: MediaTracks = { audio: [], video: [], subtitle: [] };
   private started = false;
+  /** A pause before the first picture at the start position would leave frame 0 on screen. */
+  private pendingPause = false;
   private onStopped: (() => void) | null = null;
   private seekGuard: { target: number; until: number } | null = null;
   private watchdog: ReturnType<typeof setInterval> | null = null;
@@ -127,6 +129,10 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     if (!this.started && reported > start + 0.05) {
       this.started = true;
       this.emit({ type: 'firstFrame' });
+      if (this.pendingPause) {
+        this.pendingPause = false;
+        void this.view.current?.pause();
+      }
     }
     this.emitTime(this.started ? reported : Math.max(reported, start));
   }
@@ -201,6 +207,7 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   load(source: EngineSource): void {
     this.resetForLoad(source);
     this.started = false;
+    this.pendingPause = false;
     this.seekGuard = null;
     this.stall = { pictures: -1, position: 0, recoveries: 0 };
     if (!this.watchdog) this.watchdog = setInterval(() => void this.checkStall(), 1000);
@@ -215,6 +222,7 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   }
 
   play(): void {
+    this.pendingPause = false;
     if (this.getSnapshot().state === 'ended' && this.source) {
       this.load({ ...this.source, startPosition: 0 });
       return;
@@ -223,6 +231,10 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   }
 
   pause(): void {
+    if (!this.started && this.props.get().source) {
+      this.pendingPause = true;
+      return;
+    }
     void this.view.current?.pause();
   }
 

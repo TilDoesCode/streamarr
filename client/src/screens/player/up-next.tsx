@@ -1,6 +1,6 @@
-import { useEffect, useEffectEvent, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { useSeasonDetail } from '@/browse/queries';
 import { FocusGuide } from '@/components/focus';
@@ -103,6 +103,80 @@ export function UpNextCard({ next, onPlay, onCancel }: Props) {
           size="sm"
           variant="secondary"
           onPress={onCancel}
+        />
+      </FocusGuide>
+    </View>
+  );
+}
+
+type EndCardProps = {
+  title: string;
+  next: NextEpisode | null;
+  onReplay: () => void;
+  onBack: () => void;
+  onNext: () => void;
+};
+
+/** Shown when playback ended without an up-next countdown: replay, leave, or start the next episode. */
+export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps) {
+  const pt = usePlayerT();
+  const design = useDesign();
+  const preferred = useRef<View>(null);
+  const hasNext = !!next;
+  // The overlay behind may still hold native focus (e.g. up-next dismissed with Back).
+  useEffect(() => {
+    if (Platform.isTV) preferred.current?.requestTVFocus?.();
+  }, [hasNext]);
+  return (
+    <View
+      testID="player-end-card"
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: design.layout.gutter,
+        gap: design.space.lg,
+        backgroundColor: colors.scrim.DEFAULT,
+      }}>
+      <Text variant="overline" tone="muted">
+        {pt('endCard.title')}
+      </Text>
+      <Text variant="title" numberOfLines={2} style={{ textAlign: 'center' }}>
+        {title}
+      </Text>
+      <FocusGuide
+        trap={['left', 'right', 'up', 'down']}
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          gap: design.space.md,
+        }}>
+        <Button
+          testID="player-end-replay"
+          ref={next ? undefined : preferred}
+          label={pt('endCard.replay')}
+          hasTVPreferredFocus={!next}
+          onPress={onReplay}
+        />
+        {next ? (
+          <Button
+            testID="player-end-next"
+            ref={preferred}
+            label={pt('endCard.nextEpisode', { title: next.title })}
+            hasTVPreferredFocus
+            onPress={onNext}
+          />
+        ) : null}
+        <Button
+          testID="player-end-back"
+          label={pt('endCard.backToDetails')}
+          variant="secondary"
+          onPress={onBack}
         />
       </FocusGuide>
     </View>

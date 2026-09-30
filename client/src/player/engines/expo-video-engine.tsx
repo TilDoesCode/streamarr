@@ -1,4 +1,5 @@
-import { memo, type ComponentType } from 'react';
+import { createRef, memo, type ComponentType, type RefObject } from 'react';
+import { Platform } from 'react-native';
 import {
   createVideoPlayer,
   VideoView,
@@ -18,18 +19,31 @@ function sameTrack(a: AudioTrack | SubtitleTrack | null, b: AudioTrack | Subtitl
   return a.language === b.language && a.label === b.label;
 }
 
+// Picture-in-picture on Android phones only; Apple needs Xcode verification first, TV has none.
+const PIP = Platform.OS === 'android' && !Platform.isTV;
+
+type SurfaceHooks = {
+  onFirstFrame: () => void;
+  onPip: (active: boolean) => void;
+  view: RefObject<VideoView | null>;
+};
+
 function createExpoVideoSurface(
   player: VideoPlayer,
-  onFirstFrame: () => void
+  { onFirstFrame, onPip, view }: SurfaceHooks
 ): ComponentType<SurfaceProps> {
   function ExpoVideoSurface({ style, fit }: SurfaceProps) {
     return (
       <VideoView
+        ref={view}
         player={player}
         style={style}
         nativeControls={false}
         contentFit={fit ?? 'contain'}
-        allowsPictureInPicture={false}
+        allowsPictureInPicture={PIP}
+        startsPictureInPictureAutomatically={PIP}
+        onPictureInPictureStart={() => onPip(true)}
+        onPictureInPictureStop={() => onPip(false)}
         onFirstFrameRender={onFirstFrame}
       />
     );
@@ -88,7 +102,17 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     );
   }
 
-  readonly Surface = createExpoVideoSurface(this.player, () => this.emit({ type: 'firstFrame' }));
+  readonly supportsPictureInPicture = PIP;
+  private readonly view = createRef<VideoView>();
+  readonly Surface = createExpoVideoSurface(this.player, {
+    onFirstFrame: () => this.emit({ type: 'firstFrame' }),
+    onPip: (active) => this.emit({ type: 'pip', active }),
+    view: this.view,
+  });
+
+  startPictureInPicture(): void {
+    if (PIP) void this.view.current?.startPictureInPicture().catch(() => undefined);
+  }
 
   private emitTracks(): void {
     try {

@@ -109,5 +109,11 @@
     "playNow": "Play now",
     "cancel": "Cancel"
   },
-  "ended": "Watch again"
+  "ended": "Watch again",
+  "endCard": {
+    "title": "Finished",
+    "replay": "Replay",
+    "backToDetails": "Back to details",
+    "nextEpisode": "Next: {title}"
+  }
 }

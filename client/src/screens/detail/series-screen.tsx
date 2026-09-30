@@ -9,6 +9,7 @@ import { EpisodeList } from '@/browse/episode-list';
 import { useSeasonDetail, useSeriesDetail, type NextEpisode } from '@/browse/queries';
 import { ResumeProgress, resumeSeconds, TitleActions, usePlay } from '@/browse/title-actions';
 import { VersionPicker } from '@/browse/version-picker';
+import { useReturnTarget } from '@/navigation/return-focus';
 import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
 import { Hero } from '@/components/media/hero';
 import { ErrorState } from '@/components/states/error-state';
@@ -30,6 +31,8 @@ export function SeriesScreen() {
   const series = useSeriesDetail(tmdbId);
   const [picked, setPicked] = useState<number | undefined>(routeNumber(params.season));
   const [versionsOpen, setVersionsOpen] = useState(false);
+  // TV: Back from the player lands on the version card that started it.
+  const reopenVersions = useReturnTarget(setVersionsOpen);
   const data = series.data;
   const seasons = data?.seasons ?? [];
   const next = data?.watch.nextEpisode ?? null;
@@ -206,6 +209,7 @@ export function SeriesScreen() {
         title={nextTitle}
         onPlay={(version) => {
           setVersionsOpen(false);
+          reopenVersions(true);
           if (next?.workId)
             play({
               workId: next.workId,

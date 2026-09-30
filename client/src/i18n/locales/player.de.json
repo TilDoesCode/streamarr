@@ -109,5 +109,11 @@
     "playNow": "Jetzt abspielen",
     "cancel": "Abbrechen"
   },
-  "ended": "Nochmal ansehen"
+  "ended": "Nochmal ansehen",
+  "endCard": {
+    "title": "Zu Ende",
+    "replay": "Nochmal abspielen",
+    "backToDetails": "Zurück zu den Details",
+    "nextEpisode": "Weiter: {title}"
+  }
 }

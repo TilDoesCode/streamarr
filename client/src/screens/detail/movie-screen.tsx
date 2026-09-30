@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useMovieDetail } from '@/browse/queries';
 import { ResumeProgress, resumeSeconds, TitleActions, usePlay } from '@/browse/title-actions';
 import { VersionPicker } from '@/browse/version-picker';
+import { useReturnTarget } from '@/navigation/return-focus';
 import { VersionSummary } from '@/browse/version-summary';
 import { Hero } from '@/components/media/hero';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,8 @@ export function MovieScreen() {
   const tmdbId = routeNumber(params.id);
   const movie = useMovieDetail(tmdbId);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  // TV: Back from the player lands on the version card that started it.
+  const reopenVersions = useReturnTarget(setVersionsOpen);
 
   if (tmdbId === undefined || (movie.error && !movie.data))
     return <DetailError error={movie.error} onRetry={() => void movie.refetch()} />;
@@ -78,6 +81,7 @@ export function MovieScreen() {
         currentReleaseId={data?.watch.lastReleaseId}
         onPlay={(version) => {
           setVersionsOpen(false);
+          reopenVersions(true);
           if (data?.workId)
             play({
               workId: data.workId,

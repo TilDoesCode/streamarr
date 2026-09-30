@@ -73,3 +73,35 @@ describe('VlcEngine stall watchdog', () => {
     engine.release();
   });
 });
+
+describe('VlcEngine paused load', () => {
+  it('defers a pause until the first picture at the start position', () => {
+    const engine = new VlcEngine();
+    const internals = engine as unknown as Internals;
+    const view = { pause: jest.fn(async () => undefined), play: jest.fn(async () => undefined) };
+    internals.view.current = view;
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive', startPosition: 40 });
+    engine.pause();
+    expect(view.pause).not.toHaveBeenCalled();
+    internals.onTime(40);
+    expect(view.pause).not.toHaveBeenCalled();
+    internals.onTime(40.3);
+    expect(view.pause).toHaveBeenCalledTimes(1);
+    engine.pause();
+    expect(view.pause).toHaveBeenCalledTimes(2);
+    engine.release();
+  });
+
+  it('drops the deferred pause when play follows', () => {
+    const engine = new VlcEngine();
+    const internals = engine as unknown as Internals;
+    const view = { pause: jest.fn(async () => undefined), play: jest.fn(async () => undefined) };
+    internals.view.current = view;
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive', startPosition: 40 });
+    engine.pause();
+    engine.play();
+    internals.onTime(40.3);
+    expect(view.pause).not.toHaveBeenCalled();
+    engine.release();
+  });
+});

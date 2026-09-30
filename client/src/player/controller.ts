@@ -56,6 +56,8 @@ export class PlaybackController {
   notice: Notice | null = null;
   paused = false;
   ended = false;
+  pictureInPicture = false;
+  private reportedAt = 0;
   preferences: PlaybackPreferences;
   private version = 0;
   private listeners = new Set<() => void>();
@@ -129,7 +131,9 @@ export class PlaybackController {
       this.appState = AppState.addEventListener('change', (state) => {
         if (state === 'active') return void this.progress.flush();
         this.report('progress');
-        if (state === 'background') this.setPaused(true);
+        // Leaving the app while playing enters picture-in-picture, which keeps playing.
+        if (state === 'background' && !(this.engine?.supportsPictureInPicture && !this.paused))
+          this.setPaused(true);
       });
     } catch (error) {
       if (this.closed) return;
@@ -213,7 +217,18 @@ export class PlaybackController {
       this.engineOff = engine.subscribe((event) => {
         if (event.type === 'error') void this.stepDown(event.reason);
         else if (event.type === 'ended') this.onEnded();
-        else if (event.type === 'state' || event.type === 'tracks' || event.type === 'firstFrame') {
+        // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
+        else if (event.type === 'time') {
+          if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
+            this.report('progress');
+        } else if (event.type === 'pip') {
+          this.pictureInPicture = event.active;
+          this.changed();
+        } else if (
+          event.type === 'state' ||
+          event.type === 'tracks' ||
+          event.type === 'firstFrame'
+        ) {
           // A freshly loaded source may autoplay although the viewer paused before the switch.
           if (event.type === 'state' && event.state === 'playing' && this.paused)
             this.engine?.pause();
@@ -268,6 +283,7 @@ export class PlaybackController {
     const playback = this.playback;
     if (!playback?.workId) return;
     const duration = this.duration;
+    this.reportedAt = Date.now();
     void this.progress.report({
       event,
       workId: playback.workId,
@@ -495,13 +511,15 @@ export class PlaybackController {
   }
 
   togglePlay(): void {
-    if (this.ended) {
-      this.ended = false;
-      this.seekTo(0);
-      this.setPaused(false);
-      return;
-    }
+    if (this.ended) return this.replay();
     this.setPaused(!this.paused);
+  }
+
+  replay(): void {
+    this.ended = false;
+    this.seekTo(0);
+    this.paused = true;
+    this.setPaused(false);
   }
 
   seekTo(target: number): void {
