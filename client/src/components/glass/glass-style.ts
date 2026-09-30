@@ -1,6 +1,6 @@
 import type { ViewStyle } from 'react-native';
 
-import { withAlpha } from '@/lib/color';
+import { mixHex, withAlpha } from '@/lib/color';
 import { colors } from '@/theme';
 
 import type { GlassIntensity } from './glass-types';
@@ -25,4 +25,27 @@ export function glassEdge(radius: number): ViewStyle {
     borderColor: colors.glass.border,
     borderTopColor: colors.glass.highlight,
   };
+}
+
+/** Android TV glass without runtime blur: a smoked, tint-mixed base that keeps text legible over white art. */
+export const TV_GLASS = {
+  alpha: 0.7,
+  /** Subtle surfaces carry only icons and white text (rail, now-playing pill). */
+  subtleAlpha: 0.66,
+  /** A lighter veil so a dark icon-only surface still reads as glass over dark ambient. */
+  subtleVeil: 0.04,
+  tintMix: 0.12,
+  veil: 0.03,
+  panelUnderlay: 0.3,
+} as const;
+
+export function tvGlassBase(tint?: string | null, intensity: GlassIntensity = 'regular'): string {
+  const base = tint ? mixHex(tint, colors.background, TV_GLASS.tintMix) : colors.background;
+  return withAlpha(base, intensity === 'subtle' ? TV_GLASS.subtleAlpha : TV_GLASS.alpha);
+}
+
+export function tvGlassVeil(intensity: GlassIntensity): string {
+  const veil =
+    intensity === 'subtle' ? TV_GLASS.subtleVeil : TV_GLASS.veil * (intensity === 'strong' ? 2 : 1);
+  return withAlpha(colors.foreground.DEFAULT, veil);
 }

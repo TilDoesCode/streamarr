@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlassChip } from '@/components/glass';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { toAppError } from '@/api/errors';
 import { useSearch, type CatalogItem, type SearchType } from '@/browse/queries';
@@ -29,7 +30,7 @@ import { titleHref } from '@/navigation/routes';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
-import { colors, useDesign } from '@/theme';
+import { colors, gutterPadding, useDesign } from '@/theme';
 
 const MIN_QUERY = 2;
 const DEBOUNCE_MS = 350;
@@ -82,15 +83,16 @@ export function SearchScreen() {
   const remember = () => addRecentSearch(account.id, text);
 
   const shell = useShell();
-  const { gutter } = design.layout;
+  const pad = gutterPadding(design);
+  const across = pad.paddingLeft + pad.paddingRight;
   const setAmbient = useSetAmbient();
   const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
   const posterWidth = shell.large ? shell.s(SHELL.poster.width) : design.layout.posterWidth;
-  const columns = Math.max(2, Math.floor((width - 2 * gutter + cardGap) / (posterWidth + cardGap)));
+  const columns = Math.max(2, Math.floor((width - across + cardGap) / (posterWidth + cardGap)));
   // Large shell: Home's fixed poster size; phones stretch the columns to the width.
   const cardWidth = shell.large
     ? posterWidth
-    : Math.floor((width - 2 * gutter - (columns - 1) * cardGap) / columns);
+    : Math.floor((width - across - (columns - 1) * cardGap) / columns);
   const pageHeading = design.isTV || Platform.OS === 'web';
   const active = query.length >= MIN_QUERY;
   const items = active ? (results.data ?? []) : [];
@@ -98,8 +100,7 @@ export function SearchScreen() {
   const rows = chunk(items, columns);
 
   const header = (
-    <View
-      style={{ paddingHorizontal: gutter, gap: design.space.lg, paddingBottom: design.space.lg }}>
+    <View style={{ ...pad, gap: design.space.lg, paddingBottom: design.space.lg }}>
       {pageHeading ? (
         <Text variant="title" role="heading" style={shell.pageTitle}>
           {t('tabs.search')}
@@ -136,7 +137,7 @@ export function SearchScreen() {
         aria-label={t('search.filter')}
         style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
         {TYPES.map((value) => (
-          <Tag
+          <GlassChip
             key={value}
             testID={`search-type-${value}`}
             role="radio"
@@ -151,7 +152,7 @@ export function SearchScreen() {
   );
 
   const recentSearches = recent.length ? (
-    <View testID="search-recent" style={{ paddingHorizontal: gutter, gap: design.space.md }}>
+    <View testID="search-recent" style={{ ...pad, gap: design.space.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text variant="heading">{t('search.recent')}</Text>
         <Button
@@ -209,7 +210,7 @@ export function SearchScreen() {
             flexDirection: 'row',
             flexWrap: 'wrap',
             gap: cardGap,
-            paddingHorizontal: gutter,
+            ...pad,
           }}>
           {Array.from({ length: columns * 2 }, (_, index) => (
             <PosterCardSkeleton key={index} width={cardWidth} />
@@ -251,7 +252,7 @@ export function SearchScreen() {
             style={{
               flexDirection: 'row',
               gap: cardGap,
-              paddingHorizontal: gutter,
+              ...pad,
               marginBottom: cardGap,
             }}>
             {row.map((item, column) => {

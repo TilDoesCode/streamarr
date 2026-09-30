@@ -26,6 +26,12 @@ const TONE_CLASS: Record<TextTone, string> = {
   inverse: 'text-primary-foreground',
 };
 
+// Android TV: text sits on lighter smoked glass over bright art, so the secondary tones are brighter.
+const TV_TONE_CLASS: Partial<Record<TextTone, string>> = {
+  muted: 'text-foreground-mutedTv',
+  subtle: 'text-foreground-subtleTv',
+};
+
 const HEADINGS: ReadonlySet<TypeVariant> = new Set(['display', 'title', 'heading']);
 
 export type TextProps = RNTextProps & {
@@ -48,7 +54,11 @@ export function Text({
       // Android TV: a selectable TextView takes remote focus when attached, then drops it (nothing focused).
       selectable={selectable && !Platform.isTV}
       role={HEADINGS.has(variant) ? 'heading' : undefined}
-      className={cn('text-foreground', tone && TONE_CLASS[tone], className)}
+      className={cn(
+        'text-foreground',
+        tone && ((design.isTV && TV_TONE_CLASS[tone]) || TONE_CLASS[tone]),
+        className
+      )}
       style={[
         design.type[variant],
         (variant === 'overline' || variant === 'spec') && { textTransform: 'uppercase' },

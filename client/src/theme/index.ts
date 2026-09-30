@@ -1,6 +1,8 @@
 export {
   createDesign,
   DesignGutter,
+  gutterPadding,
+  gutters,
   DesignProvider,
   DesignScope,
   useDesign,

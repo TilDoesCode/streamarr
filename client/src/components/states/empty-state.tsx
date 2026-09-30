@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { CENTRED_ROW, FocusGuide } from '@/components/focus';
 import { Text } from '@/components/ui/text';
-import { colors, useDesign } from '@/theme';
+import { colors, gutterPadding, useDesign } from '@/theme';
 
 export type EmptyStateProps = {
   icon: LucideIcon;
@@ -42,7 +42,7 @@ export function EmptyState({
         alignSelf: 'stretch',
         gap: design.space.md,
         paddingVertical: compact ? 0 : design.space['3xl'],
-        paddingHorizontal: compact ? 0 : design.layout.gutter,
+        ...(compact ? null : gutterPadding(design)),
       }}>
       <View
         style={{

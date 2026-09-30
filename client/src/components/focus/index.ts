@@ -11,6 +11,7 @@ export { FocusSection, ItemSnapContext, type FocusSectionProps } from './focus-s
 export {
   Focusable,
   FocusLift,
+  useFocusGlowRoom,
   useFocusState,
   type FocusableProps,
   type FocusLiftKind,

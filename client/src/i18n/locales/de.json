@@ -850,9 +850,10 @@
     "title": "Versionen",
     "subtitle": "{title} · {count, plural, one {# Version} other {# Versionen}}",
     "incomplete": "{title} · einige Quellen haben nicht geantwortet, die Liste ist evtl. unvollständig",
-    "emptyTitle": "Keine Versionen gefunden",
+    "emptyTitle": "Noch keine Versionen",
     "emptyMessage": "Für diesen Titel gibt es noch keine abspielbare Version.",
     "current": "Zuletzt gespielt",
+    "lastPlayedOther": "Zuletzt gespielt: {version}",
     "local": {
       "ready": "Sofort",
       "downloading": "Wird vorbereitet"

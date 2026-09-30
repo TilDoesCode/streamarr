@@ -52,10 +52,9 @@ function parseAccounts(raw: string | undefined): Account[] {
   try {
     const parsed: unknown = JSON.parse(raw ?? '[]');
     if (!Array.isArray(parsed)) return [];
-    const accounts: Account[] = [];
-    for (const account of parsed.filter(isAccount))
-      accounts.push({ ...account, color: profileColor(account.viewerId, accounts) });
-    return accounts;
+    return parsed
+      .filter(isAccount)
+      .map((account) => ({ ...account, color: profileColor(account.viewerId) }));
   } catch {
     return [];
   }
@@ -95,18 +94,10 @@ export function dedupeAccounts(accounts: readonly Account[]): {
   return { accounts: kept, dropped };
 }
 
-/** Colour slot derived from the viewer id (same on every device); probes on when another local profile has it. */
-export function profileColor(
-  viewerId: string,
-  accounts: readonly Pick<Account, 'color'>[]
-): number {
+/** Avatar colour slot: a pure function of the viewer id, so every device and launch shows the same one. */
+export function profileColor(viewerId: string): number {
   let hash = 0x811c9dc5;
   for (const char of viewerId) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
-  const used = new Set(accounts.map((account) => account.color));
-  for (let step = 0; step < AVATAR_COLORS; step += 1) {
-    const color = (hash + step) % AVATAR_COLORS;
-    if (!used.has(color)) return color;
-  }
   return hash % AVATAR_COLORS;
 }
 
@@ -221,7 +212,7 @@ export class AccountStore {
         viewerId: viewer.id,
         username: viewer.username,
         displayName: viewer.displayName || viewer.username,
-        color: existing?.color ?? profileColor(viewer.id, accounts),
+        color: profileColor(viewer.id),
         signedIn: true,
         mustChangePassword: viewer.mustChangePassword,
         addedAt: existing?.addedAt ?? now,

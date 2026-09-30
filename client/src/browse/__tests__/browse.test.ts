@@ -5,7 +5,7 @@ import { resumeSeconds, watchProgress } from '@/browse/title-actions';
 import {
   methodReasons,
   predictedMethod,
-  predictionReasons,
+  reasonTexts,
   versionSpec,
   versionDetails,
   versionFormats,
@@ -146,7 +146,7 @@ describe('version format', () => {
       ],
     });
     expect(predictedMethod(remux)).toBe('remux');
-    expect(predictionReasons(remux, t)).toEqual([
+    expect(reasonTexts(remux.predictionReasons, t)).toEqual([
       'Audio is converted from Dolby Digital+ to AAC',
       'Container assumed (MKV)',
     ]);
@@ -208,7 +208,7 @@ describe('version panel wording', () => {
         { code: 'audio_copied' },
         { code: 'hdr_unsupported', params: { hdr: 'hdr10' } },
         { code: 'audio_converted', params: { from: 'truehd', to: 'aac' } },
-        { code: 'bitrate_exceeds_limit' },
+        { code: 'bitrate_exceeds_limit', params: { max: '8000' } },
       ],
     } as Version;
     const reasons = methodReasons(version, t);

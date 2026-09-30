@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react-native';
+import { Play, type LucideIcon } from 'lucide-react-native';
 import { View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
@@ -135,11 +135,21 @@ function ButtonSurface({
       ) : IconComponent ? (
         <View style={{ width: iconSize, height: iconSize }}>
           <Animated.View style={[{ position: 'absolute' }, iconSwaps && restIconStyle]}>
-            <IconComponent size={iconSize} color={palette.fg[0]} strokeWidth={2.25} />
+            <IconComponent
+              size={iconSize}
+              color={palette.fg[0]}
+              fill={IconComponent === Play ? palette.fg[0] : 'none'}
+              strokeWidth={2.25}
+            />
           </Animated.View>
           {iconSwaps ? (
             <Animated.View style={[{ position: 'absolute' }, focusIconStyle]}>
-              <IconComponent size={iconSize} color={palette.fg[1]} strokeWidth={2.25} />
+              <IconComponent
+                size={iconSize}
+                color={palette.fg[1]}
+                fill={IconComponent === Play ? palette.fg[1] : 'none'}
+                strokeWidth={2.25}
+              />
             </Animated.View>
           ) : null}
         </View>

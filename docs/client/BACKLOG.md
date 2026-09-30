@@ -1,15 +1,11 @@
-# Streamarr Client — backlog after the core loop (M0–M4.2)
+# Streamarr Client — backlog
 
-Consolidated from the open-issue sections of `journal/M1.5`, `M2.3`, `M2.4`, `M3.1`, `M4.1` and `M4.2` (state 2026-09-30).
-The journals hold the evidence and reproduction details for each item.
+Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every earlier entry is either still open below
+(with the reason it stays) or listed under "Fixed" with the task that fixed it. The journals hold the evidence.
 
 ## Decisions for the user
 
-- **"Recommended" version:** the server ranks by quality only, so web recommends a 4K HDR10 transcode over a 1080p
-  direct stream. Proposal: rank the best version that plays without transcoding first on each device, and fall back to
-  transcoding only when none exists (also decides what a plain "Play" starts).
-- **Web client hosting:** served by the server (same origin) or from another origin (needs a CORS setting for viewer
-  endpoints; Dev World allows `*`).
+- Library rail entries (Movies / Series pages) — task F2, needs the B1 browse endpoints (done).
 
 ## Needs Xcode (pending-ios)
 
@@ -19,114 +15,94 @@ The journals hold the evidence and reproduction details for each item.
   `useTVEventHandler`.
 - Playback: expo-video on AVPlayer, VLCKit fallback, Swift media-caps (VideoToolbox, HDR/DV, audio route), Safari
   native HLS/HEVC/HDR, AirPlay and picture-in-picture.
+- HeroFade has no fallback when the masked-view native module is missing (check after the first iOS pod install).
 
-## Needs real hardware (Android TV, ideally a 2 GB device)
+## Needs real hardware (Android TV, ideally a 2 GB device; a real phone)
 
 - HEVC Main10 / HDR10 / Dolby Vision decode and HDR display modes; AC-3 / E-AC-3 / DTS / TrueHD passthrough; 4K on a TV SoC.
 - VLC: direct rendering (zero copy, black on emulators), first-seek latency in MKV (2.7–7.3 s on emulators), HDR output
   (the TextureView cannot carry HDR), stall watchdog on a real stall.
 - Hold-scrub tiers 30/60/120 s on a real remote (emulator sends one repeat; unit-tested).
-- Memory: home screen uses ~520 MB native in the dev build; measure a release build.
+- Memory: home screen uses ~520 MB native in the dev build; measure a release build (the 2 GB emulator had one player ANR
+  at ~290 MB free after many bundle reloads in F1).
+- Phone blur cost: the software-GL AVD shows RenderThread ~84 % with the blurred ambient; re-measure on a real phone.
+- TV: returning to Home from the profile picker shows a 1–2 s frame of lifted rows over the hero copy (slow emulator).
+- TLS failure message against a real self-signed server; TV keyboards other than Gboard.
 
-## Player polish
+## Player
 
-- Paused step-down to VLC shows frame 0 for ~13 s after resuming (clock and saved position are correct; the watchdog
-  only runs while playing).
-- Frozen end frame without controls after a cancelled up-next.
-- Continue watching for a played item starts at 0 (the server returns no resume position for played items).
-- ▶ pressed in the same frame as ▲ from the seek bar may be ignored (never seeks).
-- Picture-in-picture on Android (expo-video `supportsPictureInPicture` + native rebuild).
-- Decoder and dropped-frame figures are "—" for expo-video on Android; VLC decoder labels are best effort.
-- expo-libvlc-player logs `VLCObject (Media) finalized but not natively released` (small native leak per playback).
+- Decoder and dropped-frame figures are "—" for expo-video on Android; VLC decoder labels are best effort (needs an
+  expo-video API for decoder stats).
 
-## Browse and UX polish
+## Browse, navigation and UX
 
-- Series "mark watched" toast names the next episode instead of the series.
-- A hanging server shows the skeleton ~110 s before the timeout error (20 s timeout × retries).
-- "Play" is offered for titles without versions (e.g. Agent 327) and ends in `no_versions`.
-- A fully watched series offers no "watch again from the start".
-- Watch state changed on another device appears only after the 1-minute stale time.
-- TV hero eyebrow can keep "Continue watching" while focus is on the same title in another row; it can miss the
-  episode title if focused before its season loaded.
-- German UI shows server season names ("Season 1").
-- Search type filter persists across a profile switch.
-- Opaque header band above the hero on web and Android detail screens.
-- Back from the player focuses Play/Resume, not the version card that started playback.
-- Version cards show both "container assumed (mkv)" and "mkv not supported"; simplify the wording for viewers.
-- TV: D-pad presses in the first 1–2 s after Home renders can land in the content; the rail reopens on the last focused
-  item, not the active tab.
-- Web: one page title for every route; a duplicate history entry after popping the active tab; Back after sign-in
-  returns to `/server` or `/sign-in`.
+- Form factor is recomputed from the window size: Android split screen (< 600 dp) or a web resize across 640 px swaps
+  LargeShell and NativeTabsShell and remounts the navigator (tab stacks lost). Needs hysteresis or shared stacks
+  (not small: navigator structure).
+- Web: a duplicate history entry after popping the active tab (not re-checked since M2.4; P2 fixed titles and Back after
+  sign-in only).
+- Brand PNGs are large (icon 554 KB, top shelf 2.2–2.6 MB) because of dithered gradients; pngquant bands them. Revisit
+  with a noise-free render if bundle size matters.
 
 ## Accounts
 
-- Every re-sign-in after a server reset adds another profile tile for the same user (dedupe by server + user).
-- Settings UI for sessions/devices, email change, two-factor setup and profile editing.
-- TLS failure message not exercised against a real self-signed server; only Gboard tested as TV keyboard.
+- Settings UI for sessions/devices, email change, two-factor setup and profile editing (feature work, not a fix).
 
 ## Tests and tooling
 
-- Screen-level tests for home, search, detail and the version picker (current tests are logic-level).
-- Dev only: after a JS reload the `player-keys` native listener is dead until a cold start (native fix in the M4.2 journal);
-  nothing is focused on TV after a JS reload until the first D-pad press; the dev client can start with a cached bundle.
-- Dev World restart wipes its database (sessions end, profiles duplicate).
+- Dev only: after a JS reload nothing is focused on TV until the first D-pad press; the dev client can start with a
+  cached bundle.
 
-## Server (deferred in the M1.5 triage)
+## Server (backend track)
 
-- Multi-rendition audio in HLS (#4), double probe on start (#27); see the triage table in `journal/M1.5.md`.
+- Dev World restart wipes its database (sessions end, local profiles need a new sign-in).
+- Multi-rendition audio in HLS (#4); see the triage table in `journal/M1.5.md`.
+- VLC limits on the versions endpoint: let the versions request carry the VLC engine caps, then the client can send
+  `vlcAvailable` again from Android (P2 stopped sending it).
+- Orphaned capability-probe ffmpeg outlived a killed Dev World (~13 h); kill the probe's process tree, SIGKILL on timeouts.
+- `ArtworkPaletteService` drops work silently when its bounded channel is full; wait or re-queue.
+- Palette/spec failures log only at Debug; log the first failure per cause at Warning.
+- `CatalogSpecStore.Get` scans all stored summaries per list item; index by series.
+- TMDB metadata uses one server-wide language, so a German UI shows English overviews; per-request language.
+- Release container store: clears all 20,000 entries at once and is in memory only, so after a restart the web WEB-DL is
+  predicted "Direct stream (MKV …)" again (seen in F1 after the 20:46 republish); LRU + persistence.
+- "useVlc offered before VLC failed" is only covered by an older decider test, not on the start-failure path.
 
-## Next update (out of scope for the core loop)
+## Next update (out of scope)
 
 - Offline downloads of series and movies on phones and tablets.
 
-## Found during the polish round (2026-09-30)
+## Fixed
 
-- **Server: VLC limits on the versions endpoint.** `vlcAvailable=true` makes the server assume VLC plays every file,
-  so on Google TV it recommended a 4K HEVC file "with VLC" while the device's VLC only decodes HEVC up to 1080p and
-  plain Play (full device profile) chose the 1080p WEB-DL. The client stopped sending `vlcAvailable` (P2). Fix: let the
-  versions request carry the VLC engine caps (or the full device profile), then send it again from Android.
-- **Server: orphaned capability-probe ffmpeg.** A hardware capability probe (`FfmpegCapabilityProbe`, VideoToolbox)
-  outlived a killed Dev World and hung for ~13 h at 0 % CPU (needed SIGKILL). Kill the probe's process tree when the
-  host stops, and make sure step timeouts use SIGKILL.
-- **Player: black frame on a remux resume** seen once on the Google TV emulator at 0:34 while reporting "playing"
-  (being checked in the P2 verification).
-- **Server: palette queue silently drops work.** `ArtworkPaletteService` uses a bounded channel (2048) with
-  `DropWrite`; `TryWrite` still returns true, so URLs beyond the limit stay marked as queued and never get a tint until
-  a restart (and `WhenIdleAsync` never returns). Matters on the first load of a large library. Fix: wait or re-queue
-  instead of dropping, and clear the queued marker on drop.
-- **Server: palette/spec failures log only at Debug.** A broken image host or a missing native Skia library goes
-  unnoticed in production; log the first failure per cause at Warning.
-- **Server: series spec lookup scans all stored summaries per list item** (`CatalogSpecStore.Get`); index by series.
-
-## From R1 verify (2026-09-30)
-- Brand PNGs are large (icon 554 KB, top shelf 2.2-2.6 MB) because Chrome dithers the gradients; pngquant 80-95 cuts them 5x but bands the dark gradients visibly. Revisit with a render that avoids dithering (e.g. noise-free SVG export) if bundle size matters.
-- Web font gate waits up to ~12 s (expo-font timeout) when font requests hang; a shorter timeout with system-font fallback would avoid the blank page.
-- Phone blur cost: software-GL AVD shows RenderThread ~84 % with the blurred ambient backdrop; re-measure on a real phone before shipping the phone ambient.
-- Backend: TMDB metadata uses one server-wide language (TmdbClient `options.Language`), so a German viewer UI shows English overviews. Consider a per-request language on the viewer catalog/detail endpoints (from the client's i18n locale) with a cached per-language overview.
-
-## From R2 verify (2026-09-30)
-- TV: ambient can stay on the previous title while focus sits in the rail after fast Left presses; the rail "Home" label pill overlaps a lifted row heading.
-- TV: returning to Home from the profile picker shows a 1-2 s frame of lifted rows animating over the hero copy (slow emulator; re-check on hardware).
-- Web: mouse-wheel scroll leaves the previous row's caption line above the next row header (no top fade on the rows region).
-- Form factor is recomputed from window size: Android split screen (< 600 dp) or a web resize across 640 px swaps LargeShell and NativeTabsShell and remounts the navigator (tab stacks lost). Consider hysteresis or keeping the stacks.
-- HeroFade has no fallback when the masked-view native module is missing (fine for our builds; check after iOS pod install).
-- No unit test covers the LargeShell vs NativeTabs selection.
-
-## From R3 verify (2026-09-30)
-- Web 390 px phone player: a source with subtitles gives 8 bottom buttons and the fullscreen button sits half off-screen; collapse the chips into an overflow menu below ~420 px.
-- TV player side panels end ~10 px under the top of the control bar (web is fine).
-- Dead code: `predictionReasons()` is only used by a test; `VersionsButton` is unused (pre-existing).
-- One vocabulary for delivery methods: version cards say "Direct stream" for remux while the player info panel says "Repackaged".
-- Phone Version card headlines the last played release while Resume starts the Recommended one (pre-existing logic; card is labelled "Last played").
-- Big Buck Bunny WEB-DL: the web reason names an MKV container while TV playback info says MP4; check the server's container data.
-- The exit dialog stays open when a deep link opens a detail screen inside the shell (R3 fixed it only for the player route).
-- TV: once, after a long action sequence, focus returned to the Recommended card instead of Resume; not reproducible.
-- Web: the ambient backdrop makes pages ~7.5 % wider than the window, so the page can scroll sideways (pre-existing, also Home).
-- Episodes in a season without versions still offer a Versions button that opens an empty panel.
-- jest prints an ICU warning because a test fixture lacks a parameter.
-- Large-screen episode rows still use the pre-Aurora EpisodeRow look (left over from R3 slice 4).
-- Backend: `title_not_found` failures offer the `otherVersion` action although the title does not exist.
-
-## From B1 verify (2026-09-30)
-- Server: the release container store clears all 20,000 entries at once when full; use an LRU and persist it (small table) so predictions survive a restart.
-- Server: "useVlc offered before VLC failed" is only covered by an older decider test, not on the playback start-failure path.
+- Device-aware "Recommended" (was a decision) — P3 (server) + P2 (plain Play = Recommended).
+- Web client hosting (was a decision) — P3 (/watch same origin) + P2 (client connects to its origin).
+- Paused step-down to VLC showed frame 0 — P1. Frozen end frame after a cancelled up-next — P1 (end card).
+- Continue watching for a played item started at 0 — P3 + P2. ▶ in the same frame as ▲ ignored — M4.2 slice 4.
+- Picture-in-picture on Android — P1. `VLCObject (Media) finalized …` leak — P1. Black frame on a remux resume — not
+  reproduced in the P2 verification (3/3 remux resumes at the saved position).
+- Series "mark watched" toast named the episode — P2. 110 s skeleton on a hanging server — P2 (15 s read timeout).
+- "Play" for titles without versions — P2 ("No versions yet"). No "watch again" for a fully watched series — P2.
+- Watch state from another device after 1 min — P2 (refetch on focus/foreground/player exit).
+- TV hero eyebrow / episode title — P2. German "Season 1" — P2 ("Staffel N"). Search filter across profiles — P2.
+- Opaque header band above the art on web and Android detail — R3 (header strip after scroll) + F1 (phone: only a light
+  status-bar gradient at scroll 0).
+- Back from the player focused Play instead of the version card — P1.
+- "container assumed" and "mkv not supported" on one card — R3 (one reason formatter, `_assumed` hidden).
+- TV early D-pad presses and rail reopening on the last item — P2.
+- Web: one page title for every route; Back after sign-in to /server — P2.
+- Duplicate profile tiles after a server reset — P2 (dedupe by server + viewer id/username).
+- Screen-level tests for home, search, detail and the version picker — P2 (`src/__tests__/screens.test.tsx`).
+- Dev: `player-keys` listener dead after a JS reload — P1.
+- Double probe on start (#27) — P3 (one ffprobe per viewer start).
+- Web font gate waited up to ~12 s — F1 (3 s gate, brand fonts swap in when they arrive).
+- TV rail "Home" label pill over a lifted row heading — F1 (solid pill; the focused rail dims the content beside it).
+- TV ambient staying on the previous title after fast Left presses — not reproduced in F1 (the ambient follows the
+  focused card after the debounce; see journal/F1.md).
+- Web wheel scroll left the previous row's caption line — F1 (top fade on the rows region while scrolled).
+- No unit test for LargeShell vs NativeTabs — F1 (`src/navigation/app-tabs.test.tsx`).
+- R3 verify findings: 390 px player overflow, TV side panels under the bar, dead code, one method vocabulary, phone
+  Version card headline, exit dialog on deep links, web ambient overflow, empty Versions button, jest ICU warning,
+  pre-Aurora episode rows — all F1.
+- BBB WEB-DL MKV vs MP4 container — B1 (predictions use the real container once a release was opened; persistence is
+  the open server item above). `title_not_found` offered `otherVersion` — B1.
+- TV focus once returned to the Recommended card instead of Resume — not reproduced in R3 or F1 regression passes.

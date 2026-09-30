@@ -4,7 +4,7 @@ import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EpisodeList } from '@/browse/episode-list';
-import { useSeasonDetail, useWatchRefreshOnFocus } from '@/browse/queries';
+import { useSeasonWithVersions, useWatchRefreshOnFocus } from '@/browse/queries';
 import { seasonName } from '@/browse/season-name';
 import { FocusSection } from '@/components/focus';
 import { SkeletonText } from '@/components/ui/skeleton';
@@ -22,7 +22,7 @@ export function SeasonScreen() {
   const params = useLocalSearchParams<{ id: string; n: string }>();
   const tmdbId = routeNumber(params.id);
   const seasonNumber = routeNumber(params.n);
-  const season = useSeasonDetail(tmdbId, seasonNumber);
+  const season = useSeasonWithVersions(tmdbId, seasonNumber);
   useWatchRefreshOnFocus();
   useScreenTitle(
     season.data

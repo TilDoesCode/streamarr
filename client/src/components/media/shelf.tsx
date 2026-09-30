@@ -8,6 +8,7 @@ import {
   FocusGuide,
   Focusable,
   FocusLift,
+  useFocusGlowRoom,
   type FocusableProps,
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
@@ -15,7 +16,7 @@ import { useFocusRoom } from '@/components/media/card-parts';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
-import { colors, fonts, useDesign } from '@/theme';
+import { colors, fonts, gutters, useDesign } from '@/theme';
 
 // TV: last focused index per shelf `memoryKey`; survives the shelf unmounting (tab switch, refetch).
 const shelfMemory = new Map<string, number>();
@@ -51,9 +52,14 @@ export function Shelf<T>({
   const { t } = useTranslation();
   const design = useDesign();
   const shell = useShell();
-  const { gutter } = design.layout;
+  const { start: gutter, end: gutterEnd } = gutters(design);
   const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
   const focusRoom = useFocusRoom(artworkHeight);
+  // The tinted glow reaches past the ring: extra room inside the viewport, pulled back by a negative margin.
+  const glowRoom = Math.max(
+    0,
+    useFocusGlowRoom() - design.focus.ringOffset - design.focus.ringWidth - design.px(4)
+  );
   const headerGap = shell.large ? shell.s(SHELL.row.headerGap) : 0;
   const listRef = useRef<FlatList<T>>(null);
   const offset = useRef(0);
@@ -70,12 +76,12 @@ export function Shelf<T>({
   const pager = Platform.OS === 'web' && shell.large;
   const viewport = useRef(0);
   const [edges, setEdges] = useState({ start: true, end: false });
-  const contentWidth = gutter * 2 + data.length * stride - cardGap;
+  const contentWidth = gutter + gutterEnd + data.length * stride - cardGap;
 
   const page = (direction: 1 | -1) => {
     const pageWidth = Math.max(
       itemWidth,
-      Math.floor((viewport.current - gutter * 2 + cardGap) / stride) * stride
+      Math.floor((viewport.current - gutter - gutterEnd + cardGap) / stride) * stride
     );
     const next = Math.max(0, offset.current + direction * pageWidth);
     listRef.current?.scrollToOffset({ offset: next, animated: true });
@@ -87,8 +93,8 @@ export function Shelf<T>({
     const end = start + itemWidth;
     const visible = viewport.current;
     if (!visible) return;
-    if (end > offset.current + visible - gutter)
-      listRef.current?.scrollToOffset({ offset: end - visible + gutter, animated: true });
+    if (end > offset.current + visible - gutterEnd)
+      listRef.current?.scrollToOffset({ offset: end - visible + gutterEnd, animated: true });
     else if (start < offset.current + gutter)
       listRef.current?.scrollToOffset({ offset: Math.max(0, start - gutter), animated: true });
   };
@@ -115,7 +121,8 @@ export function Shelf<T>({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: gutter,
+          paddingLeft: gutter,
+          paddingRight: gutterEnd,
           gap: design.space.lg,
           minHeight: shell.large ? shell.s(SHELL.row.header) : undefined,
           // The focus room already spaces the cards; the header keeps the mockup's 16 pt.
@@ -191,7 +198,12 @@ export function Shelf<T>({
             );
           }}
           scrollEventThrottle={100}
-          contentContainerStyle={{ paddingHorizontal: gutter, paddingVertical: focusRoom }}
+          style={{ marginVertical: -glowRoom }}
+          contentContainerStyle={{
+            paddingLeft: gutter,
+            paddingRight: gutterEnd,
+            paddingVertical: focusRoom + glowRoom,
+          }}
           getItemLayout={(_, index) => ({
             length: index < data.length - 1 ? stride : itemWidth,
             offset: gutter + index * stride,

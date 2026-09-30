@@ -259,7 +259,7 @@ export function Sheet({
                         right: glassInset,
                         width: panelWidth,
                         // Ends above the player's control bar (Aurora C-player).
-                        maxHeight: design.window.height - glassInset - s(250),
+                        maxHeight: design.window.height - glassInset - s(300),
                       }
                     : side
                       ? { position: 'absolute', top: 0, bottom: 0, right: 0, width: panelWidth }

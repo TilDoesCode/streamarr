@@ -54,7 +54,8 @@ export function AmbientBackdrop({
     <View
       testID={testID}
       pointerEvents="none"
-      style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]}>
+      // Clips the scaled, blurred art (web pages grew ~7.5 % wider); it never contains glass.
+      style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, overflow: 'hidden' }]}>
       {layers.map((layer, index) => (
         <AmbientLayer key={layer.key} scene={layer} animateIn={index > 0} />
       ))}

@@ -7,3 +7,4 @@ export {
 } from './glass-controls';
 export { GlassGroup } from './glass-group';
 export { selectGlassMode, type GlassMode } from './glass-mode';
+export { TV_GLASS, tvGlassBase, tvGlassVeil } from './glass-style';

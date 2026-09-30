@@ -34,8 +34,8 @@
   },
   "methods": {
     "direct": "Direkte Wiedergabe",
-    "remux": "Neu verpackt",
-    "transcode": "Konvertiert"
+    "remux": "Direkt-Stream",
+    "transcode": "Transkodierung"
   },
   "engines": {
     "native": "Nativer Player",
@@ -62,7 +62,8 @@
     "fit": "Einpassen",
     "play": "Abspielen",
     "pause": "Pause",
-    "nowPlaying": "Läuft gerade"
+    "nowPlaying": "Läuft gerade",
+    "more": "Mehr"
   },
   "subtitlesOff": "Aus",
   "forced": "erzwungen",
@@ -104,15 +105,15 @@
     "buffer": "Puffer",
     "bufferAhead": "{seconds} s voraus",
     "dropped": "{count} verlorene Frames",
-    "better": "{version} läuft auf diesem Gerät ohne Umwandlung.",
+    "better": "{version} läuft auf diesem Gerät ohne Transkodierung.",
     "switch": "Version wechseln"
   },
   "notice": {
     "stepDown": "Wechsel zu einem anderen Stream, damit es weiterläuft.",
     "stepDownVlc": "Wechsel zu VLC, damit es weiterläuft.",
-    "stepDownDirect": "Wechsel zur Originaldatei, damit es weiterläuft.",
-    "stepDownRemux": "Wechsel zu einem umverpackten Stream, damit es weiterläuft.",
-    "stepDownTranscode": "Wechsel zu einem umgewandelten Stream, damit es weiterläuft.",
+    "stepDownDirect": "Wechsel zu direkter Wiedergabe, damit es weiterläuft.",
+    "stepDownRemux": "Wechsel zu Direkt-Stream, damit es weiterläuft.",
+    "stepDownTranscode": "Wechsel zu Transkodierung, damit es weiterläuft.",
     "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter."
   },
   "upNext": {

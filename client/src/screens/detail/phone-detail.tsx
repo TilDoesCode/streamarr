@@ -92,7 +92,7 @@ export function PhoneDetail({
   const { width, height } = design.window;
   const gutter = design.layout.gutter;
   const artHeight = Math.min(width * 1.15, height * 0.62);
-  const copyTop = artHeight * 0.58;
+  const copyTop = Math.max(artHeight * 0.58, insets.top + HEADER_HEIGHT + design.space.md);
   // Title tint washed under the copy; the art fades into the same colour.
   const wash = withAlpha(tint ?? colors.accent.DEFAULT, 0.22);
   const hasMore = !!overview || !!credits?.length;
@@ -132,11 +132,6 @@ export function PhoneDetail({
               accessibilityIgnoresInvertColors
             />
           ) : null}
-          <Scrim
-            direction="down"
-            color={colors.scrim.DEFAULT}
-            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 64 }}
-          />
           <Scrim
             direction="up"
             style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '60%' }}
@@ -244,12 +239,11 @@ export function PhoneDetail({
         </View>
         {loading ? null : children}
       </Animated.ScrollView>
-      <View
-        pointerEvents="none"
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 20 }}>
-        <View style={{ height: insets.top, backgroundColor: colors.background }} />
-        <Scrim direction="down" color={colors.background} style={{ height: 20 }} />
-      </View>
+      <Scrim
+        direction="down"
+        color={withAlpha(colors.background, 0.55)}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 32 }}
+      />
       {Platform.OS === 'ios' ? null : (
         <HeaderStrip
           title={title}

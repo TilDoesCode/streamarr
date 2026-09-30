@@ -10,7 +10,7 @@ import { createMemoryVault } from '@/accounts/types';
 import { ToastProvider } from '@/components/ui/toast';
 import { setLanguagePreference } from '@/i18n';
 import { readLanguagePreference } from '@/i18n/languages';
-import { tvBackAction } from '@/navigation/tv-back';
+import { exitDialogReducer, tvBackAction } from '@/navigation/tv-back';
 import { DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
@@ -262,5 +262,23 @@ describe('TV back chain', () => {
     expect(tvBackAction({ railFocused: true, canGoBack: false })).toBe('closeRail');
     expect(tvBackAction({ railFocused: false, canGoBack: true })).toBe('navigate');
     expect(tvBackAction({ railFocused: false, canGoBack: false })).toBe('confirmExit');
+    expect(tvBackAction({ railFocused: false, canGoBack: false, atHome: false })).toBe('home');
+  });
+});
+
+describe('TV exit dialog across route changes', () => {
+  it('does not reopen when a deep link leaves Home and Back returns there', () => {
+    let openAt = exitDialogReducer(null, { type: 'open', path: '/' });
+    expect(openAt).toBe('/');
+    openAt = exitDialogReducer(openAt, { type: 'route', path: '/movie/10378' });
+    expect(openAt).toBeNull();
+    openAt = exitDialogReducer(openAt, { type: 'route', path: '/' });
+    expect(openAt).toBeNull();
+  });
+
+  it('stays open while the path is unchanged and closes on request', () => {
+    const openAt = exitDialogReducer(null, { type: 'open', path: '/' });
+    expect(exitDialogReducer(openAt, { type: 'route', path: '/' })).toBe('/');
+    expect(exitDialogReducer(openAt, { type: 'close' })).toBeNull();
   });
 });

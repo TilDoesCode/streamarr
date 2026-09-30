@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react-native';
+import { Pause, Play, type LucideIcon } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
@@ -13,7 +13,8 @@ export type GlassButtonProps = Omit<FocusableProps, 'children'> & {
   label: string;
   icon?: LucideIcon;
   /** `solid` = the white primary pill (Play); `glass` = a glass pill. */
-  tone?: 'solid' | 'glass';
+  /** `plain`: no surface at rest (player bar chips); focus ring and hover lift only. */
+  tone?: 'solid' | 'glass' | 'plain';
   tint?: string | null;
   /** Round icon-only control; `label` stays the accessible name. */
   iconOnly?: boolean;
@@ -53,6 +54,7 @@ export function GlassButton({
         <Icon
           size={size ? Math.round(size * 0.42) : large ? s(26) : design.layout.iconSize.lg}
           color={fg}
+          fill={Icon === Play || Icon === Pause ? fg : 'none'}
           strokeWidth={2.25}
         />
       ) : null}
@@ -85,7 +87,14 @@ export function GlassButton({
         tint={tint}
         style={{ opacity: disabled ? 0.4 : 1 }}>
         {tone === 'solid' ? (
-          <View style={{ borderRadius: height / 2, backgroundColor: colors.primary.DEFAULT }}>
+          // Keyed per tone: Android drops the radius when a background appears on an existing view.
+          <View
+            key="solid"
+            style={{ borderRadius: height / 2, backgroundColor: colors.primary.DEFAULT }}>
+            {content}
+          </View>
+        ) : tone === 'plain' ? (
+          <View key="plain" style={{ borderRadius: height / 2 }}>
             {content}
           </View>
         ) : (
@@ -104,23 +113,39 @@ export type GlassChipProps = Omit<FocusableProps, 'children'> & {
   tint?: string | null;
 };
 
-/** Small glass capsule (filters, season picker); selection = tint wash. */
+/** Small glass capsule (filters, season picker); selected = solid white pill, focus = ring + lift. */
 export function GlassChip({ label, selected = false, tint, ...props }: GlassChipProps) {
   const design = useDesign();
   const height = design.layout.controlHeight.sm;
   return (
     <Focusable role="button" aria-selected={selected} accessibilityLabel={label} {...props}>
       <FocusLift kind="button" radius={height / 2} tint={tint}>
-        <Glass
-          interactive
-          radius={height / 2}
-          intensity={selected ? 'strong' : 'subtle'}
-          tint={selected ? (tint ?? colors.accent.DEFAULT) : null}
-          style={{ height, paddingHorizontal: design.space.lg, justifyContent: 'center' }}>
-          <Text variant="callout" numberOfLines={1}>
-            {label}
-          </Text>
-        </Glass>
+        {selected ? (
+          <View
+            key="selected"
+            style={{
+              height,
+              borderRadius: height / 2,
+              paddingHorizontal: design.space.lg,
+              justifyContent: 'center',
+              backgroundColor: colors.primary.DEFAULT,
+            }}>
+            <Text variant="callout" numberOfLines={1} style={{ color: colors.primary.foreground }}>
+              {label}
+            </Text>
+          </View>
+        ) : (
+          <Glass
+            key="rest"
+            interactive
+            radius={height / 2}
+            intensity="subtle"
+            style={{ height, paddingHorizontal: design.space.lg, justifyContent: 'center' }}>
+            <Text variant="callout" numberOfLines={1}>
+              {label}
+            </Text>
+          </Glass>
+        )}
       </FocusLift>
     </Focusable>
   );

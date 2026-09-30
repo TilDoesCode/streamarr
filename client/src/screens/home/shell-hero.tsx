@@ -25,6 +25,7 @@ import { CopyWash, HeroFade } from '@/shell/hero-fade';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, fonts, motion } from '@/theme';
+import { META_SEPARATOR } from '@/lib/media-labels';
 
 import { useFeatured, type Featured, type FeaturedStore } from './featured';
 import { useFeaturedDetail, useMeta } from './home-hero';
@@ -110,7 +111,7 @@ export function ShellHero({ store, collapsed = false, targetRef, onButtonFocus }
             position: 'absolute',
             left: 0,
             top: 0,
-            width: s(1100),
+            width: s(1200),
             height: s(SHELL.hero.height + 120),
           }}>
           <CopyWash color={colors.scrim.DEFAULT} />
@@ -210,7 +211,7 @@ function HeroCopy({
     <View
       style={{
         position: 'absolute',
-        left: s(SHELL.hero.copyLeft - SHELL.rail.width),
+        left: s(SHELL.hero.copyLeft),
         top: s(SHELL.hero.copyTop),
         width: s(SHELL.hero.copyWidth),
         gap: s(14),
@@ -268,7 +269,7 @@ function HeroCopy({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(12), flexWrap: 'wrap' }}>
         {meta.length ? (
           <Text numberOfLines={1} style={[text(type.meta), { color: colors.foreground.muted }]}>
-            {meta.join('  ·  ')}
+            {meta.join(META_SEPARATOR)}
           </Text>
         ) : null}
         {detail?.certification ? (

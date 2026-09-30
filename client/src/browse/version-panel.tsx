@@ -13,8 +13,14 @@ import {
   versionFormats,
   versionHeadline,
 } from '@/browse/version-format';
-import { Focusable, FocusGuide, FocusLift, useFocusState } from '@/components/focus';
-import { Glass } from '@/components/glass';
+import {
+  Focusable,
+  FocusGuide,
+  FocusLift,
+  useFocusGlowRoom,
+  useFocusState,
+} from '@/components/focus';
+import { Glass, TV_GLASS } from '@/components/glass';
 import { methodTone, SignalBars, SPEC_TONES, versionSignal } from '@/components/spec';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -51,6 +57,9 @@ export function entryIndex(versions: readonly Pick<Version, 'recommended'>[]): n
   );
 }
 
+// Android TV glass is already smoked; a lighter underlay keeps muted text >= 4.5:1 (tv-glass.test.ts).
+const SMOKED_TV = Platform.OS === 'android' && Platform.isTV;
+
 /** Large shell: the always-visible glass version panel of a detail screen (Aurora C-detail). */
 export function VersionPanel({
   workId,
@@ -66,6 +75,7 @@ export function VersionPanel({
 }: VersionPanelProps) {
   const { t } = useTranslation();
   const { s } = useShell();
+  const glowRoom = useFocusGlowRoom();
   const versions = useVersions(workId, !!workId);
   const list = versions.data?.versions ?? [];
   const error = versions.error ? toAppError(versions.error) : undefined;
@@ -129,7 +139,7 @@ export function VersionPanel({
           borderRadius: s(44),
           borderCurve: 'continuous',
           backgroundColor: colors.glass.tinted,
-          opacity: 0.7,
+          opacity: SMOKED_TV ? TV_GLASS.panelUnderlay : 0.7,
         }}
       />
       <View style={{ paddingHorizontal: s(40), paddingTop: s(48), gap: s(6) }}>
@@ -143,7 +153,7 @@ export function VersionPanel({
           }}>
           {t('versions.title')}
         </Text>
-        <Text tone="muted" style={{ fontSize: s(20), lineHeight: s(28) }} numberOfLines={1}>
+        <Text tone="muted" style={{ fontSize: s(20), lineHeight: s(28) }} numberOfLines={2}>
           {subtitle ??
             (count !== undefined
               ? t('versions.panelSubtitle', { count })
@@ -158,11 +168,12 @@ export function VersionPanel({
         onFocusLeave={() => onFocusInside?.(false)}
         style={{ flex: 1 }}>
         <ScrollView
-          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
+          // The focused card's ring and glow need room inside the viewport (Android clips children).
+          style={{ flex: 1, marginTop: -glowRoom }}
           contentContainerStyle={{
-            padding: s(40),
-            paddingTop: s(28),
+            padding: Math.max(s(40), glowRoom),
+            paddingTop: s(28) + glowRoom,
             gap: s(18),
           }}>
           {body}
@@ -224,7 +235,7 @@ export function VersionPanelCard({
   const methodLabel = method ? t(`versions.method.${method}`) : undefined;
   const why = method
     ? method !== 'direct' && reasons.length
-      ? reasons.join(' · ')
+      ? reasons.map((reason) => reason.replace(/-/g, '\u2011')).join('\n')
       : t(`versions.plain.${method}`)
     : undefined;
   const radius = s(28);
@@ -245,7 +256,7 @@ export function VersionPanelCard({
         .join('. ')}
       onPress={onPress}>
       <FocusLift kind="none" radius={radius} tint={tint}>
-        <CardSurface radius={radius} tint={tint}>
+        <CardSurface radius={radius}>
           {version.recommended || current ? (
             <View style={{ flexDirection: 'row', gap: s(10) }}>
               {version.recommended ? (
@@ -310,7 +321,6 @@ export function VersionPanelCard({
                 <Text
                   testID={`version-${version.rank}-plain`}
                   tone="muted"
-                  numberOfLines={2}
                   style={[text(17, 24), { flex: 1 }]}>
                   {why}
                 </Text>
@@ -358,26 +368,14 @@ function Pill({ label, tone }: { label: string; tone: 'recommended' | 'neutral' 
 }
 
 /** Card body: glass wash, brighter on hover, white ring (tinted glow via FocusLift) on focus. */
-function CardSurface({
-  radius,
-  tint,
-  children,
-}: {
-  radius: number;
-  tint?: string | null;
-  children: React.ReactNode;
-}) {
+
+function CardSurface({ radius, children }: { radius: number; children: React.ReactNode }) {
   const { s } = useShell();
   const { focus, hover, pressed } = useFocusState();
   const style = useAnimatedStyle(() => {
     const lit = Math.max(focus.get(), hover.get() * 0.6, pressed.get());
     return {
-      backgroundColor: interpolateColor(lit, [0, 1], [colors.glass.subtle, colors.glass.strong]),
-      borderColor: interpolateColor(
-        focus.get(),
-        [0, 1],
-        [colors.glass.border, colors.foreground.DEFAULT]
-      ),
+      backgroundColor: interpolateColor(lit, [0, 1], [colors.glass.subtle, colors.glass.DEFAULT]),
     };
   });
   return (
@@ -388,8 +386,8 @@ function CardSurface({
           padding: s(26),
           borderRadius: radius,
           borderCurve: 'continuous',
-          borderWidth: s(3),
-          shadowColor: tint ?? undefined,
+          borderWidth: 1,
+          borderColor: colors.glass.border,
         },
         style,
       ]}>

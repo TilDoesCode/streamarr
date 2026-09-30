@@ -17,7 +17,8 @@ describe('selectGlassMode', () => {
     ['web', { os: 'web', liquidGlass: false }, 'css'],
     ['web with reduced transparency', { os: 'web', reduceTransparency: true }, 'solid'],
     ['Android phone', { os: 'android', liquidGlass: false }, 'translucent'],
-    ['Android TV', { os: 'android', isTV: true, liquidGlass: false }, 'solid'],
+    ['Android TV', { os: 'android', isTV: true, liquidGlass: false }, 'tinted'],
+    ['Android TV never goes opaque by default', { os: 'android', isTV: true }, 'tinted'],
     ['Android never uses Liquid Glass', { os: 'android', liquidGlass: true }, 'translucent'],
     ['unknown platform', { os: 'windows' }, 'solid'],
   ])('%s → %s', (_, input, expected) => {

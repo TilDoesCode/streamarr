@@ -1,4 +1,4 @@
-export type GlassMode = 'liquid' | 'blur' | 'css' | 'translucent' | 'solid';
+export type GlassMode = 'liquid' | 'blur' | 'css' | 'translucent' | 'tinted' | 'solid';
 
 export type GlassEnvironment = {
   os: string;
@@ -18,6 +18,6 @@ export function selectGlassMode({
   if (reduceTransparency) return 'solid';
   if (os === 'ios') return liquidGlass ? 'liquid' : 'blur';
   if (os === 'web') return 'css';
-  if (os === 'android') return isTV ? 'solid' : 'translucent';
+  if (os === 'android') return isTV ? 'tinted' : 'translucent';
   return 'solid';
 }

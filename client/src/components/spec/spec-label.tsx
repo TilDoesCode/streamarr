@@ -1,18 +1,43 @@
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { mixHex, withAlpha } from '@/lib/color';
 import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, useDesign } from '@/theme';
 
 import { specChips, type CatalogSpec, type SpecTone } from './spec-model';
 
+// Chip fills are near-opaque smoke mixed with the tone, so chip text keeps 4.5:1 over any art or glass.
+const chipFill = (tone: string, weight: number) =>
+  withAlpha(mixHex(tone, colors.background, weight), 0.9);
+
 export const SPEC_TONES: Record<SpecTone, { fg: string; bg: string; border: string }> = {
-  neutral: { fg: colors.foreground.DEFAULT, bg: colors.glass.subtle, border: colors.glass.border },
-  ok: { fg: colors.success.DEFAULT, bg: colors.success.muted, border: colors.success.muted },
-  info: { fg: colors.info.DEFAULT, bg: colors.info.muted, border: colors.info.muted },
-  warn: { fg: colors.warning.DEFAULT, bg: colors.warning.muted, border: colors.warning.muted },
-  bad: { fg: colors.danger.DEFAULT, bg: colors.danger.muted, border: colors.danger.muted },
+  neutral: {
+    fg: colors.foreground.DEFAULT,
+    bg: chipFill(colors.foreground.DEFAULT, 0.1),
+    border: colors.glass.border,
+  },
+  ok: {
+    fg: colors.success.DEFAULT,
+    bg: chipFill(colors.success.DEFAULT, 0.16),
+    border: colors.success.muted,
+  },
+  info: {
+    fg: colors.info.DEFAULT,
+    bg: chipFill(colors.info.DEFAULT, 0.16),
+    border: colors.info.muted,
+  },
+  warn: {
+    fg: colors.warning.DEFAULT,
+    bg: chipFill(colors.warning.DEFAULT, 0.16),
+    border: colors.warning.muted,
+  },
+  bad: {
+    fg: colors.danger.DEFAULT,
+    bg: chipFill(colors.danger.DEFAULT, 0.16),
+    border: colors.danger.muted,
+  },
 };
 
 export type SpecLabelProps = {

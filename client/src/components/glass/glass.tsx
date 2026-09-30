@@ -3,12 +3,12 @@ import { Platform, View } from 'react-native';
 import { colors, useDesign } from '@/theme';
 
 import { selectGlassMode } from './glass-mode';
-import { glassEdge, glassFill } from './glass-style';
+import { glassEdge, glassFill, tvGlassBase, tvGlassVeil } from './glass-style';
 import type { GlassProps } from './glass-types';
 
 export type { GlassIntensity, GlassProps } from './glass-types';
 
-/** Android: translucent tinted surface on phones/tablets, solid on Android TV (no runtime blur). */
+/** Android: translucent tinted surface on phones/tablets, smoked tinted surface on Android TV (no runtime blur). */
 export function Glass({
   interactive: _interactive,
   intensity = 'regular',
@@ -26,15 +26,15 @@ export function Glass({
     liquidGlass: false,
     reduceTransparency: false,
   });
-  const solid = mode === 'solid';
+  const base =
+    mode === 'tinted'
+      ? tvGlassBase(tint, intensity)
+      : mode === 'solid'
+        ? colors.glass.solid
+        : colors.glass.tinted;
+  const fill = mode === 'tinted' ? tvGlassVeil(intensity) : glassFill(intensity, tint);
   return (
-    <View
-      style={[
-        glassEdge(r),
-        { backgroundColor: solid ? colors.glass.solid : colors.glass.tinted },
-        style,
-      ]}
-      {...props}>
+    <View style={[glassEdge(r), { backgroundColor: base }, style]} {...props}>
       <View
         pointerEvents="none"
         style={{
@@ -44,7 +44,7 @@ export function Glass({
           right: 0,
           bottom: 0,
           borderRadius: r,
-          backgroundColor: glassFill(intensity, tint),
+          backgroundColor: fill,
         }}
       />
       {children}

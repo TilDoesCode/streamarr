@@ -58,3 +58,6 @@ export const hdrLabel = (format: string) => label(HDR, format);
 export function resolutionLabel(resolution: string): string {
   return /^(2160|4k|uhd)/i.test(resolution) ? MEDIA_LABELS.uhd : resolution;
 }
+
+/** Hero/detail meta separator; en spaces do not collapse on web (C mockups space the dots wide). */
+export const META_SEPARATOR = '\u2002·\u2002';

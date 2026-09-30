@@ -850,9 +850,10 @@
     "title": "Versions",
     "subtitle": "{title} · {count, plural, one {# version} other {# versions}}",
     "incomplete": "{title} · some sources didn’t answer, the list may be incomplete",
-    "emptyTitle": "No versions found",
+    "emptyTitle": "No versions yet",
     "emptyMessage": "There is no version of this title to play yet.",
     "current": "Last played",
+    "lastPlayedOther": "Last played: {version}",
     "local": {
       "ready": "Instant",
       "downloading": "Preparing"

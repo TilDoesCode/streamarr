@@ -1,8 +1,9 @@
 import { useRef, type ReactNode } from 'react';
-import { Modal, View } from 'react-native';
+import { Modal, Platform, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 
 import { FocusGuide, FocusLayer, useInitialFocus } from '@/components/focus';
+import { selectGlassMode, tvGlassBase } from '@/components/glass';
 import { Button, type ButtonVariant } from '@/components/ui/button';
 import { OverlayScrim } from '@/components/ui/overlay-scrim';
 import { Text } from '@/components/ui/text';
@@ -12,6 +13,15 @@ const PANEL_IN = new Keyframe({
   0: { opacity: 0, transform: [{ scale: 0.96 }] },
   100: { opacity: 1, transform: [{ scale: 1 }], easing: Easing.bezier(...easing.out) },
 }).duration(motion.enter);
+
+// A plain view (opacity animates on enter), so only the blur-free Android TV glass applies here.
+const TV_GLASS_DIALOG =
+  selectGlassMode({
+    os: Platform.OS,
+    isTV: Platform.isTV === true,
+    liquidGlass: false,
+    reduceTransparency: false,
+  }) === 'tinted';
 
 export type DialogAction = {
   label: string;
@@ -55,7 +65,7 @@ export function Dialog({ open, onClose, title, message, actions, children, testI
             justifyContent: 'center',
             padding: design.layout.gutter,
           }}>
-          <OverlayScrim onPress={onClose} />
+          <OverlayScrim onPress={onClose} strong={TV_GLASS_DIALOG} />
           <Animated.View
             testID={testID}
             entering={PANEL_IN}
@@ -69,7 +79,10 @@ export function Dialog({ open, onClose, title, message, actions, children, testI
               gap: design.space.md,
               borderRadius: design.radius.xl,
               borderCurve: 'continuous',
-              backgroundColor: colors.surface.raised,
+              backgroundColor: TV_GLASS_DIALOG ? tvGlassBase() : colors.surface.raised,
+              borderWidth: TV_GLASS_DIALOG ? 1 : 0,
+              borderColor: colors.glass.border,
+              borderTopColor: colors.glass.highlight,
               boxShadow: design.shadow.overlay,
             }}>
             <Text variant="heading">{title}</Text>

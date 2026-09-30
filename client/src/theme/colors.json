@@ -9,6 +9,8 @@
   "foreground": {
     "DEFAULT": "#FFFFFF",
     "muted": "rgba(255, 255, 255, 0.64)",
+    "mutedTv": "rgba(255, 255, 255, 0.86)",
+    "subtleTv": "rgba(255, 255, 255, 0.7)",
     "subtle": "rgba(255, 255, 255, 0.44)",
     "disabled": "rgba(255, 255, 255, 0.28)"
   },
@@ -71,6 +73,7 @@
   },
   "scrim": {
     "DEFAULT": "rgba(6, 8, 12, 0.72)",
+    "strong": "rgba(6, 8, 12, 0.96)",
     "clear": "rgba(10, 12, 18, 0)"
   },
   "shadow": "rgba(0, 0, 0, 0.55)",

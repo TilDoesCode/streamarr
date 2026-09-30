@@ -2,7 +2,7 @@ import { Film } from 'lucide-react-native';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,7 +29,7 @@ import { useScreenTitle } from '@/navigation/screen-title';
 import { BrandMark } from '@/shell/brand-mark';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
-import { aspect, colors, motion, useDesign } from '@/theme';
+import { aspect, colors, gutterPadding, motion, useDesign } from '@/theme';
 
 import { FeaturedStore, useFeatured, type Featured } from './featured';
 import { ContinueCard, DiscoverCard, featuredFromItem, NextUpCard } from './home-cards';
@@ -94,6 +94,7 @@ export function HomeScreen() {
   const [framesVersion, setFramesVersion] = useState(0);
   const rowsRef = useRef<ScrollView>(null);
   const rowsOffset = useRef(0);
+  const [scrolled, setScrolled] = useState(false);
   // Web keyboard focus below the first row: rows take the TV lift geometry (row at focusTop, hero copy hidden).
   const [raisedRow, setRaisedRow] = useState(0);
   const raised = raisedRow > 0;
@@ -223,7 +224,7 @@ export function HomeScreen() {
     ) : (
       <>
         {failed.length ? (
-          <View style={{ paddingHorizontal: design.layout.gutter }}>
+          <View style={gutterPadding(design)}>
             <FormMessage
               testID="home-refresh-error"
               tone="warning"
@@ -338,16 +339,20 @@ export function HomeScreen() {
           onScroll={(event) => {
             rowsOffset.current = event.nativeEvent.contentOffset.y;
             if (rowsOffset.current <= 0) setRaisedRow(0);
+            setScrolled(rowsOffset.current > 1);
           }}
           scrollEventThrottle={100}
           testID="home-rows"
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            top: s(raised ? SHELL.row.focusTop : SHELL.row.top),
-          }}
+          style={[
+            {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              top: s(raised ? SHELL.row.focusTop : SHELL.row.top),
+            },
+            scrolled && topFade(s(56)),
+          ]}
           // D-pad presses during the skeleton must not scroll away from the first row.
           scrollEnabled={!loading}
           showsVerticalScrollIndicator={false}
@@ -425,7 +430,7 @@ function HomeSkeleton({
           style={{
             flexDirection: 'row',
             gap: design.layout.cardGap,
-            paddingHorizontal: design.layout.gutter,
+            ...gutterPadding(design),
             overflow: 'hidden',
           }}>
           {Array.from({ length: 8 }, (_, index) =>
@@ -439,4 +444,11 @@ function HomeSkeleton({
       ))}
     </View>
   );
+}
+
+// Web: rows scrolled by the wheel fade out under the hero instead of leaving a cut caption line.
+function topFade(size: number): ViewStyle | undefined {
+  if (Platform.OS !== 'web') return undefined;
+  const mask = `linear-gradient(to bottom, transparent 0, black ${size}px)`;
+  return { maskImage: mask, WebkitMaskImage: mask } as unknown as ViewStyle;
 }

@@ -178,11 +178,6 @@ const REASONS = new Set([
 
 type ReasonCode = typeof REASONS extends Set<infer T> ? T : never;
 
-/** Localized prediction reasons; codes the client does not know are left out. */
-export function predictionReasons(version: Version, t: TFunction): string[] {
-  return reasonTexts(version.predictionReasons, t);
-}
-
 /** Localized planner reasons (`decision.reasons`, prediction reasons); unknown codes are left out. */
 export function reasonTexts(reasons: readonly Reason[] | null | undefined, t: TFunction): string[] {
   const list = reasons ?? [];

@@ -17,6 +17,7 @@ import { ShellDesign } from '@/shell/shell-design';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, fonts, useDesign } from '@/theme';
+import { META_SEPARATOR } from '@/lib/media-labels';
 
 /** Mockup C-detail: glass version panel width and its margin to the screen edges (1920 × 1080 points). */
 export const DETAIL = { panelWidth: 760, panelInset: 24, copyTop: 170, copyWidth: 840 } as const;
@@ -146,7 +147,7 @@ function LargeDetailLayout({
     return true;
   }, design.isTV && panelFocused);
 
-  const gutter = s(SHELL.row.left - SHELL.rail.width);
+  const gutter = s(SHELL.row.left);
   // Tablet portrait: the panel goes under the copy instead of squeezing it.
   const portrait = !design.isTV && design.window.height > design.window.width;
   const text = (size: number, family: string = fonts.body) => ({
@@ -229,7 +230,7 @@ function LargeDetailLayout({
               style={{ flexDirection: 'row', alignItems: 'center', gap: s(14), flexWrap: 'wrap' }}>
               {facts.length ? (
                 <Text numberOfLines={1} style={[text(24), { color: colors.foreground.muted }]}>
-                  {facts.join('  ·  ')}
+                  {facts.join(META_SEPARATOR)}
                 </Text>
               ) : null}
               {certification ? (

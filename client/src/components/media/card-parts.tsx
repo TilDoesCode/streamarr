@@ -49,6 +49,9 @@ export function useCardScale(cardWidth: number): number {
   return Math.max(1, Math.min(cardScale, (room + half) / (half + ringOffset + ringWidth)));
 }
 
+// Longer sublines ("S2, E3 · 2 min left") keep the whole line; the chips give way.
+const SHORT_SUBLINE = 10;
+
 /** Title + subtitle under a card; slides clear of the lifted artwork and brightens (or appears) on focus. */
 export function CardCaption({
   title,
@@ -137,7 +140,7 @@ export function CardCaption({
             {subtitle}
           </Text>
         ) : null}
-        {large && spec ? (
+        {large && spec && (subtitle?.length ?? 0) <= SHORT_SUBLINE ? (
           <SpecLabels
             spec={spec}
             max={maxSpec}

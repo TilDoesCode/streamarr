@@ -19,6 +19,7 @@ export function ShellDesign({ children }: { children: ReactNode }) {
       window: design.window,
       focus: design.focus,
       layout: { ...tv.layout, gutter: design.layout.gutter },
+      inset: design.inset,
     };
   }, [design, large, scale]);
   return <DesignScope value={value}>{children}</DesignScope>;

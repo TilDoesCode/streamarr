@@ -34,8 +34,8 @@
   },
   "methods": {
     "direct": "Direct play",
-    "remux": "Repackaged",
-    "transcode": "Converted"
+    "remux": "Direct stream",
+    "transcode": "Transcode"
   },
   "engines": {
     "native": "Native player",
@@ -62,7 +62,8 @@
     "fit": "Fit to screen",
     "play": "Play",
     "pause": "Pause",
-    "nowPlaying": "Now playing"
+    "nowPlaying": "Now playing",
+    "more": "More"
   },
   "subtitlesOff": "Off",
   "forced": "forced",
@@ -104,15 +105,15 @@
     "buffer": "Buffer",
     "bufferAhead": "{seconds} s ahead",
     "dropped": "{count} dropped frames",
-    "better": "{version} plays without conversion on this device.",
+    "better": "{version} plays without transcoding on this device.",
     "switch": "Switch version"
   },
   "notice": {
     "stepDown": "Switched to a different stream to keep playing.",
     "stepDownVlc": "Switched to VLC to keep playing.",
-    "stepDownDirect": "Switched to the original file to keep playing.",
-    "stepDownRemux": "Switched to a repackaged stream to keep playing.",
-    "stepDownTranscode": "Switched to a converted stream to keep playing.",
+    "stepDownDirect": "Switched to direct play to keep playing.",
+    "stepDownRemux": "Switched to direct stream to keep playing.",
+    "stepDownTranscode": "Switched to transcoding to keep playing.",
     "switchFailed": "Couldn’t switch. {reason} Playback continues as before."
   },
   "upNext": {

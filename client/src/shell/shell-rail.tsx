@@ -2,13 +2,20 @@ import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
-import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { FocusGuide, Focusable, FocusLift, useFocusState } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { Avatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
+import { withAlpha } from '@/lib/color';
 import { TABS, type TabSpec } from '@/navigation/tabs';
 import { colors, fonts, useDesign } from '@/theme';
 
@@ -38,6 +45,12 @@ export function ShellRail({ activeName, onSelect, onFocusChange }: ShellRailProp
   const items = useRef<(View | null)[]>([]);
   // Entering the rail (TV) lands on the active tab, not on the last focused item.
   const [activeNode, setActiveNode] = useState<View | null>(null);
+  const open = useSharedValue(0);
+  const scrimStyle = useAnimatedStyle(() => ({ opacity: open.get() }));
+  const setOpen = (focused: boolean) => {
+    open.set(withTiming(focused ? 1 : 0, { duration: 200 }));
+    onFocusChange?.(focused);
+  };
   const { rail } = SHELL;
   const main = TABS.filter((tab) => tab.id !== 'settings');
   const settings = TABS.find((tab) => tab.id === 'settings')!;
@@ -80,6 +93,28 @@ export function ShellRail({ activeName, onSelect, onFocusChange }: ShellRailProp
         width: s(rail.pill),
         zIndex: 2,
       }}>
+      {design.isTV ? (
+        // TV: the focused rail dims the content beside it so its labels never mix with row headings.
+        <Animated.View
+          style={[
+            {
+              pointerEvents: 'none',
+              position: 'absolute',
+              left: -s(rail.inset),
+              top: -s(rail.top),
+              bottom: -s(rail.top),
+              width: s(640),
+            },
+            scrimStyle,
+          ]}>
+          <LinearGradient
+            colors={[withAlpha(colors.background, 0.92), withAlpha(colors.background, 0)]}
+            start={{ x: 0.2, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ flex: 1 }}
+          />
+        </Animated.View>
+      ) : null}
       <Glass
         intensity="subtle"
         radius={s(rail.pill / 2)}
@@ -93,8 +128,8 @@ export function ShellRail({ activeName, onSelect, onFocusChange }: ShellRailProp
         remember={false}
         destinations={design.isTV && activeNode ? [activeNode] : undefined}
         trap={design.isTV ? ['up', 'down', 'left'] : undefined}
-        onFocusEnter={() => onFocusChange?.(true)}
-        onFocusLeave={() => onFocusChange?.(false)}
+        onFocusEnter={() => setOpen(true)}
+        onFocusLeave={() => setOpen(false)}
         style={{ flex: 1, alignItems: 'center', gap: s(rail.gap), paddingBottom: s(20) }}>
         {main.map(item)}
         <View style={{ flex: 1 }} />
@@ -170,7 +205,11 @@ function RailIcon({ tab, active, size }: { tab: TabSpec; active: boolean; size: 
     [rest, lit]
   );
   const Icon = tab.icon;
-  const tone = active ? colors.primary.foreground : colors.foreground.muted;
+  const tone = active
+    ? colors.primary.foreground
+    : Platform.isTV
+      ? colors.foreground.mutedTv
+      : colors.foreground.muted;
   return (
     <Animated.View
       style={[
@@ -212,7 +251,7 @@ function RailLabel({ label, size }: { label: string; size: number }) {
           justifyContent: 'center',
           paddingHorizontal: s(18),
           borderRadius: s(22),
-          backgroundColor: colors.glass.tinted,
+          backgroundColor: colors.glass.solid,
           borderWidth: 1,
           borderColor: colors.glass.border,
         }}>

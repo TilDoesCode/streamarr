@@ -137,6 +137,13 @@ export function useSeasonDetail(
   });
 }
 
+/** Season for a detail screen: shows the fast listing first, then the one with version counts. */
+export function useSeasonWithVersions(tmdbId: number | undefined, season: number | undefined) {
+  const base = useSeasonDetail(tmdbId, season);
+  const counted = useSeasonDetail(tmdbId, season, true);
+  return counted.data && !counted.isPlaceholderData ? counted : base;
+}
+
 export function useSearch(query: string, type: SearchType, enabled: boolean) {
   const { account, client } = useActiveAccount();
   return useQuery({

@@ -7,9 +7,8 @@ import { useMarkPlayed, type Episode } from '@/browse/queries';
 import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
 import { useOpenVersions, VersionPicker } from '@/browse/version-picker';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
-import { EpisodeRow } from '@/components/media/episode-row';
+import { EpisodeRow, EpisodeRowAction } from '@/components/media/episode-row';
 import { EmptyState } from '@/components/states/empty-state';
-import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
 import { useReturnTarget } from '@/navigation/return-focus';
@@ -93,6 +92,7 @@ export function EpisodeList({
           const title =
             episode.title ?? t('media.episodeNumber', { episode: episode.episodeNumber });
           const unavailable = episode.aired === false || !episode.workId;
+          const noVersions = !unavailable && episode.versionCount === 0;
           return (
             <FocusGuide
               key={episode.episodeNumber}
@@ -116,6 +116,8 @@ export function EpisodeList({
                 played={played}
                 progress={watchProgress(episode.watch)}
                 unavailable={unavailable}
+                noVersions={noVersions}
+                spec={episode.spec}
                 selected={!!selectedWorkId && episode.workId === selectedWorkId}
                 hasTVPreferredFocus={takeFocus && episode === preferred}
                 onPress={() =>
@@ -126,58 +128,61 @@ export function EpisodeList({
                     startSeconds: resumeSeconds(episode.watch),
                   })
                 }
-              />
-              {unavailable ? null : (
-                <View style={{ gap: design.space.sm }}>
-                  <IconButton
-                    testID={`episode-${episode.episodeNumber}-versions`}
-                    icon={Film}
-                    size="sm"
-                    variant="ghost"
-                    accessibilityLabel={t('detail.episodeVersions', { title })}
-                    onPress={() =>
-                      onVersions
-                        ? onVersions(episode)
-                        : openVersions(
+                actions={
+                  unavailable ? null : (
+                    <>
+                      {noVersions ? null : (
+                        <EpisodeRowAction
+                          testID={`episode-${episode.episodeNumber}-versions`}
+                          icon={Film}
+                          accessibilityLabel={t('detail.episodeVersions', { title })}
+                          onPress={() =>
+                            onVersions
+                              ? onVersions(episode)
+                              : openVersions(
+                                  {
+                                    workId: episode.workId,
+                                    title: episodeTitle(episode),
+                                    startSeconds: resumeSeconds(episode.watch),
+                                    currentReleaseId: episode.watch.lastReleaseId,
+                                  },
+                                  () => setVersionsFor(episode)
+                                )
+                          }
+                        />
+                      )}
+                      <EpisodeRowAction
+                        testID={`episode-${episode.episodeNumber}-mark`}
+                        icon={played ? EyeOff : Check}
+                        accessibilityLabel={t(
+                          played ? 'detail.markEpisodeUnplayed' : 'detail.markEpisodePlayed',
+                          { title }
+                        )}
+                        onPress={() =>
+                          !mark.isPending &&
+                          mark.mutate(
+                            { workIds: [episode.workId ?? ''], played: !played },
                             {
-                              workId: episode.workId,
-                              title: episodeTitle(episode),
-                              startSeconds: resumeSeconds(episode.watch),
-                              currentReleaseId: episode.watch.lastReleaseId,
-                            },
-                            () => setVersionsFor(episode)
+                              onSuccess: () =>
+                                toast.show({
+                                  message: t(
+                                    played ? 'detail.markedUnplayed' : 'detail.markedPlayed',
+                                    {
+                                      title,
+                                    }
+                                  ),
+                                  tone: 'success',
+                                }),
+                              onError: () =>
+                                toast.show({ message: t('detail.markFailed'), tone: 'error' }),
+                            }
                           )
-                    }
-                  />
-                  <IconButton
-                    testID={`episode-${episode.episodeNumber}-mark`}
-                    icon={played ? EyeOff : Check}
-                    size="sm"
-                    variant="ghost"
-                    accessibilityLabel={t(
-                      played ? 'detail.markEpisodeUnplayed' : 'detail.markEpisodePlayed',
-                      { title }
-                    )}
-                    onPress={() =>
-                      !mark.isPending &&
-                      mark.mutate(
-                        { workIds: [episode.workId ?? ''], played: !played },
-                        {
-                          onSuccess: () =>
-                            toast.show({
-                              message: t(played ? 'detail.markedUnplayed' : 'detail.markedPlayed', {
-                                title,
-                              }),
-                              tone: 'success',
-                            }),
-                          onError: () =>
-                            toast.show({ message: t('detail.markFailed'), tone: 'error' }),
                         }
-                      )
-                    }
-                  />
-                </View>
-              )}
+                      />
+                    </>
+                  )
+                }
+              />
             </FocusGuide>
           );
         })}

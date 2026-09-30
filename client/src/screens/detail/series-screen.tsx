@@ -8,7 +8,7 @@ import { View } from 'react-native';
 import { toAppError } from '@/api/errors';
 import { EpisodeList } from '@/browse/episode-list';
 import {
-  useSeasonDetail,
+  useSeasonWithVersions,
   useSeriesDetail,
   useVersions,
   useWatchRefreshOnFocus,
@@ -35,7 +35,7 @@ import { Text } from '@/components/ui/text';
 import { useReturnTarget } from '@/navigation/return-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { useShell } from '@/shell/use-shell';
-import { useDesign } from '@/theme';
+import { gutterPadding, useDesign } from '@/theme';
 
 import { DetailError, routeNumber } from './detail-parts';
 import { LargeDetail, peopleCredits, usePanelEntry } from './large-detail';
@@ -70,7 +70,7 @@ export function SeriesScreen() {
     next?.seasonNumber ??
     seasons.find((season) => season.seasonNumber > 0)?.seasonNumber ??
     seasons[0]?.seasonNumber;
-  const season = useSeasonDetail(data ? tmdbId : undefined, seasonNumber);
+  const season = useSeasonWithVersions(data ? tmdbId : undefined, seasonNumber);
 
   const title = data?.title ?? '';
   const total = data?.watch.totalEpisodes ?? 0;
@@ -361,7 +361,7 @@ export function SeriesScreen() {
         <View
           style={{
             gap: design.space.md,
-            paddingHorizontal: design.layout.gutter,
+            ...gutterPadding(design),
             paddingTop: design.space.xl,
           }}>
           <Text variant="heading">{t('detail.seasons')}</Text>
@@ -399,7 +399,7 @@ export function SeriesScreen() {
         <FocusSection testID={`series-episodes-${seasonNumber}`}>
           <View
             style={{
-              paddingHorizontal: design.layout.gutter,
+              ...gutterPadding(design),
               paddingTop: design.space.lg,
               gap: design.space.sm,
             }}>

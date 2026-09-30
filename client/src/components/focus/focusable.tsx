@@ -57,7 +57,8 @@ export function useFocusState(): FocusState {
 }
 
 function isKeyboardFocus(event: unknown): boolean {
-  if (Platform.OS !== 'web') return true;
+  // Touch phones/tablets: programmatic or tap focus never shows a ring (no D-pad there).
+  if (Platform.OS !== 'web') return Platform.isTV;
   const target = (event as { currentTarget?: { matches?: (selector: string) => boolean } })
     ?.currentTarget;
   try {
@@ -193,6 +194,14 @@ export type FocusLiftProps = {
   children: ReactNode;
 };
 
+const GLOW_BLUR = 24;
+
+/** Room a scroll container needs around a focused FocusLift so its ring and glow are never clipped. */
+export function useFocusGlowRoom(): number {
+  const design = useDesign();
+  return design.focus.ringOffset + design.focus.ringWidth + design.px(GLOW_BLUR * 0.75);
+}
+
 /** Spring lift + white ring + tinted glow for the nearest Focusable (TV focus, web hover and keyboard focus, press). */
 export function FocusLift({
   kind = 'card',
@@ -225,7 +234,7 @@ export function FocusLift({
   const offset = design.focus.ringOffset;
   const width = design.focus.ringWidth;
   const glow = tint
-    ? `0 0 ${design.px(kind === 'card' ? 30 : 18)}px ${withAlpha(tint, 0.55)}`
+    ? `0 0 ${design.px(kind === 'button' ? 18 : GLOW_BLUR)}px ${withAlpha(tint, 0.55)}`
     : design.shadow.glow;
   return (
     <Animated.View style={[style, liftStyle]}>

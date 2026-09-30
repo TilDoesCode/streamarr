@@ -19,6 +19,7 @@ import {
   Volume2,
   VolumeX,
   type LucideIcon,
+  Ellipsis,
 } from 'lucide-react-native';
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -108,6 +109,7 @@ export function PlayerOverlay({
   // Narrow phones: the row drops its Play (the centre cluster has it) and uses smaller chips.
   const narrow = design.window.width < 420;
   const chip = narrow ? 40 : 44;
+  const [moreOpen, setMoreOpen] = useState(false);
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
@@ -370,6 +372,8 @@ export function PlayerOverlay({
     lineHeight: font(30, 19),
     color: colors.foreground.DEFAULT,
   };
+  // Narrow windows: the panel chips fold into one "More" button so the row never overflows.
+  const collapse = narrow && !tv && panelButtons.length > 2;
   const labelled = (panel: PanelKind) =>
     panel === 'audio' || panel === 'subtitles' || panel === 'version' || panel === 'info';
 
@@ -625,6 +629,7 @@ export function PlayerOverlay({
                   />
                   <GlassButton
                     testID={tv ? 'player-back10-tv' : 'player-back10'}
+                    tone="plain"
                     iconOnly
                     icon={RotateCcw}
                     label={pt('controls.back10')}
@@ -637,6 +642,7 @@ export function PlayerOverlay({
                   />
                   <GlassButton
                     testID={tv ? 'player-forward30-tv' : 'player-forward30'}
+                    tone="plain"
                     iconOnly
                     icon={RotateCw}
                     label={pt('controls.forward30')}
@@ -654,7 +660,7 @@ export function PlayerOverlay({
                       testID={`player-open-${panel}`}
                       icon={PANEL_ICONS[panel]}
                       iconOnly={!labelled(panel)}
-                      tone={openPanel === panel ? 'solid' : 'glass'}
+                      tone={openPanel === panel ? 'solid' : 'plain'}
                       label={labelled(panel) ? chipLabel[panel] : pt(`controls.${panel}`)}
                       accessibilityLabel={
                         labelled(panel) && panel !== 'info'
@@ -669,6 +675,7 @@ export function PlayerOverlay({
                   {Platform.OS === 'web' ? (
                     <GlassButton
                       testID="player-mute"
+                      tone="plain"
                       iconOnly
                       icon={muted ? VolumeX : Volume2}
                       label={pt(muted ? 'controls.unmute' : 'controls.mute')}
@@ -678,6 +685,7 @@ export function PlayerOverlay({
                   {fullscreenAvailable ? (
                     <GlassButton
                       testID="player-fullscreen"
+                      tone="plain"
                       iconOnly
                       icon={fullscreen ? Minimize : Maximize}
                       label={pt(fullscreen ? 'controls.exitFullscreen' : 'controls.fullscreen')}
@@ -728,6 +736,30 @@ export function PlayerOverlay({
                     {`−${formatClock(remaining)}`}
                   </Text>
                 </View>
+                {collapse && moreOpen ? (
+                  <View
+                    testID="player-more-row"
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'flex-end',
+                      gap: design.space.sm,
+                    }}>
+                    {panelButtons.map((panel) => (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        key={panel}
+                        testID={`player-open-${panel}`}
+                        icon={PANEL_ICONS[panel]}
+                        label={pt(`controls.${panel}`)}
+                        onPress={() => {
+                          setMoreOpen(false);
+                          onPanel(panel);
+                        }}
+                      />
+                    ))}
+                  </View>
+                ) : null}
                 <FocusGuide
                   remember
                   trap={CENTRED_ROW}
@@ -788,7 +820,18 @@ export function PlayerOverlay({
                       </>
                     ) : null}
                     <View style={{ flex: 1 }} />
-                    {panelButtons.map((panel) => (
+                    {collapse ? (
+                      <GlassButton
+                        iconOnly
+                        size={chip}
+                        testID="player-more"
+                        icon={Ellipsis}
+                        tone={moreOpen ? 'solid' : 'glass'}
+                        label={pt('controls.more')}
+                        onPress={() => setMoreOpen((open) => !open)}
+                      />
+                    ) : null}
+                    {(collapse ? [] : panelButtons).map((panel) => (
                       <GlassButton
                         iconOnly
                         size={chip}
@@ -950,7 +993,9 @@ function SeekBar({
         accessibilityLabel={label}
         accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(position) }}
         onFocus={onFocus}>
-        <FocusLift kind="none">{bar}</FocusLift>
+        <FocusLift kind="none" radius={thumb * 0.8}>
+          {bar}
+        </FocusLift>
       </Focusable>
     );
   return (

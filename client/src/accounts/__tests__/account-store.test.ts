@@ -1,4 +1,9 @@
-import { AccountStore, profileColor, type KeyValueStorage } from '@/accounts/account-store';
+import {
+  AccountStore,
+  AVATAR_COLORS,
+  profileColor,
+  type KeyValueStorage,
+} from '@/accounts/account-store';
 import {
   followOtherTabs,
   tabSessionStorage,
@@ -65,22 +70,38 @@ describe('AccountStore', () => {
     expect(friend.id).not.toBe(anna.id);
   });
 
-  it('gives every profile its own avatar colour', async () => {
-    const { store } = setup();
-    const accounts = [];
-    for (const name of ['anna', 'ben', 'kind', 'gast'])
-      accounts.push(await store.addSignedIn(DEV_WORLD, viewer(`v-${name}`, name), tokens(1)));
-    expect(new Set(accounts.map((account) => account.color)).size).toBe(4);
+  it('derives the avatar colour only from the viewer id, whatever else is stored', async () => {
+    const alone = await setup().store.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
+    const crowded = setup().store;
+    for (const name of ['zed', 'mia', 'ben', 'kind'])
+      await crowded.addSignedIn(DEV_WORLD, viewer(`v-${name}`, name), tokens(1));
+    const late = await crowded.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
+    expect(late.color).toBe(alone.color);
+    expect(profileColor('v-anna')).toBe(alone.color);
+    expect(profileColor('v-anna')).toBe(profileColor('v-anna'));
+    expect(profileColor('v-anna')).toBeLessThan(AVATAR_COLORS);
   });
 
-  it('derives the avatar colour from the viewer id, so every device shows the same one', async () => {
-    const first = await setup().store.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
-    const other = setup().store;
-    await other.addSignedIn(DEV_WORLD, viewer('v-zed', 'zed'), tokens(1));
-    const second = await other.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
-    if (other.getSnapshot().accounts[0]!.color !== first.color)
-      expect(second.color).toBe(first.color);
-    expect(profileColor('v-anna', [])).toBe(first.color);
+  it('ignores stored colours and load order when reading the account list', () => {
+    const storage = memoryStorage();
+    const stored = ['v-mia', 'v-anna'].map((viewerId, index) => ({
+      id: `a${index}`,
+      serverUrl: DEV_WORLD.url,
+      viewerId,
+      username: viewerId.slice(2),
+      displayName: viewerId.slice(2),
+      color: 7 - index,
+      signedIn: false,
+      addedAt: 1,
+    }));
+    storage.set('accounts', JSON.stringify(stored));
+    const forward = new AccountStore({ storage, vault: createMemoryVault() }).getSnapshot()
+      .accounts;
+    storage.set('accounts', JSON.stringify([...stored].reverse()));
+    const backward = new AccountStore({ storage, vault: createMemoryVault() }).getSnapshot()
+      .accounts;
+    for (const account of [...forward, ...backward])
+      expect(account.color).toBe(profileColor(account.viewerId));
   });
 
   it('signing in again to the same server and viewer updates the existing account', async () => {
@@ -277,15 +298,14 @@ describe('AccountStore in several browser tabs (one shared storage)', () => {
     expect(vault.entries.has(gast.id)).toBe(false);
   });
 
-  it('profiles added in two tabs get distinct colours and both stay', async () => {
+  it('profiles added in two tabs both stay', async () => {
     const { open } = browser();
     const tabA = open();
     await tabA.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
     const tabB = open();
-    const gast = await tabA.addSignedIn(DEV_WORLD, viewer('v-gast', 'gast'), tokens(2));
-    const kind = await tabB.addSignedIn(DEV_WORLD, viewer('v-kind', 'kind'), tokens(3));
+    await tabA.addSignedIn(DEV_WORLD, viewer('v-gast', 'gast'), tokens(2));
+    await tabB.addSignedIn(DEV_WORLD, viewer('v-kind', 'kind'), tokens(3));
     expect(usernames(open())).toEqual(['anna', 'gast', 'kind']);
-    expect(kind.color).not.toBe(gast.color);
   });
 
   it('a session ended in another tab is not ended (or reported) again here', async () => {

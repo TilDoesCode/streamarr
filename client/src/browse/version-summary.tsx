@@ -9,6 +9,7 @@ import { predictedMethod, versionFormats, versionHeadline } from '@/browse/versi
 import { Focusable, FocusLift, useFocusState } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { methodTone, SPEC_TONES } from '@/components/spec';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
@@ -30,10 +31,11 @@ export function VersionSummary({
   const design = useDesign();
   const versions = useVersions(workId);
   const list = versions.data?.versions ?? [];
-  const version =
-    list.find((item) => currentReleaseId && item.releaseId === currentReleaseId) ??
-    list.find((item) => item.recommended) ??
-    list[0];
+  // Play without a release id starts the server's pick: the recommended version.
+  const version = list.find((item) => item.recommended) ?? list[0];
+  const lastPlayed = currentReleaseId
+    ? list.find((item) => item.releaseId === currentReleaseId)
+    : undefined;
 
   let body;
   if (versions.data === undefined && versions.error) {
@@ -81,11 +83,14 @@ export function VersionSummary({
         <FocusLift kind="none" radius={RADIUS}>
           <SummarySurface>
             <View style={{ flex: 1, gap: design.space.xs }}>
-              <Text variant="overline" tone="muted">
-                {version.releaseId === currentReleaseId
-                  ? t('versions.current')
-                  : t('versions.card')}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
+                <Text variant="overline" tone="muted">
+                  {t('versions.card')}
+                </Text>
+                {lastPlayed === version ? (
+                  <Badge testID="versions-summary-last" label={t('versions.current')} />
+                ) : null}
+              </View>
               <Text
                 numberOfLines={1}
                 style={{ fontFamily: fonts.displayBold, fontSize: 19, lineHeight: 24 }}>
@@ -112,6 +117,17 @@ export function VersionSummary({
                   {versionFormats(version, t).join(' · ')}
                 </Text>
               </View>
+              {lastPlayed && lastPlayed !== version ? (
+                <Text
+                  testID="versions-summary-last"
+                  variant="caption"
+                  tone="muted"
+                  numberOfLines={1}>
+                  {t('versions.lastPlayedOther', {
+                    version: versionHeadline(lastPlayed) || lastPlayed.name,
+                  })}
+                </Text>
+              ) : null}
             </View>
             <View style={{ alignItems: 'center', flexDirection: 'row', gap: 2 }}>
               <Text variant="callout" tone="muted">

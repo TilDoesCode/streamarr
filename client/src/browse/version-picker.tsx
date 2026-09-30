@@ -10,7 +10,6 @@ import { VersionPanelCard } from '@/browse/version-panel';
 import { useInitialFocus } from '@/components/focus';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
-import { Button } from '@/components/ui/button';
 import { Sheet, useSheetRoving } from '@/components/ui/sheet';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { versionsHref, type VersionsRequest } from '@/navigation/routes';
@@ -133,20 +132,6 @@ function VersionCardSkeleton() {
       <SkeletonText width="85%" />
       <SkeletonText width="40%" variant="caption" />
     </View>
-  );
-}
-
-/** "Versions" button of a detail screen. */
-export function VersionsButton({ onPress, testID }: { onPress: () => void; testID?: string }) {
-  const { t } = useTranslation();
-  return (
-    <Button
-      testID={testID}
-      variant="secondary"
-      icon={Film}
-      label={t('common.versions')}
-      onPress={onPress}
-    />
   );
 }
 

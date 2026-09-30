@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlassChip } from '@/components/glass';
 import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import { displayServerUrl } from '@/api/server-url';
@@ -15,7 +16,6 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { SkeletonText } from '@/components/ui/skeleton';
-import { Tag } from '@/components/ui/tag';
 import { Text } from '@/components/ui/text';
 import {
   LANGUAGE_PREFERENCES,
@@ -28,7 +28,7 @@ import { useScreenTitle } from '@/navigation/screen-title';
 import { accountKey } from '@/query/keys';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
-import { colors, useDesign } from '@/theme';
+import { colors, gutterPadding, useDesign } from '@/theme';
 
 /** Server build of the active account's server (anonymous health endpoint). */
 function useServerVersion() {
@@ -61,7 +61,7 @@ export function SettingsScreen() {
             ? design.layout.edgeVertical + insets.top
             : design.space.lg,
         paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-        paddingHorizontal: design.layout.gutter,
+        ...gutterPadding(design),
         gap: design.layout.sectionGap,
         width: '100%',
         maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
@@ -194,7 +194,7 @@ function LanguageSection() {
         trap={END_OF_ROW}
         style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
         {LANGUAGE_PREFERENCES.map((value) => (
-          <Tag
+          <GlassChip
             key={value}
             testID={`settings-language-${value}`}
             role="radio"

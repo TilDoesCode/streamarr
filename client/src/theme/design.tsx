@@ -29,6 +29,8 @@ export type Design = {
   radius: Record<RadiusKey, number>;
   type: Record<TypeVariant, TextStyle & { fontSize: number; lineHeight: number }>;
   layout: Layout;
+  /** Leading space covered by a floating navigation rail (0 outside the large shell). */
+  inset: number;
   focus: FocusTokens;
   /** boxShadow strings: raised (cards on hover), overlay (dialogs, sheets, toasts), glow (focus). */
   shadow: { raised: string; overlay: string; glow: string };
@@ -67,6 +69,7 @@ export function createDesign(formFactor: FormFactor, width: number, height: numb
       letterSpacing: step.letterSpacing ? step.letterSpacing * scale : 0,
     })),
     layout: scaledLayout,
+    inset: 0,
     focus: { ...focus, ringWidth: px(focus.ringWidth), ringOffset: px(focus.ringOffset) },
     shadow: {
       raised: `0 ${px(4)}px ${px(12)}px ${colors.shadow}`,
@@ -95,12 +98,20 @@ export function DesignProvider({ children }: { children: ReactNode }) {
   return <DesignContext value={design}>{children}</DesignContext>;
 }
 
-/** Content beside a navigation rail: same design with a narrower screen gutter. */
-export function DesignGutter({ gutter, children }: { gutter: number; children: ReactNode }) {
+/** Content under a floating navigation rail: the screen gutter plus the rail's leading inset. */
+export function DesignGutter({
+  gutter,
+  inset = 0,
+  children,
+}: {
+  gutter: number;
+  inset?: number;
+  children: ReactNode;
+}) {
   const design = useDesign();
   const value = useMemo(
-    () => ({ ...design, layout: { ...design.layout, gutter } }),
-    [design, gutter]
+    () => ({ ...design, inset, layout: { ...design.layout, gutter } }),
+    [design, gutter, inset]
   );
   return <DesignContext value={value}>{children}</DesignContext>;
 }
@@ -114,4 +125,14 @@ export function useDesign(): Design {
 /** Provides an explicit design value to a subtree (e.g. the large shell's shared 10-foot ramp). */
 export function DesignScope({ value, children }: { value: Design; children: ReactNode }) {
   return <DesignContext value={value}>{children}</DesignContext>;
+}
+
+/** Horizontal content padding: the leading side also clears a floating rail. */
+export function gutters(design: Pick<Design, 'layout' | 'inset'>) {
+  return { start: design.layout.gutter + design.inset, end: design.layout.gutter };
+}
+
+export function gutterPadding(design: Pick<Design, 'layout' | 'inset'>) {
+  const { start, end } = gutters(design);
+  return { paddingLeft: start, paddingRight: end };
 }
