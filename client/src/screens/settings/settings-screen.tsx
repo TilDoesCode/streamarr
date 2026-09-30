@@ -24,6 +24,7 @@ import {
   type LanguagePreference,
 } from '@/i18n';
 import { platformKey } from '@/lib/platform';
+import { useScreenTitle } from '@/navigation/screen-title';
 import { accountKey } from '@/query/keys';
 import { colors, useDesign } from '@/theme';
 
@@ -41,6 +42,7 @@ function useServerVersion() {
 /** Settings tab: account (switch, sign out), language override, app and server info. */
 export function SettingsScreen() {
   const { t } = useTranslation();
+  useScreenTitle(t('tabs.settings'));
   const design = useDesign();
   const insets = useSafeAreaInsets();
   const pageHeading = design.isTV || Platform.OS === 'web';

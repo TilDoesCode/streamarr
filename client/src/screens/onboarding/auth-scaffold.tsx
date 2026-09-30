@@ -10,6 +10,7 @@ import { displayServerUrl } from '@/api/server-url';
 import { FocusGuide } from '@/components/focus';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { useScreenTitle } from '@/navigation/screen-title';
 import { colors, useDesign } from '@/theme';
 
 export type AuthScaffoldProps = {
@@ -25,6 +26,7 @@ export type AuthScaffoldProps = {
 export function AuthScaffold({ title, subtitle, server, children, testID }: AuthScaffoldProps) {
   const design = useDesign();
   const { t } = useTranslation();
+  useScreenTitle(title);
   const router = useRouter();
   const logo = design.px(design.isTV ? 56 : 48);
   const heading = (

@@ -44,7 +44,7 @@ export type VersionHints = {
   maxBitrateKbps?: number;
 };
 
-/** The compact `versions` query of the native (first) engine, so predictions match what this device plays natively. */
+/** The compact `versions` query of the native (first) engine; no `vlcAvailable`: the server would assume VLC plays everything (P2). */
 export function versionHints(profile: DeviceProfile): VersionHints | undefined {
   const engine = profile.engines.find((item) => item.engine !== 'vlc') ?? profile.engines[0];
   if (!engine?.videoCodecs.length) return undefined;

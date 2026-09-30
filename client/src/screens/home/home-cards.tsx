@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -59,6 +60,28 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
   const playTitle = code
     ? t('detail.episodeTitle', { series: title, code, title: episode?.title ?? '' })
     : title;
+  const featured: Featured | undefined = ref
+    ? {
+        key: `continue-${state.workId}`,
+        kind: ref.kind === 'movie' ? 'movie' : 'series',
+        tmdbId: ref.tmdbId,
+        title,
+        eyebrow: props.eyebrow,
+        backdropUrl: movie.data?.backdropUrl ?? episode?.stillUrl,
+        year: movie.data?.year,
+        overview: episode?.overview ?? movie.data?.overview,
+        detail: code ? [code, episode?.title].filter(Boolean).join(' · ') : undefined,
+        progress,
+      }
+    : undefined;
+  // Details that load while the card is focused (season, movie) update the hero too.
+  const focused = useRef(false);
+  const { onFeature } = props;
+  const signature = featured ? JSON.stringify(featured) : '';
+  useEffect(() => {
+    if (focused.current && featured) onFeature?.(featured);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
 
   return (
     <LandscapeCard
@@ -69,21 +92,13 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
       progress={progress}
       width={props.width}
       hasTVPreferredFocus={props.hasTVPreferredFocus}
-      onFocus={() =>
-        ref &&
-        props.onFeature?.({
-          key: `continue-${state.workId}`,
-          kind: ref.kind === 'movie' ? 'movie' : 'series',
-          tmdbId: ref.tmdbId,
-          title,
-          eyebrow: props.eyebrow,
-          backdropUrl: movie.data?.backdropUrl ?? episode?.stillUrl,
-          year: movie.data?.year,
-          overview: episode?.overview ?? movie.data?.overview,
-          detail: code ? [code, episode?.title].filter(Boolean).join(' · ') : undefined,
-          progress,
-        })
-      }
+      onFocus={() => {
+        focused.current = true;
+        if (featured) props.onFeature?.(featured);
+      }}
+      onBlur={() => {
+        focused.current = false;
+      }}
       onPress={() =>
         state.workId &&
         play({ workId: state.workId, title: playTitle, startSeconds: resumeSeconds(state) })

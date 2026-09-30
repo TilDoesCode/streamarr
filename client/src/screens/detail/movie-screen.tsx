@@ -2,14 +2,15 @@ import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useMovieDetail } from '@/browse/queries';
+import { useMovieDetail, useWatchRefreshOnFocus } from '@/browse/queries';
 import { ResumeProgress, resumeSeconds, TitleActions, usePlay } from '@/browse/title-actions';
 import { VersionPicker } from '@/browse/version-picker';
-import { useReturnTarget } from '@/navigation/return-focus';
 import { VersionSummary } from '@/browse/version-summary';
 import { Hero } from '@/components/media/hero';
 import { Badge } from '@/components/ui/badge';
 import { useFormat } from '@/i18n/format';
+import { useReturnTarget } from '@/navigation/return-focus';
+import { useScreenTitle } from '@/navigation/screen-title';
 
 import { DetailError, DetailScroll, HeroSkeleton, routeNumber } from './detail-parts';
 
@@ -24,6 +25,8 @@ export function MovieScreen() {
   const [versionsOpen, setVersionsOpen] = useState(false);
   // TV: Back from the player lands on the version card that started it.
   const reopenVersions = useReturnTarget(setVersionsOpen);
+  useScreenTitle(movie.data?.title);
+  useWatchRefreshOnFocus();
 
   if (tmdbId === undefined || (movie.error && !movie.data))
     return <DetailError error={movie.error} onRetry={() => void movie.refetch()} />;

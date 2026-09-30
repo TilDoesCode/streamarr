@@ -89,7 +89,9 @@ describe('watch helpers', () => {
   const minute = 60 * 10_000_000;
   it('resumes only started, unfinished works', () => {
     expect(resumeSeconds({ positionTicks: 2 * minute, durationTicks: 10 * minute })).toBe(120);
-    expect(resumeSeconds({ positionTicks: 2 * minute, played: true })).toBe(0);
+    // A played work being rewatched (P3) resumes too; played without a position starts over.
+    expect(resumeSeconds({ positionTicks: 2 * minute, played: true })).toBe(120);
+    expect(resumeSeconds({ positionTicks: 0, played: true })).toBe(0);
     expect(resumeSeconds(null)).toBe(0);
     expect(watchProgress({ positionTicks: 2 * minute, durationTicks: 10 * minute })).toBeCloseTo(
       0.2

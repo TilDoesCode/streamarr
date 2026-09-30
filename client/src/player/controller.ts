@@ -518,8 +518,9 @@ export class PlaybackController {
   replay(): void {
     this.ended = false;
     this.seekTo(0);
-    this.paused = true;
-    this.setPaused(false);
+    this.paused = false;
+    this.engine?.play();
+    this.changed();
   }
 
   seekTo(target: number): void {

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View, type TextInput } from 'react-native';
 
@@ -9,13 +9,16 @@ import { probeServer, type ServerInfo } from '@/api/probe';
 import { displayServerUrl } from '@/api/server-url';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
+import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+import { pageOrigin } from '@/navigation/web-hosting';
 import { queryKeys } from '@/query/keys';
 import { useDesign } from '@/theme';
 
 import { AuthScaffold } from './auth-scaffold';
 import { FormError } from './form-parts';
+import { useLeftOnboarding } from './use-onboarding';
 
 /** Step 1: which server. Normalises the address, probes the viewer auth options, warns on remote http. */
 export function ServerScreen() {
@@ -29,9 +32,31 @@ export function ServerScreen() {
   const [address, setAddress] = useState(params.address ?? '');
   const [fieldError, setFieldError] = useState<string>();
   const [insecure, setInsecure] = useState<ServerInfo | null>(null);
+  const left = useLeftOnboarding();
+  const origin = params.address ? undefined : pageOrigin();
+  const [hosted, setHosted] = useState(!!origin);
 
   const proceed = (info: ServerInfo) =>
     router.push({ pathname: '/sign-in', params: { server: info.baseUrl } });
+
+  // Web served by a Streamarr server: sign in to that server without asking for its address.
+  useEffect(() => {
+    if (!origin || left) return;
+    let cancelled = false;
+    probeServer(origin)
+      .then((info) => {
+        if (cancelled) return;
+        queryClient.setQueryData(queryKeys.serverOptions(info.baseUrl), info);
+        router.replace({ pathname: '/sign-in', params: { server: info.baseUrl } });
+      })
+      .catch(() => {
+        if (!cancelled) setHosted(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [origin]);
 
   const probe = useMutation({
     mutationFn: (input: string) => probeServer(input),
@@ -52,6 +77,14 @@ export function ServerScreen() {
     setInsecure(null);
     probe.mutate(input);
   };
+
+  if (left) return <Redirect href="/" />;
+  if (hosted)
+    return (
+      <AuthScaffold testID="server-screen-hosted" title={t('onboarding.server.title')}>
+        <Spinner accessibilityLabel={t('a11y.loading')} />
+      </AuthScaffold>
+    );
 
   const known = accounts.filter(
     (account, index) => accounts.findIndex((a) => a.serverUrl === account.serverUrl) === index

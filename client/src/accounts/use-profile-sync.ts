@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { unwrap } from '@/api/client';
+import { useWatchRefreshOnForeground } from '@/browse/queries';
 import { queryKeys } from '@/query/keys';
 import { STALE } from '@/query/query-client';
 
@@ -37,5 +38,6 @@ export function useProfileSync(account: Account): void {
 /** Mount point for useProfileSync, rendered only while a profile is in use (no query without an account). */
 export function ProfileSync({ account }: { account: Account }): null {
   useProfileSync(account);
+  useWatchRefreshOnForeground(account.id);
   return null;
 }

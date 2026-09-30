@@ -6,13 +6,13 @@ import { View } from 'react-native';
 import { useMarkPlayed, type Episode } from '@/browse/queries';
 import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
 import { VersionPicker } from '@/browse/version-picker';
-import { useReturnTarget } from '@/navigation/return-focus';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { EpisodeRow } from '@/components/media/episode-row';
 import { EmptyState } from '@/components/states/empty-state';
 import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
+import { useReturnTarget } from '@/navigation/return-focus';
 import { aspect, useDesign } from '@/theme';
 
 export type EpisodeListProps = {

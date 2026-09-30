@@ -6,10 +6,15 @@ import { View } from 'react-native';
 
 import { toAppError } from '@/api/errors';
 import { EpisodeList } from '@/browse/episode-list';
-import { useSeasonDetail, useSeriesDetail, type NextEpisode } from '@/browse/queries';
+import {
+  useSeasonDetail,
+  useSeriesDetail,
+  type NextEpisode,
+  useWatchRefreshOnFocus,
+} from '@/browse/queries';
+import { seasonName } from '@/browse/season-name';
 import { ResumeProgress, resumeSeconds, TitleActions, usePlay } from '@/browse/title-actions';
 import { VersionPicker } from '@/browse/version-picker';
-import { useReturnTarget } from '@/navigation/return-focus';
 import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
 import { Hero } from '@/components/media/hero';
 import { ErrorState } from '@/components/states/error-state';
@@ -17,6 +22,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tag } from '@/components/ui/tag';
 import { Text } from '@/components/ui/text';
+import { useReturnTarget } from '@/navigation/return-focus';
+import { useScreenTitle } from '@/navigation/screen-title';
 import { useDesign } from '@/theme';
 
 import { DetailError, DetailScroll, HeroSkeleton, routeNumber } from './detail-parts';
@@ -33,6 +40,8 @@ export function SeriesScreen() {
   const [versionsOpen, setVersionsOpen] = useState(false);
   // TV: Back from the player lands on the version card that started it.
   const reopenVersions = useReturnTarget(setVersionsOpen);
+  useScreenTitle(series.data?.title);
+  useWatchRefreshOnFocus();
   const data = series.data;
   const seasons = data?.seasons ?? [];
   const next = data?.watch.nextEpisode ?? null;
@@ -49,7 +58,21 @@ export function SeriesScreen() {
   const title = data?.title ?? '';
   const total = data?.watch.totalEpisodes ?? 0;
   const allPlayed = total > 0 && (data?.watch.playedEpisodes ?? 0) >= total;
-  const nextTitle = next ? episodeLabel(t, title, next) : title;
+  const firstSeason = seasons.find((item) => item.seasonNumber > 0)?.seasonNumber ?? 1;
+  // Fully watched: "Watch again" starts the first episode.
+  const again =
+    !next && allPlayed && tmdbId !== undefined
+      ? {
+          workId: `tmdb-tv-${tmdbId}-s${String(firstSeason).padStart(2, '0')}e01`,
+          seasonNumber: firstSeason,
+          episodeNumber: 1,
+        }
+      : null;
+  const nextTitle = next
+    ? episodeLabel(t, title, next)
+    : again
+      ? episodeLabel(t, title, again)
+      : title;
   const columns = design.formFactor === 'desktop-web' && design.window.width >= 1280 ? 2 : 1;
   const seasonError = season.error && !season.data ? toAppError(season.error) : undefined;
 
@@ -87,8 +110,9 @@ export function SeriesScreen() {
           actions={
             <TitleActions
               testIDPrefix="series"
-              workId={next?.workId ?? null}
+              workId={next?.workId ?? again?.workId ?? null}
               title={nextTitle}
+              markTitle={title}
               watch={
                 next
                   ? {
@@ -96,7 +120,9 @@ export function SeriesScreen() {
                       durationTicks: next.durationTicks,
                       played: false,
                     }
-                  : null
+                  : again
+                    ? { positionTicks: 0, durationTicks: 0, played: true }
+                    : null
               }
               playLabel={
                 next
@@ -155,7 +181,7 @@ export function SeriesScreen() {
                     key={item.seasonNumber}
                     testID={`season-${item.seasonNumber}`}
                     label={t('detail.seasonTag', {
-                      title: item.title ?? t('media.season', { season: item.seasonNumber }),
+                      title: seasonName(t, item.title, item.seasonNumber),
                       played: item.playedCount ?? 0,
                       total: item.episodeCount ?? 0,
                     })}
@@ -231,7 +257,11 @@ function nextReason(next: NextEpisode): 'start' | 'resume' | 'next' {
   return next.reason === 'resume' || next.reason === 'next' ? next.reason : 'start';
 }
 
-function episodeLabel(t: TFunction, series: string, next: NextEpisode) {
+function episodeLabel(
+  t: TFunction,
+  series: string,
+  next: Pick<NextEpisode, 'seasonNumber' | 'episodeNumber'> & { title?: string | null }
+) {
   return t('detail.episodeTitle', {
     series,
     code: t('media.episodeCode', { season: next.seasonNumber, episode: next.episodeNumber }),

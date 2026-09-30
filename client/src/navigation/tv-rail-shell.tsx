@@ -139,6 +139,8 @@ function Rail({
     icon: design.layout.iconSize.lg,
   };
   const slide = (wide - width) / 4;
+  // Entering the rail lands on the active tab, not on the last focused item.
+  const [activeNode, setActiveNode] = useState<View | null>(null);
 
   const scrimStyle = useAnimatedStyle(() => ({ opacity: expanded.get() }));
   const panelStyle = useAnimatedStyle(
@@ -210,7 +212,8 @@ function Rail({
         </View>
         <FocusGuide
           testID="tv-rail"
-          remember
+          remember={false}
+          destinations={activeNode ? [activeNode] : undefined}
           trap={['up', 'down', 'left']}
           onFocusEnter={() => onFocusChange(true)}
           onFocusLeave={() => onFocusChange(false)}
@@ -221,6 +224,7 @@ function Rail({
               tab={tab}
               label={t(`tabs.${tab.id}`)}
               active={tab.name === activeName}
+              itemRef={tab.name === activeName ? setActiveNode : undefined}
               expanded={expanded}
               metrics={metrics}
               onPress={() => onSelect(tab)}
@@ -236,6 +240,7 @@ function RailItem({
   tab,
   label,
   active,
+  itemRef,
   expanded,
   metrics,
   onPress,
@@ -243,12 +248,14 @@ function RailItem({
   tab: TabSpec;
   label: string;
   active: boolean;
+  itemRef?: (node: View | null) => void;
   expanded: SharedValue<number>;
   metrics: Metrics;
   onPress: () => void;
 }) {
   return (
     <Focusable
+      ref={itemRef}
       testID={`rail-${tab.id}`}
       role="tab"
       aria-selected={active}

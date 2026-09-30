@@ -25,6 +25,7 @@ import {
   useRecentSearches,
 } from '@/lib/recent-searches';
 import { titleHref } from '@/navigation/routes';
+import { useScreenTitle } from '@/navigation/screen-title';
 import { colors, useDesign } from '@/theme';
 
 const MIN_QUERY = 2;
@@ -56,12 +57,20 @@ function useDebounced(value: string, delay: number): string {
 /** Search tab: debounced title search with a type filter and this profile's recent searches. */
 export function SearchScreen() {
   const { t } = useTranslation();
+  useScreenTitle(t('tabs.search'));
   const design = useDesign();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { account } = useActiveAccount();
   const [text, setText] = useState('');
   const [type, setType] = useState<SearchType>('any');
+  // Another profile starts with a fresh search (the screen stays mounted across a switch).
+  const [searchAccount, setSearchAccount] = useState(account.id);
+  if (searchAccount !== account.id) {
+    setSearchAccount(account.id);
+    setText('');
+    setType('any');
+  }
   const query = useDebounced(text.trim(), DEBOUNCE_MS);
   const recent = useRecentSearches(account.id);
   // Window width until the first layout (TV: the rail takes part of it).

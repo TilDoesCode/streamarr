@@ -17,6 +17,11 @@ export type Featured = {
 
 const DELAY_MS = 250;
 
+function sameFeatured(a: Featured, b: Featured): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof Featured)[]);
+  return [...keys].every((key) => a[key] === b[key]);
+}
+
 /** Focus changes arrive per D-pad press; the hero settles after a short pause so fast moves stay cheap. */
 export class FeaturedStore {
   private current: Featured | null = null;
@@ -35,7 +40,7 @@ export class FeaturedStore {
   set(item: Featured, immediate = false) {
     clearTimeout(this.timer);
     const apply = () => {
-      if (this.current?.key === item.key) return;
+      if (this.current && sameFeatured(this.current, item)) return;
       this.current = item;
       for (const listener of this.listeners) listener();
     };

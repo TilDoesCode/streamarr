@@ -241,6 +241,8 @@
     "loading": "Loading…",
     "play": "Play",
     "resume": "Resume",
+    "watchAgain": "Watch again",
+    "noVersions": "No versions yet",
     "startOver": "Start over",
     "moreInfo": "More info",
     "versions": "Versions",
@@ -831,7 +833,8 @@
       "direct": "Direct play",
       "remux": "Direct stream",
       "transcode": "Transcode",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "vlc": "Plays with VLC"
     },
     "openAll": "Show all {count, plural, one {# version} other {# versions}}",
     "bitDepth": "{codec} {bits}-bit",
@@ -888,6 +891,15 @@
       "tr": "Turkish",
       "cs": "Czech",
       "hu": "Hungarian"
-    }
+    },
+    "plain": {
+      "direct": "Plays as is on this device.",
+      "remux": "Plays on this device; the server only repackages it.",
+      "transcode": "The server has to convert it for this device, which can take longer and lower the quality.",
+      "vlc": "Plays with the built-in VLC player, no conversion needed.",
+      "unknown": "We can’t tell in advance how it will play."
+    },
+    "showDetails": "Show technical details",
+    "hideDetails": "Hide technical details"
   }
 }

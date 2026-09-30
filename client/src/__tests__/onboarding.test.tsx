@@ -65,6 +65,8 @@ const profile = (id: string, username: string, displayName: string) => ({
 /** Viewer auth + discover of a fake Dev World. */
 async function fakeServer(input: Request): Promise<Response> {
   const path = new URL(input.url).pathname;
+  if (path === '/api/v1/viewer/watch/resume') return json(200, []);
+  if (path === '/api/v1/viewer/watch/next-up') return json(200, { items: [] });
   const body = input.method === 'POST' ? ((await input.json()) as Record<string, string>) : {};
   if (path === '/api/v1/viewer/auth/login') {
     if (body.password !== 'streamarr')

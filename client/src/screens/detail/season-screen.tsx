@@ -4,10 +4,12 @@ import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EpisodeList } from '@/browse/episode-list';
-import { useSeasonDetail } from '@/browse/queries';
+import { useSeasonDetail, useWatchRefreshOnFocus } from '@/browse/queries';
+import { seasonName } from '@/browse/season-name';
 import { FocusSection } from '@/components/focus';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { useScreenTitle } from '@/navigation/screen-title';
 import { useDesign } from '@/theme';
 
 import { DetailError, DetailScroll, routeNumber } from './detail-parts';
@@ -21,12 +23,18 @@ export function SeasonScreen() {
   const tmdbId = routeNumber(params.id);
   const seasonNumber = routeNumber(params.n);
   const season = useSeasonDetail(tmdbId, seasonNumber);
+  useWatchRefreshOnFocus();
+  useScreenTitle(
+    season.data
+      ? `${season.data.seriesTitle ?? ''} · ${seasonName(t, season.data.title, seasonNumber ?? 0)}`
+      : undefined
+  );
 
   if (tmdbId === undefined || seasonNumber === undefined || (season.error && !season.data))
     return <DetailError error={season.error} onRetry={() => void season.refetch()} />;
 
   const data = season.data;
-  const seasonTitle = data?.title ?? t('media.season', { season: seasonNumber });
+  const seasonTitle = seasonName(t, data?.title, seasonNumber);
   const episodes = data?.episodes ?? [];
   // Handhelds show the title in the native header; TV and web show it on the page.
   const pageHeading = design.isTV || Platform.OS === 'web';

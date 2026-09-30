@@ -3,14 +3,19 @@ import { AppError, errorFromTransport } from './errors';
 export type FetchLike = (input: Request, init?: RequestInit) => Promise<Response>;
 
 export const REQUEST_TIMEOUT_MS = 20_000;
+/** Reads fail faster (and are not retried after a timeout), so a hanging server errors within ~15 s. */
+export const READ_TIMEOUT_MS = 15_000;
 export const PROBE_TIMEOUT_MS = 8_000;
 
 /** fetch that aborts after `timeoutMs`, follows the request's own signal and throws AppError on transport failure. */
 export function createTimeoutFetch(
   baseFetch: FetchLike = (input, init) => globalThis.fetch(input, init),
-  timeoutMs = REQUEST_TIMEOUT_MS
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  readTimeoutMs = Math.min(timeoutMs, READ_TIMEOUT_MS)
 ): FetchLike {
   return async (input, init) => {
+    const method = (init?.method ?? input.method ?? 'GET').toUpperCase();
+    const limit = method === 'GET' || method === 'HEAD' ? readTimeoutMs : timeoutMs;
     const controller = new AbortController();
     const outer = init?.signal ?? input.signal;
     if (outer?.aborted) throw new AppError('aborted');
@@ -18,7 +23,7 @@ export function createTimeoutFetch(
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, timeoutMs);
+    }, limit);
     const forward = () => controller.abort();
     outer?.addEventListener('abort', forward);
     try {

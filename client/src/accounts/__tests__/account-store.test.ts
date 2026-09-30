@@ -86,6 +86,46 @@ describe('AccountStore', () => {
     expect(vault.entries.get(first.id)).toEqual(tokens(2));
   });
 
+  it('a server reset (new viewer id) updates the same user instead of adding a tile', async () => {
+    const { store } = setup();
+    const first = await store.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
+    const again = await store.addSignedIn(DEV_WORLD, viewer('v-anna-2', 'Anna'), tokens(2));
+    expect(again.id).toBe(first.id);
+    expect(again.viewerId).toBe('v-anna-2');
+    expect(store.getSnapshot().accounts).toHaveLength(1);
+  });
+
+  it('merges duplicates stored by older versions on load', async () => {
+    const { storage, vault } = setup();
+    const base = { serverUrl: DEV_WORLD.url, serverName: 'Dev World', username: 'anna' };
+    const account = (id: string, viewerId: string, lastUsedAt: number, signedIn: boolean) => ({
+      ...base,
+      id,
+      viewerId,
+      displayName: 'Anna',
+      color: 0,
+      signedIn,
+      mustChangePassword: false,
+      addedAt: 1,
+      lastUsedAt,
+    });
+    storage.set(
+      'accounts',
+      JSON.stringify([
+        account('a1', 'v1', 5, false),
+        account('a2', 'v2', 9, true),
+        account('a3', 'v3', 7, true),
+      ])
+    );
+    storage.set('active', 'a1');
+    await vault.set('a1', tokens(1));
+    const store = new AccountStore({ storage, vault });
+    expect(store.getSnapshot().accounts.map((item) => item.id)).toEqual(['a2']);
+    expect(store.getSnapshot().activeId).toBe('a2');
+    await Promise.resolve();
+    expect(vault.entries.has('a1')).toBe(false);
+  });
+
   it('switches the active account and persists the choice', async () => {
     const { store, storage, vault } = setup();
     const anna = await store.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));

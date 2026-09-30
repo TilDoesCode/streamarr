@@ -14,6 +14,7 @@ import {
   useNextUp,
   type CatalogItem,
   type CatalogRow,
+  useWatchRefreshOnFocus,
 } from '@/browse/queries';
 import { Shelf } from '@/components/media/shelf';
 import { EmptyState } from '@/components/states/empty-state';
@@ -23,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { LandscapeCardSkeleton, PosterCardSkeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { useScreenTitle } from '@/navigation/screen-title';
 import { aspect, colors, useDesign } from '@/theme';
 
 import { FeaturedStore } from './featured';
@@ -55,6 +57,8 @@ type ShelfSpec = {
 /** Home: hero, continue watching, next up and the discover rows. TV: the hero follows the focused card. */
 export function HomeScreen() {
   const { t } = useTranslation();
+  useScreenTitle(t('tabs.home'));
+  useWatchRefreshOnFocus();
   const design = useDesign();
   const insets = useSafeAreaInsets();
   const { account } = useActiveAccount();
@@ -144,7 +148,10 @@ export function HomeScreen() {
   const retryAll = () => {
     for (const query of [rows, resume, nextUp]) if (query.error) void query.refetch();
   };
-  const loading = rows.data === undefined && !rows.error;
+  // Rows appear together: a late continue watching row would move focus under an early D-pad press.
+  const pending = (query: { data: unknown; error: unknown }) =>
+    query.data === undefined && !query.error;
+  const loading = pending(rows) || pending(resume) || pending(nextUp);
 
   const body =
     rows.data === undefined && rows.error ? (
@@ -212,6 +219,8 @@ export function HomeScreen() {
         <TvHomeInfo store={store} />
         <ScrollView
           style={{ flex: 1 }}
+          // D-pad presses during the skeleton must not scroll away from the first row.
+          scrollEnabled={!loading}
           contentContainerStyle={{
             paddingBottom: design.layout.edgeVertical + design.space['3xl'],
             gap: design.layout.sectionGap,

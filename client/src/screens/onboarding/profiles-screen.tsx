@@ -16,11 +16,15 @@ import { Dialog } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { colors, useDesign } from '@/theme';
 
+import { useScreenTitle } from '@/navigation/screen-title';
+import { onboardingExit } from '@/navigation/web-hosting';
+
 import { enterApp } from './use-onboarding';
 
 /** "Who's watching?": pick, add, sign out or remove profiles (accounts on one or more servers). */
 export function ProfilesScreen() {
   const { t } = useTranslation();
+  useScreenTitle(t('profiles.title'));
   const design = useDesign();
   const router = useRouter();
   const api = useAccountsApi();
@@ -108,7 +112,10 @@ export function ProfilesScreen() {
               icon={<Plus size={tile * 0.36} color={colors.foreground.muted} strokeWidth={1.75} />}
               accessibilityLabel={t('profiles.add')}
               preferred={!activeId}
-              onPress={() => router.push('/server')}
+              onPress={() => {
+                onboardingExit.reset();
+                router.push('/server');
+              }}
             />
           )}
         </FocusGuide>

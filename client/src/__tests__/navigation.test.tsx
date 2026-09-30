@@ -28,6 +28,8 @@ const watch = { workId: 'tmdb-movie-123', kind: 'movie', played: false };
 /** Catalog, health and sign-out of a fake Dev World. */
 async function fakeServer(input: Request): Promise<Response> {
   const path = new URL(input.url).pathname;
+  if (path === '/api/v1/viewer/watch/resume') return json(200, []);
+  if (path === '/api/v1/viewer/watch/next-up') return json(200, { items: [] });
   if (path === '/api/v1/viewer/catalog/discover')
     return json(200, {
       rows: [

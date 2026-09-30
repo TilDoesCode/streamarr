@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { useAccountsApi } from '@/accounts/accounts-provider';
+import { useAccountsApi, useSessionGate } from '@/accounts/accounts-provider';
 import type { SignInResult } from '@/accounts/auth-api';
 import type { PasswordProblem } from '@/accounts/password-rules';
 import { signInFlow } from '@/accounts/sign-in-flow';
 import { probeServer, type ServerInfo } from '@/api/probe';
+import { onboardingExit } from '@/navigation/web-hosting';
 import { queryKeys } from '@/query/keys';
 import { STALE } from '@/query/query-client';
 
@@ -21,8 +22,15 @@ export function useServerInfo(serverUrl: string | undefined) {
   });
 }
 
+/** Web: Back into a finished onboarding (history entries before sign-in) returns to the app instead. */
+export function useLeftOnboarding(): boolean {
+  const gate = useSessionGate();
+  return gate.reason === 'ready' && onboardingExit.done();
+}
+
 /** Leaves onboarding for the signed-in app with nothing to go back to. */
 export function enterApp(router: ReturnType<typeof useRouter>): void {
+  onboardingExit.mark();
   if (router.canDismiss()) router.dismissAll();
   router.replace('/');
 }

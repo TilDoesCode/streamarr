@@ -86,6 +86,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     './plugins/with-gradle-limits',
   ],
   experiments: {
+    // The Streamarr server serves the web build under /watch (EXPO_BASE_URL=/watch).
+    ...(process.env.EXPO_BASE_URL ? { baseUrl: process.env.EXPO_BASE_URL } : null),
     typedRoutes: true,
     reactCompiler: true,
   },

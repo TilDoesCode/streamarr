@@ -16,9 +16,11 @@ export const STALE = {
 
 const MAX_RETRIES = 2;
 
-/** Retries transport failures, 5xx and 429 twice; never 4xx answers (they will not change). */
+/** Retries transport failures, 5xx and 429 twice; never 4xx answers (they will not change) or timeouts (the budget is spent). */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
-  return failureCount < MAX_RETRIES && isAppError(error) && error.isTransient;
+  return (
+    failureCount < MAX_RETRIES && isAppError(error) && error.isTransient && error.code !== 'timeout'
+  );
 }
 
 export function createQueryClient(): QueryClient {

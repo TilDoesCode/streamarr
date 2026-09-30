@@ -17,7 +17,7 @@ import { colors, useDesign } from '@/theme';
 
 import { AuthScaffold } from './auth-scaffold';
 import { FormError, FormLinks, PasswordField } from './form-parts';
-import { useCompleteSignIn, useServerInfo } from './use-onboarding';
+import { useCompleteSignIn, useLeftOnboarding, useServerInfo } from './use-onboarding';
 
 export type SignInParams = { server?: string; login?: string; reason?: string };
 
@@ -27,7 +27,9 @@ export function SignInScreen() {
   const info = useServerInfo(serverUrl);
   const { t } = useTranslation();
   const router = useRouter();
+  const left = useLeftOnboarding();
 
+  if (left) return <Redirect href="/" />;
   if (!serverUrl) return <Redirect href="/server" />;
   if (!info.data) {
     return (

@@ -9,11 +9,15 @@ import {
   videoCodecLabel,
 } from '@/lib/media-labels';
 
-export type PredictedMethod = 'direct' | 'remux' | 'transcode' | 'unknown';
+export type PredictedMethod = 'direct' | 'remux' | 'transcode' | 'vlc' | 'unknown';
 
 export function predictedMethod(version: Version): PredictedMethod | undefined {
   const method = version.predictedMethod;
-  return method === 'direct' || method === 'remux' || method === 'transcode' || method === 'unknown'
+  return method === 'direct' ||
+    method === 'remux' ||
+    method === 'transcode' ||
+    method === 'vlc' ||
+    method === 'unknown'
     ? method
     : undefined;
 }

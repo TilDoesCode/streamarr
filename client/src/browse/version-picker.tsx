@@ -9,7 +9,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
@@ -39,6 +39,7 @@ const METHOD: Record<PredictedMethod, { icon: LucideIcon; variant: BadgeVariant 
   direct: { icon: Zap, variant: 'success' },
   remux: { icon: Repeat, variant: 'info' },
   transcode: { icon: Gauge, variant: 'warning' },
+  vlc: { icon: Zap, variant: 'success' },
   unknown: { icon: CircleAlert, variant: 'neutral' },
 };
 
@@ -63,6 +64,7 @@ export function VersionPicker({
 }: VersionPickerProps) {
   const { t } = useTranslation();
   const versions = useVersions(workId, open);
+  const [details, setDetails] = useState(false);
   const list = versions.data?.versions ?? [];
   const error = versions.error ? toAppError(versions.error) : undefined;
 
@@ -88,16 +90,24 @@ export function VersionPicker({
         message={t('versions.emptyMessage')}
       />
     );
-  else
+  else {
+    const defaultIndex = Math.max(
+      0,
+      list.findIndex((item) =>
+        currentReleaseId ? item.releaseId === currentReleaseId : item.recommended
+      )
+    );
     body = list.map((version, index) => (
       <VersionCard
         key={version.releaseId ?? index}
         version={version}
-        preferred={currentReleaseId ? version.releaseId === currentReleaseId : index === 0}
+        preferred={index === defaultIndex}
+        details={details}
         current={!!currentReleaseId && version.releaseId === currentReleaseId}
         onPress={() => onPlay(version)}
       />
     ));
+  }
 
   return (
     <Sheet
@@ -114,6 +124,15 @@ export function VersionPicker({
           : title
       }>
       {body}
+      {list.length ? (
+        <Button
+          testID="versions-details"
+          variant="ghost"
+          size="sm"
+          label={t(details ? 'versions.hideDetails' : 'versions.showDetails')}
+          onPress={() => setDetails((value) => !value)}
+        />
+      ) : null}
     </Sheet>
   );
 }
@@ -121,11 +140,13 @@ export function VersionPicker({
 function VersionCard({
   version,
   preferred,
+  details,
   current,
   onPress,
 }: {
   version: Version;
   preferred: boolean;
+  details: boolean;
   current: boolean;
   onPress: () => void;
 }) {
@@ -201,16 +222,21 @@ function VersionCard({
                   {t('versions.predicted')}
                 </Text>
               </View>
-              {reasons.length ? (
-                <Text variant="caption" tone="subtle" numberOfLines={3}>
+              <Text testID={`version-${version.rank}-plain`} variant="caption" tone="muted">
+                {t(`versions.plain.${method}`)}
+              </Text>
+              {details && reasons.length ? (
+                <Text variant="caption" tone="subtle">
                   {reasons.join(' · ')}
                 </Text>
               ) : null}
             </View>
           ) : null}
-          <Text variant="caption" tone="subtle" numberOfLines={1}>
-            {version.name ?? ''}
-          </Text>
+          {details ? (
+            <Text testID={`version-${version.rank}-name`} variant="caption" tone="subtle">
+              {version.name ?? ''}
+            </Text>
+          ) : null}
         </VersionSurface>
       </FocusLift>
     </Focusable>

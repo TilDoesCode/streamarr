@@ -61,6 +61,40 @@ function parseAccounts(raw: string | undefined): Account[] {
   }
 }
 
+const sameUser = (account: Account, serverUrl: string, viewerId: string, username: string) =>
+  account.serverUrl === serverUrl &&
+  (account.viewerId === viewerId || account.username.toLowerCase() === username.toLowerCase());
+
+/** One profile per (server, user): a server reset changes viewer ids, so the username also identifies it. */
+export function dedupeAccounts(accounts: readonly Account[]): {
+  accounts: Account[];
+  dropped: Map<string, string>;
+} {
+  const rank = (account: Account) => [account.signedIn ? 1 : 0, account.lastUsedAt ?? 0];
+  const kept: Account[] = [];
+  const dropped = new Map<string, string>();
+  for (const account of accounts) {
+    const index = kept.findIndex((item) =>
+      sameUser(item, account.serverUrl, account.viewerId, account.username)
+    );
+    if (index < 0) {
+      kept.push(account);
+      continue;
+    }
+    const [a, b] = [rank(kept[index]!), rank(account)];
+    const better = b[0]! > a[0]! || (b[0] === a[0] && b[1]! > a[1]!);
+    const loser = better ? kept[index]! : account;
+    if (better) kept[index] = account;
+    dropped.set(loser.id, kept[index]!.id);
+  }
+  for (const [from, to] of dropped) {
+    let target = to;
+    while (dropped.has(target)) target = dropped.get(target)!;
+    dropped.set(from, target);
+  }
+  return { accounts: kept, dropped };
+}
+
 function freeColor(accounts: readonly Account[]): number {
   const used = new Set(accounts.map((account) => account.color));
   for (let color = 0; color < AVATAR_COLORS; color += 1) if (!used.has(color)) return color;
@@ -99,9 +133,15 @@ export class AccountStore {
     this.now = now;
     this.newId = newId;
     this.raw = storage.getString(LIST_KEY);
-    const accounts = parseAccounts(this.raw);
-    const tabActive = tabStorage?.getString(ACTIVE_KEY);
-    const lastActive = storage.getString(ACTIVE_KEY);
+    const { accounts, dropped } = dedupeAccounts(parseAccounts(this.raw));
+    if (dropped.size) {
+      this.raw = JSON.stringify(accounts);
+      storage.set(LIST_KEY, this.raw);
+      for (const id of dropped.keys()) void vault.remove(id).catch(() => undefined);
+    }
+    const mapped = (id: string | undefined) => (id && dropped.get(id)) ?? id;
+    const tabActive = mapped(tabStorage?.getString(ACTIVE_KEY));
+    const lastActive = mapped(storage.getString(ACTIVE_KEY));
     this.snapshot = {
       accounts,
       activeId: hasId(accounts, tabActive)
@@ -151,10 +191,16 @@ export class AccountStore {
     tokens: SessionTokens
   ): Promise<Account> {
     this.reload();
-    const known = this.snapshot.accounts.find(
-      (account) => account.serverUrl === server.url && account.viewerId === viewer.id
+    const matches = this.snapshot.accounts.filter((account) =>
+      sameUser(account, server.url, viewer.id, viewer.username)
     );
+    const known = matches.find((account) => account.viewerId === viewer.id) ?? matches[0];
     const id = known?.id ?? this.newId();
+    const stale = matches.filter((account) => account.id !== id).map((account) => account.id);
+    for (const staleId of stale) {
+      this.tokenCache.delete(staleId);
+      await this.vault.remove(staleId);
+    }
     await this.writeTokens(id, tokens);
     const now = this.now();
     this.mutate(({ accounts, activeId }) => {
@@ -172,11 +218,12 @@ export class AccountStore {
         addedAt: existing?.addedAt ?? now,
         lastUsedAt: now,
       };
+      const rest = accounts.filter((item) => !stale.includes(item.id));
       return {
         accounts: existing
-          ? accounts.map((item) => (item.id === id ? account : item))
-          : [...accounts, account],
-        activeId,
+          ? rest.map((item) => (item.id === id ? account : item))
+          : [...rest, account],
+        activeId: activeId && stale.includes(activeId) ? id : activeId,
       };
     });
     return this.get(id)!;

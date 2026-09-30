@@ -1,10 +1,13 @@
 import {
+  focusManager,
   keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
@@ -195,4 +198,29 @@ export function invalidateWatchQueries(queryClient: QueryClient, accountId: stri
       (queryKey[2] === 'watch' ||
         (queryKey[2] === 'catalog' && (queryKey[3] === 'movie' || queryKey[3] === 'series'))),
   });
+}
+
+/** Refetches watch state when the screen regains focus (not on its first focus: the queries just loaded). */
+export function useWatchRefreshOnFocus() {
+  const { account } = useActiveAccount();
+  const queryClient = useQueryClient();
+  const first = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (first.current) first.current = false;
+      else void invalidateWatchQueries(queryClient, account.id);
+    }, [queryClient, account.id])
+  );
+}
+
+/** Refetches watch state when the app returns to the foreground (web: the tab becomes visible). */
+export function useWatchRefreshOnForeground(accountId: string) {
+  const queryClient = useQueryClient();
+  useEffect(
+    () =>
+      focusManager.subscribe((focused) => {
+        if (focused) void invalidateWatchQueries(queryClient, accountId);
+      }),
+    [queryClient, accountId]
+  );
 }
