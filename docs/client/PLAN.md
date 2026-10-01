@@ -72,6 +72,14 @@ Chromecast, trickplay thumbnails, light theme, store release/EAS.
   `.claude/skills/argent-*` — read `argent-tv-interact` for TV and
   `argent-device-interact` for phone/tablet/web before driving devices.
 
+- **User decisions 2026-10-01 (after the F round):**
+  - Android TV glass may be clearer: body text keeps >= 4.5:1, large text (>= 24 px regular or >= 18.66 px bold at the
+    1920 design scale, WCAG "large text") needs >= 3:1 over the brightest art behind it.
+  - Cards keep the best existing version's spec; the detail shows both when they differ ("4K HDR10 available · plays
+    here in 1080p").
+  - Metadata (overviews, titles, genre names) follows the viewer's app language, per request.
+  - Converting only the audio does not count as transcoding for "Recommended" (unchanged).
+
 ## 3. Conventions (all agents)
 
 - Never use plan mode, `EnterPlanMode`, `ExitPlanMode` or `AskUserQuestion` — you run
@@ -442,3 +450,14 @@ Tasks (guidance and acceptance in `orchestrator.js`):
 - **F1 client fixes**: the screenshot details, the R3 verify findings, the small R1/R2 leftovers
   and a truthful backlog triage.
 - **F2 client library**: Movies and Series pages on every form factor and the new rail entries.
+
+### G — second follow-up round (user request 2026-10-01)
+The user approved packages 3 and 4 of docs/client/next-steps.html with the orchestrator's recommendations (see the
+decisions in section 2) and added: on TV the library pages' two stacked chip rows (genres, then the sort pill) look odd.
+Tasks (guidance and acceptance in `orchestrator.js`):
+- **B2 server**: per-viewer metadata language (Accept-Language), spec warm-up so cards carry specs without opening a
+  title, VLC engine caps on the versions endpoint, persistent bounded container store, Dev World keeps its data on
+  restart when asked, cleanup (orphaned probes, palette queue, logging, spec store index, useVlc test).
+- **F3 client**: one chip row on the library pages, clearer TV glass, both specs on the detail, Accept-Language, no
+  navigation rebuild on resize/split screen, account management in Settings, F2 leftovers and small items, then the
+  VLC caps once B2 is in.

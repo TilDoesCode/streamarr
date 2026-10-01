@@ -405,6 +405,53 @@ const TASKS = {
       'no regressions in the verified browse and player behaviours; typecheck, lint and tests green',
     ],
   },
+  'B2': {
+    title: 'Server: viewer language, spec warm-up, VLC caps, persistent container store, cleanup',
+    track: 'Backend',
+    deps: ['B1'],
+    maxFixes: 2,
+    guide: [
+      '- Part of round G (PLAN.md section 5, "G — second follow-up round"; decisions in section 2). Runs in parallel with client task F3, which uses the emulators and Dev World 39300.',
+      '- Viewer language: every viewer catalog/watch endpoint honours the Accept-Language request header (primary tag, e.g. de, en; unknown or missing -> the server default). TMDB requests use that language for overviews, titles, taglines, season/episode names and genre names; caches are keyed per language; when TMDB returns an empty localized overview or name, fall back to the English text. Responses carry Vary: Accept-Language. Dev World: the fake TMDB answers the language parameter with German texts for a few fixture titles and German genre names (enough to see it work) and falls back to English otherwise. Contract note in docs/api.md.',
+      '- Spec warm-up: cards should carry the spec summary without anyone opening the title first. A background service looks up versions (the existing indexer search + ranking path, never on the request path) for titles that appear in discover rows, browse pages, continue watching and next up, with bounded concurrency (default 2), a per-title cooldown (default 24 h), a daily cap (default 200 titles) and a setting to turn it off (document it in docs/configuration.md; a real server spends indexer API hits on it). Specs appear on the next list fetch; the client already handles null spec.',
+      '- VLC engine caps on the versions endpoint: today vlcAvailable=true makes the server assume VLC plays everything (P2 stopped sending it because this VLC only does HEVC up to 1080p). Accept the VLC engine limits next to vlcAvailable (video codecs, max height, HDR formats, 10-bit; choose clear query parameter names, mirror the existing device parameters) and use them in the prediction and the recommendation, so Recommended stays a version that really plays. Unit tests for the decider/predictor with VLC caps. Document the parameters in docs/api.md; the client wires them in F3.',
+      '- Container store: persist the real container of opened releases in the database (small table, migration) with LRU-style eviction instead of clearing all entries at once; predictions survive a restart.',
+      '- Dev World: a way to restart or republish 39300 without wiping viewer accounts and watch state (e.g. scripts/devworld.sh start <port> --keep-data); the default behaviour and the e2e scripts stay unchanged.',
+      '- Cleanup from docs/client/BACKLOG.md (Server section): kill the capability-probe ffmpeg process tree and SIGKILL on timeouts so no probe outlives a killed Dev World; ArtworkPaletteService must not drop work silently when its channel is full (wait or re-queue); log the first palette/spec failure per cause at Warning; CatalogSpecStore.Get indexes series instead of scanning all summaries; a test that useVlc is offered on the playback start-failure path before VLC has failed.',
+      '- Never start an emulator, never restart or republish 39300 (the orchestrator does it after verification); test on 39310. Regenerate the client and web API types once at the very end (client gen:api + typecheck, web types) and touch nothing else in client/.',
+      '- Keep the OpenAPI freeze, contract check and e2e green; journal each item as you finish it.',
+    ].join('\n'),
+    acceptance: [
+      'Accept-Language de returns German overviews and genre names on the Dev World (English fallback when missing), per-language caches, Vary header; en unchanged',
+      'spec warm-up fills card specs for discover/browse/resume titles in the background within its limits and can be switched off; no indexer search on the request path',
+      'versions endpoint accepts VLC engine caps and the prediction/recommendation respect them (unit tests); container store persisted with bounded eviction',
+      'Dev World can restart with its data kept; cleanup items done; OpenAPI frozen, contract check, e2e and the full server suite green',
+    ],
+  },
+  'F3': {
+    title: 'Client: one chip row, clearer TV glass, both specs, language, resize, account settings, leftovers, VLC caps',
+    track: 'Client',
+    deps: ['F2'],
+    maxFixes: 2,
+    guide: [
+      '- Part of round G (PLAN.md section 5, "G — second follow-up round"; user decisions in section 2). Runs in parallel with server task B2 (server/ and port 39310 are B2\'s; do not touch them).',
+      '- Library pages (user complaint): on TV the genre chips and the sort pill form two stacked chip rows that look odd. One chip row only: page title left and a compact sort control right in the same title line; the genre chips in ONE single-line row that scrolls horizontally (keep the focused chip in the title-safe area, a soft edge fade hints at more; D-pad Left from the first chip goes to the rail, Up from the chips reaches the sort). Same layout on web and tablet (one large-screen layout); the phone keeps its swipe row but also moves the sort into the title line. Keep the F2 focus flow, Back chain and focus memory working and re-check them.',
+      '- TV glass (user decision): make the Android TV glass clearer. Body text keeps >= 4.5:1 and large text (>= 24 px regular or >= 18.66 px bold at the 1920 design scale) needs >= 3:1 over the measured brightest art; extend tv-glass.test.ts to check each text style against its own threshold. Show before/after of the Big Buck Bunny detail with the Recommended card focused.',
+      '- Detail specs (user decision): cards keep the best existing version spec; the movie/series/episode detail shows both when they differ, e.g. "4K · HDR10 available · plays here in 1080p" (DE: "4K · HDR10 vorhanden · hier 1080p"), derived from the versions list (best qualityRank vs the recommended version). TV, web and phone.',
+      '- Language (user decision): send Accept-Language with the app language (primary tag) on every API request and put the language into the catalog query keys so a language switch refetches. Harmless before B2 lands; verify the German texts once 39300 runs B2.',
+      '- Resize/split screen: an Android split screen below 600 dp or a web resize across 640 px must not remount the navigator and lose the tab stacks (hysteresis and/or keep the stacks); extend the shell-selection unit test.',
+      '- Settings account management with the existing /api/v1/viewer/me endpoints: sessions and devices (list, sign out one or all others), change password, change e-mail (with code verification), two-factor (set up with QR code and secret, enable, disable, recovery codes). Phone and web get all of it; TV gets the sessions list and sign-out plus a hint that password, e-mail and two-factor are managed on phone or web. Screen tests for the states.',
+      '- F2 leftovers: filled sort segment turns square-cornered on Android after a change; Right from the rail after a genre deep link must land on the selected chip; a deep link that arrives while the rail has focus must move focus into the opened page; web: the clicked chip keeps a focus ring after browser Back. Small items: no native scrollbar on shell pages on web, phone grid titles wrap to two lines instead of truncating, tablet caption year not squeezed by spec chips.',
+      '- VLC caps (needs B2 committed; the orchestrator writes the parameter names into docs/client/runs/driver/F3-notes.md): send the VLC engine limits from Android with vlcAvailable again and confirm Recommended = plain Play still holds on TV.',
+      '- Silent tests, one emulator at a time, no dev overlays in screenshots, journal after each item, JPEG screenshots in docs/client/screenshots/F3/.',
+    ].join('\n'),
+    acceptance: [
+      'library pages show one chip row with the sort in the title line on TV, web and tablet (phone: sort in the title line), F2 focus flow and Back chain unchanged',
+      'TV glass clearer with per-style contrast thresholds tested; detail shows available vs device spec when they differ; Accept-Language sent and German metadata shown once B2 runs',
+      'resize/split screen keeps the navigation; account management in Settings (phone/web full, TV sessions); F2 leftovers and small items fixed',
+      'VLC caps sent from Android with Recommended = plain Play holding; no regressions; typecheck, lint and tests green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
