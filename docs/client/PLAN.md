@@ -481,5 +481,7 @@ Tasks (guidance and acceptance in `orchestrator.js`):
 - **I3 Apple TV**: tvOS build, focus engine, Menu Back chain, Siri Remote and keyboard, AVPlayer playback.
 - **F4 client polish**: the F3 verify follow-ups, profile editing and the B4 endpoints.
 - **F5 client audio renditions**: in-session audio switching on every player using B5.
+- **B6 server** (added after I1 slice 3): tone-mapped HDR -> SDR transcodes tagged bt709 so AVPlayer accepts them
+  (VIDEO-RANGE consistent with the stream tags, guarded in e2e), plus the B5 verify follow-ups.
 Order: server B4 -> B5 and client I1 -> I2 -> I3 -> F4 -> F5 run as two tracks in parallel; one device and one native
 build at a time.

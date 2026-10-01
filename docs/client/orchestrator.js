@@ -609,6 +609,24 @@ const TASKS = {
       'no regressions; typecheck, lint and tests green',
     ],
   },
+  'B6': {
+    title: 'Server: tone-mapped transcodes tagged SDR, colour metadata consistent with the playlist, B5 follow-ups',
+    track: 'Backend',
+    deps: ['B5'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round H. Found by I1 on the iPhone simulator (docs/client/journal/I1.md item 10): the 4K HDR10 -> SDR transcode writes H.264 with color_transfer=smpte2084 (PQ) while the master says VIDEO-RANGE=SDR; AVPlayer refuses the item (CoreMediaErrorDomain -12927) and the client ends with no_more_methods. Android players tolerated it, Apple does not.',
+      '- Fix at the root: every tone-mapped (HDR -> SDR) output is tagged bt709 (primaries, transfer, matrix, range) in the bitstream (VUI/SEI) and the fMP4 colr box; non-tone-mapped HDR passthrough keeps its HDR tags and VIDEO-RANGE=PQ/HLG; SDR sources stay bt709. Check every transcode and remux path (H.264/HEVC encoders, hardware/software, the 4K, 1080p and 720p cases, HLG and DV sources in the Dev World) and the VIDEO-RANGE attribute against the actual tags.',
+      '- Guard: e2e/contract checks ffprobe the init + first segment of every transcode/remux case and fail when VIDEO-RANGE and the stream colour tags disagree (SDR <-> bt709/unknown, PQ <-> smpte2084, HLG <-> arib-std-b67); a unit test for the argument builder per case. If Apple tools are available (they are not by default: say so), run mediastreamvalidator; otherwise use hlssim plus ffprobe.',
+      '- B5 verify follow-ups (docs/client/BACKLOG.md Server): Fmp4TrackSplit throws only InvalidDataException on malformed input, bounds the trun sample count, and the controller answers a clear 5xx code (not a generic 500) without leaking internals; rendition NAME/label describe what is delivered after conversion (e.g. "Deutsch · AAC 2.0", localised like the current labels); one codec per AUDIO group where the device profile allows it (convert the odd one out, or document why not); fMP4 audio tracks carry their language (-metadata:s:a:i language=); docs/transcoding.md bitrate example fixed; drop the test-only synchronous Segment helper or use it in production; admin plan/preview lists the renditions.',
+      '- Never start an emulator or simulator, never touch client/ (except regenerating client/src/api/schema.d.ts once at the end if the OpenAPI changes), never restart or republish 39300; test on 39310.',
+    ].join('\n'),
+    acceptance: [
+      'tone-mapped transcodes are tagged bt709 in bitstream and container, HDR passthrough keeps HDR tags, and VIDEO-RANGE matches the tags for every Dev World transcode/remux case; an e2e/contract guard fails on a mismatch',
+      'B5 follow-ups fixed or explicitly answered (splitter errors, rendition labels after conversion, codec per group, track language, docs, test-only helper, admin preview)',
+      'OpenAPI frozen, contract check, e2e and the full server suite green; client and web types regenerated if the contract changed',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
