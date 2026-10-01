@@ -34,7 +34,7 @@ import { aspect, colors, gutterPadding, motion, useDesign } from '@/theme';
 import { FeaturedStore, useFeatured, type Featured } from './featured';
 import { ContinueCard, DiscoverCard, featuredFromItem, NextUpCard } from './home-cards';
 import { HandheldHomeHero } from './home-hero';
-import { ShellHero } from './shell-hero';
+import { heroRowsTop, ShellHero } from './shell-hero';
 
 export { useHomeRows } from '@/browse/queries';
 
@@ -98,6 +98,7 @@ export function HomeScreen() {
   // Web keyboard focus below the first row: rows take the TV lift geometry (row at focusTop, hero copy hidden).
   const [raisedRow, setRaisedRow] = useState(0);
   const raised = raisedRow > 0;
+  const [copyBottom, setCopyBottom] = useState(0);
   const revealRow = (index: number, event: unknown) => {
     if (!isKeyboardFocus(event)) return;
     const frame = rowFrames.current[index];
@@ -333,7 +334,7 @@ export function HomeScreen() {
   if (shell.large)
     return (
       <View testID="home-screen" style={{ flex: 1 }}>
-        <ShellHero store={store} collapsed={raised} />
+        <ShellHero store={store} collapsed={raised} onCopyBottom={setCopyBottom} />
         <ScrollView
           ref={rowsRef}
           onScroll={(event) => {
@@ -349,7 +350,7 @@ export function HomeScreen() {
               left: 0,
               right: 0,
               bottom: 0,
-              top: s(raised ? SHELL.row.focusTop : SHELL.row.top),
+              top: raised ? s(SHELL.row.focusTop) : heroRowsTop(s, copyBottom),
             },
             scrolled && topFade(s(56)),
           ]}
@@ -362,55 +363,51 @@ export function HomeScreen() {
       </View>
     );
 
+  // iOS: the ScrollView is the screen's first view so UIKit adopts it (tab bar minimise, scroll-edge effect).
   return (
-    <View testID="home-screen" style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView
-        contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-          gap: design.layout.sectionGap,
-        }}>
-        <View>
-          {phoneHero ? (
-            <HandheldHomeHero featured={phoneHero} />
-          ) : loading ? (
-            <View style={{ height: design.layout.heroHeight }} />
-          ) : null}
-          {Platform.OS === 'web' ? null : (
-            <View
-              style={{
-                position: phoneHero || loading ? 'absolute' : 'relative',
-                top: insets.top + design.space.sm,
-                left: 0,
-                right: 0,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingHorizontal: design.layout.gutter,
-                paddingTop: phoneHero || loading ? 0 : insets.top + design.space.sm,
-              }}>
-              <BrandMark size={design.px(32)} />
-              <Pressable
-                testID="home-profile"
-                role="button"
-                accessibilityLabel={t('settings.account.switchNamed', {
-                  name: account.displayName,
-                })}
-                onPress={() => router.push('/profiles')}
-                hitSlop={design.space.sm}>
-                <Avatar
-                  name={account.displayName}
-                  color={account.color}
-                  size={design.px(34)}
-                  round
-                />
-              </Pressable>
-            </View>
-          )}
-        </View>
-        {body}
-      </ScrollView>
-    </View>
+    <ScrollView
+      testID="home-screen"
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentInsetAdjustmentBehavior="never"
+      contentContainerStyle={{
+        paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+        gap: design.layout.sectionGap,
+      }}>
+      <View>
+        {phoneHero ? (
+          <HandheldHomeHero featured={phoneHero} />
+        ) : loading ? (
+          <View style={{ height: design.layout.heroHeight }} />
+        ) : null}
+        {Platform.OS === 'web' ? null : (
+          <View
+            style={{
+              position: phoneHero || loading ? 'absolute' : 'relative',
+              top: insets.top + design.space.sm,
+              left: 0,
+              right: 0,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: design.layout.gutter,
+              paddingTop: phoneHero || loading ? 0 : insets.top + design.space.sm,
+            }}>
+            <BrandMark size={design.px(32)} />
+            <Pressable
+              testID="home-profile"
+              role="button"
+              accessibilityLabel={t('settings.account.switchNamed', {
+                name: account.displayName,
+              })}
+              onPress={() => router.push('/profiles')}
+              hitSlop={design.space.sm}>
+              <Avatar name={account.displayName} color={account.color} size={design.px(34)} round />
+            </Pressable>
+          </View>
+        )}
+      </View>
+      {body}
+    </ScrollView>
   );
 }
 

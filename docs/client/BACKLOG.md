@@ -9,12 +9,8 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Needs Xcode (pending-ios)
 
-- iPhone/iPad: NativeTabs with Liquid Glass (iOS 26+), iPad sidebar, large titles and transparent detail headers,
-  version side panel on iPad, Keychain vault, phone forms and keyboard insets.
-- Apple TV: native top tab bar, focus restore (`ScreenFocusScope`), Menu-key Back chain, tvOS keyboard, remote via
-  `useTVEventHandler`.
-- Playback: expo-video on AVPlayer, VLCKit fallback, Swift media-caps (VideoToolbox, HDR/DV, audio route), Safari
-  native HLS/HEVC/HDR, AirPlay and picture-in-picture.
+- Apple TV (I3): native top tab bar, focus restore (`ScreenFocusScope`), Menu-key Back chain, tvOS keyboard, remote via
+  `useTVEventHandler`, AVPlayer with the tvOS profile.
 - HeroFade has no fallback when the masked-view native module is missing (check after the first iOS pod install).
 
 ## Needs real hardware (Android TV, ideally a 2 GB device; a real phone)
@@ -28,6 +24,10 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Phone blur cost: the software-GL AVD shows RenderThread ~84 % with the blurred ambient; re-measure on a real phone.
 - TV: returning to Home from the profile picker shows a 1–2 s frame of lifted rows over the hero copy (slow emulator).
 - TLS failure message against a real self-signed server; TV keyboards other than Gboard.
+- iPhone/iPad (I1/I2): HEVC/HDR/Dolby Vision media caps, PiP start, AirPlay picker, iPad pointer hover
+  (`modules/pointer-events` -> `Focusable` onPointerEnter) and hardware-key hold-repeat (unit-tested only).
+- iPadOS window controls: the inset in a resized window is a fixed 30 pt (iPadOS 27 simulator); a native layout-region
+  read would be exact.
 
 ## Player
 
@@ -36,11 +36,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Browse, navigation and UX
 
-- iPhone (I1 verify): the slice-6 wrapper View around the Settings ScrollView hides the scroll view from UIKit's
-  scroll-edge lookup, so the large title stays static with content under it and the Liquid Glass bar does not minimise
-  (also seen on Home and Movies) — fixed first in I2.
 - iPhone (I1 verify): BBB WEB-DL direct play showed frame 0 for ~45 s while the clock ran until a seek (loaded host);
-  recheck on a quiet host (I2/F4).
+  not reproduced in I2 after the StartSeek fix; watch for it on hardware.
+- iPad Safari (I2 verify): closing the player leaves the page in element fullscreen, so Safari's X covers the rail logo.
+- iPhone Safari (I2): a pause from the system fullscreen controls is not reflected in our Pause button until the next tap.
+- Replay from the end card, then stop at 1:44, keeps no resume point (detail shows "Erneut ansehen"; predates I2).
+- ExpoVideoEngine: the wantPlay/readyToPlay ordering has no unit test (only StartSeek is tested; I2 verify).
 - Android phone (I1 verify): the Sign in button sits half under the keyboard/autofill strip (reachable via the IME Go
   key or a short scroll); the logo hides only on iOS while typing.
 - Google TV dev build (I1 verify): LogBox "Can't perform a React state update on a component that hasn't mounted yet"
@@ -116,6 +117,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- I2: iPhone large title + Liquid Glass tab-bar minimise (tab roots are the ScrollView again, transparent tab-root
+  header); iPad rail/Versions panel safe areas, shell headings on Settings/Search, hero on short windows, icon chips below
+  960 pt, window-controls inset; iPad hardware keys (iOS PlayerKeys) and pointer-event wiring; resume point no longer
+  lost on a dropped start seek (StartSeek + controller resume floor); Mobile Safari fullscreen (iPhone AVKit fallback,
+  iPad close-button inset).
 
 - B7: `/api` no-store rule centralised and enforced at response start (`NoStoreApiResponses`, OpenAPI route-walk test);
   VLC predictions explain the VLC engine instead of native conversions; `avatarKey` in admin viewer responses;

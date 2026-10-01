@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Info, Play } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, type Ref } from 'react';
+import { useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, useTVEventHandler, View } from 'react-native';
 import Animated, {
@@ -10,6 +10,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
 import { useClearAmbient, useSetAmbient } from '@/components/ambient';
@@ -24,6 +25,7 @@ import { TICKS_PER_SECOND } from '@/player/playback-api';
 import { CopyWash, HeroFade } from '@/shell/hero-fade';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
+import { useWindowControlsInset } from '@/shell/window-controls';
 import { colors, fonts, motion } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
@@ -32,6 +34,17 @@ import { useFeaturedDetail, useMeta } from './home-hero';
 
 const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
+/** Copy top: the mockup's, raised on short windows (tablet text/button floors), never above the rail top. */
+export function heroCopyTop(s: (value: number) => number, copyHeight: number, safeTop: number) {
+  const fitTop = s(SHELL.row.top - SHELL.row.gap * 2) - copyHeight;
+  return Math.max(safeTop + s(SHELL.rail.top), Math.min(s(SHELL.hero.copyTop), fitTop));
+}
+
+/** Rows top: the mockup's, or lower when the copy still ends within two row gaps of it. */
+export function heroRowsTop(s: (value: number) => number, copyBottom: number) {
+  return Math.max(s(SHELL.row.top), copyBottom + s(SHELL.row.gap * 2));
+}
+
 export type ShellHeroProps = {
   store: FeaturedStore;
   /** TV: rows below the first are focused, the hero copy steps back (Apple TV style). */
@@ -39,10 +52,17 @@ export type ShellHeroProps = {
   /** TV: the hero's first button, the target of Up from the first row. */
   targetRef?: Ref<View>;
   onButtonFocus?: (focused: boolean) => void;
+  onCopyBottom?: (bottom: number) => void;
 };
 
 /** Large-screen hero: follows the focused (TV) or hovered (web) title and paints the ambient backdrop. */
-export function ShellHero({ store, collapsed = false, targetRef, onButtonFocus }: ShellHeroProps) {
+export function ShellHero({
+  store,
+  collapsed = false,
+  targetRef,
+  onButtonFocus,
+  onCopyBottom,
+}: ShellHeroProps) {
   const { s } = useShell();
   const shown = useSharedValue(1);
   useEffect(() => {
@@ -127,6 +147,7 @@ export function ShellHero({ store, collapsed = false, targetRef, onButtonFocus }
             hidden={collapsed}
             targetRef={targetRef}
             onButtonFocus={onButtonFocus}
+            onCopyBottom={onCopyBottom}
           />
         ) : null}
       </Animated.View>
@@ -141,6 +162,7 @@ function HeroCopy({
   hidden,
   targetRef,
   onButtonFocus,
+  onCopyBottom,
 }: {
   featured: Featured;
   detail: ReturnType<typeof useFeaturedDetail>;
@@ -148,12 +170,16 @@ function HeroCopy({
   hidden: boolean;
   targetRef?: Ref<View>;
   onButtonFocus?: (focused: boolean) => void;
+  onCopyBottom?: (bottom: number) => void;
 }) {
   const { t } = useTranslation();
   const format = useFormat();
   const router = useRouter();
   const play = usePlay();
   const { s } = useShell();
+  const insets = useSafeAreaInsets();
+  const controls = useWindowControlsInset();
+  const [copyHeight, setCopyHeight] = useState(0);
   const meta = useMeta(featured, detail);
   const watch = detail?.watch;
   const progress = featured.progress ?? watchProgress(watch);
@@ -212,10 +238,15 @@ function HeroCopy({
 
   return (
     <View
+      onLayout={(event) => {
+        const { y, height } = event.nativeEvent.layout;
+        setCopyHeight(height);
+        onCopyBottom?.(y + height);
+      }}
       style={{
         position: 'absolute',
         left: s(SHELL.hero.copyLeft),
-        top: s(SHELL.hero.copyTop),
+        top: heroCopyTop(s, copyHeight, insets.top + controls),
         width: s(SHELL.hero.copyWidth),
         gap: s(14),
       }}>

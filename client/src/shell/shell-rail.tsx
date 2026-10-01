@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
@@ -23,6 +24,7 @@ import { colors, fonts, useDesign } from '@/theme';
 import { BrandMark } from './brand-mark';
 import { SHELL } from './shell-metrics';
 import { useShell } from './use-shell';
+import { useWindowControlsInset } from './window-controls';
 
 type KeyEvent = { key: string; preventDefault: () => void };
 type Click = Partial<Pick<MouseEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'button'>> & {
@@ -58,6 +60,11 @@ export function ShellRail({ activeName, onSelect, onFocusChange, activeRef }: Sh
     onFocusChange?.(focused);
   };
   const { rail } = SHELL;
+  // iPad: clear the status bar, the window controls and the home indicator.
+  const insets = useSafeAreaInsets();
+  const controls = useWindowControlsInset();
+  const edge = { left: s(rail.inset) + insets.left, top: s(rail.top) + insets.top + controls };
+  const bottom = s(rail.top) + insets.bottom;
   const main = TABS.filter((tab) => tab.id !== 'settings');
   const settings = TABS.find((tab) => tab.id === 'settings')!;
 
@@ -95,9 +102,8 @@ export function ShellRail({ activeName, onSelect, onFocusChange, activeRef }: Sh
       style={{
         pointerEvents: 'box-none',
         position: 'absolute',
-        left: s(rail.inset),
-        top: s(rail.top),
-        bottom: s(rail.top),
+        ...edge,
+        bottom,
         width: s(rail.pill),
         zIndex: 2,
       }}>
@@ -108,9 +114,9 @@ export function ShellRail({ activeName, onSelect, onFocusChange, activeRef }: Sh
             {
               pointerEvents: 'none',
               position: 'absolute',
-              left: -s(rail.inset),
-              top: -s(rail.top),
-              bottom: -s(rail.top),
+              left: -edge.left,
+              top: -edge.top,
+              bottom: -bottom,
               width: s(640),
             },
             scrimStyle,

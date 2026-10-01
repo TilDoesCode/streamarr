@@ -45,13 +45,15 @@ import type { PlaybackController } from '@/player/controller';
 import { clock as formatClock, scrubStep } from '@/player/format';
 import {
   fullscreenAvailable,
+  fullscreenChromeInset,
   isFullscreen,
   onFullscreenChange,
   toggleFullscreen,
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
 import type { Clock } from '@/player/use-clock';
-import { channelLayout, qualityLabel } from '@/player/overlay-labels';
+import { useWindowControlsInset } from '@/shell/window-controls';
+import { barChipsLabelled, channelLayout, qualityLabel } from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { effectiveMuted, TEST_MUTED } from '@/player/test-muted';
@@ -114,6 +116,7 @@ export function PlayerOverlay({
   const [moreOpen, setMoreOpen] = useState(false);
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
+  const windowInset = useWindowControlsInset();
   const window = useWindowDimensions();
   const [visible, setVisible] = useState(true);
   const [zone, setZone] = useState<Zone>('buttons');
@@ -121,6 +124,8 @@ export function PlayerOverlay({
   const [muted, setMuted] = useState(TEST_MUTED);
   const [fit, setFit] = useState<'contain' | 'cover'>('contain');
   const [fullscreen, setFullscreen] = useState(isFullscreen);
+  const chromeInset = fullscreenChromeInset(fullscreen);
+  const windowControls = windowInset + chromeInset;
   const [flash, setFlash] = useState<string | null>(null);
   const scrubRef = useRef<number | null>(null);
   const handOver = useRef(false);
@@ -237,7 +242,9 @@ export function PlayerOverlay({
     setMuted(effectiveMuted(next));
   };
 
-  const captureDpad = !suspended && (Platform.OS === 'web' || !visible || zone === 'progress');
+  // Keyboards (web, iPad) have no focus row to hand the arrows to.
+  const keyboard = Platform.OS === 'web' || (Platform.OS === 'ios' && !tv);
+  const captureDpad = !suspended && (keyboard || !visible || zone === 'progress');
   useEffect(() => {
     if (captureDpad) handOver.current = false;
   }, [captureDpad]);
@@ -332,7 +339,7 @@ export function PlayerOverlay({
   /* eslint-enable react-hooks/refs */
 
   const bottom = Math.max(insets.bottom, design.layout.edgeVertical);
-  const top = Math.max(insets.top, design.layout.edgeVertical);
+  const top = Math.max(insets.top, design.layout.edgeVertical) + chromeInset;
   const remaining = Math.max(0, duration - position);
   const panelButtons = PANELS.filter(
     (panel) =>
@@ -376,8 +383,10 @@ export function PlayerOverlay({
   };
   // Narrow windows: the panel chips fold into one "More" button so the row never overflows.
   const collapse = narrow && !tv && panelButtons.length > 2;
+  const chipText = barChipsLabelled(window.width, tv);
   const labelled = (panel: PanelKind) =>
-    panel === 'audio' || panel === 'subtitles' || panel === 'version' || panel === 'info';
+    chipText &&
+    (panel === 'audio' || panel === 'subtitles' || panel === 'version' || panel === 'info');
 
   return (
     <View
@@ -415,7 +424,7 @@ export function PlayerOverlay({
                 pointerEvents="box-none"
                 style={{
                   position: 'absolute',
-                  top: Math.max(insets.top, s(64)),
+                  top: Math.max(insets.top, s(64)) + windowControls,
                   left: s(96),
                   right: s(96),
                   gap: s(14),
@@ -665,7 +674,7 @@ export function PlayerOverlay({
                       tone={openPanel === panel ? 'solid' : 'plain'}
                       label={labelled(panel) ? chipLabel[panel] : pt(`controls.${panel}`)}
                       accessibilityLabel={
-                        labelled(panel) && panel !== 'info'
+                        panel !== 'info' && panel !== 'quality' && panel !== 'engine'
                           ? `${pt(`controls.${panel}`)}: ${chipLabel[panel]}`
                           : pt(`controls.${panel}`)
                       }

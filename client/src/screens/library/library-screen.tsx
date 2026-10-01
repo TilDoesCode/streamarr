@@ -278,64 +278,66 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
       ? errorState
       : null;
 
-  return (
-    <View
+  const grid = (
+    <FlatList
       testID={`library-${kind}`}
       style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
-      onLayout={(event) => setSize(event.nativeEvent.layout)}>
-      {/* TV: the page scrolls only by the row lift; Down past the last row stays in the grid. */}
-      <FocusGuide remember={false} trap={design.isTV ? ['down'] : undefined} style={{ flex: 1 }}>
-        <FlatList
-          ref={list}
-          scrollEnabled={!design.isTV}
-          removeClippedSubviews={false}
-          data={rows}
-          keyExtractor={(row) => row.map(itemKey).join('|')}
-          ListHeaderComponent={header}
-          ListEmptyComponent={body()}
-          ListFooterComponent={footer}
-          showsVerticalScrollIndicator={!shell.large}
-          onEndReached={loadMore}
-          onEndReachedThreshold={PAGING_ROWS / Math.max(1, Math.min(rows.length, 4))}
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{
-            paddingTop: shell.large
-              ? shell.s(SHELL.page.top)
-              : design.layout.edgeVertical + insets.top,
-            // TV: room below the last row so any focused row can scroll up to the page top.
-            paddingBottom: design.isTV
-              ? Math.max(0, size.height - rowHeight)
-              : Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-          }}
-          renderItem={({ item: row, index: rowIndex }) => (
-            <View style={{ flexDirection: 'row', gap: cardGap, ...pad, marginBottom: rowGap }}>
-              {row.map((item, column) => (
-                <PosterCard
-                  key={itemKey(item)}
-                  testID={`library-item-${rowIndex * columns + column}`}
-                  title={item.title ?? ''}
-                  subtitle={item.year ? String(item.year) : ''}
-                  imageUri={item.posterUrl}
-                  width={cardWidth}
-                  spec={item.spec}
-                  tint={item.tint}
-                  onFocus={() => {
-                    zone.current = 'grid';
-                    showAmbient(item);
-                    liftRow(rowIndex);
-                    // TV focus walks the grid without scrolling events reaching the end first.
-                    if (rowIndex >= rows.length - PAGING_ROWS) loadMore();
-                  }}
-                  onHoverIn={() => showAmbient(item)}
-                  onPress={() => router.push(titleHref(item))}
-                />
-              ))}
-            </View>
-          )}
-        />
-      </FocusGuide>
-    </View>
+      onLayout={(event) => setSize(event.nativeEvent.layout)}
+      ref={list}
+      scrollEnabled={!design.isTV}
+      removeClippedSubviews={false}
+      data={rows}
+      keyExtractor={(row) => row.map(itemKey).join('|')}
+      ListHeaderComponent={header}
+      ListEmptyComponent={body()}
+      ListFooterComponent={footer}
+      showsVerticalScrollIndicator={!shell.large}
+      onEndReached={loadMore}
+      onEndReachedThreshold={PAGING_ROWS / Math.max(1, Math.min(rows.length, 4))}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{
+        paddingTop: shell.large ? shell.s(SHELL.page.top) : design.layout.edgeVertical + insets.top,
+        // TV: room below the last row so any focused row can scroll up to the page top.
+        paddingBottom: design.isTV
+          ? Math.max(0, size.height - rowHeight)
+          : Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+      }}
+      renderItem={({ item: row, index: rowIndex }) => (
+        <View style={{ flexDirection: 'row', gap: cardGap, ...pad, marginBottom: rowGap }}>
+          {row.map((item, column) => (
+            <PosterCard
+              key={itemKey(item)}
+              testID={`library-item-${rowIndex * columns + column}`}
+              title={item.title ?? ''}
+              subtitle={item.year ? String(item.year) : ''}
+              imageUri={item.posterUrl}
+              width={cardWidth}
+              spec={item.spec}
+              tint={item.tint}
+              onFocus={() => {
+                zone.current = 'grid';
+                showAmbient(item);
+                liftRow(rowIndex);
+                // TV focus walks the grid without scrolling events reaching the end first.
+                if (rowIndex >= rows.length - PAGING_ROWS) loadMore();
+              }}
+              onHoverIn={() => showAmbient(item)}
+              onPress={() => router.push(titleHref(item))}
+            />
+          ))}
+        </View>
+      )}
+    />
   );
+  // TV: the page scrolls only by the row lift; Down past the last row stays in the grid.
+  if (design.isTV)
+    return (
+      <FocusGuide remember={false} trap={['down']} style={{ flex: 1 }}>
+        {grid}
+      </FocusGuide>
+    );
+  // iOS: the list is the screen's first view so UIKit adopts it (tab bar minimise, scroll-edge effect).
+  return grid;
 }
 
 function ambientOf(item: CatalogItem) {

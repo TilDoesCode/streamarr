@@ -1,4 +1,5 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
+import { Platform } from 'react-native';
 
 export type KeyGroup = 'dpad' | 'media';
 export type PlayerKeyEvent = { key: string; repeat: number; time: number };
@@ -7,8 +8,11 @@ declare class PlayerKeysModule extends NativeModule<{ onKey(event: PlayerKeyEven
   setCapture(groups: KeyGroup[]): void;
 }
 
-// Android only; tvOS and the web get their keys from React Native / the DOM.
-const native = requireOptionalNativeModule<PlayerKeysModule>('PlayerKeys');
+// Android and the iPad keyboard; tvOS and the web get their keys from React Native / the DOM.
+const native =
+  Platform.OS === 'ios' && Platform.isTV
+    ? null
+    : requireOptionalNativeModule<PlayerKeysModule>('PlayerKeys');
 
 export const playerKeysAvailable = native !== null;
 

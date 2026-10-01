@@ -30,8 +30,8 @@ export function TabStack({ tab }: { tab: TabId }) {
   const { t } = useTranslation();
   const design = useDesign();
   const shell = useShell();
-  // Phones and tablets use native headers; TV and web show their own headings and the shell.
-  const nativeHeaders = !design.isTV && Platform.OS !== 'web';
+  // Phones use native headers; the large shell (TV, web, tablet) shows its own headings.
+  const nativeHeaders = !design.isTV && Platform.OS !== 'web' && !shell.large;
   // Phones: iOS keeps the native Liquid Glass header; Android and web draw a glass back button over the art.
   const detailHeader = !design.isTV && !shell.large && Platform.OS === 'ios';
   const detailOptions = {
@@ -57,6 +57,10 @@ export function TabStack({ tab }: { tab: TabId }) {
           // Library pages draw their own title line (title + sort).
           headerShown: nativeHeaders && (tab === 'search' || tab === 'settings'),
           headerLargeTitleEnabled: Platform.OS === 'ios',
+          // iOS 26+: an opaque bar covers the large title that UIKit moves into the scroll view.
+          ...(Platform.OS === 'ios'
+            ? { headerStyle: { backgroundColor: colors.scrim.clear } }
+            : null),
           title: t(`tabs.${tab}`),
           // Large shell: the tab's first screen sits on the shell's ambient backdrop.
           ...(shell.large ? { contentStyle: { backgroundColor: colors.scrim.clear } } : null),

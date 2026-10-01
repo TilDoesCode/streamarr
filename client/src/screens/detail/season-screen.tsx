@@ -10,6 +10,7 @@ import { FocusSection } from '@/components/focus';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { useShell } from '@/shell/use-shell';
 import { useDesign } from '@/theme';
 
 import { DetailError, DetailScroll, routeNumber } from './detail-parts';
@@ -18,6 +19,7 @@ import { DetailError, DetailScroll, routeNumber } from './detail-parts';
 export function SeasonScreen() {
   const { t } = useTranslation();
   const design = useDesign();
+  const shell = useShell();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; n: string }>();
   const tmdbId = routeNumber(params.id);
@@ -36,8 +38,8 @@ export function SeasonScreen() {
   const data = season.data;
   const seasonTitle = seasonName(t, data?.title, seasonNumber);
   const episodes = data?.episodes ?? [];
-  // Handhelds show the title in the native header; TV and web show it on the page.
-  const pageHeading = design.isTV || Platform.OS === 'web';
+  // Phones show the title in the native header; the large shell (TV, web, tablet) shows it on the page.
+  const pageHeading = design.isTV || Platform.OS === 'web' || shell.large;
   return (
     <DetailScroll testID={`season-screen-${tmdbId}-${seasonNumber}`}>
       <Stack.Screen options={{ title: seasonTitle }} />

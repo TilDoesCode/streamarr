@@ -2,6 +2,7 @@ import type { Version } from '@/browse/queries';
 
 import {
   audioTransfer,
+  barChipsLabelled,
   betterVersion,
   channelLayout,
   containerTransfer,
@@ -68,5 +69,14 @@ describe('stepDownKey', () => {
     );
     expect(stepDownKey({ from: 'direct', to: 'remux' })).toBe('notice.stepDownRemux');
     expect(stepDownKey({ to: 'odd' })).toBe('notice.stepDown');
+  });
+});
+
+describe('barChipsLabelled', () => {
+  it('keeps text chips on TV and wide windows, icons only on iPad mini/Air portrait', () => {
+    expect(barChipsLabelled(1920, true)).toBe(true);
+    expect(barChipsLabelled(1032, false)).toBe(true);
+    expect(barChipsLabelled(820, false)).toBe(false);
+    expect(barChipsLabelled(744, false)).toBe(false);
   });
 });

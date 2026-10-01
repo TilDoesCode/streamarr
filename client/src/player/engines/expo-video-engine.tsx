@@ -10,6 +10,7 @@ import {
 
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
+import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
 type Subscription = { remove(): void };
@@ -60,6 +61,9 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   private readonly player: VideoPlayer = createVideoPlayer(null);
   private readonly subscriptions: Subscription[] = [];
   private ready = false;
+  private loaded = false;
+  private wantPlay = false;
+  private start = new StartSeek(0, () => undefined);
 
   constructor() {
     super();
@@ -79,6 +83,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         } else if (status === 'readyToPlay') {
           if (this.ready) this.emit({ type: 'buffering', buffering: false });
           this.ready = true;
+          if (this.loaded) this.applyStart();
           this.setState(player.playing ? 'playing' : 'paused');
         }
       }),
@@ -86,14 +91,17 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         if (this.getSnapshot().state === 'ended' && !isPlaying) return;
         if (player.status === 'readyToPlay') this.setState(isPlaying ? 'playing' : 'paused');
       }),
-      player.addListener('timeUpdate', ({ currentTime, bufferedPosition }) =>
+      player.addListener('timeUpdate', ({ currentTime, bufferedPosition }) => {
+        // Before the start seek the clock still reads 0; the snapshot keeps the start position.
+        if (this.start.pending && !this.start.applied) return;
+        this.start.time(currentTime);
         this.emit({
           type: 'time',
           position: currentTime,
           duration: player.duration,
           buffered: bufferedPosition,
-        })
-      ),
+        });
+      }),
       player.addListener('playToEnd', () => {
         this.setState('ended');
         this.emit({ type: 'ended' });
@@ -166,18 +174,35 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   load(source: EngineSource): void {
     this.resetForLoad(source);
     this.ready = false;
+    this.loaded = false;
+    this.wantPlay = true;
     const player = this.player;
+    this.start.cancel();
+    this.start = new StartSeek(source.startPosition ?? 0, (position) => {
+      player.currentTime = position;
+    });
     void player
       .replaceAsync({ uri: source.uri, contentType: source.kind === 'hls' ? 'hls' : 'progressive' })
       .then(() => {
         if (this.released || this.source !== source) return;
-        if (source.startPosition) player.currentTime = source.startPosition;
-        player.play();
+        this.loaded = true;
+        if (!this.start.pending) {
+          if (this.wantPlay) player.play();
+        } else if (player.status === 'readyToPlay') this.applyStart();
       })
       .catch((error: Error) => this.emit({ type: 'error', reason: error.message }));
   }
 
+  /** AVPlayer can drop a seek issued before the item is ready, so the start waits for readyToPlay. */
+  private applyStart(): void {
+    if (!this.start.pending || this.start.applied) return;
+    this.start.ready();
+    if (this.wantPlay) this.player.play();
+  }
+
   play(): void {
+    this.wantPlay = true;
+    if (this.start.pending && !this.start.applied) return;
     if (this.getSnapshot().state === 'ended') this.player.currentTime = 0;
     this.player.play();
   }
@@ -187,10 +212,12 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   pause(): void {
+    this.wantPlay = false;
     this.player.pause();
   }
 
   seek(position: number): void {
+    this.start.cancel();
     this.player.currentTime = Math.max(0, position);
   }
 

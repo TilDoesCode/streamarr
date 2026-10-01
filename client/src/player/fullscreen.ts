@@ -10,3 +10,7 @@ export function toggleFullscreen(): void {}
 export function onFullscreenChange(_listener: () => void): () => void {
   return () => undefined;
 }
+
+export function fullscreenChromeInset(_fullscreen: boolean): number {
+  return 0;
+}

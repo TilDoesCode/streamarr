@@ -108,6 +108,75 @@ describe('PlaybackController', () => {
     await c.stop();
   });
 
+  describe('resume floor', () => {
+    const reported = (c: PlaybackController) =>
+      (c.progress.report as jest.Mock).mock.calls.map(
+        ([report]: [{ event: string; positionTicks: number }]) => [
+          report.event,
+          report.positionTicks / TICKS,
+        ]
+      );
+    async function resumed(start: number) {
+      mockApi.startPlayback.mockResolvedValue(ready());
+      const c = controller(start);
+      jest.spyOn(c.progress, 'report').mockResolvedValue(undefined as never);
+      await c.start();
+      return c;
+    }
+
+    it('never reports below the start while the engine is stuck before it', async () => {
+      const c = await resumed(96);
+      for (const position of [0, 2, 4]) {
+        mockEngine.snapshot.position = position;
+        mockEngine.emit({ type: 'time', position, duration: 600 });
+      }
+      c.setPaused(true);
+      await c.stop();
+      expect(reported(c)).toEqual([
+        ['start', 96],
+        ['progress', 96],
+        ['stop', 96],
+      ]);
+    });
+
+    it('keeps the start for a switch while the engine has not reached it', async () => {
+      mockApi.switchPlayback.mockResolvedValue(ready({ revision: 1, method: 'remux' }));
+      const c = await resumed(96);
+      mockEngine.snapshot.position = 3;
+      mockEngine.emit({ type: 'time', position: 3, duration: 600 });
+      expect(c.resumePosition).toBe(96);
+      await c.stop();
+    });
+
+    it('reports normally once the start was reached', async () => {
+      const c = await resumed(96);
+      for (const position of [95, 97, 40]) {
+        mockEngine.snapshot.position = position;
+        mockEngine.emit({ type: 'time', position, duration: 600 });
+      }
+      await c.stop();
+      expect(reported(c).at(-1)).toEqual(['stop', 40]);
+    });
+
+    it('reports normally after the viewer seeks on purpose', async () => {
+      const c = await resumed(96);
+      c.seekTo(10);
+      await c.stop();
+      expect(reported(c).at(-1)).toEqual(['stop', 10]);
+    });
+
+    it('leaves a start at 0 unchanged', async () => {
+      const c = await resumed(0);
+      mockEngine.snapshot.position = 3;
+      mockEngine.emit({ type: 'time', position: 3, duration: 600 });
+      await c.stop();
+      expect(reported(c)).toEqual([
+        ['start', 0],
+        ['stop', 3],
+      ]);
+    });
+  });
+
   it('does not ask when the route passes an explicit start', async () => {
     mockApi.startPlayback.mockResolvedValue(ready({ resumePositionTicks: 120 * TICKS }));
     const c = controller(0);

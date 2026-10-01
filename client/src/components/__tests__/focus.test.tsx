@@ -27,6 +27,23 @@ describe('Focusable', () => {
     expect(item.props.focusable).toBe(true);
   });
 
+  it('reports iPad pointer hover (pointer events, mouse only) as onHoverIn/onHoverOut', async () => {
+    const onHoverIn = jest.fn();
+    const onHoverOut = jest.fn();
+    await renderWithProviders(
+      <Focusable testID="card" onHoverIn={onHoverIn} onHoverOut={onHoverOut} onPress={jest.fn()}>
+        <Text>{'x'}</Text>
+      </Focusable>
+    );
+    const card = screen.getByTestId('card');
+    await fireEvent(card, 'pointerEnter', { nativeEvent: { pointerType: 'touch' } });
+    expect(onHoverIn).not.toHaveBeenCalled();
+    await fireEvent(card, 'pointerEnter', { nativeEvent: { pointerType: 'mouse' } });
+    await fireEvent(card, 'pointerLeave', { nativeEvent: { pointerType: 'mouse' } });
+    expect(onHoverIn).toHaveBeenCalledTimes(1);
+    expect(onHoverOut).toHaveBeenCalledTimes(1);
+  });
+
   it('is not focusable when disabled or rendered as a static preview', async () => {
     await renderWithProviders(
       <>

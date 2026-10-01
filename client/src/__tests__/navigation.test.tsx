@@ -16,6 +16,12 @@ import { DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
 
+let mockWindow: { width: number; height: number; scale: number; fontScale: number } | undefined;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => {
+  const actual = jest.requireActual('react-native/Libraries/Utilities/useWindowDimensions');
+  return { __esModule: true, default: () => mockWindow ?? actual.default() };
+});
+
 // expo-router/testing-library installs its own Reanimated mock, which lacks useReducedMotion and makeMutable.
 const reanimatedMock = jest.requireMock<Record<string, unknown>>('react-native-reanimated');
 reanimatedMock.useReducedMotion = () => false;
@@ -202,6 +208,33 @@ it('switches tabs and pops a tab to its first screen', async () => {
   expect(router.getPathname()).toBe('/movie/123');
   await user.press(screen.getByTestId('nav-home'));
   await waitFor(() => expect(router.getPathname()).toBe('/'));
+});
+
+it.each([
+  ['/', 'home-screen'],
+  ['/movies', 'library-movie'],
+  ['/search', 'search-screen'],
+  ['/settings', 'settings-screen'],
+])(
+  'renders the phone tab root %s as a scroll view (iOS adopts it for the bar minimise)',
+  async (url, id) => {
+    await signIn();
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    try {
+      await renderRouter(routes, { initialUrl: url });
+      expect((await screen.findByTestId(id)).type).toBe('RCTScrollView');
+    } finally {
+      mockWindow = undefined;
+    }
+  }
+);
+
+it('draws the Settings heading on the page in the large shell (tablet: no native header under the rail)', async () => {
+  await signIn();
+  await renderRouter(routes, { initialUrl: '/settings' });
+  expect(
+    await screen.findByRole('heading', { name: /^(Settings|Einstellungen)$/ })
+  ).toBeOnTheScreen();
 });
 
 it('searches and pushes a result inside the Search tab', async () => {

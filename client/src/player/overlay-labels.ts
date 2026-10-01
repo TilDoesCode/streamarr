@@ -9,6 +9,11 @@ type Info = NonNullable<Playback['mediaInfo']>;
 type Audio = NonNullable<Info['audioTracks']>[number];
 type Video = NonNullable<Info['video']>;
 
+/** Large player bar: text chips need ~960 pt; narrower windows (iPad mini/Air portrait) show icons only. */
+export function barChipsLabelled(windowWidth: number, tv: boolean): boolean {
+  return tv || windowWidth >= 960;
+}
+
 /** 6 → "5.1", 2 → "2.0", 1 → "1.0". */
 export function channelLayout(channels: number | null | undefined): string {
   if (!channels) return '';

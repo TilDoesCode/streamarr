@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { components } from '@/api/schema';
 
@@ -148,6 +149,7 @@ function LargeDetailLayout({
 }: LargeDetailProps) {
   const { s } = useShell();
   const design = useDesign();
+  const insets = useSafeAreaInsets();
   const setAmbient = useSetAmbient();
   const clearAmbient = useClearAmbient();
   const actionsRef = useRef<View>(null);
@@ -348,13 +350,15 @@ function LargeDetailLayout({
                   height: design.window.height * 0.4,
                   // The rail floats over the content: the panel starts right of it.
                   marginLeft: s(SHELL.rail.width + DETAIL.panelInset),
-                  marginRight: s(DETAIL.panelInset),
-                  marginBottom: s(DETAIL.panelInset),
+                  marginRight: s(DETAIL.panelInset) + insets.right,
+                  marginBottom: s(DETAIL.panelInset) + insets.bottom,
                 }
               : {
                   width: s(DETAIL.panelWidth),
-                  marginVertical: s(DETAIL.panelInset),
-                  marginRight: s(DETAIL.panelInset),
+                  // iPad: clear the status bar and the home indicator.
+                  marginTop: s(DETAIL.panelInset) + insets.top,
+                  marginBottom: s(DETAIL.panelInset) + insets.bottom,
+                  marginRight: s(DETAIL.panelInset) + insets.right,
                 }
           }>
           {panel}

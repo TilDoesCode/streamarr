@@ -3,6 +3,7 @@ import {
   Platform,
   Pressable,
   type GestureResponderEvent,
+  type PointerEvent,
   type PressableProps,
   type StyleProp,
   type View,
@@ -136,6 +137,27 @@ export function Focusable({
       }
     : undefined;
 
+  const hoverIn: PressableProps['onHoverIn'] = (event) => {
+    animate(hover, 1, motion.focus);
+    onHoverIn?.(event);
+  };
+  const hoverOut: PressableProps['onHoverOut'] = (event) => {
+    animate(hover, 0, motion.focus);
+    onHoverOut?.(event);
+  };
+  // iPad pointer: Pressable's hover is web-only on iOS; pointer events (modules/pointer-events) carry it.
+  const pointerHover =
+    Platform.OS === 'ios' && !Platform.isTV
+      ? {
+          onPointerEnter: (event: PointerEvent) => {
+            if (event.nativeEvent.pointerType === 'mouse') hoverIn(event as never);
+          },
+          onPointerLeave: (event: PointerEvent) => {
+            if (event.nativeEvent.pointerType === 'mouse') hoverOut(event as never);
+          },
+        }
+      : undefined;
+
   return (
     <FocusStateContext value={{ focus, pressed, hover }}>
       <Pressable
@@ -168,14 +190,9 @@ export function Focusable({
           animate(pressed, 0, motion.press);
           onPressOut?.(event);
         }}
-        onHoverIn={(event) => {
-          animate(hover, 1, motion.focus);
-          onHoverIn?.(event);
-        }}
-        onHoverOut={(event) => {
-          animate(hover, 0, motion.focus);
-          onHoverOut?.(event);
-        }}
+        onHoverIn={hoverIn}
+        onHoverOut={hoverOut}
+        {...pointerHover}
         {...webKeys}
         {...props}>
         {children}

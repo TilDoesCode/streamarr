@@ -9,6 +9,7 @@ import {
   type EngineState,
   type PlayerEngine,
 } from '@/player/engines';
+import { START_TOLERANCE } from '@/player/engines/start-seek';
 import {
   mediaUrl,
   startPlayback,
@@ -73,6 +74,8 @@ export class PlaybackController {
   private appState: NativeEventSubscription | null = null;
   private stepDownRevision = -1;
   private lastGoodPosition = 0;
+  /** Start position not yet reached: reports never go below it, so a failed start keeps the resume point. */
+  private startFloor = 0;
   private noticeId = 0;
   private lastError = '';
   private resumeChoice: ((seconds: number) => void) | null = null;
@@ -108,7 +111,7 @@ export class PlaybackController {
   /** Where a switch continues: a loading or failed engine may already report 0. */
   get resumePosition(): number {
     const snapshot = this.engine?.getSnapshot();
-    if (!snapshot) return this.lastGoodPosition;
+    if (!snapshot || this.startFloor) return this.lastGoodPosition;
     return STEADY_STATES.has(snapshot.state) ? snapshot.position : this.lastGoodPosition;
   }
 
@@ -233,7 +236,9 @@ export class PlaybackController {
         else if (event.type === 'ended') this.onEnded();
         // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
         else if (event.type === 'time') {
-          if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle'))
+          if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
+            this.startFloor = 0;
+          if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
             this.lastGoodPosition = event.position;
           if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
             this.report('progress');
@@ -256,6 +261,7 @@ export class PlaybackController {
     this.phase = 'playing';
     this.ended = false;
     this.lastGoodPosition = position;
+    this.startFloor = position;
     this.applyServerTracks(engine, playback);
     engine.load({
       uri: mediaUrl(this.options.serverUrl, playback.url ?? ''),
@@ -301,6 +307,7 @@ export class PlaybackController {
     if (!playback?.workId) return;
     const duration = this.duration;
     this.reportedAt = Date.now();
+    if (this.startFloor) position = Math.max(position, this.startFloor);
     void this.progress.report({
       event,
       workId: playback.workId,
@@ -550,6 +557,7 @@ export class PlaybackController {
     if (!engine) return;
     const duration = this.duration;
     const clamped = Math.max(0, duration ? Math.min(target, duration - 1) : target);
+    this.startFloor = 0;
     engine.seek(clamped);
     this.changed();
   }

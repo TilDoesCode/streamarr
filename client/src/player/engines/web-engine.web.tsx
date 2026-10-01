@@ -6,6 +6,7 @@ import { colors } from '@/theme';
 
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
+import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
 type NativeTrackList<T> = { length: number; [index: number]: T };
@@ -50,6 +51,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private hls: HlsPlayer | null = null;
   private pending: EngineSource | null = null;
   private started = false;
+  private startSeek = new StartSeek(0, () => undefined);
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private detach: (() => void) | null = null;
   readonly mode: 'hls.js' | 'native' = prefersNativeHls() ? 'native' : 'hls.js';
@@ -87,7 +89,10 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.setState('ended');
         this.emit({ type: 'ended' });
       }),
-      on('loadedmetadata', () => this.emitTracks()),
+      on('loadedmetadata', () => {
+        this.startSeek.ready();
+        this.emitTracks();
+      }),
       on('error', () => {
         this.emit({
           type: 'error',
@@ -111,6 +116,9 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private emitTime(): void {
     const video = this.video;
     if (!video) return;
+    // Before the start seek the clock still reads 0; the snapshot keeps the start position.
+    if (this.startSeek.pending && !this.startSeek.applied) return;
+    this.startSeek.time(video.currentTime);
     const buffered = video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0;
     this.emit({
       type: 'time',
@@ -190,6 +198,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     }
     this.pending = null;
     this.teardown();
+    this.startSeek.cancel();
     this.watchFirstFrame(video);
     if (source.kind === 'hls' && this.mode === 'hls.js') {
       const hls = new HlsPlayer({ startPosition: source.startPosition ?? -1, enableWebVTT: true });
@@ -215,8 +224,11 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       hls.loadSource(source.uri);
       hls.attachMedia(video);
     } else {
+      // Safari can drop a currentTime set before the metadata loaded (native HLS).
+      this.startSeek = new StartSeek(source.startPosition ?? 0, (position) => {
+        if (this.video === video) video.currentTime = position;
+      });
       video.src = source.uri;
-      if (source.startPosition) video.currentTime = source.startPosition;
     }
     void this.autoplay(video);
     this.statsTimer = setInterval(() => this.pollStats(), 1000);
@@ -282,6 +294,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   }
 
   seek(position: number): void {
+    this.startSeek.cancel();
     if (this.video) this.video.currentTime = Math.max(0, position);
   }
 

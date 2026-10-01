@@ -93,7 +93,8 @@ export function SearchScreen() {
   const cardWidth = shell.large
     ? posterWidth
     : Math.floor((width - across - (columns - 1) * cardGap) / columns);
-  const pageHeading = design.isTV || Platform.OS === 'web';
+  // The large shell (TV, web, tablet) has no native header: the page draws its own heading.
+  const pageHeading = design.isTV || Platform.OS === 'web' || shell.large;
   const active = query.length >= MIN_QUERY;
   const items = active ? (results.data ?? []) : [];
   // Rows instead of numColumns: a column change would remount the list and the focused search field with it.
@@ -228,71 +229,69 @@ export function SearchScreen() {
   };
 
   return (
-    <View
+    <FlatList
       testID="search-screen"
       style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <FlatList
-        // Large shell (web, tablet, TV): no native scrollbar over the full-bleed ambient.
-        showsVerticalScrollIndicator={!shell.large}
-        data={rows}
-        keyExtractor={(row) => row.map(itemKey).join('|')}
-        ListHeaderComponent={header}
-        ListEmptyComponent={body()}
-        keyboardShouldPersistTaps="handled"
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{
-          paddingTop: shell.large
-            ? shell.s(SHELL.page.top)
-            : pageHeading
-              ? design.layout.edgeVertical + insets.top
-              : design.space.lg,
-          paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-        }}
-        renderItem={({ item: row, index: rowIndex }) => (
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: cardGap,
-              ...pad,
-              marginBottom: cardGap,
-            }}>
-            {row.map((item, column) => {
-              const index = rowIndex * columns + column;
-              return (
-                <PosterCard
-                  key={itemKey(item, index)}
-                  testID={`search-result-${index}`}
-                  title={item.title ?? ''}
-                  subtitle={[
-                    // Spec chips share the line on the large shell: the year stays, the type word goes.
-                    !(shell.large && item.spec) &&
-                      t(
-                        item.mediaType === 'tv' || item.mediaType === 'series'
-                          ? 'detail.series'
-                          : 'detail.movie'
-                      ),
-                    item.year ? String(item.year) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  imageUri={item.posterUrl}
-                  width={cardWidth}
-                  spec={item.spec}
-                  tint={item.tint}
-                  onFocus={() => setAmbient(ambientOf(item))}
-                  onHoverIn={() => setAmbient(ambientOf(item))}
-                  onPress={() => {
-                    remember();
-                    router.push(titleHref(item));
-                  }}
-                />
-              );
-            })}
-          </View>
-        )}
-      />
-    </View>
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      // Large shell (web, tablet, TV): no native scrollbar over the full-bleed ambient.
+      showsVerticalScrollIndicator={!shell.large}
+      data={rows}
+      keyExtractor={(row) => row.map(itemKey).join('|')}
+      ListHeaderComponent={header}
+      ListEmptyComponent={body()}
+      keyboardShouldPersistTaps="handled"
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{
+        paddingTop: shell.large
+          ? shell.s(SHELL.page.top)
+          : pageHeading
+            ? design.layout.edgeVertical + insets.top
+            : design.space.lg,
+        paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+      }}
+      renderItem={({ item: row, index: rowIndex }) => (
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: cardGap,
+            ...pad,
+            marginBottom: cardGap,
+          }}>
+          {row.map((item, column) => {
+            const index = rowIndex * columns + column;
+            return (
+              <PosterCard
+                key={itemKey(item, index)}
+                testID={`search-result-${index}`}
+                title={item.title ?? ''}
+                subtitle={[
+                  // Spec chips share the line on the large shell: the year stays, the type word goes.
+                  !(shell.large && item.spec) &&
+                    t(
+                      item.mediaType === 'tv' || item.mediaType === 'series'
+                        ? 'detail.series'
+                        : 'detail.movie'
+                    ),
+                  item.year ? String(item.year) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                imageUri={item.posterUrl}
+                width={cardWidth}
+                spec={item.spec}
+                tint={item.tint}
+                onFocus={() => setAmbient(ambientOf(item))}
+                onHoverIn={() => setAmbient(ambientOf(item))}
+                onPress={() => {
+                  remember();
+                  router.push(titleHref(item));
+                }}
+              />
+            );
+          })}
+        </View>
+      )}
+    />
   );
 }
 
