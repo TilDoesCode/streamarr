@@ -155,7 +155,6 @@ public sealed class ViewerAuthController(
     private async Task<ActionResult<ViewerAuthResponse>> CompleteAsync(
         ViewerLoginResult result, string? deviceName, string? clientName, bool useCookies, CancellationToken ct)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         if (result.Viewer is not { } viewer)
             return Ok(new ViewerAuthResponse { Status = "mfa_required", MfaToken = result.MfaToken, MfaExpiresAt = result.MfaExpiresAt });
 

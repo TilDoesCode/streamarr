@@ -24,7 +24,6 @@ public class StorageController(
     [ProducesResponseType(typeof(StorageResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<StorageResponse>> Get(CancellationToken ct)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         var o = options.Value;
 
         var (segmentEntries, segmentBytes) = segmentCache.GetGlobalStats();

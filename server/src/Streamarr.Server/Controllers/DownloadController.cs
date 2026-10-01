@@ -52,7 +52,6 @@ public class DownloadController(SessionManager sessionManager) : ControllerBase
 
     private void SetCapabilityResponseHeaders()
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         Response.Headers.Pragma = "no-cache";
         Response.Headers.Expires = "0";
         Response.Headers["Referrer-Policy"] = "no-referrer";

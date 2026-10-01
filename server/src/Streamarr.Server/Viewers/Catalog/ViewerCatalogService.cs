@@ -420,10 +420,10 @@ public sealed class ViewerCatalogService(
                 continue;
             var estimated = VersionMapper.EstimatedKbps(release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
             var container = play is null && device is null ? null : containers.Get(release.ReleaseId);
-            var playClass = play is null ? null : predictor.Classify(parsed, estimated, runtime, play, viewer.AllowTranscoding, container);
-            var prediction = device is null ? null : predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
-            if (prediction is not null && playClass == PlayClass.Vlc)
-                prediction = prediction with { Method = PlayClass.Vlc };
+            (string? playClass, PlaybackPrediction? vlcPrediction) = play is null
+                ? default
+                : predictor.ClassifyAndExplain(parsed, estimated, runtime, play, viewer.AllowTranscoding, container);
+            var prediction = device is null ? null : vlcPrediction ?? predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
             var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction);
             versions.Add((version, playClass, VersionMapper.Height(parsed.Resolution)));
         }

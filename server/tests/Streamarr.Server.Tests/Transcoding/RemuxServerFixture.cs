@@ -14,6 +14,7 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
     public const string DolbyVision81 = "rel-remux-dv81";
     public const string DolbyVision5 = "rel-remux-dv5";
     public const string PgsMkv = "rel-remux-pgs-mkv";
+    public const string DualAudioMkv = "rel-remux-dual-audio-mkv";
     public const int H264Seconds = 90;
     public const int HevcSeconds = 30;
 
@@ -80,6 +81,14 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
             "-i", sup, "-map", "0:v", "-map", "1:a", "-map", "2:s",
             "-c:v", "libx264", "-preset", "veryfast", "-g", "48", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-c:s", "copy",
             "-metadata:s:s:0", "language=ger", pgs);
+        var dual = Path.Combine(directory, "dual-audio.mkv");
+        await KeyframeFixture.FfmpegAsync(
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=12",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=12",
+            "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=12",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a",
+            "-c:v", "libx264", "-preset", "veryfast", "-g", "48", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k",
+            "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=ger", dual);
 
         return
         [
@@ -91,6 +100,7 @@ public sealed class RemuxServerFixture : TranscodingServerFixture
             new(DolbyVision81, RemuxWorkId, "Remux.Source.2024.2160p.WEB-DL.AAC.DV.HDR10.H.265.mp4", WithDolbyVision(pqBytes, profile: 8, compatibility: 1)),
             new(DolbyVision5, RemuxWorkId, "Remux.Source.2024.2160p.WEB-DL.AAC.DV.H.265.mp4", WithDolbyVision(pqBytes, profile: 5, compatibility: 0)),
             new(PgsMkv, RemuxWorkId, "Remux.Source.2024.1080p.BluRay.AAC.PGS.H.264.mkv", await File.ReadAllBytesAsync(pgs)),
+            new(DualAudioMkv, RemuxWorkId, "Remux.Source.2024.1080p.WEB-DL.AAC.DUAL.H.264.mkv", await File.ReadAllBytesAsync(dual)),
         ];
     }
 

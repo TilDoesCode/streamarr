@@ -49,7 +49,6 @@ public class HealthController(DeepHealthDiagnostics diagnostics) : ControllerBas
         if (!deep)
             return Ok(new HealthResponse { Status = "ok", Version = version });
 
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         if (User.Identity?.IsAuthenticated != true)
             return Unauthorized(ErrorResponse.Of("unauthorized", "Admin credentials are required for deep health diagnostics."));
         if (!User.IsInRole(AuthRoles.Admin))

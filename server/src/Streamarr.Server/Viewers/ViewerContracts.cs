@@ -319,6 +319,8 @@ public sealed record ViewerAdminResponse
     public required string Id { get; init; }
     public required string Username { get; init; }
     public required string DisplayName { get; init; }
+    /// <summary>The viewer's chosen avatar key (see the profile); null = the client derives a default.</summary>
+    public string? AvatarKey { get; init; }
     public string? Email { get; init; }
     public bool EmailVerified { get; init; }
     public string? PendingEmail { get; init; }

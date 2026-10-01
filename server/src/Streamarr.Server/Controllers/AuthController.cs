@@ -41,7 +41,6 @@ public class AuthController(
 
         var refreshSession = await refreshSessions.IssueAsync(user, ct);
         var (token, expiresAt) = jwt.CreateToken(user);
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         Response.Cookies.Append(AdminAuthCookie.Name, token, AdminAuthCookie.Options(Request.IsHttps, expiresAt));
         Response.Cookies.Append(
             AdminAuthCookie.RefreshName,
@@ -57,7 +56,6 @@ public class AuthController(
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<LoginResponse>> Refresh(CancellationToken ct)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         if (!Request.Cookies.TryGetValue(AdminAuthCookie.RefreshName, out var refreshToken))
         {
             DeleteSessionCookies();
@@ -91,7 +89,6 @@ public class AuthController(
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         Request.Cookies.TryGetValue(AdminAuthCookie.RefreshName, out var refreshToken);
         var revokedRefreshSession = await refreshSessions.RevokeAsync(refreshToken, ct);
         if (revokedRefreshSession || User.IsInRole(AuthRoles.Admin))
@@ -133,7 +130,6 @@ public class AuthController(
         await users.ChangePasswordAsync(user.Id, request.NewPassword, ct);
         await refreshSessions.RevokeAllForUserAsync(user.Id, ct);
         jwt.RevokeAll();
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         DeleteSessionCookies();
         return NoContent();
     }

@@ -337,8 +337,11 @@ stereo (not the source title, which describes the source). Each fMP4 audio track
 codec differs from the default rendition's is converted to that codec when it is AAC, AC-3 or E-AC-3 (e.g. TrueHD
 next to a copied AC-3 → AC-3 5.1); a copied default in another codec (FLAC, Opus, MP3) keeps a mixed group, because
 ffmpeg cannot write a matching track for every source. Transcode renditions are always AAC. A malformed muxed
-fragment never becomes a generic error: the splitter only throws `InvalidDataException` (bounded `trun` sample
-counts) and the route answers `500 rendition_split_failed`. The admin plan (`POST /api/v1/transcoding/plan`, session
+fragment never becomes a generic error: splitting an init throws only `InvalidDataException`, splitting a segment
+`InvalidDataException` (bounded `trun` sample counts) or `EndOfStreamException` (a truncated file), and the route
+answers both with `500 rendition_split_failed` (logged with the stack; no internals in the body). When the segment
+already started streaming, the connection is aborted instead. Covered by
+`RemuxIntegrationTests.AudioRenditionSegment_ThatCannotBeSplit_Answers500RenditionSplitFailed`. The admin plan (`POST /api/v1/transcoding/plan`, session
 responses, Playback Preview card) lists `audioRenditions` when a request offers them.
 
 **Cost** (Sintel dual-audio, 180 s, 1 vs 2 audio tracks, same ffmpeg arguments; measured in B5): remux with two

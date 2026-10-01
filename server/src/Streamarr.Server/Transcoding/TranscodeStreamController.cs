@@ -254,7 +254,6 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
 
     private void NoStore()
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         Response.Headers["Referrer-Policy"] = "no-referrer";
     }
 }

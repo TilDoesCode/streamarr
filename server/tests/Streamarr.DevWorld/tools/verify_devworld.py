@@ -185,21 +185,34 @@ def main():
 
     if "anna" in sessions:
         anna = sessions["anna"]
-        status, _, me = http("GET", "/api/v1/viewer/me", token=anna)
+        status, hdrs, me = http("GET", "/api/v1/viewer/me", token=anna)
         check("viewer me", status == 200 and me.get("username") == "anna", str(status))
+        check("viewer responses are no-store", "no-store" in hdrs.get("Cache-Control", ""), str(hdrs.get("Cache-Control")))
+
+    # Watch state runs on a fresh probe viewer, so it holds on a world kept with --keep-data and leaves anna untouched.
+    probe_name = f"verify-probe-{int(time.time())}"
+    probe_password = "verify-probe-password-7f3k"
+    status, _, created = http("POST", "/api/v1/config/viewers", {"username": probe_name, "password": probe_password,
+                                                                 "mustChangePassword": False}, token)
+    probe_id = (created or {}).get("viewer", {}).get("id") if isinstance(created, dict) else None
+    status, _, body = http("POST", "/api/v1/viewer/auth/login",
+                           {"login": probe_name, "password": probe_password, "deviceName": "verify", "clientName": "devworld-verify"})
+    probe = body["session"]["accessToken"] if check("probe viewer signs in", status == 200 and (body or {}).get("status") == "authenticated",
+                                                    str(status)) else None
+    if probe:
         movie = next(t for t in manifest["titles"] if t["type"] == "movie")
         tick = 10_000_000
         for event, position in (("start", 0), ("progress", 90), ("stop", 95)):
             status, _, _ = http("POST", "/api/v1/viewer/watch/progress",
                                 {"event": event, "workId": movie["workId"], "positionTicks": position * tick,
-                                 "durationTicks": 180 * tick, "playbackId": "verify-1"}, anna)
+                                 "durationTicks": 180 * tick, "playbackId": "verify-1"}, probe)
         check("watch progress accepted", status == 200, str(status))
-        status, _, resume = http("GET", "/api/v1/viewer/watch/resume", token=anna)
+        status, _, resume = http("GET", "/api/v1/viewer/watch/resume", token=probe)
         check("continue watching lists the movie", status == 200 and any(s["workId"] == movie["workId"] for s in resume), str(status))
         series = next(t for t in manifest["titles"] if t["type"] == "tv" and len(t["seasons"]) > 1)
         first = series["seasons"][0]["episodes"][0]
-        status, _, _ = http("POST", "/api/v1/viewer/watch/played", {"workIds": [first["workId"]]}, anna)
-        status, _, nextup = http("GET", "/api/v1/viewer/watch/next-up", token=anna)
+        status, _, _ = http("POST", "/api/v1/viewer/watch/played", {"workIds": [first["workId"]]}, probe)
+        status, _, nextup = http("GET", "/api/v1/viewer/watch/next-up", token=probe)
         items = (nextup or {}).get("items", [])
         check("next up offers the next episode", status == 200 and any(i["workId"] == series["seasons"][0]["episodes"][1]["workId"] for i in items),
               str([i["workId"] for i in items]))
@@ -218,20 +231,25 @@ def main():
         perms = (me or {}).get("permissions", {})
         check("gast permissions (no transcoding, 1 stream)", perms.get("allowTranscoding") is False and perms.get("maxConcurrentStreams") == 1, str(perms))
 
-    verify_catalog(manifest, sessions, token)
+    verify_catalog(manifest, sessions, token, probe)
+    if probe_id:
+        status, _, _ = http("DELETE", f"/api/v1/config/viewers/{probe_id}", token=token)
+        check("probe viewer removed", status in (200, 204), str(status))
 
-    status, _, _ = http("POST", "/api/v1/viewer/auth/email-code", {"login": "anna@devworld.example"})
+    status, _, sent = http("POST", "/api/v1/viewer/auth/email-code", {"login": "anna@devworld.example"})
+    # A rerun within the cooldown gets 429 email_code_cooldown; the earlier code is then already in the outbox.
+    cooldown = status == 429 and ((sent or {}).get("error") or {}).get("code") == "email_code_cooldown"
     time.sleep(0.5)
     _, _, outbox = http("GET", "/devworld/outbox")
-    check("email code lands in the test outbox", status in (200, 202, 204) and any(m["to"] == "anna@devworld.example" for m in outbox or []),
-          f"{status} {len(outbox or [])} message(s)")
+    check("email code lands in the test outbox", (status in (200, 202, 204) or cooldown)
+          and any(m["to"] == "anna@devworld.example" for m in outbox or []), f"{status} {len(outbox or [])} message(s)")
 
     print(f"\n{'OK' if not failures else 'FAILED'}: {len(failures)} failure(s)")
     if failures:
         sys.exit(1)
 
 
-def verify_catalog(manifest, sessions, admin_token):
+def verify_catalog(manifest, sessions, admin_token, probe=None):
     """Viewer catalog (M1.2): rows, search, details, versions, season overlay, age gate, credentials."""
     cat = "/api/v1/viewer/catalog"
     movies = [t for t in manifest["titles"] if t["type"] == "movie"]
@@ -250,11 +268,15 @@ def verify_catalog(manifest, sessions, admin_token):
 
         first = movies[0]
         status, _, details = http("GET", f"{cat}/movies/{first['tmdbId']}", token=anna)
-        check(f"catalog details of {first['title']} (logo, certification, watch position)",
+        check(f"catalog details of {first['title']} (logo, certification, access)",
               status == 200 and details.get("logoUrl") == first["logoUrl"]
               and details.get("certification") == first["access"]["officialRating"]
-              and details["watch"]["positionTicks"] > 0 and details["access"]["reason"] == "unrestricted",
-              str(details)[:300] if status != 200 else f"position {details['watch']['positionTicks']}")
+              and details["access"]["reason"] == "unrestricted", str(details)[:300])
+        if probe:
+            status, _, watched = http("GET", f"{cat}/movies/{first['tmdbId']}", token=probe)
+            check(f"catalog details of {first['title']} carry the probe's watch position",
+                  status == 200 and watched["watch"]["positionTicks"] > 0,
+                  str(watched)[:300] if status != 200 else f"position {watched['watch']['positionTicks']}")
 
         for title in movies:
             status, _, body = http("GET", f"{cat}/works/{title['workId']}/versions", token=anna)

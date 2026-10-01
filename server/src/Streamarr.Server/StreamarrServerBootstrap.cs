@@ -461,10 +461,9 @@ public static class StreamarrServerBootstrap
                 "form-action 'self'; " + scriptPolicy + "style-src 'self' 'unsafe-inline'; " +
                 "img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; font-src 'self'";
             headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
-            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            if (NoStoreApiResponses.Covers(context.Request.Path))
             {
-                headers.CacheControl = "private, no-store, max-age=0";
-                headers.Pragma = "no-cache";
+                NoStoreApiResponses.Apply(context);
                 headers.Append("Vary", "Authorization");
                 headers.Append("Vary", "Cookie");
             }

@@ -23,7 +23,6 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public IActionResult Close(string token)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         return sessionManager.CloseSession(token)
             ? NoContent()
             : NotFound(ErrorResponse.Of("unknown_session", "No live session exists for this token."));
@@ -35,7 +34,6 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public ActionResult<ArticleMapResponse> Articles(string token)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         var tracker = sessionManager.GetArticleTracker(token);
         if (tracker is not null)
         {
@@ -69,7 +67,6 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public IActionResult AppendTimeline(string token, [FromBody] ClientTimelineRequest request)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         if (!sessionManager.TryGetSession(token, out var session) || session.Timeline is null)
             return NotFound(ErrorResponse.Of("unknown_session", "No live session exists for this token."));
 

@@ -76,7 +76,6 @@ public sealed class EphemeralFilesController(SessionManager sessions) : Controll
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public IActionResult Purge(string token)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         return sessions.PurgeSession(token) switch
         {
             PurgeOutcome.Purged => NoContent(),

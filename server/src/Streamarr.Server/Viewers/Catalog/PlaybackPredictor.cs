@@ -75,11 +75,18 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
     /// <summary>The playback decider's first choice for a version built from its name (see <see cref="PlayClass"/>).</summary>
     public string Classify(
         ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, PlayContext play, bool allowTranscoding, string? knownContainer = null)
+        => ClassifyAndExplain(parsed, estimatedKbps, runtimeMinutes, play, allowTranscoding, knownContainer).Class;
+
+    /// <summary>Like <see cref="Classify"/>; when VLC plays the original file, also the VLC candidate's own reasons (not the native engine's conversions).</summary>
+    public (string Class, PlaybackPrediction? VlcPrediction) ClassifyAndExplain(
+        ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, PlayContext play, bool allowTranscoding, string? knownContainer = null)
     {
-        if (Source(parsed, estimatedKbps, runtimeMinutes, [], knownContainer) is not { } media)
-            return PlayClass.Unknown;
-        var best = PlaybackDecider.Decide(media, play.Device, play.Preferences, allowTranscoding, play.Server, null, null, NoExclusions).Viable.FirstOrDefault();
-        return best switch
+        var notes = new List<PredictionReasonDto>();
+        if (Source(parsed, estimatedKbps, runtimeMinutes, notes, knownContainer) is not { } media)
+            return (PlayClass.Unknown, null);
+        var decision = PlaybackDecider.Decide(media, play.Device, play.Preferences, allowTranscoding, play.Server, null, null, NoExclusions);
+        var best = decision.Viable.FirstOrDefault();
+        var playClass = best switch
         {
             null => PlayClass.Unplayable,
             { Method: DeliveryMode.Direct } when best.Engine.Name == EngineCaps.Vlc => PlayClass.Vlc,
@@ -87,6 +94,11 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
             { Method: DeliveryMode.Remux } => PlayClass.Remux,
             _ => PlayClass.Transcode,
         };
+        if (playClass != PlayClass.Vlc)
+            return (playClass, null);
+        notes.AddRange(decision.Notes.Concat(best!.Notes).Concat(best.Plan.Reasons)
+            .Select(r => new PredictionReasonDto { Code = r.Code, Params = r.Params }));
+        return (playClass, new PlaybackPrediction(PlayClass.Vlc, notes));
     }
 
     private static readonly IReadOnlySet<string> NoExclusions = new HashSet<string>();

@@ -24,7 +24,6 @@ public sealed class PlaybackRangesController(IDbContextFactory<StreamarrDbContex
         [FromQuery] int limit = 200,
         CancellationToken ct = default)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         // SQLite cannot ORDER BY DateTimeOffset; the table is bounded (≤500 rows), so sort in memory.
         var rows = (await db.PlaybackRanges.AsNoTracking().ToListAsync(ct))

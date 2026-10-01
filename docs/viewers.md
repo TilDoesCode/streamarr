@@ -99,6 +99,11 @@ details, seasons and versions of such a title answer `403 age_restricted` with t
 - An admin-assigned password can require a change: until then every viewer endpoint
   except the profile, password change, device list, and sign-out answers
   `403 password_change_required`.
+- **No caching of secrets**: every `/api` response carries `Cache-Control: private, no-store`,
+  `Pragma: no-cache` and `Expires: 0` (one central rule, see `docs/api.md` → Caching). Native
+  clients keep tokens in the platform keystore and must not let their HTTP stack persist
+  responses: iOS `NSURLCache` stored a `no-store` second-factor response with both tokens in
+  `Library/Caches/<bundle>/Cache.db`, so the app disables or clears its URL cache.
 
 ## Watch state
 

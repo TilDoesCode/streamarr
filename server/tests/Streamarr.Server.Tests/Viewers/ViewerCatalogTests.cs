@@ -572,6 +572,12 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
         Assert.Equal("vlc", Av1(anyVlc));
         Assert.Equal("transcode", Av1(noAv1));
         Assert.Equal("transcode", Av1(capped));
+        var vlcReasons = anyVlc.GetProperty("versions").EnumerateArray()
+            .Single(v => v.GetProperty("name").GetString() == CatalogNewznabFake.MovieReleases[3]).GetProperty("predictionReasons")
+            .EnumerateArray().Select(r => r.GetProperty("code").GetString()).ToList();
+        Assert.Contains("vlc_fallback", vlcReasons);
+        Assert.Contains("direct_play", vlcReasons);
+        Assert.DoesNotContain("video_codec_unsupported", vlcReasons);
     }
 
     [Theory]

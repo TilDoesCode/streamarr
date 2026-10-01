@@ -12292,6 +12292,8 @@ export interface components {
             id: string | null;
             username: string | null;
             displayName: string | null;
+            /** @description The viewer's chosen avatar key (see the profile); null = the client derives a default. */
+            avatarKey?: string | null;
             email?: string | null;
             emailVerified?: boolean;
             pendingEmail?: string | null;

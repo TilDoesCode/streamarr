@@ -29,7 +29,6 @@ public sealed class ViewerPlaybackController(ViewerPlaybackService playbacks, Vi
     public async Task<ActionResult<PlaybackResponse>> Start([FromBody] PlaybackStartRequest request, CancellationToken ct)
     {
         var response = await playbacks.StartAsync(Caller(), await accounts.GetAsync(User.ViewerId(), ct), request, ct);
-        NoStore();
         return AcceptedAtAction(nameof(Get), new { playbackId = response.PlaybackId }, response);
     }
 
@@ -41,7 +40,6 @@ public sealed class ViewerPlaybackController(ViewerPlaybackService playbacks, Vi
     public async Task<ActionResult<PlaybackResponse>> Get(string playbackId, [FromQuery] int waitMs = 0, CancellationToken ct = default)
     {
         var response = await playbacks.GetAsync(Caller(), playbackId, waitMs, ct);
-        NoStore();
         return Ok(response);
     }
 
@@ -55,7 +53,6 @@ public sealed class ViewerPlaybackController(ViewerPlaybackService playbacks, Vi
     public async Task<ActionResult<PlaybackResponse>> Switch(string playbackId, [FromBody] PlaybackSwitchRequest request, CancellationToken ct)
     {
         var response = await playbacks.SwitchAsync(Caller(), await accounts.GetAsync(User.ViewerId(), ct), playbackId, request, ct);
-        NoStore();
         return AcceptedAtAction(nameof(Get), new { playbackId = response.PlaybackId }, response);
     }
 
@@ -71,6 +68,4 @@ public sealed class ViewerPlaybackController(ViewerPlaybackService playbacks, Vi
 
     private ViewerCaller Caller()
         => new(User.ViewerId(), User.SessionId(), User.Identity?.Name ?? string.Empty, User.FindFirst(ViewerAuth.DeviceClaim)?.Value ?? string.Empty);
-
-    private void NoStore() => Response.Headers.CacheControl = "private, no-store, max-age=0";
 }

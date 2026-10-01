@@ -414,6 +414,28 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
     }
 
     [Fact]
+    public async Task AudioRenditionSegment_ThatCannotBeSplit_Answers500RenditionSplitFailed()
+    {
+        var created = await CreateAsync(RemuxServerFixture.DualAudioMkv, new { mode = "remux", audioRenditions = new[] { 1, 2 } });
+        var rendition = created.GetProperty("plan").GetProperty("audioRenditions")[0].GetProperty("id").GetString();
+        var basePath = BasePath(created);
+        using var raw = fixture.CreateClient(authenticated: false);
+        Assert.Equal(HttpStatusCode.OK, (await raw.GetAsync($"{basePath}/audio/{rendition}/0.m4s")).StatusCode);
+
+        var sessions = fixture.GetRequiredService<TranscodeSessionManager>();
+        Assert.True(sessions.TryGet(basePath[(basePath.LastIndexOf('/') + 1)..], out var session));
+        var path = await sessions.GetSegmentAsync(session, 0, CancellationToken.None);
+        var bytes = await File.ReadAllBytesAsync(path);
+        await File.WriteAllBytesAsync(path, bytes[..(FindBox(bytes, "moof") + 40)]);
+
+        var broken = await raw.GetAsync($"{basePath}/audio/{rendition}/0.m4s");
+        Assert.Equal(HttpStatusCode.InternalServerError, broken.StatusCode);
+        var body = await broken.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("rendition_split_failed", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.DoesNotContain(path, body.GetRawText());
+    }
+
+    [Fact]
     public async Task SubtitleRoutes_OnlyExistForDeliveredRenditions()
     {
         var remux = await CreateAsync(RemuxServerFixture.H264Mkv, new { mode = "remux" });

@@ -93,10 +93,9 @@ public sealed class ViewerLoginService(
         var current = await settings.GetAsync(ct);
         if (!current.AllowEmailLogin || !ViewerMailer.CanDeliver(current))
             throw ViewerProblem.Forbidden("email_login_unavailable", "Sign-in by email code is not available on this server.");
-        if (string.IsNullOrWhiteSpace(login) || login.Length > 254)
-            throw ViewerProblem.BadRequest("invalid_login", "'login' is required.");
-        ThrottleLoginCode(login);
-        if (await SendCodeAsync(login, ViewerCodePurpose.Login, current, ct) is { Issued: false } issue)
+        var typed = RequireLogin(login);
+        ThrottleLoginCode(typed);
+        if (await SendCodeAsync(typed, ViewerCodePurpose.Login, current, ct) is { Issued: false } issue)
             throw ViewerProblem.EmailCodeCooldown(issue.RetryAfter);
     }
 
@@ -119,7 +118,7 @@ public sealed class ViewerLoginService(
         var current = await settings.GetAsync(ct);
         if (!current.AllowPasswordReset || !ViewerMailer.CanDeliver(current))
             throw ViewerProblem.Forbidden("password_reset_unavailable", "Password reset by email is not available on this server.");
-        await SendCodeAsync(login, ViewerCodePurpose.PasswordReset, current, ct);
+        await SendCodeAsync(RequireLogin(login), ViewerCodePurpose.PasswordReset, current, ct);
     }
 
     public async Task ResetPasswordAsync(string? login, string? code, string? newPassword, CancellationToken ct)
@@ -145,6 +144,9 @@ public sealed class ViewerLoginService(
         await sessions.RevokeAllAsync(viewer.Id, "password_reset", exceptSessionId: null, ct);
     }
 
+    private static string RequireLogin(string? login)
+        => string.IsNullOrWhiteSpace(login) || login.Length > 254 ? throw ViewerProblem.BadRequest("invalid_login", "'login' is required.") : login;
+
     /// <summary>The sign-in code cooldown per typed login, applied before the lookup so unknown accounts answer the same.</summary>
     private void ThrottleLoginCode(string login)
     {
@@ -169,10 +171,8 @@ public sealed class ViewerLoginService(
     }
 
     /// <summary>Mails a code when the login names an account with a verified address; null when there is none.</summary>
-    private async Task<ViewerCodeIssue?> SendCodeAsync(string? login, string purpose, ViewerSettings current, CancellationToken ct)
+    private async Task<ViewerCodeIssue?> SendCodeAsync(string login, string purpose, ViewerSettings current, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(login) || login.Length > 254)
-            throw ViewerProblem.BadRequest("invalid_login", "'login' is required.");
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var viewer = await FindByLoginAsync(db, login, ct);
         if (viewer is null || viewer.IsDisabled || viewer.Email is null || viewer.EmailVerifiedAt is null)

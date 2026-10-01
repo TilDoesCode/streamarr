@@ -77,7 +77,6 @@ public class PlaybackSessionsController(
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public ActionResult<PlaybackAdmissionResponse> Status(string admissionId)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         var status = admissions.GetStatus(admissionId);
         return status is null
             ? NotFound(ErrorResponse.Of("unknown_admission", "No playback admission exists with this id."))

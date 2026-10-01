@@ -109,6 +109,18 @@ A `429` that knows how long the caller must wait (e.g. `email_code_cooldown`) al
 `retryAfterSeconds` integer next to `code`, the same value in `params.retryAfterSeconds` and in the
 `Retry-After` header. The key is omitted otherwise.
 
+### Caching
+
+Every response under `/api` (any status, method or caller) carries `Cache-Control: private, no-store, max-age=0`,
+`Pragma: no-cache` and `Expires: 0`. One central rule applies this (`NoStoreApiResponses`, stamped again just before the
+headers are sent, so an endpoint cannot weaken it); it covers every route that returns a secret: admin and viewer
+sign-in, second factor, e-mail codes, refresh, password reset, 2FA setup and recovery codes, generated passwords,
+playback responses with stream URLs, and the `/stream` and `/transcode` capability URLs. New endpoints under `/api` are
+covered automatically; `NoStoreRouteWalkTests` walks every operation in the OpenAPI document and checks the headers.
+Clients must still keep secrets out of their own HTTP caches: iOS `NSURLCache` was seen writing a `no-store` sign-in
+response to `Cache.db` (the client clears or disables its URL cache; see `docs/viewers.md`). Only the static
+`/watch` app shell and its hashed assets are cacheable.
+
 ---
 
 ## 3. Search
@@ -840,7 +852,7 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 | `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | WebVTT rendition of a remux or transcode, aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline). A segment no live run covers starts ffmpeg there and waits for its cues, like a video segment; a transcode is never restarted backwards for subtitles (a segment behind its encoder returns the cues known so far). `404` for streams that are not delivered. |
 | `init.mp4` | Initialization segment; identical across ffmpeg restarts. Video only when the master has audio renditions. |
 | `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. Video only when the master has audio renditions. |
-| `audio/{id}/main.m3u8` · `…/init.mp4` · `…/{n}.m4s` | Audio rendition `id` (the source stream index): the same timeline, segment count and `EXTINF` durations as `main.m3u8`; segment `n` covers the same time range as video segment `n` (both are cut from the same fragment, so they are aligned by construction). One audio track per init. Fetching an audio segment drives ffmpeg exactly like the video segment of the same index (same errors). `404 unknown_audio_rendition` for an id the session does not offer; `500 rendition_split_failed` when the muxed fragment cannot be split (logged; never happens with ffmpeg's own output). Each audio track carries its ISO 639-2 language in the fMP4. |
+| `audio/{id}/main.m3u8` · `…/init.mp4` · `…/{n}.m4s` | Audio rendition `id` (the source stream index): the same timeline, segment count and `EXTINF` durations as `main.m3u8`; segment `n` covers the same time range as video segment `n` (both are cut from the same fragment, so they are aligned by construction). One audio track per init. Fetching an audio segment drives ffmpeg exactly like the video segment of the same index (same errors). `404 unknown_audio_rendition` for an id the session does not offer; `500 rendition_split_failed` when the muxed fragment cannot be split (a malformed or truncated fragment; logged; never happens with ffmpeg's own output). Each audio track carries its ISO 639-2 language in the fMP4. |
 
 `init.mp4`, `{n}.m4s` and `{n}.vtt` can start ffmpeg, so they share these errors: `404 unknown_transcode` /
 `unknown_segment` / `end_of_stream`, `410 session_closed`, `500 transcode_failed`,

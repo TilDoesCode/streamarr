@@ -126,6 +126,27 @@ public sealed class RecommendedVersionTests
     }
 
     [Fact]
+    public void A_Vlc_Prediction_Explains_The_Vlc_Engine_Not_The_Native_Conversions()
+    {
+        var device = new DeviceCaps("ios", new EngineCaps(EngineCaps.Native, ["mp4"], [new("h264", null, null, 8, [])],
+            [new("aac", null, false)], null, true, 2), Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, null, null, null, null), null);
+        var play = new PlayContext(device, PlaybackPreferences.Default, FakePlaybackMedia.Available());
+
+        var (playClass, prediction) = Predictor.ClassifyAndExplain(ReleaseParser.Parse(Uhd), 8000, 120, play, true);
+        var (directClass, directPrediction) = Predictor.ClassifyAndExplain(ReleaseParser.Parse(Hd), 8000, 120, play, true, "mp4");
+
+        Assert.Equal(PlayClass.Vlc, playClass);
+        Assert.Equal(PlayClass.Vlc, prediction!.Method);
+        var codes = prediction.Reasons.Select(r => r.Code).ToList();
+        Assert.Contains("vlc_fallback", codes);
+        Assert.Contains("direct_play", codes);
+        Assert.DoesNotContain(codes, c => c is "video_codec_unsupported" or "hdr_unsupported" or "bit_depth_unsupported" or "audio_converted"
+            or "audio_codec_unsupported" or "container_unsupported" or "resolution_exceeds_limit");
+        Assert.Equal(PlayClass.Direct, directClass);
+        Assert.Null(directPrediction);
+    }
+
+    [Fact]
     public void Vlc_Caps_Parse_Per_Codec_Heights_Bit_Depth_And_Hdr()
     {
         var caps = Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps("avc,hevc:1080,av1", 2160, "hdr10,dv", null, false);

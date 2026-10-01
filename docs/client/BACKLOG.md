@@ -36,6 +36,17 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Browse, navigation and UX
 
+- iPhone (I1 verify): the slice-6 wrapper View around the Settings ScrollView hides the scroll view from UIKit's
+  scroll-edge lookup, so the large title stays static with content under it and the Liquid Glass bar does not minimise
+  (also seen on Home and Movies) — fixed first in I2.
+- iPhone (I1 verify): BBB WEB-DL direct play showed frame 0 for ~45 s while the clock ran until a seek (loaded host);
+  recheck on a quiet host (I2/F4).
+- Android phone (I1 verify): the Sign in button sits half under the keyboard/autofill strip (reachable via the IME Go
+  key or a short scroll); the logo hides only on iOS while typing.
+- Google TV dev build (I1 verify): LogBox "Can't perform a React state update on a component that hasn't mounted yet"
+  at Home start, no stack.
+- iOS: NativeTabs accessibility labels keep the old language after a live language switch; large titles do not shrink
+  on scroll on Search/Settings (I1).
 - TV: Down from the sort control skips the genre row and lands in the grid (F3 verify).
 - TV: Back from Settings goes straight to Home instead of through the rail (existing tab-page behaviour; F3 verify).
 - TV: after signing out a device, focus returns to the first row's Sign out instead of the neighbouring row (F3).
@@ -51,12 +62,24 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Accounts
 
+- iOS NSURLCache still holds sign-in/second-factor/refresh responses with tokens from before B7 (the server always sent
+  no-store; iOS stored them anyway): F4 turns the URL cache off for API calls and purges `Cache.db` once (I1 verify).
 - Profile editing (display name, avatar) is not in Settings yet; sessions, password, e-mail and two-step are (F3).
 - Web/phone devices list shows the raw sign-in method "password+2fa" (needs an i18n mapping; F3 verify).
 - Web: the two-step panel stays open after "Saved" or after turning it off (F3 verify).
 - "Sign out all other devices" signs out one by one; a server endpoint would make it atomic. Not pressed live on the
   shared Dev World account (F3).
 - Phone settings flows had a lighter live pass than web (adb text input unreliable); covered by screen tests (F3 verify).
+- iOS persists API responses in `Library/Caches/<bundle>/Cache.db` (NSURLCache) although the server sends
+  `Cache-Control: private, no-store` + `Pragma: no-cache` (B7 checked the stored entry's own headers): a 2FA sign-in with
+  both tokens, /viewer/me, next-up. F4: turn off the URL cache for the API on iOS (e.g. a custom NSURLSession
+  configuration with `URLCache = nil` / `requestCachePolicy = reloadIgnoringLocalCacheData`, or clear `NSURLCache` after
+  sign-in/refresh) and verify Cache.db holds no `/api/v1/viewer/auth` entry afterwards (B7).
+- Version reasons for a `vlc` prediction are now the VLC candidate's codes (B7): `vlc_fallback`, `image_subtitle_vlc`
+  (`codec`), `hdr_tone_mapped` (`hdr`, `engine`=`vlc`), `direct_play`, plus assumptions. The client's REASONS set does
+  not know the first three yet, so a VLC version shows no reason line (`direct_play` is quiet). F4: add de/en strings
+  ("Plays with VLC, the built-in player cannot play this version", "VLC plays the original file so the {codec} subtitle
+  shows", "VLC tone-maps {hdr} to this display") and map them in `version-format.ts`.
 
 ## Tests and tooling
 
@@ -69,19 +92,20 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   segments ignore byte ranges like video; a group stays mixed when the default rendition is copied FLAC/Opus/MP3 (B6).
 - Dev World has no HLG or Dolby Vision source and its ffmpeg has no zscale: HLG/DV tagging is covered by unit tests only,
   and the Dev World HDR10 -> SDR transcode is untone-mapped (washed out, tagged BT.709) (B6).
-- B6 verify: no automated test for the controller's 500 `rendition_split_failed` (verified live); the splitter fuzz test
-  also accepts `EndOfStreamException` while the docs say `InvalidDataException` only (the controller handles both); the
-  SDR tag chain after `hwupload` on VAAPI/QSV is untested on real hardware; one Core test flaked once in a full run.
+- B6 verify: the SDR tag chain after `hwupload` on VAAPI/QSV is untested on real hardware; one Core test flaked once
+  in a full run.
+- B7 verify: docs/api.md versions section does not list `predictedMethod: vlc` and that VLC predictions carry VLC
+  reasons; the route-walk test asserts Cache-Control + Pragma but not `Expires: 0` and does not walk HEAD/OPTIONS (live
+  OK); verify_devworld.py leaves its probe viewer behind if it crashes mid-run; `NoStoreApiResponses` XML summary spans
+  two lines.
 - Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
   the whole-image value too strict.
-- Admin viewer responses do not carry `avatarKey` yet (B4).
 - A display name of only spaces resets to the username (200) instead of 400; documented, the client should trim and
   validate first (B4 verify).
 - Username and e-mail of one account share the sign-in code cooldown, so someone who knows both can link them (429 on
   the second alias within 30 s); documented, low impact (B4 verify).
 - Dev World artwork uses fixed per-language URLs; the real selection rule is covered by `TmdbDiscoverTests` only. No
   German logos in the Dev World (TMDB has none for the fixture titles).
-- The sign-in code path validates the login twice (`RequestLoginCodeAsync` and `SendCodeAsync`); cosmetic.
 
 ## Next update (out of scope)
 
@@ -92,6 +116,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- B7: `/api` no-store rule centralised and enforced at response start (`NoStoreApiResponses`, OpenAPI route-walk test);
+  VLC predictions explain the VLC engine instead of native conversions; `avatarKey` in admin viewer responses;
+  `rendition_split_failed` integration test + docs (InvalidData/EndOfStream); verify_devworld.py watch checks on a
+  fresh probe viewer (holds with --keep-data); one login validation on the code/reset paths.
 
 - B6: HDR-sourced transcodes tagged BT.709 without mastering/CLL metadata (AVPlayer -12927 on iPhone), e2e colour guard;
   splitter errors -> InvalidDataException + 500 `rendition_split_failed`; rendition NAME = native language · delivered codec;

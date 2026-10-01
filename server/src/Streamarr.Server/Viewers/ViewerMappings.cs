@@ -42,6 +42,7 @@ internal static class ViewerMappings
         Id = v.Id,
         Username = v.Username,
         DisplayName = v.DisplayName,
+        AvatarKey = ViewerAvatars.Known(v.AvatarKey),
         Email = v.Email,
         EmailVerified = v.EmailVerifiedAt is not null,
         PendingEmail = v.PendingEmail,

@@ -530,6 +530,15 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
         await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "Kept", avatarKey = "slate" });
         var untouched = await (await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { })).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(("Kept", "slate"), (untouched.GetProperty("displayName").GetString(), untouched.GetProperty("avatarKey").GetString()));
+
+        var listed = (await _admin.GetFromJsonAsync<JsonElement>("/api/v1/config/viewers")).EnumerateArray()
+            .Single(v => v.GetProperty("username").GetString() == "profile-viewer");
+        Assert.Equal("slate", listed.GetProperty("avatarKey").GetString());
+        var id = listed.GetProperty("id").GetString();
+        Assert.Equal("slate", (await _admin.GetFromJsonAsync<JsonElement>($"/api/v1/config/viewers/{id}")).GetProperty("avatarKey").GetString());
+        var twin = (await _admin.GetFromJsonAsync<JsonElement>("/api/v1/config/viewers")).EnumerateArray()
+            .Single(v => v.GetProperty("username").GetString() == "profile-twin");
+        Assert.Equal(JsonValueKind.Null, twin.GetProperty("avatarKey").ValueKind);
     }
 
     [Fact]

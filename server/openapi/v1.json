@@ -21942,6 +21942,11 @@
             "type": "string",
             "nullable": true
           },
+          "avatarKey": {
+            "type": "string",
+            "description": "The viewer's chosen avatar key (see the profile); null = the client derives a default.",
+            "nullable": true
+          },
           "email": {
             "type": "string",
             "nullable": true

@@ -121,7 +121,6 @@ public sealed class ViewerAdminController(
             request.MustChangePassword,
             ViewerMappings.Permissions(request.Permissions),
             request.Disabled), ct);
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         return CreatedAtAction(nameof(Get), new { id = viewer.Id }, new ViewerCreatedResponse
         {
             Viewer = await AdminAsync(viewer, ct),
@@ -171,7 +170,6 @@ public sealed class ViewerAdminController(
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ViewerSetPasswordResponse>> SetPassword(string id, [FromBody] ViewerSetPasswordRequest request, CancellationToken ct)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         return Ok(new ViewerSetPasswordResponse
         {
             GeneratedPassword = await accounts.SetPasswordAsync(id, request.Password, request.MustChangePassword, ct),

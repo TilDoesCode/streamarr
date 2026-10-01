@@ -120,7 +120,6 @@ public class RepairsController(
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public ActionResult<SessionRepairStatusResponse> SessionStatus(string token)
     {
-        Response.Headers.CacheControl = "private, no-store, max-age=0";
         if (token.Length > 128 || !sessionManager.TryGetSession(token, out var session) || session is null)
             return NotFound(ErrorResponse.Of("unknown_stream", "No live stream exists for this token."));
 
