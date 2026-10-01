@@ -139,6 +139,34 @@ public sealed class RecommendedVersionTests
         Assert.Same(EngineCaps.DefaultVlc, Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, null, null, null, null));
     }
 
+    private const string HdrHevc1080 = "Movie.2019.1080p.BluRay.x265.10bit.HDR10.AAC-GRP";
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("")]
+    [InlineData(" NONE ")]
+    public void Vlc_HdrFormats_None_Renders_No_Hdr_So_Hdr_Hevc_1080p_Transcodes(string none)
+    {
+        static DeviceCaps Tv(EngineCaps vlc) => new("androidtv", new EngineCaps(EngineCaps.Native, ["mp4"], [new("h264", null, null, 8, [])],
+            [new("aac", null, false)], null, true, 2), vlc, null);
+        var noHdr = Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps("h264,hevc:1080", null, none, null, false);
+        var defaults = Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps("h264,hevc:1080", null, null, null, false);
+
+        Assert.All(noHdr.Video, v => Assert.Empty(v.HdrFormats));
+        Assert.Equal(10, noHdr.VideoFor("hevc")!.MaxBitDepth);
+        Assert.NotEmpty(defaults.VideoFor("hevc")!.HdrFormats);
+        Assert.Equal(PlayClass.Transcode, Classify(Tv(noHdr), HdrHevc1080));
+        Assert.Equal(PlayClass.Vlc, Classify(Tv(noHdr), HdHevc));
+        Assert.Equal(PlayClass.Vlc, Classify(Tv(defaults), HdrHevc1080));
+        Assert.Equal(PlayClass.Unplayable, Predictor.Classify(ReleaseParser.Parse(HdrHevc1080), 8000, 120,
+            new PlayContext(Tv(noHdr), PlaybackPreferences.Default, FakePlaybackMedia.Available()), false));
+        Assert.Throws<Streamarr.Server.Viewers.ViewerProblem>(() =>
+            Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, null, "none,hdr10", null, null));
+    }
+
+    private static string? Classify(DeviceCaps device, string release)
+        => Predictor.Classify(ReleaseParser.Parse(release), 8000, 120, new PlayContext(device, PlaybackPreferences.Default, FakePlaybackMedia.Available()), true);
+
     private const string WebDl = "Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD";
 
     [Fact]

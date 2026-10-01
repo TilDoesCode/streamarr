@@ -111,6 +111,10 @@ public abstract record TitleEntry
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
     public string? LogoUrl { get; init; }
+    /// <summary>Artwork TMDB picks for German viewers (German, else textless); null = the default.</summary>
+    public string? PosterUrlDe { get; init; }
+    public string? BackdropUrlDe { get; init; }
+    public string? LogoUrlDe { get; init; }
     public string? License { get; init; }
     public string AccentColor { get; init; } = "#888888";
     public string Fps { get; init; } = "24000/1001";

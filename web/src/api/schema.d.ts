@@ -5685,7 +5685,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Email a one-time sign-in code. Always 202 so the response does not reveal whether the account exists. */
+        /** Email a one-time sign-in code: 202 whether or not the account exists, 429 email_code_cooldown for a login that asked moments ago. */
         post: {
             parameters: {
                 query?: never;
@@ -5732,6 +5732,17 @@ export interface paths {
                 };
                 /** @description Not Found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -6950,6 +6961,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Change the display name and/or the avatar; omitted fields stay unchanged. */
         patch: {
             parameters: {
                 query?: never;
@@ -7106,7 +7118,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set, change or remove the email address; a new address is confirmed with an emailed code. */
+        /** Set, change or remove the email address; a new address is confirmed with an emailed code (429 email_code_cooldown while one was just sent). */
         post: {
             parameters: {
                 query?: never;
@@ -7179,6 +7191,17 @@ export interface paths {
                 };
                 /** @description Conflict */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -7751,6 +7774,66 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/sessions/sign-out-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End every other active session of this viewer in one step; the current session stays signed in. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerSignOutOthersResponse"];
+                        "application/json": components["schemas"]["ViewerSignOutOthersResponse"];
+                        "text/json": components["schemas"]["ViewerSignOutOthersResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -9818,6 +9901,11 @@ export interface components {
             params?: {
                 [key: string]: string;
             } | null;
+            /**
+             * Format: int32
+             * @description Populated on `429` answers that know the wait (e.g. `email_code_cooldown`): seconds until a retry can succeed.
+             */
+            retryAfterSeconds?: number | null;
         };
         /** @description Typed error envelope rendered consistently by every endpoint. */
         ErrorResponse: {
@@ -12086,6 +12174,8 @@ export interface components {
             id: string | null;
             username: string | null;
             displayName: string | null;
+            /** @description The chosen avatar key (cyan, blue, teal, green, amber, coral, rose, slate = colour slots 1-8); null = the client derives a default. */
+            avatarKey?: string | null;
             email?: string | null;
             emailVerified?: boolean;
             pendingEmail?: string | null;
@@ -12099,8 +12189,12 @@ export interface components {
             /** Format: date-time */
             lastLoginAt?: string | null;
         };
+        /** @description Partial update: an omitted field stays unchanged. */
         ViewerProfileUpdateRequest: {
+            /** @description 1-64 printable characters (trimmed, not unique); null or empty resets it to the username. */
             displayName?: string | null;
+            /** @description One of cyan, blue, teal, green, amber, coral, rose, slate (case-insensitive); null resets to the derived default. */
+            avatarKey?: string | null;
         };
         ViewerRecoveryCodesResponse: {
             recoveryCodes: string[] | null;
@@ -12195,6 +12289,13 @@ export interface components {
             /** Format: int32 */
             nextUpCutoffDays?: number | null;
             email?: components["schemas"]["ViewerEmailSettingsDto"] | null;
+        };
+        ViewerSignOutOthersResponse: {
+            /**
+             * Format: int32
+             * @description How many other active sessions were ended (0 when there were none).
+             */
+            signedOut: number;
         };
         ViewerTestEmailRequest: {
             to?: string | null;

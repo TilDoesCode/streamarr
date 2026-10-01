@@ -25,7 +25,7 @@ public sealed partial class ArtworkPaletteService(
     private readonly ConcurrentDictionary<string, ArtworkPaletteEntity> _palettes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _retryAfter = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _queued = new(StringComparer.Ordinal);
-    private readonly ConcurrentQueue<string> _overflow = new();
+    private readonly Queue<string> _overflow = new();
     private readonly FailureLog _failures = new(logger);
     private readonly Channel<string> _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(2048) { FullMode = BoundedChannelFullMode.Wait });
     private readonly string? _imageHost = Uri.TryCreate(tmdb.ImageBaseUrl, UriKind.Absolute, out var baseUri) ? baseUri.Host : null;
@@ -66,22 +66,34 @@ public sealed partial class ArtworkPaletteService(
             return (stale, false);
         if (_retryAfter.TryGetValue(url, out var retry) && retry > time.GetUtcNow())
             return (stale, false);
-        if (_queued.TryAdd(url, 0) && !_queue.Writer.TryWrite(url))
-        {
-            _overflow.Enqueue(url);
-            DrainOverflow();
-        }
+        if (_queued.TryAdd(url, 0))
+            Admit(url);
         return (stale, true);
+    }
+
+    /// <summary>Queues an image behind any that found the queue full, so overflowed images are never overtaken.</summary>
+    private void Admit(string url)
+    {
+        lock (_overflow)
+        {
+            if (_overflow.Count == 0 && _queue.Writer.TryWrite(url))
+                return;
+            _overflow.Enqueue(url);
+            DrainOverflowLocked();
+        }
     }
 
     /// <summary>Moves images that found the queue full into it as the worker frees room; nothing is dropped or duplicated.</summary>
     private void DrainOverflow()
     {
         lock (_overflow)
-        {
-            while (_overflow.TryPeek(out var next) && _queue.Writer.TryWrite(next))
-                _overflow.TryDequeue(out _);
-        }
+            DrainOverflowLocked();
+    }
+
+    private void DrainOverflowLocked()
+    {
+        while (_overflow.TryPeek(out var next) && _queue.Writer.TryWrite(next))
+            _overflow.Dequeue();
     }
 
     private bool Fetchable(string url)

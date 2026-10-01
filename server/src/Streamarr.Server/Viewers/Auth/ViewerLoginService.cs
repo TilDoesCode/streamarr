@@ -17,8 +17,12 @@ public sealed class ViewerLoginService(
     ViewerTwoFactorService twoFactor,
     ViewerSessionService sessions,
     ViewerMailer mailer,
+    ViewerMailLanguage mailLanguage,
     TimeProvider time)
 {
+    private const int MaxTrackedLogins = 10_000;
+    private readonly Dictionary<string, List<DateTimeOffset>> _loginCodeRequests = new(StringComparer.Ordinal);
+
     private static readonly TimeSpan MfaLifetime = TimeSpan.FromMinutes(5);
     private const int MfaAttempts = 5;
     private static readonly (string Hash, string Salt) DummyPassword =
@@ -89,7 +93,11 @@ public sealed class ViewerLoginService(
         var current = await settings.GetAsync(ct);
         if (!current.AllowEmailLogin || !ViewerMailer.CanDeliver(current))
             throw ViewerProblem.Forbidden("email_login_unavailable", "Sign-in by email code is not available on this server.");
-        await SendCodeAsync(login, ViewerCodePurpose.Login, current, ct);
+        if (string.IsNullOrWhiteSpace(login) || login.Length > 254)
+            throw ViewerProblem.BadRequest("invalid_login", "'login' is required.");
+        ThrottleLoginCode(login);
+        if (await SendCodeAsync(login, ViewerCodePurpose.Login, current, ct) is { Issued: false } issue)
+            throw ViewerProblem.EmailCodeCooldown(issue.RetryAfter);
     }
 
     public async Task<ViewerLoginResult> LoginCodeAsync(string? login, string? code, CancellationToken ct)
@@ -137,21 +145,47 @@ public sealed class ViewerLoginService(
         await sessions.RevokeAllAsync(viewer.Id, "password_reset", exceptSessionId: null, ct);
     }
 
-    private async Task SendCodeAsync(string? login, string purpose, ViewerSettings current, CancellationToken ct)
+    /// <summary>The sign-in code cooldown per typed login, applied before the lookup so unknown accounts answer the same.</summary>
+    private void ThrottleLoginCode(string login)
+    {
+        var now = time.GetUtcNow();
+        var key = login.Trim().ToUpperInvariant();
+        lock (_loginCodeRequests)
+        {
+            if (_loginCodeRequests.Count >= MaxTrackedLogins)
+            {
+                foreach (var stale in _loginCodeRequests.Where(e => e.Value.All(at => at <= now.AddHours(-1))).Select(e => e.Key).ToList())
+                    _loginCodeRequests.Remove(stale);
+                if (_loginCodeRequests.Count >= MaxTrackedLogins)
+                    _loginCodeRequests.Clear();
+            }
+            if (!_loginCodeRequests.TryGetValue(key, out var issued))
+                _loginCodeRequests[key] = issued = [];
+            issued.RemoveAll(at => at <= now.AddHours(-1));
+            if (ViewerCodeService.Wait(issued, now) is { } wait)
+                throw ViewerProblem.EmailCodeCooldown(wait);
+            issued.Add(now);
+        }
+    }
+
+    /// <summary>Mails a code when the login names an account with a verified address; null when there is none.</summary>
+    private async Task<ViewerCodeIssue?> SendCodeAsync(string? login, string purpose, ViewerSettings current, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(login) || login.Length > 254)
             throw ViewerProblem.BadRequest("invalid_login", "'login' is required.");
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var viewer = await FindByLoginAsync(db, login, ct);
         if (viewer is null || viewer.IsDisabled || viewer.Email is null || viewer.EmailVerifiedAt is null)
-            return;
-        var code = await codes.IssueAsync(db, viewer.Id, purpose, viewer.Email, ct);
-        if (code is null)
-            return;
+            return null;
+        var issue = await codes.IssueAsync(db, viewer.Id, purpose, viewer.Email, ct);
+        if (!issue.Issued)
+            return issue;
         var minutes = (int)ViewerCodePurpose.Lifetime(purpose).TotalMinutes;
+        var language = mailLanguage.Current;
         mailer.Enqueue(purpose == ViewerCodePurpose.Login
-            ? ViewerMailTemplates.LoginCode(current.ServerName, viewer.Email, viewer.DisplayName, code, minutes)
-            : ViewerMailTemplates.PasswordReset(current.ServerName, viewer.Email, viewer.DisplayName, code, minutes));
+            ? ViewerMailTemplates.LoginCode(language, current.ServerName, viewer.Email, viewer.DisplayName, issue.Code!, minutes)
+            : ViewerMailTemplates.PasswordReset(language, current.ServerName, viewer.Email, viewer.DisplayName, issue.Code!, minutes));
+        return issue;
     }
 
     private async Task<ViewerEntity?> RedeemForLoginAsync(StreamarrDbContext db, string? login, string? code, string purpose, CancellationToken ct)

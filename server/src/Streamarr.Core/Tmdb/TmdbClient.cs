@@ -118,8 +118,8 @@ public sealed class TmdbClient(
                     GetBoundedString(root, "original_title", 512) ?? $"Movie {tmdbId}",
             Year = YearOf(GetBoundedString(root, "release_date", 32)),
             Overview = NullIfEmpty(GetBoundedString(root, "overview", 8_192)),
-            PosterUrl = Image(GetBoundedString(root, "poster_path", 1_024), options.PosterSize),
-            BackdropUrl = Image(GetBoundedString(root, "backdrop_path", 1_024), options.BackdropSize),
+            PosterUrl = Image(Artwork(root, "posters", GetBoundedString(root, "poster_path", 1_024), textlessFirst: false), options.PosterSize),
+            BackdropUrl = Image(Artwork(root, "backdrops", GetBoundedString(root, "backdrop_path", 1_024), textlessFirst: true), options.BackdropSize),
             LogoUrl = Logo(root),
             RuntimeMinutes = RuntimeOrNull(GetInt(root, "runtime")),
             OriginalTitle = NullIfEmpty(GetBoundedString(root, "original_title", 512)),
@@ -183,8 +183,8 @@ public sealed class TmdbClient(
                     GetBoundedString(root, "original_name", 512) ?? $"Series {tmdbId}",
             Year = YearOf(GetBoundedString(root, "first_air_date", 32)),
             Overview = NullIfEmpty(GetBoundedString(root, "overview", 8_192)),
-            PosterUrl = Image(GetBoundedString(root, "poster_path", 1_024), options.PosterSize),
-            BackdropUrl = Image(GetBoundedString(root, "backdrop_path", 1_024), options.BackdropSize),
+            PosterUrl = Image(Artwork(root, "posters", GetBoundedString(root, "poster_path", 1_024), textlessFirst: false), options.PosterSize),
+            BackdropUrl = Image(Artwork(root, "backdrops", GetBoundedString(root, "backdrop_path", 1_024), textlessFirst: true), options.BackdropSize),
             LogoUrl = Logo(root),
             RuntimeMinutes = FirstEpisodeRuntime(root),
             OriginalTitle = NullIfEmpty(GetBoundedString(root, "original_name", 512)),
@@ -695,6 +695,43 @@ public sealed class TmdbClient(
         => string.IsNullOrWhiteSpace(path) || !path.StartsWith("/", StringComparison.Ordinal)
             ? null
             : $"{options.ImageBaseUrl.TrimEnd('/')}/{size}{path}";
+
+    /// <summary>
+    /// Poster or backdrop in the viewer's language: TMDB's default when its language is the best one available, else
+    /// the best rated of that language. Order: viewer language, textless, English (backdrops: textless first).
+    /// </summary>
+    private string? Artwork(JsonElement root, string kind, string? fallback, bool textlessFirst)
+    {
+        if (!root.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Object
+            || !images.TryGetProperty(kind, out var list) || list.ValueKind != JsonValueKind.Array)
+        {
+            return fallback;
+        }
+
+        var preferred = PreferredImageLanguage() ?? "en";
+        int Rank(string? language) => language == preferred ? (textlessFirst ? 1 : 0)
+            : language is null ? (textlessFirst ? 0 : 1)
+            : language == "en" ? 2 : 3;
+        var candidates = list.EnumerateArray()
+            .Take(200)
+            .Where(image => image.ValueKind == JsonValueKind.Object)
+            .Select(image => (
+                Path: GetBoundedString(image, "file_path", 1_024),
+                Language: GetBoundedString(image, "iso_639_1", 8),
+                Vote: GetFloat(image, "vote_average") ?? 0,
+                Count: GetInt(image, "vote_count") ?? 0))
+            .Where(image => image.Path is not null && image.Path.StartsWith('/'))
+            .ToList();
+        if (candidates.Count == 0)
+            return fallback;
+        var best = candidates.Min(image => Rank(image.Language));
+        if (fallback is not null && candidates.Any(image => image.Path == fallback && Rank(image.Language) == best))
+            return fallback;
+        return candidates.Where(image => Rank(image.Language) == best)
+            .OrderByDescending(image => image.Vote)
+            .ThenByDescending(image => image.Count)
+            .First().Path;
+    }
 
     /// <summary>Best title logo: the configured language first, then English, then textless; highest rated within.</summary>
     private string? Logo(JsonElement root)

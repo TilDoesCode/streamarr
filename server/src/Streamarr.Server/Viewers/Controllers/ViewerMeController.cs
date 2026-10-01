@@ -26,11 +26,12 @@ public sealed class ViewerMeController(
     public async Task<ActionResult<ViewerProfileResponse>> Get(CancellationToken ct)
         => Ok(await ProfileAsync(await accounts.GetAsync(User.ViewerId(), ct), ct));
 
+    /// <summary>Change the display name and/or the avatar; omitted fields stay unchanged.</summary>
     [HttpPatch]
     [ProducesResponseType(typeof(ViewerProfileResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ViewerProfileResponse>> Update([FromBody] ViewerProfileUpdateRequest request, CancellationToken ct)
-        => Ok(await ProfileAsync(await accounts.UpdateDisplayNameAsync(User.ViewerId(), request.DisplayName, ct), ct));
+        => Ok(await ProfileAsync(await accounts.UpdateProfileAsync(User.ViewerId(), request, ct), ct));
 
     /// <summary>Change the password; every other device is signed out.</summary>
     [AllowPendingPasswordChange]
@@ -44,12 +45,13 @@ public sealed class ViewerMeController(
         return NoContent();
     }
 
-    /// <summary>Set, change or remove the email address; a new address is confirmed with an emailed code.</summary>
+    /// <summary>Set, change or remove the email address; a new address is confirmed with an emailed code (429 email_code_cooldown while one was just sent).</summary>
     [EnableRateLimiting(ViewerAuth.RateLimitPolicy)]
     [HttpPost("email")]
     [ProducesResponseType(typeof(ViewerEmailChangeResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<ViewerEmailChangeResponse>> ChangeEmail([FromBody] ViewerEmailChangeRequest request, CancellationToken ct)
     {
         var sent = await accounts.RequestEmailChangeAsync(User.ViewerId(), request.Email, request.CurrentPassword, ct);
@@ -122,6 +124,16 @@ public sealed class ViewerMeController(
         => await sessions.RevokeAsync(User.ViewerId(), sessionId, "revoked_by_viewer", ct)
             ? NoContent()
             : NotFound(ErrorResponse.Of("session_not_found", "No active session with this id."));
+
+    /// <summary>End every other active session of this viewer in one step; the current session stays signed in.</summary>
+    [AllowPendingPasswordChange]
+    [HttpPost("sessions/sign-out-others")]
+    [ProducesResponseType(typeof(ViewerSignOutOthersResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ViewerSignOutOthersResponse>> SignOutOthers(CancellationToken ct)
+        => Ok(new ViewerSignOutOthersResponse
+        {
+            SignedOut = await sessions.RevokeOthersAsync(User.ViewerId(), User.SessionId(), "signed_out_by_viewer", ct),
+        });
 
     private async Task<ViewerProfileResponse> ProfileAsync(Persistence.Entities.ViewerEntity viewer, CancellationToken ct)
         => ViewerMappings.Profile(viewer, await twoFactor.RemainingRecoveryCodesAsync(viewer.Id, ct));

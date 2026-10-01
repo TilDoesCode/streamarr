@@ -22,6 +22,7 @@ public sealed class ViewerAdminController(
     WatchStateService watch,
     ViewerMailer mailer,
     ViewerMailOutbox outbox,
+    ViewerMailLanguage mailLanguage,
     TimeProvider time) : ControllerBase
 {
     [HttpGet("settings")]
@@ -57,7 +58,7 @@ public sealed class ViewerAdminController(
             return BadRequest(ErrorResponse.Of("invalid_email", "'to' must be a valid email address."));
         try
         {
-            await mailer.SendNowAsync(ViewerMailTemplates.Test((await settings.GetAsync(ct)).ServerName, to!), ct);
+            await mailer.SendNowAsync(ViewerMailTemplates.Test(mailLanguage.Current, (await settings.GetAsync(ct)).ServerName, to!), ct);
         }
         catch (Exception e) when (e is not ViewerProblem and not OperationCanceledException)
         {

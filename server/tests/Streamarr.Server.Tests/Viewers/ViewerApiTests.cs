@@ -339,6 +339,199 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
         Assert.Equal(HttpStatusCode.OK, (await _admin.GetAsync($"/api/v1/config/viewers/{id}")).StatusCode);
     }
 
+    private async Task<JsonElement> LatestMailAsync(string kind, string to)
+    {
+        var outbox = await _admin.GetFromJsonAsync<JsonElement>("/api/v1/config/viewers/outbox");
+        return outbox.EnumerateArray().First(m => m.GetProperty("kind").GetString() == kind && m.GetProperty("to").GetString() == to);
+    }
+
+    private static async Task AssertCooldownAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error");
+        Assert.Equal("email_code_cooldown", error.GetProperty("code").GetString());
+        var seconds = error.GetProperty("retryAfterSeconds").GetInt32();
+        Assert.InRange(seconds, 1, 30);
+        Assert.Equal(seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), error.GetProperty("params").GetProperty("retryAfterSeconds").GetString());
+        Assert.Equal(seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), response.Headers.GetValues("Retry-After").Single());
+    }
+
+    private async Task<int> OutboxCountAsync(string to)
+        => (await _admin.GetFromJsonAsync<JsonElement>("/api/v1/config/viewers/outbox")).EnumerateArray()
+            .Count(m => m.GetProperty("to").GetString() == to);
+
+    [Fact]
+    public async Task Email_Change_Inside_The_Cooldown_Answers_429_Without_A_Mail()
+    {
+        await NewViewerAsync("cool-change");
+        using var anon = factory.CreateClient();
+        using var viewer = factory.Viewer(await ViewerApi.AccessTokenAsync(anon, "cool-change", Password));
+
+        var first = await viewer.PostAsJsonAsync("/api/v1/viewer/me/email", new { email = "cool1@example.com", currentPassword = Password });
+        Assert.True((await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("verificationSent").GetBoolean());
+        factory.Clock.Advance(TimeSpan.FromSeconds(10));
+        var again = await viewer.PostAsJsonAsync("/api/v1/viewer/me/email", new { email = "cool2@example.com", currentPassword = Password });
+        await AssertCooldownAsync(again);
+        Assert.Equal(0, await OutboxCountAsync("cool2@example.com"));
+        Assert.Equal("cool1@example.com", (await viewer.GetFromJsonAsync<JsonElement>("/api/v1/viewer/me")).GetProperty("pendingEmail").GetString());
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(21));
+        var later = await viewer.PostAsJsonAsync("/api/v1/viewer/me/email", new { email = "cool2@example.com", currentPassword = Password });
+        Assert.True((await later.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("verificationSent").GetBoolean());
+        Assert.Equal(1, await OutboxCountAsync("cool2@example.com"));
+    }
+
+    [Fact]
+    public async Task Sign_In_Code_Inside_The_Cooldown_Answers_429_For_Known_And_Unknown_Logins()
+    {
+        await NewViewerAsync("cool-login", email: "cool-login@example.com");
+        using var anon = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.Accepted, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-login" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-ghost" })).StatusCode);
+        factory.Clock.Advance(TimeSpan.FromSeconds(5));
+        await AssertCooldownAsync(await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "COOL-LOGIN " }));
+        await AssertCooldownAsync(await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-ghost" }));
+        Assert.Equal(1, await OutboxCountAsync("cool-login@example.com"));
+
+        // the same account by its address: the per-account cooldown still holds, so no second mail
+        await AssertCooldownAsync(await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-login@example.com" }));
+        Assert.Equal(1, await OutboxCountAsync("cool-login@example.com"));
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(26));
+        Assert.Equal(HttpStatusCode.Accepted, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-login" })).StatusCode);
+        Assert.Equal(2, await OutboxCountAsync("cool-login@example.com"));
+    }
+
+    [Fact]
+    public async Task Password_Forgot_Stays_Generic_Inside_The_Cooldown()
+    {
+        await NewViewerAsync("cool-forgot", email: "cool-forgot@example.com");
+        using var anon = factory.CreateClient();
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(HttpStatusCode.Accepted, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/password/forgot", new { login = "cool-forgot" })).StatusCode);
+        Assert.Equal(1, await OutboxCountAsync("cool-forgot@example.com"));
+    }
+
+    [Theory]
+    [InlineData("de-DE,de;q=0.9", "de")]
+    [InlineData("en-US", "en")]
+    [InlineData("fr-FR", "en")]
+    [InlineData(null, "en")]
+    public async Task Viewer_Emails_Follow_The_Request_Language(string? acceptLanguage, string expected)
+    {
+        var tag = acceptLanguage is null ? "none" : acceptLanguage[..2];
+        var name = $"lang-{tag}";
+        var address = $"{name}@example.com";
+        await NewViewerAsync(name, email: address);
+        using var anon = factory.CreateClient();
+        if (acceptLanguage is not null)
+            anon.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", acceptLanguage);
+
+        await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = name });
+        await anon.PostAsJsonAsync("/api/v1/viewer/auth/password/forgot", new { login = name });
+        using var viewer = factory.Viewer(await ViewerApi.AccessTokenAsync(anon, name, Password));
+        if (acceptLanguage is not null)
+            viewer.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", acceptLanguage);
+        Assert.Equal(HttpStatusCode.OK, (await viewer.PostAsJsonAsync("/api/v1/viewer/me/email", new { email = $"new-{address}", currentPassword = Password })).StatusCode);
+
+        var login = await LatestMailAsync("login_code", address);
+        var reset = await LatestMailAsync("password_reset", address);
+        var verify = await LatestMailAsync("email_verification", $"new-{address}");
+        string[] subjects = [login.GetProperty("subject").GetString()!, reset.GetProperty("subject").GetString()!, verify.GetProperty("subject").GetString()!];
+        string[] texts = [login.GetProperty("text").GetString()!, reset.GetProperty("text").GetString()!, verify.GetProperty("text").GetString()!];
+        if (expected == "de")
+        {
+            Assert.Contains("Anmeldecode", subjects[0], StringComparison.Ordinal);
+            Assert.Contains("Passwort zurücksetzen", subjects[1], StringComparison.Ordinal);
+            Assert.Contains("Bestätige deine E-Mail-Adresse", subjects[2], StringComparison.Ordinal);
+            Assert.All(texts, t => Assert.StartsWith($"Hallo {name},", t, StringComparison.Ordinal));
+            Assert.All(texts, t => Assert.Contains("Minuten gültig", t, StringComparison.Ordinal));
+        }
+        else
+        {
+            Assert.Contains("sign-in code", subjects[0], StringComparison.Ordinal);
+            Assert.StartsWith("Reset your", subjects[1], StringComparison.Ordinal);
+            Assert.StartsWith("Confirm your email", subjects[2], StringComparison.Ordinal);
+            Assert.All(texts, t => Assert.StartsWith($"Hi {name},", t, StringComparison.Ordinal));
+            Assert.All(texts, t => Assert.Contains("expires in", t, StringComparison.Ordinal));
+        }
+        Assert.All(texts, t => Assert.Matches(CodePattern(), t));
+    }
+
+    [Fact]
+    public async Task Sign_Out_Others_Keeps_The_Current_Session_And_Counts_The_Rest()
+    {
+        await NewViewerAsync("others-viewer");
+        await NewViewerAsync("others-bystander");
+        using var anon = factory.CreateClient();
+        var phone = await ViewerApi.SignInAsync(anon, "others-viewer", Password);
+        var tv = await ViewerApi.SignInAsync(anon, "others-viewer", Password);
+        var web = await ViewerApi.SignInAsync(anon, "others-viewer", Password);
+        var bystander = await ViewerApi.SignInAsync(anon, "others-bystander", Password);
+        using var viewer = factory.Viewer(phone.GetProperty("accessToken").GetString()!);
+
+        var response = await viewer.PostAsync("/api/v1/viewer/me/sessions/sign-out-others", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("signedOut").GetInt32());
+
+        Assert.Equal(HttpStatusCode.OK, (await viewer.GetAsync("/api/v1/viewer/me")).StatusCode);
+        foreach (var other in new[] { tv, web })
+        {
+            using var client = factory.Viewer(other.GetProperty("accessToken").GetString()!);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/viewer/me")).StatusCode);
+            var refresh = await anon.PostAsJsonAsync("/api/v1/viewer/auth/refresh", new { refreshToken = other.GetProperty("refreshToken").GetString() });
+            Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);
+        }
+        using (var other = factory.Viewer(bystander.GetProperty("accessToken").GetString()!))
+            Assert.Equal(HttpStatusCode.OK, (await other.GetAsync("/api/v1/viewer/me")).StatusCode);
+        var devices = await viewer.GetFromJsonAsync<JsonElement>("/api/v1/viewer/me/sessions");
+        Assert.True(Assert.Single(devices.EnumerateArray()).GetProperty("current").GetBoolean());
+
+        var again = await viewer.PostAsync("/api/v1/viewer/me/sessions/sign-out-others", null);
+        Assert.Equal(0, (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("signedOut").GetInt32());
+        using var anonymous = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync("/api/v1/viewer/me/sessions/sign-out-others", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Viewer_Edits_Display_Name_And_Avatar()
+    {
+        await NewViewerAsync("profile-viewer");
+        using var anon = factory.CreateClient();
+        using var viewer = factory.Viewer(await ViewerApi.AccessTokenAsync(anon, "profile-viewer", Password));
+
+        var initial = await viewer.GetFromJsonAsync<JsonElement>("/api/v1/viewer/me");
+        Assert.Equal(JsonValueKind.Null, initial.GetProperty("avatarKey").ValueKind);
+
+        var named = await (await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "  Anna B.  " })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Anna B.", named.GetProperty("displayName").GetString());
+
+        var avatar = await (await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { avatarKey = "Coral" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(("Anna B.", "coral"), (avatar.GetProperty("displayName").GetString(), avatar.GetProperty("avatarKey").GetString()));
+
+        var invalid = await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { avatarKey = "unicorn", displayName = "Other" });
+        Assert.Equal("invalid_avatar", await ViewerApi.ErrorCodeAsync(invalid));
+        var tooLong = await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = new string('x', 65) });
+        Assert.Equal("invalid_display_name", await ViewerApi.ErrorCodeAsync(tooLong));
+        var control = await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "a\u0007b" });
+        Assert.Equal("invalid_display_name", await ViewerApi.ErrorCodeAsync(control));
+
+        await NewViewerAsync("profile-twin");
+        var shared = await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "profile-twin" });
+        Assert.Equal(HttpStatusCode.OK, shared.StatusCode);
+
+        var reset = await (await viewer.PatchAsync("/api/v1/viewer/me",
+            new StringContent("""{"displayName":null,"avatarKey":null}""", System.Text.Encoding.UTF8, "application/json"))).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("profile-viewer", reset.GetProperty("displayName").GetString());
+        Assert.Equal(JsonValueKind.Null, reset.GetProperty("avatarKey").ValueKind);
+
+        await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "Kept", avatarKey = "slate" });
+        var untouched = await (await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(("Kept", "slate"), (untouched.GetProperty("displayName").GetString(), untouched.GetProperty("avatarKey").GetString()));
+    }
+
     [Fact]
     public async Task Progress_Resume_History_And_Played_Flags()
     {

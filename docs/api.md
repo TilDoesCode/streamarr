@@ -105,6 +105,10 @@ example `403 age_restricted` from the viewer catalog
 (`"params": { "reason": "above_age_limit", "rating": "R", "minimumAge": "17", "viewerMaxAge": "12" }`).
 The key is omitted when an error has no parameters.
 
+A `429` that knows how long the caller must wait (e.g. `email_code_cooldown`) also carries a typed
+`retryAfterSeconds` integer next to `code`, the same value in `params.retryAfterSeconds` and in the
+`Retry-After` header. The key is omitted otherwise.
+
 ---
 
 ## 3. Search
@@ -882,14 +886,54 @@ never unlock viewer endpoints.
 
 Errors: `401 invalid_credentials`, `401 invalid_code`, `401 mfa_expired`,
 `403 account_disabled`, `423 account_locked`, `403 email_login_unavailable` /
-`password_reset_unavailable`, `429 rate_limited`.
+`password_reset_unavailable`, `429 rate_limited`, `429 email_code_cooldown`.
+
+**E-mail code cooldown.** A new code for the same purpose is sent at most every 30 seconds and at most
+5 times per hour. Inside that window `POST …/auth/email-code` and `POST …/me/email` send **no** mail and answer
+
+```json
+// 429, Retry-After: 27
+{ "error": { "code": "email_code_cooldown", "message": "A code was sent moments ago; request a new one in 27 seconds.",
+             "params": { "retryAfterSeconds": "27" }, "retryAfterSeconds": 27 } }
+```
+
+The app shows "wait N seconds" and keeps the code already sent valid. For the sign-in code the cooldown is kept
+per typed login (trimmed, case-insensitive) *before* the account lookup, so known and unknown logins answer
+alike (`202`, then `429` on a repeat). `POST …/password/forgot` stays generic: always `202`, a repeat inside the
+cooldown sends no mail.
+
+**Language of viewer e-mails.** Sign-in code, password reset and address verification mails are written in the
+request's viewer language, resolved exactly like the metadata language (`Accept-Language`
+within `Tmdb:ViewerLanguages`, else the server language `Tmdb:Language`). Templates exist in German and English;
+every other language gets English. The admin test mail uses the server language.
 
 ### The signed-in viewer — `/api/v1/viewer/me`
 
-`GET` / `PATCH` (display name), `POST …/password`, `POST …/email` +
+`GET` / `PATCH` (profile), `POST …/password`, `POST …/email` +
 `POST …/email/verify`, `POST …/two-factor/setup` · `…/enable` · `…/disable` ·
-`…/recovery-codes`, `GET …/sessions`, `DELETE …/sessions/{id}`. While an admin-assigned
-password must be changed, other viewer endpoints answer `403 password_change_required`.
+`…/recovery-codes`, `GET …/sessions`, `DELETE …/sessions/{id}`, `POST …/sessions/sign-out-others`. While an
+admin-assigned password must be changed, other viewer endpoints answer `403 password_change_required`
+(the session endpoints stay available).
+
+**Profile (`PATCH /api/v1/viewer/me`).** A partial update; an omitted field stays unchanged. Answers the
+`ViewerProfileResponse`.
+
+| Field | Rule |
+| --- | --- |
+| `displayName` | Trimmed, 1–64 printable characters (no control characters), otherwise `400 invalid_display_name`. `null` or `""` resets it to the username. Display names are **not unique** (the username is the unique handle). |
+| `avatarKey` | One of `cyan`, `blue`, `teal`, `green`, `amber`, `coral`, `rose`, `slate` (case-insensitive; stored lower case), otherwise `400 invalid_avatar`. `null` = no choice, the client derives a default. The keys map in order to the client's avatar colour slots 1–8. |
+
+```json
+PATCH /api/v1/viewer/me   { "displayName": "Anna B.", "avatarKey": "coral" }
+→ 200 { "accountType": "viewer", "id": "…", "username": "anna", "displayName": "Anna B.", "avatarKey": "coral", … }
+```
+
+`GET /api/v1/viewer/me` (and the `viewer` object of the sign-in answer) carries `avatarKey` (`null` when unset).
+
+**Sign out all other devices (`POST /api/v1/viewer/me/sessions/sign-out-others`).** No body. Ends every other
+active session of the signed-in viewer in one database statement (their access tokens answer `401` at once,
+their refresh tokens are refused) and keeps the calling session signed in. Answers `200 { "signedOut": 2 }`, the
+number of sessions ended (`0` when there were none). Replaces looping over `DELETE …/sessions/{id}`.
 
 ### Watch state — `/api/v1/viewer/watch`
 
@@ -941,6 +985,11 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
   allows, `Tmdb:ViewerLanguages`, e.g. `de` or `en`; a missing or unknown tag means the server default
   `Tmdb:Language`). Titles, overviews, taglines, season and episode names and genre names come from TMDB in
   that language; when TMDB has no translation of an overview, tagline or episode name, the English text is used.
+  Artwork follows the same language: the `posterUrl` is the best rated poster in the viewer's language, else a
+  textless one, else English; the `backdropUrl` prefers a textless backdrop (text sits over it), then the viewer's
+  language, then English; the `logoUrl` is the viewer's language, then English, then textless. TMDB's default image
+  is kept when it already belongs to the best available group. The Dev World shows a German poster for Big Buck
+  Bunny (its textless poster, TMDB has no German one) and Sherlock (the German TMDB poster).
   TMDB caches are kept per language, and viewer responses carry `Vary: Accept-Language`. Indexer searches
   (versions) always use the server default language, so release matching does not depend on the viewer.
 - **Spec warm-up:** a card's `spec` may be null on the first fetch; discover, browse, continue watching and next up
@@ -1100,7 +1149,7 @@ GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,
 | --- | --- |
 | `vlcVideoCodecs` | Comma-separated codecs VLC decodes; an entry may carry its own height limit, `codec:maxHeight` (e.g. `h264,hevc:1080`). Codecs not listed are not played by VLC. Names libVLC does not know (after aliases such as `avc`, `h265`, `av01`) answer `400 invalid_device_profile`. Known: `h264`, `hevc`, `av1`, `vp9`, `vp8`, `mpeg2video`, `mpeg4`, `vc1`. |
 | `vlcMaxHeight` | Height limit (144–4320) for listed codecs without their own limit. |
-| `vlcHdrFormats` | HDR formats VLC shows natively (`hdr10`, `hlg`, `dv` or `dolbyvision`); default `hdr10,hlg` for HEVC/AV1/VP9. |
+| `vlcHdrFormats` | HDR formats VLC shows natively (`hdr10`, `hlg`, `dv` or `dolbyvision`); default `hdr10,hlg` for HEVC/AV1/VP9 when the parameter is absent. `none` or an explicitly empty value (`vlcHdrFormats=`) means VLC renders no HDR format: with `vlcHdrToneMapping=false` an HDR file (e.g. HEVC HDR10 at 1080p) is then predicted `transcode`, not `vlc`, matching the playback decision. `none` combined with formats answers `400 invalid_device_profile`. |
 | `vlcSupports10Bit` | `false` = 8-bit decoding only (no HDR either). |
 | `vlcHdrToneMapping` | `false` = VLC does not tone-map HDR10/HLG to SDR (default `true`). |
 

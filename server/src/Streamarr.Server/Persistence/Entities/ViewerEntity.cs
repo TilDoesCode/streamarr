@@ -7,6 +7,7 @@ public sealed class ViewerEntity
     public string Username { get; set; } = string.Empty;
     public string NormalizedUsername { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string? AvatarKey { get; set; }
     public string? Email { get; set; }
     public string? NormalizedEmail { get; set; }
     public DateTimeOffset? EmailVerifiedAt { get; set; }

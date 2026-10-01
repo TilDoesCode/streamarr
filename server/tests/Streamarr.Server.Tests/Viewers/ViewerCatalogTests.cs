@@ -580,6 +580,7 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
     [InlineData("vlcVideoCodecs=hevc:9000")]
     [InlineData("vlcVideoCodecs=h264,h266")]
     [InlineData("vlcVideoCodecs=prores:1080")]
+    [InlineData("vlcHdrFormats=none,hdr10")]
     public async Task Versions_RejectInvalidVlcCaps(string query)
     {
         using var viewer = await ViewerAsync("badvlc");

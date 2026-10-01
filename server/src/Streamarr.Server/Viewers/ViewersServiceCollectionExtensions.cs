@@ -25,6 +25,7 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<IStreamarrModule>(sp => sp.GetRequiredService<ViewerModule>());
         services.AddSingleton<ViewerMailOutbox>();
         services.AddSingleton<ViewerMailer>();
+        services.AddSingleton<ViewerMailLanguage>();
         services.AddHostedService(sp => sp.GetRequiredService<ViewerMailer>());
         services.AddSingleton<ViewerCodeService>();
         services.AddSingleton<ViewerSessionService>();

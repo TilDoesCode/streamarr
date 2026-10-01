@@ -65,20 +65,17 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
-- Multi-rendition audio in HLS (#4); see the triage table in `journal/M1.5.md`.
-- Palette overflow: overflowed urls can be overtaken by new ones (ordering only, nothing lost); the lock wraps a
-  `ConcurrentQueue` where a plain `Queue` would do.
-- `IndexerLanguageTests`: the search-term assertions are vacuous (Dev World searches are id-based); the language check
-  carries the test.
+- Multi-rendition audio in HLS (#4); see the triage table in `journal/M1.5.md` — task B5 (round H).
 - Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
   the whole-image value too strict.
-- E-mail code: a second request within the 30 s resend cooldown sends no mail but answers `verificationSent: true`;
-  answer the cooldown so the app can say "wait" (F3).
-- The verification e-mail is English for German viewers; use the viewer's language (F3).
-- `vlcHdrFormats` cannot express "none" (empty means the default hdr10,hlg), while Android's VLC entry declares no HDR
-  formats; a <= 1080p HDR HEVC/VP9 file could be predicted `vlc` but transcode at playback. Accept `none` (F3).
-- Artwork (logos, posters, backdrops with text) stays English for German viewers; TMDB image language could follow
-  Accept-Language (F3).
+- Admin viewer responses do not carry `avatarKey` yet (B4).
+- A display name of only spaces resets to the username (200) instead of 400; documented, the client should trim and
+  validate first (B4 verify).
+- Username and e-mail of one account share the sign-in code cooldown, so someone who knows both can link them (429 on
+  the second alias within 30 s); documented, low impact (B4 verify).
+- Dev World artwork uses fixed per-language URLs; the real selection rule is covered by `TmdbDiscoverTests` only. No
+  German logos in the Dev World (TMDB has none for the fixture titles).
+- The sign-in code path validates the login twice (`RequestLoginCodeAsync` and `SendCodeAsync`); cosmetic.
 
 ## Next update (out of scope)
 
@@ -90,6 +87,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Fixed
 
+- Server, B4 (2026-10-01): e-mail code cooldown answered with 429 `email_code_cooldown` (no false
+  `verificationSent`); viewer e-mails in German/English by request language; atomic
+  `POST /viewer/me/sessions/sign-out-others`; `vlcHdrFormats=none`; posters and backdrops in the viewer language;
+  `PATCH /viewer/me` partial with display name and `avatarKey`; palette overflow ordering; meaningful indexer-language
+  test.
 - Client, F3 (2026-10-01): one chip row on the library pages (title + sort in one line); TV glass sized per title
   from the art highlight under a per-text-style contrast rule; detail shows best available vs plays here; Accept-Language
   and German metadata; Settings account management (password, e-mail, two-step, devices; TV devices + hint); Android

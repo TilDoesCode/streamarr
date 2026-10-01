@@ -215,6 +215,14 @@ public sealed class ViewerSessionService(
         return await RevokeWhereAsync(db, s => s.ViewerId == viewerId && s.Id != exceptSessionId, reason, time.GetUtcNow(), ct);
     }
 
+    /// <summary>Ends every other active session in one statement and answers how many were ended.</summary>
+    public async Task<int> RevokeOthersAsync(string viewerId, string keepSessionId, string reason, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await RevokeWhereAsync(db, s => s.ViewerId == viewerId && s.Id != keepSessionId && s.RefreshExpiresAt > now, reason, now, ct);
+    }
+
     public async Task<bool> RevokeByRefreshTokenAsync(string? refreshToken, CancellationToken ct)
     {
         if (!ViewerAuth.HasShape(refreshToken, ViewerAuth.RefreshTokenPrefix))

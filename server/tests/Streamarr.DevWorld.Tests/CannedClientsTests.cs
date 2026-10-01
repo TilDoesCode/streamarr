@@ -53,6 +53,29 @@ public class CannedClientsTests(FakeWorld world) : IClassFixture<FakeWorld>
     }
 
     [Fact]
+    public async Task GermanLanguage_ServesGermanPosters_ForBigBuckBunnyAndSherlock_InListsToo()
+    {
+        TmdbMatch? bunnyDe, sherlockDe;
+        IReadOnlyList<TmdbMatch> trendingDe;
+        using (TmdbLanguage.Use("de"))
+        {
+            bunnyDe = await Tmdb.GetMovieAsync(10378, CancellationToken.None);
+            sherlockDe = await Tmdb.GetTvAsync(19885, CancellationToken.None);
+            trendingDe = await Tmdb.GetTrendingAsync(MediaType.Movie, CancellationToken.None);
+        }
+        var bunny = await Tmdb.GetMovieAsync(10378, CancellationToken.None);
+        var sherlock = await Tmdb.GetTvAsync(19885, CancellationToken.None);
+
+        Assert.EndsWith("/kXWqzIn6t4ZsMAt1FinlD8VvXNK.jpg", bunnyDe!.PosterUrl);
+        Assert.EndsWith("/fdu6eWFqnVlb3wBkX0BKiZdrNB9.jpg", sherlockDe!.PosterUrl);
+        Assert.NotEqual(bunny!.PosterUrl, bunnyDe.PosterUrl);
+        Assert.NotEqual(sherlock!.PosterUrl, sherlockDe.PosterUrl);
+        Assert.Equal(bunny.LogoUrl, bunnyDe.LogoUrl);
+        if (trendingDe.FirstOrDefault(m => m.TmdbId == 10378) is { } listed)
+            Assert.Equal(bunnyDe.PosterUrl, listed.PosterUrl);
+    }
+
+    [Fact]
     public async Task TermSearch_NeedsEveryToken()
     {
         var titles = await SearchAsync(new NewznabQuery { Term = "tears steel" });

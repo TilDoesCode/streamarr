@@ -7645,7 +7645,7 @@
         "tags": [
           "ViewerAuth"
         ],
-        "summary": "Email a one-time sign-in code. Always 202 so the response does not reveal whether the account exists.",
+        "summary": "Email a one-time sign-in code: 202 whether or not the account exists, 429 email_code_cooldown for a login that asked moments ago.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7671,6 +7671,26 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
             "content": {
               "text/plain": {
                 "schema": {
@@ -9609,6 +9629,7 @@
         "tags": [
           "ViewerMe"
         ],
+        "summary": "Change the display name and/or the avatar; omitted fields stay unchanged.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -9839,7 +9860,7 @@
         "tags": [
           "ViewerMe"
         ],
-        "summary": "Set, change or remove the email address; a new address is confirmed with an emailed code.",
+        "summary": "Set, change or remove the email address; a new address is confirmed with an emailed code (429 email_code_cooldown while one was just sent).",
         "requestBody": {
           "content": {
             "application/json": {
@@ -9902,6 +9923,26 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
             "content": {
               "text/plain": {
                 "schema": {
@@ -10782,6 +10823,81 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/sessions/sign-out-others": {
+      "post": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "End every other active session of this viewer in one step; the current session stays signed in.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSignOutOthersResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSignOutOthersResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSignOutOthersResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "text/plain": {
                 "schema": {
@@ -15152,6 +15268,12 @@
               "type": "string"
             },
             "description": "Machine-readable values for localized messages (e.g. `reason`, `rating`); omitted when empty.",
+            "nullable": true
+          },
+          "retryAfterSeconds": {
+            "type": "integer",
+            "description": "Populated on `429` answers that know the wait (e.g. `email_code_cooldown`): seconds until a retry can succeed.",
+            "format": "int32",
             "nullable": true
           }
         },
@@ -21891,6 +22013,11 @@
             "type": "string",
             "nullable": true
           },
+          "avatarKey": {
+            "type": "string",
+            "description": "The chosen avatar key (cyan, blue, teal, green, amber, coral, rose, slate = colour slots 1-8); null = the client derives a default.",
+            "nullable": true
+          },
           "email": {
             "type": "string",
             "nullable": true
@@ -21932,10 +22059,17 @@
         "properties": {
           "displayName": {
             "type": "string",
+            "description": "1-64 printable characters (trimmed, not unique); null or empty resets it to the username.",
+            "nullable": true
+          },
+          "avatarKey": {
+            "type": "string",
+            "description": "One of cyan, blue, teal, green, amber, coral, rose, slate (case-insensitive); null resets to the derived default.",
             "nullable": true
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Partial update: an omitted field stays unchanged."
       },
       "ViewerRecoveryCodesResponse": {
         "required": [
@@ -22226,6 +22360,20 @@
               }
             ],
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ViewerSignOutOthersResponse": {
+        "required": [
+          "signedOut"
+        ],
+        "type": "object",
+        "properties": {
+          "signedOut": {
+            "type": "integer",
+            "description": "How many other active sessions were ended (0 when there were none).",
+            "format": "int32"
           }
         },
         "additionalProperties": false

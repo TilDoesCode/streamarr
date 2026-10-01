@@ -15,16 +15,22 @@ public static class ViewerCodePurpose
     public static TimeSpan Lifetime(string purpose) => purpose == Login ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(30);
 }
 
+/// <summary>A newly issued code, or the wait until another one may be issued (resend cooldown or hourly cap).</summary>
+public sealed record ViewerCodeIssue(string? Code, TimeSpan RetryAfter)
+{
+    public bool Issued => Code is not null;
+}
+
 /// <summary>Issues and redeems short emailed codes: 8 unambiguous characters, salted hash, 5 attempts, per-hour cap.</summary>
 public sealed class ViewerCodeService(TimeProvider time)
 {
     private const string Alphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
     public const int MaxAttempts = 5;
     public const int MaxCodesPerHour = 5;
-    private static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(30);
 
-    /// <summary>Returns the formatted code, or null when the cooldown or hourly cap suppresses a new one.</summary>
-    public async Task<string?> IssueAsync(StreamarrDbContext db, string viewerId, string purpose, string? target, CancellationToken ct)
+    /// <summary>Issues a formatted code, or answers how long the cooldown or hourly cap still suppresses a new one.</summary>
+    public async Task<ViewerCodeIssue> IssueAsync(StreamarrDbContext db, string viewerId, string purpose, string? target, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         await db.ViewerOneTimeCodes.Where(c => c.ExpiresAt < now.AddDays(-1)).ExecuteDeleteAsync(ct);
@@ -33,11 +39,8 @@ public sealed class ViewerCodeService(TimeProvider time)
             .Where(c => c.ViewerId == viewerId && c.Purpose == purpose)
             .Select(c => c.CreatedAt)
             .ToListAsync(ct);
-        if (recent.Count(created => created > now.AddHours(-1)) >= MaxCodesPerHour ||
-            recent.Any(created => created > now - ResendCooldown))
-        {
-            return null;
-        }
+        if (Wait(recent, now) is { } wait)
+            return new ViewerCodeIssue(null, wait);
 
         await db.ViewerOneTimeCodes
             .Where(c => c.ViewerId == viewerId && c.Purpose == purpose && c.ConsumedAt == null)
@@ -57,7 +60,19 @@ public sealed class ViewerCodeService(TimeProvider time)
             ExpiresAt = now + ViewerCodePurpose.Lifetime(purpose),
         });
         await db.SaveChangesAsync(ct);
-        return $"{code[..4]}-{code[4..]}";
+        return new ViewerCodeIssue($"{code[..4]}-{code[4..]}", TimeSpan.Zero);
+    }
+
+    /// <summary>The remaining wait for a new code given earlier issue times, or null when one may be issued now.</summary>
+    internal static TimeSpan? Wait(IReadOnlyCollection<DateTimeOffset> issued, DateTimeOffset now)
+    {
+        var waits = new List<TimeSpan>();
+        if (issued.Count > 0 && issued.Max() is var last && last > now - ResendCooldown)
+            waits.Add(last + ResendCooldown - now);
+        var hour = issued.Where(created => created > now.AddHours(-1)).Order().ToList();
+        if (hour.Count >= MaxCodesPerHour)
+            waits.Add(hour[^MaxCodesPerHour].AddHours(1) - now);
+        return waits.Count == 0 ? null : waits.Max();
     }
 
     /// <summary>Consumes and returns the matching live code, counting every failed attempt against it.</summary>

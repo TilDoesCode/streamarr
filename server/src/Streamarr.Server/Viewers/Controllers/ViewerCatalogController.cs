@@ -184,7 +184,9 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
                 maxHeight is { } h ? Math.Clamp(h, 144, 4320) : null,
                 maxBitrateKbps is { } b ? Math.Clamp(b, 300, 200_000) : null));
         }
-        var vlc = vlcAvailable ? VlcCaps(vlcVideoCodecs, vlcMaxHeight, vlcHdrFormats, vlcSupports10Bit, vlcHdrToneMapping) : null;
+        // an explicitly empty vlcHdrFormats binds as null, but means "none"
+        var vlcHdr = vlcHdrFormats ?? (Request.Query.ContainsKey(nameof(vlcHdrFormats)) ? "" : null);
+        var vlc = vlcAvailable ? VlcCaps(vlcVideoCodecs, vlcMaxHeight, vlcHdr, vlcSupports10Bit, vlcHdrToneMapping) : null;
         var caps = device is null ? null : DeviceCapsFor(device, vlc);
         return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct, caps));
     }
@@ -197,7 +199,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
             return defaults;
         if (maxHeight is < 144 or > 4320)
             throw ViewerProblem.BadRequest("invalid_device_profile", "'vlcMaxHeight' must be between 144 and 4320.");
-        var hdr = List(hdrFormats)?.Select(h => h == "dv" ? "dolbyvision" : h).ToList();
+        var hdr = hdrFormats is null ? null : HdrList(hdrFormats);
         var entries = List(videoCodecs)?.Select(entry =>
         {
             var parts = entry.Split(':', 2);
@@ -217,6 +219,18 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
             return new VideoCaps(e.Codec, null, e.Height ?? maxHeight, depth, formats);
         }).ToList();
         return defaults with { Video = video, ToneMapsHdr = hdrToneMapping ?? defaults.ToneMapsHdr };
+    }
+
+    /// <summary>The HDR formats VLC renders: <c>none</c> or an empty value means none at all.</summary>
+    private static List<string> HdrList(string hdrFormats)
+    {
+        var list = List(hdrFormats) ?? [];
+        if (list.Contains("none"))
+        {
+            return list.Count == 1 ? []
+                : throw ViewerProblem.BadRequest("invalid_device_profile", "'vlcHdrFormats=none' cannot be combined with HDR formats.");
+        }
+        return list.Select(h => h == "dv" ? "dolbyvision" : h).ToList();
     }
 
     private static DeviceCaps DeviceCapsFor(DeviceHints hints, EngineCaps? vlc)

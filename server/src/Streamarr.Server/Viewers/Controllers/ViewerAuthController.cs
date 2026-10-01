@@ -67,12 +67,13 @@ public sealed class ViewerAuthController(
         return await CompleteAsync(result, request.DeviceName, request.ClientName, request.UseCookies, ct);
     }
 
-    /// <summary>Email a one-time sign-in code. Always 202 so the response does not reveal whether the account exists.</summary>
+    /// <summary>Email a one-time sign-in code: 202 whether or not the account exists, 429 email_code_cooldown for a login that asked moments ago.</summary>
     [AllowAnonymous]
     [EnableRateLimiting(ViewerAuth.RateLimitPolicy)]
     [HttpPost("email-code")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> RequestEmailCode([FromBody] ViewerCodeRequest request, CancellationToken ct)
     {
         await logins.RequestLoginCodeAsync(request.Login, ct);

@@ -79,6 +79,50 @@ public class TmdbDiscoverTests
     }
 
     [Fact]
+    public async Task Details_PickPostersAndBackdropsInTheViewersLanguage_TextlessBeforeEnglish()
+    {
+        var handler = new StubHttpMessageHandler(req => req.RequestUri!.AbsolutePath switch
+        {
+            "/3/movie/6" => Json("""
+                {"id":6,"title":"Six","overview":"o","tagline":"t","poster_path":"/en.jpg","backdrop_path":"/bg-en.jpg","images":{
+                  "posters":[
+                    {"file_path":"/en.jpg","iso_639_1":"en","vote_average":5.0},
+                    {"file_path":"/textless.jpg","iso_639_1":null,"vote_average":6.0},
+                    {"file_path":"/de-worse.jpg","iso_639_1":"de","vote_average":2.0},
+                    {"file_path":"/de.jpg","iso_639_1":"de","vote_average":4.0}],
+                  "backdrops":[
+                    {"file_path":"/bg-en.jpg","iso_639_1":"en","vote_average":7.0},
+                    {"file_path":"/bg-de.jpg","iso_639_1":"de","vote_average":8.0},
+                    {"file_path":"/bg-textless.jpg","iso_639_1":null,"vote_average":3.0}]}}
+                """),
+            "/3/movie/8" => Json("""
+                {"id":8,"title":"Eight","overview":"o","tagline":"t","poster_path":"/en8.jpg","backdrop_path":"/bg8.jpg","images":{
+                  "posters":[
+                    {"file_path":"/en8.jpg","iso_639_1":"en","vote_average":9.0},
+                    {"file_path":"/textless8.jpg","iso_639_1":null,"vote_average":1.0}],
+                  "backdrops":[]}}
+                """),
+            _ => StubHttpMessageHandler.Status(HttpStatusCode.NotFound),
+        });
+        var client = Client(handler);
+
+        var english = await client.GetMovieAsync(6, default);
+        var englishOnly = await client.GetMovieAsync(8, default);
+        TmdbMatch? german, textless;
+        using (TmdbLanguage.Use("de"))
+        {
+            german = await client.GetMovieAsync(6, default);
+            textless = await client.GetMovieAsync(8, default);
+        }
+
+        Assert.Equal(("https://image.tmdb.org/t/p/w780/de.jpg", "https://image.tmdb.org/t/p/w1280/bg-textless.jpg"), (german!.PosterUrl, german.BackdropUrl));
+        Assert.Equal(("https://image.tmdb.org/t/p/w780/en.jpg", "https://image.tmdb.org/t/p/w1280/bg-textless.jpg"), (english!.PosterUrl, english.BackdropUrl));
+        Assert.Equal("https://image.tmdb.org/t/p/w780/textless8.jpg", textless!.PosterUrl);
+        Assert.Equal("https://image.tmdb.org/t/p/w780/en8.jpg", englishOnly!.PosterUrl);
+        Assert.Equal("https://image.tmdb.org/t/p/w1280/bg8.jpg", textless.BackdropUrl);
+    }
+
+    [Fact]
     public async Task Details_WithoutLogos_HaveNoLogoUrl()
     {
         var handler = new StubHttpMessageHandler(_ => Json("""{"id":7,"name":"Seven","images":{"logos":[]}}"""));

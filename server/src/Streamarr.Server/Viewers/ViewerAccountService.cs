@@ -34,6 +34,18 @@ public sealed record ViewerUpdate
     public bool ClearMaxConcurrentStreams { get; init; }
 }
 
+/// <summary>The fixed avatar choices; the order matches the clients' avatar colour slots 1-8.</summary>
+public static class ViewerAvatars
+{
+    public static readonly IReadOnlyList<string> Keys = ["cyan", "blue", "teal", "green", "amber", "coral", "rose", "slate"];
+
+    public static string? Known(string? key) => key is not null && Keys.Contains(key) ? key : null;
+
+    public static string? Validate(string? key)
+        => key is null ? null : Known(key.Trim().ToLowerInvariant())
+           ?? throw ViewerProblem.BadRequest("invalid_avatar", $"'avatarKey' must be one of {string.Join(", ", Keys)} or null for the default.");
+}
+
 /// <summary>Viewer account lifecycle for admins and the viewer's own profile operations.</summary>
 public sealed class ViewerAccountService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
@@ -41,6 +53,7 @@ public sealed class ViewerAccountService(
     ViewerSessionService sessions,
     ViewerCodeService codes,
     ViewerMailer mailer,
+    ViewerMailLanguage mailLanguage,
     TimeProvider time)
 {
     public static readonly int[] AgeLimits = [0, 6, 12, 16, 18];
@@ -187,11 +200,17 @@ public sealed class ViewerAccountService(
         await transaction.CommitAsync(ct);
     }
 
-    public async Task<ViewerEntity> UpdateDisplayNameAsync(string id, string? displayName, CancellationToken ct)
+    /// <summary>The viewer's own profile edit; omitted fields stay unchanged.</summary>
+    public async Task<ViewerEntity> UpdateProfileAsync(string id, ViewerProfileUpdateRequest request, CancellationToken ct)
     {
+        var displayName = request.DisplayNameSet ? CleanDisplayName(request.DisplayName) : null;
+        var avatarKey = request.AvatarKeySet ? ViewerAvatars.Validate(request.AvatarKey) : null;
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var viewer = await FindTrackedAsync(db, id, ct);
-        viewer.DisplayName = CleanDisplayName(displayName) ?? viewer.Username;
+        if (request.DisplayNameSet)
+            viewer.DisplayName = displayName ?? viewer.Username;
+        if (request.AvatarKeySet)
+            viewer.AvatarKey = avatarKey;
         viewer.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
         return viewer;
@@ -236,15 +255,14 @@ public sealed class ViewerAccountService(
         if (!ViewerMailer.CanDeliver(current))
             throw ViewerProblem.Conflict("email_unavailable", "This server cannot send email, so an address cannot be verified.");
         await EnsureUniqueAsync(db, null, ViewerEmail.Normalize(email), id, ct);
+        var issue = await codes.IssueAsync(db, id, ViewerCodePurpose.EmailVerification, email, ct);
+        if (!issue.Issued)
+            throw ViewerProblem.EmailCodeCooldown(issue.RetryAfter);
         viewer.PendingEmail = email;
         viewer.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
-        var code = await codes.IssueAsync(db, id, ViewerCodePurpose.EmailVerification, email, ct);
-        if (code is not null)
-        {
-            mailer.Enqueue(ViewerMailTemplates.VerifyEmail(current.ServerName, email, viewer.DisplayName, code,
-                (int)ViewerCodePurpose.Lifetime(ViewerCodePurpose.EmailVerification).TotalMinutes));
-        }
+        mailer.Enqueue(ViewerMailTemplates.VerifyEmail(mailLanguage.Current, current.ServerName, email, viewer.DisplayName, issue.Code!,
+            (int)ViewerCodePurpose.Lifetime(ViewerCodePurpose.EmailVerification).TotalMinutes));
         return true;
     }
 

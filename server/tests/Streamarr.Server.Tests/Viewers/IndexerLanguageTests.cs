@@ -27,8 +27,8 @@ public sealed class IndexerLanguageTests(ViewerCatalogFactory factory) : IClassF
         var queries = factory.Newznab.Queries.ToList();
         Assert.NotEmpty(queries);
         Assert.All(queries, q => Assert.Null(q.Language));
-        Assert.All(queries, q => Assert.DoesNotContain("Der ", q.Term ?? "", StringComparison.Ordinal));
-        Assert.All(queries, q => Assert.DoesNotContain("Die ", q.Term ?? "", StringComparison.Ordinal));
+        // id-based searches: no free-text term, so no translated title can reach an indexer
+        Assert.All(queries, q => Assert.Null(q.Term));
     }
 
     [Fact]

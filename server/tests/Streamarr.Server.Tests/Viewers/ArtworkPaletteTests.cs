@@ -235,6 +235,22 @@ public sealed class ArtworkPaletteServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task OverflowedImages_AreNeverOvertakenByLaterOnes()
+    {
+        _images.Fail = true;
+        var urls = Enumerable.Range(0, 3000).Select(i => $"https://image.tmdb.org/t/p/w1280/{i}.jpg").ToList();
+        await RunAsync(async service =>
+        {
+            foreach (var url in urls)
+                service.For(url, null);
+            await service.WhenIdleAsync(Timeout());
+            return 0;
+        });
+
+        Assert.Equal(urls.Select(u => u.Replace("w1280", "w300", StringComparison.Ordinal).Replace("https://image.tmdb.org", "", StringComparison.Ordinal)), _images.Requests);
+    }
+
+    [Fact]
     public async Task AMissingBackdrop_FallsBackToThePoster()
     {
         _images.Images["/t/p/w300/poster.jpg"] = PaletteExtractorTests.Png(new SKColor(200, 60, 60), new SKColor(40, 10, 10));

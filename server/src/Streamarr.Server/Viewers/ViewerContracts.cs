@@ -99,6 +99,8 @@ public sealed record ViewerProfileResponse
     public required string Id { get; init; }
     public required string Username { get; init; }
     public required string DisplayName { get; init; }
+    /// <summary>The chosen avatar key (cyan, blue, teal, green, amber, coral, rose, slate = colour slots 1-8); null = the client derives a default.</summary>
+    public string? AvatarKey { get; init; }
     public string? Email { get; init; }
     public bool EmailVerified { get; init; }
     public string? PendingEmail { get; init; }
@@ -110,9 +112,37 @@ public sealed record ViewerProfileResponse
     public DateTimeOffset? LastLoginAt { get; init; }
 }
 
+/// <summary>Partial update: an omitted field stays unchanged.</summary>
 public sealed record ViewerProfileUpdateRequest
 {
-    public string? DisplayName { get; init; }
+    private readonly string? _displayName;
+    private readonly string? _avatarKey;
+
+    /// <summary>1-64 printable characters (trimmed, not unique); null or empty resets it to the username.</summary>
+    public string? DisplayName
+    {
+        get => _displayName;
+        init { _displayName = value; DisplayNameSet = true; }
+    }
+
+    /// <summary>One of cyan, blue, teal, green, amber, coral, rose, slate (case-insensitive); null resets to the derived default.</summary>
+    public string? AvatarKey
+    {
+        get => _avatarKey;
+        init { _avatarKey = value; AvatarKeySet = true; }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool DisplayNameSet { get; private init; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool AvatarKeySet { get; private init; }
+}
+
+public sealed record ViewerSignOutOthersResponse
+{
+    /// <summary>How many other active sessions were ended (0 when there were none).</summary>
+    public required int SignedOut { get; init; }
 }
 
 public sealed record ViewerChangePasswordRequest

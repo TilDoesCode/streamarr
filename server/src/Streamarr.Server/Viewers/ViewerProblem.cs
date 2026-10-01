@@ -9,6 +9,9 @@ namespace Streamarr.Server.Viewers;
 /// <summary>A domain failure of the viewer module that maps 1:1 onto the shared error envelope.</summary>
 public sealed class ViewerProblem(int status, string code, string message, IReadOnlyDictionary<string, string>? parameters = null) : Exception(message)
 {
+    /// <summary>Seconds a 429/503 caller should wait (Retry-After and <c>retryAfterSeconds</c>); null = 1.</summary>
+    public int? RetryAfterSeconds { get; private init; }
+
     public int Status { get; } = status;
     public string Code { get; } = code;
     public IReadOnlyDictionary<string, string>? Parameters { get; } = parameters;
@@ -18,6 +21,16 @@ public sealed class ViewerProblem(int status, string code, string message, IRead
     public static ViewerProblem Conflict(string code, string message) => new(StatusCodes.Status409Conflict, code, message);
     public static ViewerProblem Unauthorized(string code, string message) => new(StatusCodes.Status401Unauthorized, code, message);
     public static ViewerProblem Forbidden(string code, string message) => new(StatusCodes.Status403Forbidden, code, message);
+
+    /// <summary><c>429 email_code_cooldown</c>: a code was sent moments ago (or the hourly cap is reached); no new mail was sent.</summary>
+    public static ViewerProblem EmailCodeCooldown(TimeSpan wait)
+    {
+        var seconds = Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds));
+        return new(StatusCodes.Status429TooManyRequests, "email_code_cooldown",
+            $"A code was sent moments ago; request a new one in {seconds} seconds.",
+            new Dictionary<string, string> { ["retryAfterSeconds"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture) })
+        { RetryAfterSeconds = seconds };
+    }
 
     /// <summary><c>503 catalog_unavailable</c>: TMDB cannot be reached right now and nothing is cached; the client retries.</summary>
     public static ViewerProblem CatalogUnavailable()
@@ -33,11 +46,17 @@ public sealed class ViewerProblemFilterAttribute : ExceptionFilterAttribute
             return;
         context.Result = new ObjectResult(new ErrorResponse
         {
-            Error = new ErrorDetail { Code = problem.Code, Message = problem.Message, Params = problem.Parameters },
+            Error = new ErrorDetail
+            {
+                Code = problem.Code,
+                Message = problem.Message,
+                Params = problem.Parameters,
+                RetryAfterSeconds = problem.RetryAfterSeconds,
+            },
         })
         { StatusCode = problem.Status };
         if (problem.Status == StatusCodes.Status429TooManyRequests || problem.Status == StatusCodes.Status503ServiceUnavailable)
-            context.HttpContext.Response.Headers.RetryAfter = "1";
+            context.HttpContext.Response.Headers.RetryAfter = (problem.RetryAfterSeconds ?? 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
         context.ExceptionHandled = true;
     }
 }

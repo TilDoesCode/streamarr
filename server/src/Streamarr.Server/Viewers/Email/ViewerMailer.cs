@@ -3,10 +3,13 @@ using System.Threading.Channels;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
+using Microsoft.Extensions.Options;
+using Streamarr.Core.Tmdb;
+using Streamarr.Server.Options;
 
 namespace Streamarr.Server.Viewers.Email;
 
-public sealed record ViewerMailMessage(string To, string Subject, string Text, string Html, string Kind);
+public sealed record ViewerMailMessage(string To, string Subject, string Text, string Html, string Kind, string Language = "en");
 
 public sealed record CapturedMail(string Id, DateTimeOffset CreatedAt, ViewerMailMessage Message);
 
@@ -144,39 +147,68 @@ public sealed class ViewerMailer(
     }
 }
 
-/// <summary>Plain-text and minimal HTML bodies for every viewer email.</summary>
+/// <summary>The language of viewer emails: the request's viewer language (as for metadata), else the server language.</summary>
+public sealed class ViewerMailLanguage(IOptions<StreamarrOptions> options)
+{
+    private readonly string _default = TmdbLanguage.Primary(options.Value.Tmdb.Language) ?? "en";
+
+    /// <summary>"de" or "en" (every language without a template falls back to English).</summary>
+    public string Current => ViewerMailTemplates.Supported(TmdbLanguage.Current ?? _default);
+}
+
+/// <summary>Plain-text and minimal HTML bodies for every viewer email, in German or English.</summary>
 public static class ViewerMailTemplates
 {
-    public static ViewerMailMessage LoginCode(string server, string to, string name, string code, int minutes)
-        => Build(to, $"{server} sign-in code: {code}", "login_code", name,
-            $"Use this code to sign in to {server}:", code,
-            $"The code expires in {minutes} minutes. If you did not try to sign in, you can ignore this email.");
+    public static string Supported(string? language) => TmdbLanguage.Primary(language) == "de" ? "de" : "en";
 
-    public static ViewerMailMessage PasswordReset(string server, string to, string name, string code, int minutes)
-        => Build(to, $"Reset your {server} password", "password_reset", name,
-            $"Use this code to choose a new {server} password:", code,
-            $"The code expires in {minutes} minutes. If you did not ask for a reset, your password stays unchanged.");
+    public static ViewerMailMessage LoginCode(string language, string server, string to, string name, string code, int minutes)
+        => Supported(language) == "de"
+            ? Build(to, $"{server}-Anmeldecode: {code}", "login_code", "de", name,
+                $"Mit diesem Code meldest du dich bei {server} an:", code,
+                $"Der Code ist {minutes} Minuten gültig. Wenn du dich nicht anmelden wolltest, kannst du diese E-Mail ignorieren.")
+            : Build(to, $"{server} sign-in code: {code}", "login_code", "en", name,
+                $"Use this code to sign in to {server}:", code,
+                $"The code expires in {minutes} minutes. If you did not try to sign in, you can ignore this email.");
 
-    public static ViewerMailMessage VerifyEmail(string server, string to, string name, string code, int minutes)
-        => Build(to, $"Confirm your email for {server}", "email_verification", name,
-            $"Use this code to confirm this address for your {server} viewer account:", code,
-            $"The code expires in {minutes} minutes.");
+    public static ViewerMailMessage PasswordReset(string language, string server, string to, string name, string code, int minutes)
+        => Supported(language) == "de"
+            ? Build(to, $"Dein {server}-Passwort zurücksetzen", "password_reset", "de", name,
+                $"Mit diesem Code wählst du ein neues Passwort für {server}:", code,
+                $"Der Code ist {minutes} Minuten gültig. Wenn du kein neues Passwort angefordert hast, bleibt dein Passwort unverändert.")
+            : Build(to, $"Reset your {server} password", "password_reset", "en", name,
+                $"Use this code to choose a new {server} password:", code,
+                $"The code expires in {minutes} minutes. If you did not ask for a reset, your password stays unchanged.");
 
-    public static ViewerMailMessage Test(string server, string to)
-        => Build(to, $"{server} test email", "test", "there",
-            $"Email delivery for {server} viewer accounts works.", "OK", "No action is needed.");
+    public static ViewerMailMessage VerifyEmail(string language, string server, string to, string name, string code, int minutes)
+        => Supported(language) == "de"
+            ? Build(to, $"Bestätige deine E-Mail-Adresse für {server}", "email_verification", "de", name,
+                $"Mit diesem Code bestätigst du diese Adresse für dein {server}-Konto:", code,
+                $"Der Code ist {minutes} Minuten gültig.")
+            : Build(to, $"Confirm your email for {server}", "email_verification", "en", name,
+                $"Use this code to confirm this address for your {server} viewer account:", code,
+                $"The code expires in {minutes} minutes.");
 
-    private static ViewerMailMessage Build(string to, string subject, string kind, string name, string lead, string code, string footer)
+    public static ViewerMailMessage Test(string language, string server, string to)
+        => Supported(language) == "de"
+            ? Build(to, $"{server}-Test-E-Mail", "test", "de", null,
+                $"Der E-Mail-Versand für {server}-Zuschauerkonten funktioniert.", "OK", "Du musst nichts weiter tun.")
+            : Build(to, $"{server} test email", "test", "en", null,
+                $"Email delivery for {server} viewer accounts works.", "OK", "No action is needed.");
+
+    private static ViewerMailMessage Build(string to, string subject, string kind, string language, string? name, string lead, string code, string footer)
     {
-        var text = $"Hi {name},\n\n{lead}\n\n    {code}\n\n{footer}\n";
+        var greeting = language == "de"
+            ? name is null ? "Hallo," : $"Hallo {name},"
+            : name is null ? "Hi there," : $"Hi {name},";
+        var text = $"{greeting}\n\n{lead}\n\n    {code}\n\n{footer}\n";
         var html = $"""
-            <div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
-            <p>Hi {WebUtility.HtmlEncode(name)},</p>
+            <div lang="{language}" style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
+            <p>{WebUtility.HtmlEncode(greeting)}</p>
             <p>{WebUtility.HtmlEncode(lead)}</p>
             <p style="font-size:26px;font-weight:700;letter-spacing:.12em;font-family:ui-monospace,monospace">{WebUtility.HtmlEncode(code)}</p>
             <p style="color:#555">{WebUtility.HtmlEncode(footer)}</p>
             </div>
             """;
-        return new ViewerMailMessage(to, subject, text, html, kind);
+        return new ViewerMailMessage(to, subject, text, html, kind, language);
     }
 }
