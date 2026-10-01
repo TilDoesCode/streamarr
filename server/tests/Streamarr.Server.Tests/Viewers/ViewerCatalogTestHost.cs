@@ -64,7 +64,8 @@ public sealed class CatalogTmdbFake : ITmdbClient
     public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _detailLookups);
-        return Task.FromResult(Movies.FirstOrDefault(m => m.TmdbId == tmdbId));
+        var movie = Movies.FirstOrDefault(m => m.TmdbId == tmdbId);
+        return Task.FromResult(TmdbLanguage.Current == "de" && movie is not null ? movie with { Title = $"Der {movie.Title}" } : movie);
     }
 
     public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken)
@@ -77,7 +78,7 @@ public sealed class CatalogTmdbFake : ITmdbClient
         => Task.FromResult(Shows.FirstOrDefault(s => s.TmdbId == tmdbId) is { } show
             ? new TmdbTvSeriesCatalog
             {
-                Series = show,
+                Series = TmdbLanguage.Current == "de" ? show with { Title = $"Die {show.Title}" } : show,
                 Seasons =
                 [
                     new TmdbSeasonSummary { SeasonNumber = 0, Title = "Specials", EpisodeCount = 1 },
@@ -169,6 +170,9 @@ public sealed class CatalogNewznabFake : INewznabClient
 
     public int Searches => Volatile.Read(ref _searches);
 
+    /// <summary>Free-text term and TMDB language of every indexer search.</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<(string? Term, string? Language)> Queries { get; } = new();
+
     public static readonly string[] MovieReleases =
     [
         "Catalog.Movie.2021.2160p.UHD.BluRay.TrueHD.Atmos.7.1.DV.HDR10.x265-GRP",
@@ -183,6 +187,7 @@ public sealed class CatalogNewznabFake : INewznabClient
     public Task<NewznabSearchResponse> SearchAsync(IndexerConfig indexer, NewznabQuery query, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _searches);
+        Queries.Enqueue((query.Term, TmdbLanguage.Current));
         NewznabItem[] items = query switch
         {
             { TmdbId: CatalogTmdbFake.BrokenMovie } or { TmdbId: CatalogTmdbFake.BrokenShow } => throw new HttpRequestException("indexer down"),

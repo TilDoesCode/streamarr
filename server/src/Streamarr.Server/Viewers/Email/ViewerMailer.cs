@@ -47,7 +47,7 @@ public sealed class ViewerMailer(
     ILogger<ViewerMailer> logger) : BackgroundService
 {
     private readonly Channel<ViewerMailMessage> _queue = Channel.CreateBounded<ViewerMailMessage>(
-        new BoundedChannelOptions(200) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true });
+        new BoundedChannelOptions(200) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true });
 
     public static bool CanDeliver(ViewerSettings current)
         => current.Email.Mode switch

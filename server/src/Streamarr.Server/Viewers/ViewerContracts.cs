@@ -216,6 +216,9 @@ public sealed record WatchStateResponse
     /// <summary>Deep shade of the title (series for episodes) (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); continue watching only, null until computed.</summary>
     public string? Tint2 { get; init; }
 
+    /// <summary>Bright colour of the backdrop behind the TV glass (<c>#RRGGBB</c>, 95th luminance percentile); null when unknown.</summary>
+    public string? Highlight { get; init; }
+
     /// <summary>Best known version by quality (from the last version lookup); continue watching only; null when none is known yet.</summary>
     public CatalogSpecDto? Spec { get; init; }
 }
@@ -254,6 +257,9 @@ public sealed record NextUpItemResponse
 
     /// <summary>Deep shade of the series (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
     public string? Tint2 { get; init; }
+
+    /// <summary>Bright colour of the backdrop behind the TV glass (<c>#RRGGBB</c>, 95th luminance percentile); null when unknown.</summary>
+    public string? Highlight { get; init; }
 
     /// <summary>Best known version by quality (from the last version lookup); null when none is known yet.</summary>
     public CatalogSpecDto? Spec { get; init; }

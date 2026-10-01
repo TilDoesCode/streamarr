@@ -27,7 +27,7 @@ public sealed partial class ArtworkPaletteService(
     private readonly ConcurrentDictionary<string, byte> _queued = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<string> _overflow = new();
     private readonly FailureLog _failures = new(logger);
-    private readonly Channel<string> _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(2048) { FullMode = BoundedChannelFullMode.DropWrite });
+    private readonly Channel<string> _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(2048) { FullMode = BoundedChannelFullMode.Wait });
     private readonly string? _imageHost = Uri.TryCreate(tmdb.ImageBaseUrl, UriKind.Absolute, out var baseUri) ? baseUri.Host : null;
 
     /// <summary>The title palette: backdrop first, poster when the backdrop has none; null while it is being computed.</summary>
@@ -53,33 +53,36 @@ public sealed partial class ArtworkPaletteService(
 
     private (ArtworkPalette? Palette, bool Pending) Lookup(string url)
     {
-        if (_palettes.TryGetValue(url, out var entry) && entry.Version == PaletteExtractor.Version)
+        _palettes.TryGetValue(url, out var entry);
+        var stale = entry is { Tint: not null, Tint2: not null } ? new ArtworkPalette(entry.Tint, entry.Tint2, null) : null;
+        if (entry is not null && entry.Version == PaletteExtractor.Version)
         {
-            if (entry.Tint is not null && entry.Tint2 is not null)
-                return (new ArtworkPalette(entry.Tint, entry.Tint2), false);
+            if (stale is not null)
+                return (stale with { Highlight = entry.Highlight }, false);
             if (time.GetUtcNow() - entry.ComputedAt < FailedRetry)
                 return (null, false);
         }
         if (!Fetchable(url))
-            return (null, false);
+            return (stale, false);
         if (_retryAfter.TryGetValue(url, out var retry) && retry > time.GetUtcNow())
-            return (null, false);
+            return (stale, false);
         if (_queued.TryAdd(url, 0) && !_queue.Writer.TryWrite(url))
         {
             _overflow.Enqueue(url);
             DrainOverflow();
         }
-        return (null, true);
+        return (stale, true);
     }
 
-    /// <summary>Moves images that found the queue full into it as the worker frees room; nothing is dropped.</summary>
+    /// <summary>Moves images that found the queue full into it as the worker frees room; nothing is dropped or duplicated.</summary>
     private void DrainOverflow()
     {
-        while (_overflow.TryPeek(out var next) && _queue.Writer.TryWrite(next))
-            _overflow.TryDequeue(out _);
+        lock (_overflow)
+        {
+            while (_overflow.TryPeek(out var next) && _queue.Writer.TryWrite(next))
+                _overflow.TryDequeue(out _);
+        }
     }
-
-    internal int Pending => _queued.Count;
 
     private bool Fetchable(string url)
         => _imageHost is not null
@@ -162,7 +165,7 @@ public sealed partial class ArtworkPaletteService(
 
     private async Task StoreAsync(string url, ArtworkPalette? palette, CancellationToken ct)
     {
-        var entity = new ArtworkPaletteEntity { ImageUrl = url, Tint = palette?.Tint, Tint2 = palette?.Tint2, ComputedAt = time.GetUtcNow(), Version = PaletteExtractor.Version };
+        var entity = new ArtworkPaletteEntity { ImageUrl = url, Tint = palette?.Tint, Tint2 = palette?.Tint2, Highlight = palette?.Highlight, ComputedAt = time.GetUtcNow(), Version = PaletteExtractor.Version };
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
         {
             var existing = await db.ArtworkPalettes.FindAsync([url], ct);
@@ -174,7 +177,7 @@ public sealed partial class ArtworkPaletteService(
         }
         _palettes[url] = entity;
         _retryAfter.TryRemove(url, out _);
-        logger.LogDebug("Palette for {Url}: {Tint} / {Tint2}", url, entity.Tint, entity.Tint2);
+        logger.LogDebug("Palette for {Url}: {Tint} / {Tint2} / {Highlight}", url, entity.Tint, entity.Tint2, entity.Highlight);
     }
 
     [GeneratedRegex(@"/t/p/[a-z0-9_]+/", RegexOptions.CultureInvariant)]

@@ -65,6 +65,13 @@ Streamarr accepts either a short v3 API key or an API Read Access Token. Add it 
 Without TMDB, the low-level release diagnostics can still inspect raw indexer results,
 but normal title discovery and Jellyfin injection are intentionally limited.
 
+Metadata language: `Streamarr:Tmdb:Language` (unset = TMDB's default, English) is the server's language — used for
+the management UI, Jellyfin and every indexer search. Viewer apps may ask for another language per
+request with `Accept-Language`; `Streamarr:Tmdb:ViewerLanguages` (default `de,en,es,fr,it,nl,pl,pt`)
+lists the primary tags that are honoured, others get the server language. Each language has its own
+TMDB cache entries; empty overviews, taglines and episode names fall back to English. Indexers are
+never searched with a viewer's translated title.
+
 ## Quality profiles and release selection
 
 The Standard profile gives sensible defaults. A profile can prefer resolutions,

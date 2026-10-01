@@ -9393,6 +9393,8 @@ export interface components {
             tint?: string | null;
             /** @description Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
             tint2?: string | null;
+            /** @description Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown. */
+            highlight?: string | null;
             spec?: components["schemas"]["CatalogSpecDto"] | null;
         };
         CatalogMovieResponse: {
@@ -9421,6 +9423,8 @@ export interface components {
             tint?: string | null;
             /** @description Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
             tint2?: string | null;
+            /** @description Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown. */
+            highlight?: string | null;
             people?: components["schemas"]["TmdbPerson"][] | null;
             watch: components["schemas"]["WatchStateResponse"];
             access: components["schemas"]["ContentAccessResponse"];
@@ -9473,6 +9477,8 @@ export interface components {
             tint?: string | null;
             /** @description Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
             tint2?: string | null;
+            /** @description Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown. */
+            highlight?: string | null;
             episodes: components["schemas"]["CatalogEpisodeDto"][] | null;
             availability?: components["schemas"]["CatalogAvailabilityDto"] | null;
         };
@@ -9523,6 +9529,8 @@ export interface components {
             tint?: string | null;
             /** @description Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
             tint2?: string | null;
+            /** @description Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown. */
+            highlight?: string | null;
             people?: components["schemas"]["TmdbPerson"][] | null;
             /**
              * Format: int32
@@ -10108,6 +10116,8 @@ export interface components {
             tint?: string | null;
             /** @description Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
             tint2?: string | null;
+            /** @description Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown. */
+            highlight?: string | null;
             spec?: components["schemas"]["CatalogSpecDto"] | null;
         };
         NextUpResponse: {
@@ -12257,6 +12267,8 @@ export interface components {
             tint?: string | null;
             /** @description Deep shade of the title (series for episodes) (`#RRGGBB`, white text reaches 4.5:1 on it); continue watching only, null until computed. */
             tint2?: string | null;
+            /** @description Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown. */
+            highlight?: string | null;
             spec?: components["schemas"]["CatalogSpecDto"] | null;
         };
         WatchWorkIdsRequest: {

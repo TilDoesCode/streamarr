@@ -64,6 +64,47 @@ public sealed class PaletteExtractorTests
         Assert.Null(PaletteExtractor.FromPixels([]));
     }
 
+    [Fact]
+    public void WhiteSky_GivesANearWhiteHighlight()
+    {
+        var pixels = Fill((0.96, 0.97, 1.0), 300).Concat(Fill((0.2, 0.45, 0.15), 700)).ToList();
+
+        var highlight = PaletteExtractor.Parse(PaletteExtractor.FromPixels(pixels)!.Highlight!);
+
+        Assert.True(PaletteExtractor.Luminance(highlight) > 0.9, $"{highlight}");
+    }
+
+    [Fact]
+    public void DarkScene_KeepsADarkHighlight_DespiteAFewWhitePixels()
+    {
+        var pixels = Fill((0.08, 0.06, 0.1), 940).Concat(Fill((0.2, 0.15, 0.12), 50)).Concat(Fill((1, 1, 1), 10)).ToList();
+
+        var palette = PaletteExtractor.FromPixels(pixels)!;
+
+        Assert.Equal("#33261F", palette.Highlight);
+        Assert.True(PaletteExtractor.Luminance(PaletteExtractor.Parse(palette.Highlight!)) < 0.05);
+    }
+
+    [Fact]
+    public void Highlight_IsTheNinetyFifthLuminancePercentile()
+    {
+        var pixels = Enumerable.Range(0, 100).Select(i => (i / 99.0, i / 99.0, i / 99.0)).Reverse().ToList();
+
+        var (r, _, _) = PaletteExtractor.Highlight(pixels);
+
+        Assert.Equal(94 / 99.0, r, 6);
+    }
+
+    [Fact]
+    public void EncodedImages_MeasureTheHighlight()
+    {
+        var bright = PaletteExtractor.FromImage(Png(new SKColor(245, 248, 255), new SKColor(30, 80, 30)))!;
+        var dark = PaletteExtractor.FromImage(Png(new SKColor(40, 30, 50), new SKColor(10, 10, 14)))!;
+
+        Assert.Equal("#F5F8FF", bright.Highlight);
+        Assert.Equal("#281E32", dark.Highlight);
+    }
+
     internal static byte[] Png(SKColor top, SKColor bottom)
     {
         using var bitmap = new SKBitmap(160, 90);
@@ -81,6 +122,7 @@ public sealed class PaletteExtractorTests
     {
         Assert.Matches("^#[0-9A-F]{6}$", palette.Tint);
         Assert.Matches("^#[0-9A-F]{6}$", palette.Tint2);
+        Assert.Matches("^#[0-9A-F]{6}$", palette.Highlight!);
         Assert.True(PaletteExtractor.Contrast(PaletteExtractor.Parse(palette.Tint), Background) >= 3.0, $"tint {palette.Tint}");
         Assert.True(PaletteExtractor.Contrast(White, PaletteExtractor.Parse(palette.Tint2)) >= 4.5, $"tint2 {palette.Tint2}");
     }
@@ -151,7 +193,45 @@ public sealed class ArtworkPaletteServiceTests : IAsyncLifetime
         });
 
         Assert.NotEqual("#123456", palette!.Tint);
+        Assert.NotNull(palette.Highlight);
         Assert.Single(_images.Requests);
+    }
+
+    [Fact]
+    public async Task RowsOfAnOlderExtractorVersion_KeepServingTheirColours_UntilRecomputed()
+    {
+        await using (var db = await _db.CreateDbContextAsync())
+        {
+            db.ArtworkPalettes.Add(new() { ImageUrl = Backdrop, Tint = "#123456", Tint2 = "#010203", ComputedAt = DateTimeOffset.UtcNow, Version = PaletteExtractor.Version - 1 });
+            await db.SaveChangesAsync();
+        }
+        _images.Fail = true;
+
+        var palette = await RunAsync(async service =>
+        {
+            for (var i = 0; i < 200 && service.For(Backdrop, null) is null; i++)
+                await Task.Delay(20);
+            await service.WhenIdleAsync(Timeout());
+            return service.For(Backdrop, null);
+        });
+
+        Assert.Equal(new ArtworkPalette("#123456", "#010203", null), palette);
+    }
+
+    [Fact]
+    public async Task AFullQueue_OverflowsWithoutLosingOrDuplicatingImages()
+    {
+        _images.Fail = true;
+        var urls = Enumerable.Range(0, 3000).Select(i => $"https://image.tmdb.org/t/p/w1280/{i}.jpg").ToList();
+        await RunAsync(async service =>
+        {
+            Parallel.ForEach(urls, new ParallelOptions { MaxDegreeOfParallelism = 8 }, url => service.For(url, null));
+            await service.WhenIdleAsync(Timeout());
+            return 0;
+        });
+
+        Assert.Equal(urls.Count, _images.Requests.Count);
+        Assert.Equal(urls.Count, _images.Requests.Distinct().Count());
     }
 
     [Fact]

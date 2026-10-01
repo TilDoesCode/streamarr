@@ -896,7 +896,7 @@ password must be changed, other viewer endpoints answer `403 password_change_req
 | Endpoint | Purpose |
 |---|---|
 | `POST …/progress` | `{ event: start\|progress\|stop, workId, positionTicks, durationTicks, playbackId, releaseId?, streamToken?, title? }` → the updated `WatchStateResponse`. A `playbackId` from `/viewer/playback` (same device, same work) fills `releaseId` and `streamToken`, counts as that playback's heartbeat and `stop` ends it (§ 13); any other id is just the client's play id. |
-| `GET …/resume` · `DELETE …/resume/{workId}` | Continue watching, and hiding an entry from it. |
+| `GET …/resume` · `DELETE …/resume/{workId}` | Continue watching, and hiding an entry from it. Items carry `title` in the viewer's language (the movie title, the series title for episodes; the last reported `title` when TMDB has none, else `null`), plus `tint`, `tint2`, `highlight` and `spec`. |
 | `GET …/next-up?seriesWorkId=` | `{ items, incomplete }` — the next aired, unplayed episode per recently watched series. |
 | `GET …/history?limit&offset` | `{ items, total }`, most recent first. |
 | `POST …/state` | `{ workIds }` → one state per id (unknown ids come back unplayed). |
@@ -991,6 +991,17 @@ the background the first time a title is listed (only for images on the TMDB ima
 per image URL in the database, and `null` until then — a later request carries them. They appear
 on catalog items, movie and series details, season responses (the series palette; episodes
 inherit it), and on the continue-watching (`/viewer/watch/resume`) and next-up items.
+
+**Art highlight (`highlight`).** Next to `tint`/`tint2` on every response that carries them: the
+`#RRGGBB` colour of the bright parts of the same artwork (backdrop, poster when there is none),
+measured as the 95th luminance percentile of a 64 px wide thumbnail — robust against a few white
+pixels, conservative because it covers the whole image (not a region). `null` when unknown (not yet
+computed, no artwork, a non-TMDB image host, or a palette from before this field that is being
+recomputed — its `tint`/`tint2` stay served meanwhile). Use it to size a glass surface per title:
+treat `highlight` as the brightest art behind the glass, composite the glass colour at alpha `a`
+over it and pick the smallest `a` for which body text keeps **4.5:1** and large text (≥ 24 px
+regular or ≥ 18.66 px bold at the 1920 design scale) keeps **3:1** against that composite. With
+`highlight` `null`, fall back to the per-style rule over white (the brightest possible art).
 
 **Spec summary (`spec`).** On list items (catalog items, season episodes, continue watching, next
 up): `{ resolution, hdr, videoCodec, audio }` display labels of the best version by quality
@@ -1087,7 +1098,7 @@ GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,
 
 | Parameter | Meaning |
 | --- | --- |
-| `vlcVideoCodecs` | Comma-separated codecs VLC decodes; an entry may carry its own height limit, `codec:maxHeight` (e.g. `h264,hevc:1080`). Codecs not listed are not played by VLC. |
+| `vlcVideoCodecs` | Comma-separated codecs VLC decodes; an entry may carry its own height limit, `codec:maxHeight` (e.g. `h264,hevc:1080`). Codecs not listed are not played by VLC. Names libVLC does not know (after aliases such as `avc`, `h265`, `av01`) answer `400 invalid_device_profile`. Known: `h264`, `hevc`, `av1`, `vp9`, `vp8`, `mpeg2video`, `mpeg4`, `vc1`. |
 | `vlcMaxHeight` | Height limit (144–4320) for listed codecs without their own limit. |
 | `vlcHdrFormats` | HDR formats VLC shows natively (`hdr10`, `hlg`, `dv` or `dolbyvision`); default `hdr10,hlg` for HEVC/AV1/VP9. |
 | `vlcSupports10Bit` | `false` = 8-bit decoding only (no HDR either). |

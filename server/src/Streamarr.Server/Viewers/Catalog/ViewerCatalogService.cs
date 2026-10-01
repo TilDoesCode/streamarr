@@ -152,6 +152,7 @@ public sealed class ViewerCatalogService(
         {
             Tint = palette?.Tint,
             Tint2 = palette?.Tint2,
+            Highlight = palette?.Highlight,
             WorkId = key.WorkId,
             TmdbId = tmdbId,
             ImdbId = movie.ImdbId,
@@ -188,6 +189,7 @@ public sealed class ViewerCatalogService(
         {
             Tint = palette?.Tint,
             Tint2 = palette?.Tint2,
+            Highlight = palette?.Highlight,
             WorkId = seriesWorkId,
             TmdbId = tmdbId,
             ImdbId = series.ImdbId,
@@ -269,6 +271,7 @@ public sealed class ViewerCatalogService(
         {
             Tint = palette?.Tint,
             Tint2 = palette?.Tint2,
+            Highlight = palette?.Highlight,
             SeriesWorkId = seriesWorkId,
             SeriesTitle = catalog.Series.Title,
             WorkId = TvCatalogService.SeasonWorkId(tmdbId, seasonNumber),
@@ -700,6 +703,7 @@ public sealed class ViewerCatalogService(
             VoteAverage = match.CommunityRating,
             Tint = palette?.Tint,
             Tint2 = palette?.Tint2,
+            Highlight = palette?.Highlight,
             Spec = specs.Get(WorkId(match)),
         };
     }

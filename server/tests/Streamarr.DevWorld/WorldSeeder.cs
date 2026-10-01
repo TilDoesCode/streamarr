@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Streamarr.Core.Media;
+using Streamarr.Server.Config;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
 using Streamarr.Server.Security;
@@ -7,6 +8,7 @@ using Streamarr.Server.Services;
 using Streamarr.Server.Viewers;
 using Streamarr.Server.Viewers.Access;
 using Streamarr.Server.Viewers.Auth;
+using Streamarr.Tests.Shared;
 
 namespace Streamarr.DevWorld;
 
@@ -81,6 +83,16 @@ public static class WorldSeeder
         }
 
         return seeded;
+    }
+
+    /// <summary>Points a kept world's NNTP provider at this boot's mock server, whose port changes on every start.</summary>
+    public static async Task SyncNntpProviderAsync(IServiceProvider services, MockNntpServer nntp, CancellationToken ct)
+    {
+        var providers = services.GetRequiredService<ProviderConfigService>();
+        var kept = await providers.GetAsync(DevWorldHost.NntpProviderName, ct);
+        if (kept is null || (kept.Host == nntp.Host && kept.Port == nntp.Port))
+            return;
+        await providers.UpdateAsync(kept.Id, new ProviderWrite { Name = kept.Name, Host = nntp.Host, Port = nntp.Port }, ct);
     }
 
     /// <summary>The seeded viewer kept from a previous run (DEVWORLD_KEEP_DATA=1); null on a fresh world.</summary>

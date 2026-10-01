@@ -56,14 +56,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 ## Server (backend track)
 
 - Multi-rendition audio in HLS (#4); see the triage table in `journal/M1.5.md`.
-- `ArtworkPaletteService.DrainOverflow`: the peek/write/dequeue sequence can duplicate one item and lose another (it stays
-  in `_queued`); the internal `Pending` property is unused.
-- `vlcVideoCodecs` accepts unknown codec names silently instead of answering 400.
-- No test or log proves indexer searches use the server language for a German viewer (checked in the code only).
-- The spec warm-up concurrency cap has no test.
-- `docs/configuration.md` covers only the warm-up; `ViewerLanguages` is in `setup.md`, `--keep-data` only in the Dev World
-  README and script.
-- Resume items carry `title: null` (shape predates B2).
+- Palette overflow: overflowed urls can be overtaken by new ones (ordering only, nothing lost); the lock wraps a
+  `ConcurrentQueue` where a plain `Queue` would do.
+- `IndexerLanguageTests`: the search-term assertions are vacuous (Dev World searches are id-based); the language check
+  carries the test.
+- Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
+  the whole-image value too strict.
 
 ## Next update (out of scope)
 
@@ -79,6 +77,10 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Fixed
 
+- Server, B3 (2026-10-01): measured art `highlight` per title for the TV glass; palette queue dropped work silently
+  (DropWrite channel; also in the spec warm-up and the mailer); unknown `vlcVideoCodecs` names answer 400; tests for
+  the indexer language and the warm-up cap; configuration/setup docs; resume items carry the title. Dev World
+  `--keep-data` kept a stale NNTP port (playback refused) — orchestrator fix after the B3 verify.
 - Server, B2 (2026-10-01): per-request metadata language (Accept-Language, English fallback); VLC engine caps on the
   versions endpoint; persisted LRU release-container store; Dev World `--keep-data` restart; probe process-tree kill;
   palette overflow re-queue; first failure per cause logged at Warning; spec store indexed by series; useVlc

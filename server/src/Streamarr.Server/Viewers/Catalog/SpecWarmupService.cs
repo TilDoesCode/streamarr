@@ -35,12 +35,16 @@ public sealed class SpecWarmupService(
 
     private readonly SpecWarmupOptions _options = options.Value.SpecWarmup;
     private readonly Channel<SpecWarmupTarget> _queue = Channel.CreateBounded<SpecWarmupTarget>(
-        new BoundedChannelOptions(QueueCapacity) { FullMode = BoundedChannelFullMode.DropWrite });
+        new BoundedChannelOptions(QueueCapacity) { FullMode = BoundedChannelFullMode.Wait });
     private readonly ConcurrentDictionary<string, DateTimeOffset> _attempts = new(StringComparer.Ordinal);
     private readonly object _dayLock = new();
     private readonly FailureLog _failures = new(logger);
     private DateOnly _day;
     private int _today;
+
+    /// <summary>The background lookup of one target; replaceable in tests.</summary>
+    internal Func<SpecWarmupTarget, CancellationToken, Task> Lookup { get; init; } =
+        (target, ct) => services.GetRequiredService<ViewerCatalogService>().WarmSpecAsync(target, ct);
 
     public bool Enabled => _options.Enabled && _options.DailyCap > 0 && _options.Concurrency > 0;
 
@@ -92,7 +96,7 @@ public sealed class SpecWarmupService(
             }
             try
             {
-                await services.GetRequiredService<ViewerCatalogService>().WarmSpecAsync(target, ct);
+                await Lookup(target, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

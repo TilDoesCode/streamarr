@@ -9,6 +9,8 @@ namespace Streamarr.DevWorld;
 /// <summary>Wires the real Core Server to the mock Usenet and the canned indexer/TMDB (shared by Program and tests).</summary>
 public static class DevWorldHost
 {
+    public const string NntpProviderName = "devworld-nntp";
+
     public static MockNntpServer CreateNntp(PublicationStore store)
     {
         var nntp = new MockNntpServer { RequireAuth = true, ArticleSource = store };
@@ -56,7 +58,7 @@ public static class DevWorldHost
             ["Streamarr:Indexers:0:ApiKey"] = "devworld-indexer-key",
             ["Streamarr:Indexers:0:Categories:0"] = "2000",
             ["Streamarr:Indexers:0:Categories:1"] = "5000",
-            ["Streamarr:Providers:0:Name"] = "devworld-nntp",
+            ["Streamarr:Providers:0:Name"] = NntpProviderName,
             ["Streamarr:Providers:0:Host"] = nntp.Host,
             ["Streamarr:Providers:0:Port"] = nntp.Port.ToString(),
             ["Streamarr:Providers:0:UseSsl"] = "false",

@@ -13820,6 +13820,11 @@
             "description": "Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
             "nullable": true
           },
+          "highlight": {
+            "type": "string",
+            "description": "Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown.",
+            "nullable": true
+          },
           "spec": {
             "allOf": [
               {
@@ -13921,6 +13926,11 @@
           "tint2": {
             "type": "string",
             "description": "Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
+            "nullable": true
+          },
+          "highlight": {
+            "type": "string",
+            "description": "Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown.",
             "nullable": true
           },
           "people": {
@@ -14104,6 +14114,11 @@
             "description": "Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
             "nullable": true
           },
+          "highlight": {
+            "type": "string",
+            "description": "Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown.",
+            "nullable": true
+          },
           "episodes": {
             "type": "array",
             "items": {
@@ -14261,6 +14276,11 @@
           "tint2": {
             "type": "string",
             "description": "Deep shade from the artwork (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
+            "nullable": true
+          },
+          "highlight": {
+            "type": "string",
+            "description": "Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown.",
             "nullable": true
           },
           "people": {
@@ -16084,6 +16104,11 @@
           "tint2": {
             "type": "string",
             "description": "Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed.",
+            "nullable": true
+          },
+          "highlight": {
+            "type": "string",
+            "description": "Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown.",
             "nullable": true
           },
           "spec": {
@@ -22438,6 +22463,11 @@
           "tint2": {
             "type": "string",
             "description": "Deep shade of the title (series for episodes) (`#RRGGBB`, white text reaches 4.5:1 on it); continue watching only, null until computed.",
+            "nullable": true
+          },
+          "highlight": {
+            "type": "string",
+            "description": "Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown.",
             "nullable": true
           },
           "spec": {

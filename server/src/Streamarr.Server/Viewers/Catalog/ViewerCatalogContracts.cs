@@ -28,6 +28,9 @@ public sealed record CatalogItemDto
     /// <summary>Deep shade from the artwork (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
     public string? Tint2 { get; init; }
 
+    /// <summary>Bright colour of the backdrop behind the TV glass (<c>#RRGGBB</c>, 95th luminance percentile); null when unknown.</summary>
+    public string? Highlight { get; init; }
+
     /// <summary>Best known version by quality (from the last version lookup); null when none is known yet.</summary>
     public CatalogSpecDto? Spec { get; init; }
 }
@@ -127,6 +130,9 @@ public sealed record CatalogMovieResponse
 
     /// <summary>Deep shade from the artwork (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
     public string? Tint2 { get; init; }
+
+    /// <summary>Bright colour of the backdrop behind the TV glass (<c>#RRGGBB</c>, 95th luminance percentile); null when unknown.</summary>
+    public string? Highlight { get; init; }
     public IReadOnlyList<TmdbPerson> People { get; init; } = [];
     public required WatchStateResponse Watch { get; init; }
     public required ContentAccessResponse Access { get; init; }
@@ -158,6 +164,9 @@ public sealed record CatalogSeriesResponse
 
     /// <summary>Deep shade from the artwork (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
     public string? Tint2 { get; init; }
+
+    /// <summary>Bright colour of the backdrop behind the TV glass (<c>#RRGGBB</c>, 95th luminance percentile); null when unknown.</summary>
+    public string? Highlight { get; init; }
     public IReadOnlyList<TmdbPerson> People { get; init; } = [];
 
     /// <summary>Regular seasons (specials excluded).</summary>
@@ -239,6 +248,9 @@ public sealed record CatalogSeasonResponse
 
     /// <summary>Deep shade of the series (<c>#RRGGBB</c>, white text reaches 4.5:1 on it); null until computed.</summary>
     public string? Tint2 { get; init; }
+
+    /// <summary>Bright colour of the backdrop behind the TV glass (<c>#RRGGBB</c>, 95th luminance percentile); null when unknown.</summary>
+    public string? Highlight { get; init; }
     public required IReadOnlyList<CatalogEpisodeDto> Episodes { get; init; }
 
     /// <summary>Present only with <c>?availability=true</c>.</summary>

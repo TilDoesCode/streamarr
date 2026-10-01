@@ -41,6 +41,8 @@ var nntp = DevWorldHost.CreateNntp(store);
 var state = new DevWorldState();
 var app = DevWorldHost.Build(options, plan, store, nntp, state, args);
 await app.StartAsync();
+if (keepData)
+    await WorldSeeder.SyncNntpProviderAsync(app.Services, nntp, CancellationToken.None);
 var bootSeconds = total.Elapsed.TotalSeconds;
 
 var viewers = await WorldSeeder.SeedViewersAsync(app.Services, CancellationToken.None);

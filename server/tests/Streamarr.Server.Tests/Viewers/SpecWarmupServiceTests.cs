@@ -28,6 +28,44 @@ public class SpecWarmupServiceTests
     }
 
     [Fact]
+    public async Task RunsAtMostConcurrencyLookupsAtOnce()
+    {
+        int active = 0, peak = 0, done = 0;
+        using var service = new SpecWarmupService(new ServiceCollection().BuildServiceProvider(),
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions { SpecWarmup = new SpecWarmupOptions { Concurrency = 2 } }),
+            TimeProvider.System, NullLogger<SpecWarmupService>.Instance)
+        {
+            Lookup = async (_, ct) =>
+            {
+                var now = Interlocked.Increment(ref active);
+                InterlockedMax(ref peak, now);
+                await Task.Delay(80, ct);
+                Interlocked.Decrement(ref active);
+                Interlocked.Increment(ref done);
+            },
+        };
+        await service.StartAsync(CancellationToken.None);
+
+        service.Request(Enumerable.Range(1, 8).Select(i => $"tmdb-movie-{i}"));
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (Volatile.Read(ref done) < 8 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        Assert.Equal(8, done);
+        Assert.Equal(2, peak);
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    private static void InterlockedMax(ref int target, int value)
+    {
+        for (var current = Volatile.Read(ref target); value > current; current = Volatile.Read(ref target))
+        {
+            if (Interlocked.CompareExchange(ref target, value, current) == current)
+                return;
+        }
+    }
+
+    [Fact]
     public async Task OffMeansNoLookups()
     {
         using var service = Service(new SpecWarmupOptions { Enabled = false });

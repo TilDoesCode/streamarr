@@ -550,6 +550,12 @@ npm run dev            # Vite on :5173, proxying /api + /openapi (override targe
 npm test               # Vitest + Testing Library
 npm run build          # type-check + production SPA build → web/dist
 
+# Dev World (real Core Server + mock Usenet/indexer/TMDB with generated media; see server/tests/Streamarr.DevWorld/README.md)
+scripts/devworld.sh start 39310 --tree      # build the working tree and run it on :39310 (logs /tmp/devworld-39310.log)
+scripts/devworld.sh publish                 # publish the current build as the shared snapshot
+scripts/devworld.sh restart 39300 --keep-data   # new build, same viewer accounts, sessions and watch state
+scripts/devworld.sh stop 39310              # without --keep-data a start wipes the port's database
+
 # Latency harness (mock baseline; real once credentials exist — see m1-latency.md)
 dotnet run --project server/tools/latency -- --mode mock --iterations 12 --markdown
 ```

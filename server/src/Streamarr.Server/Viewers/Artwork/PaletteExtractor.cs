@@ -3,17 +3,19 @@ using SkiaSharp;
 
 namespace Streamarr.Server.Viewers.Artwork;
 
-/// <summary>Accent (<c>tint</c>) and deep shade (<c>tint2</c>) as <c>#RRGGBB</c>.</summary>
-public sealed record ArtworkPalette(string Tint, string Tint2);
+/// <summary>Accent (<c>tint</c>), deep shade (<c>tint2</c>) and the measured art highlight as <c>#RRGGBB</c>; highlight null when unknown.</summary>
+public sealed record ArtworkPalette(string Tint, string Tint2, string? Highlight);
 
 /// <summary>Deterministic two-swatch palette from artwork: k-means over a thumbnail, then contrast-adjusted for the Aurora background.</summary>
 public static class PaletteExtractor
 {
     /// <summary>Bump when the extraction changes so cached palettes are recomputed.</summary>
-    public const int Version = 1;
+    public const int Version = 2;
     public const string Background = "#0A0C12";
     public const double MinTintContrast = 3.0;
     public const double MinTint2WhiteContrast = 4.5;
+    /// <summary>Luminance percentile of the highlight: high enough for the bright parts, robust against a few white pixels.</summary>
+    public const double HighlightPercentile = 0.95;
     private const int SampleWidth = 64;
     private const int Clusters = 8;
     private const int Iterations = 12;
@@ -75,7 +77,14 @@ public static class PaletteExtractor
         for (; Contrast((1, 1, 1), Rounded(tint2)) < MinTint2WhiteContrast && depth > 0.02; depth -= 0.01)
             tint2 = FromHsl(h2, s2, depth);
 
-        return new ArtworkPalette(Hex(tint), Hex(tint2));
+        return new ArtworkPalette(Hex(tint), Hex(tint2), Hex(Highlight(pixels)));
+    }
+
+    /// <summary>The pixel at <see cref="HighlightPercentile"/> of the luminance order (the image is already a smoothed thumbnail).</summary>
+    public static (double R, double G, double B) Highlight(IReadOnlyList<(double R, double G, double B)> pixels)
+    {
+        var ordered = pixels.OrderBy(Luminance).ThenBy(p => p.R).ThenBy(p => p.G).ThenBy(p => p.B).ToList();
+        return ordered[Math.Clamp((int)Math.Ceiling(HighlightPercentile * ordered.Count) - 1, 0, ordered.Count - 1)];
     }
 
     /// <summary>WCAG 2 contrast ratio.</summary>
@@ -141,7 +150,7 @@ public static class PaletteExtractor
 
     private static double Chroma((double R, double G, double B) c) => Math.Max(c.R, Math.Max(c.G, c.B)) - Math.Min(c.R, Math.Min(c.G, c.B));
 
-    private static double Luminance((double R, double G, double B) c)
+    public static double Luminance((double R, double G, double B) c)
     {
         static double Channel(double v) => v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
         return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);

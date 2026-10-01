@@ -205,7 +205,9 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
             if (parts.Length == 2)
                 height = int.TryParse(parts[1], out var h) && h is >= 144 and <= 4320 ? h
                     : throw ViewerProblem.BadRequest("invalid_device_profile", "'vlcVideoCodecs' entries are codec or codec:maxHeight (144-4320).");
-            return (Codec: DeviceNames.Video(parts[0]), Height: height);
+            var codec = DeviceNames.Video(parts[0]);
+            return defaults.VideoFor(codec) is not null ? (Codec: codec, Height: height)
+                : throw ViewerProblem.BadRequest("invalid_device_profile", $"'vlcVideoCodecs' names an unknown codec '{parts[0]}'; known: {string.Join(", ", defaults.Video.Select(v => v.Codec))}.");
         }).ToList() ?? defaults.Video.Select(v => (v.Codec, Height: (int?)null)).ToList();
         var video = entries.DistinctBy(e => e.Codec).Select(e =>
         {

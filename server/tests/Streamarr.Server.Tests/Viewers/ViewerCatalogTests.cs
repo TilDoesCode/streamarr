@@ -424,7 +424,8 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
         Assert.Equal(("1080p", null, "H.264", "5.1"), Spec(items[600]));
         Assert.Equal(("1080p", null, "H.264", "5.1"), Spec(season.GetProperty("episodes")[2]));
         foreach (var item in items.Values)
-            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null), (item.GetProperty("tint").ValueKind, item.GetProperty("tint2").ValueKind));
+            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null, JsonValueKind.Null),
+                (item.GetProperty("tint").ValueKind, item.GetProperty("tint2").ValueKind, item.GetProperty("highlight").ValueKind));
         Assert.Equal(JsonValueKind.Null, season.GetProperty("tint").ValueKind);
     }
 
@@ -577,6 +578,8 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
     [InlineData("vlcMaxHeight=99")]
     [InlineData("vlcVideoCodecs=hevc:big")]
     [InlineData("vlcVideoCodecs=hevc:9000")]
+    [InlineData("vlcVideoCodecs=h264,h266")]
+    [InlineData("vlcVideoCodecs=prores:1080")]
     public async Task Versions_RejectInvalidVlcCaps(string query)
     {
         using var viewer = await ViewerAsync("badvlc");
