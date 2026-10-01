@@ -55,18 +55,15 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
-- Dev World restart wipes its database (sessions end, local profiles need a new sign-in).
 - Multi-rendition audio in HLS (#4); see the triage table in `journal/M1.5.md`.
-- VLC limits on the versions endpoint: let the versions request carry the VLC engine caps, then the client can send
-  `vlcAvailable` again from Android (P2 stopped sending it).
-- Orphaned capability-probe ffmpeg outlived a killed Dev World (~13 h); kill the probe's process tree, SIGKILL on timeouts.
-- `ArtworkPaletteService` drops work silently when its bounded channel is full; wait or re-queue.
-- Palette/spec failures log only at Debug; log the first failure per cause at Warning.
-- `CatalogSpecStore.Get` scans all stored summaries per list item; index by series.
-- TMDB metadata uses one server-wide language, so a German UI shows English overviews; per-request language.
-- Release container store: clears all 20,000 entries at once and is in memory only, so after a restart the web WEB-DL is
-  predicted "Direct stream (MKV …)" again (seen in F1 after the 20:46 republish); LRU + persistence.
-- "useVlc offered before VLC failed" is only covered by an older decider test, not on the start-failure path.
+- `ArtworkPaletteService.DrainOverflow`: the peek/write/dequeue sequence can duplicate one item and lose another (it stays
+  in `_queued`); the internal `Pending` property is unused.
+- `vlcVideoCodecs` accepts unknown codec names silently instead of answering 400.
+- No test or log proves indexer searches use the server language for a German viewer (checked in the code only).
+- The spec warm-up concurrency cap has no test.
+- `docs/configuration.md` covers only the warm-up; `ViewerLanguages` is in `setup.md`, `--keep-data` only in the Dev World
+  README and script.
+- Resume items carry `title: null` (shape predates B2).
 
 ## Next update (out of scope)
 
@@ -82,6 +79,10 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Fixed
 
+- Server, B2 (2026-10-01): per-request metadata language (Accept-Language, English fallback); VLC engine caps on the
+  versions endpoint; persisted LRU release-container store; Dev World `--keep-data` restart; probe process-tree kill;
+  palette overflow re-queue; first failure per cause logged at Warning; spec store indexed by series; useVlc
+  start-failure test.
 - Device-aware "Recommended" (was a decision) — P3 (server) + P2 (plain Play = Recommended).
 - Web client hosting (was a decision) — P3 (/watch same origin) + P2 (client connects to its origin).
 - Paused step-down to VLC showed frame 0 — P1. Frozen end frame after a cancelled up-next — P1 (end card).
