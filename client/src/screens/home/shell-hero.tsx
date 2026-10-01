@@ -57,13 +57,14 @@ export function ShellHero({ store, collapsed = false, targetRef, onButtonFocus }
   const image = featured?.backdropUrl ?? detail?.backdropUrl ?? null;
   const tint = featured?.tint ?? null;
   const tint2 = featured?.tint2 ?? null;
+  const highlight = featured?.highlight ?? null;
   // Only the focused Home paints the room; other tabs and screens start from the neutral wash.
   useFocusEffect(
     useCallback(() => {
-      const title = image ? { image, tint, tint2 } : null;
+      const title = image ? { image, tint, tint2, highlight } : null;
       setAmbient(title);
       return () => clearAmbient(title);
-    }, [setAmbient, clearAmbient, image, tint, tint2])
+    }, [setAmbient, clearAmbient, image, tint, tint2, highlight])
   );
 
   return (

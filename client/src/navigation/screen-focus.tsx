@@ -48,27 +48,30 @@ export function useScreenFocusHost() {
     }),
     []
   );
-  return {
-    host,
-    /** The rail's active tab node, set by the rail. */
-    railActive,
-    /** True while the rail holds the focus a screen's Back chain handed to it. */
-    isRailByBack: () => railByBack.current,
-    /** The rail lost focus: its next entry is no longer a screen's Back step. */
-    railLeft: () => {
-      railByBack.current = false;
-    },
-    /** Moves focus back into the visible screen (its last focused element, else its first). */
-    focusActive: (): boolean => {
-      const restore = active.current;
-      restore?.();
-      return !!restore;
-    },
-    /** The next screen that comes into view takes focus (after a tab switch from the rail). */
-    focusNext: () => {
-      requested.current = true;
-    },
-  };
+  return useMemo(
+    () => ({
+      host,
+      /** The rail's active tab node, set by the rail. */
+      railActive,
+      /** True while the rail holds the focus a screen's Back chain handed to it. */
+      isRailByBack: () => railByBack.current,
+      /** The rail lost focus: its next entry is no longer a screen's Back step. */
+      railLeft: () => {
+        railByBack.current = false;
+      },
+      /** Moves focus back into the visible screen (its last focused element, else its first). */
+      focusActive: (): boolean => {
+        const restore = active.current;
+        restore?.();
+        return !!restore;
+      },
+      /** The next screen that comes into view takes focus (after a tab switch from the rail). */
+      focusNext: () => {
+        requested.current = true;
+      },
+    }),
+    [host]
+  );
 }
 
 /** TV: focuses the shell rail's active tab; no-op outside the TV shell. */

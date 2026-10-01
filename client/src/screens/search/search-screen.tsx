@@ -233,6 +233,8 @@ export function SearchScreen() {
       style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
       <FlatList
+        // Large shell (web, tablet, TV): no native scrollbar over the full-bleed ambient.
+        showsVerticalScrollIndicator={!shell.large}
         data={rows}
         keyExtractor={(row) => row.map(itemKey).join('|')}
         ListHeaderComponent={header}
@@ -299,6 +301,8 @@ function ambientOf(item: {
   posterUrl?: string | null;
   tint?: string | null;
   tint2?: string | null;
+  highlight?: string | null;
 }) {
-  return { image: item.backdropUrl ?? item.posterUrl, tint: item.tint, tint2: item.tint2 };
+  const { tint, tint2, highlight } = item;
+  return { image: item.backdropUrl ?? item.posterUrl, tint, tint2, highlight };
 }

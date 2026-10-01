@@ -43,6 +43,14 @@ export function LargeShell() {
     dispatchExit(open ? { type: 'open', path: pathname } : { type: 'close' });
   useEffect(() => dispatchExit({ type: 'route', path: pathname }), [pathname]);
   const screens = useScreenFocusHost();
+  // TV: a deep link that opens a screen while the rail holds focus hands focus to that screen.
+  useEffect(() => {
+    if (!design.isTV || !railFocused.current || screens.isRailByBack()) return;
+    const frame = requestAnimationFrame(() => {
+      if (railFocused.current) screens.focusActive();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pathname, design.isTV, screens]);
 
   useBackHandler(() => {
     const action = tvBackAction({

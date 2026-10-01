@@ -13,6 +13,7 @@ export function Glass({
   interactive: _interactive,
   intensity = 'regular',
   tint,
+  artHighlight,
   radius,
   style,
   children,
@@ -28,7 +29,7 @@ export function Glass({
   });
   const base =
     mode === 'tinted'
-      ? tvGlassBase(tint, intensity)
+      ? tvGlassBase(tint, intensity, artHighlight)
       : mode === 'solid'
         ? colors.glass.solid
         : colors.glass.tinted;

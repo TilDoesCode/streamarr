@@ -200,3 +200,27 @@ export function reasonTexts(reasons: readonly Reason[] | null | undefined, t: TF
     ];
   });
 }
+
+function specHeadline(version: Version): string {
+  const spec = versionSpec(version);
+  return [spec?.resolution, spec?.hdr].filter(Boolean).join(' · ');
+}
+
+/** Detail: the best available spec vs the one that plays here (Recommended), when they differ. */
+export function specGap(versions: readonly Version[]): { best: string; here: string } | undefined {
+  const here = versions.find((version) => version.recommended) ?? versions[0];
+  const best = versions.reduce<Version | undefined>(
+    (top, version) =>
+      !top || (version.qualityRank ?? version.rank) < (top.qualityRank ?? top.rank) ? version : top,
+    undefined
+  );
+  if (!here || !best || best === here) return undefined;
+  const gap = { best: specHeadline(best), here: specHeadline(here) };
+  return gap.best && gap.here && gap.best !== gap.here ? gap : undefined;
+}
+
+/** "4K · HDR10 available · plays here in 1080p", or undefined when the best version plays here. */
+export function specNote(versions: readonly Version[], t: TFunction): string | undefined {
+  const gap = specGap(versions);
+  return gap ? t('detail.specGap', gap) : undefined;
+}

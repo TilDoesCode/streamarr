@@ -9,7 +9,7 @@
   "foreground": {
     "DEFAULT": "#FFFFFF",
     "muted": "rgba(255, 255, 255, 0.64)",
-    "mutedTv": "rgba(255, 255, 255, 0.86)",
+    "mutedTv": "rgba(255, 255, 255, 0.92)",
     "subtleTv": "rgba(255, 255, 255, 0.7)",
     "subtle": "rgba(255, 255, 255, 0.44)",
     "disabled": "rgba(255, 255, 255, 0.28)"
@@ -91,5 +91,9 @@
     "from": "#8FF3DA",
     "mid": "#6FB4FF",
     "to": "#9A9CFF"
+  },
+  "qr": {
+    "light": "#FFFFFF",
+    "dark": "#000000"
   }
 }

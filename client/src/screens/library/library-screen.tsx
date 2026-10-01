@@ -2,7 +2,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Film, Tv } from 'lucide-react-native';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Platform, ScrollView, View } from 'react-native';
+import { FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { toAppError } from '@/api/errors';
@@ -25,7 +25,7 @@ import {
   useBackHandler,
   useFocusGlowRoom,
 } from '@/components/focus';
-import { Glass, GlassChip } from '@/components/glass';
+import { Glass } from '@/components/glass';
 import { PosterCard } from '@/components/media/poster-card';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -38,6 +38,7 @@ import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign } from '@/theme';
 
+import { GenreRow } from './genre-row';
 import { backToChip, libraryBackStep, type LibraryZone } from './library-back';
 
 // Request the next page while the last loaded rows are this close to the viewport.
@@ -92,7 +93,6 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   // TV: a lifted row's ring sits title-safe; the row gap matches, so the row above is fully off screen.
   const liftTop = shell.s(TITLE_SAFE) + glowRoom;
   const rowGap = design.isTV ? Math.max(cardGap, liftTop) : cardGap;
-  const pageHeading = design.isTV || Platform.OS === 'web';
 
   // The ambient starts on the first title, then follows the focused or hovered card (kept for the return from a title).
   const first = items[0];
@@ -137,7 +137,8 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   const memory = use(FocusMemoryContext);
   const query = `${genre}|${sort}`;
   const shownQuery = useRef(query);
-  const focusChip = useRef(false);
+  // A page opened with a genre (deep link) also starts on its chip.
+  const focusChip = useRef(design.isTV && genre !== null);
   useEffect(() => {
     if (shownQuery.current === query) return;
     shownQuery.current = query;
@@ -200,51 +201,25 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
     ...(genres.data ?? []).map((item) => ({ id: item.id, name: item.name ?? '' })),
   ];
 
-  const chips = genreChips.map((chip) => (
-    <GlassChip
-      key={chip.id ?? 'all'}
-      testID={`library-genre-${chip.id ?? 'all'}`}
-      role="radio"
-      aria-checked={genre === chip.id}
-      label={chip.name}
-      selected={genre === chip.id}
-      ref={genre === chip.id ? selectedGenre : undefined}
-      onFocus={() => (zone.current = 'genres')}
-      onPress={() => setFilter({ genre: chip.id })}
-    />
-  ));
-
+  // One title line (page title + compact sort) above one single-line genre row, on every form factor.
   const header = (
-    <View style={{ gap: design.space.lg, paddingBottom: design.space.lg }}>
-      {pageHeading ? (
-        <Text variant="title" role="heading" style={[pad, shell.pageTitle]}>
+    <View style={{ gap: design.space.md, paddingBottom: design.space.lg }}>
+      <View
+        testID="library-title-line"
+        style={{
+          ...pad,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: design.space.lg,
+        }}>
+        <Text
+          variant="title"
+          role="heading"
+          numberOfLines={1}
+          style={[{ flexShrink: 1 }, shell.pageTitle]}>
           {t(`tabs.${tab}`)}
         </Text>
-      ) : null}
-      {shell.large ? (
-        <FocusGuide
-          remember
-          trap={END_OF_ROW}
-          destinations={selectedGenreNode ? [selectedGenreNode] : undefined}
-          role="radiogroup"
-          aria-label={t('library.genres')}
-          testID="library-genres"
-          style={{ ...pad, flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
-          {chips}
-        </FocusGuide>
-      ) : (
-        // Phones: one swipeable chip row instead of several wrapped lines above the grid.
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          role="radiogroup"
-          aria-label={t('library.genres')}
-          testID="library-genres"
-          contentContainerStyle={{ ...pad, gap: design.space.sm }}>
-          {chips}
-        </ScrollView>
-      )}
-      <View style={{ ...pad, flexDirection: 'row' }}>
         <SortControl
           value={sort}
           label={t('library.sortLabel')}
@@ -253,6 +228,15 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
           onFocus={() => (zone.current = 'sort')}
         />
       </View>
+      <GenreRow
+        chips={genreChips}
+        selected={genre}
+        selectedRef={selectedGenre}
+        selectedNode={selectedGenreNode}
+        label={t('library.genres')}
+        onSelect={(id) => setFilter({ genre: id })}
+        onChipFocus={() => (zone.current = 'genres')}
+      />
     </View>
   );
 
@@ -310,16 +294,14 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
           ListHeaderComponent={header}
           ListEmptyComponent={body()}
           ListFooterComponent={footer}
-          showsVerticalScrollIndicator={!design.isTV}
+          showsVerticalScrollIndicator={!shell.large}
           onEndReached={loadMore}
           onEndReachedThreshold={PAGING_ROWS / Math.max(1, Math.min(rows.length, 4))}
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
             paddingTop: shell.large
               ? shell.s(SHELL.page.top)
-              : pageHeading
-                ? design.layout.edgeVertical + insets.top
-                : design.space.lg,
+              : design.layout.edgeVertical + insets.top,
             // TV: room below the last row so any focused row can scroll up to the page top.
             paddingBottom: design.isTV
               ? Math.max(0, size.height - rowHeight)
@@ -357,10 +339,11 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
 }
 
 function ambientOf(item: CatalogItem) {
-  return { image: item.backdropUrl ?? item.posterUrl, tint: item.tint, tint2: item.tint2 };
+  const { tint, tint2, highlight } = item;
+  return { image: item.backdropUrl ?? item.posterUrl, tint, tint2, highlight };
 }
 
-/** One glass pill with a segment per sort order; the selected one is filled (reads apart from the genre chips). */
+/** One glass pill with a segment per sort order in the title line; the selected one is filled. */
 function SortControl({
   value,
   label,
@@ -375,6 +358,8 @@ function SortControl({
   onFocus: () => void;
 }) {
   const design = useDesign();
+  const compact = !useShell().large;
+  const [selectedNode, setSelectedNode] = useState<View | null>(null);
   const height = design.layout.controlHeight.sm;
   const inset = design.space.xs;
   return (
@@ -382,6 +367,7 @@ function SortControl({
       <FocusGuide
         remember
         trap={END_OF_ROW}
+        destinations={selectedNode ? [selectedNode] : undefined}
         role="radiogroup"
         aria-label={label}
         testID="library-sort"
@@ -389,9 +375,11 @@ function SortControl({
         {LIBRARY_SORTS.map((option) => {
           const selected = option === value;
           return (
+            // Keyed by state: Android keeps a stale square clip when only the fill of a rounded view changes.
             <Focusable
-              key={option}
+              key={`${option}-${selected ? 'on' : 'off'}`}
               testID={`library-sort-${option}`}
+              ref={selected ? setSelectedNode : undefined}
               role="radio"
               aria-checked={selected}
               accessibilityLabel={labelOf(option)}
@@ -402,12 +390,12 @@ function SortControl({
                   style={{
                     height,
                     borderRadius: height / 2,
-                    paddingHorizontal: design.space.lg,
+                    paddingHorizontal: compact ? design.space.md : design.space.lg,
                     justifyContent: 'center',
                     backgroundColor: selected ? colors.primary.DEFAULT : undefined,
                   }}>
                   <Text
-                    variant="callout"
+                    variant={compact ? 'caption' : 'callout'}
                     numberOfLines={1}
                     style={selected ? { color: colors.primary.foreground } : undefined}>
                     {labelOf(option)}

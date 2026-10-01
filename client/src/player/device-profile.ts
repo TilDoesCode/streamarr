@@ -42,9 +42,29 @@ export type VersionHints = {
   maxAudioChannels?: number;
   maxHeight?: number;
   maxBitrateKbps?: number;
+  vlcAvailable?: boolean;
+  vlcVideoCodecs?: string;
+  vlcSupports10Bit?: boolean;
+  vlcHdrToneMapping?: boolean;
 };
 
-/** The compact `versions` query of the native (first) engine; no `vlcAvailable`: the server would assume VLC plays everything (P2). */
+/** Android's VLC engine as `versions` caps: the same codec heights the playback profile declares (docs/api.md). */
+function vlcHints(profile: DeviceProfile): Partial<VersionHints> {
+  const vlc = profile.engines.find((item) => item.engine === 'vlc');
+  if (!profile.vlcAvailable || !vlc || !profile.platform.startsWith('android')) return {};
+  const codecs = vlc.videoCodecs.map(({ codec, maxHeight }) =>
+    maxHeight ? `${codec}:${maxHeight}` : codec
+  );
+  if (!codecs.length) return {};
+  return {
+    vlcAvailable: true,
+    vlcVideoCodecs: codecs.join(','),
+    vlcSupports10Bit: vlc.videoCodecs.some((codec) => (codec.maxBitDepth ?? 8) >= 10),
+    vlcHdrToneMapping: false, // the playback profile does not declare tone mapping for VLC either
+  };
+}
+
+/** The compact `versions` query: the native (first) engine plus, on Android, the VLC engine's real limits. */
 export function versionHints(profile: DeviceProfile): VersionHints | undefined {
   const engine = profile.engines.find((item) => item.engine !== 'vlc') ?? profile.engines[0];
   if (!engine?.videoCodecs.length) return undefined;
@@ -60,5 +80,6 @@ export function versionHints(profile: DeviceProfile): VersionHints | undefined {
     maxAudioChannels: engine.maxAudioChannels,
     maxHeight: Math.max(...heights) || undefined,
     maxBitrateKbps: profile.maxBitrateKbps,
+    ...vlcHints(profile),
   };
 }

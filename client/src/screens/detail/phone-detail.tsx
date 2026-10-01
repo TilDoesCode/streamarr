@@ -46,6 +46,8 @@ export type PhoneDetailProps = {
   facts: string[];
   certification?: string | null;
   spec?: CatalogSpec | null;
+  /** Best available vs device spec when they differ. */
+  specNote?: string | null;
   overview?: string | null;
   credits?: Credit[];
   /** Resume bar / up-next line under the facts. */
@@ -72,6 +74,7 @@ export function PhoneDetail({
   facts,
   certification,
   spec,
+  specNote,
   overview,
   credits,
   status,
@@ -200,6 +203,11 @@ export function PhoneDetail({
                 ) : null}
                 <SpecLabels spec={spec} max={3} />
               </View>
+              {specNote ? (
+                <Text testID="detail-spec-note" variant="caption" tone="muted" numberOfLines={2}>
+                  {specNote}
+                </Text>
+              ) : null}
               {status}
               <FocusGuide remember style={{ gap: design.space.sm, marginTop: design.space.xs }}>
                 {play}

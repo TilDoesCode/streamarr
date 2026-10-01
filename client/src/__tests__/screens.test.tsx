@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { userEvent } from '@testing-library/react-native';
+import { userEvent, within } from '@testing-library/react-native';
 import { Stack } from 'expo-router';
 import { act, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
@@ -7,6 +7,8 @@ import { FlatList } from 'react-native';
 
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
+import * as probe from '@/api/probe';
+import type { AuthOptions } from '@/api/probe';
 import { createMemoryVault } from '@/accounts/types';
 import { ToastProvider } from '@/components/ui/toast';
 import { setLanguagePreference } from '@/i18n';
@@ -293,6 +295,18 @@ describe('Library', () => {
     scrollToOffset.mockRestore();
   });
 
+  it('puts the sort into the title line and the genres into one horizontal row', async () => {
+    handlers['/api/v1/viewer/catalog/browse'] = () => page([browseItem(1, 'Sintel')], 1, false);
+    await open('/movies');
+    expect(await screen.findByTestId('library-item-0', {}, WAIT)).toBeOnTheScreen();
+    const line = screen.getByTestId('library-title-line');
+    expect(within(line).getByRole('heading', { name: 'Movies' })).toBeOnTheScreen();
+    expect(within(line).getByTestId('library-sort')).toBeOnTheScreen();
+    const row = within(screen.getByTestId('library-genres')).getByTestId('library-genres-scroll');
+    expect(row).toHaveProp('horizontal', true);
+    expect(within(row).getByTestId('library-genre-27')).toBeOnTheScreen();
+  });
+
   it('falls back to All for a genre the server does not list', async () => {
     handlers['/api/v1/viewer/catalog/browse'] = () => page([browseItem(1, 'Sintel')], 1, false);
     await open('/movies?genre=99&sort=top_rated');
@@ -455,5 +469,185 @@ describe('Phone detail', () => {
     await user.press(await screen.findByTestId('version-1', {}, WAIT));
     await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
     expect(router.getSearchParams()).toMatchObject({ releaseId: 'r1', workId: 'tmdb-movie-123' });
+  });
+});
+
+describe('Settings account', () => {
+  const profile = {
+    id: 'v-anna',
+    username: 'anna',
+    displayName: 'Anna',
+    email: 'anna@example.test',
+    emailVerified: true,
+    twoFactorEnabled: false,
+    recoveryCodesRemaining: 0,
+    permissions: {},
+  };
+  const sessions = [
+    {
+      id: 's1',
+      deviceName: 'Pixel (Android)',
+      clientName: 'Streamarr Android',
+      authMethod: 'password',
+      lastSeenAt: '2026-10-01T01:00:00Z',
+      current: true,
+    },
+    {
+      id: 's2',
+      deviceName: 'Chrome (Web)',
+      clientName: 'Streamarr Web',
+      authMethod: 'password',
+      lastSeenAt: '2026-09-30T20:00:00Z',
+      current: false,
+    },
+  ];
+  beforeEach(() => {
+    handlers['/api/v1/health'] = () => json(200, { version: '1.0.0' });
+    handlers['/api/v1/viewer/me'] = () => json(200, profile);
+    handlers['/api/v1/viewer/me/sessions'] = () => json(200, sessions);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('shows loading states for devices and security', async () => {
+    handlers['/api/v1/viewer/me/sessions'] = never;
+    handlers['/api/v1/viewer/me'] = never;
+    await open('/settings');
+    expect(await screen.findByTestId('settings-devices-loading')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-security-loading')).toBeOnTheScreen();
+  });
+
+  it('lists devices with this device marked and signs out another one', async () => {
+    const deleted: string[] = [];
+    let list = sessions;
+    handlers['/api/v1/viewer/me/sessions'] = () => json(200, list);
+    handlers['/api/v1/viewer/me/sessions/s2'] = (_url, request) => {
+      deleted.push(request.method);
+      list = sessions.filter((s) => s.id !== 's2');
+      return new Response(null, { status: 204 });
+    };
+    await open('/settings');
+    expect(await screen.findByTestId('settings-device-current')).toBeOnTheScreen();
+    expect(screen.getByText('Chrome (Web)')).toBeOnTheScreen();
+    await userEvent.setup().press(screen.getByTestId('settings-device-sign-out-s2'));
+    expect(await screen.findByTestId('settings-devices-empty', {}, WAIT)).toBeOnTheScreen();
+    expect(deleted).toEqual(['DELETE']);
+  });
+
+  it('shows the device list error with retry', async () => {
+    let fail = true;
+    handlers['/api/v1/viewer/me/sessions'] = () => (fail ? failure() : json(200, sessions));
+    await open('/settings');
+    expect(await screen.findByTestId('settings-devices-error')).toBeOnTheScreen();
+    fail = false;
+    await userEvent
+      .setup()
+      .press(within(screen.getByTestId('settings-devices-error')).getByText('Try again'));
+    expect(await screen.findByTestId('settings-device-current', {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('maps a wrong current password, then changes the password', async () => {
+    let wrong = true;
+    handlers['/api/v1/viewer/me/password'] = () =>
+      wrong
+        ? json(400, { error: { code: 'invalid_credentials', message: 'x' } })
+        : new Response(null, { status: 204 });
+    // The server's configured minimum feeds the hint (the probe uses XHR, not the fake fetch).
+    jest.spyOn(probe, 'probeServer').mockResolvedValue({
+      baseUrl: 'http://dev.test',
+      name: 'Dev World',
+      options: { passwordLogin: true, passwordMinLength: 12 } as AuthOptions,
+      insecure: false,
+    });
+    await open('/settings');
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('settings-password-toggle'));
+    expect(
+      await screen.findByText('At least 12 characters, not your username.', {}, WAIT)
+    ).toBeOnTheScreen();
+    await user.type(screen.getByTestId('settings-password-current'), 'nope');
+    await user.type(screen.getByTestId('settings-password-new'), 'a-new-password');
+    await user.press(screen.getByTestId('settings-password-submit'));
+    expect(
+      await screen.findByTestId('settings-password-error-invalid_credentials', {}, WAIT)
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Wrong current password')).toBeOnTheScreen();
+    wrong = false;
+    await user.press(screen.getByTestId('settings-password-submit'));
+    expect(await screen.findByText(/Password changed/, {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('requests an e-mail code and verifies it', async () => {
+    let verified = false;
+    handlers['/api/v1/viewer/me/email'] = () =>
+      json(200, { verificationSent: true, pendingEmail: 'new@example.test' });
+    handlers['/api/v1/viewer/me/email/verify'] = async (_url, request) => {
+      const body = (await request.json()) as { code: string };
+      if (body.code !== 'ABCD-EFGH')
+        return json(400, { error: { code: 'invalid_code', message: 'x' } });
+      verified = true;
+      return json(200, { ...profile, email: 'new@example.test' });
+    };
+    await open('/settings');
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('settings-email-toggle'));
+    await user.type(screen.getByTestId('settings-email-address'), 'new@example.test');
+    await user.type(screen.getByTestId('settings-email-password'), 'streamarr');
+    await user.press(screen.getByTestId('settings-email-submit'));
+    expect(await screen.findByTestId('settings-email-sent', {}, WAIT)).toBeOnTheScreen();
+    await user.type(screen.getByTestId('settings-email-code'), 'WRONG');
+    await user.press(screen.getByTestId('settings-email-verify'));
+    expect(
+      await screen.findByTestId('settings-email-verify-error-invalid_code', {}, WAIT)
+    ).toBeOnTheScreen();
+    await user.clear(screen.getByTestId('settings-email-code'));
+    await user.type(screen.getByTestId('settings-email-code'), 'ABCD-EFGH');
+    await user.press(screen.getByTestId('settings-email-verify'));
+    expect(await screen.findByText('E-mail address confirmed.', {}, WAIT)).toBeOnTheScreen();
+    expect(verified).toBe(true);
+  });
+
+  it('sets up two-factor with a QR code and shows the recovery codes once', async () => {
+    handlers['/api/v1/viewer/me/two-factor/setup'] = () =>
+      json(200, {
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpAuthUri: 'otpauth://totp/Streamarr:anna?secret=JBSWY3DPEHPK3PXP&issuer=Streamarr',
+        issuer: 'Streamarr',
+        accountName: 'anna',
+      });
+    handlers['/api/v1/viewer/me/two-factor/enable'] = () =>
+      json(200, { recoveryCodes: ['aaaa-bbbb', 'cccc-dddd'] });
+    await open('/settings');
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('settings-two-factor-toggle'));
+    await user.type(screen.getByTestId('settings-two-factor-password'), 'streamarr');
+    await user.press(screen.getByTestId('settings-two-factor-start'));
+    expect(await screen.findByTestId('settings-two-factor-qr', {}, WAIT)).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-two-factor-secret')).toHaveTextContent(
+      'JBSW Y3DP EHPK 3PXP'
+    );
+    await user.type(screen.getByTestId('settings-two-factor-code'), '123456');
+    await user.press(screen.getByTestId('settings-two-factor-enable'));
+    expect(await screen.findByText('aaaa-bbbb', {}, WAIT)).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-two-factor-toggle')).toHaveTextContent('Done');
+    await user.press(screen.getByTestId('settings-recovery-done'));
+    expect(screen.getByTestId('settings-two-factor-toggle')).toHaveTextContent('Cancel');
+    expect(screen.queryByText('aaaa-bbbb')).toBeNull();
+  });
+
+  it('offers new recovery codes and turning off when two-factor is on', async () => {
+    handlers['/api/v1/viewer/me'] = () =>
+      json(200, { ...profile, twoFactorEnabled: true, recoveryCodesRemaining: 7 });
+    handlers['/api/v1/viewer/me/two-factor/disable'] = () =>
+      json(400, { error: { code: 'invalid_credentials', message: 'x' } });
+    await open('/settings');
+    expect(await screen.findByText('On · 7 recovery codes left')).toBeOnTheScreen();
+    const user = userEvent.setup();
+    await user.press(screen.getByTestId('settings-two-factor-toggle'));
+    expect(screen.getByTestId('settings-two-factor-regenerate')).toBeOnTheScreen();
+    await user.type(screen.getByTestId('settings-two-factor-password'), 'nope');
+    await user.press(screen.getByTestId('settings-two-factor-disable'));
+    expect(
+      await screen.findByTestId('settings-two-factor-error-invalid_credentials', {}, WAIT)
+    ).toBeOnTheScreen();
   });
 });

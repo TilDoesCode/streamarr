@@ -20,7 +20,7 @@ import {
   useFocusGlowRoom,
   useFocusState,
 } from '@/components/focus';
-import { Glass, TV_GLASS } from '@/components/glass';
+import { Glass, tvGlassAlpha, tvPanelUnderlay } from '@/components/glass';
 import { methodTone, SignalBars, SPEC_TONES, versionSignal } from '@/components/spec';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -36,6 +36,8 @@ export type VersionPanelProps = {
   currentReleaseId?: string | null;
   onPlay: (version: Version) => void;
   tint?: string | null;
+  /** Title art highlight: Android TV sizes the panel glass from it. */
+  artHighlight?: string | null;
   /** The card Right from the actions (and "Versions") lands on: Recommended, else the first. */
   entryRef?: RefObject<View | null>;
   /** The entry card mounted (or unmounted: null). */
@@ -66,6 +68,7 @@ export function VersionPanel({
   currentReleaseId,
   onPlay,
   tint,
+  artHighlight,
   entryRef,
   highlight = false,
   subtitle,
@@ -126,6 +129,7 @@ export function VersionPanel({
       testID={testID}
       intensity="regular"
       tint={highlight ? tint : null}
+      artHighlight={artHighlight}
       radius={s(44)}
       style={[
         { flex: 1 },
@@ -139,7 +143,9 @@ export function VersionPanel({
           borderRadius: s(44),
           borderCurve: 'continuous',
           backgroundColor: colors.glass.tinted,
-          opacity: SMOKED_TV ? TV_GLASS.panelUnderlay : 0.7,
+          opacity: SMOKED_TV
+            ? tvPanelUnderlay(tvGlassAlpha(artHighlight, highlight ? tint : null))
+            : 0.7,
         }}
       />
       <View style={{ paddingHorizontal: s(40), paddingTop: s(48), gap: s(6) }}>

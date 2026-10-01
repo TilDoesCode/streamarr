@@ -6,6 +6,8 @@ import {
   methodReasons,
   predictedMethod,
   reasonTexts,
+  specGap,
+  specNote,
   versionSpec,
   versionDetails,
   versionFormats,
@@ -175,7 +177,11 @@ describe('versionHints', () => {
         {
           engine: 'vlc',
           containers: ['mkv'],
-          videoCodecs: [{ codec: 'mpeg2' }],
+          videoCodecs: [
+            { codec: 'h264', maxHeight: 2160, maxBitDepth: 8 },
+            { codec: 'hevc', maxHeight: 1080, maxBitDepth: 10, hdrFormats: [] },
+            { codec: 'mpeg2video' },
+          ],
           audioCodecs: [{ codec: 'dts' }],
           subtitleFormats: ['pgs'],
           hls: true,
@@ -192,7 +198,32 @@ describe('versionHints', () => {
       maxAudioChannels: 6,
       maxHeight: 2160,
       maxBitrateKbps: undefined,
+      vlcAvailable: true,
+      vlcVideoCodecs: 'h264:2160,hevc:1080,mpeg2video',
+      vlcSupports10Bit: true,
+      vlcHdrToneMapping: false,
     });
+  });
+
+  it('sends no VLC caps from iOS, web or without a VLC engine', () => {
+    const native = {
+      engine: 'native' as const,
+      containers: ['mp4'],
+      videoCodecs: [{ codec: 'h264', maxHeight: 1080 }],
+      audioCodecs: [{ codec: 'aac' }],
+      hls: true,
+    };
+    const vlc = { ...native, engine: 'vlc' as const };
+    for (const profile of [
+      { platform: 'ios', vlcAvailable: true, engines: [native, vlc] },
+      { platform: 'web', vlcAvailable: false, engines: [{ ...native, engine: 'web' as const }] },
+      { platform: 'android', vlcAvailable: false, engines: [native] },
+    ] as DeviceProfile[]) {
+      const hints = versionHints(profile);
+      expect(hints?.videoCodecs).toBe('h264');
+      expect(hints).not.toHaveProperty('vlcAvailable');
+      expect(hints).not.toHaveProperty('vlcVideoCodecs');
+    }
   });
 });
 
@@ -258,5 +289,41 @@ describe('version panel wording', () => {
       } as Version)
     ).toMatchObject({ resolution: '4K', hdr: 'HDR10', videoCodec: 'HEVC', audio: '5.1' });
     expect(versionSpec(undefined)).toBeNull();
+  });
+});
+
+describe('detail spec gap', () => {
+  const v = (over: Partial<Version>) =>
+    ({ releaseId: 'r', name: 'n', rank: 1, health: null, ...over }) as Version;
+  const uhd = v({ releaseId: 'uhd', rank: 2, qualityRank: 1, resolution: '2160p', hdr: 'hdr10' });
+  const hd = v({
+    releaseId: 'hd',
+    rank: 1,
+    qualityRank: 2,
+    resolution: '1080p',
+    recommended: true,
+  });
+
+  it('shows best available vs the version that plays here when they differ', async () => {
+    expect(specGap([hd, uhd])).toEqual({ best: '4K · HDR10', here: '1080p' });
+    await i18n.changeLanguage('en');
+    expect(specNote([hd, uhd], i18n.t)).toBe('4K · HDR10 available · plays here in 1080p');
+    await i18n.changeLanguage('de');
+    expect(specNote([hd, uhd], i18n.t)).toBe('4K · HDR10 vorhanden · hier 1080p');
+    await i18n.changeLanguage('en');
+  });
+
+  it('is empty when the best version plays here or the specs match', () => {
+    expect(
+      specGap([
+        { ...uhd, recommended: true },
+        { ...hd, recommended: false },
+      ])
+    ).toBeUndefined();
+    expect(
+      specGap([hd, { ...hd, releaseId: 'b', recommended: false, qualityRank: 1 }])
+    ).toBeUndefined();
+    expect(specGap([hd])).toBeUndefined();
+    expect(specGap([])).toBeUndefined();
   });
 });

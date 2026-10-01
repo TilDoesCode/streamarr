@@ -13,7 +13,7 @@ import {
   useWatchedToggle,
 } from '@/browse/title-actions';
 import { useOpenVersions, VersionPicker } from '@/browse/version-picker';
-import { versionSpec } from '@/browse/version-format';
+import { specNote, versionSpec } from '@/browse/version-format';
 import { entryIndex, VersionPanel } from '@/browse/version-panel';
 import { VersionSummary } from '@/browse/version-summary';
 import { useFormat } from '@/i18n/format';
@@ -77,9 +77,11 @@ export function MovieScreen() {
         backdropUrl={data?.backdropUrl}
         tint={data?.tint}
         tint2={data?.tint2}
+        highlight={data?.highlight}
         facts={facts}
         certification={data?.certification}
         spec={versionSpec(list[entryIndex(list)])}
+        specNote={specNote(list, t)}
         overview={data?.overview}
         status={
           data ? (
@@ -107,6 +109,7 @@ export function MovieScreen() {
             workId={data?.workId}
             currentReleaseId={data?.watch.lastReleaseId}
             tint={data?.tint}
+            artHighlight={data?.highlight}
             entryRef={panel.entryRef}
             highlight={panel.highlight}
             onFocusInside={panel.setInside}
@@ -130,6 +133,7 @@ export function MovieScreen() {
         facts={facts.slice(0, 2)}
         certification={data?.certification}
         spec={versionSpec(list[entryIndex(list)])}
+        specNote={specNote(list, t)}
         overview={data?.overview}
         credits={peopleCredits(data?.people, t)}
         loading={!data}

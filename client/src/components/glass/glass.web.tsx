@@ -16,6 +16,7 @@ export function Glass({
   interactive: _interactive,
   intensity = 'regular',
   tint,
+  artHighlight: _artHighlight,
   radius,
   style,
   children,

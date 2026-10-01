@@ -1,4 +1,4 @@
-import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { mixHex, withAlpha } from '@/lib/color';
@@ -86,12 +86,14 @@ export function SpecLabels({
   style,
   testID,
   max,
+  onLayout,
 }: {
   spec: CatalogSpec | null | undefined;
   /** At most this many chips, in reading order (narrow cards). */
   max?: number;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+  onLayout?: ViewProps['onLayout'];
 }) {
   const design = useDesign();
   const chips = specChips(spec).slice(0, max);
@@ -99,6 +101,7 @@ export function SpecLabels({
   return (
     <View
       testID={testID}
+      onLayout={onLayout}
       style={[{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.xs }, style]}>
       {chips.map((chip) => (
         <SpecLabel key={chip} label={chip} />

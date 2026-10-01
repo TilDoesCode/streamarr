@@ -90,9 +90,13 @@ export type LargeDetailProps = {
   backdropUrl?: string | null;
   tint?: string | null;
   tint2?: string | null;
+  /** Title art highlight (sizes the TV glass of the rail over this page). */
+  highlight?: string | null;
   facts: string[];
   certification?: string | null;
   spec?: CatalogSpec | null;
+  /** Best available vs device spec when they differ. */
+  specNote?: string | null;
   overview?: string | null;
   /** Resume bar or the next-episode line. */
   status?: ReactNode;
@@ -128,9 +132,11 @@ function LargeDetailLayout({
   backdropUrl,
   tint,
   tint2,
+  highlight,
   facts,
   certification,
   spec,
+  specNote,
   overview,
   status,
   actions,
@@ -175,10 +181,10 @@ function LargeDetailLayout({
   );
   useFocusEffect(
     useCallback(() => {
-      const title = backdropUrl ? { image: backdropUrl, tint, tint2 } : null;
+      const title = backdropUrl ? { image: backdropUrl, tint, tint2, highlight } : null;
       setAmbient(title);
       return () => clearAmbient(title);
-    }, [setAmbient, clearAmbient, backdropUrl, tint, tint2])
+    }, [setAmbient, clearAmbient, backdropUrl, tint, tint2, highlight])
   );
   useBackHandler(() => {
     actionsRef.current?.requestTVFocus?.();
@@ -290,6 +296,14 @@ function LargeDetailLayout({
               ) : null}
               <SpecLabels spec={spec} max={4} />
             </View>
+            {specNote ? (
+              <Text
+                testID="detail-spec-note"
+                numberOfLines={1}
+                style={[text(22, fonts.bodySemiBold), { color: colors.foreground.muted }]}>
+                {specNote}
+              </Text>
+            ) : null}
             {overview ? (
               <Text numberOfLines={4} style={[text(26), { color: colors.foreground.DEFAULT }]}>
                 {overview}
@@ -332,7 +346,9 @@ function LargeDetailLayout({
             portrait
               ? {
                   height: design.window.height * 0.4,
-                  marginHorizontal: s(DETAIL.panelInset),
+                  // The rail floats over the content: the panel starts right of it.
+                  marginLeft: s(SHELL.rail.width + DETAIL.panelInset),
+                  marginRight: s(DETAIL.panelInset),
                   marginBottom: s(DETAIL.panelInset),
                 }
               : {

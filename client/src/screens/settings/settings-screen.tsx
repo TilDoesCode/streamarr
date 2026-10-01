@@ -25,6 +25,7 @@ import {
 } from '@/i18n';
 import { platformKey } from '@/lib/platform';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { DevicesSection, SecuritySection } from '@/screens/settings/account-security';
 import { accountKey } from '@/query/keys';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -52,6 +53,7 @@ export function SettingsScreen() {
   return (
     <ScrollView
       testID="settings-screen"
+      showsVerticalScrollIndicator={!shell.large}
       style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
@@ -74,6 +76,8 @@ export function SettingsScreen() {
         </Text>
       ) : null}
       <AccountSection />
+      <SecuritySection />
+      <DevicesSection />
       <LanguageSection />
       <AboutSection />
       {__DEV__ ? <DeveloperSection /> : null}

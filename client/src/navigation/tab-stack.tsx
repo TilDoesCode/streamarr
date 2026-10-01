@@ -54,7 +54,8 @@ export function TabStack({ tab }: { tab: TabId }) {
       <Stack.Screen
         name={ROOT_SCREEN[tab]}
         options={{
-          headerShown: nativeHeaders && tab !== 'home',
+          // Library pages draw their own title line (title + sort).
+          headerShown: nativeHeaders && (tab === 'search' || tab === 'settings'),
           headerLargeTitleEnabled: Platform.OS === 'ios',
           title: t(`tabs.${tab}`),
           // Large shell: the tab's first screen sits on the shell's ambient backdrop.

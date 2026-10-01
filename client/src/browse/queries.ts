@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
@@ -16,9 +17,16 @@ import type { components } from '@/api/schema';
 import { useDeviceProfile, versionHints } from '@/player/device-profile';
 
 import { fetchLibraryPage, type LibraryKind, type LibrarySort } from './library';
+
 import { accountKey, queryKeys } from '@/query/keys';
 import { accountPersister } from '@/query/persist';
 import { STALE } from '@/query/query-client';
+
+/** Catalog texts come in the app language (Accept-Language): it is part of every metadata key, so a switch refetches. */
+function useMetadataLanguage(): string {
+  const { i18n } = useTranslation();
+  return i18n.language === 'de' ? 'de' : 'en';
+}
 
 export type CatalogItem = components['schemas']['CatalogItemDto'];
 export type CatalogRow = components['schemas']['CatalogRowDto'];
@@ -35,8 +43,9 @@ export type Genre = components['schemas']['CatalogGenreDto'];
 /** Movies/Series page: TMDB discover by genre and sort, paged on `hasMore`. */
 export function useLibrary(kind: LibraryKind, genre: number | null, sort: LibrarySort) {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useInfiniteQuery({
-    queryKey: accountKey(account.id, 'catalog', 'browse', kind, genre, sort),
+    queryKey: accountKey(account.id, 'catalog', 'browse', kind, genre, sort, language),
     initialPageParam: 1,
     queryFn: ({ pageParam, signal }) =>
       fetchLibraryPage(
@@ -56,8 +65,9 @@ export function useLibrary(kind: LibraryKind, genre: number | null, sort: Librar
 
 export function useGenres(kind: LibraryKind) {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'genres', kind),
+    queryKey: accountKey(account.id, 'catalog', 'genres', kind, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/genres', { params: { query: { type: kind } }, signal })
@@ -73,8 +83,9 @@ const HOME_LIST_LIMIT = 20;
 /** Discover rows of the active account; persisted per account in MMKV so they show instantly. */
 export function useHomeRows() {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
-    queryKey: queryKeys.discover(account.id),
+    queryKey: queryKeys.discover(account.id, language),
     queryFn: ({ signal }) =>
       unwrap(client.GET('/api/v1/viewer/catalog/discover', { signal })).then(
         (response) => response.rows ?? []
@@ -86,8 +97,9 @@ export function useHomeRows() {
 
 export function useContinueWatching() {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
-    queryKey: accountKey(account.id, 'watch', 'resume'),
+    queryKey: accountKey(account.id, 'watch', 'resume', language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/watch/resume', {
@@ -100,8 +112,9 @@ export function useContinueWatching() {
 
 export function useNextUp() {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
-    queryKey: accountKey(account.id, 'watch', 'next-up'),
+    queryKey: accountKey(account.id, 'watch', 'next-up', language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/watch/next-up', {
@@ -114,8 +127,9 @@ export function useNextUp() {
 
 export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId),
+    queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/movies/{tmdbId}', {
@@ -129,8 +143,9 @@ export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
 
 export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'series', tmdbId),
+    queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/series/{tmdbId}', {
@@ -149,6 +164,7 @@ export function useSeasonDetail(
   availability = false
 ) {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
     queryKey: accountKey(
       account.id,
@@ -157,7 +173,8 @@ export function useSeasonDetail(
       tmdbId,
       'season',
       season,
-      ...(availability ? ['availability'] : [])
+      ...(availability ? ['availability'] : []),
+      language
     ),
     queryFn: ({ signal }) =>
       unwrap(
@@ -183,8 +200,9 @@ export function useSeasonWithVersions(tmdbId: number | undefined, season: number
 
 export function useSearch(query: string, type: SearchType, enabled: boolean) {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'search', type, query),
+    queryKey: accountKey(account.id, 'catalog', 'search', type, query, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/search', {
@@ -200,12 +218,13 @@ export function useSearch(query: string, type: SearchType, enabled: boolean) {
 /** Ranked versions with the predicted method for this device (once its profile is known). */
 export function useVersions(workId: string | null | undefined, enabled = true) {
   const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
   const profile = useDeviceProfile();
   const hints = profile.data ? versionHints(profile.data) : undefined;
   // A failed capability probe still lists the versions, just without predictions.
   const ready = profile.data !== undefined || profile.isError;
   return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'versions', workId, hints ?? null),
+    queryKey: accountKey(account.id, 'catalog', 'versions', workId, hints ?? null, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/works/{workId}/versions', {

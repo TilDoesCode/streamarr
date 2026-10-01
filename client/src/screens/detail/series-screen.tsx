@@ -23,7 +23,7 @@ import {
   usePlay,
   useWatchedToggle,
 } from '@/browse/title-actions';
-import { versionSpec } from '@/browse/version-format';
+import { specNote, versionSpec } from '@/browse/version-format';
 import { entryIndex, VersionPanel } from '@/browse/version-panel';
 import { useOpenVersions, VersionPicker } from '@/browse/version-picker';
 import { VersionSummary } from '@/browse/version-summary';
@@ -182,6 +182,7 @@ export function SeriesScreen() {
         backdropUrl={data?.backdropUrl}
         tint={data?.tint}
         tint2={data?.tint2}
+        highlight={data?.highlight}
         facts={
           data
             ? [
@@ -196,6 +197,7 @@ export function SeriesScreen() {
         }
         certification={data?.certification}
         spec={versionSpec(panelList[entryIndex(panelList)])}
+        specNote={specNote(panelList, t)}
         overview={data?.overview}
         status={
           next ? (
@@ -254,6 +256,7 @@ export function SeriesScreen() {
             workId={panelWorkId}
             currentReleaseId={panelEpisode?.watch.lastReleaseId}
             tint={data?.tint}
+            artHighlight={data?.highlight}
             entryRef={panel.entryRef}
             highlight={panel.highlight}
             onFocusInside={panel.setInside}
@@ -289,6 +292,7 @@ export function SeriesScreen() {
       ].filter((part): part is string => !!part)}
       certification={data?.certification}
       spec={versionSpec(phoneList[entryIndex(phoneList)])}
+      specNote={specNote(phoneList, t)}
       overview={data?.overview}
       credits={peopleCredits(data?.people, t)}
       loading={!data}

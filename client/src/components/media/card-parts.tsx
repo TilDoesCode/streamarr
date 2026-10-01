@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react-native';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Animated, {
@@ -101,6 +102,8 @@ export function CardCaption({
       [colors.foreground.muted, colors.foreground.DEFAULT]
     ),
   }));
+  const showSpec = !!(large && spec && (subtitle?.length ?? 0) <= SHORT_SUBLINE);
+  const fit = useSpecFit(maxSpec, s(10));
   return (
     <Animated.View
       style={[
@@ -111,7 +114,8 @@ export function CardCaption({
         moveStyle,
       ]}>
       <Animated.Text
-        numberOfLines={1}
+        // Phones: narrow grid columns wrap long titles instead of truncating them.
+        numberOfLines={large ? 1 : 2}
         style={[
           large
             ? {
@@ -124,14 +128,17 @@ export function CardCaption({
         ]}>
         {title}
       </Animated.Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+      <View
+        style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}
+        onLayout={large ? (event) => fit.setRow(event.nativeEvent.layout.width) : undefined}>
         {subtitle ? (
           <Text
             variant="caption"
             tone="subtle"
             numberOfLines={1}
+            onLayout={large ? (event) => fit.setYear(event.nativeEvent.layout.width) : undefined}
             style={[
-              { flexShrink: 1 },
+              { flexShrink: showSpec ? 0 : 1 },
               large && {
                 fontSize: font(SHELL.type.cardSubline, MIN_TEXT.subline),
                 lineHeight: font(24, MIN_TEXT.subline + 5),
@@ -140,16 +147,47 @@ export function CardCaption({
             {subtitle}
           </Text>
         ) : null}
-        {large && spec && (subtitle?.length ?? 0) <= SHORT_SUBLINE ? (
+        {showSpec && fit.max > 0 ? (
           <SpecLabels
+            key={fit.max}
             spec={spec}
-            max={maxSpec}
+            max={fit.max}
+            onLayout={(event) => fit.setSpec(event.nativeEvent.layout.width)}
             style={{ flexShrink: 0, flexWrap: 'nowrap', marginLeft: 'auto' }}
           />
         ) : null}
       </View>
     </Animated.View>
   );
+}
+
+/** Drops spec chips from the end until the year and the chips fit the caption line (the year never shrinks). */
+function useSpecFit(maxSpec: number, gap: number) {
+  const [state, setState] = useState({ row: 0, max: maxSpec });
+  const year = useRef(0);
+  const spec = useRef(0);
+  const fitted = (row: number, max: number) =>
+    row && max > 0 && year.current + gap + spec.current > row + 0.5 ? max - 1 : max;
+  return {
+    max: state.max,
+    // A wider line starts again from all chips; a narrower one re-checks the measured chips.
+    setRow: (row: number) =>
+      setState((now) =>
+        Math.abs(now.row - row) < 1
+          ? now
+          : { row, max: row > now.row && now.row ? maxSpec : fitted(row, now.max) }
+      ),
+    setYear: (width: number) => {
+      year.current = width;
+    },
+    setSpec: (width: number) => {
+      spec.current = width;
+      setState((now) => {
+        const max = fitted(now.row, now.max);
+        return max === now.max ? now : { ...now, max };
+      });
+    },
+  };
 }
 
 /** Extra padding a row needs so lifted, ringed cards are not clipped by the scroll view. */

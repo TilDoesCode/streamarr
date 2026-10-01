@@ -51,6 +51,7 @@
     "lucide-react-native": "^1.48.0",
     "nativewind": "^4.2.7",
     "openapi-fetch": "^0.17.0",
+    "qrcode-generator": "^1.5.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-i18next": "^17.0.15",

@@ -76,6 +76,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
         progress,
         tint: state.tint,
         tint2: state.tint2,
+        highlight: state.highlight,
         spec: state.spec,
       }
     : undefined;
@@ -144,6 +145,7 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
     progress,
     tint: item.tint,
     tint2: item.tint2,
+    highlight: item.highlight,
     spec: item.spec,
   };
   const feature = () => featured && props.onFeature?.(featured);
@@ -199,6 +201,7 @@ export function featuredFromItem(item: CatalogItem, eyebrow: string): Featured {
     overview: item.overview,
     tint: item.tint,
     tint2: item.tint2,
+    highlight: item.highlight,
     spec: item.spec,
   };
 }

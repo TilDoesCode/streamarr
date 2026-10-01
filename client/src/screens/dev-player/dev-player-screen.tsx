@@ -4,6 +4,7 @@ import {
   type DeviceProfile,
   type MediaCapsReport,
 } from '@modules/media-caps';
+import type { TFunction } from 'i18next';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
@@ -101,7 +102,7 @@ function CapsSummary({ caps }: { caps: Caps }) {
   );
 }
 
-function resultLine(t: ReturnType<typeof useTranslation>['t'], row: ResultRow): string {
+function resultLine(t: TFunction, row: ResultRow): string {
   return t('devPlayer.resultLine', {
     variant: row.variant,
     engine: row.engine ? ENGINE_LABELS[row.engine] : ENGINE_LABELS[row.candidate],

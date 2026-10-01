@@ -4,6 +4,7 @@ export const accountKey = (accountId: string, ...rest: readonly unknown[]) =>
 
 export const queryKeys = {
   me: (accountId: string) => accountKey(accountId, 'me'),
-  discover: (accountId: string) => accountKey(accountId, 'catalog', 'discover'),
+  discover: (accountId: string, language?: string) =>
+    accountKey(accountId, 'catalog', 'discover', ...(language ? [language] : [])),
   serverOptions: (baseUrl: string) => ['server', baseUrl, 'options'] as const,
 };

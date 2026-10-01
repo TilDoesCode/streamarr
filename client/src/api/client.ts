@@ -1,6 +1,7 @@
 import createClient, { type Client, type Middleware } from 'openapi-fetch';
 
 import type { AuthSession } from '@/accounts/session';
+import { currentLanguage } from '@/i18n';
 
 import { AppError, errorFromResponse, toAppError } from './errors';
 import { createTimeoutFetch, type FetchLike } from './http';
@@ -68,11 +69,33 @@ export function createAuthMiddleware(session: AuthSession): Middleware {
   };
 }
 
-export type ClientOptions = { baseUrl: string; session?: AuthSession; fetch?: FetchLike };
+/** Metadata in the viewer's app language: the primary tag on every request (the server falls back to its default). */
+export function createLanguageMiddleware(language: () => string): Middleware {
+  return {
+    onRequest({ request }) {
+      request.headers.set('Accept-Language', language());
+      return request;
+    },
+  };
+}
+
+export type ClientOptions = {
+  baseUrl: string;
+  session?: AuthSession;
+  fetch?: FetchLike;
+  /** App language as a primary tag (en, de); defaults to the i18n language. */
+  language?: () => string;
+};
 
 /** Typed client for one server; with a session every request is authenticated as that account. */
-export function createApiClient({ baseUrl, session, fetch }: ClientOptions): ApiClient {
+export function createApiClient({
+  baseUrl,
+  session,
+  fetch,
+  language = currentLanguage,
+}: ClientOptions): ApiClient {
   const client = createClient<paths>({ baseUrl, fetch: fetch ?? createTimeoutFetch() });
+  client.use(createLanguageMiddleware(language));
   if (session) client.use(createAuthMiddleware(session));
   return client;
 }

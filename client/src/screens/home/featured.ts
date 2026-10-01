@@ -17,6 +17,7 @@ export type Featured = {
   progress?: number;
   tint?: string | null;
   tint2?: string | null;
+  highlight?: string | null;
   spec?: CatalogSpec | null;
 };
 

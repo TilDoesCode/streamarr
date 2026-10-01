@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { Check, Download, Heart, Info, Play, Settings, Trash2, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -135,7 +136,7 @@ export function GalleryIconButtons({ onAction }: { onAction: (name: string) => v
 
 const BADGES: {
   variant: BadgeVariant;
-  label: (t: ReturnType<typeof useTranslation>['t']) => string;
+  label: (t: TFunction) => string;
 }[] = [
   { variant: 'solid', label: () => MEDIA_LABELS.uhd },
   { variant: 'neutral', label: () => MEDIA_LABELS.dolbyVision },

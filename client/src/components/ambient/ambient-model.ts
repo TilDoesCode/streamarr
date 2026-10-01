@@ -5,6 +5,8 @@ export type AmbientInput = {
   image?: string | null;
   tint?: string | null;
   tint2?: string | null;
+  /** Brightest art colour (`highlight`), sizes the TV glass over this title. */
+  highlight?: string | null;
 };
 
 export type AmbientScene = {
