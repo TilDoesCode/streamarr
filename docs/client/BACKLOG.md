@@ -5,7 +5,7 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Decisions for the user
 
-- Library rail entries (Movies / Series pages) — task F2, needs the B1 browse endpoints (done).
+- None open. Round G decisions (TV glass, both specs, metadata language, audio-only conversion) are in PLAN.md section 2.
 
 ## Needs Xcode (pending-ios)
 
@@ -36,9 +36,14 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Browse, navigation and UX
 
-- Form factor is recomputed from the window size: Android split screen (< 600 dp) or a web resize across 640 px swaps
-  LargeShell and NativeTabsShell and remounts the navigator (tab stacks lost). Needs hysteresis or shared stacks
-  (not small: navigator structure).
+- TV: Down from the sort control skips the genre row and lands in the grid (F3 verify).
+- TV: Back from Settings goes straight to Home instead of through the rail (existing tab-page behaviour; F3 verify).
+- TV: after signing out a device, focus returns to the first row's Sign out instead of the neighbouring row (F3).
+- TV glass: buttons and chips keep the constant glass; only the Versions panel and the rail are sized per title (F3).
+- TV glass: the contrast table leaves out the release-name line on version cards (`subtleTv`, 14 px), measured about
+  3.4:1 instead of 4.5:1 over bright art; the colour predates F3 (F3 verify).
+- Near-square Android tablet: the rail logo sits under the status bar (F3 verify).
+- Web: a native scrollbar shows on the detail at 500 px (F3 verify).
 - Web: a duplicate history entry after popping the active tab (not re-checked since M2.4; P2 fixed titles and Back after
   sign-in only).
 - Brand PNGs are large (icon 554 KB, top shelf 2.2–2.6 MB) because of dithered gradients; pngquant bands them. Revisit
@@ -46,7 +51,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Accounts
 
-- Settings UI for sessions/devices, email change, two-factor setup and profile editing (feature work, not a fix).
+- Profile editing (display name, avatar) is not in Settings yet; sessions, password, e-mail and two-step are (F3).
+- Web/phone devices list shows the raw sign-in method "password+2fa" (needs an i18n mapping; F3 verify).
+- Web: the two-step panel stays open after "Saved" or after turning it off (F3 verify).
+- "Sign out all other devices" signs out one by one; a server endpoint would make it atomic. Not pressed live on the
+  shared Dev World account (F3).
+- Phone settings flows had a lighter live pass than web (adb text input unreliable); covered by screen tests (F3 verify).
 
 ## Tests and tooling
 
@@ -62,21 +72,30 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   carries the test.
 - Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
   the whole-image value too strict.
+- E-mail code: a second request within the 30 s resend cooldown sends no mail but answers `verificationSent: true`;
+  answer the cooldown so the app can say "wait" (F3).
+- The verification e-mail is English for German viewers; use the viewer's language (F3).
+- `vlcHdrFormats` cannot express "none" (empty means the default hdr10,hlg), while Android's VLC entry declares no HDR
+  formats; a <= 1080p HDR HEVC/VP9 file could be predicted `vlc` but transcode at playback. Accept `none` (F3).
+- Artwork (logos, posters, backdrops with text) stays English for German viewers; TMDB image language could follow
+  Accept-Language (F3).
 
 ## Next update (out of scope)
 
 - Offline downloads of series and movies on phones and tablets.
 
-## From F2 verify (2026-10-01)
-- Android (TV and phone): the filled sort segment turns square-cornered after a sort or genre change; rounded on first mount and on web.
-- TV: Right from the rail after a genre deep link lands on "All" (native spatial focus wins over the page's focus memory); needs a forced restore in large-shell for every tab.
-- TV: a deep link that arrives while the rail has focus (e.g. streamarr://movies from Home) leaves focus on the rail.
-- Web: the last-clicked genre chip keeps a focus ring after browser Back selects another chip (cosmetic).
-- Tablet 1024 px: a poster caption's year is squeezed by two spec chips (shared PosterCard).
+## Tests and tooling (more)
 - TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
+- Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
 
+- Client, F3 (2026-10-01): one chip row on the library pages (title + sort in one line); TV glass sized per title
+  from the art highlight under a per-text-style contrast rule; detail shows best available vs plays here; Accept-Language
+  and German metadata; Settings account management (password, e-mail, two-step, devices; TV devices + hint); Android
+  VLC caps on the versions request; near-square tablet detail. From F2 verify: Android square sort segment, Right from
+  the rail after a genre deep link, deep link while the rail is focused, web chip ring after Back, tablet caption year.
+  Resize/split screen was found to keep the tab stacks already (tests added; the old entry was wrong).
 - Server, B3 (2026-10-01): measured art `highlight` per title for the TV glass; palette queue dropped work silently
   (DropWrite channel; also in the spec warm-up and the mailer); unknown `vlcVideoCodecs` names answer 400; tests for
   the indexer language and the warm-up cap; configuration/setup docs; resume items carry the title. Dev World
