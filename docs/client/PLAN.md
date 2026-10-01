@@ -483,5 +483,7 @@ Tasks (guidance and acceptance in `orchestrator.js`):
 - **F5 client audio renditions**: in-session audio switching on every player using B5.
 - **B6 server** (added after I1 slice 3): tone-mapped HDR -> SDR transcodes tagged bt709 so AVPlayer accepts them
   (VIDEO-RANGE consistent with the stream tags, guarded in e2e), plus the B5 verify follow-ups.
+- **B7 server** (added after I1 slice 4): Cache-Control no-store on every secret-bearing response (iOS cached a
+  token response on disk), engine-correct reason lines for VLC predictions, small B4/B6 follow-ups.
 Order: server B4 -> B5 and client I1 -> I2 -> I3 -> F4 -> F5 run as two tracks in parallel; one device and one native
 build at a time.

@@ -627,6 +627,23 @@ const TASKS = {
       'OpenAPI frozen, contract check, e2e and the full server suite green; client and web types regenerated if the contract changed',
     ],
   },
+  'B7': {
+    title: 'Server: no-store on token responses, VLC reason lines, small B4/B6 follow-ups',
+    track: 'Backend',
+    deps: ['B6'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round H. Security finding from I1 (docs/client/journal/I1.md item 14): iOS NSURLCache wrote a 2FA sign-in response with access and refresh tokens to the app cache on disk. Every response that carries a secret (viewer auth: login, second factor, e-mail code verify, refresh, password reset; /viewer/me two-factor setup and recovery codes; playback responses with a stream token; admin auth/session responses; anything else that returns a token, secret or one-time code) must send Cache-Control: no-store (plus Pragma: no-cache where useful). Prefer one central rule (middleware/filter keyed on route groups or response type) over per-action attributes, so new endpoints are covered; a test that walks the OpenAPI routes and asserts the header on every secret-bearing response; docs.',
+      '- Version reason lines: for a release predicted to play with VLC, the reasons describe the native-engine conversion ("HEVC video is converted for this device", "HDR10 is converted to SDR") although VLC plays it without conversion (seen on the iPhone version sheet, docs/client/screenshots/I1/16-version-sheet-vlc-en.jpg). Reasons must describe the predicted engine and method; tests; check the client formats the reason codes it gets (record client changes for F4 instead of making them).',
+      '- Small follow-ups from docs/client/BACKLOG.md Server: avatarKey in admin viewer responses (B4); an automated test for the controller 500 rendition_split_failed and docs that match the splitter exceptions (B6); verify_devworld.py next-up check tolerant of kept watch state (--keep-data) or run against a fresh probe viewer; the duplicate login validation on the sign-in code path (B4).',
+      '- Never start an emulator or simulator, never touch client/ (except regenerating client/src/api/schema.d.ts once at the end if the OpenAPI changes), never restart or republish 39300; test on 39310. Keep host load modest (a client agent runs an iOS simulator and Xcode builds in parallel): filtered dotnet test runs while iterating, the full suite once at the end.',
+    ].join('\n'),
+    acceptance: [
+      'every secret-bearing response sends Cache-Control: no-store via one central rule, covered by a route-walking test and docs',
+      'VLC predictions carry engine-correct reason lines; follow-ups (admin avatarKey, rendition_split_failed test and docs, verify next-up with kept data, duplicate validation) fixed or answered',
+      'OpenAPI frozen, contract check, e2e and the full server suite green; client and web types regenerated if the contract changed',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
