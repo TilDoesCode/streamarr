@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Server } from 'lucide-react-native';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AmbientBackdrop } from '@/components/ambient';
@@ -42,6 +42,7 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   const router = useRouter();
   const { large, s } = useShell();
   const split = design.isTV || large;
+  const keyboard = useKeyboardShown(!split && Platform.OS === 'ios');
   const logo = design.px(split ? 56 : 48);
   const back =
     !design.isTV && router.canGoBack() ? (
@@ -56,12 +57,14 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   const heading = (
     <View style={{ gap: design.space.md }}>
       {split ? back : null}
-      <Image
-        source={require('@/assets/images/splash-icon.png')}
-        style={{ width: logo, height: logo }}
-        contentFit="contain"
-        accessibilityIgnoresInvertColors
-      />
+      {keyboard ? null : (
+        <Image
+          source={require('@/assets/images/splash-icon.png')}
+          style={{ width: logo, height: logo }}
+          contentFit="contain"
+          accessibilityIgnoresInvertColors
+        />
+      )}
       <Text variant={split ? 'display' : 'title'}>{title}</Text>
       {subtitle ? (
         <Text variant="body" tone="muted">
@@ -121,28 +124,46 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   return (
     <SafeAreaView testID={testID} style={{ flex: 1, backgroundColor: colors.background }}>
       <AmbientBackdrop />
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
-          padding: design.layout.gutter,
-        }}>
-        <View
-          style={{
-            width: '100%',
-            maxWidth: design.px(440),
-            alignSelf: 'center',
-            gap: design.space['2xl'],
+      {/* Handheld: shrink above the keyboard (Android edge-to-edge no longer resizes the window). */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={split ? undefined : 'padding'}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'center',
+            padding: design.layout.gutter,
           }}>
-          {back}
-          {heading}
-          <View style={{ gap: design.space.lg }}>{children}</View>
-        </View>
-      </ScrollView>
+          <View
+            style={{
+              width: '100%',
+              maxWidth: design.px(440),
+              alignSelf: 'center',
+              gap: design.space['2xl'],
+            }}>
+            {back}
+            {heading}
+            <View style={{ gap: design.space.lg }}>{children}</View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+/** iOS handheld: true while the software keyboard is up (the logo makes room for the submit button). */
+function useKeyboardShown(enabled: boolean): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    const show = Keyboard.addListener('keyboardWillShow', () => setShown(true));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setShown(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [enabled]);
+  return enabled && shown;
 }
 
 export function ServerChip({ name, url }: { name: string; url: string }) {

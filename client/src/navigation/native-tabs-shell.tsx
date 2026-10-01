@@ -7,6 +7,11 @@ import { colors } from '@/theme';
 import { TABS } from './tabs';
 
 const android = Platform.OS === 'android';
+// iOS convention: the search-role tab sits at the trailing end of the bar.
+const ORDERED =
+  Platform.OS === 'ios'
+    ? [...TABS.filter((tab) => tab.id !== 'search'), ...TABS.filter((tab) => tab.id === 'search')]
+    : TABS;
 
 /** Phone/Apple TV tab bar: Liquid Glass on iOS 26+, top tab bar on tvOS, Aurora-styled Material bar on Android. */
 export function NativeTabsShell() {
@@ -27,7 +32,7 @@ export function NativeTabsShell() {
       backgroundColor={android ? colors.glass.solid : undefined}
       indicatorColor={android ? colors.glass.strong : undefined}
       rippleColor={android ? colors.muted : undefined}>
-      {TABS.map((tab) => (
+      {ORDERED.map((tab) => (
         <NativeTabs.Trigger
           key={tab.name}
           name={tab.name}

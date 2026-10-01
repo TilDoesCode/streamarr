@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { colors } from '@/theme';
 
+import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
@@ -62,6 +63,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     this.detach = null;
     this.video = element;
     if (!element) return;
+    if (effectiveMuted(false)) element.muted = true;
     const on = <K extends keyof HTMLMediaElementEventMap>(name: K, handler: () => void) => {
       element.addEventListener(name, handler);
       return () => element.removeEventListener(name, handler);
@@ -272,7 +274,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   }
 
   setMuted(muted: boolean): void {
-    if (this.video) this.video.muted = muted;
+    if (this.video) this.video.muted = effectiveMuted(muted);
   }
 
   pause(): void {

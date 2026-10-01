@@ -205,7 +205,29 @@ describe('versionHints', () => {
     });
   });
 
-  it('sends no VLC caps from iOS, web or without a VLC engine', () => {
+  it('sends VLC caps from iPhone and iPad', () => {
+    const native = {
+      engine: 'native' as const,
+      containers: ['mp4'],
+      videoCodecs: [{ codec: 'h264', maxHeight: 1080 }],
+      audioCodecs: [{ codec: 'aac' }],
+      subtitleFormats: [],
+      hls: true,
+      maxAudioChannels: 2,
+    };
+    const vlc = {
+      ...native,
+      engine: 'vlc' as const,
+      videoCodecs: [{ codec: 'av1', maxHeight: 1080 }],
+    };
+    for (const platform of ['ios', 'ipados'] as const) {
+      const hints = versionHints({ platform, vlcAvailable: true, engines: [native, vlc] });
+      expect(hints?.vlcAvailable).toBe(true);
+      expect(hints?.vlcVideoCodecs).toBe('av1:1080');
+    }
+  });
+
+  it('sends no VLC caps from tvOS, web or without a VLC engine', () => {
     const native = {
       engine: 'native' as const,
       containers: ['mp4'],
@@ -215,7 +237,7 @@ describe('versionHints', () => {
     };
     const vlc = { ...native, engine: 'vlc' as const };
     for (const profile of [
-      { platform: 'ios', vlcAvailable: true, engines: [native, vlc] },
+      { platform: 'tvos', vlcAvailable: true, engines: [native, vlc] },
       { platform: 'web', vlcAvailable: false, engines: [{ ...native, engine: 'web' as const }] },
       { platform: 'android', vlcAvailable: false, engines: [native] },
     ] as DeviceProfile[]) {

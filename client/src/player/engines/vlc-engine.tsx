@@ -2,6 +2,7 @@ import { createRef } from 'react';
 import { LibVlcPlayerView, type LibVlcPlayerViewRef, type MediaTracks } from 'expo-libvlc-player';
 import { Platform } from 'react-native';
 
+import { effectiveMuted } from '../test-muted';
 import { EngineBase, PropsStore } from './base';
 import { createPropsSurface } from './props-surface';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
@@ -35,6 +36,7 @@ type Props = {
   /** Milliseconds; `:start-time` made libVLC report time and length relative to the start. */
   time?: number;
   nonce: number;
+  mute: boolean;
 };
 
 /** libVLC (Android) / VLCKit 4 (Apple) via expo-libvlc-player: the fallback engine. */
@@ -45,6 +47,7 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     options: [],
     tracks: { subtitle: -1 },
     nonce: 0,
+    mute: effectiveMuted(false),
   });
   private readonly view = createRef<VlcViewRef>();
   private raw: MediaTracks = { audio: [], video: [], subtitle: [] };
@@ -75,6 +78,7 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
         options={props.options}
         tracks={props.tracks}
         time={props.time}
+        mute={props.mute}
         autoplay
         contentFit={fit ?? 'contain'}
         onBuffering={() => {
@@ -245,6 +249,10 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     this.seekGuard = { target, until: Date.now() + 2000 };
     this.stall.pictures = -1;
     this.emitTime(target);
+  }
+
+  setMuted(muted: boolean): void {
+    this.props.set({ mute: effectiveMuted(muted) });
   }
 
   setAudioTrack(id: string): void {

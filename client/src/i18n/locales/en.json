@@ -507,6 +507,10 @@
         "title": "Too many attempts",
         "message": "Wait a minute before you try again."
       },
+      "email_code_cooldown": {
+        "title": "Code just sent",
+        "message": "A code was sent moments ago. Wait a little before you request a new one."
+      },
       "refresh_token_reused": {
         "title": "Signed out for your security",
         "message": "This sign-in was used somewhere else, so the server ended it. Sign in again."
@@ -530,6 +534,10 @@
       "invalid_email": {
         "title": "Invalid email address",
         "message": "Check the email address and try again."
+      },
+      "invalid_avatar": {
+        "title": "Invalid avatar",
+        "message": "Choose one of the offered avatar colours."
       },
       "email_taken": {
         "title": "Email address in use",

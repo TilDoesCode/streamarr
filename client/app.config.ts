@@ -96,6 +96,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-libvlc-player',
     ['./plugins/with-android-tv', { androidTVBanner: TV_BANNER }],
     './plugins/with-gradle-limits',
+    './plugins/with-ios-scene',
   ],
   experiments: {
     // The Streamarr server serves the web build under /watch (EXPO_BASE_URL=/watch).

@@ -48,10 +48,13 @@ export type VersionHints = {
   vlcHdrToneMapping?: boolean;
 };
 
-/** Android's VLC engine as `versions` caps: the same codec heights the playback profile declares (docs/api.md). */
+// tvOS waits for its own VLCKit verification (I3).
+const VLC_HINT_PLATFORMS = new Set(['android', 'androidtv', 'ios', 'ipados']);
+
+/** The VLC engine as `versions` caps (Android, iPhone, iPad): the codec heights the playback profile declares (docs/api.md). */
 function vlcHints(profile: DeviceProfile): Partial<VersionHints> {
   const vlc = profile.engines.find((item) => item.engine === 'vlc');
-  if (!profile.vlcAvailable || !vlc || !profile.platform.startsWith('android')) return {};
+  if (!profile.vlcAvailable || !vlc || !VLC_HINT_PLATFORMS.has(profile.platform)) return {};
   const codecs = vlc.videoCodecs.map(({ codec, maxHeight }) =>
     maxHeight ? `${codec}:${maxHeight}` : codec
   );
@@ -64,7 +67,7 @@ function vlcHints(profile: DeviceProfile): Partial<VersionHints> {
   };
 }
 
-/** The compact `versions` query: the native (first) engine plus, on Android, the VLC engine's real limits. */
+/** The compact `versions` query: the native (first) engine plus the VLC engine's real limits where VLC is verified. */
 export function versionHints(profile: DeviceProfile): VersionHints | undefined {
   const engine = profile.engines.find((item) => item.engine !== 'vlc') ?? profile.engines[0];
   if (!engine?.videoCodecs.length) return undefined;

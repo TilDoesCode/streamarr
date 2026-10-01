@@ -50,38 +50,42 @@ export function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const pageHeading = design.isTV || Platform.OS === 'web';
   const shell = useShell();
+  // iOS 27 moves the large title into a scroll view that is the screen's first subview and then never draws it.
   return (
-    <ScrollView
+    <View
       testID="settings-screen"
-      showsVerticalScrollIndicator={!shell.large}
-      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{
-        paddingTop: shell.large
-          ? shell.s(SHELL.page.top)
-          : pageHeading
-            ? design.layout.edgeVertical + insets.top
-            : design.space.lg,
-        paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-        ...gutterPadding(design),
-        gap: design.layout.sectionGap,
-        width: '100%',
-        maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
-      }}
-      snapToAlignment={design.isTV ? 'item' : undefined}
-      snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
-      {pageHeading ? (
-        <Text variant="title" role="heading" style={shell.pageTitle}>
-          {t('tabs.settings')}
-        </Text>
-      ) : null}
-      <AccountSection />
-      <SecuritySection />
-      <DevicesSection />
-      <LanguageSection />
-      <AboutSection />
-      {__DEV__ ? <DeveloperSection /> : null}
-    </ScrollView>
+      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={!shell.large}
+        style={{ flex: 1 }}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{
+          paddingTop: shell.large
+            ? shell.s(SHELL.page.top)
+            : pageHeading
+              ? design.layout.edgeVertical + insets.top
+              : design.space.lg,
+          paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+          ...gutterPadding(design),
+          gap: design.layout.sectionGap,
+          width: '100%',
+          maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
+        }}
+        snapToAlignment={design.isTV ? 'item' : undefined}
+        snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
+        {pageHeading ? (
+          <Text variant="title" role="heading" style={shell.pageTitle}>
+            {t('tabs.settings')}
+          </Text>
+        ) : null}
+        <AccountSection />
+        <SecuritySection />
+        <DevicesSection />
+        <LanguageSection />
+        <AboutSection />
+        {__DEV__ ? <DeveloperSection /> : null}
+      </ScrollView>
+    </View>
   );
 }
 

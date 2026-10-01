@@ -31,6 +31,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
+import { VideoAirPlayButton } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -53,6 +54,7 @@ import type { Clock } from '@/player/use-clock';
 import { channelLayout, qualityLabel } from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
+import { effectiveMuted, TEST_MUTED } from '@/player/test-muted';
 import { colors, fonts, useDesign } from '@/theme';
 
 import { PANELS, type PanelKind } from './player-panels';
@@ -116,7 +118,7 @@ export function PlayerOverlay({
   const [visible, setVisible] = useState(true);
   const [zone, setZone] = useState<Zone>('buttons');
   const [scrub, setScrub] = useState<number | null>(null);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(TEST_MUTED);
   const [fit, setFit] = useState<'contain' | 'cover'>('contain');
   const [fullscreen, setFullscreen] = useState(isFullscreen);
   const [flash, setFlash] = useState<string | null>(null);
@@ -232,7 +234,7 @@ export function PlayerOverlay({
   const toggleMute = () => {
     const next = !muted;
     controller.engine?.setMuted?.(next);
-    setMuted(next);
+    setMuted(effectiveMuted(next));
   };
 
   const captureDpad = !suspended && (Platform.OS === 'web' || !visible || zone === 'progress');
@@ -701,6 +703,7 @@ export function PlayerOverlay({
                       onPress={() => controller.engine?.startPictureInPicture?.()}
                     />
                   ) : null}
+                  {controller.engine?.supportsAirPlay ? <AirPlayButton size={44} /> : null}
                 </FocusGuide>
               </Glass>
             ) : (
@@ -874,6 +877,7 @@ export function PlayerOverlay({
                         onPress={() => controller.engine?.startPictureInPicture?.()}
                       />
                     ) : null}
+                    {controller.engine?.supportsAirPlay ? <AirPlayButton size={chip} /> : null}
                     {!tv && Platform.OS !== 'web' ? (
                       <GlassButton
                         iconOnly
@@ -1016,3 +1020,21 @@ const styles = StyleSheet.create({
   topShade: { position: 'absolute', top: 0, left: 0, right: 0 },
   bottomShade: { position: 'absolute', bottom: 0, left: 0, right: 0 },
 });
+
+/** AVRoutePickerView in a glass circle, sized like the other chips. */
+function AirPlayButton({ size }: { size: number }) {
+  const pt = usePlayerT();
+  return (
+    <Glass
+      style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}
+      testID="player-airplay"
+      accessibilityLabel={pt('controls.airplay')}>
+      <VideoAirPlayButton
+        style={{ flex: 1 }}
+        tint={colors.foreground.DEFAULT}
+        activeTint={colors.accent.DEFAULT}
+        prioritizeVideoDevices
+      />
+    </Glass>
+  );
+}

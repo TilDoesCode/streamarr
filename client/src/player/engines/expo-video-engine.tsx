@@ -8,6 +8,7 @@ import {
   type VideoPlayer,
 } from 'expo-video';
 
+import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
@@ -19,8 +20,9 @@ function sameTrack(a: AudioTrack | SubtitleTrack | null, b: AudioTrack | Subtitl
   return a.language === b.language && a.label === b.label;
 }
 
-// Picture-in-picture on Android phones only; Apple needs Xcode verification first, TV has none.
-const PIP = Platform.OS === 'android' && !Platform.isTV;
+// Picture-in-picture and AirPlay on phones/tablets; TV has neither.
+const PIP = (Platform.OS === 'android' || Platform.OS === 'ios') && !Platform.isTV;
+const AIRPLAY = Platform.OS === 'ios' && !Platform.isTV;
 
 type SurfaceHooks = {
   onFirstFrame: () => void;
@@ -39,6 +41,7 @@ function createExpoVideoSurface(
         player={player}
         style={style}
         nativeControls={false}
+        allowsVideoFrameAnalysis={false}
         contentFit={fit ?? 'contain'}
         allowsPictureInPicture={PIP}
         startsPictureInPictureAutomatically={PIP}
@@ -63,6 +66,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     const player = this.player;
     player.timeUpdateEventInterval = 0.1;
     player.keepScreenOnWhilePlaying = true;
+    player.muted = effectiveMuted(false);
+    if (AIRPLAY) player.allowsExternalPlayback = true;
     this.subscriptions.push(
       player.addListener('statusChange', ({ status, error }) => {
         if (status === 'error') {
@@ -103,6 +108,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   readonly supportsPictureInPicture = PIP;
+  readonly supportsAirPlay = AIRPLAY;
   private readonly view = createRef<VideoView>();
   readonly Surface = createExpoVideoSurface(this.player, {
     onFirstFrame: () => this.emit({ type: 'firstFrame' }),
@@ -177,7 +183,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   setMuted(muted: boolean): void {
-    this.player.muted = muted;
+    this.player.muted = effectiveMuted(muted);
   }
 
   pause(): void {

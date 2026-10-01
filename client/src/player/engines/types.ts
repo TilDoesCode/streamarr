@@ -83,9 +83,11 @@ export interface PlayerEngine {
   /** `null` turns subtitles off. */
   setSubtitleTrack(id: string | null): void;
   setMuted?(muted: boolean): void;
-  /** Picture-in-picture (Android phones, expo-video): entered by `startPictureInPicture` or on leaving the app. */
+  /** Picture-in-picture (iPhone/iPad and Android phones, expo-video): entered by `startPictureInPicture` or on leaving the app. */
   readonly supportsPictureInPicture?: boolean;
   startPictureInPicture?(): void;
+  /** AirPlay route picker (AVPlayer on iPhone/iPad). */
+  readonly supportsAirPlay?: boolean;
   subscribe(listener: (event: EngineEvent) => void): () => void;
   getSnapshot(): EngineSnapshot;
   /** Stops decoding before the Surface unmounts (libVLC must not be released while it decodes). */

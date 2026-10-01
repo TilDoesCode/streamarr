@@ -507,6 +507,10 @@
         "title": "Zu viele Versuche",
         "message": "Warte eine Minute, bevor du es noch einmal versuchst."
       },
+      "email_code_cooldown": {
+        "title": "Code gerade gesendet",
+        "message": "Ein Code wurde eben erst gesendet. Warte kurz, bevor du einen neuen anforderst."
+      },
       "refresh_token_reused": {
         "title": "Zu deiner Sicherheit abgemeldet",
         "message": "Diese Anmeldung wurde anderswo verwendet, deshalb hat der Server sie beendet. Melde dich erneut an."
@@ -530,6 +534,10 @@
       "invalid_email": {
         "title": "Ungültige E-Mail-Adresse",
         "message": "Prüfe die E-Mail-Adresse und versuche es noch einmal."
+      },
+      "invalid_avatar": {
+        "title": "Ungültiger Avatar",
+        "message": "Wähle eine der angebotenen Avatarfarben."
       },
       "email_taken": {
         "title": "E-Mail-Adresse vergeben",
