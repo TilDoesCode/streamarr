@@ -428,6 +428,24 @@ const TASKS = {
       'Dev World can restart with its data kept; cleanup items done; OpenAPI frozen, contract check, e2e and the full server suite green',
     ],
   },
+  'B3': {
+    title: 'Server: art highlight for per-title TV glass, B2 verify follow-ups',
+    track: 'Backend',
+    deps: ['B2'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round G (PLAN.md section 5, "G — second follow-up round"). Runs in parallel with client task F3, which uses the emulators and Dev World 39300.',
+      '- Art highlight (orchestrator decision on the TV glass): F3 found that the per-style contrast rule over the brightest art (Big Buck Bunny white sky) only allows TV glass 0.70 -> 0.64, which is hardly visible. The client will size the glass alpha per title from the art actually behind the glass. Add the measured highlight next to tint/tint2 wherever the palette is returned: the colour (#RRGGBB) at a high luminance percentile (e.g. 95th, robust against single white pixels) of the backdrop the TV detail and hero draw behind their glass, measured per region if cheap (the right part behind the Versions panel, the left strip behind the rail) or once for the whole backdrop (conservative). Null when unknown; bump the palette version so cached palettes recompute; unit tests with synthetic images (white sky, dark scene); Dev World titles get real values. Document the field and how the client should use it (keep 4.5:1 body / 3:1 large text against the highlight) in docs/api.md.',
+      '- B2 verify follow-ups (docs/client/BACKLOG.md, Server section): ArtworkPaletteService.DrainOverflow peek/write/dequeue race (can duplicate one item and lose another) and the unused Pending property; vlcVideoCodecs answers 400 for unknown codec names; a test that indexer searches use the server language for a German viewer; a test for the spec warm-up concurrency cap; docs consolidation (ViewerLanguages and the warm-up in docs/configuration.md, devworld --keep-data in docs/setup.md or the Dev World docs); resume items with title null: fill the title or drop the field if no client reads it (check client/ and web/ first).',
+      '- Never start an emulator, never restart or republish 39300 (the orchestrator does it after verification); test on 39310. Regenerate the client and web API types once at the very end (client gen:api + typecheck, web types) and touch nothing else in client/.',
+      '- Keep the OpenAPI freeze, contract check and e2e green; journal each item as you finish it.',
+    ].join('\n'),
+    acceptance: [
+      'palette responses carry a measured highlight per title (null when unknown), unit-tested on synthetic bright and dark images, documented for the client; Dev World titles have values',
+      'B2 verify follow-ups fixed or explicitly answered (palette overflow race, unknown codec 400, indexer language test, warm-up concurrency test, docs, resume title)',
+      'OpenAPI frozen, contract check, e2e and the full server suite green; client and web types regenerated',
+    ],
+  },
   'F3': {
     title: 'Client: one chip row, clearer TV glass, both specs, language, resize, account settings, leftovers, VLC caps',
     track: 'Client',
@@ -437,6 +455,8 @@ const TASKS = {
       '- Part of round G (PLAN.md section 5, "G — second follow-up round"; user decisions in section 2). Runs in parallel with server task B2 (server/ and port 39310 are B2\'s; do not touch them).',
       '- Library pages (user complaint): on TV the genre chips and the sort pill form two stacked chip rows that look odd. One chip row only: page title left and a compact sort control right in the same title line; the genre chips in ONE single-line row that scrolls horizontally (keep the focused chip in the title-safe area, a soft edge fade hints at more; D-pad Left from the first chip goes to the rail, Up from the chips reaches the sort). Same layout on web and tablet (one large-screen layout); the phone keeps its swipe row but also moves the sort into the title line. Keep the F2 focus flow, Back chain and focus memory working and re-check them.',
       '- TV glass (user decision): make the Android TV glass clearer. Body text keeps >= 4.5:1 and large text (>= 24 px regular or >= 18.66 px bold at the 1920 design scale) needs >= 3:1 over the measured brightest art; extend tv-glass.test.ts to check each text style against its own threshold. Show before/after of the Big Buck Bunny detail with the Recommended card focused.',
+      '- Per-title TV glass (orchestrator decision after slice 2, needs B3 committed): size the TV glass alpha per title from the art highlight B3 adds to the palette, so dark art gets clearly clearer glass while every text style keeps its threshold against that highlight; fall back to the conservative constant (0.64) when the highlight is null. Unit tests for the alpha function; before/after on a dark title (Sherlock or Night of the Living Dead) and on Big Buck Bunny.',
+      '- Near-square Android tablet (found in slice 2, e.g. 2300x2424 px at 420 dpi): the Versions panel on the large detail runs under the rail and its title is clipped; fix and screenshot.',
       '- Detail specs (user decision): cards keep the best existing version spec; the movie/series/episode detail shows both when they differ, e.g. "4K · HDR10 available · plays here in 1080p" (DE: "4K · HDR10 vorhanden · hier 1080p"), derived from the versions list (best qualityRank vs the recommended version). TV, web and phone.',
       '- Language (user decision): send Accept-Language with the app language (primary tag) on every API request and put the language into the catalog query keys so a language switch refetches. Harmless before B2 lands; verify the German texts once 39300 runs B2.',
       '- Resize/split screen: an Android split screen below 600 dp or a web resize across 640 px must not remount the navigator and lose the tab stacks (hysteresis and/or keep the stacks); extend the shell-selection unit test.',

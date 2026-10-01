@@ -461,3 +461,6 @@ Tasks (guidance and acceptance in `orchestrator.js`):
 - **F3 client**: one chip row on the library pages, clearer TV glass, both specs on the detail, Accept-Language, no
   navigation rebuild on resize/split screen, account management in Settings, F2 leftovers and small items, then the
   VLC caps once B2 is in.
+- **B3 server** (added after F3 slice 2): a measured art highlight per title next to tint/tint2 so the client can size
+  the TV glass per title (the rule over the brightest art alone only allowed 0.70 -> 0.64), plus the B2 verify
+  follow-ups. F3 then uses the highlight and fixes the near-square tablet detail.
