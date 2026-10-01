@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr – Runde H: Apple, Feinschliff, Tonspuren</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: var(--cc-bg, #ffffff);
+    --fg: var(--cc-fg, #15171c);
+    --muted: var(--cc-muted, #f2f3f6);
+    --muted-fg: var(--cc-muted-fg, #5d6370);
+    --border: var(--cc-border, #dfe2e8);
+    --primary: var(--cc-primary, #2f6fe4);
+    --primary-fg: var(--cc-primary-fg, #ffffff);
+    --radius: var(--cc-radius, 10px);
+    --server: #7a4fd6; --server-bg: #efe8fc;
+    --client: #1d8a6b; --client-bg: #e2f4ee;
+    --warn: #a86a00; --warn-bg: #fdf1dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f1116);
+      --fg: var(--cc-fg, #e8eaf0);
+      --muted: var(--cc-muted, #1a1d25);
+      --muted-fg: var(--cc-muted-fg, #9aa1b0);
+      --border: var(--cc-border, #2a2e39);
+      --primary: var(--cc-primary, #6c9cff);
+      --primary-fg: var(--cc-primary-fg, #0f1116);
+      --server: #b597ff; --server-bg: #241b3a;
+      --client: #5fd0ad; --client-bg: #12302a;
+      --warn: #f0b34a; --warn-bg: #33270f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--cc-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); }
+  main { max-width: 1060px; margin: 0 auto; padding: 32px 22px 56px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 34px 0 12px; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+  p { margin: 6px 0; }
+  .sub { color: var(--muted-fg); }
+  code { font-family: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  pre { font-family: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; background: var(--muted); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+  .notice { border: 1px solid var(--warn); background: var(--warn-bg); border-radius: var(--radius); padding: 12px 16px; }
+  .notice b { color: var(--warn); }
+  .lanes { display: grid; grid-template-columns: 90px 1fr; gap: 10px 14px; align-items: center; }
+  .lane-label { font-weight: 600; font-size: 13px; color: var(--muted-fg); }
+  .lane { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill { border-radius: 8px; padding: 7px 11px; font-size: 13px; font-weight: 600; border: 1px solid transparent; }
+  .pill small { display: block; font-weight: 400; color: var(--muted-fg); }
+  .s { color: var(--server); background: var(--server-bg); border-color: var(--server); }
+  .c { color: var(--client); background: var(--client-bg); border-color: var(--client); }
+  .arrow { color: var(--muted-fg); }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .card.s-card { border-left: 4px solid var(--server); }
+  .card.c-card { border-left: 4px solid var(--client); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 1px; }
+  ul { margin: 6px 0 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted-fg); font-weight: 600; font-size: 13px; }
+  footer { margin-top: 40px; color: var(--muted-fg); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Runde H – Apple, Feinschliff, Tonspuren</h1>
+  <p class="sub">Pakete 1, 2 und 4 aus dem Bericht zu Runde G. Stand 1. Oktober 2026, 16:45. Echte Geräte testest du danach selbst.</p>
+
+  <div class="notice" style="margin-top:16px">
+    <b>Einmal von dir nötig:</b> Xcode 27 ist installiert und lizenziert (iOS 27, tvOS 27), aber <code>xcode-select</code> zeigt noch auf die Command Line Tools. Bauen funktioniert trotzdem, argent sieht die Simulatoren aber erst danach:
+    <pre>sudo xcode-select -s /Applications/Xcode.app/Contents/Developer</pre>
+  </div>
+
+  <h2>Ablauf: zwei Spuren parallel</h2>
+  <div class="lanes">
+    <span class="lane-label">Server</span>
+    <div class="lane">
+      <span class="pill s">B4 Feinschliff<small>~1 Teil</small></span><span class="arrow">→</span>
+      <span class="pill s">B5 Tonspuren im HLS<small>~2–3 Teile</small></span>
+    </div>
+    <span class="lane-label">Client</span>
+    <div class="lane">
+      <span class="pill c">I1 iPhone<small>~3 Teile</small></span><span class="arrow">→</span>
+      <span class="pill c">I2 iPad + Safari<small>~1–2</small></span><span class="arrow">→</span>
+      <span class="pill c">I3 Apple TV<small>~2</small></span><span class="arrow">→</span>
+      <span class="pill c">F4 Feinschliff<small>braucht B4</small></span><span class="arrow">→</span>
+      <span class="pill c">F5 Tonspuren<small>braucht B5</small></span>
+    </div>
+  </div>
+  <p class="sub" style="margin-top:10px">Jede Aufgabe: bauen in Teilen von ca. 55 Minuten → unabhängige Prüfung → bei Bedarf Fix-Runde → Commit. Client-Aufgaben laufen nacheinander (8 GB RAM: ein Simulator/Emulator und ein nativer Build gleichzeitig).</p>
+
+  <h2>Aufgaben</h2>
+  <div class="grid">
+    <div class="card c-card">
+      <h3>I1 · iPhone <span class="tag c">Paket 1</span></h3>
+      <ul>
+        <li>Erster Build und Start im iPhone-Simulator, Build-Schritte dokumentiert</li>
+        <li>Stummer Test: <code>EXPO_PUBLIC_TEST_MUTED=1</code> vor jeder Wiedergabe</li>
+        <li>Ganzer Ablauf: Anmelden, Profile, Start, Suche, Detail, Versionen, Abspielen, Weiterschauen, nächste Folge, Einstellungen</li>
+        <li>Liquid Glass: NativeTabs, große Titel, transparente Kopfzeilen, Hero-Verlauf</li>
+        <li>Keychain, Tastatur-Abstände in Formularen</li>
+        <li>AVPlayer, Media-Caps (HEVC/HDR/DV), VLCKit-Rückfall, PiP, AirPlay</li>
+      </ul>
+    </div>
+    <div class="card c-card">
+      <h3>I2 · iPad + Safari <span class="tag c">Paket 1</span></h3>
+      <ul>
+        <li>Großes Layout auf iPad Pro 13", Air 11", mini – hoch und quer</li>
+        <li>Split View / Stage Manager ohne Navigationsverlust</li>
+        <li>Hardware-Tastatur und Trackpad-Hover</li>
+        <li>Web-Client in Mobile Safari (iPhone und iPad) mit nativem HLS</li>
+      </ul>
+    </div>
+    <div class="card c-card">
+      <h3>I3 · Apple TV <span class="tag c">Paket 1</span></h3>
+      <ul>
+        <li>tvOS-Build, Wechsel iPhone ↔ tvOS dokumentiert</li>
+        <li>Fokus: Wiederherstellung, Reihen, Bibliothek, Detail, Einstellungen</li>
+        <li>Menü-Taste als Zurück-Kette, Deep-Links</li>
+        <li>Siri Remote (Spulen per Wischen), tvOS-Tastatur</li>
+        <li>AVPlayer mit tvOS-Profil, Empfohlen = Abspielen, Glas lesbar</li>
+      </ul>
+    </div>
+    <div class="card s-card">
+      <h3>B4 · Server-Feinschliff <span class="tag s">Paket 2</span></h3>
+      <ul>
+        <li>E-Mail-Code in der Wartezeit: klare Antwort statt „gesendet“</li>
+        <li>Mails auf Deutsch/Englisch je nach Nutzer</li>
+        <li>„Alle anderen abmelden“ als ein Endpunkt</li>
+        <li><code>vlcHdrFormats=none</code></li>
+        <li>Plakate und Logos in der Nutzersprache (Dev World mit deutscher Variante)</li>
+        <li>Anzeigename und Avatar änderbar</li>
+      </ul>
+    </div>
+    <div class="card c-card">
+      <h3>F4 · Client-Feinschliff <span class="tag c">Paket 2</span></h3>
+      <ul>
+        <li>TV: Unten von der Sortierung, Zurück aus Einstellungen, Fokus nach Abmelden</li>
+        <li>Glas pro Titel auch für Knöpfe und Chips, Kontrast Release-Name ≥ 4,5:1</li>
+        <li>Tablet-Logo, Web-Scrollbalken, doppelter Verlaufseintrag</li>
+        <li>Profil bearbeiten, übersetzte Anmeldemethoden, 2FA-Panel schließt</li>
+        <li>Neue Endpunkte aus B4 nutzen</li>
+      </ul>
+    </div>
+    <div class="card s-card">
+      <h3>B5 · Tonspuren im HLS <span class="tag s">Paket 4</span></h3>
+      <ul>
+        <li>Remux und Transcode liefern jede angebotene Tonspur als eigene HLS-Audio-Variante</li>
+        <li>Ein ffmpeg-Prozess (<code>var_stream_map</code> mit Audiogruppe), Kosten begrenzt und gemessen</li>
+        <li>Transcode bleibt echtzeitfähig; <code>/switch</code> bleibt als Rückfall</li>
+        <li>Dev World: Dual-Audio-Titel zeigt zwei Spuren</li>
+      </ul>
+    </div>
+    <div class="card c-card">
+      <h3>F5 · Tonspur-Wechsel im Player <span class="tag c">Paket 4</span></h3>
+      <ul>
+        <li>Sprachwechsel ohne neue Sitzung: hls.js, Safari, AVPlayer (iPhone/Apple TV), Android</li>
+        <li>Position bleibt, Wechselzeit gemessen und schneller als bisher</li>
+        <li>Rückfall auf <code>/switch</code>, wenn keine Varianten da sind</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Risiken und wie ich damit umgehe</h2>
+  <table>
+    <tr><th style="width:220px">Risiko</th><th>Umgang</th></tr>
+    <tr><td>Erster iOS-Build bricht an vielen Stellen</td><td>I1 hat bis zu 3 Teile und 2 Fix-Runden; Ursachen werden in Config-Plugins oder per <code>patch-package</code> behoben, nie direkt in <code>node_modules</code>.</td></tr>
+    <tr><td>8 GB RAM mit Xcode-Build und Simulator</td><td>Nie ein Gradle- und ein Xcode-Build zugleich, nur ein Simulator oder Emulator gleichzeitig. Der Server läuft parallel nur mit dotnet.</td></tr>
+    <tr><td>Simulator spielt Ton über die Mac-Lautsprecher</td><td>Erste Änderung in I1: Test-Flag, mit dem jeder Player stumm startet. Mac-Lautstärke bleibt unberührt.</td></tr>
+    <tr><td>Tonspuren vervielfachen ffmpeg-Last</td><td>Ein Prozess, nur benötigte Spuren, Obergrenze; CPU, Platz und Startzeit werden gegen heute gemessen.</td></tr>
+    <tr><td>Simulator ≠ echtes Gerät</td><td>HDR, Passthrough, AirPlay-Ziele und Leistung bleiben für deinen Gerätetest offen und werden so im Bericht markiert.</td></tr>
+  </table>
+
+  <footer>Aufgaben und Abnahmekriterien: docs/client/orchestrator.js (B4, B5, I1, I2, I3, F4, F5) · Plan: docs/client/PLAN.md Abschnitt 5 „H“</footer>
+</main>
+</body>
+</html>

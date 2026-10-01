@@ -464,3 +464,22 @@ Tasks (guidance and acceptance in `orchestrator.js`):
 - **B3 server** (added after F3 slice 2): a measured art highlight per title next to tint/tint2 so the client can size
   the TV glass per title (the rule over the brightest art alone only allowed 0.70 -> 0.64), plus the B2 verify
   follow-ups. F3 then uses the highlight and fixes the near-square tablet detail.
+
+### H — Apple platforms, polish and audio renditions (user request 2026-10-01, afternoon)
+The user installed Xcode 27 (iOS 27 and tvOS 27 simulators) and asked for packages 1, 2 and 4 of the round G report:
+iPhone/iPad/Apple TV running, the polish round, and multi-rendition audio. Real hardware (Android TV device, real phone,
+real iPhone/Apple TV) is tested by the user afterwards and is out of scope here; everything Apple runs on simulators.
+Tasks (guidance and acceptance in `orchestrator.js`):
+- **B4 server polish**: e-mail code cooldown answered explicitly, viewer e-mails in the viewer language, atomic sign-out
+  of other sessions, `vlcHdrFormats=none`, artwork in the viewer language, display name/avatar editable, B3 leftovers.
+- **B5 server audio renditions**: remux and transcode deliveries carry the offered audio tracks as HLS audio renditions
+  so players switch language in-session (backlog #4).
+- **I1 iPhone**: first build and run on iOS, core loop, Liquid Glass native chrome, Keychain, Apple playback (media
+  caps, AVPlayer, VLCKit fallback, PiP, AirPlay); muted simulator playback (`EXPO_PUBLIC_TEST_MUTED=1`).
+- **I2 iPad and Safari**: the large shell on three iPad sizes, multitasking sizes, keyboard and pointer, the web client
+  in Mobile Safari with native HLS.
+- **I3 Apple TV**: tvOS build, focus engine, Menu Back chain, Siri Remote and keyboard, AVPlayer playback.
+- **F4 client polish**: the F3 verify follow-ups, profile editing and the B4 endpoints.
+- **F5 client audio renditions**: in-session audio switching on every player using B5.
+Order: server B4 -> B5 and client I1 -> I2 -> I3 -> F4 -> F5 run as two tracks in parallel; one device and one native
+build at a time.
