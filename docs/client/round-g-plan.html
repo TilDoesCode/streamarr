@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr – Runde G (Backend B2 + Client F3)</title>
+<style>
+  :root {
+    --bg: var(--cc-bg, #ffffff); --fg: var(--cc-fg, #14161c); --muted: var(--cc-muted, #f2f3f6);
+    --muted-fg: var(--cc-muted-fg, #5b6170); --border: var(--cc-border, #dfe2e8);
+    --primary: var(--cc-primary, #0f8a9a); --primary-fg: var(--cc-primary-fg, #ffffff);
+    --radius: var(--cc-radius, 12px);
+    --font: var(--cc-font-sans, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+    --mono: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    --server: #7a5af8; --client: #0f8a9a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0d0f14); --fg: var(--cc-fg, #e9ecf2); --muted: var(--cc-muted, #181b23);
+      --muted-fg: var(--cc-muted-fg, #9aa1b2); --border: var(--cc-border, #2a2f3b);
+      --primary: var(--cc-primary, #6fd3e0); --primary-fg: var(--cc-primary-fg, #0a0c12);
+      --server: #a993ff; --client: #6fd3e0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); line-height: 1.5; }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 36px 0 12px; }
+  p.lead { color: var(--muted-fg); margin: 0 0 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted-fg); font-weight: 600; }
+  .lanes { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .lane { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .lane h3 { margin: 0 0 8px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .step { border-left: 3px solid var(--border); padding: 6px 0 6px 12px; margin: 8px 0; }
+  .step b { display: block; font-size: 13px; font-family: var(--mono); color: var(--muted-fg); }
+  .server .step { border-color: var(--server); }
+  .client .step { border-color: var(--client); }
+  .chips { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .mock { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; background: #10131a; color: #e9ecf2; }
+  .mock .t { font-weight: 700; font-size: 20px; display: flex; justify-content: space-between; align-items: center; }
+  .pill { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 12px; background: rgba(255,255,255,.12); margin: 3px 2px; white-space: nowrap; }
+  .pill.on { background: #fff; color: #10131a; }
+  .seg { display: inline-flex; border-radius: 999px; background: rgba(255,255,255,.12); padding: 2px; font-size: 11px; }
+  .seg span { padding: 2px 8px; border-radius: 999px; }
+  .seg span.on { background: #fff; color: #10131a; }
+  .row { white-space: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg,#000 80%,transparent); mask-image: linear-gradient(90deg,#000 80%,transparent); }
+  .cap { color: var(--muted-fg); font-size: 13px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Runde G: Backend B2 + Client F3</h1>
+  <p class="lead">Beide laufen parallel, jede mit unabhängiger Prüfung vor dem Commit. Stand 01.10.2026, 02:10.</p>
+
+  <h2>Deine Entscheidungen (so umgesetzt)</h2>
+  <table>
+    <tr><th>Thema</th><th>Umsetzung</th><th>Wo</th></tr>
+    <tr><td>Glas auf dem TV</td><td>Durchsichtiger; Fließtext bleibt bei 4,5:1, große Schrift (ab 24 px bzw. 18,7 px fett) braucht 3:1. Test prüft jede Schriftart gegen ihren Wert.</td><td>F3</td></tr>
+    <tr><td>Technik-Chips</td><td>Karten zeigen weiter die beste vorhandene Version. Die Detailseite zeigt beides, wenn es abweicht: „4K · HDR10 vorhanden · hier 1080p“.</td><td>F3</td></tr>
+    <tr><td>Sprache der Metadaten</td><td>Die App schickt ihre Sprache mit jeder Anfrage; der Server holt Beschreibungen, Titel und Genre-Namen in dieser Sprache, mit Englisch als Rückfall.</td><td>B2 + F3</td></tr>
+    <tr><td>Nur Ton umwandeln</td><td>Bleibt keine Transkodierung – keine Änderung.</td><td>–</td></tr>
+  </table>
+
+  <h2>Deine Chip-Reihen auf dem TV</h2>
+  <div class="chips">
+    <div>
+      <div class="mock">
+        <div class="t">Series</div>
+        <div><span class="pill">All</span><span class="pill on">Crime</span><span class="pill">Drama</span><span class="pill">Mystery</span><span class="pill">Sci-Fi &amp; Fantasy</span></div>
+        <div style="margin-top:6px"><span class="seg"><span class="on">Popular</span><span>Top rated</span><span>Newest</span></span></div>
+      </div>
+      <div class="cap">Heute: zwei gleich aussehende Pillen-Reihen übereinander.</div>
+    </div>
+    <div>
+      <div class="mock">
+        <div class="t">Series <span class="seg"><span class="on">Popular</span><span>Top rated</span><span>Newest</span></span></div>
+        <div class="row"><span class="pill">All</span><span class="pill on">Crime</span><span class="pill">Drama</span><span class="pill">Mystery</span><span class="pill">Sci-Fi &amp; Fantasy</span><span class="pill">War &amp; Politics</span></div>
+      </div>
+      <div class="cap">Neu: Sortierung kompakt rechts in der Titelzeile, Genres in einer einzigen Reihe, die seitlich weiterläuft (weicher Rand zeigt „mehr“). Gleich auf Web und Tablet; Telefon bekommt die Sortierung ebenfalls in die Titelzeile.</div>
+    </div>
+  </div>
+
+  <h2>Ablauf</h2>
+  <div class="lanes">
+    <div class="lane server">
+      <h3><span class="dot" style="background:var(--server)"></span>B2 · Server</h3>
+      <div class="step"><b>Abschnitt 1 – läuft</b>Sprache pro Zuschauer (Accept-Language, Cache pro Sprache, deutsche Testdaten im Dev World); Technik-Chips im Hintergrund vorab für Start, Stöbern, Weiterschauen – mit Grenzen und abschaltbar.</div>
+      <div class="step"><b>Abschnitt 2</b>VLC-Fähigkeiten am Versions-Endpunkt; Container-Wissen dauerhaft; Dev World behält seine Daten beim Neustart; Aufräumen (ffmpeg-Waisen, Paletten-Warteschlange, Logging).</div>
+      <div class="step"><b>Prüfung + Commit</b>Danach Dev World 39300 neu starten, damit F3 die deutschen Texte und VLC-Werte nutzen kann.</div>
+    </div>
+    <div class="lane client">
+      <h3><span class="dot" style="background:var(--client)"></span>F3 · Client</h3>
+      <div class="step"><b>Abschnitt 1 – läuft</b>Eine Chip-Reihe auf Filme/Serien (Vorher/Nachher deines Screenshots); Fokus-Reste aus F2 (Deep Link, eckiger Sortier-Knopf).</div>
+      <div class="step"><b>Abschnitt 2</b>Klareres TV-Glas, beide Specs auf der Detailseite, Sprache mitschicken, geteilter Bildschirm ohne Neuaufbau, Kleinkram.</div>
+      <div class="step"><b>Abschnitt 3</b>Einstellungen: Sitzungen und Geräte, Passwort, E-Mail, Zwei-Faktor (Telefon/Web komplett, TV Sitzungen).</div>
+      <div class="step"><b>Abschnitt 4</b>VLC-Werte von Android senden (nach B2), Nachprüfung, Schluss-Screenshots, dann Prüfung + Commit.</div>
+    </div>
+  </div>
+</main>
+</body>
+</html>
