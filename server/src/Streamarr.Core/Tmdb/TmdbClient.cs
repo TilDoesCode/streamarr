@@ -90,6 +90,15 @@ public sealed class TmdbClient(
 
     public async Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
     {
+        var movie = await ReadMovieAsync(tmdbId, cancellationToken);
+        if (movie is null || !NeedsEnglishFallback || (movie.Overview is not null && movie.Tagline is not null))
+            return movie;
+        var english = await EnglishAsync(() => ReadMovieAsync(tmdbId, cancellationToken));
+        return english is null ? movie : movie with { Overview = movie.Overview ?? english.Overview, Tagline = movie.Tagline ?? english.Tagline };
+    }
+
+    private async Task<TmdbMatch?> ReadMovieAsync(int tmdbId, CancellationToken cancellationToken)
+    {
         if (!HasCredential || tmdbId <= 0)
             return null;
 
@@ -131,6 +140,29 @@ public sealed class TmdbClient(
     public async Task<TmdbTvSeriesCatalog?> GetTvSeriesCatalogAsync(
         int tmdbId,
         CancellationToken cancellationToken)
+    {
+        var catalog = await ReadTvSeriesCatalogAsync(tmdbId, cancellationToken);
+        if (catalog is null || !NeedsEnglishFallback
+            || (catalog.Series.Overview is not null && catalog.Series.Tagline is not null && catalog.Seasons.All(s => s.Overview is not null)))
+            return catalog;
+        var english = await EnglishAsync(() => ReadTvSeriesCatalogAsync(tmdbId, cancellationToken));
+        if (english is null)
+            return catalog;
+        var englishSeasons = english.Seasons.ToDictionary(s => s.SeasonNumber);
+        return new TmdbTvSeriesCatalog
+        {
+            Series = catalog.Series with
+            {
+                Overview = catalog.Series.Overview ?? english.Series.Overview,
+                Tagline = catalog.Series.Tagline ?? english.Series.Tagline,
+            },
+            Seasons = catalog.Seasons
+                .Select(s => s.Overview is null && englishSeasons.TryGetValue(s.SeasonNumber, out var en) ? s with { Overview = en.Overview } : s)
+                .ToList(),
+        };
+    }
+
+    private async Task<TmdbTvSeriesCatalog?> ReadTvSeriesCatalogAsync(int tmdbId, CancellationToken cancellationToken)
     {
         if (!HasCredential || tmdbId <= 0)
             return null;
@@ -182,6 +214,29 @@ public sealed class TmdbClient(
         int seasonNumber,
         CancellationToken cancellationToken)
     {
+        var season = await ReadTvSeasonCatalogAsync(tmdbId, seasonNumber, cancellationToken);
+        if (season is null || !NeedsEnglishFallback || (season.Overview is not null && season.Episodes.All(e => e.Overview is not null && !e.UntitledName)))
+            return season;
+        var english = await EnglishAsync(() => ReadTvSeasonCatalogAsync(tmdbId, seasonNumber, cancellationToken));
+        if (english is null)
+            return season;
+        var englishEpisodes = english.Episodes.ToDictionary(e => e.EpisodeNumber);
+        return season with
+        {
+            Overview = season.Overview ?? english.Overview,
+            Episodes = season.Episodes.Select(e => englishEpisodes.TryGetValue(e.EpisodeNumber, out var en)
+                ? e with
+                {
+                    Overview = e.Overview ?? en.Overview,
+                    Title = e.UntitledName && !en.UntitledName ? en.Title : e.Title,
+                    UntitledName = e.UntitledName && en.UntitledName,
+                }
+                : e).ToArray(),
+        };
+    }
+
+    private async Task<TmdbTvSeasonCatalog?> ReadTvSeasonCatalogAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken)
+    {
         if (!HasCredential || tmdbId <= 0 || seasonNumber < 0)
             return null;
 
@@ -202,7 +257,8 @@ public sealed class TmdbClient(
                 episodes.Add(new TmdbEpisode
                 {
                     EpisodeNumber = episodeNumber,
-                    Title = GetBoundedString(episode, "name", 512) ?? $"Episode {episodeNumber}",
+                    Title = NullIfEmpty(GetBoundedString(episode, "name", 512)) ?? $"Episode {episodeNumber}",
+                    UntitledName = NullIfEmpty(GetBoundedString(episode, "name", 512)) is null,
                     Overview = NullIfEmpty(GetBoundedString(episode, "overview", 8_192)),
                     AirDate = SafeDate(GetBoundedString(episode, "air_date", 32)),
                     RuntimeMinutes = RuntimeOrNull(GetInt(episode, "runtime")),
@@ -483,8 +539,8 @@ public sealed class TmdbClient(
             sb.Append(separator).Append("api_key=").Append(Uri.EscapeDataString(credential));
             separator = '&';
         }
-        if (!string.IsNullOrWhiteSpace(options.Language))
-            sb.Append(separator).Append("language=").Append(Uri.EscapeDataString(options.Language));
+        if (EffectiveLanguage is { } language)
+            sb.Append(separator).Append("language=").Append(Uri.EscapeDataString(language));
         return new Uri(sb.ToString(), UriKind.Absolute);
     }
 
@@ -670,14 +726,18 @@ public sealed class TmdbClient(
         return Image(path, options.LogoSize);
     }
 
-    private string? PreferredImageLanguage()
+    private string? EffectiveLanguage => TmdbLanguage.Current ?? NullIfEmpty(options.Language?.Trim());
+
+    private string? PreferredImageLanguage() => TmdbLanguage.Primary(EffectiveLanguage);
+
+    /// <summary>Re-reads a localized result in English when TMDB has no translation for its texts.</summary>
+    private async Task<T?> EnglishAsync<T>(Func<Task<T?>> read) where T : class
     {
-        var language = options.Language?.Trim();
-        if (string.IsNullOrEmpty(language))
-            return null;
-        var code = language.Split('-', 2)[0].ToLowerInvariant();
-        return code.Length is 2 or 3 && code.All(char.IsAsciiLetterLower) ? code : null;
+        using var _ = TmdbLanguage.Use("en-US");
+        return await read();
     }
+
+    private bool NeedsEnglishFallback => !TmdbLanguage.IsEnglish(EffectiveLanguage);
 
     private string ImageLanguages()
         => PreferredImageLanguage() is { } preferred && preferred != "en" ? $"{preferred},en,null" : "en,null";

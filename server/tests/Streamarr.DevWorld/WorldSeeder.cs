@@ -64,21 +64,30 @@ public static class WorldSeeder
         foreach (var (user, display, permissions, purpose) in specs)
         {
             var email = $"{user}@devworld.example";
-            var (viewer, _) = await accounts.CreateAsync(
-                new ViewerCreate(user, display, email, ViewerPassword, false, permissions, false), ct);
+            var existing = await ExistingViewerAsync(services, user, ct);
+            var viewerId = existing?.Id ?? (await accounts.CreateAsync(
+                new ViewerCreate(user, display, email, ViewerPassword, false, permissions, false), ct)).Viewer.Id;
             string? secret = null;
             IReadOnlyList<string> recovery = [];
             if (user == "ben")
             {
                 secret = BenTotpSecret;
                 recovery = Enumerable.Range(1, ViewerTotp.RecoveryCodeCount).Select(i => $"ben-recovery-{i:00}").ToList();
-                await EnableTotpAsync(services, viewer.Id, secret, recovery, ct);
+                if (existing?.TotpEnabledAt is null)
+                    await EnableTotpAsync(services, viewerId, secret, recovery, ct);
             }
 
-            seeded.Add(new SeededViewer(viewer.Id, user, display, email, permissions, secret, recovery, purpose));
+            seeded.Add(new SeededViewer(viewerId, user, display, email, permissions, secret, recovery, purpose));
         }
 
         return seeded;
+    }
+
+    /// <summary>The seeded viewer kept from a previous run (DEVWORLD_KEEP_DATA=1); null on a fresh world.</summary>
+    private static async Task<ViewerEntity?> ExistingViewerAsync(IServiceProvider services, string username, CancellationToken ct)
+    {
+        await using var db = await services.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync(ct);
+        return await db.Viewers.AsNoTracking().FirstOrDefaultAsync(v => v.Username == username, ct);
     }
 
     private static async Task EnableTotpAsync(IServiceProvider services, string viewerId, string secret, IReadOnlyList<string> recovery, CancellationToken ct)

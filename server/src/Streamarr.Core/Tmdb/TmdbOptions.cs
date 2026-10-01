@@ -71,6 +71,9 @@ public sealed class TmdbOptions
     /// <summary>Optional ISO 639-1 language for TMDB responses (e.g. "en-US").</summary>
     public string? Language { get; set; }
 
+    /// <summary>Comma-separated primary language tags viewers may request via Accept-Language; others get <see cref="Language"/>.</summary>
+    public string ViewerLanguages { get; set; } = "de,en,es,fr,it,nl,pl,pt";
+
     /// <summary>Result-cache lifetime; TMDB metadata is cached aggressively (BRIEF §6.1).</summary>
     public int CacheTtlHours { get; set; } = 24;
 

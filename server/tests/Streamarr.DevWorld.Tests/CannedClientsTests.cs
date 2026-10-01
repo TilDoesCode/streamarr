@@ -1,6 +1,7 @@
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Core.Providers;
+using Streamarr.Core.Tmdb;
 
 namespace Streamarr.DevWorld.Tests;
 
@@ -24,6 +25,31 @@ public class CannedClientsTests(FakeWorld world) : IClassFixture<FakeWorld>
         Assert.Equal(cosmos.Releases.Select(r => r.Name).Order(), response.Items.Select(i => i.Title).Order());
         Assert.All(response.Items, item => Assert.Equal(
             world.Store.Releases.Single(r => r.Plan.Name == item.Title).Plan.ReportedSizeBytes, item.SizeBytes));
+    }
+
+    [Fact]
+    public async Task GermanLanguage_ServesGermanTextsAndGenres_FallsBackToEnglish()
+    {
+        TmdbMatch? bunny, spriteDe;
+        IReadOnlyList<TmdbGenre> genres;
+        TmdbTvSeasonCatalog? sherlock;
+        using (TmdbLanguage.Use("de"))
+        {
+            bunny = await Tmdb.GetMovieAsync(10378, CancellationToken.None);
+            spriteDe = await Tmdb.GetMovieAsync(891761, CancellationToken.None);
+            genres = await Tmdb.GetGenresAsync(MediaType.Movie, CancellationToken.None);
+            sherlock = await Tmdb.GetTvSeasonCatalogAsync(19885, 1, CancellationToken.None);
+        }
+        var english = await Tmdb.GetMovieAsync(10378, CancellationToken.None);
+
+        Assert.StartsWith("Der Hauptcharakter", bunny!.Overview);
+        Assert.Contains("Komödie", bunny.Genres);
+        Assert.Equal(world.Plan.Catalog.Movies.Single(m => m.TmdbId == 891761).Overview, spriteDe!.Overview);
+        Assert.Contains(genres, g => g.Name == "Komödie");
+        Assert.Equal("Ein Fall von Pink", sherlock!.Episodes[0].Title);
+        Assert.Equal("Staffel 1", sherlock.Title);
+        Assert.StartsWith("Follow a day", english!.Overview);
+        Assert.Contains("Comedy", english.Genres);
     }
 
     [Fact]

@@ -145,7 +145,7 @@ public sealed class CatalogTmdbFake : ITmdbClient
     {
         Interlocked.Increment(ref _genreCalls);
         return Task.FromResult<IReadOnlyList<TmdbGenre>>(mediaType == MediaType.Movie
-            ? [new TmdbGenre(DramaGenre, "Drama"), new TmdbGenre(9648, "Mystery")]
+            ? [new TmdbGenre(DramaGenre, "Drama"), new TmdbGenre(9648, TmdbLanguage.Current == "de" ? "Rätsel" : "Mystery")]
             : [new TmdbGenre(10765, "Sci-Fi & Fantasy")]);
     }
 
@@ -220,8 +220,11 @@ public sealed class CatalogNewznabFake : INewznabClient
     };
 }
 
-public sealed class ViewerCatalogFactory : WebApplicationFactory<Program>
+public class ViewerCatalogFactory : WebApplicationFactory<Program>
 {
+    /// <summary>Off by default so tests that count indexer searches are not raced by background lookups.</summary>
+    protected virtual bool SpecWarmup => false;
+
     public const string ApiKey = "machine-key-for-catalog-tests-0123456789";
     public const string IndexerName = "catalog-indexer-name";
     public const string IndexerKey = "catalog-indexer-secret-key";
@@ -245,6 +248,7 @@ public sealed class ViewerCatalogFactory : WebApplicationFactory<Program>
             ["Streamarr:LoginAttemptsPerMinute"] = "1000",
             ["Streamarr:ViewerAuthAttemptsPerMinute"] = "1000",
             ["Streamarr:ViewerVersionsCacheSeconds"] = "600",
+            ["Streamarr:SpecWarmup:Enabled"] = SpecWarmup ? "true" : "false",
             ["Streamarr:Search:PerIndexerRateLimitMilliseconds"] = "0",
             ["Streamarr:Indexers:0:Name"] = IndexerName,
             ["Streamarr:Indexers:0:BaseUrl"] = "https://indexer.catalog.example",
@@ -291,4 +295,10 @@ public sealed class ViewerCatalogFactory : WebApplicationFactory<Program>
         if (disposing && Directory.Exists(_dir))
             Directory.Delete(_dir, recursive: true);
     }
+}
+
+/// <summary>The catalog host with spec warm-up on.</summary>
+public sealed class ViewerCatalogWarmupFactory : ViewerCatalogFactory
+{
+    protected override bool SpecWarmup => true;
 }

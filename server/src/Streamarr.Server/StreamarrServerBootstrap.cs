@@ -538,6 +538,7 @@ public static class StreamarrServerBootstrap
         }
 
         app.UseMiddleware<ViewerCorsMiddleware>();
+        app.UseMiddleware<ViewerLanguageMiddleware>();
 
         // Explicit routing so the static-files middleware above is guaranteed to run first
         // (minimal hosting would otherwise auto-insert routing at the very top).

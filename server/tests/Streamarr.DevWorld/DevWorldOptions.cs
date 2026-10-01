@@ -17,6 +17,9 @@ public sealed record DevWorldOptions
     /// <summary>Resolve every release at boot and fail unless each one resolves as its fixture health (publish's boot check).</summary>
     public bool CheckReleases { get; init; }
 
+    /// <summary>Keep the state directory (database, keys, viewer accounts, watch state) of the previous run on this port.</summary>
+    public bool KeepData { get; init; }
+
     public string MediaDir => Path.Combine(CacheDir, "media");
     public string BindUrl => $"http://{UrlHost(Host)}:{Port}";
     public string LocalUrl => $"http://{(BindsAllInterfaces || Host == "localhost" ? "127.0.0.1" : UrlHost(Host))}:{Port}";
@@ -46,6 +49,7 @@ public sealed record DevWorldOptions
             SnapshotInfoPath = Env("DEVWORLD_SNAPSHOT_INFO"),
             GenerateOnly = args.Contains("--generate-only"),
             CheckReleases = Env("DEVWORLD_CHECK_RELEASES") == "1",
+            KeepData = Env("DEVWORLD_KEEP_DATA") == "1",
         };
     }
 

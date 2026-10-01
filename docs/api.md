@@ -937,6 +937,15 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
   certification, so each item costs one cached TMDB detail lookup; unrestricted viewers cost none.
 - **Errors:** the standard envelope (§ 2). `429 capacity_reached` and `503 …` carry `Retry-After: 1`.
   Malformed query values (e.g. `limit=abc`) answer `400 invalid_request` on every viewer endpoint.
+- **Language:** every viewer endpoint honours `Accept-Language` (the highest-weighted primary tag the server
+  allows, `Tmdb:ViewerLanguages`, e.g. `de` or `en`; a missing or unknown tag means the server default
+  `Tmdb:Language`). Titles, overviews, taglines, season and episode names and genre names come from TMDB in
+  that language; when TMDB has no translation of an overview, tagline or episode name, the English text is used.
+  TMDB caches are kept per language, and viewer responses carry `Vary: Accept-Language`. Indexer searches
+  (versions) always use the server default language, so release matching does not depend on the viewer.
+- **Spec warm-up:** a card's `spec` may be null on the first fetch; discover, browse, continue watching and next up
+  queue a background version lookup for such titles (bounded, see `Streamarr:SpecWarmup` in configuration.md), so a
+  later fetch carries it. List requests never wait for an indexer search.
 - **TMDB outages** are never shown as "not found" or "nothing there": when TMDB cannot be reached
   (and nothing is cached), search, browse, genres, details, seasons and versions answer `503 catalog_unavailable`.
   `discover` leaves out a row whose list failed and answers `503 catalog_unavailable` only when no
@@ -1071,6 +1080,24 @@ A profile with `hdrFormats` implies `supports10Bit=true` (HDR is always 10-bit) 
 
 ```
 GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,eac3&containers=mp4&hdrFormats=hdr10&supports10Bit=true&maxAudioChannels=6
+```
+
+**VLC engine caps (optional, with `vlcAvailable=true`).** Without them the server assumes libVLC's defaults
+(every common codec, any resolution, 10-bit, HDR10/HLG tone-mapped). A client whose VLC is limited narrows it:
+
+| Parameter | Meaning |
+| --- | --- |
+| `vlcVideoCodecs` | Comma-separated codecs VLC decodes; an entry may carry its own height limit, `codec:maxHeight` (e.g. `h264,hevc:1080`). Codecs not listed are not played by VLC. |
+| `vlcMaxHeight` | Height limit (144–4320) for listed codecs without their own limit. |
+| `vlcHdrFormats` | HDR formats VLC shows natively (`hdr10`, `hlg`, `dv` or `dolbyvision`); default `hdr10,hlg` for HEVC/AV1/VP9. |
+| `vlcSupports10Bit` | `false` = 8-bit decoding only (no HDR either). |
+| `vlcHdrToneMapping` | `false` = VLC does not tone-map HDR10/HLG to SDR (default `true`). |
+
+The caps change the `vlc` prediction and the device order, so `recommended` stays on a version that really plays.
+Out-of-range values answer `400 invalid_device_profile`.
+
+```
+GET …/works/tmdb-movie-603/versions?videoCodecs=h264&audioCodecs=aac&containers=mp4&vlcAvailable=true&vlcVideoCodecs=h264,hevc:1080&vlcSupports10Bit=true
 ```
 
 `predictedMethod` is `direct`, `remux`, `transcode` or `unknown`. It is **only a prediction**: the

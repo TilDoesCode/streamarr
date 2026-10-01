@@ -79,6 +79,7 @@ public sealed class ViewerCatalogOutageFactory : WebApplicationFactory<Program>
         {
             ["Streamarr:ApiKey"] = ViewerCatalogFactory.ApiKey,
             ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
+            ["Streamarr:SpecWarmup:Enabled"] = "false",
             ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
             ["Streamarr:LoginAttemptsPerMinute"] = "1000",

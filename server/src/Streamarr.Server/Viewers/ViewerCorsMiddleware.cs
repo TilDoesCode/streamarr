@@ -34,7 +34,7 @@ public sealed class ViewerCorsMiddleware(RequestDelegate next, IOptions<Streamar
         if (HttpMethods.IsOptions(request.Method) && request.Headers.AccessControlRequestMethod.Count > 0)
         {
             headers.AccessControlAllowMethods = "GET, HEAD, POST, PUT, PATCH, DELETE";
-            headers.AccessControlAllowHeaders = "Authorization, Content-Type, Range";
+            headers.AccessControlAllowHeaders = "Authorization, Content-Type, Range, Accept-Language";
             headers.AccessControlMaxAge = "600";
             context.Response.StatusCode = StatusCodes.Status204NoContent;
             return;

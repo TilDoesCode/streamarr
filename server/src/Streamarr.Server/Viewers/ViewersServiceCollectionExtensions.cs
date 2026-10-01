@@ -37,6 +37,7 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<ViewerVersionCache>();
         services.AddSingleton<PlaybackPredictor>();
         services.AddSingleton<ReleaseContainerStore>();
+        services.AddHostedService(sp => sp.GetRequiredService<ReleaseContainerStore>());
         services.AddSingleton<ArtworkPaletteService>();
         services.AddHostedService(sp => sp.GetRequiredService<ArtworkPaletteService>());
         services.AddHttpClient(ArtworkPaletteService.HttpClientName, client =>
@@ -48,6 +49,8 @@ public static class ViewersServiceCollectionExtensions
             .RemoveAllLoggers();
         services.AddSingleton<CatalogSpecStore>();
         services.AddHostedService(sp => sp.GetRequiredService<CatalogSpecStore>());
+        services.AddSingleton<SpecWarmupService>();
+        services.AddHostedService(sp => sp.GetRequiredService<SpecWarmupService>());
         services.AddSingleton<CatalogDecorations>();
         services.AddSingleton<ViewerCatalogService>();
         services.AddSingleton<IPlaybackResolver, ServerPlaybackResolver>();

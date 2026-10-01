@@ -23,8 +23,15 @@ Log($"media ready in {mediaWatch.Elapsed.TotalSeconds:0.0}s: {generated} generat
 if (options.GenerateOnly)
     return;
 
-// Fresh world on every boot: accounts, watch state and caches start from the seed.
-if (Directory.Exists(options.StateDir))
+// Fresh world on every boot unless DEVWORLD_KEEP_DATA=1 keeps accounts, sessions and watch state of the last run.
+var keepData = options.KeepData && File.Exists(Path.Combine(options.StateDir, "streamarr.db"));
+if (keepData)
+{
+    Log($"keeping the data of {options.StateDir}");
+    foreach (var scratch in new[] { "nzb", "transcode", "transcode-samples", "repair" }.Select(d => Path.Combine(options.StateDir, d)).Where(Directory.Exists))
+        Directory.Delete(scratch, recursive: true);
+}
+else if (Directory.Exists(options.StateDir))
     Directory.Delete(options.StateDir, recursive: true);
 Directory.CreateDirectory(options.StateDir);
 

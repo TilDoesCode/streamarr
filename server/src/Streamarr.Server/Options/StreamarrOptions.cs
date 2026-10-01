@@ -270,6 +270,9 @@ public sealed class StreamarrOptions
     /// <summary>TMDB matcher config: API key, image sizes, cache TTL (BRIEF §6.1 / §6.3).</summary>
     public TmdbOptions Tmdb { get; set; } = new();
 
+    /// <summary>Background version lookups that give viewer cards their spec summary.</summary>
+    public SpecWarmupOptions SpecWarmup { get; set; } = new();
+
     /// <summary>Low-priority background completion and next-episode pre-download policy.</summary>
     public PreDownloadOptions PreDownload { get; set; } = new();
 
@@ -451,4 +454,19 @@ public sealed class HealthCheckOptions
 
     /// <summary>Indeterminate spread-sample ratio at or above which a release is dead.</summary>
     public double DeadMissingRatio { get; set; } = 0.5;
+}
+
+/// <summary>Spec warm-up: looks up versions of titles shown in viewer lists so cards carry the spec without a click.</summary>
+public sealed class SpecWarmupOptions
+{
+    /// <summary>Off stops all warm-up searches (each one costs indexer API hits).</summary>
+    public bool Enabled { get; set; } = true;
+
+    public int Concurrency { get; set; } = 2;
+
+    /// <summary>Minimum time before the same title is looked up again.</summary>
+    public int CooldownHours { get; set; } = 24;
+
+    /// <summary>Maximum titles looked up per UTC day.</summary>
+    public int DailyCap { get; set; } = 200;
 }

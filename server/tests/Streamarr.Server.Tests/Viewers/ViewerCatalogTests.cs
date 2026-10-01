@@ -169,6 +169,30 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task Genres_FollowTheViewersAcceptLanguage_WithVary()
+    {
+        using var viewer = await ViewerAsync("language");
+
+        async Task<(string? Name, bool Vary)> MysteryAsync(string? language)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{Base}/genres?type=movie");
+            if (language is not null)
+                request.Headers.TryAddWithoutValidation("Accept-Language", language);
+            using var response = await viewer.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var name = body.GetProperty("genres").EnumerateArray().Single(g => g.GetProperty("id").GetInt32() == 9648).GetProperty("name").GetString();
+            return (name, response.Headers.Vary.Contains("Accept-Language"));
+        }
+
+        Assert.Equal(("Rätsel", true), await MysteryAsync("de-DE,de;q=0.9,en;q=0.8"));
+        Assert.Equal(("Mystery", true), await MysteryAsync(null));
+        Assert.Equal(("Mystery", true), await MysteryAsync("en"));
+        Assert.Equal(("Mystery", true), await MysteryAsync("xx, tlh;q=0.5"));
+        Assert.Equal(("Rätsel", true), await MysteryAsync("de"));
+    }
+
+    [Fact]
     public async Task Browse_PassesGenreAndSortToTmdb()
     {
         using var viewer = await ViewerAsync("browsegenre");
@@ -530,6 +554,36 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
 
         Assert.Equal("remux", uhd.GetProperty("predictedMethod").GetString());
         Assert.DoesNotContain("bit_depth_unsupported", uhd.GetProperty("predictionReasons").EnumerateArray().Select(r => r.GetProperty("code").GetString()));
+    }
+
+    [Fact]
+    public async Task Versions_RespectTheSentVlcEngineCaps_InThePrediction()
+    {
+        using var viewer = await ViewerAsync("predictvlc");
+        const string profile = "videoCodecs=h264&audioCodecs=aac&containers=mp4&vlcAvailable=true";
+        string Av1(JsonElement body) => body.GetProperty("versions").EnumerateArray()
+            .Single(v => v.GetProperty("name").GetString() == CatalogNewznabFake.MovieReleases[3]).GetProperty("predictedMethod").GetString()!;
+
+        var anyVlc = await OkAsync(viewer, $"{Base}/works/tmdb-movie-501/versions?{profile}");
+        var noAv1 = await OkAsync(viewer, $"{Base}/works/tmdb-movie-501/versions?{profile}&vlcVideoCodecs=h264,hevc:1080");
+        var capped = await OkAsync(viewer, $"{Base}/works/tmdb-movie-501/versions?{profile}&vlcMaxHeight=720");
+
+        Assert.Equal("vlc", Av1(anyVlc));
+        Assert.Equal("transcode", Av1(noAv1));
+        Assert.Equal("transcode", Av1(capped));
+    }
+
+    [Theory]
+    [InlineData("vlcMaxHeight=99")]
+    [InlineData("vlcVideoCodecs=hevc:big")]
+    [InlineData("vlcVideoCodecs=hevc:9000")]
+    public async Task Versions_RejectInvalidVlcCaps(string query)
+    {
+        using var viewer = await ViewerAsync("badvlc");
+
+        var error = await ErrorAsync(viewer, $"{Base}/works/tmdb-movie-501/versions?videoCodecs=h264&vlcAvailable=true&{query}", HttpStatusCode.BadRequest);
+
+        Assert.Equal("invalid_device_profile", error.GetProperty("code").GetString());
     }
 
     [Theory]

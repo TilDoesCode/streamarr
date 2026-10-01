@@ -9,7 +9,7 @@ the **real Core Server** (`AddStreamarrServer`/`UseStreamarrServer`) against
 - the viewer module enabled with seeded accounts.
 
 Test/dev launcher only, never shipped. Every boot starts from a fresh state (DB, watch state,
-sessions) in `cache/state-<port>/`; generated media is cached in `cache/media/` and shared.
+sessions) in `cache/state-<port>/` unless `--keep-data` is given; generated media is cached in `cache/media/` and shared.
 
 ## Use it
 
@@ -17,6 +17,7 @@ sessions) in `cache/state-<port>/`; generated media is cached in `cache/media/` 
 scripts/devworld.sh start            # published snapshot on 39300 (client work)
 scripts/devworld.sh start 39310 --tree   # the working tree on 39310 (backend self-tests)
 scripts/devworld.sh status | stop [port] | verify [port] | totp [port]
+scripts/devworld.sh restart 39300 --keep-data   # after publish: new build, same accounts/sessions/watch state
 scripts/devworld.sh publish          # backend agents, only when build + tests are green
 ```
 
@@ -99,6 +100,10 @@ Series pages) and the genre lists from the catalog: a title matches a genre id w
 `communityRating`, `newest` by `year`. Pages hold 4 titles (`CannedTmdbClient.DiscoverPageSize`),
 so the 9 movies span 3 pages.
 
+Viewer language: with `Accept-Language: de` the canned TMDB answers like TMDB with `language=de` — the fixture's
+`titleDe`, `overviewDe`, `taglineDe`, `genresDe` and episode `titleDe`/`overviewDe`, "Staffel N" and German genre-list
+names — and English where a fixture has no German text (Sprite Fright, Wing It!, Pioneer One have no German overview).
+
 - `dead`: every second article is missing (health check finds 430s) -> auto-fallback.
 - `degraded`: small parts (> 80 articles); STAT of the last article drops the connection, so
   the health check counts one indeterminate probe -> `degraded`, still playable.
@@ -145,6 +150,7 @@ demand, so the payload costs no RAM.
 | `DEVWORLD_PORT` / `DEVWORLD_HOST` | `39300` / `0.0.0.0` (a specific IP is also used for the script's probes and `LocalSourceBaseUrl`) |
 | `DEVWORLD_CACHE_DIR` | `cache/` next to the project (the script always passes the repo cache) |
 | `DEVWORLD_STATE_DIR` | `<cache>/state-<port>` (wiped on boot) |
+| `DEVWORLD_KEEP_DATA` | `1` (script: `--keep-data`) keeps the state dir's database and keys; seeded viewers are reused, scratch dirs (nzb, transcode, repair) are recreated |
 | `DEVWORLD_CATALOG` | `fixtures/catalog.json` in the build output |
 | `DEVWORLD_GEN_JOBS` | `2` parallel ffmpeg jobs |
 | `DEVWORLD_LOG_LEVEL` | `Warning` |

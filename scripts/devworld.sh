@@ -5,8 +5,13 @@
 #                                       ~/.cache/streamarr-devworld/current (atomic swap after the staged
 #                                       build generated/validated the media, booted on a scratch port and
 #                                       resolved every release as its fixture health)
-#   devworld.sh start [port] [--tree]   run the published snapshot (or, with --tree, the working tree)
-#                                       in the background, wait until ready, log to /tmp/devworld-<port>.log
+#   devworld.sh start [port] [--tree] [--keep-data]
+#                                       run the published snapshot (or, with --tree, the working tree)
+#                                       in the background, wait until ready, log to /tmp/devworld-<port>.log;
+#                                       --keep-data keeps the port's database (viewer accounts, sessions,
+#                                       watch state) instead of starting from the seed
+#   devworld.sh restart [port] [--tree] [--keep-data]
+#                                       stop + start (e.g. after publish: restart 39300 --keep-data)
 #   devworld.sh stop [port]             stop the instance on <port> (default 39300)
 #   devworld.sh status                  published snapshot + running instances (pid, readiness, RSS)
 #   devworld.sh run [port]              foreground run of the snapshot (Codecraft action)
@@ -56,10 +61,20 @@ swap_link() {
   if [ "$(uname)" = "Darwin" ]; then mv -fh "$1" "$2"; else mv -fT "$1" "$2"; fi
 }
 
+descendants() {
+  local child
+  for child in $(pgrep -P "$1" 2>/dev/null); do echo "$child"; descendants "$child"; done
+}
+
+# TERM the instance, KILL it after 15 s, then KILL any helper (ffmpeg probe, transcode) it left behind.
 stop_pid() {
+  local kids
+  kids="$(descendants "$1")"
   kill -TERM "$1" 2>/dev/null || true
-  for _ in $(seq 1 30); do alive "$1" || return 0; sleep 0.5; done
+  for _ in $(seq 1 30); do alive "$1" || break; sleep 0.5; done
   kill -KILL "$1" 2>/dev/null || true
+  kids="$kids $(descendants "$1")"
+  for kid in $kids; do kill -KILL "$kid" 2>/dev/null || true; done
 }
 
 publish_cleanup() {
@@ -138,10 +153,11 @@ snapshot_dir() {
 }
 
 cmd_start() {
-  local port="" tree=0
+  local port="" tree=0 keep=0
   for arg in "$@"; do
     case "$arg" in
       --tree) tree=1 ;;
+      --keep-data) keep=1 ;;
       *) port="$arg" ;;
     esac
   done
@@ -170,8 +186,9 @@ cmd_start() {
   fi
   [ -f "$dll" ] || die "missing $dll"
 
+  [ "$keep" = 1 ] && label="$label, keeping data"
   echo "devworld: starting on $port ($label); log $log"
-  DEVWORLD_PORT="$port" DEVWORLD_CACHE_DIR="$CACHE_DIR" DEVWORLD_SNAPSHOT_INFO="$snapinfo" \
+  DEVWORLD_PORT="$port" DEVWORLD_CACHE_DIR="$CACHE_DIR" DEVWORLD_SNAPSHOT_INFO="$snapinfo" DEVWORLD_KEEP_DATA="$keep" \
     nohup "$DOTNET" "$dll" > "$log" 2>&1 < /dev/null &
   pid=$!
   echo "$pid" > "$(pidfile "$port")"
@@ -260,10 +277,16 @@ cmd_totp() {
 case "${1:-}" in
   publish) shift; cmd_publish "$@" ;;
   start) shift; cmd_start "$@" ;;
+  restart)
+    shift
+    port=""
+    for arg in "$@"; do case "$arg" in --*) ;; *) port="$arg" ;; esac; done
+    cmd_stop "$port"
+    cmd_start "$@" ;;
   stop) shift; cmd_stop "$@" ;;
   status) shift; cmd_status "$@" ;;
   run) shift; cmd_run "$@" ;;
   verify) shift; cmd_verify "$@" ;;
   totp) shift; cmd_totp "$@" ;;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

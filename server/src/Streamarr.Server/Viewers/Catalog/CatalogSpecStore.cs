@@ -112,6 +112,8 @@ public sealed class CatalogSpecStore(
     ILogger<CatalogSpecStore> logger) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, CatalogSpecSummaryEntity> _entries = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _seasonsBySeries = new(StringComparer.Ordinal);
+    private readonly FailureLog _failures = new(logger);
     private readonly Channel<CatalogSpecSummaryEntity> _writes = Channel.CreateUnbounded<CatalogSpecSummaryEntity>(new UnboundedChannelOptions { SingleReader = true });
 
     /// <summary>Movie or episode ids read their own entry; a series id reads the best of its seasons.</summary>
@@ -121,12 +123,27 @@ public sealed class CatalogSpecStore(
             return Dto(entry);
         if (!workId.StartsWith("tmdb-tv-", StringComparison.Ordinal) || workId.AsSpan(8).ContainsAny('-', 's'))
             return null;
-        var prefix = workId + "-s";
-        return _entries
-            .Where(p => p.Key.StartsWith(prefix, StringComparison.Ordinal) && !p.Key.AsSpan(prefix.Length).Contains('e'))
-            .Select(p => Dto(p.Value))
+        if (!_seasonsBySeries.TryGetValue(workId, out var seasons))
+            return null;
+        return seasons.Keys
+            .Select(id => _entries.TryGetValue(id, out var season) ? Dto(season) : null)
             .OfType<CatalogSpecDto>()
             .MaxBy(CatalogSpecMapper.Score);
+    }
+
+    /// <summary>The series id of a season work id (<c>tmdb-tv-7-s01</c> → <c>tmdb-tv-7</c>); null for anything else.</summary>
+    internal static string? SeriesOfSeason(string workId)
+    {
+        if (!workId.StartsWith("tmdb-tv-", StringComparison.Ordinal))
+            return null;
+        var split = workId.IndexOf("-s", 8, StringComparison.Ordinal);
+        return split > 8 && !workId.AsSpan(split + 2).Contains('e') && !workId.AsSpan(8, split - 8).ContainsAny('-', 's') ? workId[..split] : null;
+    }
+
+    private void Index(string workId)
+    {
+        if (SeriesOfSeason(workId) is { } series)
+            _seasonsBySeries.GetOrAdd(series, _ => new ConcurrentDictionary<string, byte>(StringComparer.Ordinal)).TryAdd(workId, 0);
     }
 
     /// <summary>Records the best version of a work (null clears it, e.g. when no version is left).</summary>
@@ -144,6 +161,7 @@ public sealed class CatalogSpecStore(
         if (_entries.TryGetValue(workId, out var existing) && Same(existing, entity))
             return;
         _entries[workId] = entity;
+        Index(workId);
         _writes.Writer.TryWrite(entity);
     }
 
@@ -153,7 +171,8 @@ public sealed class CatalogSpecStore(
         {
             await using var db = await dbFactory.CreateDbContextAsync(stoppingToken);
             foreach (var row in await db.CatalogSpecSummaries.AsNoTracking().ToListAsync(stoppingToken))
-                _entries.TryAdd(row.WorkId, row);
+                if (_entries.TryAdd(row.WorkId, row))
+                    Index(row.WorkId);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -174,7 +193,7 @@ public sealed class CatalogSpecStore(
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
-                logger.LogDebug(e, "Persisting the spec summary of {WorkId} failed", entity.WorkId);
+                _failures.Log(e, "Persisting the spec summary of {WorkId} failed", entity.WorkId);
             }
         }
     }

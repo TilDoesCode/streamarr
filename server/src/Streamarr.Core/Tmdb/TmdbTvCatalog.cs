@@ -42,6 +42,7 @@ public sealed record TmdbEpisode
 {
     public required int EpisodeNumber { get; init; }
     public required string Title { get; init; }
+    public bool UntitledName { get; init; }
     public string? Overview { get; init; }
     public string? AirDate { get; init; }
     public int? RuntimeMinutes { get; init; }

@@ -1022,6 +1022,33 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.Contains("step_down", stepped.GetProperty("decision").GetProperty("skipped").EnumerateArray().SelectMany(s => Codes(s.GetProperty("reasons"))));
     }
 
+    [Fact]
+    public async Task StartFailure_OffersUseVlc_OnlyWhileVlcHasNotFailed()
+    {
+        var (viewer, _) = await ViewerAsync("usevlc");
+        factory.Media.FailModes[ModePreference.Remux] = "remux_capacity";
+        factory.Media.FailModes[ModePreference.Transcode] = "transcode_capacity";
+        string[] Suggestions(JsonElement b) => b.GetProperty("suggestedActions").EnumerateArray().Select(a => a.GetString()!).ToArray();
+
+        var nativeOnly = await WaitAsync(viewer, Id(await StartAsync(viewer, Play(Release(Mkv()), AppleTvWithVlc, new { engine = "native" }))));
+        Assert.Equal("failed", State(nativeOnly));
+        Assert.DoesNotContain(nativeOnly.GetProperty("decision").GetProperty("skipped").EnumerateArray(), s => s.GetProperty("engine").GetString() == "vlc");
+        Assert.Contains("useVlc", Suggestions(nativeOnly));
+
+        factory.Media.FailModes.Clear();
+        var ready = await ReadyAsync(viewer, Play(Release(Mkv()), AppleTvWithVlc));
+        await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { stepDown = true });
+        var vlc = await WaitAsync(viewer, Id(ready), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready" or "failed");
+        Assert.Equal("vlc", vlc.GetProperty("engine").GetString());
+        factory.Media.FailModes[ModePreference.Transcode] = "transcode_capacity";
+        await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { stepDown = true });
+        var afterVlc = await WaitAsync(viewer, Id(ready), b => b.GetProperty("revision").GetInt32() == 2 && State(b) is "ready" or "failed");
+
+        Assert.Equal("failed", State(afterVlc));
+        Assert.DoesNotContain("useVlc", Suggestions(afterVlc));
+        Assert.Contains("retry", Suggestions(afterVlc));
+    }
+
     [Theory]
     [InlineData("too_many_sessions", true, "transcode_capacity", "too_many_sessions")]
     [InlineData("insufficient_disk", true, "transcode_capacity", "insufficient_disk")]

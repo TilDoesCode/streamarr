@@ -103,7 +103,10 @@ public abstract record TitleEntry
     public int? Year { get; init; }
     public string? Overview { get; init; }
     public string? Tagline { get; init; }
+    public string? OverviewDe { get; init; }
+    public string? TaglineDe { get; init; }
     public List<string> Genres { get; init; } = [];
+    public List<string>? GenresDe { get; init; }
     public float? CommunityRating { get; init; }
     public string? PosterUrl { get; init; }
     public string? BackdropUrl { get; init; }
@@ -139,9 +142,11 @@ public sealed record EpisodeEntry
 {
     public int EpisodeNumber { get; init; }
     public string Title { get; init; } = string.Empty;
+    public string? TitleDe { get; init; }
     public string? AirDate { get; init; }
     public int? RuntimeMinutes { get; init; }
     public string? Overview { get; init; }
+    public string? OverviewDe { get; init; }
     public string? StillUrl { get; init; }
     public List<ReleaseEntry> Releases { get; init; } = [];
 }

@@ -352,6 +352,7 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `Indexers[]` | `[]` | Newznab indexers seeding the config store (below). |
 | `Search` | — | Indexer fan-out tunables (below). |
 | `Tmdb` | — | TMDB matcher config (below). |
+| `SpecWarmup` | — | Background version lookups for viewer card specs: `Enabled` (`true`), `Concurrency` (`2`), `CooldownHours` (`24`), `DailyCap` (`200`); see [configuration](configuration.md#spec-warm-up-viewer-cards). |
 | `HealthCheck` | — | NNTP STAT health-check knobs (below). |
 
 ### `Admin`
@@ -432,6 +433,7 @@ and `MinimumFreeDiskBytes` are deployment-only safeguards and require configurat
 | `ImageBaseUrl` | `https://image.tmdb.org/t/p` | Image CDN base. |
 | `PosterSize` / `BackdropSize` / `LogoSize` | `w780` / `w1280` / `w500` | Requested image sizes (logos are served as PNG). |
 | `Language` | `null` | Optional ISO 639-1 response language (e.g. `en-US`); also the preferred title-logo language (then English, then textless). |
+| `ViewerLanguages` | `de,en,es,fr,it,nl,pl,pt` | Primary language tags a viewer app may request with `Accept-Language`; other tags get `Language`. Each language has its own cache entries. |
 | `CacheTtlHours` | `24` | Metadata cache lifetime (cached aggressively). |
 | `DiscoverCacheTtlHours` | `6` | Lifetime of the trending/popular lists behind the viewer home rows (at most `CacheTtlHours`). |
 | `MaxResponseBytes` | `4194304` | Maximum decompressed JSON response body accepted from TMDB. |

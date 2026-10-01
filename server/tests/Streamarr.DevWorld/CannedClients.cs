@@ -123,7 +123,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
                 Seasons = series.Seasons.Select(season => new TmdbSeasonSummary
                 {
                     SeasonNumber = season.SeasonNumber,
-                    Title = season.Title,
+                    Title = SeasonTitle(season),
                     AirDate = season.Episodes.FirstOrDefault()?.AirDate,
                     PosterUrl = season.PosterUrl,
                     EpisodeCount = season.Episodes.Count,
@@ -140,14 +140,14 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
             {
                 TmdbId = tmdbId,
                 SeasonNumber = seasonNumber,
-                Title = season.Title,
+                Title = SeasonTitle(season),
                 AirDate = season.Episodes.FirstOrDefault()?.AirDate,
                 PosterUrl = season.PosterUrl,
                 Episodes = season.Episodes.Select(e => new TmdbEpisode
                 {
                     EpisodeNumber = e.EpisodeNumber,
-                    Title = e.Title,
-                    Overview = e.Overview,
+                    Title = German ? e.TitleDe ?? e.Title : e.Title,
+                    Overview = German ? e.OverviewDe ?? e.Overview : e.Overview,
                     AirDate = e.AirDate,
                     RuntimeMinutes = e.RuntimeMinutes,
                     StillUrl = e.StillUrl,
@@ -204,7 +204,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
             .SelectMany(t => t.Genres)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(GenreIds.ContainsKey)
-            .Select(name => new TmdbGenre(GenreIds[name], name))
+            .Select(name => new TmdbGenre(GenreIds[name], GenreName(name)))
             .OrderBy(g => g.Name, StringComparer.Ordinal)
             .ToList());
 
@@ -271,22 +271,38 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
             .Select(t => ToMatch(t.Entry, t.Type));
     }
 
+    /// <summary>Like TMDB with language=de: German texts where the fixture has them, English otherwise.</summary>
+    private static bool German => TmdbLanguage.Primary(TmdbLanguage.Current) == "de";
+
+    /// <summary>TMDB's German genre names (genre/movie|tv/list?language=de) for the ids in <see cref="GenreIds"/>.</summary>
+    public static readonly IReadOnlyDictionary<string, string> GermanGenreNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Adventure"] = "Abenteuer", ["Comedy"] = "Komödie", ["Crime"] = "Krimi", ["Documentary"] = "Dokumentarfilm",
+        ["Family"] = "Familie", ["History"] = "Historie", ["Music"] = "Musik", ["Romance"] = "Liebesfilm",
+        ["TV Movie"] = "TV-Film", ["War"] = "Kriegsfilm",
+    };
+
+    private static string GenreName(string english) => German ? GermanGenreNames.GetValueOrDefault(english, english) : english;
+
+    private static string SeasonTitle(SeasonEntry season)
+        => German && season.Title.StartsWith("Season ", StringComparison.Ordinal) ? "Staffel " + season.Title["Season ".Length..] : season.Title;
+
     private static TmdbMatch ToMatch(TitleEntry entry, MediaType type) => new()
     {
         MediaType = type,
         TmdbId = entry.TmdbId,
         ImdbId = entry.ImdbId,
-        Title = entry.Title,
+        Title = German ? entry.TitleDe ?? entry.Title : entry.Title,
         Year = entry.Year,
-        Overview = entry.Overview,
+        Overview = German ? entry.OverviewDe ?? entry.Overview : entry.Overview,
         PosterUrl = entry.PosterUrl,
         BackdropUrl = entry.BackdropUrl,
         LogoUrl = entry.LogoUrl,
         OriginalTitle = entry.OriginalTitle,
-        Tagline = entry.Tagline,
+        Tagline = German ? entry.TaglineDe ?? entry.Tagline : entry.Tagline,
         OfficialRating = entry.OfficialRating,
         CommunityRating = entry.CommunityRating,
-        Genres = entry.Genres,
+        Genres = German ? entry.GenresDe ?? entry.Genres.Select(GenreName).ToList() : entry.Genres,
         RuntimeMinutes = entry.RuntimeMinutes,
     };
 }

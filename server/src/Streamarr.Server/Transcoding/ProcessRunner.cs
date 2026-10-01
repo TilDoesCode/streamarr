@@ -26,6 +26,17 @@ public sealed class ProcessRunner : IProcessRunner
 {
     internal const int MaxOutputChars = 1024 * 1024;
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, Process> Running = new();
+
+    static ProcessRunner() => AppDomain.CurrentDomain.ProcessExit += (_, _) => KillAll();
+
+    /// <summary>SIGKILLs the tree of every helper process still running, so none outlives the server.</summary>
+    public static void KillAll()
+    {
+        foreach (var process in Running.Values)
+            Kill(process);
+    }
+
     public async Task<ProcessResult> RunAsync(
         string fileName, IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken ct)
     {
@@ -44,6 +55,20 @@ public sealed class ProcessRunner : IProcessRunner
         var watch = Stopwatch.StartNew();
         using var process = new Process { StartInfo = psi };
         process.Start();
+        Running[process.Id] = process;
+        try
+        {
+            return await WaitAsync(process, watch, timeout, ct);
+        }
+        finally
+        {
+            Running.TryRemove(process.Id, out _);
+            Kill(process);
+        }
+    }
+
+    private static async Task<ProcessResult> WaitAsync(Process process, Stopwatch watch, TimeSpan timeout, CancellationToken ct)
+    {
         var cpu = TimeSpan.Zero;
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

@@ -105,6 +105,40 @@ public sealed class RecommendedVersionTests
             new PlayContext(withVlc, PlaybackPreferences.Default, FakePlaybackMedia.Available()), true));
     }
 
+    [Fact]
+    public void Vlc_Caps_Keep_Recommended_On_A_Version_That_Really_Plays()
+    {
+        static DeviceCaps Tv(EngineCaps vlc) => new("androidtv", new EngineCaps(EngineCaps.Native, ["mp4"], [new("h264", null, null, 8, [])],
+            [new("aac", null, false)], null, true, 2), vlc, null);
+        var unlimited = Tv(Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, null, null, null, null));
+        var hevc1080 = Tv(Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps("h264,hevc:1080", null, null, null, null));
+        var capped = Tv(Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, 1080, null, null, null));
+        var sdr = Tv(Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, null, null, false, null));
+
+        Assert.Equal(Uhd, Assert.Single(Order(unlimited, true, Uhd, HdHevc, Hd), v => v.Recommended).ReleaseId);
+        Assert.Equal(Hd, Assert.Single(Order(hevc1080, true, Uhd, HdHevc, Hd), v => v.Recommended).ReleaseId);
+        Assert.Equal(Hd, Assert.Single(Order(capped, true, Uhd, HdHevc, Hd), v => v.Recommended).ReleaseId);
+        Assert.Equal(Hd, Assert.Single(Order(sdr, true, Uhd, HdHevc, Hd), v => v.Recommended).ReleaseId);
+        var play = new PlayContext(hevc1080, PlaybackPreferences.Default, FakePlaybackMedia.Available());
+        Assert.Equal(PlayClass.Transcode, Predictor.Classify(ReleaseParser.Parse(Uhd), 8000, 120, play, true));
+        Assert.Equal(PlayClass.Vlc, Predictor.Classify(ReleaseParser.Parse(HdHevc), 8000, 120, play, true));
+        Assert.Equal(PlayClass.Unplayable, Predictor.Classify(ReleaseParser.Parse(Uhd), 8000, 120, play, false));
+    }
+
+    [Fact]
+    public void Vlc_Caps_Parse_Per_Codec_Heights_Bit_Depth_And_Hdr()
+    {
+        var caps = Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps("avc,hevc:1080,av1", 2160, "hdr10,dv", null, false);
+
+        Assert.Equal(["h264", "hevc", "av1"], caps.Video.Select(v => v.Codec));
+        Assert.Equal([2160, 1080, 2160], caps.Video.Select(v => v.MaxHeight));
+        Assert.Equal(["hdr10", "dolbyvision"], caps.VideoFor("hevc")!.HdrFormats);
+        Assert.False(caps.ToneMapsHdr);
+        Assert.All(Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, null, null, false, null).Video,
+            v => Assert.Equal((8, 0), (v.MaxBitDepth, v.HdrFormats.Count)));
+        Assert.Same(EngineCaps.DefaultVlc, Streamarr.Server.Viewers.Controllers.ViewerCatalogController.VlcCaps(null, null, null, null, null));
+    }
+
     private const string WebDl = "Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD";
 
     [Fact]

@@ -42,6 +42,7 @@ public sealed class ViewerCatalogService(
     ArtworkPaletteService palettes,
     CatalogSpecStore specs,
     ReleaseContainerStore containers,
+    SpecWarmupService warmup,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -86,12 +87,14 @@ public sealed class ViewerCatalogService(
             failed |= lookupsFailed;
             if (allowed.Count == 0)
                 continue;
+            var rowItems = allowed.Select(Item).ToList();
+            Warm(rowItems);
             result.Add(new CatalogRowDto
             {
                 Id = rows[i].Id,
                 Kind = rows[i].Kind,
                 MediaType = MediaTypeName(rows[i].Type),
-                Items = allowed.Select(Item).ToList(),
+                Items = rowItems,
             });
         }
         if (result.Count == 0 && failed)
@@ -107,6 +110,8 @@ public sealed class ViewerCatalogService(
         if (allowed.Count == 0 && lookupsFailed)
             throw Unavailable();
         var totalPages = Math.Min(page.TotalPages, TmdbDiscoverQuery.MaxPage);
+        var pageItems = allowed.Select(Item).ToList();
+        Warm(pageItems);
         return new CatalogBrowseResponse
         {
             MediaType = MediaTypeName(query.MediaType),
@@ -115,7 +120,7 @@ public sealed class ViewerCatalogService(
             Page = query.Page,
             TotalPages = totalPages,
             HasMore = query.Page < totalPages,
-            Items = allowed.Select(Item).ToList(),
+            Items = pageItems,
         };
     }
 
@@ -467,8 +472,11 @@ public sealed class ViewerCatalogService(
         return null;
     }
 
-    private async Task<MovieVersions> MovieVersionsAsync(TmdbMatch movie, string workId)
+    private async Task<MovieVersions> MovieVersionsAsync(TmdbMatch localized, string workId)
     {
+        // Indexer queries use the server's metadata language, never the viewer's.
+        using var language = TmdbLanguage.Use(null);
+        var movie = await DefaultLanguageMovieAsync(localized);
         using var admission = await searchGate.TryEnterAsync(SearchOperation.ViewerVersions, CancellationToken.None) ?? throw CapacityReached();
         try
         {
@@ -487,8 +495,21 @@ public sealed class ViewerCatalogService(
         }
     }
 
+    private async Task<TmdbMatch> DefaultLanguageMovieAsync(TmdbMatch localized)
+    {
+        try
+        {
+            return await _tmdb.GetMovieAsync(localized.TmdbId, CancellationToken.None) ?? localized;
+        }
+        catch (TmdbTransientException)
+        {
+            return localized;
+        }
+    }
+
     private async Task<SeasonVersions> ComputeSeasonAsync(int tmdbId, int seasonNumber)
     {
+        using var language = TmdbLanguage.Use(null);
         using var admission = await searchGate.TryEnterAsync(SearchOperation.ViewerVersions, CancellationToken.None) ?? throw CapacityReached();
         try
         {
@@ -681,6 +702,32 @@ public sealed class ViewerCatalogService(
             Tint2 = palette?.Tint2,
             Spec = specs.Get(WorkId(match)),
         };
+    }
+
+    private void Warm(IEnumerable<CatalogItemDto> items) => warmup.Request(items.Where(i => i.Spec is null).Select(i => i.WorkId));
+
+    /// <summary>Background spec lookup (spec warm-up): the cached or searched versions of a movie or season, recorded in the spec store.</summary>
+    internal async Task WarmSpecAsync(SpecWarmupTarget target, CancellationToken ct)
+    {
+        using var language = TmdbLanguage.Use(null);
+        if (target.Movie)
+        {
+            if (await _tmdb.GetMovieAsync(target.TmdbId, ct) is not { } movie)
+                return;
+            var workId = $"tmdb-movie-{target.TmdbId}";
+            var lookup = await versionCache.GetAsync($"movie:{target.TmdbId}", false, _ => MovieVersionsAsync(movie, workId), v => !v.Incomplete, ct);
+            specs.Record(workId, BestSpec(lookup.Value.Releases));
+            return;
+        }
+        var season = target.Season;
+        if (season is null)
+        {
+            var seasons = (await _tmdb.GetTvSeriesCatalogAsync(target.TmdbId, ct))?.Seasons ?? [];
+            season = seasons.Where(s => s.SeasonNumber > 0 && s.EpisodeCount > 0).Select(s => (int?)s.SeasonNumber).Min();
+            if (season is null)
+                return;
+        }
+        await SeasonVersionsAsync(target.TmdbId, season.Value, false, ct);
     }
 
     private static string WorkId(TmdbMatch match)

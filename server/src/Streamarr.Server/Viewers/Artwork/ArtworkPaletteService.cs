@@ -25,6 +25,8 @@ public sealed partial class ArtworkPaletteService(
     private readonly ConcurrentDictionary<string, ArtworkPaletteEntity> _palettes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _retryAfter = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _queued = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<string> _overflow = new();
+    private readonly FailureLog _failures = new(logger);
     private readonly Channel<string> _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(2048) { FullMode = BoundedChannelFullMode.DropWrite });
     private readonly string? _imageHost = Uri.TryCreate(tmdb.ImageBaseUrl, UriKind.Absolute, out var baseUri) ? baseUri.Host : null;
 
@@ -63,9 +65,21 @@ public sealed partial class ArtworkPaletteService(
         if (_retryAfter.TryGetValue(url, out var retry) && retry > time.GetUtcNow())
             return (null, false);
         if (_queued.TryAdd(url, 0) && !_queue.Writer.TryWrite(url))
-            _queued.TryRemove(url, out _);
+        {
+            _overflow.Enqueue(url);
+            DrainOverflow();
+        }
         return (null, true);
     }
+
+    /// <summary>Moves images that found the queue full into it as the worker frees room; nothing is dropped.</summary>
+    private void DrainOverflow()
+    {
+        while (_overflow.TryPeek(out var next) && _queue.Writer.TryWrite(next))
+            _overflow.TryDequeue(out _);
+    }
+
+    internal int Pending => _queued.Count;
 
     private bool Fetchable(string url)
         => _imageHost is not null
@@ -105,12 +119,13 @@ public sealed partial class ArtworkPaletteService(
             }
             catch (Exception e)
             {
-                logger.LogDebug(e, "Palette for {Url} failed", url);
+                _failures.Log(e, "Palette for {Url} failed", url);
                 _retryAfter[url] = time.GetUtcNow() + TransientRetry;
             }
             finally
             {
                 _queued.TryRemove(url, out _);
+                DrainOverflow();
             }
         }
     }

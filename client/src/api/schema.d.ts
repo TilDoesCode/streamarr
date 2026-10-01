@@ -6793,6 +6793,11 @@ export interface paths {
                     maxHeight?: number;
                     maxBitrateKbps?: number;
                     vlcAvailable?: boolean;
+                    vlcVideoCodecs?: string;
+                    vlcMaxHeight?: number;
+                    vlcHdrFormats?: string;
+                    vlcSupports10Bit?: boolean;
+                    vlcHdrToneMapping?: boolean;
                 };
                 header?: never;
                 path: {

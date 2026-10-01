@@ -159,6 +159,11 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         [FromQuery] int? maxHeight = null,
         [FromQuery] int? maxBitrateKbps = null,
         [FromQuery] bool vlcAvailable = false,
+        [FromQuery] string? vlcVideoCodecs = null,
+        [FromQuery] int? vlcMaxHeight = null,
+        [FromQuery] string? vlcHdrFormats = null,
+        [FromQuery] bool? vlcSupports10Bit = null,
+        [FromQuery] bool? vlcHdrToneMapping = null,
         CancellationToken ct = default)
     {
         var key = ViewerMappings.RequireWork(workId, playableOnly: true);
@@ -179,11 +184,40 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
                 maxHeight is { } h ? Math.Clamp(h, 144, 4320) : null,
                 maxBitrateKbps is { } b ? Math.Clamp(b, 300, 200_000) : null));
         }
-        var caps = device is null ? null : DeviceCapsFor(device, vlcAvailable);
+        var vlc = vlcAvailable ? VlcCaps(vlcVideoCodecs, vlcMaxHeight, vlcHdrFormats, vlcSupports10Bit, vlcHdrToneMapping) : null;
+        var caps = device is null ? null : DeviceCapsFor(device, vlc);
         return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct, caps));
     }
 
-    private static DeviceCaps DeviceCapsFor(DeviceHints hints, bool vlcAvailable)
+    /// <summary>The VLC engine of a versions request: libVLC's defaults narrowed by the <c>vlc*</c> limits the client sent.</summary>
+    internal static EngineCaps VlcCaps(string? videoCodecs, int? maxHeight, string? hdrFormats, bool? supports10Bit, bool? hdrToneMapping)
+    {
+        var defaults = EngineCaps.DefaultVlc;
+        if (videoCodecs is null && maxHeight is null && hdrFormats is null && supports10Bit is null && hdrToneMapping is null)
+            return defaults;
+        if (maxHeight is < 144 or > 4320)
+            throw ViewerProblem.BadRequest("invalid_device_profile", "'vlcMaxHeight' must be between 144 and 4320.");
+        var hdr = List(hdrFormats)?.Select(h => h == "dv" ? "dolbyvision" : h).ToList();
+        var entries = List(videoCodecs)?.Select(entry =>
+        {
+            var parts = entry.Split(':', 2);
+            int? height = null;
+            if (parts.Length == 2)
+                height = int.TryParse(parts[1], out var h) && h is >= 144 and <= 4320 ? h
+                    : throw ViewerProblem.BadRequest("invalid_device_profile", "'vlcVideoCodecs' entries are codec or codec:maxHeight (144-4320).");
+            return (Codec: DeviceNames.Video(parts[0]), Height: height);
+        }).ToList() ?? defaults.Video.Select(v => (v.Codec, Height: (int?)null)).ToList();
+        var video = entries.DistinctBy(e => e.Codec).Select(e =>
+        {
+            var known = defaults.VideoFor(e.Codec);
+            var depth = supports10Bit is false ? 8 : known?.MaxBitDepth ?? (e.Codec is "hevc" or "av1" or "vp9" ? 10 : 8);
+            var formats = depth < 10 ? [] : hdr ?? known?.HdrFormats ?? [];
+            return new VideoCaps(e.Codec, null, e.Height ?? maxHeight, depth, formats);
+        }).ToList();
+        return defaults with { Video = video, ToneMapsHdr = hdrToneMapping ?? defaults.ToneMapsHdr };
+    }
+
+    private static DeviceCaps DeviceCapsFor(DeviceHints hints, EngineCaps? vlc)
     {
         var client = hints.Client;
         var depth = client.Supports10Bit ? 10 : 8;
@@ -197,7 +231,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
             null,
             true,
             client.MaxAudioChannels);
-        return new DeviceCaps("web", native, vlcAvailable ? EngineCaps.DefaultVlc : null, hints.Limits.MaxBitrateKbps);
+        return new DeviceCaps("web", native, vlc, hints.Limits.MaxBitrateKbps);
     }
 
     private static MediaType BrowseType(string? type) => type?.Trim().ToLowerInvariant() switch

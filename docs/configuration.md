@@ -151,6 +151,22 @@ for a future Streamarr-native viewer app. The module is off by default; switch i
 sign in to the management UI. For password reset and sign-in codes, configure SMTP or use
 the in-memory test outbox. See [Viewer accounts and watch state](viewers.md).
 
+### Spec warm-up (viewer cards)
+
+Viewer cards show the best version's quality (e.g. "4K · DV · Atmos"). So that cards carry it before anyone opens
+the title, Streamarr looks up versions in the background for titles shown in the viewer home rows, browse pages,
+continue watching and next up (one season per series). The lookup is the normal indexer search and ranking, so
+**each one costs indexer API hits**; it never runs while a list request waits. Specs appear on the next list fetch.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Streamarr:SpecWarmup:Enabled` | `true` | `false` switches the warm-up off (cards then get a spec only after a title was opened). |
+| `Streamarr:SpecWarmup:Concurrency` | `2` | Lookups running at once. |
+| `Streamarr:SpecWarmup:CooldownHours` | `24` | Minimum time before the same title is looked up again. |
+| `Streamarr:SpecWarmup:DailyCap` | `200` | Maximum titles looked up per UTC day. |
+
+As environment variables: `Streamarr__SpecWarmup__Enabled=false` and so on.
+
 ### Viewer web app
 
 The Docker image also serves the viewer web app at `https://<server>/watch`. It reads the export

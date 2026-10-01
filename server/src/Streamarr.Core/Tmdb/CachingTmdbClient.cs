@@ -146,7 +146,7 @@ public sealed class CachingTmdbClient(
     {
         // Credential replacements must not reuse a cached miss (or result) produced with
         // the prior credential. The revision contains no secret material.
-        key = $"{credentialRevision?.Invoke() ?? 0}|{key}";
+        key = $"{credentialRevision?.Invoke() ?? 0}|{TmdbLanguage.CacheKey}|{key}";
         var entryTtl = lifetime ?? ttl;
 
         if (entryTtl <= TimeSpan.Zero)
