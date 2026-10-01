@@ -5081,6 +5081,327 @@
         }
       }
     },
+    "/api/v1/transcode/{token}/audio/{rendition}/main.m3u8": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "summary": "Audio rendition playlist of a demuxed session: same timeline and segment boundaries as the video.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rendition",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcode/{token}/audio/{rendition}/init.mp4": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rendition",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway Timeout",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcode/{token}/audio/{rendition}/{segment}.m4s": {
+      "get": {
+        "tags": [
+          "TranscodeStream"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rendition",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway Timeout",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/transcode/{token}/subtitles/{stream}/main.m3u8": {
       "get": {
         "tags": [
@@ -16705,6 +17026,52 @@
         },
         "additionalProperties": false
       },
+      "PlaybackAudioRenditionDto": {
+        "required": [
+          "channels",
+          "codec",
+          "default",
+          "id",
+          "label",
+          "streamIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable id inside the playback revision (the URI is `audio/{id}/main.m3u8` next to the master).",
+            "nullable": true
+          },
+          "streamIndex": {
+            "type": "integer",
+            "description": "Source audio stream index (as in `mediaInfo.audioTracks[].index` and `/switch audioIndex`).",
+            "format": "int32"
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "channels": {
+            "type": "integer",
+            "description": "Delivered channels and codec (`aac`, `ac3`, `eac3`, `flac`, `opus`).",
+            "format": "int32"
+          },
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "default": {
+            "type": "boolean",
+            "description": "The rendition marked DEFAULT=YES (the selected track)."
+          }
+        },
+        "additionalProperties": false,
+        "description": "One `EXT-X-MEDIA:TYPE=AUDIO` entry; Streamarr.Server.Viewers.Playback.PlaybackAudioRenditionDto.Label equals its NAME and Streamarr.Server.Viewers.Playback.PlaybackAudioRenditionDto.Language its LANGUAGE."
+      },
       "PlaybackAudioTrackDto": {
         "required": [
           "channels",
@@ -16743,6 +17110,11 @@
           "deliveredAs": {
             "type": "string",
             "description": "`original` (direct play: the engine switches locally), `copy`, `converted` or `none` (switch to hear it).",
+            "nullable": true
+          },
+          "renditionId": {
+            "type": "string",
+            "description": "The HLS audio rendition carrying this track (switch in the player); null = not in the master.",
             "nullable": true
           },
           "deliveredCodec": {
@@ -17126,6 +17498,18 @@
                 "$ref": "#/components/schemas/PlaybackMediaInfoDto"
               }
             ],
+            "nullable": true
+          },
+          "inSessionAudioSwitch": {
+            "type": "boolean",
+            "description": "True when the HLS master carries an audio group: switch between Streamarr.Server.Viewers.Playback.PlaybackResponse.AudioRenditions in the player, no `/switch` needed."
+          },
+          "audioRenditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackAudioRenditionDto"
+            },
+            "description": "Audio renditions of the HLS master (group `audio`), in master order; empty when the audio is muxed into the video (ready only).",
             "nullable": true
           },
           "decision": {
@@ -20054,6 +20438,16 @@
           "audioStreamIndex": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          },
+          "audioRenditions": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Audio streams to offer as HLS audio renditions next to the selected one (at most 4 in total); two or more demux the audio into an `AUDIO` group.",
             "nullable": true
           },
           "subtitleStreamIndex": {

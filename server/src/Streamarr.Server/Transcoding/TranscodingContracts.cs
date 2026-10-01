@@ -293,6 +293,9 @@ public sealed record TranscodeSessionCreateRequest
     public int? MaxBitrateKbps { get; init; }
     public int? AudioStreamIndex { get; init; }
 
+    /// <summary>Audio streams to offer as HLS audio renditions next to the selected one (at most 4 in total); two or more demux the audio into an <c>AUDIO</c> group.</summary>
+    [MaxLength(8)] public IReadOnlyList<int>? AudioRenditions { get; init; }
+
     /// <summary>The subtitle stream the viewer wants; an image-based one a remux or transcode cannot deliver (no burn-in) gets the reason <c>subtitle_not_deliverable</c>; text streams become WebVTT renditions.</summary>
     public int? SubtitleStreamIndex { get; init; }
     public double? StartPositionSeconds { get; init; }

@@ -75,8 +75,7 @@ public static class FfmpegArgumentBuilder
             args.AddRange(["-filter_complex", BuildBurnInGraph(plan), "-map", "[vout]"]);
         else
             args.AddRange(["-map", $"0:{plan.SourceVideo.Index}"]);
-        if (plan.Audio is { } audio)
-            args.AddRange(["-map", $"0:{audio.SourceIndex}"]);
+        AddAudioMaps(args, plan);
         args.AddRange(["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn"]);
 
         AddVideo(args, spec);
@@ -125,12 +124,25 @@ public static class FfmpegArgumentBuilder
         args.AddRange(["-i", spec.Source.Input]);
 
         args.AddRange(["-map", $"0:{plan.SourceVideo.Index}"]);
-        if (plan.Audio is { } audio)
-            args.AddRange(["-map", $"0:{audio.SourceIndex}"]);
+        AddAudioMaps(args, plan);
         args.AddRange(["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-c:v", "copy"]);
         if (plan.SourceVideo.Codec == "hevc")
             args.AddRange(["-tag:v", "hvc1"]);
-        if (plan.Audio is { Copy: true })
+        if (plan.DemuxedAudio)
+        {
+            for (var i = 0; i < plan.AudioRenditions.Count; i++)
+            {
+                var rendition = plan.AudioRenditions[i];
+                AddAudioCodec(args, rendition.Target, $":{i}");
+                if (!rendition.Target.Copy)
+                {
+                    var rate = rendition.Target.SampleRate ?? rendition.SourceSampleRate ?? 48_000;
+                    var trim = RemuxAudioTrimSeconds(spec.SeekSeconds, rendition.Target, rate, rendition.SourceStartSeconds);
+                    args.AddRange([$"-filter:a:{i}", $"atrim=start={Micros(trim)}"]);
+                }
+            }
+        }
+        else if (plan.Audio is { Copy: true })
         {
             args.AddRange(["-c:a", "copy"]);
         }
@@ -284,8 +296,49 @@ public static class FfmpegArgumentBuilder
         return $"[0:{plan.SourceVideo.Index}]{pre}[base];[base][0:{subtitle.Index}]overlay=eof_action=pass:repeatlast=0[burned];[burned]{string.Join(',', after)}[vout]";
     }
 
+    /// <summary>The selected audio stream, or every rendition in track order (video is track 1, rendition i is track i + 2).</summary>
+    private static void AddAudioMaps(List<string> args, TranscodePlan plan)
+    {
+        if (plan.DemuxedAudio)
+        {
+            foreach (var rendition in plan.AudioRenditions)
+                args.AddRange(["-map", $"0:{rendition.Target.SourceIndex}"]);
+        }
+        else if (plan.Audio is { } audio)
+        {
+            args.AddRange(["-map", $"0:{audio.SourceIndex}"]);
+        }
+    }
+
+    private static void AddAudioCodec(List<string> args, AudioTarget audio, string specifier)
+    {
+        if (audio.Copy)
+        {
+            args.AddRange([$"-c:a{specifier}", "copy"]);
+            return;
+        }
+        args.AddRange([
+            $"-c:a{specifier}", audio.Codec,
+            $"-ac:a{specifier}", audio.Channels.ToString(CultureInfo.InvariantCulture),
+            $"-b:a{specifier}", Kbps(audio.BitrateKbps),
+        ]);
+        if (audio.SampleRate is { } rate)
+            args.AddRange([$"-ar:a{specifier}", rate.ToString(CultureInfo.InvariantCulture)]);
+    }
+
     private static void AddAudio(List<string> args, FfmpegJobSpec spec)
     {
+        if (spec.Plan.DemuxedAudio)
+        {
+            for (var i = 0; i < spec.Plan.AudioRenditions.Count; i++)
+            {
+                var target = spec.Plan.AudioRenditions[i].Target;
+                AddAudioCodec(args, target, $":{i}");
+                if (target.Copy && spec.StartSegment > 0 && spec.Capabilities.MajorVersion is null or >= 6)
+                    args.AddRange([$"-bsf:a:{i}", $"noise=drop=lt(pts*tb\\,{Seconds(spec.StartSeconds)})"]);
+            }
+            return;
+        }
         var audio = spec.Plan.Audio;
         if (audio is null)
         {

@@ -65,7 +65,15 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
-- Multi-rendition audio in HLS (#4); see the triage table in `journal/M1.5.md` — task B5 (round H).
+- 4K HDR10 -> SDR transcode keeps `color_transfer=smpte2084` while the master says `VIDEO-RANGE=SDR`; AVPlayer refuses
+  it (CoreMediaErrorDomain -12927, `no_more_methods` on iPhone). Found in I1 slice 3 — task B6 (round H).
+- Audio renditions (B5 verify): `Fmp4TrackSplit` throws `ArgumentOutOfRangeException` on 6/3000 malformed segments and
+  the controller maps any splitter error to a generic 500; a huge `trun` sample count loops long (input is ours).
+- Audio renditions: NAME/label keeps the source title after conversion ("Deutsch AC3 5.1" while Chrome gets AAC 2.0);
+  one group may mix codecs (copy next to converted AAC), Apple prefers one codec per group; fMP4 audio tracks carry
+  language `und` (only the master has it); the admin plan/preview does not list renditions; `mediastreamvalidator`
+  never run (not installed); `docs/transcoding.md` quotes 448 kbit/s where the Dev World source is 256 kbit/s; a
+  synchronous `Segment` helper in the splitter is used only by tests; rendition segments ignore byte ranges like video.
 - Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
   the whole-image value too strict.
 - Admin viewer responses do not carry `avatarKey` yet (B4).
@@ -87,6 +95,9 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Fixed
 
+- Server, B5 (2026-10-01): multi-rendition audio in HLS (#4) — remux and transcode deliveries with two or more
+  offered tracks carry one AUDIO group (up to 4 renditions, copy or per-device conversion), split per track from one
+  ffmpeg process; `audioRenditions` + `inSessionAudioSwitch` in the playback response; `/switch` stays the fallback.
 - Server, B4 (2026-10-01): e-mail code cooldown answered with 429 `email_code_cooldown` (no false
   `verificationSent`); viewer e-mails in German/English by request language; atomic
   `POST /viewer/me/sessions/sign-out-others`; `vlcHdrFormats=none`; posters and backdrops in the viewer language;

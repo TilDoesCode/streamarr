@@ -174,6 +174,21 @@ def main():
     status, ctype, vtt = get_raw(f"{base}/subtitles/{stream}/1.vtt")
     conforms("transcode .vtt segment", "/api/v1/transcode/{token}/subtitles/{stream}/{segment}.vtt", "get", status, None, ctype.split(";")[0])
     check("WebVTT segment of a transcode", status == 200 and vtt.startswith("WEBVTT"), f"{status} {ctype}")
+    renditions = body.get("audioRenditions") or [] if body else []
+    check("dual-audio transcode lists two audio renditions and inSessionAudioSwitch",
+          body and body.get("inSessionAudioSwitch") is True and len(renditions) == 2 and master.count("TYPE=AUDIO") == 2
+          and 'AUDIO="audio"' in master, str(renditions)[:200])
+    rendition = renditions[0]["id"] if renditions else "1"
+    for route, template, kind in ((f"{base}/audio/{rendition}/main.m3u8", "/api/v1/transcode/{token}/audio/{rendition}/main.m3u8", "application/vnd.apple.mpegurl"),
+                                  (f"{base}/audio/{rendition}/init.mp4", "/api/v1/transcode/{token}/audio/{rendition}/init.mp4", "video/mp4"),
+                                  (f"{base}/audio/{rendition}/1.m4s", "/api/v1/transcode/{token}/audio/{rendition}/{segment}.m4s", "video/mp4")):
+        status, ctype, _ = get_raw(route)
+        conforms(f"audio rendition {route.rsplit('/', 1)[-1]}", template, "get", status, None, ctype.split(";")[0])
+        check(f"audio rendition {route.rsplit('/', 1)[-1]} is {kind}", status == 200 and ctype.startswith(kind), f"{status} {ctype}")
+    status, ctype, text = get_raw(f"{base}/audio/99/main.m3u8")
+    unknown = json.loads(text) if ctype.startswith("application/json") else {}
+    conforms("unknown audio rendition", "/api/v1/transcode/{token}/audio/{rendition}/main.m3u8", "get", status, unknown)
+    check("unknown audio rendition is 404 unknown_audio_rendition", status == 404 and unknown.get("error", {}).get("code") == "unknown_audio_rendition", f"{status}")
 
     playing = body["url"] if body else None
     status, bad = http("POST", f"/api/v1/viewer/playback/{created['playbackId']}/switch", {"audioStreamIndex": 99}, anna)
@@ -188,6 +203,7 @@ def main():
     status, _ = http("POST", f"/api/v1/viewer/playback/{created['playbackId']}/stop", {}, anna)
     for route, template in ((f"{base}/subtitles/{stream}/2.vtt", "/api/v1/transcode/{token}/subtitles/{stream}/{segment}.vtt"),
                             (f"{base}/3.m4s", "/api/v1/transcode/{token}/{segment}.m4s"),
+                            (f"{base}/audio/{rendition}/3.m4s", "/api/v1/transcode/{token}/audio/{rendition}/{segment}.m4s"),
                             (f"{base}/init.mp4", "/api/v1/transcode/{token}/init.mp4")):
         status, ctype, text = get_raw(route)
         error = json.loads(text) if ctype.startswith("application/json") else text

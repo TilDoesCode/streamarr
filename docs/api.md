@@ -771,7 +771,7 @@ only, a built-in test sample) and returns a new, unguessable playlist capability
 ```json
 // TranscodeSessionCreateRequest — exactly one of streamToken / sampleId
 { "streamToken": "abc123", "mode": "auto", "maxHeight": 1080, "maxBitrateKbps": 8000,
-  "audioStreamIndex": 1, "subtitleStreamIndex": 3, "startPositionSeconds": 0, "clientName": "my-tv-app",
+  "audioStreamIndex": 1, "audioRenditions": [1, 2], "subtitleStreamIndex": 3, "startPositionSeconds": 0, "clientName": "my-tv-app",
   "client": { "videoCodecs": ["h264", "hevc"], "audioCodecs": ["aac", "ac3", "eac3"], "containers": ["mp4"],
               "maxAudioChannels": 6, "supportsHdr": true, "supports10Bit": true,
               "hdrFormats": ["hdr10", "hlg"], "subtitleFormats": ["srt", "webvtt"] } }
@@ -782,7 +782,10 @@ transcode), `remux` (fail with `422 remux_not_possible` otherwise) or `transcode
 `transcode` so existing callers are unchanged; `POST /transcoding/plan` defaults to `auto` and may also
 answer `direct`. `hdrFormats` (`hdr10`, `hlg`, `dolbyvision`) overrides `supportsHdr`;
 `subtitleFormats` declares what the player renders from the original file (direct-play check for
-`subtitleStreamIndex`). Remuxes are described in [transcoding.md](./transcoding.md#remux-direct-stream).
+`subtitleStreamIndex`). `audioRenditions` (optional, up to 8 indexes, at most 4 are used together with
+`audioStreamIndex`) asks for HLS audio renditions: with two or more distinct streams the audio is demuxed into an
+`AUDIO` group (see below and [transcoding.md](./transcoding.md#audio-renditions)); without it the selected track is
+muxed into the video segments as before. Remuxes are described in [transcoding.md](./transcoding.md#remux-direct-stream).
 ```json
 // 201 TranscodeSessionCreatedResponse (a remux of a 4K HDR10 MKV)
 { "handle": "a53f5b44829f", "mode": "remux",
@@ -830,11 +833,12 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 
 | Path | Result |
 |---|---|
-| `master.m3u8` | One variant with `BANDWIDTH`, `AVERAGE-BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE` (`SDR` for transcodes; `PQ`/`HLG`/`SDR` for remuxes). Remuxes and transcodes add one `#EXT-X-MEDIA:TYPE=SUBTITLES` per delivered text stream and `CLOSED-CAPTIONS=NONE`. |
+| `master.m3u8` | One variant with `BANDWIDTH`, `AVERAGE-BANDWIDTH`, `CODECS`, `RESOLUTION`, `FRAME-RATE`, `VIDEO-RANGE` (`SDR` for transcodes; `PQ`/`HLG`/`SDR` for remuxes). Remuxes and transcodes add one `#EXT-X-MEDIA:TYPE=SUBTITLES` per delivered text stream and `CLOSED-CAPTIONS=NONE`. With audio renditions: one `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="…",LANGUAGE="…",DEFAULT=YES\|NO,AUTOSELECT=YES,CHANNELS="n",URI="audio/{id}/main.m3u8"` per offered track (exactly one `DEFAULT=YES`: the selected track; `LANGUAGE` is BCP-47 and omitted when unknown), the variant carries `AUDIO="audio"`, `CODECS` lists the video codec and every rendition codec, `BANDWIDTH` includes the largest rendition. |
 | `main.m3u8` | Complete VOD playlist (fMP4, `#EXT-X-MAP`, `#EXT-X-ENDLIST`): a fixed grid for transcodes, keyframe-aligned real durations for remuxes. |
 | `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | WebVTT rendition of a remux or transcode, aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline). A segment no live run covers starts ffmpeg there and waits for its cues, like a video segment; a transcode is never restarted backwards for subtitles (a segment behind its encoder returns the cues known so far). `404` for streams that are not delivered. |
-| `init.mp4` | Initialization segment; identical across ffmpeg restarts. |
-| `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. |
+| `init.mp4` | Initialization segment; identical across ffmpeg restarts. Video only when the master has audio renditions. |
+| `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. Video only when the master has audio renditions. |
+| `audio/{id}/main.m3u8` · `…/init.mp4` · `…/{n}.m4s` | Audio rendition `id` (the source stream index): the same timeline, segment count and `EXTINF` durations as `main.m3u8`; segment `n` covers the same time range as video segment `n` (both are cut from the same fragment, so they are aligned by construction). One audio track per init. Fetching an audio segment drives ffmpeg exactly like the video segment of the same index (same errors). `404 unknown_audio_rendition` for an id the session does not offer. |
 
 `init.mp4`, `{n}.m4s` and `{n}.vtt` can start ffmpeg, so they share these errors: `404 unknown_transcode` /
 `unknown_segment` / `end_of_stream`, `410 session_closed`, `500 transcode_failed`,
@@ -1272,6 +1276,31 @@ VLC (PLAN § 2) and uses only the first `native` or `web` entry.
   capability of the resolved version.
 - `audioTracks[].deliveredAs`: `original` (direct play: the engine switches tracks itself), `copy`,
   `converted` (`deliveredCodec`/`deliveredChannels`) or `none` (not in this rendition: switch).
+  `audioTracks[].renditionId` names the HLS audio rendition carrying the track (null when it is not in the master).
+- **Audio renditions (in-session audio switch).** For `remux` and `transcode` the server offers up to 4 audio
+  tracks as HLS audio renditions of one group when the version has two or more audio tracks: the selected track
+  (`DEFAULT=YES`), then the viewer's `audioLanguage`, the file's default track and the other languages in stream
+  order, one track per language (a second track of a language the list already has, e.g. a commentary, is only
+  offered when it is the selected one). Each rendition is copied when the engine decodes it (within
+  `maxAudioChannels`), otherwise converted (remux: E-AC-3 → AC-3 → AAC stereo; transcode: AAC), exactly like the
+  single track before. The response then carries
+
+  ```json
+  "inSessionAudioSwitch": true,
+  "audioRenditions": [
+    { "id": "1", "streamIndex": 1, "language": "de", "label": "Deutsch AC3 5.1", "channels": 6, "codec": "ac3", "default": false },
+    { "id": "2", "streamIndex": 2, "language": "en", "label": "English AC3 2.0", "channels": 2, "codec": "ac3", "default": true } ]
+  ```
+
+  in master order; `label` is the rendition `NAME`, `language` its `LANGUAGE`, `channels`/`codec` what the player
+  receives, `streamIndex` matches `mediaInfo.audioTracks[].index`. **Client rule:** when `inSessionAudioSwitch` is
+  true and the wanted track has a `renditionId`, switch the audio track in the player (hls.js `audioTrack`,
+  AVPlayer `AVMediaSelectionGroup` for audible media, ExoPlayer track selection) — same URL, no `/switch`, no
+  restart; seek, heartbeats and stop are unaffected. Use `POST …/switch { audioStreamIndex }` (new revision and URL)
+  when `inSessionAudioSwitch` is false (one muxed track, e.g. a single-audio version), when the track has no
+  `renditionId` (beyond the 4 offered), or for direct play (`deliveredAs: original` switches in the engine itself).
+  After a `/switch` the new revision offers renditions again, with the requested track as the default.
+  `audioRenditions` is `[]` for direct play and muxed audio and absent until `ready`.
   `subtitleTracks[].deliveredAs`: `embedded` (direct play, the engine renders it), `webvtt` (HLS
   rendition of a remux or transcode), `burnedIn` (in the transcoded picture) or `none`. `selected`
   marks the tracks the server delivered as chosen at this `revision`; after a switch inside the

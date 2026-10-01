@@ -321,6 +321,72 @@ def switch_checks(manifest, picks, anna):
     return created["playbackId"], body, first_url
 
 
+def playlist_durations(url):
+    status, text = http("GET", url)
+    text = text.decode() if isinstance(text, bytes) else str(text)
+    return [line[8:].rstrip(",") for line in text.splitlines() if line.startswith("#EXTINF:")]
+
+
+def rendition_checks(manifest, picks, anna):
+    """B5: remux and transcode masters carry one EXT-X-MEDIA TYPE=AUDIO rendition per offered track."""
+    title, release = picks["mkv-dualaudio-ass-1080p"]
+    for device, prefs, method, codec in (("appletv", {"audioLanguage": "en"}, "remux", "ac3"),
+                                         ("chrome", {"audioLanguage": "en"}, "remux", "aac"),
+                                         ("chrome", {"audioLanguage": "de", "maxHeight": 720}, "transcode", "aac")):
+        label = f"renditions: dual audio {method} on {device}"
+        status, created = start(anna, title["workId"], DEVICES[device], release["releaseId"], prefs)
+        _, body, _ = wait(anna, created["playbackId"])
+        if not check(f"{label}: ready as {method}", body and body["state"] == "ready" and body["method"] == method, str(body and body.get("method"))):
+            continue
+        renditions = body.get("audioRenditions") or []
+        selected = next(a for a in body["mediaInfo"]["audioTracks"] if a["selected"])
+        check(f"{label}: inSessionAudioSwitch with two renditions, the selected track is the default",
+              body.get("inSessionAudioSwitch") is True and len(renditions) == 2
+              and [r["streamIndex"] for r in renditions if r["default"]] == [selected["index"]]
+              and {r["language"] for r in renditions} == {"de", "en"} and all(r["codec"] == codec for r in renditions),
+              json.dumps(renditions))
+        check(f"{label}: audio tracks name their rendition", all(a.get("renditionId") for a in body["mediaInfo"]["audioTracks"]),
+              json.dumps([(a["index"], a.get("renditionId")) for a in body["mediaInfo"]["audioTracks"]]))
+        _, master = http("GET", body["url"])
+        master = master.decode() if isinstance(master, bytes) else str(master)
+        audio_lines = [line for line in master.splitlines() if line.startswith("#EXT-X-MEDIA:TYPE=AUDIO")]
+        variant = next((line for line in master.splitlines() if line.startswith("#EXT-X-STREAM-INF:")), "")
+        check(f"{label}: master has one AUDIO rendition per track in group 'audio' and the variant references it",
+              len(audio_lines) == 2 and all('GROUP-ID="audio"' in line and "LANGUAGE=" in line and "CHANNELS=" in line
+                                            and "AUTOSELECT=YES" in line for line in audio_lines)
+              and sum("DEFAULT=YES" in line for line in audio_lines) == 1 and 'AUDIO="audio"' in variant, variant)
+        base = body["url"].rsplit("/", 1)[0]
+        streams, error = ffprobe(f"{base}/main.m3u8")
+        check(f"{label}: the video playlist carries no audio", streams is not None and all(t == "video" for t, _ in streams), error or str(streams))
+        main_durations = playlist_durations(f"{base}/main.m3u8")
+        for rendition in renditions:
+            url = f"{base}/audio/{rendition['id']}/main.m3u8"
+            streams, error = ffprobe(url)
+            check(f"{label}: ffprobe reads rendition {rendition['id']} as one {codec} audio stream",
+                  streams == [("audio", codec)], error or str(streams))
+            check(f"{label}: rendition {rendition['id']} segments are aligned with the video playlist",
+                  playlist_durations(url) == main_durations and len(main_durations) > 0, f"{len(main_durations)} segments")
+        if HLSSIM:
+            passed, summary = hlssim(body["url"], duration=30, decode=True, seek="10:120")
+            check(f"{label}: hlssim plays video + both audio renditions with a seek", passed, summary)
+        check(f"{label}: stop 204", stop(anna, created["playbackId"]) == 204)
+
+    title, single = picks["mkv-h264-eac3-srt-1080p"]
+    status, created = start(anna, title["workId"], CHROME, single["releaseId"], {"audioLanguage": "en"})
+    _, body, _ = wait(anna, created["playbackId"])
+    _, master = http("GET", body["url"]) if body and body.get("url") else (0, "")
+    master = master.decode() if isinstance(master, bytes) else str(master)
+    check("renditions: a single-audio remux keeps its muxed audio", body and body.get("inSessionAudioSwitch") is False
+          and body.get("audioRenditions") == [] and "TYPE=AUDIO" not in master, str(body and body.get("audioRenditions")))
+    stop(anna, created["playbackId"])
+    title, release = picks["mkv-dualaudio-ass-1080p"]
+    status, created = start(anna, title["workId"], ANDROID_TV, release["releaseId"], {"audioLanguage": "en"})
+    _, body, _ = wait(anna, created["playbackId"])
+    check("renditions: direct play switches in the engine (no renditions)", body and body.get("method") == "direct"
+          and body.get("inSessionAudioSwitch") is False and body.get("audioRenditions") == [], str(body and body.get("method")))
+    stop(anna, created["playbackId"])
+
+
 def heartbeat_checks(manifest, picks, anna, playback_id, body, first_url):
     status, state = http("POST", "/api/v1/viewer/watch/progress",
                          {"event": "progress", "workId": body["workId"], "positionTicks": 900_000_000, "durationTicks": 1_800_000_000,
@@ -418,6 +484,7 @@ def main():
     dead_fallback(manifest, anna)
     gast_checks(manifest, picks)
     kind_checks(manifest, picks)
+    rendition_checks(manifest, picks, anna)
     playback_id, body, first_url = switch_checks(manifest, picks, anna)
     heartbeat_checks(manifest, picks, anna, playback_id, body, first_url)
     preference_checks(manifest, picks, anna)

@@ -59,6 +59,10 @@ public sealed record HlsSimReport
     public required IReadOnlyList<string> Errors { get; init; }
     public required IReadOnlyList<string> Warnings { get; init; }
     public int SubtitleRenditions { get; init; }
+
+    /// <summary>EXT-X-MEDIA TYPE=AUDIO renditions fetched next to every video segment.</summary>
+    public int AudioRenditions { get; init; }
+    public int AudioSegments { get; init; }
     public int SubtitleSegments { get; init; }
     public int SubtitleCues { get; init; }
     public IReadOnlyList<string> SubtitleSamples { get; init; } = [];
@@ -80,6 +84,11 @@ public sealed record HlsSimReport
 public sealed record MediaPlaylist(string InitUri, IReadOnlyList<(double Duration, string Uri)> Segments, int TargetDuration);
 
 public sealed record SubtitleRendition(string Name, string? Language, Uri PlaylistUrl, MediaPlaylist Playlist);
+
+public sealed record AudioRendition(string Name, Uri PlaylistUrl, MediaPlaylist Playlist, byte[] InitBytes, Fmp4Init Init)
+{
+    public Dictionary<int, List<byte[]>> Runs { get; } = [];
+}
 
 /// <summary>
 /// Plays an HLS VOD rendition the way hls.js does (buffer target, sequential fetches, seeks) while validating every fMP4
@@ -113,6 +122,23 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
                 errors.Add($"subtitle rendition '{name}' is not aligned with the video playlist");
             }
         }
+        var audioRenditions = new List<AudioRendition>();
+        foreach (var (name, _, uri) in ParseRenditions(master, "AUDIO"))
+        {
+            var url = new Uri(masterUrl, uri);
+            var playlist = ParseMedia(await GetStringAsync(url, ct), errors);
+            var audioInit = await GetBytesAsync(new Uri(url, playlist.InitUri), ct);
+            var parsed = Fmp4.ParseInit(audioInit);
+            if (parsed.Tracks.Count != 1 || parsed.Audio is null)
+                errors.Add($"audio rendition '{name}': init must carry exactly one audio track");
+            audioRenditions.Add(new AudioRendition(name, url, playlist, audioInit, parsed));
+            if (playlist.Segments.Count != media.Segments.Count
+                || playlist.Segments.Zip(media.Segments).Any(p => Math.Abs(p.First.Duration - p.Second.Duration) > 0.001))
+            {
+                errors.Add($"audio rendition '{name}' is not aligned with the video playlist");
+            }
+        }
+        var audioSegments = 0;
         var subtitleSegments = 0;
         var subtitleCues = 0;
         var subtitleSamples = new List<string>();
@@ -130,6 +156,8 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
             errors.Add("init segment has no video track");
         if (init.Tracks.Count(t => t.Handler == "soun") > 1)
             warnings.Add("init segment carries more than one audio track");
+        if (audioRenditions.Count > 0 && init.Audio is not null)
+            errors.Add("the video playlist carries audio although the master declares audio renditions");
 
         var index = IndexAt(starts, options.StartPositionSeconds);
         var playhead = starts[index];
@@ -213,6 +241,19 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
                 var fetch = Inspect(index, starts[index], duration, data, init, latency, run, index == media.Segments.Count - 1, previous, errors, warnings);
                 fetches.Add(fetch);
                 runs[^1].Add(data);
+                foreach (var rendition in audioRenditions.Where(r => index < r.Playlist.Segments.Count))
+                {
+                    var bytes = await GetBytesAsync(new Uri(rendition.PlaylistUrl, rendition.Playlist.Segments[index].Uri), ct);
+                    audioSegments++;
+                    var audio = Fmp4.ParseSegment(bytes, rendition.Init).Timings(rendition.Init).FirstOrDefault(t => t.Handler == "soun");
+                    if (audio is null)
+                        errors.Add($"audio '{rendition.Name}' segment {index}: no audio samples");
+                    else if (fetch.VideoStart is { } videoStart && Math.Abs(audio.StartSeconds - videoStart) > options.MaxAudioVideoOffsetSeconds)
+                        errors.Add($"audio '{rendition.Name}' segment {index}: starts {audio.StartSeconds - videoStart:+0.000;-0.000}s away from video");
+                    if (!rendition.Runs.TryGetValue(run, out var list))
+                        rendition.Runs[run] = list = [];
+                    list.Add(bytes);
+                }
                 previous = fetch;
                 ttfs ??= clock.Elapsed.TotalMilliseconds;
                 if (!playing)
@@ -249,11 +290,22 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
                 if (decodeErrors.Length > 0)
                     errors.Add($"run {number} is not cleanly decodable: {decodeErrors}");
             }
+            foreach (var rendition in audioRenditions)
+            {
+                foreach (var (number, segments) in rendition.Runs)
+                {
+                    var decodeErrors = await DecodeAsync(rendition.InitBytes, segments, ct);
+                    if (decodeErrors.Length > 0)
+                        errors.Add($"audio '{rendition.Name}' run {number} is not cleanly decodable: {decodeErrors}");
+                }
+            }
         }
 
         return Report(media, codecs, fetches, seekLatencies, stalls, stallSeconds, ttfs, ttff, clock, errors, warnings) with
         {
             SubtitleRenditions = subtitles.Count,
+            AudioRenditions = audioRenditions.Count,
+            AudioSegments = audioSegments,
             SubtitleSegments = subtitleSegments,
             SubtitleCues = subtitleCues,
             SubtitleSamples = subtitleSamples,
@@ -305,9 +357,11 @@ public sealed class HlsPlayerSimulator(HttpClient http, HlsSimOptions options, A
         return cues;
     }
 
-    internal static IEnumerable<(string Name, string? Language, string Uri)> ParseSubtitleRenditions(string master)
+    internal static IEnumerable<(string Name, string? Language, string Uri)> ParseSubtitleRenditions(string master) => ParseRenditions(master, "SUBTITLES");
+
+    internal static IEnumerable<(string Name, string? Language, string Uri)> ParseRenditions(string master, string type)
     {
-        foreach (var line in Lines(master).Where(l => l.StartsWith("#EXT-X-MEDIA:", StringComparison.Ordinal) && l.Contains("TYPE=SUBTITLES", StringComparison.Ordinal)))
+        foreach (var line in Lines(master).Where(l => l.StartsWith("#EXT-X-MEDIA:", StringComparison.Ordinal) && l.Contains($"TYPE={type},", StringComparison.Ordinal)))
         {
             string? Attribute(string name) => line.Split($"{name}=\"").ElementAtOrDefault(1)?.Split('"')[0];
             if (Attribute("URI") is { } uri)

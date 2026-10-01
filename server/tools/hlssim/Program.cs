@@ -142,6 +142,8 @@ void Print(int n, HlsSimReport r)
     if (r.SeekLatenciesMs.Count > 0)
         Console.WriteLine($"seek latency: {string.Join(", ", r.SeekLatenciesMs.Select(s => $"{s:0} ms"))}");
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"stalls {r.Stalls} ({r.StallSeconds:0.0}s)"));
+    if (r.AudioRenditions > 0)
+        Console.WriteLine($"audio: {r.AudioRenditions} rendition(s), {r.AudioSegments} segments");
     if (r.SubtitleRenditions > 0)
     {
         Console.WriteLine($"subtitles: {r.SubtitleRenditions} rendition(s), {r.SubtitleSegments} WebVTT segments, {r.SubtitleCues} cues");

@@ -237,7 +237,8 @@ public sealed class TranscodingController(
         request.MaxHeight is { } h ? Math.Clamp(h, 144, 4320) : null,
         request.MaxBitrateKbps is { } b ? Math.Clamp(b, 300, 200_000) : null,
         request.AudioStreamIndex,
-        request.SubtitleStreamIndex);
+        request.SubtitleStreamIndex,
+        AudioRenditions: request.AudioRenditions);
 
     private static ModePreference ToPreference(string? mode, ModePreference fallback)
     {

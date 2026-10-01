@@ -688,6 +688,8 @@ public sealed class ViewerPlaybackService(
                 Url = ready?.Url,
                 StreamToken = ready is null ? null : p.StreamToken,
                 MediaInfo = ready?.MediaInfo,
+                InSessionAudioSwitch = ready?.Plan is { DemuxedAudio: true } && ready.Method != DeliveryMode.Direct,
+                AudioRenditions = ready is null ? null : ready.Method == DeliveryMode.Direct || ready.Plan is null ? [] : AudioRenditions(ready.Plan),
                 Decision = p.State is States.Ready or States.Failed ? p.Decision : null,
                 Error = failed is null ? null : new PlaybackErrorDto { Code = failed.Code, Message = failed.Message, Params = failed.Parameters },
                 SuggestedActions = failed?.SuggestedActions,
@@ -774,6 +776,18 @@ public sealed class ViewerPlaybackService(
 
     private static PlanReasonResponse Reason(PlanReason r) => new(r.Code, r.Message, r.Params);
 
+    private static List<PlaybackAudioRenditionDto> AudioRenditions(TranscodePlan plan)
+        => plan.AudioRenditions.Select(r => new PlaybackAudioRenditionDto
+        {
+            Id = r.Id,
+            StreamIndex = r.Target.SourceIndex,
+            Language = r.Language,
+            Label = r.Name,
+            Channels = r.Target.Channels,
+            Codec = r.Target.Codec,
+            Default = r.IsDefault,
+        }).ToList();
+
     private static PlaybackMediaInfoDto MediaInfo(SourceMediaInfo source, TranscodePlan plan, PlaybackCandidate candidate)
     {
         var direct = candidate.Method == DeliveryMode.Direct;
@@ -801,7 +815,8 @@ public sealed class ViewerPlaybackService(
             },
             AudioTracks = source.Audio.Select(a =>
             {
-                var delivered = direct ? null : plan.Audio is { } target && target.SourceIndex == a.Index ? target : null;
+                var rendition = direct ? null : plan.AudioRenditions.FirstOrDefault(r => r.Target.SourceIndex == a.Index);
+                var delivered = direct ? null : rendition?.Target ?? (plan.Audio is { } target && target.SourceIndex == a.Index ? target : null);
                 return new PlaybackAudioTrackDto
                 {
                     Index = a.Index,
@@ -814,6 +829,7 @@ public sealed class ViewerPlaybackService(
                     DeliveredAs = direct ? "original" : delivered is null ? "none" : delivered.Copy ? "copy" : "converted",
                     DeliveredCodec = direct ? a.Codec : delivered?.Codec,
                     DeliveredChannels = direct ? a.Channels : delivered?.Channels,
+                    RenditionId = rendition?.Id,
                 };
             }).ToList(),
             SubtitleTracks = source.Subtitles.Select(s =>

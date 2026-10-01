@@ -84,14 +84,17 @@ public static class HlsPlaylist
     public const string MediaPlaylistName = "main.m3u8";
     public const string InitSegmentName = "init.mp4";
     public const string SubtitleGroup = "subs";
+    public const string AudioGroup = "audio";
 
     public static string Master(TranscodePlan plan)
     {
         var video = plan.Video;
         var remux = plan.Mode == DeliveryMode.Remux;
         var subtitles = plan.Subtitles.Where(s => s.Delivered).ToList();
-        var bandwidth = plan.PeakBandwidthBitsPerSecond ?? plan.BandwidthBitsPerSecond;
-        var average = plan.AverageBandwidthBitsPerSecond ?? plan.BandwidthBitsPerSecond;
+        // BANDWIDTH covers the variant with its largest audio rendition.
+        var extraAudio = plan.DemuxedAudio ? Math.Max(0, plan.AudioRenditions.Max(r => r.Target.BitrateKbps) - (plan.Audio?.BitrateKbps ?? 0)) * 1000 : 0;
+        var bandwidth = (plan.PeakBandwidthBitsPerSecond ?? plan.BandwidthBitsPerSecond) + extraAudio;
+        var average = (plan.AverageBandwidthBitsPerSecond ?? plan.BandwidthBitsPerSecond) + extraAudio;
         var builder = new StringBuilder()
             .Append("#EXTM3U\n")
             .Append("#EXT-X-VERSION:7\n")
@@ -104,11 +107,21 @@ public static class HlsPlaylist
             builder.Append(CultureInfo.InvariantCulture,
                 $"DEFAULT=NO,AUTOSELECT=YES,FORCED={(subtitle.Stream.IsForced ? "YES" : "NO")},URI=\"{SubtitlePlaylistPath(subtitle.Stream.Index)}\"\n");
         }
+        foreach (var rendition in plan.AudioRenditions)
+        {
+            builder.Append(CultureInfo.InvariantCulture, $"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{AudioGroup}\",NAME=\"{rendition.Name}\",");
+            if (rendition.Language is { } language)
+                builder.Append(CultureInfo.InvariantCulture, $"LANGUAGE=\"{language}\",");
+            builder.Append(CultureInfo.InvariantCulture,
+                $"DEFAULT={(rendition.IsDefault ? "YES" : "NO")},AUTOSELECT=YES,CHANNELS=\"{rendition.Target.Channels}\",URI=\"{AudioPlaylistPath(rendition.Id)}\"\n");
+        }
         builder
             .Append(CultureInfo.InvariantCulture, $"#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},AVERAGE-BANDWIDTH={average},")
             .Append(CultureInfo.InvariantCulture, $"CODECS=\"{plan.CodecsAttribute}\",")
             .Append(CultureInfo.InvariantCulture, $"RESOLUTION={video.Width}x{video.Height},")
             .Append(CultureInfo.InvariantCulture, $"FRAME-RATE={video.FrameRate:0.000},VIDEO-RANGE={(remux ? plan.VideoRange : "SDR")}");
+        if (plan.DemuxedAudio)
+            builder.Append(CultureInfo.InvariantCulture, $",AUDIO=\"{AudioGroup}\"");
         if (subtitles.Count > 0)
             builder.Append(CultureInfo.InvariantCulture, $",SUBTITLES=\"{SubtitleGroup}\"");
         if (remux)
@@ -118,6 +131,8 @@ public static class HlsPlaylist
 
     public static string SubtitlePlaylistPath(int streamIndex)
         => string.Create(CultureInfo.InvariantCulture, $"subtitles/{streamIndex}/{MediaPlaylistName}");
+
+    public static string AudioPlaylistPath(string renditionId) => $"audio/{renditionId}/{MediaPlaylistName}";
 
     public static string Media(SegmentTimeline timeline) => Playlist(timeline, $"#EXT-X-MAP:URI=\"{InitSegmentName}\"\n", "m4s");
 

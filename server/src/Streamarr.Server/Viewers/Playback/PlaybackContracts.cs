@@ -184,6 +184,12 @@ public sealed record PlaybackResponse
 
     public PlaybackMediaInfoDto? MediaInfo { get; init; }
 
+    /// <summary>True when the HLS master carries an audio group: switch between <see cref="AudioRenditions"/> in the player, no <c>/switch</c> needed.</summary>
+    public bool InSessionAudioSwitch { get; init; }
+
+    /// <summary>Audio renditions of the HLS master (group <c>audio</c>), in master order; empty when the audio is muxed into the video (ready only).</summary>
+    public IReadOnlyList<PlaybackAudioRenditionDto>? AudioRenditions { get; init; }
+
     /// <summary>Why this method and engine (also present on <c>failed</c> when no method was possible).</summary>
     public PlaybackDecisionDto? Decision { get; init; }
 
@@ -191,6 +197,27 @@ public sealed record PlaybackResponse
 
     /// <summary><c>retry</c>, <c>otherVersion</c>, <c>lowerQuality</c>, <c>useVlc</c> (failed only).</summary>
     public IReadOnlyList<string>? SuggestedActions { get; init; }
+}
+
+/// <summary>One <c>EXT-X-MEDIA:TYPE=AUDIO</c> entry; <see cref="Label"/> equals its NAME and <see cref="Language"/> its LANGUAGE.</summary>
+public sealed record PlaybackAudioRenditionDto
+{
+    /// <summary>Stable id inside the playback revision (the URI is <c>audio/{id}/main.m3u8</c> next to the master).</summary>
+    public required string Id { get; init; }
+
+    /// <summary>Source audio stream index (as in <c>mediaInfo.audioTracks[].index</c> and <c>/switch audioIndex</c>).</summary>
+    public required int StreamIndex { get; init; }
+
+    public string? Language { get; init; }
+    public required string Label { get; init; }
+
+    /// <summary>Delivered channels and codec (<c>aac</c>, <c>ac3</c>, <c>eac3</c>, <c>flac</c>, <c>opus</c>).</summary>
+    public required int Channels { get; init; }
+
+    public required string Codec { get; init; }
+
+    /// <summary>The rendition marked DEFAULT=YES (the selected track).</summary>
+    public required bool Default { get; init; }
 }
 
 public sealed record PlaybackReleaseDto
@@ -282,6 +309,9 @@ public sealed record PlaybackAudioTrackDto
 
     /// <summary><c>original</c> (direct play: the engine switches locally), <c>copy</c>, <c>converted</c> or <c>none</c> (switch to hear it).</summary>
     public required string DeliveredAs { get; init; }
+
+    /// <summary>The HLS audio rendition carrying this track (switch in the player); null = not in the master.</summary>
+    public string? RenditionId { get; init; }
 
     public string? DeliveredCodec { get; init; }
     public int? DeliveredChannels { get; init; }

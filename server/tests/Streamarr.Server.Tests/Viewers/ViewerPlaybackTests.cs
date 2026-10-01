@@ -658,7 +658,12 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         var audio = again.GetProperty("mediaInfo").GetProperty("audioTracks");
         Assert.True(audio[1].GetProperty("selected").GetBoolean());
         Assert.Equal("copy", audio[1].GetProperty("deliveredAs").GetString());
-        Assert.Equal("none", audio[0].GetProperty("deliveredAs").GetString());
+        Assert.Equal("copy", audio[0].GetProperty("deliveredAs").GetString());
+        Assert.Equal([2, 1], started.Limits.AudioRenditions!);
+        Assert.True(again.GetProperty("inSessionAudioSwitch").GetBoolean());
+        Assert.Equal([(1, false), (2, true)], again.GetProperty("audioRenditions").EnumerateArray()
+            .Select(r => (r.GetProperty("streamIndex").GetInt32(), r.GetProperty("default").GetBoolean())));
+        Assert.Equal(["1", "2"], audio.EnumerateArray().Select(a => a.GetProperty("renditionId").GetString()));
         Assert.True(again.GetProperty("mediaInfo").GetProperty("subtitleTracks")[1].GetProperty("selected").GetBoolean());
         Assert.Single(factory.Resolver.Calls, c => c.ReleaseId == release);
 

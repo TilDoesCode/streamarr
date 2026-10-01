@@ -3801,6 +3801,237 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transcode/{token}/audio/{rendition}/main.m3u8": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audio rendition playlist of a demuxed session: same timeline and segment boundaries as the video. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                    rendition: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcode/{token}/audio/{rendition}/init.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                    rendition: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Gone */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Gateway Timeout */
+                504: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transcode/{token}/audio/{rendition}/{segment}.m4s": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                    rendition: string;
+                    segment: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Gone */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Gateway Timeout */
+                504: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transcode/{token}/subtitles/{stream}/main.m3u8": {
         parameters: {
             query?: never;
@@ -10363,6 +10594,26 @@ export interface components {
             /** @description `resolving`, `ready`, `degraded` or `dead`. */
             status: string | null;
         };
+        /** @description One `EXT-X-MEDIA:TYPE=AUDIO` entry; Streamarr.Server.Viewers.Playback.PlaybackAudioRenditionDto.Label equals its NAME and Streamarr.Server.Viewers.Playback.PlaybackAudioRenditionDto.Language its LANGUAGE. */
+        PlaybackAudioRenditionDto: {
+            /** @description Stable id inside the playback revision (the URI is `audio/{id}/main.m3u8` next to the master). */
+            id: string | null;
+            /**
+             * Format: int32
+             * @description Source audio stream index (as in `mediaInfo.audioTracks[].index` and `/switch audioIndex`).
+             */
+            streamIndex: number;
+            language?: string | null;
+            label: string | null;
+            /**
+             * Format: int32
+             * @description Delivered channels and codec (`aac`, `ac3`, `eac3`, `flac`, `opus`).
+             */
+            channels: number;
+            codec: string | null;
+            /** @description The rendition marked DEFAULT=YES (the selected track). */
+            default: boolean;
+        };
         PlaybackAudioTrackDto: {
             /** Format: int32 */
             index: number;
@@ -10375,6 +10626,8 @@ export interface components {
             selected?: boolean;
             /** @description `original` (direct play: the engine switches locally), `copy`, `converted` or `none` (switch to hear it). */
             deliveredAs: string | null;
+            /** @description The HLS audio rendition carrying this track (switch in the player); null = not in the master. */
+            renditionId?: string | null;
             deliveredCodec?: string | null;
             /** Format: int32 */
             deliveredChannels?: number | null;
@@ -10515,6 +10768,10 @@ export interface components {
             /** @description The stream capability of the resolved release. */
             streamToken?: string | null;
             mediaInfo?: components["schemas"]["PlaybackMediaInfoDto"] | null;
+            /** @description True when the HLS master carries an audio group: switch between Streamarr.Server.Viewers.Playback.PlaybackResponse.AudioRenditions in the player, no `/switch` needed. */
+            inSessionAudioSwitch?: boolean;
+            /** @description Audio renditions of the HLS master (group `audio`), in master order; empty when the audio is muxed into the video (ready only). */
+            audioRenditions?: components["schemas"]["PlaybackAudioRenditionDto"][] | null;
             decision?: components["schemas"]["PlaybackDecisionDto"] | null;
             error?: components["schemas"]["PlaybackErrorDto"] | null;
             /** @description `retry`, `otherVersion`, `lowerQuality`, `useVlc` (failed only). */
@@ -11558,6 +11815,8 @@ export interface components {
             maxBitrateKbps?: number | null;
             /** Format: int32 */
             audioStreamIndex?: number | null;
+            /** @description Audio streams to offer as HLS audio renditions next to the selected one (at most 4 in total); two or more demux the audio into an `AUDIO` group. */
+            audioRenditions?: number[] | null;
             /**
              * Format: int32
              * @description The subtitle stream the viewer wants; an image-based one a remux or transcode cannot deliver (no burn-in) gets the reason `subtitle_not_deliverable`; text streams become WebVTT renditions.

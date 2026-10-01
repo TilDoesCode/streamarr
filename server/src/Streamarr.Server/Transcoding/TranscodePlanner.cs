@@ -26,7 +26,8 @@ public sealed record ClientProfile
 
 /// <summary>Request limits and track choices; <see cref="BurnInSubtitle"/> lets a transcode overlay a selected image-based subtitle onto the video.</summary>
 public sealed record TranscodeLimits(
-    int? MaxHeight = null, int? MaxBitrateKbps = null, int? AudioStreamIndex = null, int? SubtitleStreamIndex = null, bool BurnInSubtitle = false);
+    int? MaxHeight = null, int? MaxBitrateKbps = null, int? AudioStreamIndex = null, int? SubtitleStreamIndex = null, bool BurnInSubtitle = false,
+    IReadOnlyList<int>? AudioRenditions = null);
 
 /// <summary>How a stream reaches the player: the original file, a stream copy into HLS, or a full re-encode.</summary>
 public enum DeliveryMode
@@ -122,6 +123,12 @@ public sealed record AudioTarget(
     string Codec = "aac",
     string CodecsTag = "mp4a.40.2");
 
+/// <summary>One HLS audio rendition of a demuxed delivery; <see cref="TrackId"/> is its track in the muxed fMP4 the session splits.</summary>
+public sealed record AudioRendition(AudioTarget Target, string? Language, string Name, bool IsDefault, uint TrackId, double SourceStartSeconds, int? SourceSampleRate)
+{
+    public string Id => Target.SourceIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}
+
 public sealed record TranscodePlan
 {
     public required SourceVideoStream SourceVideo { get; init; }
@@ -162,7 +169,14 @@ public sealed record TranscodePlan
 
     public int BandwidthBitsPerSecond => (Video.BitrateKbps + (Audio?.BitrateKbps ?? 0)) * 1000;
 
-    public string CodecsAttribute => Audio is null ? Video.CodecsTag : $"{Video.CodecsTag},{Audio.CodecsTag}";
+    /// <summary>Audio renditions of one group (default first in source order); empty means the audio is muxed into the video segments.</summary>
+    public IReadOnlyList<AudioRendition> AudioRenditions { get; init; } = [];
+
+    public bool DemuxedAudio => AudioRenditions.Count > 0;
+
+    public string CodecsAttribute => DemuxedAudio
+        ? string.Join(',', AudioRenditions.Select(r => r.Target.CodecsTag).Distinct().Prepend(Video.CodecsTag))
+        : Audio is null ? Video.CodecsTag : $"{Video.CodecsTag},{Audio.CodecsTag}";
 }
 
 public sealed class TranscodePlanningException(string code, string message) : Exception(message)
@@ -326,6 +340,7 @@ public static class TranscodePlanner
                 VideoRange = videoRange,
                 Subtitles = subtitles,
                 Audio = audioTarget,
+                AudioRenditions = PlanRenditions(media, limits, audioTarget, a => PlanRemuxAudio(a, client, settings, capabilities, out _)),
                 Encoder = "copy",
             };
         }
@@ -353,7 +368,41 @@ public static class TranscodePlanner
             RemuxPossible = remuxPossible,
             RemuxBlockers = remuxBlockers,
             Subtitles = PlanSubtitles(media, DeliveryMode.Transcode, transcode.BurnIn),
+            AudioRenditions = PlanRenditions(media, limits, transcode.Audio, a => PlanAudio(a, client, settings)),
         };
+    }
+
+    public const int MaxAudioRenditions = 4;
+
+    /// <summary>Two or more requested audio streams become renditions (the selected one is the default); otherwise the audio stays muxed.</summary>
+    internal static IReadOnlyList<AudioRendition> PlanRenditions(
+        SourceMediaInfo media, TranscodeLimits limits, AudioTarget? selected, Func<SourceAudioStream, AudioTarget> plan)
+    {
+        if (selected is null || limits.AudioRenditions is not { Count: > 0 } requested)
+            return [];
+        var streams = requested.Prepend(selected.SourceIndex).Distinct()
+            .Select(i => media.Audio.FirstOrDefault(a => a.Index == i)
+                ?? throw new TranscodePlanningException("unknown_audio_stream", $"Audio stream {i} does not exist in the source."))
+            .Take(MaxAudioRenditions)
+            .ToList();
+        if (streams.Count < 2)
+            return [];
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return streams.OrderBy(a => a.Index).Select((a, i) =>
+        {
+            var baseName = SanitizeName(a.Title) ?? WebVttSubtitles.LanguageName(a.Language) ?? $"Audio {a.Index}";
+            var name = baseName;
+            for (var n = 2; !names.Add(name); n++)
+                name = $"{baseName} {n}";
+            return new AudioRendition(
+                a.Index == selected.SourceIndex ? selected : plan(a),
+                WebVttSubtitles.Bcp47(a.Language),
+                name,
+                a.Index == selected.SourceIndex,
+                (uint)(i + 2),
+                a.StartTime is { } start ? Math.Max(0, start - media.StartTime) : 0,
+                a.SampleRate);
+        }).ToList();
     }
 
     /// <summary>The server neither decodes nor encodes the video: the target describes the original stream.</summary>

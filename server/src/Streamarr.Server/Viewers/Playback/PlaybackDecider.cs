@@ -171,6 +171,29 @@ public static class TrackSelector
 
     internal static string? Lang(string? language) => WebVttSubtitles.Bcp47(language);
 
+    /// <summary>HLS audio renditions to offer: the selected track, then the preferred language, the source default and other languages (one track per language), at most <see cref="TranscodePlanner.MaxAudioRenditions"/>.</summary>
+    public static IReadOnlyList<int> OfferedAudio(SourceMediaInfo media, SourceAudioStream? selected, PlaybackPreferences preferences)
+    {
+        if (selected is null || media.Audio.Count < 2)
+            return [];
+        var ordered = media.Audio
+            .OrderBy(a => a.Index == selected.Index ? 0 : preferences.AudioLanguage is { } l && Lang(a.Language) == l ? 1 : a.IsDefault ? 2 : 3)
+            .ThenBy(a => a.Index);
+        var languages = new HashSet<string>(StringComparer.Ordinal);
+        var offered = new List<int>();
+        foreach (var audio in ordered)
+        {
+            if (offered.Count == TranscodePlanner.MaxAudioRenditions)
+                break;
+            if (audio.Index != selected.Index && !languages.Add(Lang(audio.Language) ?? $"#{audio.Index}"))
+                continue;
+            if (audio.Index == selected.Index)
+                languages.Add(Lang(audio.Language) ?? $"#{audio.Index}");
+            offered.Add(audio.Index);
+        }
+        return offered.Count < 2 ? [] : offered;
+    }
+
     internal static IReadOnlyDictionary<string, string> Params(params (string Key, object? Value)[] values)
         => values.Where(v => v.Value is not null)
             .ToDictionary(v => v.Key, v => Convert.ToString(v.Value, System.Globalization.CultureInfo.InvariantCulture)!, StringComparer.Ordinal);
@@ -257,7 +280,8 @@ public static class PlaybackDecider
                 maxBitrate,
                 tracks.Audio?.Index,
                 step.WithSubtitle ? tracks.Subtitle?.Index : null,
-                step.BurnIn);
+                step.BurnIn,
+                step.Method == DeliveryMode.Direct ? null : TrackSelector.OfferedAudio(media, tracks.Audio, preferences));
             TranscodePlan plan;
             try
             {

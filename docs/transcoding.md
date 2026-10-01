@@ -297,6 +297,36 @@ known rate stay in the estimate, which can only overstate it.
 **Capacity.** Remux runs have their own pool (*Concurrent remuxes*, default 8, `503 remux_capacity`);
 they never take a transcode slot. The Sessions tab labels every session *Remux* or *Transcode*.
 
+## Audio renditions
+
+A remux or transcode with two or more offered audio tracks (viewer playback offers the selected track plus up to
+three more, one per language; the session API takes `audioRenditions`) delivers them as HLS audio renditions of one
+group, so a player switches language inside the session:
+
+```
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Deutsch AC3 5.1",LANGUAGE="de",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="6",URI="audio/1/main.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English AC3 2.0",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio/2/main.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=…,CODECS="avc1.640028,ac-3",…,AUDIO="audio",SUBTITLES="subs",CLOSED-CAPTIONS=NONE
+main.m3u8
+```
+
+**One ffmpeg process, demuxed on serve.** ffmpeg still writes one fragmented MP4: the video (track 1) plus every
+offered audio track (rendition *i* = track *i* + 2), each with its own codec options (`-c:a:i copy` or
+`-c:a:i aac -ac:a:i 2 …`, converted remux tracks with their own `atrim` origin, copied transcode tracks with their
+own `noise=drop` filter after a restart). The remux segmenter and the transcode's HLS muxer cut it exactly as
+before. When a player asks for `main.m3u8`/`init.mp4`/`{n}.m4s` the server returns only the video track, and
+`audio/{id}/…` returns only that audio track (`Fmp4TrackSplit`: the `moof` keeps that track's `traf`, the `trun`
+data offsets are rewritten against a new `mdat` holding its samples). Video and audio segment *n* therefore come
+from the same fragment: identical boundaries, `EXTINF` durations and restart behaviour, and seeks, the throttle,
+WebVTT subtitles and capacity pools are unchanged. `ffmpeg -hls var_stream_map` was not used: it would replace
+the keyframe-accurate remux segmenter and run every rendition on its own playlist/restart logic.
+
+**Cost** (Sintel dual-audio, 180 s, 1 vs 2 audio tracks, same ffmpeg arguments; measured in B5): remux with two
+tracks converted to AAC 4.7 → 10.7 s CPU (still 32× real time), remux copy unchanged (≈ 0.05 s), 720p transcode
+59 → 67 s CPU (16× real time); disk per session +12 % (transcode) to +53 % (copying a 448 kbit/s 5.1 track); first
+segments about 80 ms later for a transcode (two audio encoders before the first fragment). The 4-rendition cap
+bounds it; a single audio track stays muxed exactly as before.
+
 ## Settings
 
 Editable in **Transcoding → Settings** (stored in the database):
@@ -391,13 +421,15 @@ dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:39310 --ap
 
 ## Current limits
 
-- Remux: H.264, HEVC and AV1 only (VP9, MPEG-2, VC-1 are transcoded); one audio rendition (switching
-  audio creates a new session); image subtitles are not delivered by a remux (only a viewer-playback
+- Remux: H.264, HEVC and AV1 only (VP9, MPEG-2, VC-1 are transcoded); at most 4 audio renditions (other
+  tracks need a new session via `/switch`); image subtitles are not delivered by a remux (only a viewer-playback
   transcode can burn them in); a cue that
   starts before a restarted run's first keyframe and is still showing at its start is only delivered
   if an earlier run demuxed it; sources without a Matroska Cues
   entry or an MP4 sample table need the ffprobe scan, which rarely finishes in time for large files
   over Usenet; the admin UI's preview player (hls.js light) does not render subtitles.
-- One rendition per session (no adaptive bitrate ladder); transcodes carry no subtitle tracks.
+- One video rendition per session (no adaptive bitrate ladder). Audio renditions carry the language in the
+  master only (the fMP4 track language is `und`). mediastreamvalidator (Apple HLS tools) was not available to
+  validate the audio groups; checked with ffprobe, ffmpeg decode and hlssim.
 - The Jellyfin plugin keeps using Jellyfin's own transcoder; this path is for
   Streamarr's own clients and the management UI.
