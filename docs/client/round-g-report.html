@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr – Runde G: Bericht und nächste Schritte</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: var(--cc-bg, #ffffff);
+    --fg: var(--cc-fg, #15171c);
+    --muted: var(--cc-muted, #f2f3f6);
+    --muted-fg: var(--cc-muted-fg, #5d6370);
+    --border: var(--cc-border, #dfe2e8);
+    --primary: var(--cc-primary, #2f6fe4);
+    --primary-fg: var(--cc-primary-fg, #ffffff);
+    --radius: var(--cc-radius, 10px);
+    --ok: #1f8f4e; --ok-bg: #e3f5ea;
+    --warn: #a86a00; --warn-bg: #fdf1dc;
+    --info: #2f6fe4; --info-bg: #e5eefc;
+    --block: #b3261e; --block-bg: #fbe5e3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f1116);
+      --fg: var(--cc-fg, #e8eaf0);
+      --muted: var(--cc-muted, #1a1d25);
+      --muted-fg: var(--cc-muted-fg, #9aa1b0);
+      --border: var(--cc-border, #2a2e39);
+      --primary: var(--cc-primary, #6c9cff);
+      --primary-fg: var(--cc-primary-fg, #0f1116);
+      --ok: #5fd08f; --ok-bg: #15301f;
+      --warn: #f0b34a; --warn-bg: #33270f;
+      --info: #7fa9ff; --info-bg: #17223a;
+      --block: #ff8a80; --block-bg: #3a1714;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--cc-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 22px 56px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 36px 0 12px; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+  p { margin: 6px 0; }
+  .sub { color: var(--muted-fg); }
+  code { font-family: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; background: var(--bg); }
+  .card.rec { border: 2px solid var(--primary); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-right: 6px; }
+  .ok { color: var(--ok); background: var(--ok-bg); }
+  .warn { color: var(--warn); background: var(--warn-bg); }
+  .info { color: var(--info); background: var(--info-bg); }
+  .block { color: var(--block); background: var(--block-bg); }
+  .rec-badge { color: var(--primary-fg); background: var(--primary); }
+  ul { margin: 6px 0 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted-fg); font-weight: 600; font-size: 13px; }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 4px; }
+  .step { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; background: var(--muted); }
+  .arrow { color: var(--muted-fg); }
+  .bar { height: 10px; border-radius: 6px; background: var(--muted); overflow: hidden; margin-top: 4px; }
+  .bar > span { display: block; height: 100%; background: var(--primary); }
+  .glass-row { display: grid; grid-template-columns: 130px 1fr 52px; gap: 10px; align-items: center; font-size: 14px; margin: 6px 0; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--border); vertical-align: -2px; margin-right: 6px; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  footer { margin-top: 40px; color: var(--muted-fg); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Runde G – Bericht und nächste Schritte</h1>
+  <p class="sub">Pakete 3 und 4 aus „Nächste Schritte“ plus die eine Chip-Reihe auf den Bibliotheksseiten. Stand 1. Oktober 2026, 04:45.</p>
+
+  <div class="flow">
+    <span class="step">B2 Server</span><span class="arrow">→</span>
+    <span class="step">B3 Server (neu)</span><span class="arrow">→</span>
+    <span class="step">F3 Client, 4 Teile</span><span class="arrow">→</span>
+    <span class="step">je 1 unabhängige Prüfung</span><span class="arrow">→</span>
+    <span class="step">Commit</span>
+  </div>
+
+  <h2>Geliefert</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>B2 · Server <span class="tag ok">bestanden, 1. Prüfung</span></h3>
+      <p class="sub"><code>9a7396b</code></p>
+      <ul>
+        <li>Metadaten in der App-Sprache (Accept-Language), Englisch als Rückfall</li>
+        <li>Specs werden im Hintergrund vorgeladen, Karten füllen sich ohne Öffnen</li>
+        <li>VLC-Grenzen des Geräts im Versions-Endpunkt</li>
+        <li>Container-Speicher dauerhaft (Tabelle, LRU)</li>
+        <li>Dev World behält Konten beim Neustart (<code>--keep-data</code>)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>B3 · Server <span class="tag ok">bestanden, 1. Prüfung</span></h3>
+      <p class="sub"><code>4ef2a1c</code> – nachträglich angelegt für das TV-Glas</p>
+      <ul>
+        <li><code>highlight</code>: gemessene Helligkeit der Grafik pro Titel</li>
+        <li>Drei Warteschlangen verwarfen bei Überlast still Arbeit – behoben</li>
+        <li>Unbekannter VLC-Codec → klare Fehlermeldung (400)</li>
+        <li>„Weiterschauen“ trägt den Titel in der Nutzersprache</li>
+        <li>Port-Fehler bei <code>--keep-data</code> gefunden und behoben</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>F3 · Client <span class="tag ok">bestanden, 1. Prüfung</span></h3>
+      <p class="sub"><code>d21e378</code> – 505 Tests grün</p>
+      <ul>
+        <li>Eine Chip-Reihe, Sortierung in der Titelzeile (TV, Web, Tablet, Handy)</li>
+        <li>TV-Glas pro Titel nach Kontrastregel</li>
+        <li>„4K · HDR10 vorhanden · hier 1080p“ auf der Detailseite</li>
+        <li>Kontoverwaltung: Passwort, E-Mail, 2FA mit QR, Geräte</li>
+        <li>Android schickt die echten VLC-Grenzen; Empfohlen = Abspielen</li>
+        <li>Fast quadratische Tablets, F2-Reste</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>TV-Glas pro Titel</h2>
+  <p>Deckkraft des Versionen-Panels über der Grafik. Je dunkler die Grafik, desto klarer das Glas. Fließtext behält immer 4,5:1, große Schrift 3:1. Ohne Messwert gilt der vorsichtige Wert 0,64.</p>
+  <div class="card">
+    <div class="glass-row"><span><span class="swatch" style="background:#F6EDE6"></span>Big Buck Bunny</span><div class="bar"><span style="width:58%"></span></div><span class="num">0,58</span></div>
+    <div class="glass-row"><span><span class="swatch" style="background:#E0DDD0"></span>Tears of Steel</span><div class="bar"><span style="width:55%"></span></div><span class="num">0,55</span></div>
+    <div class="glass-row"><span><span class="swatch" style="background:#B1BCB6"></span>Elephants Dream</span><div class="bar"><span style="width:47%"></span></div><span class="num">0,47</span></div>
+    <div class="glass-row"><span><span class="swatch" style="background:#9CA298"></span>Sherlock</span><div class="bar"><span style="width:40%"></span></div><span class="num">0,40</span></div>
+    <div class="glass-row"><span><span class="swatch" style="background:#869BA2"></span>Wing It!</span><div class="bar"><span style="width:37%"></span></div><span class="num">0,37</span></div>
+    <div class="glass-row"><span><span class="swatch" style="background:#6C6D72"></span>Pioneer One</span><div class="bar"><span style="width:36%"></span></div><span class="num">0,36</span></div>
+    <div class="glass-row"><span class="sub">ohne Messwert</span><div class="bar"><span style="width:64%"></span></div><span class="num">0,64</span></div>
+  </div>
+
+  <h2>Offene Punkte (im Backlog, nicht blockierend)</h2>
+  <table>
+    <tr><th style="width:110px">Bereich</th><th>Punkt</th></tr>
+    <tr><td><span class="tag info">TV</span></td><td>Unten von der Sortierung überspringt die Genre-Reihe · Zurück aus Einstellungen geht direkt nach Start · nach „Abmelden“ springt der Fokus in die erste Zeile</td></tr>
+    <tr><td><span class="tag info">TV-Glas</span></td><td>Knöpfe und Chips noch mit festem Glas · Release-Name auf Versionskarten ca. 3,4:1 statt 4,5:1 (Farbe älter als F3)</td></tr>
+    <tr><td><span class="tag info">Web/Handy</span></td><td>„password+2fa“ unübersetzt in der Geräteliste · 2FA-Panel bleibt nach „Gespeichert“ offen · Scrollbalken bei 500 px · Profil (Name, Avatar) noch nicht bearbeitbar</td></tr>
+    <tr><td><span class="tag info">Tablet</span></td><td>Fast quadratisch: Logo der Seitenleiste unter der Statusleiste</td></tr>
+    <tr><td><span class="tag warn">Server</span></td><td>Zweiter E-Mail-Code in 30 s: keine Mail, aber „gesendet“ · Bestätigungsmail englisch · <code>vlcHdrFormats=none</code> fehlt · Logos/Plakate bleiben englisch · „Alle abmelden“ ohne eigenen Endpunkt · HLS mit mehreren Tonspuren (#4)</td></tr>
+    <tr><td><span class="tag block">Ungetestet</span></td><td>iPhone/iPad/Apple TV (kein Xcode) · echte Android-TV-Hardware (HDR, Passthrough, Speicher, ANR bei schnellen D-Pad-Folgen)</td></tr>
+  </table>
+
+  <h2>Vorschläge für die nächsten Schritte</h2>
+  <div class="grid">
+    <div class="card rec">
+      <h3><span class="tag rec-badge">Empfohlen</span>1 · iPhone und iPad zum Laufen bringen</h3>
+      <p>iPhone/iPad sind laut Auftrag Priorität, aber bisher völlig ungetestet. Braucht <b>Xcode</b> auf diesem Mac (ca. 15 GB) – das kannst nur du installieren.</p>
+      <ul>
+        <li>NativeTabs mit Liquid Glass, iPad-Seitenleiste, Formulare</li>
+        <li>Wiedergabe: AVPlayer, VLCKit als Rückfall, HDR/DV, AirPlay, PiP</li>
+        <li>Apple TV: Fokus, Menü-Taste, Tastatur</li>
+      </ul>
+      <p class="sub">Aufwand: groß (mehrere Teile). Risiko: hoch, deshalb früh.</p>
+    </div>
+    <div class="card">
+      <h3>2 · Feinschliff-Runde (F4 + B4)</h3>
+      <p>Alle kleinen Punkte aus der Tabelle oben, Client und Server parallel.</p>
+      <ul>
+        <li>TV-Fokus-Kleinigkeiten, Glas für Knöpfe/Chips, Kontrast Release-Name</li>
+        <li>Profil bearbeiten, Übersetzungen, 2FA-Panel</li>
+        <li>Server: E-Mail-Wartezeit, deutsche Mail, <code>vlcHdrFormats=none</code>, deutsche Logos/Plakate, „Alle abmelden“-Endpunkt</li>
+      </ul>
+      <p class="sub">Aufwand: klein bis mittel, ca. 2–3 Stunden. Läuft ohne dich.</p>
+    </div>
+    <div class="card">
+      <h3>3 · Test auf echter Hardware</h3>
+      <p>Ein Android-TV-Gerät (ideal mit 2 GB) und ein echtes Handy.</p>
+      <ul>
+        <li>HEVC Main10 / HDR10 / Dolby Vision, Ton-Passthrough, 4K</li>
+        <li>Speicher eines Release-Builds, ANR bei schnellen D-Pad-Folgen</li>
+        <li>VLC-Direktrendering, Spulen in MKV</li>
+      </ul>
+      <p class="sub">Braucht ein Gerät per USB/ADB.</p>
+    </div>
+    <div class="card">
+      <h3>4 · Mehrere Tonspuren im HLS-Stream</h3>
+      <p>Server #4: Sprachwahl beim Transcode/Remux ohne Neustart der Wiedergabe.</p>
+      <p class="sub">Aufwand: mittel bis groß, eher nach 1–3.</p>
+    </div>
+  </div>
+  <p style="margin-top:14px">Mein Vorschlag: <b>2 sofort</b> (läuft selbstständig), parallel installierst du <b>Xcode für 1</b>. Offline-Downloads bleiben wie vereinbart außen vor.</p>
+
+  <footer>Commits dieser Runde: 3067734, 38be7ad, 9a7396b, 0936c41, 76065aa, 4ef2a1c, d21e378, 6de4f12 · Journale: docs/client/journal/B2.md, B3.md, F3.md · Screenshots: docs/client/screenshots/F3/</footer>
+</main>
+</body>
+</html>
