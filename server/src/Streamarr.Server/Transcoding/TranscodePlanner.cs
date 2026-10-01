@@ -340,7 +340,8 @@ public static class TranscodePlanner
                 VideoRange = videoRange,
                 Subtitles = subtitles,
                 Audio = audioTarget,
-                AudioRenditions = PlanRenditions(media, limits, audioTarget, a => PlanRemuxAudio(a, client, settings, capabilities, out _)),
+                AudioRenditions = PlanRenditions(media, limits, audioTarget,
+                    a => OneCodecPerGroup(PlanRemuxAudio(a, client, settings, capabilities, out _), audioTarget, a, client, settings, capabilities)),
                 Encoder = "copy",
             };
         }
@@ -390,12 +391,13 @@ public static class TranscodePlanner
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         return streams.OrderBy(a => a.Index).Select((a, i) =>
         {
-            var baseName = SanitizeName(a.Title) ?? WebVttSubtitles.LanguageName(a.Language) ?? $"Audio {a.Index}";
+            var target = a.Index == selected.SourceIndex ? selected : plan(a);
+            var baseName = $"{NativeLanguageName(a.Language) ?? $"Audio {a.Index}"} · {AudioLabel(target)}";
             var name = baseName;
             for (var n = 2; !names.Add(name); n++)
-                name = $"{baseName} {n}";
+                name = $"{baseName} ({n})";
             return new AudioRendition(
-                a.Index == selected.SourceIndex ? selected : plan(a),
+                target,
                 WebVttSubtitles.Bcp47(a.Language),
                 name,
                 a.Index == selected.SourceIndex,
@@ -403,6 +405,54 @@ public static class TranscodePlanner
                 a.StartTime is { } start ? Math.Max(0, start - media.StartTime) : 0,
                 a.SampleRate);
         }).ToList();
+    }
+
+    /// <summary>The language in its own name ("Deutsch", "English"), as players show it next to their own UI language.</summary>
+    internal static string? NativeLanguageName(string? language)
+    {
+        if (WebVttSubtitles.Bcp47(language) is not { } code)
+            return null;
+        try
+        {
+            var culture = CultureInfo.GetCultureInfo(code);
+            var native = culture.Parent.Name.Length > 0 && culture.Parent.Name != culture.Name ? culture.Parent.NativeName : culture.NativeName;
+            if (!string.IsNullOrWhiteSpace(native) && !native.StartsWith("Unknown", StringComparison.Ordinal) && native != code)
+                return culture.TextInfo.ToUpper(native[0]) + native[1..];
+        }
+        catch (CultureNotFoundException)
+        {
+        }
+        return WebVttSubtitles.LanguageName(language);
+    }
+
+    /// <summary>What a rendition delivers, e.g. "AAC 2.0", "AC3 5.1", "E-AC3 5.1".</summary>
+    internal static string AudioLabel(AudioTarget target)
+    {
+        var codec = target.Codec switch
+        {
+            "eac3" => "E-AC3",
+            "truehd" => "TrueHD",
+            "opus" => "Opus",
+            "flac" => "FLAC",
+            var other => other.ToUpperInvariant(),
+        };
+        var layout = target.Channels switch { 1 => "1.0", 2 => "2.0", 6 => "5.1", 8 => "7.1", var n => $"{n} ch" };
+        return $"{codec} {layout}";
+    }
+
+    /// <summary>Apple's HLS authoring spec wants one codec per audio group: a remux rendition whose codec differs from the default one is converted to it when ffmpeg can encode that codec.</summary>
+    internal static AudioTarget OneCodecPerGroup(
+        AudioTarget planned, AudioTarget? selected, SourceAudioStream audio, ClientProfile client, TranscodingSettings settings, FfmpegCapabilities capabilities)
+    {
+        if (selected is null || planned.Codec == selected.Codec || selected.Codec is not ("aac" or "ac3" or "eac3") || !capabilities.Encoders.Contains(selected.Codec))
+            return planned;
+        var codec = selected.Codec;
+        var channels = codec == "aac" ? Math.Clamp(audio.Channels, 1, 2) : Math.Clamp(audio.Channels, 1, Math.Min(6, client.MaxAudioChannels));
+        var bitrate = codec == "aac" ? channels == 1 ? Math.Min(128, settings.AudioBitrateKbps) : settings.AudioBitrateKbps : channels > 2 ? 640 : 256;
+        int? sampleRate = codec == "aac"
+            ? audio.SampleRate is > 48_000 or < 16_000 ? 48_000 : null
+            : audio.SampleRate is 48_000 or 44_100 or 32_000 ? null : 48_000;
+        return new AudioTarget(audio.Index, audio.Codec, false, channels, bitrate, sampleRate, codec, CodecStrings.Audio(codec, null));
     }
 
     /// <summary>The server neither decodes nor encodes the video: the target describes the original stream.</summary>

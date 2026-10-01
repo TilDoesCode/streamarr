@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using Streamarr.Server.Transcoding;
 using Streamarr.Server.Viewers.Playback;
@@ -37,7 +38,7 @@ public sealed class AudioRenditionTests
         Assert.Equal([1, 2], plan.AudioRenditions.Select(r => r.Target.SourceIndex));
         Assert.Equal([2u, 3u], plan.AudioRenditions.Select(r => r.TrackId));
         Assert.Equal(["de", "en"], plan.AudioRenditions.Select(r => r.Language));
-        Assert.Equal(["Deutsch AC3 5.1", "English AC3 2.0"], plan.AudioRenditions.Select(r => r.Name));
+        Assert.Equal(["Deutsch · AC3 5.1", "English · AC3 2.0"], plan.AudioRenditions.Select(r => r.Name));
         Assert.Equal([false, true], plan.AudioRenditions.Select(r => r.IsDefault));
         Assert.All(plan.AudioRenditions, r => Assert.True(r.Target.Copy));
         Assert.Equal(2, plan.Audio!.SourceIndex);
@@ -73,7 +74,7 @@ public sealed class AudioRenditionTests
         var plan = Decide(media, Browser, ModePreference.Remux, false, new TranscodeLimits(AudioRenditions: [1, 2, 3, 4, 5, 6]));
 
         Assert.Equal(TranscodePlanner.MaxAudioRenditions, plan.AudioRenditions.Count);
-        Assert.Equal(["English", "English 2", "English 3", "English 4"], plan.AudioRenditions.Select(r => r.Name));
+        Assert.Equal(["English · AAC 2.0", "English · AAC 2.0 (2)", "English · AAC 2.0 (3)", "English · AAC 2.0 (4)"], plan.AudioRenditions.Select(r => r.Name));
         var error = Assert.Throws<TranscodePlanningException>(() => Decide(media, Browser, ModePreference.Remux, false, new TranscodeLimits(AudioRenditions: [9])));
         Assert.Equal("unknown_audio_stream", error.Code);
     }
@@ -84,10 +85,54 @@ public sealed class AudioRenditionTests
         var plan = Decide(DualAudio(), AppleTv, ModePreference.Remux, false, new TranscodeLimits(AudioStreamIndex: 2, AudioRenditions: [1]));
         var master = HlsPlaylist.Master(plan);
 
-        Assert.Contains("#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"Deutsch AC3 5.1\",LANGUAGE=\"de\",DEFAULT=NO,AUTOSELECT=YES,CHANNELS=\"6\",URI=\"audio/1/main.m3u8\"\n", master);
-        Assert.Contains("#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"English AC3 2.0\",LANGUAGE=\"en\",DEFAULT=YES,AUTOSELECT=YES,CHANNELS=\"2\",URI=\"audio/2/main.m3u8\"\n", master);
+        Assert.Contains("#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"Deutsch · AC3 5.1\",LANGUAGE=\"de\",DEFAULT=NO,AUTOSELECT=YES,CHANNELS=\"6\",URI=\"audio/1/main.m3u8\"\n", master);
+        Assert.Contains("#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"English · AC3 2.0\",LANGUAGE=\"en\",DEFAULT=YES,AUTOSELECT=YES,CHANNELS=\"2\",URI=\"audio/2/main.m3u8\"\n", master);
         Assert.Contains(",AUDIO=\"audio\"", master);
         Assert.DoesNotContain("TYPE=AUDIO", HlsPlaylist.Master(Decide(DualAudio(), AppleTv, ModePreference.Remux, false)));
+    }
+
+    [Fact]
+    public void RenditionNames_DescribeWhatIsDelivered_AfterConversion()
+    {
+        var plan = Decide(DualAudio(), Browser, ModePreference.Remux, false, new TranscodeLimits(AudioRenditions: [1, 2]));
+
+        Assert.Equal(["Deutsch · AAC 2.0", "English · AAC 2.0"], plan.AudioRenditions.Select(r => r.Name));
+        Assert.Equal("Français", TranscodePlanner.NativeLanguageName("fre"));
+        Assert.Equal("Audio 3 · E-AC3 5.1", $"{TranscodePlanner.NativeLanguageName(null) ?? "Audio 3"} · {TranscodePlanner.AudioLabel(new AudioTarget(3, "truehd", false, 6, 640, null, "eac3"))}");
+    }
+
+    [Fact]
+    public void Remux_OneCodecPerAudioGroup_ConvertsTheOddRenditionToTheDefaultCodec()
+    {
+        var media = DualAudio(
+            new SourceAudioStream { Index = 1, Codec = "truehd", Channels = 8, Language = "ger", SampleRate = 48_000, IsDefault = true },
+            new SourceAudioStream { Index = 2, Codec = "ac3", Channels = 6, Language = "eng", SampleRate = 48_000 });
+        var plan = Decide(media, AppleTv, ModePreference.Remux, false, new TranscodeLimits(AudioStreamIndex: 2, AudioRenditions: [2, 1]));
+
+        Assert.Equal([("ac3", 6, false), ("ac3", 6, true)], plan.AudioRenditions.Select(r => (r.Target.Codec, r.Target.Channels, r.Target.Copy)));
+        Assert.Equal("avc1.640028,ac-3", plan.CodecsAttribute);
+        Assert.Equal(["Deutsch · AC3 5.1", "English · AC3 5.1"], plan.AudioRenditions.Select(r => r.Name));
+
+        var flac = DualAudio(
+            new SourceAudioStream { Index = 1, Codec = "ac3", Channels = 6, Language = "ger", SampleRate = 48_000, IsDefault = true },
+            new SourceAudioStream { Index = 2, Codec = "flac", Channels = 2, Language = "eng", SampleRate = 48_000 });
+        var mixed = Decide(flac, AppleTv with { AudioCodecs = ["aac", "ac3", "flac"] }, ModePreference.Remux, false,
+            new TranscodeLimits(AudioStreamIndex: 2, AudioRenditions: [2, 1]));
+        Assert.Equal(["ac3", "flac"], mixed.AudioRenditions.Select(r => r.Target.Codec));
+    }
+
+    [Fact]
+    public void FfmpegArgs_TagEveryRenditionTrackWithItsLanguage()
+    {
+        var remux = Decide(DualAudio(), AppleTv, ModePreference.Remux, false, new TranscodeLimits(AudioRenditions: [1, 2]));
+        var transcode = Decide(DualAudio(), AppleTv, ModePreference.Transcode, false, new TranscodeLimits(AudioRenditions: [1, 2]));
+
+        foreach (var plan in new[] { remux, transcode })
+        {
+            var args = string.Join(' ', FfmpegArgumentBuilder.Build(Spec(plan)));
+            Assert.Contains("-metadata:s:a:0 language=deu -metadata:s:a:1 language=eng", args);
+        }
+        Assert.Null(FfmpegArgumentBuilder.Iso639_2(null));
     }
 
     [Fact]
@@ -149,7 +194,7 @@ public sealed class AudioRenditionTests
                 var splitInit = Fmp4TrackSplit.Init(init, track);
                 var parsed = Fmp4.ParseInit(splitInit);
                 Assert.Equal(handler, Assert.Single(parsed.Tracks).Handler);
-                var segment = Fmp4TrackSplit.Segment(media, track);
+                var segment = await SplitSegmentAsync(media, track);
                 var fragments = Fmp4.ParseSegment(segment, parsed).Fragments;
                 Assert.All(fragments, f => Assert.Equal(track, f.TrackId));
                 Assert.Equal(muxed.Fragments.Where(f => f.TrackId == track).Select(f => (f.BaseDecodeTime, f.SampleCount)),
@@ -178,7 +223,59 @@ public sealed class AudioRenditionTests
                 "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=24:duration=2", "-f", "lavfi", "-i", "sine=duration=2",
                 "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-movflags", "+frag_keyframe+empty_moov", "-f", "mp4", source);
             var bytes = await File.ReadAllBytesAsync(source);
-            Assert.Throws<InvalidDataException>(() => Fmp4TrackSplit.Segment(bytes[(IndexOf(bytes, "moof"u8) - 4)..], 2));
+            await Assert.ThrowsAsync<InvalidDataException>(() => SplitSegmentAsync(bytes[(IndexOf(bytes, "moof"u8) - 4)..], 2));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    private static async Task<byte[]> SplitSegmentAsync(byte[] data, uint track)
+    {
+        using var source = new MemoryStream(data, writable: false);
+        using var output = new MemoryStream();
+        await Fmp4TrackSplit.CopyAsync(source, await Fmp4TrackSplit.PlanAsync(source, track, CancellationToken.None), output, CancellationToken.None);
+        return output.ToArray();
+    }
+
+    [Fact]
+    public async Task Split_MalformedInput_OnlyThrowsInvalidData_AndBoundsTheTrunSampleCount()
+    {
+        var directory = Directory.CreateTempSubdirectory("b6-fuzz-").FullName;
+        try
+        {
+            var source = Path.Combine(directory, "muxed.mp4");
+            await KeyframeFixture.FfmpegAsync(
+                "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=24:duration=4", "-f", "lavfi", "-i", "sine=duration=4",
+                "-f", "lavfi", "-i", "sine=frequency=550:duration=4", "-map", "0", "-map", "1", "-map", "2",
+                "-c:v", "libx264", "-preset", "ultrafast", "-g", "48", "-c:a", "aac",
+                "-movflags", FfmpegArgumentBuilder.RemuxMovFlags, "-f", "mp4", source);
+            var bytes = await File.ReadAllBytesAsync(source);
+            var firstMoof = IndexOf(bytes, "moof"u8) - 4;
+            var init = bytes[..firstMoof];
+            var media = bytes[firstMoof..];
+            var random = new Random(6);
+            for (var i = 0; i < 1500; i++)
+            {
+                var broken = (byte[])media.Clone();
+                for (var n = random.Next(1, 4); n > 0; n--)
+                    broken[random.Next(0, Math.Min(broken.Length, 600))] = (byte)random.Next(256);
+                var cut = i % 5 == 0 ? broken[..random.Next(8, broken.Length)] : broken;
+                var error = await Record.ExceptionAsync(() => SplitSegmentAsync(cut, (uint)(i % 3 + 1)));
+                Assert.True(error is null or InvalidDataException or EndOfStreamException, $"case {i}: {error}");
+                var brokenInit = (byte[])init.Clone();
+                brokenInit[random.Next(brokenInit.Length)] = (byte)random.Next(256);
+                var initError = Record.Exception(() => Fmp4TrackSplit.Init(brokenInit, (uint)(i % 3 + 1)));
+                Assert.True(initError is null or InvalidDataException, $"init case {i}: {initError}");
+            }
+
+            var huge = (byte[])media.Clone();
+            var trun = IndexOf(huge, "trun"u8);
+            BinaryPrimitives.WriteUInt32BigEndian(huge.AsSpan(trun + 8), 0x7FFF_FFFF);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await Assert.ThrowsAsync<InvalidDataException>(() => SplitSegmentAsync(huge, 1));
+            Assert.True(watch.ElapsedMilliseconds < 1000, $"{watch.ElapsedMilliseconds} ms");
         }
         finally
         {

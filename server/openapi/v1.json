@@ -20194,6 +20194,43 @@
         },
         "additionalProperties": false
       },
+      "TranscodeAudioRenditionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "streamIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "codec": {
+            "type": "string",
+            "nullable": true
+          },
+          "channels": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "copy": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One HLS audio rendition: `name` is the playlist NAME, `codec`/`channels` what is delivered."
+      },
       "TranscodeJobResponse": {
         "required": [
           "command",
@@ -20328,6 +20365,14 @@
             "items": {
               "$ref": "#/components/schemas/SubtitleTrackResponse"
             },
+            "nullable": true
+          },
+          "audioRenditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscodeAudioRenditionResponse"
+            },
+            "description": "HLS audio renditions of a demuxed delivery (empty when the audio stays muxed): what each one delivers after conversion.",
             "nullable": true
           },
           "keyframeIndex": {

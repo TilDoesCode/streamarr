@@ -18,6 +18,18 @@ public static class Fmp4TrackSplit
     /// <summary>ftyp + a moov holding only <paramref name="trackId"/>'s trak and trex.</summary>
     public static byte[] Init(ReadOnlySpan<byte> data, uint trackId)
     {
+        try
+        {
+            return InitCore(data, trackId);
+        }
+        catch (Exception e) when (e is ArgumentException or IndexOutOfRangeException or OverflowException)
+        {
+            throw new InvalidDataException("Malformed fMP4 init segment.", e);
+        }
+    }
+
+    private static byte[] InitCore(ReadOnlySpan<byte> data, uint trackId)
+    {
         var output = new List<byte[]>();
         foreach (var (type, start, size, header) in Boxes(data, 0, data.Length))
         {
@@ -55,15 +67,6 @@ public static class Fmp4TrackSplit
         public long Size => Bytes?.Length ?? Length;
     }
 
-    /// <summary>Every moof/mdat pair reduced to <paramref name="trackId"/>'s traf and sample data (offsets relative to the new moof).</summary>
-    public static byte[] Segment(byte[] data, uint trackId)
-    {
-        using var source = new MemoryStream(data, writable: false);
-        using var output = new MemoryStream();
-        CopyAsync(source, PlanAsync(source, trackId, CancellationToken.None).GetAwaiter().GetResult(), output, CancellationToken.None).GetAwaiter().GetResult();
-        return output.ToArray();
-    }
-
     /// <summary>Reads only the moof boxes of a seekable muxed segment and plans the single-track output.</summary>
     public static async Task<IReadOnlyList<Part>> PlanAsync(Stream source, uint trackId, CancellationToken ct)
     {
@@ -96,7 +99,7 @@ public static class Fmp4TrackSplit
                 if (type == "styp")
                     parts.Add(new Part(box, 0, 0));
                 else
-                    PlanFragment(box, position, length, trackId, parts);
+                    PlanFragmentChecked(box, position, length, trackId, parts);
             }
             position += size;
         }
@@ -122,6 +125,18 @@ public static class Fmp4TrackSplit
                 await destination.WriteAsync(buffer.AsMemory(0, read), ct);
                 left -= read;
             }
+        }
+    }
+
+    private static void PlanFragmentChecked(byte[] moofBox, long moofOffset, long fileLength, uint trackId, List<Part> parts)
+    {
+        try
+        {
+            PlanFragment(moofBox, moofOffset, fileLength, trackId, parts);
+        }
+        catch (Exception e) when (e is ArgumentException or IndexOutOfRangeException or OverflowException)
+        {
+            throw new InvalidDataException("Malformed moof in a muxed segment.", e);
         }
     }
 
@@ -221,22 +236,28 @@ public static class Fmp4TrackSplit
                 }
                 var afterOffset = offset;
                 if ((flags & FirstSampleFlagsPresent) != 0) offset += 4;
+                var perSample = 4 * (int)(((flags & SampleDurationPresent) >> 8) + ((flags & SampleSizePresent) >> 9)
+                    + ((flags & SampleFlagsPresent) >> 10) + ((flags & SampleCtoPresent) >> 11));
+                if (count < 0 || (perSample > 0 && (long)count * perSample > body.Length - offset))
+                    throw new InvalidDataException("A trun sample count exceeds its box.");
                 var length = 0L;
-                for (var i = 0; i < count; i++)
+                if ((flags & SampleSizePresent) == 0)
                 {
-                    if ((flags & SampleDurationPresent) != 0) offset += 4;
-                    if ((flags & SampleSizePresent) != 0)
+                    length = (long)count * defaultSize;
+                }
+                else
+                {
+                    for (var i = 0; i < count; i++)
                     {
+                        if ((flags & SampleDurationPresent) != 0) offset += 4;
                         length += BinaryPrimitives.ReadUInt32BigEndian(body[offset..]);
                         offset += 4;
+                        if ((flags & SampleFlagsPresent) != 0) offset += 4;
+                        if ((flags & SampleCtoPresent) != 0) offset += 4;
                     }
-                    else
-                    {
-                        length += defaultSize;
-                    }
-                    if ((flags & SampleFlagsPresent) != 0) offset += 4;
-                    if ((flags & SampleCtoPresent) != 0) offset += 4;
                 }
+                if (length > int.MaxValue || dataStart < 0)
+                    throw new InvalidDataException("A trun describes more data than a segment can hold.");
                 var tail = body[afterOffset..];
                 var newBody = new byte[12 + tail.Length];
                 BinaryPrimitives.WriteUInt32BigEndian(newBody, (uint)(body[0] << 24) | flags | DataOffsetPresent);

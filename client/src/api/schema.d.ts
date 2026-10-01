@@ -11751,6 +11751,19 @@ export interface components {
             tmdbId?: number | null;
             profileUrl?: string | null;
         };
+        /** @description One HLS audio rendition: `name` is the playlist NAME, `codec`/`channels` what is delivered. */
+        TranscodeAudioRenditionResponse: {
+            id?: string | null;
+            /** Format: int32 */
+            streamIndex?: number;
+            language?: string | null;
+            name?: string | null;
+            codec?: string | null;
+            /** Format: int32 */
+            channels?: number;
+            copy?: boolean;
+            default?: boolean;
+        };
         TranscodeJobResponse: {
             /** Format: int32 */
             startSegment: number;
@@ -11785,6 +11798,8 @@ export interface components {
             remuxPossible: boolean;
             remuxBlockers: components["schemas"]["PlanReasonResponse"][] | null;
             subtitles: components["schemas"]["SubtitleTrackResponse"][] | null;
+            /** @description HLS audio renditions of a demuxed delivery (empty when the audio stays muxed): what each one delivers after conversion. */
+            audioRenditions?: components["schemas"]["TranscodeAudioRenditionResponse"][] | null;
             keyframeIndex?: components["schemas"]["KeyframeIndexResponse"] | null;
             directPlayPossible: boolean;
             directPlayBlockers: string[] | null;

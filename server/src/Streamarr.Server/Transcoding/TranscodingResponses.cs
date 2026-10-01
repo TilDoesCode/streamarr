@@ -188,6 +188,8 @@ public static class TranscodingResponses
         Reasons = plan.Reasons.Select(Reason).ToList(),
         RemuxPossible = plan.RemuxPossible,
         RemuxBlockers = plan.RemuxBlockers.Select(Reason).ToList(),
+        AudioRenditions = plan.AudioRenditions.Select(r => new TranscodeAudioRenditionResponse(
+            r.Id, r.Target.SourceIndex, r.Language, r.Name, r.Target.Codec, r.Target.Channels, r.Target.Copy, r.IsDefault)).ToList(),
         Subtitles = plan.Subtitles.Select(s => new SubtitleTrackResponse
         {
             Index = s.Stream.Index,

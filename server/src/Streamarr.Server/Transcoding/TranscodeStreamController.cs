@@ -11,7 +11,7 @@ namespace Streamarr.Server.Transcoding;
 [ApiController]
 [AllowAnonymous]
 [Route("api/v1/transcode/{token}")]
-public sealed class TranscodeStreamController(TranscodeSessionManager sessions) : ControllerBase
+public sealed class TranscodeStreamController(TranscodeSessionManager sessions, ILogger<TranscodeStreamController> logger) : ControllerBase
 {
     private const string PlaylistType = "application/vnd.apple.mpegurl";
 
@@ -107,6 +107,10 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions) 
         {
             return Failure(e);
         }
+        catch (InvalidDataException e)
+        {
+            return SplitFailure(e, rendition, null);
+        }
     }
 
     private async Task<IActionResult> ServeSegment(string token, string? rendition, int segment, CancellationToken ct)
@@ -149,6 +153,16 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions) 
         catch (TranscodeException e)
         {
             return Failure(e);
+        }
+        catch (Exception e) when (e is InvalidDataException or EndOfStreamException)
+        {
+            if (Response.HasStarted)
+            {
+                logger.LogWarning(e, "Audio rendition {Rendition} segment {Segment} broke off while streaming", rendition, segment);
+                HttpContext.Abort();
+                return new EmptyResult();
+            }
+            return SplitFailure(e, rendition, segment);
         }
     }
 
@@ -223,6 +237,13 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions) 
         if (e.StatusCode is 503 or 504)
             Response.Headers.RetryAfter = "1";
         return StatusCode(e.StatusCode, ErrorResponse.Of(e.Code, e.Message));
+    }
+
+    private ObjectResult SplitFailure(Exception e, string? rendition, int? segment)
+    {
+        logger.LogError(e, "Could not split rendition {Rendition} (segment {Segment}) out of the muxed session output", rendition, segment);
+        return StatusCode(StatusCodes.Status500InternalServerError,
+            ErrorResponse.Of("rendition_split_failed", "The session output could not be split into this rendition."));
     }
 
     private NotFoundObjectResult UnknownRendition()

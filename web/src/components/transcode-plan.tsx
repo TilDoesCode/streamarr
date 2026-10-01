@@ -70,6 +70,7 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
   const direct = mode === "direct";
   const reasons = plan.reasons ?? [];
   const subtitles = plan.subtitles ?? [];
+  const renditions = plan.audioRenditions ?? [];
   const index = plan.keyframeIndex;
 
   return (
@@ -180,6 +181,23 @@ export function PlanExplanation({ plan }: { plan: TranscodePlanResponse }) {
                 <CheckMark passed={track.deliveredAs !== "none"} className="mt-px [&_svg]:size-3.5" />
                 <span>
                   #{track.index} {track.name} ({codecLabel(track.codec)}) — {DELIVERY_LABELS[track.deliveredAs ?? "none"] ?? track.deliveredAs}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {renditions.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">Audio renditions (HLS audio group)</p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {renditions.map((rendition) => (
+              <li key={rendition.id} className="flex items-start gap-1.5">
+                <CheckMark passed={rendition.default ? true : null} className="mt-px [&_svg]:size-3.5" />
+                <span>
+                  #{rendition.streamIndex} {rendition.name} — {rendition.copy ? "copied" : "converted"}
+                  {rendition.default ? " · default" : ""}
                 </span>
               </li>
             ))}

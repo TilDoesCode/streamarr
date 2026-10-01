@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 ARGS = sys.argv[1:]
@@ -104,6 +105,12 @@ SAFARI = {"platform": "web", "vlcAvailable": False, "engines": [
      "videoCodecs": [{"codec": "h264"}, {"codec": "hevc", "maxBitDepth": 10, "hdrFormats": ["hdr10", "hlg", "dolbyvision"]}],
      "audioCodecs": [{"codec": "aac"}, {"codec": "ac3"}, {"codec": "eac3"}, {"codec": "mp3"}, {"codec": "flac"}],
      "subtitleFormats": ["webvtt"]}]}
+# iPhone simulator as reported by the I1 media-caps module: H.264 1080p 8-bit SDR only, so every HEVC title transcodes.
+IPHONE_SIM = {"platform": "ios", "vlcAvailable": False, "engines": [
+    {"engine": "native", "hls": True, "maxAudioChannels": 2, "containers": ["mp4"],
+     "videoCodecs": [{"codec": "h264", "maxHeight": 1080, "maxBitDepth": 8}],
+     "audioCodecs": [{"codec": "aac"}, {"codec": "ac3"}, {"codec": "eac3"}, {"codec": "mp3"}],
+     "subtitleFormats": ["webvtt"]}]}
 CHROME_HINTS = "videoCodecs=h264,vp9,av1,hevc&audioCodecs=aac,mp3,opus,flac&containers=mp4,webm&supports10Bit=true&maxAudioChannels=2"
 DEVICES = {"androidtv": ANDROID_TV, "appletv": APPLE_TV, "chrome": CHROME, "safari": SAFARI}
 
@@ -157,6 +164,61 @@ def ffprobe(url):
     return [(s["codec_type"], s["codec_name"]) for s in json.loads(out.stdout)["streams"]], None
 
 
+RANGE_TRANSFER = {"PQ": "smpte2084", "HLG": "arib-std-b67"}
+
+
+def fetch_bytes(url):
+    with urllib.request.urlopen(BASE + url if url.startswith("/") else url, timeout=180) as resp:
+        return resp.read()
+
+
+def resolve(base_url, ref):
+    return urllib.parse.urljoin(BASE + base_url, ref)
+
+
+def colour_tags(url):
+    """VIDEO-RANGE of the master and the video colour tags of its init + first segment (ffprobe)."""
+    master = fetch_bytes(url).decode()
+    lines = master.splitlines()
+    index = next(i for i, line in enumerate(lines) if line.startswith("#EXT-X-STREAM-INF:"))
+    attrs = lines[index]
+    video_range = attrs.split("VIDEO-RANGE=")[1].split(",")[0] if "VIDEO-RANGE=" in attrs else "SDR"
+    media = resolve(url, lines[index + 1].strip())
+    playlist = fetch_bytes(media).decode()
+    init = next(line.split('URI="')[1].split('"')[0] for line in playlist.splitlines() if line.startswith("#EXT-X-MAP:"))
+    first = next(line.strip() for line in playlist.splitlines() if line.strip() and not line.startswith("#"))
+    data = fetch_bytes(urllib.parse.urljoin(media, init)) + fetch_bytes(urllib.parse.urljoin(media, first))
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-print_format", "json", "-show_streams",
+                          "-show_frames", "-read_intervals", "%+#1", "-"], input=data, capture_output=True, timeout=180)
+    probe = json.loads(out.stdout or b"{}")
+    stream = (probe.get("streams") or [{}])[0]
+    tags = {k: stream.get(k) for k in ("color_transfer", "color_primaries", "color_space", "color_range")}
+    side = [d.get("side_data_type") for f in probe.get("frames", [])[:1] for d in f.get("side_data_list", [])]
+    return video_range, tags, side
+
+
+def colour_check(label, body):
+    """Fails when VIDEO-RANGE and the stream colour tags disagree (SDR: no PQ/HLG/BT.2020; HDR-sourced transcodes: BT.709, no HDR10 metadata)."""
+    if body["method"] == "direct":
+        return
+    try:
+        video_range, tags, side = colour_tags(body["url"])
+    except Exception as err:  # noqa: BLE001
+        check(f"{label}: VIDEO-RANGE matches the colour tags of init + segment 0", False, repr(err)[:200])
+        return
+    transfer = tags["color_transfer"] or "unknown"
+    if video_range in RANGE_TRANSFER:
+        ok = transfer == RANGE_TRANSFER[video_range]
+    else:
+        ok = transfer not in RANGE_TRANSFER.values() and tags["color_primaries"] != "bt2020"
+        source_hdr = ((body.get("mediaInfo") or {}).get("video") or {}).get("hdr") or "none"
+        if body["method"] == "transcode" and source_hdr != "none":
+            ok = ok and all(tags[k] == "bt709" for k in ("color_transfer", "color_primaries", "color_space")) \
+                and tags["color_range"] in (None, "tv") and "Mastering display metadata" not in side \
+                and "Content light level metadata" not in side
+    check(f"{label}: VIDEO-RANGE matches the colour tags of init + segment 0", ok, f"{video_range} {tags} {side}")
+
+
 def hlssim(url, duration=18, decode=False, seek=None):
     if not HLSSIM:
         return True, "hlssim not given"
@@ -179,6 +241,7 @@ def play_url(label, body, expect_video=None):
     if body["method"] != "direct":
         passed, summary = hlssim(url, decode=body["method"] == "remux")
         check(f"{label}: hlssim plays the HLS URL without credentials", passed, summary)
+        colour_check(label, body)
 
 
 def variant_releases(manifest):
@@ -415,6 +478,20 @@ def heartbeat_checks(manifest, picks, anna, playback_id, body, first_url):
     check("stop: the switched-away HLS session is closed too (404)", status == 404, str(status))
 
 
+def tone_map_checks(manifest, picks, anna):
+    for variant in ("mkv-hevc-hdr10-truehd-2160p", "mkv-hevc-hdr10-truehd-1080p", "mkv-hevc-hdr10-dts-1080p"):
+        title, release = picks[variant]
+        label = f"{variant} on iphone-sim"
+        status, created = start(anna, title["workId"], IPHONE_SIM, release["releaseId"], {"audioLanguage": "en"})
+        if not check(f"{label}: POST 202", status == 202, str(created)[:200]):
+            continue
+        _, body, _ = wait(anna, created["playbackId"])
+        if check(f"{label}: HDR10 tone-mapped to an SDR H.264 transcode", body is not None and body["state"] == "ready"
+                 and body["method"] == "transcode", f"{body and body.get('state')} {body and body.get('method')}"):
+            colour_check(label, body)
+        stop(anna, created["playbackId"])
+
+
 def preference_checks(manifest, picks, anna):
     title, release = picks["mp4-h264-aac-1080p"]
     status, created = start(anna, title["workId"], ANDROID_TV, release["releaseId"], {"engine": "vlc"})
@@ -437,6 +514,7 @@ def preference_checks(manifest, picks, anna):
     if body["state"] == "ready":
         passed, summary = hlssim(body["url"], duration=12)
         check("preferences: hlssim plays the 720p transcode", passed, summary)
+        colour_check("preferences: 720p transcode of HDR10", body)
         status, stepped = http("POST", f"/api/v1/viewer/playback/{created['playbackId']}/switch", {"stepDown": True, "preferences": {"maxHeight": 2160}}, anna)
         _, body, _ = wait(anna, created["playbackId"])
         check("switch: stepDown excludes the transcode that failed on the device; with maxHeight 2160 the remux follows",
@@ -487,6 +565,7 @@ def main():
     rendition_checks(manifest, picks, anna)
     playback_id, body, first_url = switch_checks(manifest, picks, anna)
     heartbeat_checks(manifest, picks, anna, playback_id, body, first_url)
+    tone_map_checks(manifest, picks, anna)
     preference_checks(manifest, picks, anna)
     recommended_checks(manifest, anna)
     passed = sum(1 for r in results if r["ok"])

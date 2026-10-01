@@ -184,6 +184,15 @@ no longer waits for detection: capability detection starts immediately at startu
   files with subtitle tracks even seek back to the last subtitle cue, up to 30 s), so a restarted
   run that copies the audio drops the packets before `N×L` with
   `-bsf:a noise=drop=lt(pts*tb\,N×L)` (ffmpeg ≥ 6), keeping the original timestamps.
+- **Colour tags.** A transcode always delivers SDR (`VIDEO-RANGE=SDR`). When the source is HDR (HDR10, HLG, Dolby
+  Vision) the filter chain ends with `setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv`
+  and drops the mastering-display and content-light side data, so the bitstream VUI and the fMP4 `colr` box say
+  BT.709 and no `mdcv`/`clli` survive — whatever tone mapping ran (GPU, zscale, or none when the build lacks
+  zscale: then the picture is washed out, but players accept it; AVPlayer refuses an `SDR` playlist whose stream
+  says PQ). ffmpeg ≥ 7 takes encoder colour tags from the frames, so `-color_trc` output options alone do not work.
+  SDR sources keep their own tags; a remux copies the stream untouched and announces `PQ`/`HLG` from the source.
+  The Dev World e2e (`colour_check`) ffprobes init + first segment of every remux/transcode and fails when
+  `VIDEO-RANGE` and the tags disagree.
 - **Throttling.** When ffmpeg is more than *throttle buffer* seconds ahead of the player
   it is paused with `SIGSTOP` and resumed with `SIGCONT` when the player catches up
   (Linux and macOS).
@@ -304,8 +313,8 @@ three more, one per language; the session API takes `audioRenditions`) delivers 
 group, so a player switches language inside the session:
 
 ```
-#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Deutsch AC3 5.1",LANGUAGE="de",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="6",URI="audio/1/main.m3u8"
-#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English AC3 2.0",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio/2/main.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Deutsch · AC3 5.1",LANGUAGE="de",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="6",URI="audio/1/main.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English · AC3 2.0",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio/2/main.m3u8"
 #EXT-X-STREAM-INF:BANDWIDTH=…,CODECS="avc1.640028,ac-3",…,AUDIO="audio",SUBTITLES="subs",CLOSED-CAPTIONS=NONE
 main.m3u8
 ```
@@ -321,9 +330,20 @@ from the same fragment: identical boundaries, `EXTINF` durations and restart beh
 WebVTT subtitles and capacity pools are unchanged. `ffmpeg -hls var_stream_map` was not used: it would replace
 the keyframe-accurate remux segmenter and run every rendition on its own playlist/restart logic.
 
+**Names, codecs, languages.** `NAME` (and the playback response's `label`) is the language in its own name plus
+what is delivered after conversion, e.g. `Deutsch · AAC 2.0` for a German AC-3 5.1 track a browser gets as AAC
+stereo (not the source title, which describes the source). Each fMP4 audio track carries its ISO 639-2 language
+(`-metadata:s:a:i language=deu`). Apple's authoring spec wants one codec per audio group: a remux rendition whose
+codec differs from the default rendition's is converted to that codec when it is AAC, AC-3 or E-AC-3 (e.g. TrueHD
+next to a copied AC-3 → AC-3 5.1); a copied default in another codec (FLAC, Opus, MP3) keeps a mixed group, because
+ffmpeg cannot write a matching track for every source. Transcode renditions are always AAC. A malformed muxed
+fragment never becomes a generic error: the splitter only throws `InvalidDataException` (bounded `trun` sample
+counts) and the route answers `500 rendition_split_failed`. The admin plan (`POST /api/v1/transcoding/plan`, session
+responses, Playback Preview card) lists `audioRenditions` when a request offers them.
+
 **Cost** (Sintel dual-audio, 180 s, 1 vs 2 audio tracks, same ffmpeg arguments; measured in B5): remux with two
 tracks converted to AAC 4.7 → 10.7 s CPU (still 32× real time), remux copy unchanged (≈ 0.05 s), 720p transcode
-59 → 67 s CPU (16× real time); disk per session +12 % (transcode) to +53 % (copying a 448 kbit/s 5.1 track); first
+59 → 67 s CPU (16× real time); disk per session +12 % (transcode) to +53 % (copying the 256 kbit/s AC-3 5.1 track of the Dev World source); first
 segments about 80 ms later for a transcode (two audio encoders before the first fragment). The 4-rendition cap
 bounds it; a single audio track stays muxed exactly as before.
 
@@ -428,8 +448,7 @@ dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:39310 --ap
   if an earlier run demuxed it; sources without a Matroska Cues
   entry or an MP4 sample table need the ffprobe scan, which rarely finishes in time for large files
   over Usenet; the admin UI's preview player (hls.js light) does not render subtitles.
-- One video rendition per session (no adaptive bitrate ladder). Audio renditions carry the language in the
-  master only (the fMP4 track language is `und`). mediastreamvalidator (Apple HLS tools) was not available to
+- One video rendition per session (no adaptive bitrate ladder). mediastreamvalidator (Apple HLS tools) was not available to
   validate the audio groups; checked with ffprobe, ffmpeg decode and hlssim.
 - The Jellyfin plugin keeps using Jellyfin's own transcoder; this path is for
   Streamarr's own clients and the management UI.

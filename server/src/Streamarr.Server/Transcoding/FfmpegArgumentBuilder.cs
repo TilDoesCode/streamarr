@@ -31,6 +31,10 @@ public static class FfmpegArgumentBuilder
 {
     public const string UserAgent = "Streamarr-Transcoder/1";
 
+    /// <summary>Tags HDR-sourced output as SDR BT.709 and drops the HDR10 static metadata; ffmpeg ≥ 7 takes encoder colour tags from the frames.</summary>
+    public const string SdrTagChain =
+        "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL";
+
     public const string SoftwareToneMapChain =
         "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
 
@@ -292,6 +296,8 @@ public static class FfmpegArgumentBuilder
         if (plan.Scales)
             after.Add($"scale=w={plan.Video.Width}:h={plan.Video.Height}");
         after.Add(plan.HardwareEncode ? HardwareProfiles.UploadFilter(plan.Acceleration) : "format=yuv420p");
+        if (plan.ToneMap != ToneMapMode.NotNeeded)
+            after.Add(SdrTagChain);
         var pre = before.Count == 0 ? "null" : string.Join(',', before);
         return $"[0:{plan.SourceVideo.Index}]{pre}[base];[base][0:{subtitle.Index}]overlay=eof_action=pass:repeatlast=0[burned];[burned]{string.Join(',', after)}[vout]";
     }
@@ -303,10 +309,31 @@ public static class FfmpegArgumentBuilder
         {
             foreach (var rendition in plan.AudioRenditions)
                 args.AddRange(["-map", $"0:{rendition.Target.SourceIndex}"]);
+            for (var i = 0; i < plan.AudioRenditions.Count; i++)
+            {
+                if (Iso639_2(plan.AudioRenditions[i].Language) is { } language)
+                    args.AddRange([$"-metadata:s:a:{i}", $"language={language}"]);
+            }
         }
         else if (plan.Audio is { } audio)
         {
             args.AddRange(["-map", $"0:{audio.SourceIndex}"]);
+        }
+    }
+
+    /// <summary>ISO 639-2/T code for the fMP4 mdhd language box, e.g. "de" → "deu".</summary>
+    internal static string? Iso639_2(string? bcp47)
+    {
+        if (string.IsNullOrWhiteSpace(bcp47))
+            return null;
+        try
+        {
+            var code = CultureInfo.GetCultureInfo(bcp47).ThreeLetterISOLanguageName;
+            return code.Length == 3 && code.All(char.IsAsciiLetterLower) ? code : null;
+        }
+        catch (CultureNotFoundException)
+        {
+            return null;
         }
     }
 
@@ -457,6 +484,8 @@ public static class FfmpegArgumentBuilder
             filters.Add("hwmap=derive_device=qsv,format=qsv");
         }
 
+        if (plan.ToneMap != ToneMapMode.NotNeeded)
+            filters.Add(SdrTagChain);
         return string.Join(',', filters);
     }
 

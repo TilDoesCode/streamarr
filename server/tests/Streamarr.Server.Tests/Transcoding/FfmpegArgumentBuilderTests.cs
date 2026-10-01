@@ -67,7 +67,7 @@ public sealed class FfmpegArgumentBuilderTests
         var args = FfmpegArgumentBuilder.Build(Spec(plan, settings, capabilities));
 
         AssertSequence(args, "-hwaccel", "videotoolbox", "-hwaccel_output_format", "videotoolbox_vld");
-        AssertSequence(args, "-vf", "scale_vt=w=1920:h=1080:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709");
+        AssertSequence(args, "-vf", $"scale_vt=w=1920:h=1080:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709,{FfmpegArgumentBuilder.SdrTagChain}");
         AssertSequence(args, "-c:v", "h264_videotoolbox", "-prio_speed", "1");
         AssertSequence(args, "-g:v", "96");
         Assert.DoesNotContain("-init_hw_device", args);
@@ -121,7 +121,7 @@ public sealed class FfmpegArgumentBuilderTests
             limits: new TranscodeLimits(MaxHeight: 1080));
 
         Assert.Equal(ToneMapMode.Hardware, plan.ToneMap);
-        Assert.Equal("scale_vaapi=w=1920:h=1080:format=p010,tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709",
+        Assert.Equal($"scale_vaapi=w=1920:h=1080:format=p010,tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709,{FfmpegArgumentBuilder.SdrTagChain}",
             FfmpegArgumentBuilder.BuildVideoFilters(plan));
     }
 
@@ -165,13 +165,49 @@ public sealed class FfmpegArgumentBuilderTests
         Assert.Equal("scale_cuda=w=1280:h=720:format=yuv420p,hwdownload,format=yuv420p", FfmpegArgumentBuilder.BuildVideoFilters(plan));
     }
 
+    public static TheoryData<string, string, string, string> ColourCases() => new()
+    {
+        // acceleration, hdr source, tone map, delivered height
+        { "none", "hdr10", "Software", "2160" }, { "none", "hdr10", "Software", "1080" }, { "none", "hdr10", "Software", "720" },
+        { "none", "hlg", "Software", "1080" }, { "none", "dolbyvision", "Software", "1080" },
+        { "none", "hdr10", "Unavailable", "1080" }, { "none", "hdr10", "Disabled", "1080" },
+        { "videotoolbox", "hdr10", "Hardware", "1080" }, { "videotoolbox", "hlg", "Hardware", "720" },
+        { "vaapi", "hdr10", "Hardware", "1080" }, { "vaapi", "hlg", "Software", "1080" },
+        { "qsv", "hdr10", "Hardware", "1080" }, { "nvenc", "hdr10", "Software", "1080" },
+        { "none", "none", "NotNeeded", "720" }, { "videotoolbox", "none", "NotNeeded", "720" }, { "nvenc", "none", "NotNeeded", "720" },
+    };
+
+    [Theory]
+    [MemberData(nameof(ColourCases))]
+    public void EveryHdrSourcedTranscode_IsTaggedSdrBt709_AndSdrSourcesKeepTheirTags(string accel, string hdr, string toneMap, string height)
+    {
+        HardwareAccelerationNames.TryParse(accel, out var acceleration);
+        var format = hdr switch { "hdr10" => HdrFormat.Hdr10, "hlg" => HdrFormat.Hlg, "dolbyvision" => HdrFormat.DolbyVision, _ => HdrFormat.None };
+        var settings = new TranscodingSettings { Acceleration = acceleration, ToneMapping = toneMap != "Disabled" };
+        var capabilities = Capabilities(Accelerator(acceleration, decode: [DecodeCodecs.Hevc10, DecodeCodecs.H264]));
+        if (toneMap == "Unavailable")
+            capabilities = capabilities with { Filters = new HashSet<string> { "scale", "bwdif" } };
+        var media = format == HdrFormat.None
+            ? Media(codec: "h264", width: 1920, height: 1080)
+            : Media(codec: "hevc", width: 3840, height: 2160, bitDepth: 10, hdr: format);
+        var plan = Plan(media, settings, capabilities, limits: new TranscodeLimits(MaxHeight: int.Parse(height)));
+        var filters = FfmpegArgumentBuilder.BuildVideoFilters(plan);
+
+        Assert.Equal(toneMap, plan.ToneMap.ToString());
+        if (format == HdrFormat.None)
+            Assert.DoesNotContain("setparams", filters);
+        else
+            Assert.EndsWith(FfmpegArgumentBuilder.SdrTagChain, filters);
+        Assert.Equal(1, filters.Split(FfmpegArgumentBuilder.SdrTagChain).Length - (format == HdrFormat.None ? 0 : 1));
+    }
+
     [Fact]
     public void SoftwareToneMapping_AppendsTheZscaleChain()
     {
         var plan = Plan(Media(codec: "hevc", bitDepth: 10, hdr: HdrFormat.Hdr10), limits: new TranscodeLimits(MaxHeight: 1080));
 
         Assert.Equal(ToneMapMode.Software, plan.ToneMap);
-        Assert.Equal(FfmpegArgumentBuilder.SoftwareToneMapChain, FfmpegArgumentBuilder.BuildVideoFilters(plan));
+        Assert.Equal($"{FfmpegArgumentBuilder.SoftwareToneMapChain},{FfmpegArgumentBuilder.SdrTagChain}", FfmpegArgumentBuilder.BuildVideoFilters(plan));
     }
 
     [Fact]
@@ -186,7 +222,7 @@ public sealed class FfmpegArgumentBuilderTests
         Assert.Equal(2, plan.BurnIn!.Index);
         Assert.Equal((false, true), (plan.HardwareDecode, plan.HardwareEncode));
         AssertSequence(args, "-filter_complex",
-            $"[0:0]{FfmpegArgumentBuilder.SoftwareToneMapChain}[base];[base][0:2]overlay=eof_action=pass:repeatlast=0[burned];[burned]scale=w=1280:h=720,format=nv12[vout]",
+            $"[0:0]{FfmpegArgumentBuilder.SoftwareToneMapChain}[base];[base][0:2]overlay=eof_action=pass:repeatlast=0[burned];[burned]scale=w=1280:h=720,format=nv12,{FfmpegArgumentBuilder.SdrTagChain}[vout]",
             "-map", "[vout]", "-map", "0:1");
         Assert.DoesNotContain("-vf", args);
         Assert.DoesNotContain("-hwaccel", args);

@@ -65,15 +65,13 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
-- 4K HDR10 -> SDR transcode keeps `color_transfer=smpte2084` while the master says `VIDEO-RANGE=SDR`; AVPlayer refuses
-  it (CoreMediaErrorDomain -12927, `no_more_methods` on iPhone). Found in I1 slice 3 — task B6 (round H).
-- Audio renditions (B5 verify): `Fmp4TrackSplit` throws `ArgumentOutOfRangeException` on 6/3000 malformed segments and
-  the controller maps any splitter error to a generic 500; a huge `trun` sample count loops long (input is ours).
-- Audio renditions: NAME/label keeps the source title after conversion ("Deutsch AC3 5.1" while Chrome gets AAC 2.0);
-  one group may mix codecs (copy next to converted AAC), Apple prefers one codec per group; fMP4 audio tracks carry
-  language `und` (only the master has it); the admin plan/preview does not list renditions; `mediastreamvalidator`
-  never run (not installed); `docs/transcoding.md` quotes 448 kbit/s where the Dev World source is 256 kbit/s; a
-  synchronous `Segment` helper in the splitter is used only by tests; rendition segments ignore byte ranges like video.
+- Audio renditions: `mediastreamvalidator` never run (Apple HLS tools not installed; ffprobe + hlssim instead); rendition
+  segments ignore byte ranges like video; a group stays mixed when the default rendition is copied FLAC/Opus/MP3 (B6).
+- Dev World has no HLG or Dolby Vision source and its ffmpeg has no zscale: HLG/DV tagging is covered by unit tests only,
+  and the Dev World HDR10 -> SDR transcode is untone-mapped (washed out, tagged BT.709) (B6).
+- B6 verify: no automated test for the controller's 500 `rendition_split_failed` (verified live); the splitter fuzz test
+  also accepts `EndOfStreamException` while the docs say `InvalidDataException` only (the controller handles both); the
+  SDR tag chain after `hwupload` on VAAPI/QSV is untested on real hardware; one Core test flaked once in a full run.
 - Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
   the whole-image value too strict.
 - Admin viewer responses do not carry `avatarKey` yet (B4).
@@ -94,6 +92,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- B6: HDR-sourced transcodes tagged BT.709 without mastering/CLL metadata (AVPlayer -12927 on iPhone), e2e colour guard;
+  splitter errors -> InvalidDataException + 500 `rendition_split_failed`; rendition NAME = native language · delivered codec;
+  one codec per remux audio group; fMP4 audio language; transcoding.md cost; sync Segment helper removed; admin plan lists
+  audio renditions.
 
 - Server, B5 (2026-10-01): multi-rendition audio in HLS (#4) — remux and transcode deliveries with two or more
   offered tracks carry one AUDIO group (up to 4 renditions, copy or per-device conversion), split per track from one

@@ -235,6 +235,9 @@ public sealed record TranscodeTargetResponse
     public int? AudioBitrateKbps { get; init; }
 }
 
+/// <summary>One HLS audio rendition: <c>name</c> is the playlist NAME, <c>codec</c>/<c>channels</c> what is delivered.</summary>
+public sealed record TranscodeAudioRenditionResponse(string Id, int StreamIndex, string? Language, string Name, string Codec, int Channels, bool Copy, bool Default);
+
 public sealed record TranscodePlanResponse
 {
     /// <summary><c>direct</c> (play the original file), <c>remux</c> (stream copy into HLS) or <c>transcode</c>.</summary>
@@ -245,6 +248,9 @@ public sealed record TranscodePlanResponse
     public required bool RemuxPossible { get; init; }
     public required IReadOnlyList<PlanReasonResponse> RemuxBlockers { get; init; }
     public required IReadOnlyList<SubtitleTrackResponse> Subtitles { get; init; }
+
+    /// <summary>HLS audio renditions of a demuxed delivery (empty when the audio stays muxed): what each one delivers after conversion.</summary>
+    public IReadOnlyList<TranscodeAudioRenditionResponse> AudioRenditions { get; init; } = [];
     public KeyframeIndexResponse? KeyframeIndex { get; init; }
     public required bool DirectPlayPossible { get; init; }
     public required IReadOnlyList<string> DirectPlayBlockers { get; init; }

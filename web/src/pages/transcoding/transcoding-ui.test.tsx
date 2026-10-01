@@ -314,6 +314,7 @@ describe("Transcoding sessions", () => {
     expect(screen.queryByText("Hardware decode")).toBeNull();
     expect(screen.queryByText("Why direct play is not possible")).toBeNull();
     expect(screen.getByText(/#2 English \(SRT\) — WebVTT rendition/)).toBeVisible();
+    expect(screen.queryByText("Audio renditions (HLS audio group)")).toBeNull();
     expect(screen.getByText(/#4 French \(PGS\) — not delivered/)).toBeVisible();
   });
 
@@ -332,5 +333,22 @@ describe("Transcoding sessions", () => {
     installFetchRoutes({ "GET /api/v1/transcoding/sessions": () => [] });
     renderWithProviders(<SessionsTab />);
     expect(await screen.findByText("No live transcodes")).toBeVisible();
+  });
+
+  it("lists the audio renditions of a demuxed plan with what each delivers", () => {
+    renderWithProviders(
+      <PlanExplanation
+        plan={remuxPlan({
+          audioRenditions: [
+            { id: "1", streamIndex: 1, language: "de", name: "Deutsch · AAC 2.0", codec: "aac", channels: 2, copy: false, default: false },
+            { id: "2", streamIndex: 2, language: "en", name: "English · AAC 2.0", codec: "aac", channels: 2, copy: true, default: true },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Audio renditions (HLS audio group)")).toBeVisible();
+    expect(screen.getByText(/#1 Deutsch · AAC 2.0 — converted/)).toBeVisible();
+    expect(screen.getByText(/#2 English · AAC 2.0 — copied · default/)).toBeVisible();
   });
 });
