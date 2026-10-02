@@ -487,3 +487,14 @@ Tasks (guidance and acceptance in `orchestrator.js`):
   token response on disk), engine-correct reason lines for VLC predictions, small B4/B6 follow-ups.
 Order: server B4 -> B5 and client I1 -> I2 -> I3 -> F4 -> F5 run as two tracks in parallel; one device and one native
 build at a time.
+
+#### H — user review 2026-10-02 (after F4)
+The user looked at the F4 screenshots: the iPhone hero stops below the status bar, they saw no back button on the iPad
+detail, TV focus rings of neighbouring buttons touch, and on large screens the always-visible Versions panel takes the
+space that should belong to content. Versions are a technical detail you rarely need.
+- **F6 client**: edge-to-edge phone screens, a back control on every detail-type page, one TV focus spacing rule.
+- **D2 widescreen detail concept** (docs only, user picks): content first, versions in a sheet; series show their
+  episodes side by side at the bottom, selecting one updates the copy and buttons above and marks it, Play or the
+  version sheet from there; series facts smaller (e.g. on the right). Mockups for TV, iPad and web desktop.
+- **F7 client**: implements the chosen D2 concept; defined after the choice.
+Order: D2 runs now beside F6 (no devices); F5 after F6; F7 after the user's choice.

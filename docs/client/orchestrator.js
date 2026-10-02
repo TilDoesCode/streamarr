@@ -609,6 +609,24 @@ const TASKS = {
       'no regressions; typecheck, lint and tests green',
     ],
   },
+  'F6': {
+    title: 'Client: edge-to-edge phone screens, back buttons on detail pages, TV focus spacing',
+    track: 'Client',
+    deps: ['F4'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round H, user review 2026-10-02 (notes in docs/client/runs/driver/F6-notes.md). (1) iPhone: the Home hero starts below the status bar and leaves a dark band (docs/client/screenshots/F4/26-iphone-portrait-after-player-close.jpg); artwork and hero surfaces must run edge to edge behind the status bar / Dynamic Island while text and controls stay inside the safe area. Check every phone screen on iPhone and the Android phone, keep the iOS large-title collapse and tab-bar minimise from I2 working.',
+      '- (2) Every detail-type page (movie, series, season, versions route, any pushed page) needs a visible back control on iPad (touch large shell), Android tablet, web desktop and narrow web, and phones; the user saw none on the iPad. TV uses Menu/Back and needs no button. One shared component, glass style, safe-area and iPadOS window-controls aware, keyboard and pointer reachable on web.',
+      '- (3) TV focus spacing: on Apple TV the focused \"Noch keine Versionen\" button and the watched toggle next to it touch (docs/client/screenshots/F4/32-tvos-no-versions-initial-focus.jpg). Audit every row of focusables on Apple TV and Android TV (detail actions, versions, chips + sort, player controls and panels, settings, profile picker, onboarding, up-next) and fix with one spacing rule derived from the focus scale and ring, not per screen.',
+      '- The widescreen detail page gets a new concept (D2) and is rebuilt later: fix (2) and (3) in shared primitives, do not redesign the detail now.',
+    ].join('\n'),
+    acceptance: [
+      'phone screens with artwork run edge to edge behind the status bar on iPhone and Android phone, controls inside the safe area; large-title collapse and tab-bar minimise still work',
+      'every detail-type page has a visible, working back control on iPad, Android tablet, web (desktop + narrow) and phones',
+      'no focused element on Apple TV or Android TV touches or overlaps a neighbouring focusable (audit table with evidence)',
+      'no regressions; typecheck, lint and tests green',
+    ],
+  },
   'B6': {
     title: 'Server: tone-mapped transcodes tagged SDR, colour metadata consistent with the playlist, B5 follow-ups',
     track: 'Backend',
