@@ -210,8 +210,10 @@ function DeviceRow({
   ]
     .filter(Boolean)
     .join(' · ');
+  // Full-width guide: on TV, Up/Down through the row lands on its right-aligned sign-out button.
   return (
-    <View
+    <FocusGuide
+      remember
       testID={`settings-device-${session.id}`}
       style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
       <MonitorSmartphone size={design.px(22)} color={colors.foreground.muted} />
@@ -241,7 +243,7 @@ function DeviceRow({
           />
         </Row>
       )}
-    </View>
+    </FocusGuide>
   );
 }
 

@@ -231,7 +231,11 @@ export function SearchScreen() {
   return (
     <FlatList
       testID="search-screen"
-      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
+      // TV lists sit in an unstyled TVFocusGuideView (react-native-tvos), so flex: 1 collapses there.
+      style={[
+        design.isTV ? { height: design.window.height } : { flex: 1 },
+        { backgroundColor: shell.large ? undefined : colors.background },
+      ]}
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       // Large shell (web, tablet, TV): no native scrollbar over the full-bleed ambient.
       showsVerticalScrollIndicator={!shell.large}

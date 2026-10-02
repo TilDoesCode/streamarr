@@ -38,6 +38,9 @@ import { heroRowsTop, ShellHero } from './shell-hero';
 
 export { useHomeRows } from '@/browse/queries';
 
+// UIKit's focus engine skips fully transparent views; a near-zero alpha keeps rows above reachable on tvOS.
+const HIDDEN_ROW = Platform.OS === 'ios' ? 0.02 : 0;
+
 function isKeyboardFocus(event: unknown): boolean {
   const target = (event as { target?: { matches?: (selector: string) => boolean } })?.target;
   try {
@@ -109,15 +112,19 @@ export function HomeScreen() {
   };
   const lift = useSharedValue(0);
   const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -lift.get() }] }));
+  const tvRowsTop = heroRowsTop(s, copyBottom);
   useEffect(() => {
     const frame = rowFrames.current[focusedRow];
     if (!frame) return;
+    const y = tvRowsTop + frame.y;
+    // Row 0 rises to fit the screen, but never into the hero copy (a tall poster row would cover the buttons).
+    const firstRowRoom = Math.max(0, tvRowsTop - copyBottom - s(SHELL.row.gap));
     const target =
       focusedRow === 0
-        ? Math.max(0, frame.y + frame.height - design.window.height)
-        : frame.y - s(SHELL.row.focusTop);
+        ? Math.min(firstRowRoom, Math.max(0, y + frame.height - design.window.height))
+        : y - s(SHELL.row.focusTop);
     lift.set(withTiming(target, { duration: motion.enter }));
-  }, [focusedRow, framesVersion, lift, s, design.window.height]);
+  }, [focusedRow, framesVersion, lift, s, design.window.height, tvRowsTop, copyBottom]);
 
   const discover = (rows.data ?? []).filter(
     (row): row is CatalogRow & { items: CatalogItem[] } => !!row.items?.length
@@ -263,7 +270,9 @@ export function HomeScreen() {
               <View
                 key={shelf.key}
                 collapsable={false}
-                style={{ opacity: shelfIndex < (design.isTV ? focusedRow : raisedRow) ? 0 : 1 }}
+                style={{
+                  opacity: shelfIndex < (design.isTV ? focusedRow : raisedRow) ? HIDDEN_ROW : 1,
+                }}
                 onLayout={(event) => {
                   const { y, height } = event.nativeEvent.layout;
                   const known = rowFrames.current[shelfIndex];
@@ -306,6 +315,7 @@ export function HomeScreen() {
           store={store}
           collapsed={focusedRow > 0}
           targetRef={setHeroTarget}
+          onCopyBottom={setCopyBottom}
           onButtonFocus={(focused) => {
             setInHero(focused);
             if (focused) setFocusedRow(0);
@@ -319,8 +329,8 @@ export function HomeScreen() {
               position: 'absolute',
               left: 0,
               right: 0,
-              top: 0,
-              paddingTop: s(SHELL.row.top),
+              // Below the hero copy, not over it: tvOS does not focus views covered by another view.
+              top: tvRowsTop,
               paddingBottom: s(SHELL.height / 2),
               gap: s(8),
             },

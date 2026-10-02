@@ -92,14 +92,19 @@ async function focusCard(view = { requestTVFocus: jest.fn() }) {
   return view;
 }
 
+const platformOS = Platform.OS;
+
 beforeEach(() => {
   jest.useFakeTimers();
+  // Android TV: the JS restore runs there (Apple TV leaves it to UIKit, see the last test).
+  Platform.OS = 'android';
   jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
   mockGuideFocus.mockClear();
   mockNavigation.focused = true;
   mockNavigation.listeners.clear();
 });
 afterEach(() => {
+  Platform.OS = platformOS;
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
@@ -196,5 +201,14 @@ describe('ScreenFocusScope on TV', () => {
     await emit('blur');
     await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
     expect(guideRequests()).toBe(1);
+  });
+
+  it('leaves focus to UIKit on Apple TV (tab bar keeps focus while tabs switch)', async () => {
+    Platform.OS = 'ios';
+    const { rerender } = await renderWithProviders(<Shell showScreen={false} />);
+    shell.focusNext();
+    await act(async () => rerender(<Shell showScreen />));
+    await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
+    expect(guideRequests()).toBe(0);
   });
 });

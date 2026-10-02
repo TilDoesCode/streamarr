@@ -154,6 +154,17 @@ describe('FocusSection on TV', () => {
     expect(screen.getByTestId('section').props.scrollSnapAlign).toBeUndefined();
     expect(screen.getByTestId('item').props.scrollSnapAlign).toBe('center');
   });
+
+  it('scrolls the page back to its top for the first section (pageTop)', async () => {
+    await renderWithProviders(
+      <FocusSection testID="section" pageTop>
+        <Text>{'x'}</Text>
+      </FocusSection>
+    );
+    await layout(screen.getByTestId('section'), 200);
+    expect(screen.getByTestId('section').props.scrollSnapAlign).toBeUndefined();
+    expect(screen.getByTestId('section').props.scrollSnapOffset).toBeGreaterThan(10_000);
+  });
 });
 
 describe('FocusLayer', () => {
@@ -223,5 +234,32 @@ describe('Shelf on TV', () => {
     jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(false);
     await renderWithProviders(shelf);
     expect(ancestorWith(screen.getByTestId('item-0'), 'contentOffset')).toBeNull();
+  });
+});
+
+describe('FocusGuide with destinations on Apple TV', () => {
+  const os = Platform.OS;
+  afterEach(() => {
+    Platform.OS = os;
+  });
+
+  it('keeps autoFocus so the guide itself never takes focus when a destination does not resolve', async () => {
+    Platform.OS = 'ios';
+    await renderWithProviders(
+      <FocusGuide testID="panel" remember={false} destinations={[]}>
+        <Text>{'x'}</Text>
+      </FocusGuide>
+    );
+    expect(screen.getByTestId('panel').props.autoFocus).toBe(true);
+  });
+
+  it('leaves Android TV guides as given', async () => {
+    Platform.OS = 'android';
+    await renderWithProviders(
+      <FocusGuide testID="panel" remember={false} destinations={[]}>
+        <Text>{'x'}</Text>
+      </FocusGuide>
+    );
+    expect(screen.getByTestId('panel').props.autoFocus).toBe(false);
   });
 });

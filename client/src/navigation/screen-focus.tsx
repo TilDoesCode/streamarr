@@ -7,6 +7,8 @@ import { FocusGuide, FocusMemoryContext, type FocusMemory } from '@/components/f
 // A request can land before the screen's views are attached (first visit of a lazily mounted tab): retry until one reports focus.
 export const RESTORE_ATTEMPTS = 10;
 export const RESTORE_INTERVAL_MS = 120;
+// tvOS keeps focus in the top tab bar while tabs switch and UIKit restores it on Back; a JS restore would pull it away.
+const appleTV = () => Platform.OS === 'ios' && Platform.isTV;
 
 type ScreenFocusHost = {
   /** Registers the visible screen's restore; returns its unregister. */
@@ -118,6 +120,7 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
     };
     const restore = () => {
       cancel();
+      if (appleTV()) return;
       const seen = reports.current;
       let attempts = 0;
       const attempt = () => {

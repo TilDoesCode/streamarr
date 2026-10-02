@@ -50,7 +50,8 @@ export function FocusGuide({
   return (
     <TVFocusGuideView
       ref={ref as Ref<View & FocusGuideMethods>}
-      autoFocus={remember}
+      // Apple TV: without autoFocus a guide whose destinations do not resolve becomes focusable itself (react-native-tvos).
+      autoFocus={remember || (Platform.OS === 'ios' && destinations !== undefined)}
       destinations={destinations as View[] | undefined}
       trapFocusUp={trap?.includes('up')}
       trapFocusDown={trap?.includes('down')}

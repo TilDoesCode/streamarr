@@ -175,11 +175,11 @@ export function VersionPanel({
         style={{ flex: 1 }}>
         <ScrollView
           showsVerticalScrollIndicator={false}
-          // The focused card's ring and glow need room inside the viewport (Android clips children).
-          style={{ flex: 1, marginTop: -glowRoom }}
+          // Ring and glow room stays inside the viewport, which starts below the subtitle (no overlap when scrolled).
+          style={{ flex: 1 }}
           contentContainerStyle={{
             padding: Math.max(s(40), glowRoom),
-            paddingTop: s(28) + glowRoom,
+            paddingTop: Math.max(s(28), glowRoom),
             gap: s(18),
           }}>
           {body}

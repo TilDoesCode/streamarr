@@ -1,11 +1,11 @@
 'use no memo';
 import { useQueryClient } from '@tanstack/react-query';
-import * as ScreenOrientation from 'expo-screen-orientation';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { usePreventRemove } from 'expo-router/react-navigation';
 import { Play, RotateCcw, X } from 'lucide-react-native';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
@@ -48,6 +48,8 @@ const SERVER_ACTIONS = new Set<ErrorAction>(['retry', 'otherVersion', 'lowerQual
 const UP_NEXT_SECONDS = 15;
 const NOTICE_MS = 6000;
 
+const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
+
 /** Player route: start flow with the stepper, resume choice, overlay, panels, up-next and errors. */
 export function PlayScreen() {
   const pt = usePlayerT();
@@ -73,7 +75,12 @@ export function PlayScreen() {
   const workId = params.workId ?? '';
   const title = params.title ?? '';
   const startSeconds = params.start === undefined ? undefined : Number(params.start) || 0;
-  const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const leaving = useRef(false);
+  const close = () => {
+    leaving.current = true;
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  };
   const backToDetails = () => {
     const href = detailHref(workId);
     if (!href || isDetailOf(openerLeaf(navigation.getState()), workId)) close();
@@ -123,10 +130,10 @@ export function PlayScreen() {
 
   useEffect(() => {
     if (design.formFactor !== 'phone') return;
-    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(
-      () => undefined
-    );
-    return () => void ScreenOrientation.unlockAsync().catch(() => undefined);
+    // Loaded lazily: expo-screen-orientation has no tvOS native module.
+    const orientation = import('expo-screen-orientation');
+    void orientation.then((o) => o.lockAsync(o.OrientationLock.LANDSCAPE)).catch(() => undefined);
+    return () => void orientation.then((o) => o.unlockAsync()).catch(() => undefined);
   }, [design.formFactor]);
 
   const notice = controller?.notice;
@@ -159,13 +166,20 @@ export function PlayScreen() {
     router.replace(playHref({ workId: next.workId, title: next.title, startSeconds: 0 }));
   };
 
-  useBackHandler(() => {
+  const onBack = () => {
     if (picker) setPicker(false);
     else if (panel) setPanel(null);
     else if (showUpNext) setUpNextDismissedFor(workId);
     else if (showEndCard) close();
     else if (!(playing && overlayBack.current?.())) close();
     return true;
+  };
+  useBackHandler(onBack);
+  // tvOS pops the native stack on Menu before JS sees it; preventing that routes Menu through onBack.
+  usePreventRemove(APPLE_TV, ({ data }) => {
+    const back = data.action.type === 'POP' || data.action.type === 'GO_BACK';
+    if (leaving.current || !back) navigation.dispatch(data.action);
+    else onBack();
   });
 
   const onFailureAction = (action: ErrorAction) => {

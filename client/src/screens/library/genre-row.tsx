@@ -1,4 +1,4 @@
-import { useRef, useState, type Ref } from 'react';
+import { useRef, useState, type ReactNode, type Ref } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { END_OF_ROW, FocusGuide, useFocusGlowRoom } from '@/components/focus';
@@ -19,6 +19,7 @@ export function GenreRow({
   label,
   onSelect,
   onChipFocus,
+  trailing,
 }: {
   chips: readonly GenreChip[];
   selected: number | null;
@@ -27,9 +28,12 @@ export function GenreRow({
   label: string;
   onSelect: (id: number | null) => void;
   onChipFocus: () => void;
+  /** Shown after the chips in the same line (Apple TV sort), reached by Right from the last chip. */
+  trailing?: ReactNode;
 }) {
   const design = useDesign();
-  const { start, end } = gutters(design);
+  const { start, end: gutterEnd } = gutters(design);
+  const end = trailing ? design.space.md : gutterEnd;
   const glow = useFocusGlowRoom();
   const scroll = useRef<ScrollView>(null);
   const boxes = useRef(new Map<string, Box>());
@@ -67,14 +71,14 @@ export function GenreRow({
       scroll.current?.scrollTo({ x: Math.max(0, box.x - start), animated });
   };
 
-  return (
+  const row = (
     <EdgeFade
       start={edges.start ? start : 0}
       end={edges.end ? end : 0}
-      style={{ marginVertical: -glow }}>
+      style={{ marginVertical: -glow, flex: trailing ? 1 : undefined }}>
       <FocusGuide
         remember
-        trap={END_OF_ROW}
+        trap={trailing ? undefined : END_OF_ROW}
         destinations={selectedNode ? [selectedNode] : undefined}
         role="radiogroup"
         aria-label={label}
@@ -135,5 +139,14 @@ export function GenreRow({
         </ScrollView>
       </FocusGuide>
     </EdgeFade>
+  );
+  if (!trailing) return row;
+  return (
+    <View
+      testID="library-genre-line"
+      style={{ flexDirection: 'row', alignItems: 'center', paddingRight: gutterEnd }}>
+      {row}
+      {trailing}
+    </View>
   );
 }

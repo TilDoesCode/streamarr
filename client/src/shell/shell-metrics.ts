@@ -32,7 +32,8 @@ export const SHELL = {
   },
   page: { top: 96 },
   button: 64,
-  logo: { width: 520, height: 190 },
+  // tvOS: the native top tab bar's inset leaves no room for the full logo box above the first row.
+  logo: { width: 520, height: 190, tvosHeight: 140 },
 } as const;
 
 /** Web below this scale would make the 10-foot layout unreadable; it scrolls/crops instead. */

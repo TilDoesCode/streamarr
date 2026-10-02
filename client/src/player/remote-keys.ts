@@ -34,6 +34,9 @@ export const REMOTE_KEYS: Readonly<Record<string, RemoteAction>> = {
 };
 
 const DPAD_KEYS = ['select', 'left', 'right', 'up', 'down'];
+const TVOS_LONG: Readonly<Record<string, string>> = { longLeft: 'left', longRight: 'right' };
+/** A held ◀/▶ on the Siri Remote jumps like a held key on Android (60 s steps). */
+export const TVOS_LONG_REPEAT = 20;
 
 /**
  * Player keys while `dpad` is true (D-pad + media keys) or only media keys otherwise (a panel owns focus).
@@ -65,6 +68,13 @@ export function useRemoteKeys(
   useTVEventHandler((event) => {
     if (playerKeysAvailable) return;
     const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
+    if (Platform.OS === 'ios') {
+      // tvOS taps only end (key up); a long press reports its start (key down).
+      const long = TVOS_LONG[event.eventType];
+      if (long && keyAction === 0) dispatch(long, TVOS_LONG_REPEAT);
+      else if (keyAction === undefined || keyAction === 1) dispatch(event.eventType);
+      return;
+    }
     if (keyAction === undefined || keyAction === 0 || keyAction === -1) dispatch(event.eventType);
   });
 }

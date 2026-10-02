@@ -1,8 +1,12 @@
 import { Redirect, Stack } from 'expo-router';
+import { Platform } from 'react-native';
 
 import { useSessionGate } from '@/accounts/accounts-provider';
 import { ProfileSync } from '@/accounts/use-profile-sync';
 import { colors } from '@/theme';
+
+// A tvOS modal lives outside the root view, where react-native-tvos listens for remote keys.
+const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 
 export const unstable_settings = { initialRouteName: '(tabs)' };
 
@@ -29,7 +33,7 @@ export default function AppLayout() {
         <Stack.Screen
           name="play/[playbackId]"
           options={{
-            presentation: 'fullScreenModal',
+            presentation: APPLE_TV ? 'card' : 'fullScreenModal',
             animation: 'fade',
             contentStyle: { backgroundColor: colors.video },
           }}

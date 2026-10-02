@@ -9,8 +9,10 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Needs Xcode (pending-ios)
 
-- Apple TV (I3): native top tab bar, focus restore (`ScreenFocusScope`), Menu-key Back chain, tvOS keyboard, remote via
-  `useTVEventHandler`, AVPlayer with the tvOS profile.
+- Apple TV (I3 follow-up, native): Menu inside the Versions panel pops the whole detail and the library grid -> chip
+  Menu step never reaches JS (the native tab bar consumes it); react-native-tvos tag-based focus APIs (`destinations`,
+  `nextFocusUp`, `requestTVFocus`) do not act under RNSTabsHost. Needs native focus/Menu support and a rebuild.
+- Apple TV: VLCKit playback on tvOS unverified, so tvOS versions stay native-only (no VLC hints) (I3).
 - HeroFade has no fallback when the masked-view native module is missing (check after the first iOS pod install).
 
 ## Needs real hardware (Android TV, ideally a 2 GB device; a real phone)
@@ -28,6 +30,8 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   (`modules/pointer-events` -> `Focusable` onPointerEnter) and hardware-key hold-repeat (unit-tested only).
 - iPadOS window controls: the inset in a resized window is a fixed 30 pt (iPadOS 27 simulator); a native layout-region
   read would be exact.
+- Apple TV (I3): Siri Remote touch surface (swipe scrubbing, clickpad), AVPlayer HDR10/Dolby Vision output and HEVC
+  hardware decode (the simulator reports H.264-only SDR), top shelf, audio passthrough.
 
 ## Player
 
@@ -61,6 +65,19 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Brand PNGs are large (icon 554 KB, top shelf 2.2–2.6 MB) because of dithered gradients; pngquant bands them. Revisit
   with a noise-free render if bundle size matters.
 
+- tvOS (I3): the native top tab bar stays visible while Settings scrolls (first device row slides under it); "Zurück zu
+  den Details" from a player started on Home focuses the Start tab; the next-episode player title drops the series
+  prefix; the Search heading sits lower than the other pages; the last Versions card's glow is cut at the panel bottom;
+  Left from the first Versions card does nothing; changing the sort moves focus to the Alle chip; Down from the sort
+  pill does nothing when no poster sits below it; Menu from a non-Start tab exits the app (Android TV goes Home first).
+- tvOS player (I3 verify 2): after Menu hides the overlay, focus stays on a hidden button, so Right moves hidden focus
+  and Select can press the hidden Audio button.
+- tvOS (I3 verify 2): a title without a playable version opens with focus on "Als gesehen markieren" (a stray Select
+  marks it watched).
+- Deep link to /movie/<id> over an open movie detail replaces it instead of pushing; once closing the player then
+  landed on the older detail (I3 verify).
+- iPhone: after closing the player the UI stays landscape until the device rotates (unlockAsync semantics) (I3 verify).
+
 ## Accounts
 
 - iOS NSURLCache still holds sign-in/second-factor/refresh responses with tokens from before B7 (the server always sent
@@ -93,6 +110,7 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   segments ignore byte ranges like video; a group stays mixed when the default rendition is copied FLAC/Opus/MP3 (B6).
 - Dev World has no HLG or Dolby Vision source and its ffmpeg has no zscale: HLG/DV tagging is covered by unit tests only,
   and the Dev World HDR10 -> SDR transcode is untone-mapped (washed out, tagged BT.709) (B6).
+- Dev World stream info calls the HDR10 4K source "SDR" in the player Info panel (I3; check server vs client label).
 - B6 verify: the SDR tag chain after `hwupload` on VAAPI/QSV is untested on real hardware; one Core test flaked once
   in a full run.
 - B7 verify: docs/api.md versions section does not list `predictedMethod: vlc` and that VLC predictions carry VLC
@@ -117,6 +135,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- I3: tvOS build and run on the Apple TV 4K + 1080p simulators (prebuild switches documented), WebDriverAgent remote
+  helper `docs/client/tv-remote.sh`; TV lists no longer collapse in the 1 pt TVFocusGuideView; hero/rows/tab-bar focus,
+  Settings heading + Up to the tab bar, Versions panel clip and focusable cards, device-row focus; player remote events
+  (card presentation on Apple TV, key-up taps, long press, hidden-overlay focus, Menu chain via usePreventRemove); sort
+  pill reachable at the end of the genre line on Apple TV.
 
 - I2: iPhone large title + Liquid Glass tab-bar minimise (tab roots are the ScrollView again, transparent tab-root
   header); iPad rail/Versions panel safe areas, shell headings on Settings/Search, hero on short windows, icon chips below

@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Info, Play } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, useTVEventHandler, View } from 'react-native';
+import { Platform, StyleSheet, useTVEventHandler, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -31,6 +31,9 @@ import { META_SEPARATOR } from '@/lib/media-labels';
 
 import { useFeatured, type Featured, type FeaturedStore } from './featured';
 import { useFeaturedDetail, useMeta } from './home-hero';
+
+const LOGO_HEIGHT =
+  Platform.OS === 'ios' && Platform.isTV ? SHELL.logo.tvosHeight : SHELL.logo.height;
 
 const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
@@ -279,11 +282,11 @@ function HeroCopy({
       <View
         testID={`home-tv-hero-${featured.key}`}
         accessibilityLabel={featured.title}
-        style={{ height: s(SHELL.logo.height), justifyContent: 'flex-end' }}>
+        style={{ height: s(LOGO_HEIGHT), justifyContent: 'flex-end' }}>
         <HeroTitle
           title={featured.title}
           logoUri={detail?.logoUrl}
-          logoHeight={s(SHELL.logo.height - 30)}
+          logoHeight={s(LOGO_HEIGHT - 30)}
           logoWidth={s(SHELL.logo.width)}
           textStyle={{
             fontFamily: fonts.displayBold,

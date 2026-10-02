@@ -48,7 +48,7 @@ export type VersionHints = {
   vlcHdrToneMapping?: boolean;
 };
 
-// tvOS waits for its own VLCKit verification (I3).
+// Not tvOS: VLCKit playback on Apple TV is unverified (I3 left it open), so tvOS versions stay native-only.
 const VLC_HINT_PLATFORMS = new Set(['android', 'androidtv', 'ios', 'ipados']);
 
 /** The VLC engine as `versions` caps (Android, iPhone, iPad): the codec heights the playback profile declares (docs/api.md). */

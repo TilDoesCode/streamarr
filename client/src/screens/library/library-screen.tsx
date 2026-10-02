@@ -58,6 +58,8 @@ function itemKey(item: CatalogItem): string {
 /** Title-safe margin of a TV screen in 1080 shell points. */
 const TITLE_SAFE = 54;
 
+const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
+
 /** Movies or Series page: genre chips, sort, a paged poster grid with loading, empty and error states. */
 export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   const { t } = useTranslation();
@@ -201,6 +203,16 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
     ...(genres.data ?? []).map((item) => ({ id: item.id, name: item.name ?? '' })),
   ];
 
+  // Apple TV puts the sort at the end of the genre line: UIKit only reaches it geometrically (Right from the last chip).
+  const sortControl = (
+    <SortControl
+      value={sort}
+      label={t('library.sortLabel')}
+      labelOf={(value) => t(`library.sort.${value}`)}
+      onChange={(value) => setFilter({ sort: value })}
+      onFocus={() => (zone.current = 'sort')}
+    />
+  );
   // One title line (page title + compact sort) above one single-line genre row, on every form factor.
   const header = (
     <View style={{ gap: design.space.md, paddingBottom: design.space.lg }}>
@@ -220,13 +232,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
           style={[{ flexShrink: 1 }, shell.pageTitle]}>
           {t(`tabs.${tab}`)}
         </Text>
-        <SortControl
-          value={sort}
-          label={t('library.sortLabel')}
-          labelOf={(value) => t(`library.sort.${value}`)}
-          onChange={(value) => setFilter({ sort: value })}
-          onFocus={() => (zone.current = 'sort')}
-        />
+        {APPLE_TV ? null : sortControl}
       </View>
       <GenreRow
         chips={genreChips}
@@ -236,6 +242,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
         label={t('library.genres')}
         onSelect={(id) => setFilter({ genre: id })}
         onChipFocus={() => (zone.current = 'genres')}
+        trailing={APPLE_TV ? sortControl : undefined}
       />
     </View>
   );
@@ -281,8 +288,12 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   const grid = (
     <FlatList
       testID={`library-${kind}`}
-      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
-      onLayout={(event) => setSize(event.nativeEvent.layout)}
+      // TV lists sit in an unstyled TVFocusGuideView (react-native-tvos), so flex: 1 collapses there.
+      style={[
+        design.isTV ? { height: size.height } : { flex: 1 },
+        { backgroundColor: shell.large ? undefined : colors.background },
+      ]}
+      onLayout={design.isTV ? undefined : (event) => setSize(event.nativeEvent.layout)}
       ref={list}
       scrollEnabled={!design.isTV}
       removeClippedSubviews={false}
@@ -332,7 +343,11 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   // TV: the page scrolls only by the row lift; Down past the last row stays in the grid.
   if (design.isTV)
     return (
-      <FocusGuide remember={false} trap={['down']} style={{ flex: 1 }}>
+      <FocusGuide
+        remember={false}
+        trap={['down']}
+        style={{ flex: 1 }}
+        onLayout={(event) => setSize(event.nativeEvent.layout)}>
         {grid}
       </FocusGuide>
     );

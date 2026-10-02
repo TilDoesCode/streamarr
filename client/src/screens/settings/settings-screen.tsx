@@ -90,14 +90,16 @@ function Section({
   title,
   children,
   testID,
+  pageTop,
 }: {
   title: string;
   children: ReactNode;
   testID?: string;
+  pageTop?: boolean;
 }) {
   const design = useDesign();
   return (
-    <FocusSection testID={testID}>
+    <FocusSection testID={testID} pageTop={pageTop}>
       <View style={{ gap: design.space.md }}>
         <Text variant="overline" tone="subtle">
           {title}
@@ -128,7 +130,7 @@ function AccountSection() {
   const { account } = useActiveAccount();
   const [confirm, setConfirm] = useState(false);
   return (
-    <Section title={t('settings.account.title')} testID="settings-account">
+    <Section title={t('settings.account.title')} testID="settings-account" pageTop>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.lg }}>
         <Avatar name={account.displayName} color={account.color} size={design.px(48)} />
         <View style={{ flex: 1, gap: design.space.xxs }}>

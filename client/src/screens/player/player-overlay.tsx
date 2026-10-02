@@ -63,6 +63,9 @@ import { PANELS, type PanelKind } from './player-panels';
 
 const HIDE_MS = 5000;
 const COMMIT_MS = 700;
+// UIKit drops focus from views below alpha 0.01 or without interaction; the AVPlayer view would then eat the remote.
+const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
+const HIDDEN_ALPHA = APPLE_TV ? 0.011 : 0;
 // react-native-web has no TV event hook.
 const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 const DOUBLE_TAP_SECONDS = 10;
@@ -187,6 +190,11 @@ export function PlayerOverlay({
     else if (!rowFocused.current) playRef.current?.requestTVFocus?.();
   }, [tv, visible, zone, suspended, Surface]);
 
+  // tvOS cannot hold the arrows while hidden: park focus where ◀/▶ have no native neighbour.
+  useEffect(() => {
+    if (APPLE_TV && !visible && !suspended) seekRef.current?.requestTVFocus?.();
+  }, [visible, suspended]);
+
   // Keys keep the overlay up; ▼ on the button row moves to the seek bar (nothing focusable below).
   useTVEvents((event) => {
     const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
@@ -293,7 +301,7 @@ export function PlayerOverlay({
   });
 
   const fade = useAnimatedStyle(
-    () => ({ opacity: withTiming(visible ? 1 : 0, { duration: visible ? 150 : 400 }) }),
+    () => ({ opacity: withTiming(visible ? 1 : HIDDEN_ALPHA, { duration: visible ? 150 : 400 }) }),
     [visible]
   );
 
@@ -407,7 +415,7 @@ export function PlayerOverlay({
           ) : null}
           <Animated.View
             testID={visible ? 'player-overlay' : 'player-overlay-hidden'}
-            pointerEvents={visible ? 'box-none' : 'none'}
+            pointerEvents={visible || APPLE_TV ? 'box-none' : 'none'}
             style={[StyleSheet.absoluteFill, fade]}>
             <Scrim
               direction="down"
