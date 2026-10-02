@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCardGap } from '@/components/media/card-parts';
 import { GlassChip } from '@/components/glass';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { toAppError } from '@/api/errors';
@@ -86,7 +87,7 @@ export function SearchScreen() {
   const pad = gutterPadding(design);
   const across = pad.paddingLeft + pad.paddingRight;
   const setAmbient = useSetAmbient();
-  const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
+  const cardGap = useCardGap();
   const posterWidth = shell.large ? shell.s(SHELL.poster.width) : design.layout.posterWidth;
   const columns = Math.max(2, Math.floor((width - across + cardGap) / (posterWidth + cardGap)));
   // Large shell: Home's fixed poster size; phones stretch the columns to the width.

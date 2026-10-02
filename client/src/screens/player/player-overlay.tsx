@@ -57,7 +57,7 @@ import { barChipsLabelled, channelLayout, qualityLabel } from '@/player/overlay-
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { effectiveMuted, TEST_MUTED } from '@/player/test-muted';
-import { colors, fonts, useDesign } from '@/theme';
+import { colors, fonts, useDesign, useFocusGap } from '@/theme';
 
 import { PANELS, type PanelKind } from './player-panels';
 
@@ -113,6 +113,7 @@ export function PlayerOverlay({
   const pt = usePlayerT();
   const design = useDesign();
   const { large, s, font } = useShell();
+  const barGap = useFocusGap(large ? s(14) : design.space.sm);
   // Narrow phones: the row drops its Play (the centre cluster has it) and uses smaller chips.
   const narrow = design.window.width < 420;
   const chip = narrow ? 40 : 44;
@@ -439,7 +440,7 @@ export function PlayerOverlay({
                   gap: s(14),
                   alignItems: 'flex-start',
                 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(16) }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: barGap }}>
                   {tv ? null : (
                     <GlassButton
                       testID="player-close"
@@ -630,7 +631,7 @@ export function PlayerOverlay({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: s(14),
+                    gap: barGap,
                     marginTop: s(8),
                   }}>
                   <GlassButton
@@ -763,7 +764,7 @@ export function PlayerOverlay({
                     style={{
                       flexDirection: 'row',
                       justifyContent: 'flex-end',
-                      gap: design.space.sm,
+                      gap: barGap,
                     }}>
                     {panelButtons.map((panel) => (
                       <GlassButton
@@ -791,7 +792,7 @@ export function PlayerOverlay({
                       flex: 1,
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: design.space.sm,
+                      gap: barGap,
                     }}>
                     {tv || (Platform.OS === 'web' && !narrow) ? (
                       <GlassButton

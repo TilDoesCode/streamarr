@@ -18,7 +18,7 @@ import { Text } from '@/components/ui/text';
 import { useToast } from '@/components/ui/toast';
 import { queryKeys } from '@/query/keys';
 import { accountErrorText } from '@/screens/settings/account-security';
-import { colors, useDesign } from '@/theme';
+import { colors, useDesign, useFocusGap } from '@/theme';
 
 export const DISPLAY_NAME_MAX = 64;
 
@@ -26,6 +26,7 @@ export const DISPLAY_NAME_MAX = 64;
 export function ProfileEditor({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation();
   const design = useDesign();
+  const buttonGap = useFocusGap(design.space.md);
   const toast = useToast();
   const api = useAccountsApi();
   const queryClient = useQueryClient();
@@ -130,7 +131,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
       <FocusGuide
         remember
         trap={END_OF_ROW}
-        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.md }}>
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: buttonGap }}>
         <Button
           testID="settings-profile-save"
           label={t('settings.profile.save')}

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronUp, Info, type LucideIcon } from 'lucide-react-native';
+
+import { ChevronUp, Info, type LucideIcon } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -15,13 +15,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Focusable, FocusGuide, FocusLift } from '@/components/focus';
-import { Glass, GlassButton } from '@/components/glass';
+import { Glass } from '@/components/glass';
 import { HeroTitle } from '@/components/media/hero';
-import { Scrim } from '@/components/media/scrim';
+import { Scrim, StatusBarScrim } from '@/components/media/scrim';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { withAlpha } from '@/lib/color';
+import { BackControl } from '@/navigation/back-control';
 import { colors, fonts, useDesign } from '@/theme';
 
 import type { Credit } from './large-detail';
@@ -116,6 +117,8 @@ export function PhoneDetail({
 
   return (
     <View testID={testID} style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* First in the DOM: the first Tab stop on web; zIndex keeps it above the page. */}
+      <BackControl />
       <Animated.ScrollView
         onScroll={onScroll}
         scrollEventThrottle={16}
@@ -249,11 +252,7 @@ export function PhoneDetail({
         </View>
         {loading ? null : children}
       </Animated.ScrollView>
-      <Scrim
-        direction="down"
-        color={withAlpha(colors.background, 0.55)}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 32 }}
-      />
+      <StatusBarScrim />
       {Platform.OS === 'ios' ? null : (
         <HeaderStrip
           title={title}
@@ -261,7 +260,6 @@ export function PhoneDetail({
           fadeEnd={artHeight - insets.top - HEADER_HEIGHT}
         />
       )}
-      {Platform.OS === 'ios' ? null : <BackButton top={insets.top + (HEADER_HEIGHT - 44) / 2} />}
     </View>
   );
 }
@@ -373,24 +371,5 @@ function ActionItem({
         </View>
       </FocusLift>
     </Focusable>
-  );
-}
-
-/** Android and web: glass back button over the art (iOS keeps the native Liquid Glass header). */
-function BackButton({ top }: { top: number }) {
-  const { t } = useTranslation();
-  const router = useRouter();
-  const design = useDesign();
-  return (
-    <View style={{ position: 'absolute', top, left: design.layout.gutter }}>
-      <GlassButton
-        testID="detail-back"
-        iconOnly
-        size={44}
-        icon={ArrowLeft}
-        label={t('common.back')}
-        onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-      />
-    </View>
   );
 }

@@ -11,7 +11,7 @@ import { Text } from '@/components/ui/text';
 import { parseEpisodeWorkId } from '@/player/format';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
-import { colors, fonts, useDesign } from '@/theme';
+import { colors, fonts, useDesign, useFocusGap } from '@/theme';
 
 /** `title` for the cards; `playTitle` (with the series, like the episode list) for the player. */
 export type NextEpisode = { workId: string; title: string; playTitle: string };
@@ -66,6 +66,7 @@ export function UpNextCard({ next, onPlay, onCancel }: Props) {
   const pt = usePlayerT();
   const design = useDesign();
   const { large, s } = useShell();
+  const buttonGap = useFocusGap(large ? s(14) : design.space.sm);
   const [left, setLeft] = useState(COUNTDOWN_SECONDS);
   const play = useEffectEvent(onPlay);
 
@@ -106,7 +107,7 @@ export function UpNextCard({ next, onPlay, onCancel }: Props) {
       <ProgressBar value={1 - Math.max(0, left) / COUNTDOWN_SECONDS} />
       <FocusGuide
         trap={['left', 'right', 'down']}
-        style={{ flexDirection: 'row', gap: large ? s(14) : design.space.sm, marginTop: s(6) }}>
+        style={{ flexDirection: 'row', gap: buttonGap, marginTop: s(6) }}>
         <GlassButton
           testID="player-up-next-play"
           tone="solid"
@@ -153,6 +154,7 @@ export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps)
   const pt = usePlayerT();
   const design = useDesign();
   const { large, s } = useShell();
+  const buttonGap = useFocusGap(large ? s(16) : design.space.md);
   const preferred = useRef<View>(null);
   const hasNext = !!next;
   // The overlay behind may still hold native focus (e.g. up-next dismissed with Back).
@@ -203,7 +205,7 @@ export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps)
             flexDirection: 'row',
             flexWrap: 'wrap',
             justifyContent: 'center',
-            gap: large ? s(16) : design.space.md,
+            gap: buttonGap,
             marginTop: large ? s(12) : 0,
           }}>
           <GlassButton

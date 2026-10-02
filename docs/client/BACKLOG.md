@@ -40,6 +40,9 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Browse, navigation and UX
 
+- TV (F6): a detail deep link opened from another detail page keeps the previous page's focused slot (Sintel opened on
+  the watched toggle after Wing It!); deep-link-only, focus memory keyed per route.
+- Web (F6): Escape / Alt+Left for the detail BackControl (Tab + Enter and browser Back work).
 - iPhone (I1 verify): BBB WEB-DL direct play showed frame 0 for ~45 s while the clock ran until a seek (loaded host);
   not reproduced in I2 after the StartSeek fix; watch for it on hardware.
 - iPad Safari (I2 verify): closing the player leaves the page in element fullscreen, so Safari's X covers the rail logo.
@@ -74,6 +77,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - iPhone (F4 verify): the first player close after a fresh simulator boot + sign-in stayed landscape (1 of 3 closes;
   later closes and the first close after an app restart restored portrait); cause not isolated, the orientation test
   cannot catch it.
+
+- TV Filme (F6 verify): the genre scroller ends 8 pt before the sort control, so a focused last chip's ring comes within
+  ~10 pt of the sort track (the neighbouring sort pill stays ~17 pt clear); derive that gap from the focus rule too.
+- Focus spacing (F6 verify): `useFocusGap` also raises some web/tablet gaps (genre chips 8 -> 12 px, side-panel options
+  4 -> 9 px); looks fine, record it as a decision or limit the rule to focus platforms.
 
 ## Accounts
 
@@ -138,12 +146,21 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - F4 verify: `url-cache-module.test.ts` only greps the Objective-C source (a native smoke/Cache.db check in CI would be
   real coverage); `orientation.test.ts` cannot catch the first-close case.
 
+- F6 verify: `focus-clearance.test.ts` checks the derived tokens only; a row that goes back to a fixed gap would not
+  fail (only card rows are covered). Add a screen test per primitive (action row, chip row) asserting the gap.
+- F6 verify: `PHONE_HEADER_HEIGHT` duplicates `HEADER_HEIGHT` in `phone-detail.tsx`; a stray blank import line.
+- Android TV and phone AVD boot snapshots hold an ended anna session (re-signed in by each run); refresh the snapshots
+  once with a fresh sign-in, or sign in through a deep link in the run scripts.
+
 ## Tests and tooling (more)
 - TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
 
+- F6: iPhone Home edge to edge, shared BackControl on detail pages (iPad/web/tablets/Android phones), season page under
+  the rail, Versions panel close X, TV focus spacing rule (focus-clearance) across every focusable row, TV failed-start
+  error actions unreachable (corner X).
 - F4 (slices 2-4): accounts (profile editor with Cancel beside Save, translated sign-in methods, two-step panel closes,
   atomic sign-out of others, live e-mail cooldown in the info tone), toasts pass taps through and sit in the corner on
   desktop web/tablet, web 390 Settings without scrollbar, NSURLCache off for API traffic on iOS (modules/url-cache),

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { findNodeHandle, FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCardGap } from '@/components/media/card-parts';
 import { toAppError } from '@/api/errors';
 import {
   LIBRARY_SORTS,
@@ -36,7 +37,7 @@ import { useFocusRail } from '@/navigation/screen-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
-import { colors, gutterPadding, useDesign } from '@/theme';
+import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
 import { GenreRow } from './genre-row';
 import { backToChip, libraryBackStep, type LibraryZone } from './library-back';
@@ -85,7 +86,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   const width = size.width;
   const pad = gutterPadding(design);
   const across = pad.paddingLeft + pad.paddingRight;
-  const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
+  const cardGap = useCardGap();
   const posterWidth = shell.large ? shell.s(SHELL.poster.width) : design.layout.posterWidth;
   const columns = Math.max(2, Math.floor((width - across + cardGap) / (posterWidth + cardGap)));
   const cardWidth = shell.large
@@ -399,6 +400,7 @@ function SortControl({
   }, [selectedNode]);
   const height = design.layout.controlHeight.sm;
   const inset = design.space.xs;
+  const segmentGap = useFocusGap(inset);
   const down = design.isTV && downTarget ? (findNodeHandle(downTarget) ?? undefined) : undefined;
   return (
     <Glass intensity="subtle" radius={(height + 2 * inset) / 2} style={{ padding: inset }}>
@@ -409,7 +411,7 @@ function SortControl({
         role="radiogroup"
         aria-label={label}
         testID="library-sort"
-        style={{ flexDirection: 'row', gap: inset }}>
+        style={{ flexDirection: 'row', gap: segmentGap }}>
         {LIBRARY_SORTS.map((option) => {
           const selected = option === value;
           return (

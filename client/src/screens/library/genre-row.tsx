@@ -4,7 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { END_OF_ROW, FocusGuide, useFocusGlowRoom } from '@/components/focus';
 import { GlassChip } from '@/components/glass';
 import { EdgeFade } from '@/components/ui/edge-fade';
-import { gutters, useDesign } from '@/theme';
+import { gutters, useDesign, useFocusGap } from '@/theme';
 
 export type GenreChip = { id: number | null; name: string };
 
@@ -32,6 +32,7 @@ export function GenreRow({
   trailing?: ReactNode;
 }) {
   const design = useDesign();
+  const chipGap = useFocusGap(design.space.sm);
   const { start, end: gutterEnd } = gutters(design);
   const end = trailing ? design.space.md : gutterEnd;
   const glow = useFocusGlowRoom();
@@ -106,7 +107,7 @@ export function GenreRow({
             paddingLeft: start,
             paddingRight: end,
             paddingVertical: glow,
-            gap: design.space.sm,
+            gap: chipGap,
           }}>
           {chips.map((chip) => {
             const key = String(chip.id ?? 'all');

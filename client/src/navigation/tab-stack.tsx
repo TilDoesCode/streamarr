@@ -72,7 +72,8 @@ export function TabStack({ tab }: { tab: TabId }) {
       {browse ? (
         <Stack.Screen
           name="series/[id]/season/[n]"
-          options={{ headerShown: !design.isTV && !shell.large }}
+          // Web draws the season heading and back control on the page (like the large shell).
+          options={{ headerShown: nativeHeaders }}
         />
       ) : null}
     </Stack>

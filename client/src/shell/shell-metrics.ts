@@ -14,6 +14,8 @@ export const SHELL = {
     header: 44,
     headerGap: 16,
     gap: 24,
+    // TV between cards: room for the focus lift + ring + air (theme/focus-clearance).
+    tvCardGap: 40,
     arrow: 44,
   },
   landscape: { width: 352, height: 198 },

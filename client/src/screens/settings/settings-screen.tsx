@@ -30,7 +30,7 @@ import { ProfileEditor } from '@/screens/settings/profile-editor';
 import { accountKey } from '@/query/keys';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
-import { gutterPadding, useDesign } from '@/theme';
+import { gutterPadding, useDesign, useFocusGap } from '@/theme';
 
 /** Server build of the active account's server (anonymous health endpoint). */
 function useServerVersion() {
@@ -131,11 +131,12 @@ function Section({
 
 function ButtonRow({ children }: { children: ReactNode }) {
   const design = useDesign();
+  const buttonGap = useFocusGap(design.space.md);
   return (
     <FocusGuide
       remember
       trap={END_OF_ROW}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.md }}>
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: buttonGap }}>
       {children}
     </FocusGuide>
   );

@@ -26,7 +26,7 @@ import { CopyWash, HeroFade } from '@/shell/hero-fade';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { useWindowControlsInset } from '@/shell/window-controls';
-import { colors, fonts, motion } from '@/theme';
+import { colors, fonts, motion, useFocusGap } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 import { useFeatured, type Featured, type FeaturedStore } from './featured';
@@ -180,6 +180,7 @@ function HeroCopy({
   const router = useRouter();
   const play = usePlay();
   const { s } = useShell();
+  const buttonGap = useFocusGap(s(16));
   const insets = useSafeAreaInsets();
   const controls = useWindowControlsInset();
   const [copyHeight, setCopyHeight] = useState(0);
@@ -359,7 +360,7 @@ function HeroCopy({
       <View
         style={{
           flexDirection: 'row',
-          gap: s(16),
+          gap: buttonGap,
           marginTop: s(16),
         }}>
         {detail?.playWorkId ? (

@@ -1,6 +1,7 @@
 import { createContext, use, useMemo, type ReactNode } from 'react';
 import { Platform, useWindowDimensions, type TextStyle } from 'react-native';
 
+import { focusGap, focusSpacing, type FocusSpacing } from './focus-clearance';
 import { detectFormFactor, hasFinePointer, tvScale } from './form-factor';
 import {
   colors,
@@ -31,7 +32,7 @@ export type Design = {
   layout: Layout;
   /** Leading space covered by a floating navigation rail (0 outside the large shell). */
   inset: number;
-  focus: FocusTokens;
+  focus: FocusTokens & FocusSpacing;
   /** boxShadow strings: raised (cards on hover), overlay (dialogs, sheets, toasts), glow (focus). */
   shadow: { raised: string; overlay: string; glow: string };
 };
@@ -53,7 +54,14 @@ export function createDesign(formFactor: FormFactor, width: number, height: numb
     controlHeight: mapValues(layout.controlHeight, px),
     iconSize: mapValues(layout.iconSize, px),
   } as Layout;
-  const focus = focusTokens[formFactor];
+  const tokens = focusTokens[formFactor];
+  const focus = {
+    ...tokens,
+    ringWidth: px(tokens.ringWidth),
+    ringOffset: px(tokens.ringOffset),
+    air: px(tokens.air),
+    buttonExtent: px(tokens.buttonExtent),
+  };
   return {
     formFactor,
     isTV,
@@ -70,7 +78,7 @@ export function createDesign(formFactor: FormFactor, width: number, height: numb
     })),
     layout: scaledLayout,
     inset: 0,
-    focus: { ...focus, ringWidth: px(focus.ringWidth), ringOffset: px(focus.ringOffset) },
+    focus: { ...focus, ...focusSpacing(focus, scaledLayout.controlHeight.lg) },
     shadow: {
       raised: `0 ${px(4)}px ${px(12)}px ${colors.shadow}`,
       overlay: `0 ${px(16)}px ${px(48)}px ${colors.shadow}`,
@@ -135,4 +143,9 @@ export function gutters(design: Pick<Design, 'layout' | 'inset'>) {
 export function gutterPadding(design: Pick<Design, 'layout' | 'inset'>) {
   const { start, end } = gutters(design);
   return { paddingLeft: start, paddingRight: end };
+}
+
+/** `gap` raised to the focus clearance of the current form factor (see theme/focus-clearance). */
+export function useFocusGap(gap: number, axis: 'row' | 'stack' | 'ring' = 'row'): number {
+  return focusGap(useDesign().focus, gap, axis);
 }

@@ -239,14 +239,20 @@ export function FocusLift({
     scale ??
     (kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1);
   const pressedScale = design.focus.pressedScale;
+  // Buttons wider than the focus token's extent lift less, so their growth never eats the row's clearance.
+  const growthCap = kind === 'button' && scale == null ? design.focus.buttonGrowth : null;
+  const liftWidth = useSharedValue(0);
   const hoverWeight = Platform.OS === 'web' ? 1 : 0;
 
   const liftStyle = useAnimatedStyle(() => {
     const raised = Math.max(focus.get() > 0.5 ? 1 : 0, hover.get() > 0.5 ? hoverWeight : 0);
-    const target = reduced ? 1 : 1 + (liftScale - 1) * raised;
+    const w = liftWidth.get();
+    const lift =
+      growthCap != null && w > 0 ? Math.min(liftScale, 1 + (2 * growthCap) / w) : liftScale;
+    const target = reduced ? 1 : 1 + (lift - 1) * raised;
     const press = reduced ? 1 : 1 - (1 - pressedScale) * pressed.get();
     return { transform: [{ scale: withSpring(target, springs.focus) }, { scale: press }] };
-  }, [reduced, liftScale, pressedScale, hoverWeight]);
+  }, [reduced, liftScale, pressedScale, hoverWeight, growthCap]);
   const ringStyle = useAnimatedStyle(
     () => ({ opacity: Math.max(focus.get(), hover.get() * hoverWeight * HOVER_RING) }),
     [hoverWeight]
@@ -263,7 +269,11 @@ export function FocusLift({
     ? `0 0 ${design.px(kind === 'button' ? 18 : GLOW_BLUR)}px ${withAlpha(tint, 0.55)}`
     : design.shadow.glow;
   return (
-    <Animated.View style={[style, liftStyle]}>
+    <Animated.View
+      style={[style, liftStyle]}
+      onLayout={
+        growthCap == null ? undefined : (event) => liftWidth.set(event.nativeEvent.layout.width)
+      }>
       {children}
       {ringTo ? null : (
         <Animated.View

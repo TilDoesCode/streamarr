@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react-native';
+import { Check, X } from 'lucide-react-native';
 import {
   Children,
   createContext,
@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import {
   Gesture,
@@ -44,10 +45,11 @@ import {
   useInitialFocus,
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
+import { IconButton } from '@/components/ui/icon-button';
 import { OverlayScrim } from '@/components/ui/overlay-scrim';
 import { Text } from '@/components/ui/text';
 import { useShell } from '@/shell/use-shell';
-import { colors, easing, fonts, motion, useDesign } from '@/theme';
+import { colors, easing, fonts, motion, useDesign, useFocusGap } from '@/theme';
 
 const ENTER_MS = 300;
 const EASE_SHEET = Easing.bezier(...easing.sheet);
@@ -152,11 +154,13 @@ export function Sheet({
   accessory,
   testID,
 }: SheetProps) {
+  const { t } = useTranslation();
   const design = useDesign();
   const { s } = useShell();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const side = design.formFactor !== 'phone';
+  const optionGap = useFocusGap(side ? design.space.xs : design.space.sm, 'ring');
   const panelWidth = glass
     ? s(glass.width)
     : Math.min(design.px(wide ? 600 : 400), design.window.width * 0.9);
@@ -366,6 +370,17 @@ export function Sheet({
                             {title}
                           </Text>
                           {accessory}
+                          {/* Side panels have no grabber and a mouse cannot drag one: a visible close (TV: Back). */}
+                          {!design.isTV && (side || Platform.OS === 'web') ? (
+                            <IconButton
+                              testID={testID ? `${testID}-close` : undefined}
+                              icon={X}
+                              variant="ghost"
+                              size="sm"
+                              accessibilityLabel={t('common.close')}
+                              onPress={onClose}
+                            />
+                          ) : null}
                         </View>
                         {subtitle ? (
                           <Text
@@ -402,7 +417,7 @@ export function Sheet({
                         role="radiogroup"
                         aria-label={title}
                         {...(Platform.OS === 'web' ? { onKeyDown: moveWebFocus } : null)}
-                        style={{ gap: side ? design.space.xs : design.space.sm }}>
+                        style={{ gap: optionGap }}>
                         {/* TV: the focused option is centred as the list scrolls (clamped at the ends). */}
                         <ItemSnapContext value={design.isTV ? 'center' : undefined}>
                           {items.map((child, index) => (

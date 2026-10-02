@@ -13,7 +13,7 @@ import { SpecLabels, type CatalogSpec } from '@/components/spec';
 import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
-import { colors, fonts, useDesign } from '@/theme';
+import { clearScale, colors, focusClearance, fonts, useDesign } from '@/theme';
 
 /** Accent disc with a check: the item is fully watched. */
 export function PlayedMark() {
@@ -40,14 +40,20 @@ export function PlayedMark() {
 }
 
 /** Large shell: the focused card (scaled ring included) stays inside the row gap, clear of its neighbours. */
-export function useCardScale(cardWidth: number): number {
+/** Gap between cards in rows and grids; TV gets the room its 1.1 lift + ring + air needs (theme/focus-clearance). */
+export function useCardGap(): number {
   const design = useDesign();
   const { large, s } = useShell();
-  const { cardScale, ringOffset, ringWidth } = design.focus;
-  if (!large) return cardScale;
-  const room = s(SHELL.row.gap) - design.px(2);
-  const half = cardWidth / 2;
-  return Math.max(1, Math.min(cardScale, (room + half) / (half + ringOffset + ringWidth)));
+  if (!large) return design.layout.cardGap;
+  return s(design.isTV ? SHELL.row.tvCardGap : SHELL.row.gap);
+}
+
+export function useCardScale(cardWidth: number): number {
+  const design = useDesign();
+  const { large } = useShell();
+  const gap = useCardGap();
+  if (!large) return design.focus.cardScale;
+  return clearScale(design.focus, cardWidth, gap, design.focus.cardScale);
 }
 
 // Longer sublines ("S2, E3 · 2 min left") keep the whole line; the chips give way.
@@ -193,6 +199,5 @@ function useSpecFit(maxSpec: number, gap: number) {
 /** Extra padding a row needs so lifted, ringed cards are not clipped by the scroll view. */
 export function useFocusRoom(artworkHeight: number) {
   const design = useDesign();
-  const ring = design.focus.ringOffset + design.focus.ringWidth;
-  return Math.ceil(((design.focus.cardScale - 1) * artworkHeight) / 2 + ring + design.px(4));
+  return focusClearance(design.focus, artworkHeight, design.focus.cardScale);
 }

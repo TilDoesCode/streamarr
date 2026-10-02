@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { CENTRED_ROW, FocusGuide } from '@/components/focus';
 import { Text } from '@/components/ui/text';
-import { colors, gutterPadding, useDesign } from '@/theme';
+import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
 export type EmptyStateProps = {
   icon: LucideIcon;
@@ -32,6 +32,7 @@ export function EmptyState({
   testID,
 }: EmptyStateProps) {
   const design = useDesign();
+  const actionGap = useFocusGap(design.space.md);
   const disc = design.px(64);
   const textWidth = design.px(440);
   return (
@@ -80,7 +81,7 @@ export function EmptyState({
             flexDirection: 'row',
             flexWrap: 'wrap',
             justifyContent: 'center',
-            gap: design.space.md,
+            gap: actionGap,
             marginTop: design.space.sm,
             maxWidth: design.px(720),
           }}>

@@ -30,7 +30,7 @@ import type { PlaybackPreferences } from '@/player/playback-api';
 import { useClock } from '@/player/use-clock';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
-import { colors, useDesign } from '@/theme';
+import { colors, useDesign, useFocusGap } from '@/theme';
 
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
@@ -56,6 +56,7 @@ export function PlayScreen() {
   const pt = usePlayerT();
   const { t } = useTranslation();
   const design = useDesign();
+  const resumeGap = useFocusGap(design.space.md);
   const { large } = useShell();
   const router = useRouter();
   const navigation = useNavigation();
@@ -252,7 +253,7 @@ export function PlayScreen() {
               {title}
             </Text>
             <PlayerCardTitle>{pt('resume.title')}</PlayerCardTitle>
-            <FocusGuide trap={CENTRED_ROW} style={{ flexDirection: 'row', gap: design.space.md }}>
+            <FocusGuide trap={CENTRED_ROW} style={{ flexDirection: 'row', gap: resumeGap }}>
               <GlassButton
                 testID="play-resume-yes"
                 tone="solid"
@@ -286,7 +287,8 @@ export function PlayScreen() {
           </PlayerCard>
         </View>
       ) : null}
-      {!playing || failed ? (
+      {/* TV: a failed start offers Zurück in the card; a corner X there would hold focus out of the card's reach. */}
+      {(!playing || failed) && !(failed && design.isTV) ? (
         <View style={{ position: 'absolute', top, left: design.layout.gutter }}>
           <GlassButton
             testID="play-close"

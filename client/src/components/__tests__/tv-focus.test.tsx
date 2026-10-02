@@ -206,27 +206,27 @@ describe('Shelf on TV', () => {
     const first = await renderWithProviders(shelf);
     const list = ancestorWith(screen.getByTestId('item-0'), 'getItemLayout');
     // Offsets include the leading gutter (48 dp on TV), so FlatList's window math is exact; the gap is the
-    // shell's 24 pt scaled to the 750 dp test window (9.5 dp).
+    // shell's 40 pt card gap scaled to the 750 dp test window (15.5 dp).
     expect(list?.props.getItemLayout(null, 3)).toEqual({
-      length: 109.5,
-      offset: 48 + 3 * 109.5,
+      length: 115.5,
+      offset: 48 + 3 * 115.5,
       index: 3,
     });
     // The last card has no trailing gap: content ends at the right gutter (no trailing gap).
     expect(list?.props.getItemLayout(null, 19)).toEqual({
       length: 100,
-      offset: 48 + 19 * 109.5,
+      offset: 48 + 19 * 115.5,
       index: 19,
     });
     expect(list?.props.contentContainerStyle).not.toHaveProperty('gap');
-    expect(screen.getByTestId('item-3').parent).toHaveStyle({ marginRight: 9.5 });
+    expect(screen.getByTestId('item-3').parent).toHaveStyle({ marginRight: 15.5 });
     expect(list?.props.contentOffset).toBeUndefined();
     await fireEvent(screen.getByTestId('item-5').parent as TestInstance, 'focus', {});
     await act(async () => first.unmount());
 
     await renderWithProviders(shelf);
     const restored = ancestorWith(screen.getByTestId('item-5'), 'contentOffset');
-    expect(restored?.props.contentOffset).toEqual({ x: 5 * 109.5, y: 0 });
+    expect(restored?.props.contentOffset).toEqual({ x: 5 * 115.5, y: 0 });
     expect(restored?.props.initialScrollIndex).toBe(5);
   });
 

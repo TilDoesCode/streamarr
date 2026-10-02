@@ -3,6 +3,7 @@ import { userEvent } from '@testing-library/react-native';
 import { router as navigate, Stack } from 'expo-router';
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
+import { Platform } from 'react-native';
 
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
@@ -168,6 +169,31 @@ it('opens a deep link to a movie on top of Home', async () => {
   });
   expect(router.getPathname()).toBe('/');
   expect(screen.getByTestId('home-screen')).toBeOnTheScreen();
+});
+
+it('draws one back control on a large-shell detail page that returns Home', async () => {
+  await signIn();
+  const router = renderRouter(routes, { initialUrl: '/movie/123' });
+  await router;
+  await userEvent.setup().press(await screen.findByTestId('detail-back'));
+  await waitFor(() => expect(router.getPathname()).toBe('/'));
+});
+
+it.each([
+  ['ios', false],
+  ['android', true],
+] as const)('phone detail on %s draws its own back control: %s', async (os, drawn) => {
+  await signIn();
+  mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+  const platform = jest.replaceProperty(Platform, 'OS', os);
+  try {
+    await renderRouter(routes, { initialUrl: '/movie/123' });
+    expect(await screen.findByTestId('movie-screen-123')).toBeOnTheScreen();
+    expect(!!screen.queryByTestId('detail-back')).toBe(drawn);
+  } finally {
+    platform.restore();
+    mockWindow = undefined;
+  }
 });
 
 it('keeps every tab switch in the back history (web: one browser entry each)', async () => {

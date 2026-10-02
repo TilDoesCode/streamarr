@@ -9,6 +9,8 @@ import { TABS } from './tabs';
 const android = Platform.OS === 'android';
 // tvOS draws a white pill behind the focused tab: its system label colours keep that legible.
 const appleTV = Platform.OS === 'ios' && Platform.isTV;
+// iPhone Home draws its hero behind the status bar; UIKit's automatic top inset would push it below.
+const edgeToEdgeHome = Platform.OS === 'ios' && !Platform.isTV;
 // iOS convention: the search-role tab sits at the trailing end of the bar.
 const ORDERED =
   Platform.OS === 'ios'
@@ -46,7 +48,8 @@ export function NativeTabsShell() {
         <NativeTabs.Trigger
           key={tab.name}
           name={tab.name}
-          role={tab.id === 'search' && Platform.OS === 'ios' ? 'search' : undefined}>
+          role={tab.id === 'search' && Platform.OS === 'ios' ? 'search' : undefined}
+          disableAutomaticContentInsets={edgeToEdgeHome && tab.id === 'home'}>
           <NativeTabs.Trigger.Icon sf={tab.sf} md={tab.md} />
           <NativeTabs.Trigger.Label>{t(`tabs.${tab.id}`)}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>

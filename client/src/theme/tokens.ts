@@ -207,6 +207,10 @@ export type FocusTokens = {
   pressedScale: number;
   ringWidth: number;
   ringOffset: number;
+  /** Visible air between a focused item's ring and its neighbour. */
+  air: number;
+  /** Widest button whose full lift is allowed; wider buttons lift less (same growth per side). */
+  buttonExtent: number;
 };
 
 export const focusTokens: Record<FormFactor, FocusTokens> = {
@@ -216,6 +220,8 @@ export const focusTokens: Record<FormFactor, FocusTokens> = {
     pressedScale: 0.97,
     ringWidth: 3,
     ringOffset: 3,
+    air: 8,
+    buttonExtent: 160,
   },
   'desktop-web': {
     cardScale: 1.04,
@@ -223,6 +229,8 @@ export const focusTokens: Record<FormFactor, FocusTokens> = {
     pressedScale: 0.97,
     ringWidth: 2,
     ringOffset: 3,
+    air: 4,
+    buttonExtent: 240,
   },
   tablet: {
     cardScale: 1.04,
@@ -230,6 +238,8 @@ export const focusTokens: Record<FormFactor, FocusTokens> = {
     pressedScale: 0.97,
     ringWidth: 2,
     ringOffset: 3,
+    air: 4,
+    buttonExtent: 240,
   },
   phone: {
     cardScale: 1,
@@ -237,6 +247,8 @@ export const focusTokens: Record<FormFactor, FocusTokens> = {
     pressedScale: 0.97,
     ringWidth: 2,
     ringOffset: 2,
+    air: 2,
+    buttonExtent: 240,
   },
 };
 

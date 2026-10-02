@@ -6,8 +6,10 @@ export {
   DesignProvider,
   DesignScope,
   useDesign,
+  useFocusGap,
   type Design,
 } from './design';
+export { clearScale, focusClearance, focusGap, type FocusSpacing } from './focus-clearance';
 export { detectFormFactor, tvScale, TV_CANVAS_WIDTH } from './form-factor';
 export { NAV_THEME } from './navigation';
 export {

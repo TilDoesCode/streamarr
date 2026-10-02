@@ -12,7 +12,7 @@ import {
   type FocusableProps,
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
-import { useFocusRoom } from '@/components/media/card-parts';
+import { useCardGap, useFocusRoom } from '@/components/media/card-parts';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
@@ -53,7 +53,7 @@ export function Shelf<T>({
   const design = useDesign();
   const shell = useShell();
   const { start: gutter, end: gutterEnd } = gutters(design);
-  const cardGap = shell.large ? shell.s(SHELL.row.gap) : design.layout.cardGap;
+  const cardGap = useCardGap();
   const focusRoom = useFocusRoom(artworkHeight);
   // The tinted glow reaches past the ring: extra room inside the viewport, pulled back by a negative margin.
   const glowRoom = Math.max(

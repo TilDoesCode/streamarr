@@ -18,6 +18,7 @@ import {
   useWatchRefreshOnFocus,
 } from '@/browse/queries';
 import { FocusGuide } from '@/components/focus';
+import { StatusBarScrim, useStatusBarScrimHeight } from '@/components/media/scrim';
 import { Shelf } from '@/components/media/shelf';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -80,6 +81,7 @@ export function HomeScreen() {
   const shell = useShell();
   const { s } = shell;
   const insets = useSafeAreaInsets();
+  const scrimHeight = useStatusBarScrimHeight();
   const { account } = useActiveAccount();
   const router = useRouter();
   const rows = useHomeRows();
@@ -373,16 +375,30 @@ export function HomeScreen() {
       </View>
     );
 
-  // iOS: the ScrollView is the screen's first view so UIKit adopts it (tab bar minimise, scroll-edge effect).
+  // iOS: the ScrollView is the screen's first view so UIKit adopts it (tab bar minimise); a wrapper breaks that.
+  const statusScrim = Platform.OS !== 'web';
   return (
     <ScrollView
       testID="home-screen"
       style={{ flex: 1, backgroundColor: colors.background }}
       contentInsetAdjustmentBehavior="never"
+      stickyHeaderIndices={statusScrim ? [0] : undefined}
       contentContainerStyle={{
         paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
         gap: design.layout.sectionGap,
       }}>
+      {statusScrim ? (
+        // A real height: Android clips a zero-height sticky header; the negative margin takes no layout room.
+        <View
+          pointerEvents="none"
+          style={{
+            height: scrimHeight,
+            marginBottom: -scrimHeight - design.layout.sectionGap,
+            zIndex: 1,
+          }}>
+          <StatusBarScrim />
+        </View>
+      ) : null}
       <View>
         {phoneHero ? (
           <HandheldHomeHero featured={phoneHero} />

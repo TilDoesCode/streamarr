@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
 import { useShell } from '@/shell/use-shell';
-import { colors, fonts } from '@/theme';
+import { colors, fonts, useFocusGap } from '@/theme';
 
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 
@@ -80,6 +80,7 @@ export function VersionPanel({
 }: VersionPanelProps) {
   const { t } = useTranslation();
   const { s } = useShell();
+  const cardGap = useFocusGap(s(18), 'ring');
   const glowRoom = useFocusGlowRoom();
   const versions = useVersions(workId, !!workId);
   const list = versions.data?.versions ?? [];
@@ -182,7 +183,7 @@ export function VersionPanel({
           contentContainerStyle={{
             padding: Math.max(s(40), glowRoom),
             paddingTop: Math.max(s(28), glowRoom),
-            gap: s(18),
+            gap: cardGap,
           }}>
           {body}
         </ScrollView>

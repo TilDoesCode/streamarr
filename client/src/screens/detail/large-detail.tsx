@@ -19,11 +19,12 @@ import { HeroTitle } from '@/components/media/hero';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { BackControl, useBackControlClearance } from '@/navigation/back-control';
 import { CopyWash, HeroFade } from '@/shell/hero-fade';
 import { ShellDesign } from '@/shell/shell-design';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
-import { colors, fonts, useDesign } from '@/theme';
+import { colors, fonts, useDesign, useFocusGap } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 /** Mockup C-detail: glass version panel width and its margin to the screen edges (1920 × 1080 points). */
@@ -150,6 +151,7 @@ function LargeDetailLayout({
 }: LargeDetailProps) {
   const { s } = useShell();
   const design = useDesign();
+  const actionGap = useFocusGap(s(16));
   const insets = useSafeAreaInsets();
   const setAmbient = useSetAmbient();
   const clearAmbient = useClearAmbient();
@@ -200,6 +202,7 @@ function LargeDetailLayout({
   }, design.isTV && panelFocused);
 
   const gutter = s(SHELL.row.left);
+  const backClearance = useBackControlClearance();
   // Tablet portrait: the panel goes under the copy instead of squeezing it.
   const portrait = !design.isTV && design.window.height > design.window.width;
   const text = (size: number, family: string = fonts.body) => ({
@@ -210,6 +213,8 @@ function LargeDetailLayout({
 
   return (
     <View testID={testID} style={{ flex: 1 }}>
+      {/* First in the DOM: the first Tab stop on web; zIndex keeps it above the page. */}
+      <BackControl />
       <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
         <HeroFade>{backdropUrl ? <Artwork uri={backdropUrl} /> : null}</HeroFade>
         <View style={[StyleSheet.absoluteFill, { right: '35%' }]}>
@@ -226,7 +231,7 @@ function LargeDetailLayout({
           contentContainerStyle={{
             paddingLeft: gutter,
             paddingRight: s(48),
-            paddingTop: s(DETAIL.copyTop),
+            paddingTop: Math.max(s(DETAIL.copyTop), backClearance),
             paddingBottom: s(96),
             gap: s(40),
           }}>
@@ -323,7 +328,7 @@ function LargeDetailLayout({
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: s(16),
+                  gap: actionGap,
                   marginTop: s(12),
                   flexWrap: 'wrap',
                 }}>

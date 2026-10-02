@@ -24,7 +24,7 @@ import { useToast } from '@/components/ui/toast';
 import { accountKey, queryKeys } from '@/query/keys';
 import { PasswordField } from '@/screens/onboarding/form-parts';
 import { useServerInfo } from '@/screens/onboarding/use-onboarding';
-import { colors, useDesign } from '@/theme';
+import { colors, useDesign, useFocusGap } from '@/theme';
 
 type DeviceSession = components['schemas']['ViewerDeviceSessionResponse'];
 type Profile = components['schemas']['ViewerProfileResponse'];
@@ -70,11 +70,12 @@ function Panel({ children, testID }: { children: ReactNode; testID?: string }) {
 
 function Row({ children }: { children: ReactNode }) {
   const design = useDesign();
+  const buttonGap = useFocusGap(design.space.md);
   return (
     <FocusGuide
       remember
       trap={END_OF_ROW}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.md }}>
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: buttonGap }}>
       {children}
     </FocusGuide>
   );

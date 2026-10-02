@@ -130,6 +130,13 @@ describe('Sheet', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a close button on the side panel (no grabber on tablet and desktop)', async () => {
+    const onClose = jest.fn();
+    await renderWithProviders(sheet(true, onClose));
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('removes the panel on close and hides the modal once the exit has played', async () => {
     jest.useFakeTimers();
     const view = await renderWithProviders(sheet(true));
@@ -155,6 +162,11 @@ describe('Sheet', () => {
 describe('Sheet on TV', () => {
   beforeEach(() => {
     jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+  });
+
+  it('has no close button (Back closes the panel)', async () => {
+    await renderWithProviders(sheet(true));
+    expect(screen.queryByTestId('sheet-close')).toBeNull();
   });
 
   it('focuses the preferred option after mount, traps focus and centres the focused option', async () => {

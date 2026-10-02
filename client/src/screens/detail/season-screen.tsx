@@ -9,9 +9,10 @@ import { seasonName } from '@/browse/season-name';
 import { FocusSection } from '@/components/focus';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { BackControl } from '@/navigation/back-control';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { useShell } from '@/shell/use-shell';
-import { useDesign } from '@/theme';
+import { gutterPadding, useDesign } from '@/theme';
 
 import { DetailError, DetailScroll, routeNumber } from './detail-parts';
 
@@ -46,9 +47,12 @@ export function SeasonScreen() {
       <View
         style={{
           paddingTop: pageHeading ? design.layout.edgeVertical + insets.top : design.space.lg,
-          paddingHorizontal: design.layout.gutter,
+          ...gutterPadding(design),
           gap: design.space.xs,
         }}>
+        {pageHeading ? (
+          <BackControl floating={false} style={{ marginBottom: design.space.md }} />
+        ) : null}
         {data ? (
           <>
             <Text variant="overline" tone="accent">
@@ -67,7 +71,7 @@ export function SeasonScreen() {
         )}
       </View>
       <FocusSection>
-        <View style={{ paddingHorizontal: design.layout.gutter }}>
+        <View style={gutterPadding(design)}>
           <EpisodeList
             episodes={data ? episodes : undefined}
             seriesTitle={data?.seriesTitle ?? ''}
