@@ -90,3 +90,25 @@ The user said the app is "very plain and boring", has "no visual identity", and 
 TV, web desktop and tablet render one layout at 1920×1080 logical points: a 104 px navigation rail with the brand mark and profile, a 660 px hero that follows focus/hover, 352×198 landscape and 208×312 poster cards with 24 px gaps from x = 168, a detail page with a 780 px right version panel, and a player overlay with 620 px right side panels. Only the input differs: D-pad focus on TV; pointer hover, row arrows and keyboard shortcuts on web. Details and the comparison with today's divergence are in the HTML.
 
 Artwork: Blender Foundation open movies and Sherlock (BBC) via TMDB, as used by Dev World.
+
+# D2: Widescreen detail concept (TV, iPad/tablet, web desktop)
+
+Open **[detail-concept.html](./detail-concept.html)** (German, self-contained, ≈1.8 MB; page chrome follows light/dark mode, the mockups stay in the dark Aurora look). The user asked (2026-10-02) for content first on large screens: versions are a technical detail and move into a sheet; series show their episodes side by side at the bottom, the selected episode drives the copy and buttons above; series facts get a smaller column on the right.
+
+**Recommendation: variant 1 · Bühne (stage).** One page without scrolling, anchored to the bottom edge: copy + actions left (x = 168), "Über die Serie"/"Details" glass column right (460 wide, bottom-aligned with the actions), season chips, then a 352×198 episode strip 72 pt above the bottom. Play plays the recommended version; "Versionen · N" (1 version: "Details", none: hidden) opens the existing `versions/[workId]` route as a sheet on every device. TV: focus on an episode previews it above (150 ms), Select plays it, holding Select opens its versions; every focus path is a straight row so Apple TV works by geometry alone; Menu closes the sheet, otherwise leaves the page (Android TV adds strip → actions). Alternatives in the HTML: 2 · Ebenen (scrolling layers), 3 · Spotlight (episode still as backdrop). Phones are unchanged.
+
+| File | What |
+|---|---|
+| `detail-concept.html` | The deliverable: problem, three variants, the recommended variant in full (movie states, version sheet per platform, series strip, TV focus map + Menu chain, iPad/web/tablet frames, loading/error, phone), F7 implementation outline, open questions |
+| `jpg/D2-v1-buehne.jpg`, `D2-v2-ebenen.jpg`, `D2-v3-spotlight.jpg` | The three variants (TV 1920×1080) |
+| `jpg/D2-movie-{default,resume,states}.jpg` | Movie: default, resume, and a board with watched / no version / one version / transcode-only |
+| `jpg/D2-sheet-{tv,web}.jpg`, `D2-sheet-ipad.jpg` | Version sheet on TV (1920), web drawer (1920), iPad formSheet (1366×1024) |
+| `jpg/D2-series-{initial,strip,season3}.jpg` | Series on open, focus moving in the strip, season without versions + specials + long title |
+| `jpg/D2-focus-map.jpg`, `D2-apple-tv.jpg` | TV focus map with arrows and the Back chain; the same page under the tvOS tab bar |
+| `jpg/D2-ipad-{landscape,portrait,window}.jpg`, `D2-tablet-square.jpg`, `D2-web-{1280,1920}.jpg` | iPad Pro 13 landscape/portrait, Stage Manager window 980×760, near-square tablet 1180×1080, web 1280×800 and 1920×1080 with hover |
+| `jpg/D2-loading.jpg`, `D2-error.jpg`, `D2-phone.jpg` | Skeleton, section-level error, phone (unchanged) |
+| `src/d2/build.mjs`, `data.mjs`, `doc.mjs`, `styles.css` | Generator (frames, mock data, German text, styles) |
+| `src/d2/sherlock.json`, `src/d2/s/` | Sherlock seasons/episodes in German and downscaled episode stills from the Dev World viewer API (throwaway viewer, deleted), current-state screenshots |
+| `src/d2/render.sh` | Renders every frame (or the given ids) with the Playwright headless Chromium (`--mute-audio`) to `png/` (git-ignored) and `jpg/` |
+
+Rebuild: `node docs/client/design/src/d2/build.mjs && sh docs/client/design/src/d2/render.sh`. Frames are drawn in logical points and scaled per device (`data-k`: iPad 0.72, portrait/window 0.7, web 1280 0.667, tablet 0.66).

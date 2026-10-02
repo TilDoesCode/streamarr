@@ -1,0 +1,146 @@
+{
+ "title": "Sherlock",
+ "year": 2010,
+ "genres": [
+  "Krimi",
+  "Drama",
+  "Mystery"
+ ],
+ "cert": "12",
+ "vote": 8.5,
+ "seasons": 3,
+ "episodes": 9,
+ "ov": "Sherlock ist eine britische Fernsehserie der BBC. Die Autoren Steven Moffat und Mark Gatiss versetzen dabei die von Sir Arthur Conan Doyle geschriebenen Detektivgeschichten in einen modernen Kontext und lassen Sherlock Holmes, gemeinsam mit seinem Assistenten Dr. Watson, im heutigen London ermitteln.",
+ "tagline": "A new sleuth for the 21st century.",
+ "eps": [
+  {
+   "s": 1,
+   "e": 1,
+   "t": "Ein Fall von Pink",
+   "min": 88,
+   "air": "2010-07-25",
+   "vc": 2,
+   "spec": {
+    "resolution": "1080p",
+    "hdr": null,
+    "videoCodec": "H.264",
+    "audio": "5.1"
+   },
+   "ov": "Eine in Pink gekleidete Frau liegt tot in einem baufälligen Haus. Sie ist bereits die vierte Leiche in einer Serie scheinbar unmöglicher Selbstmorde. Detective Inspector Lestrade ist der beste Mann bei Scotland Yard, aber zunehmend ratlos. Er weiß, dass es nur einen Mann gibt, der in diesem Fall weiterhelfen kann. Anderswo in London kehrt ein als dienstunfähig eingestufter Kriegsheld aus Afghanistan zurück. Das seltsame, aber charismatische Genie Sherlock Holmes sucht einen Mitbewohner: Dr. John Watson und Sherlock Holmes treffen sich zum ersten Mal.",
+   "vote": null
+  },
+  {
+   "s": 1,
+   "e": 2,
+   "t": "Der blinde Banker",
+   "min": 89,
+   "air": "2010-08-01",
+   "vc": 3,
+   "spec": {
+    "resolution": "1080p",
+    "hdr": null,
+    "videoCodec": "H.264",
+    "audio": "5.1"
+   },
+   "ov": "Das neue Leben von Watson ist niemals langweilig – schließlich teilt er sich die Wohnung mit Sherlock Holmes. Aber leider werden durch das Lösen von Rätseln keine Rechnungen bezahlt. Sherlocks Idee einfach eine Bank aufzusuchen ist dabei nicht ganz das, was Watson sich vorstellt. Mysteriöse Chiffren tauchen plötzlich auf Mauern in London. auf. Die Chiffren finden sich in ganz London vom glänzenden Finanzzentrum in der Stadt bis hin zum chinesischen Wanderzirkus. Jeder, der diese Chiffren sieht ist innerhalb von Stunden tot. Sherlock und Watson sollen die tödlichen Symbole entschlüsseln bevor noch weitere Personen dem mysteriösen Black Lotus zum Opfer fallen.",
+   "vote": null
+  },
+  {
+   "s": 1,
+   "e": 3,
+   "t": "Das große Spiel",
+   "min": 90,
+   "air": "2010-08-08",
+   "vc": 2,
+   "spec": {
+    "resolution": "1080p",
+    "hdr": null,
+    "videoCodec": "H.264",
+    "audio": "5.1"
+   },
+   "ov": "Die Londoner Polizei verzweifelt am Einfallreichtum der Kriminellen. Sherlock Holmes wird gebeten einen scheinbar gewöhnlichen Fall zu übernehmen. Ein junger Beamter wurde mit zertrümmertem Kopf auf einer Bahnstrecke gefunden. Ein glasklarer Fall – denkt Sherlock Holmes zumindest. Als ein verrückter Bombenleger seinen Verstand mit Sherlock Holmes messen möchte, beginnt ein erschreckendes Katz- und Maus-Spiel. Ein 20 Jahre alter Mord, ein blutgetränktes Auto und ein Millionen teures, wiederentdecktes Kunstwerk – genau diese Art von Abenteuer lieben Sherlock Holmes und John Watson. Doch wer steckt hinter den Rätseln? Als Sherlock der gesuchten Person entgegentritt wird London zum Schlachtfeld. Wird Sherlock Holmes diesmal scheitern?",
+   "vote": null
+  },
+  {
+   "s": 2,
+   "e": 1,
+   "t": "Ein Skandal in Belgravia",
+   "min": 90,
+   "air": "2012-01-01",
+   "vc": 2,
+   "spec": {
+    "resolution": "1080p",
+    "hdr": null,
+    "videoCodec": "H.264",
+    "audio": "5.1"
+   },
+   "ov": "Ein Erpressungsfall droht die britische Monarchie zu Fall zu bringen. Sherlock Holmes und John Watson stellen schnell fest, dass hinter dieser Erpressung noch mehr steckt. Bald haben sie es mit internationalem Terrorismus, rauen CIA-Agenten und einer Verschwörung zu tun, die bis in die Britische Regierung reicht.",
+   "vote": null
+  },
+  {
+   "s": 2,
+   "e": 2,
+   "t": "Die Hunde von Baskerville",
+   "min": 89,
+   "air": "2012-01-08",
+   "vc": 2,
+   "spec": {
+    "resolution": "1080p",
+    "hdr": null,
+    "videoCodec": "H.264",
+    "audio": "5.1"
+   },
+   "ov": "Ein Höllenhund, ein Mann in Angst und Schrecken – sucht tatsächlich ein Monster die Sümpfe von Dartmoor heim? Einst wurde der Vater von Henry Knight dort vor den Augen seines noch kleinen Sohnes von einem monströsen Hund zerfleischt. Danach ward die Bestie nie mehr gesehen. 20 Jahre später hofft der noch immer traumatisierte Henry, mit Sherlocks und Johns Hilfe endlich den Hintergründen dieses schrecklichen Ereignisses auf die Spur zu kommen.",
+   "vote": null
+  },
+  {
+   "s": 2,
+   "e": 3,
+   "t": "Der Reichenbachfall",
+   "min": 89,
+   "air": "2012-01-15",
+   "vc": 2,
+   "spec": {
+    "resolution": "1080p",
+    "hdr": null,
+    "videoCodec": "H.264",
+    "audio": "5.1"
+   },
+   "ov": "James Moriarty besitzt ein höchstgefährliches kriminelles Potenzial. Sherlock und John wussten, dass er früher oder später wieder auftauchen würde. Aber auch die beiden hatten keine Vorstellung über das Ausmaß der Perfidität und Kühnheit, mit der Moriarty erneut für Schlagzeilen sorgt: Es ist das Verbrechen des Jahrhunderts.",
+   "vote": null
+  },
+  {
+   "s": 3,
+   "e": 1,
+   "t": "Der leere Sarg",
+   "min": 87,
+   "air": "2014-01-01",
+   "vc": 0,
+   "spec": null,
+   "ov": "Zwei Jahre nach Sherlock’s vermeintlichem Tod, hat Dr. John Watson es geschafft, mit seinem Leben weiter zu machen. Da sich London in der Bedrohung von Terroristen befindet, inszeniert Sherlock seine Wiederauferstehung und kehrt zurück. Doch falls er denkt, alles sei so wie es vorher war, wird er überrascht über die Veränderungen sein.",
+   "vote": null
+  },
+  {
+   "s": 3,
+   "e": 2,
+   "t": "Im Zeichen der Drei",
+   "min": 87,
+   "air": "2014-01-05",
+   "vc": 0,
+   "spec": null,
+   "ov": "Sherlock stellt sich seiner bisher größten Herausforderung – er soll eine Rede auf John‘s Hochzeit halten. Aber es ist nicht alles so wie es scheint. Tödliche Gefahr lauert - und jemand wird es vielleicht nicht zum Hochzeitstanz des glücklichen Paares schaffen. Sherlock muss den Brautjungfern danken, den Fall lösen und einen Killer stoppen.",
+   "vote": null
+  },
+  {
+   "s": 3,
+   "e": 3,
+   "t": "Sein letzter Schwur",
+   "min": 90,
+   "air": "2014-01-12",
+   "vc": 0,
+   "spec": null,
+   "ov": "Ein Fall gestohlener Briefe veranlasst Sherlock dazu in einem Konflikt mit Charles Augustus Magnussen zu landen, dem Meister der Erpressungen - der Mann, den er aus tiefsten Herzen hasst. Aber wie packt man ein Problem an wenn diese Person über jegliche Schwächen aller wichtiger Personen in der westlichen Welt Bescheid weiß?",
+   "vote": null
+  }
+ ]
+}
