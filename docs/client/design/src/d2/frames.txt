@@ -21,3 +21,12 @@ D2-tablet-square 1180 1080
 D2-loading 1920 1080
 D2-error 1920 1080
 D2-phone 390 844
+D2b-movie-direct 1920 1080
+D2b-movie-transcode 1920 1080
+D2b-movie-resume-other-version 1920 1080
+D2b-series-strip-chips 1920 1080
+D2b-series-switch-sequence 1920 1240
+D2b-chip-states 1920 1300
+D2b-chip-fit 1920 1080
+D2b-ipad 1366 1024
+D2b-web-1280 1280 800

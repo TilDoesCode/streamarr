@@ -2,7 +2,7 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SH, MOVIES, V_BUNNY, V_SINTEL, V_SHER, METHOD, deDate, ep } from './data.mjs';
+import { SH, MOVIES, V_BUNNY, V_SINTEL, V_SHER, METHOD, METHOD_SHORT, CH, deDate, ep } from './data.mjs';
 import { DOC } from './doc.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +27,12 @@ const I = {
   chev: '<path d="m6 9.5 6 6 6-6"/>',
   star: '<path d="m12 3.8 2.5 5.3 5.7.7-4.2 3.9 1.1 5.7L12 16.6l-5.1 2.8 1.1-5.7-4.2-3.9 5.7-.7z" fill="currentColor" stroke="none"/>',
   alert: '<path d="M12 4 21 19.5H3z"/><path d="M12 10v4.5M12 17v.3"/>',
+  direct: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.3 2.8 2.8L16.2 9.6"/>',
+  remux: '<path d="M4 8h12.5M13 4.5 16.5 8 13 11.5M20 16H7.5M11 12.5 7.5 16l3.5 3.5"/>',
+  transcode: '<path d="M19.5 12a7.5 7.5 0 0 1-13.1 5M4.5 12a7.5 7.5 0 0 1 13.1-5"/><path d="M17.8 3.5v3.7h-3.7M6.2 20.5v-3.7h3.7"/>',
+  vlc: '<path d="M9.6 4h4.8l4.6 15.5H5z"/><path d="M7.4 11.5h9.2M3.5 19.5h17"/>',
+  unknown: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.6M12 16.8v.3"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   wifi: '<path d="M4 9.5a12 12 0 0 1 16 0M7 13a7.5 7.5 0 0 1 10 0M10 16.5a3 3 0 0 1 4 0"/><path d="M4 4l16 16"/>',
 };
 const ic = (n, s = 28) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
@@ -63,31 +69,64 @@ function actions(list, focus = -1, hover = -1) {
     return `<div class="btn ${cls} ${i === focus ? 'f' : ''} ${i === hover ? 'h' : ''}" data-a="${key}">${ic(icon, 26)}${label ? `<span>${label}${extra}</span>` : ''}</div>`;
   }).join('')}</div>`;
 }
+// ---------- D2b version chip row ----------
+const VB = 104; // fixed block height under the buttons: 22 gap + 44 row + 10 + 28 reason line
+const W_SPEC = t => 24 + t.length * 11.3, W_METH = t => 32 + 24 + 10 + t.length * 10.8, W_LAST = 214;
+// Drop order when space is short: size, source, audio codec (channels stay), video codec. Method, resolution, HDR never drop.
+function fitChips(c, maxW, extra = 0) {
+  const steps = [x => { x.size = null; }, x => { x.src = null; }, x => { x.au = [x.au[1]]; }, x => { x.vc = null; }];
+  const x = { ...c, au: [...c.au] };
+  const list = () => [x.res, x.hdr, x.vc, x.au.join(' '), x.src, x.size].filter(Boolean);
+  const width = () => W_METH(METHOD_SHORT[x.m]) + extra + list().reduce((a, t) => a + W_SPEC(t) + 10, 0);
+  let dropped = 0;
+  while (width() > maxW && dropped < steps.length) steps[dropped++](x);
+  return { chips: list(), dropped, sizeIdx: x.size ? list().length - 1 : -1 };
+}
+function vrow(c, o = {}) {
+  if (!c) return '';
+  const st = o.state;
+  if (st === 'none') return `<div class="vblock"><div class="vrow"><span class="vnone">${o.none || 'Für diese Folge gibt es noch keine abspielbare Version.'}</span></div><div class="vwhy"></div></div>`;
+  if (st === 'loading') {
+    const w = [230, 80, 80, 104, 92];
+    return `<div class="vblock"><div class="vrow">${w.map((x, i) => `<span class="vsk ${i ? '' : 'm'}" style="width:${x}px"></span>`).join('')}</div><div class="vwhy"><span class="vsk line" style="width:300px"></span></div></div>`;
+  }
+  if (st === 'error') return `<div class="vblock"><div class="vrow"><span class="mchip m-unknown">${ic('unknown', 24)}<span>Ungeprüft</span></span></div><div class="vwhy">Versionen nicht geladen · Abspielen startet die Empfehlung des Servers</div></div>`;
+  const f = fitChips(c, o.maxW ?? 880, o.last ? W_LAST + 10 : 0);
+  const why = (c.why || []).slice(0, 2).join(' · ');
+  const line = [why ? `<span class="t">${why}</span>` : '', c.m === 'direct' && c.note && !o.hint ? `<span class="n">${c.note}</span>` : '', o.hint ? `<span class="h">${o.hint}</span>` : ''].filter(Boolean).join('<i>·</i>');
+  return `<div class="vblock ${o.cls || ''}"><div class="vrow"><span class="mchip m-${c.m} ${o.hoverM ? 'hov' : ''}">${ic(c.m, 24)}<span>${METHOD_SHORT[c.m]}</span></span>${f.chips.map((t, i) => `<span class="vs ${i === f.sizeIdx ? 'sz' : ''}">${t}</span>`).join('')}${o.last ? `<span class="lastp">${ic('clock', 20)}Zuletzt gespielt</span>` : ''}</div><div class="vwhy m-${c.m}">${line}</div>${o.tip || ''}</div>`;
+}
 const progress = (pct, label) => `<div class="prog"><i><u style="width:${pct}%"></u></i><span>${label}</span></div>`;
 
 function movieCopy(m, o) {
   const title = m.logo ? `<div class="logo mlogo" style="background-image:var(--${o.key}-logo)"></div>` : `<h1 class="mtitle">${m.t}</h1>`;
   return `<div class="copy movie" style="bottom:${o.bottom}px">
   <div class="eyebrow"><i></i>Film</div>${title}
-  <div class="meta"><span>${m.y}</span><span>${m.min} Min.</span><span>${m.g.join(', ')}</span><span class="fsk">${m.fsk}</span>${o.noSpec ? '' : chips(m.spec)}</div>
-  ${o.both !== undefined ? (o.both ? `<div class="both">${o.both}</div>` : '') : m.both ? `<div class="both">${m.both}</div>` : ''}
-  ${o.method ? `<div class="mhint m-${o.method[0]}"><span class="mp">${METHOD[o.method[0]]}</span>${o.method[1]}</div>` : ''}
+  <div class="meta"><span>${m.y}</span><span>${m.min} Min.</span><span>${m.g.join(', ')}</span><span class="fsk">${m.fsk}</span>${o.prog ? inlineProg(...o.prog) : ''}</div>
   <p class="ov">${m.ov}</p>
-  ${o.prog ? progress(...o.prog) : ''}
-  ${actions(o.actions, o.focus, o.hover)}</div>`;
+  ${actions(o.actions, o.focus, o.hover)}
+  ${vrow(o.vr, o.vro)}</div>`;
 }
+const inlineProg = (pct, label) => `<span class="iprog2"><i><u style="width:${pct}%"></u></i>${label}</span>`;
 
 function seriesCopy(e, o) {
   const st = o.state || {};
-  return `<div class="copy series" style="bottom:${o.bottom}px">
+  if (o.legacy) return `<div class="copy series" style="bottom:${o.bottom}px">
   ${o.noLogo ? '' : '<div class="logo slogo" style="background-image:var(--sherlock-logo)"></div>'}
   <div class="eyebrow"><i></i>Staffel ${e.s} · Folge ${e.e}${st.next ? ' · Als Nächstes' : ''}</div>
   <h1 class="etitle">${e.t}</h1>
   <div class="meta"><span>${e.min} Min.</span><span>${deDate(e.air)}</span>${e.spec ? chips([e.spec.resolution.toUpperCase(), e.spec.videoCodec, e.spec.audio]) : ''}</div>
-  ${st.noVersion ? `<div class="both warnline">Für diese Folge gibt es noch keine abspielbare Version.</div>` : ''}
-  <p class="ov ${o.ovLines ? 'l' + o.ovLines : ''}">${e.ov}</p>
+  <p class="ov">${e.ov}</p>
   ${st.prog ? progress(...st.prog) : ''}
   ${actions(o.actions, o.focus, o.hover)}</div>`;
+  return `<div class="copy series" style="bottom:${o.bottom}px">
+  ${o.noLogo ? '' : '<div class="logo slogo" style="background-image:var(--sherlock-logo)"></div>'}
+  <div class="eyebrow"><i></i>Staffel ${e.s} · Folge ${e.e}${st.next ? ' · Als Nächstes' : ''}</div>
+  <h1 class="etitle">${e.t}</h1>
+  <div class="meta"><span>${e.min} Min.</span><span>${deDate(e.air)}</span>${st.prog ? inlineProg(...st.prog) : ''}</div>
+  <p class="ov ${o.ovLines ? 'l' + o.ovLines : ''}">${e.ov}</p>
+  ${actions(o.actions, o.focus, o.hover)}
+  ${vrow(st.noVersion ? {} : (o.vr ?? CH.sherE2), st.noVersion ? { state: 'none' } : o.vro)}</div>`;
 }
 
 function seriesInfo(o = {}) {
@@ -170,7 +209,7 @@ function fmap(W, H, items) {
 
 // ---------- screens ----------
 const scr = (o, inner) => `<div class="scr m-${o.mode} ${o.cls || ''}" style="width:${o.W}px;height:${o.H}px;--tint:${o.tint};--tint2:${o.tint2}">${inner}</div>`;
-const chrome = (o) => o.mode === 'atv' ? tabbar() : o.mode === 'phone' ? '' : rail(o.rail || 'tv') + (o.mode === 'ipadwin' ? winctl() : '') + (o.mode === 'ipad' ? status() : '') + (o.mode !== 'tv' ? backBtn(false) : '');
+const chrome = (o) => o.mode === 'atv' ? tabbar(o.rail === 'film' ? 'Filme' : 'Serien') : o.mode === 'phone' ? '' : rail(o.rail || 'tv') + (o.mode === 'ipadwin' ? winctl() : '') + (o.mode === 'ipad' ? status() : '') + (o.mode !== 'tv' ? backBtn(false) : '');
 
 const SER = { tint: '#5d8aa8', tint2: '#1a2a36' };
 const E = (s, e) => ep(s, e);
@@ -184,14 +223,15 @@ function endCard(n) { return `<div class="endc"><div class="endin"><span>Weiter 
 const ser = (o) => ({ ...SER, ...o });
 
 // series page geometry (logical px): strip bottom 60, card 198 + caption 72 -> strip top = H-330; seasons 44 high, 30 above strip; copy bottom 56 above seasons
-const G = { strip: 72, seasonsB: 72 + 270 + 30, copyB: 72 + 270 + 30 + 44 + 52 };
+const G = { strip: 72, seasonsB: 72 + 270 + 30, copyB: 72 + 270 + 30 + 44 + 30 };
+const MV = { bunny: CH.bunnyWeb, sintel: CH.sintelBr, cosmos: CH.cosmos, sprite: CH.sprite, tears: CH.tears4k };
 
 function seriesPage(o) {
   const e = o.ep || E(1, 2);
   const W = o.W || 1920, H = o.H || 1080;
   return scr(ser({ W, H, mode: o.mode || 'tv', cls: 'series ' + (o.cls || '') }), `${art('sherlock', 'ser')}${chrome({ mode: o.mode || 'tv' })}
-  ${seriesCopy(e, { bottom: G.copyB, actions: o.actions || [['resume'], ['restart'], ['versions', ' · 3'], ['watched']], focus: o.focus ?? 0, hover: o.hover, state: o.state || { next: true, prog: [62, 'Noch 34 Min.'] }, ovLines: o.ovLines })}
-  ${o.noInfo ? '' : seriesInfo({ bottom: G.copyB, focus: o.infoFocus, played: o.played })}
+  ${seriesCopy(e, { bottom: G.copyB, actions: o.actions || [['resume'], ['restart'], ['versions', ' · 3'], ['watched']], focus: o.focus ?? 0, hover: o.hover, state: o.state || { next: true, prog: [62, 'Noch 34 Min.'] }, ovLines: o.ovLines, vr: o.vr, vro: o.vro })}
+  ${o.noInfo ? '' : seriesInfo({ bottom: G.copyB + VB, focus: o.infoFocus, played: o.played })}
   ${seasons(o.season || 1, { bottom: G.seasonsB, focus: o.seasonFocus, count: o.count ?? 'Folge 2 von 3', list: o.seasonList })}
   ${strip(o.cards || s1Cards(o.cardState || { 2: { marked: true } }), { bottom: G.strip, shift: o.shift })}
   ${o.extra || ''}`);
@@ -201,8 +241,8 @@ function moviePage(key, o) {
   const m = MOVIES[key];
   const W = o.W || 1920, H = o.H || 1080;
   return scr({ W, H, mode: o.mode || 'tv', tint: m.tint, tint2: m.tint2, cls: 'movie ' + (o.cls || '') }, `${art(key, 'mov')}${chrome({ mode: o.mode || 'tv', rail: 'film' })}
-  ${movieCopy(m, { key, bottom: o.bottom ?? 96, actions: o.actions || [['play'], ['versions', ' · 3'], ['watched']], focus: o.focus ?? 0, hover: o.hover, prog: o.prog, both: o.both, method: o.method, noSpec: o.noSpec })}
-  ${o.noInfo ? '' : movieInfo(m, { bottom: o.bottom ?? 96, focus: o.infoFocus })}
+  ${movieCopy(m, { key, bottom: o.bottom ?? 72, actions: o.actions || [['play'], ['versions', ' · 3'], ['watched']], focus: o.focus ?? 0, hover: o.hover, prog: o.prog, vr: o.vr === undefined ? MV[key] : o.vr, vro: o.vro })}
+  ${o.noInfo ? '' : movieInfo(m, { bottom: (o.bottom ?? 72) + VB, focus: o.infoFocus })}
   ${o.extra || ''}`);
 }
 
@@ -234,7 +274,7 @@ F.v1 = tv('D2-v1-buehne', seriesPage({ focus: -1, cardState: { 2: { marked: true
 }
 F.v3 = tv('D2-v3-spotlight', scr(ser({ W: 1920, H: 1080, mode: 'tv', cls: 'series v3' }), `<div class="amb" style="background-image:var(--sh-12-hd)"></div><div class="bd v3bd" style="background-image:var(--sh-12-hd)"></div><div class="scrim"></div>${rail()}
   <div class="v3top"><div class="logo slogo" style="background-image:var(--sherlock-logo)"></div><span>2010 – 2014 · 3 Staffeln · Krimi, Drama, Mystery</span><span class="fsk">12</span></div>
-  ${seriesCopy(E(1, 2), { noLogo: true, bottom: 330, actions: [['resume'], ['restart'], ['versions', ' · 3'], ['watched']], focus: -1, state: { next: true, prog: [62, 'Noch 34 Min.'] } })}
+  ${seriesCopy(E(1, 2), { legacy: true, noLogo: true, bottom: 330, actions: [['resume'], ['restart'], ['versions', ' · 3'], ['watched']], focus: -1, state: { next: true, prog: [62, 'Noch 34 Min.'] } })}
   <div class="v3strip">${[[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3], [3, 1]].map(([s, e], i) => `<div class="v3c ${i === 1 ? 'f' : ''}"><div class="still" style="background-image:var(--sh-${s}${e})">${i === 0 ? `<span class="seen">${ic('check', 18)}</span>` : ''}${i === 1 ? '<span class="sprog"><u style="width:62%"></u></span>' : ''}</div><span>S${s} · F${e}</span></div>`).join('')}</div>`),
   'Variante 3 · Spotlight: das Standbild der Folge wird zum Hintergrund, Staffeln laufen in einem Streifen durch, Serieninfos schrumpfen auf eine Zeile oben.');
 
@@ -244,10 +284,10 @@ F.mResume = tv('D2-movie-resume', moviePage('sintel', { actions: [['resume'], ['
 {
   const mini = (html, label) => `<div class="qcell"><div class="qscale">${html}</div><span>${label}</span></div>`;
   F.mStates = tv('D2-movie-states', `<div class="quad">
-  ${mini(moviePage('cosmos', { actions: [['again'], ['versions', ' · 2'], ['unwatched']], both: '', focus: 0 }), 'Gesehen: „Erneut ansehen“, Haken gefüllt')}
-  ${mini(moviePage('tears', { actions: [['none'], ['watched']], both: '', noSpec: true, focus: 0, extra: '' }), 'Keine Version: nur der Hinweis-Button (fokussierbar, ohne Aktion) und Gesehen')}
-  ${mini(moviePage('sprite', { actions: [['play'], ['details'], ['watched']], both: '', focus: 1 }), 'Eine Version: „Details“ statt „Versionen · N“ (nichts zu wählen, aber Technik ansehen)')}
-  ${mini(moviePage('sintel', { actions: [['play'], ['versions', ' · 3'], ['watched']], method: ['transcode', 'HDR10 wird in SDR umgewandelt'], both: 'HDR10 verfügbar · spielt hier in 1080p SDR', focus: 0 }), 'Nur Umwege: Methoden-Hinweis erscheint nur, wenn nichts direkt läuft')}
+  ${mini(moviePage('cosmos', { actions: [['again'], ['versions', ' · 2'], ['unwatched']], focus: 0 }), 'Gesehen: „Erneut ansehen“, Haken gefüllt')}
+  ${mini(moviePage('tears', { actions: [['none'], ['watched']], vro: { state: 'none', none: 'Für diesen Film gibt es noch keine abspielbare Version.' }, focus: 0 }), 'Keine Version: nur der Hinweis-Button (fokussierbar, ohne Aktion) und Gesehen')}
+  ${mini(moviePage('sprite', { actions: [['play'], ['details'], ['watched']], focus: 1 }), 'Eine Version, Wiedergabe mit VLC: „Details“ statt „Versionen · N“')}
+  ${mini(moviePage('sintel', { actions: [['play'], ['versions', ' · 3'], ['watched']], vr: CH.sintelHdr, focus: 0 }), 'Nur Umwege: die Chip-Zeile sagt „Transkodiert“ und warum (HDR10 → SDR)')}
   </div>`, 'Film · Zustände: gesehen, keine Version, eine Version, nur Transkodierung.');
 }
 
@@ -270,16 +310,16 @@ F.sS3 = tv('D2-series-season3', seriesPage({
 // TV focus maps
 {
   const map = fmap(1920, 1080, [
-    { t: 'n', x: 160, y: 548, s: '1' },
-    { t: 'l', x: 572, y: 514, s: 'Erster Fokus: Fortsetzen', w: 270 },
-    { t: 'a', x1: 162, y1: 580, x2: 112, y2: 580 },
-    { t: 'a', x1: 400, y1: 639, x2: 860, y2: 639, both: true }, { t: 'l', x: 560, y: 652, s: '← →', w: 74 },
-    { t: 'a', x1: 948, y1: 580, x2: 1352, y2: 580 }, { t: 'l', x: 1010, y: 548, s: 'Rechts: Über die Serie', w: 250 },
-    { t: 'a', x1: 140, y1: 596, x2: 140, y2: 680, both: true },
+    { t: 'n', x: 160, y: 466, s: '1' },
+    { t: 'l', x: 958, y: 462, s: 'Erster Fokus · ← → zwischen Buttons', w: 380 },
+    { t: 'a', x1: 162, y1: 498, x2: 112, y2: 498 },
+    { t: 'a', x1: 948, y1: 498, x2: 1352, y2: 498 }, { t: 'l', x: 1010, y: 548, s: 'Rechts: Über die Serie', w: 250 },
+    { t: 'a', x1: 140, y1: 520, x2: 140, y2: 680, both: true },
+    { t: 'l', x: 1010, y: 626, s: 'Runter überspringt die Chip-Zeile (nur Info) → Staffeln', w: 560 },
     { t: 'a', x1: 140, y1: 700, x2: 140, y2: 830, both: true },
     { t: 'a', x1: 180, y1: 1032, x2: 1290, y2: 1032, both: true },
     { t: 'l', x: 330, y: 1058, s: 'Fokus = Vorschau oben nach 150 ms · Select spielt · Select halten: Versionen dieser Folge', w: 870 },
-    { t: 'a', d: 'M 690 736 C 690 640, 420 660, 300 616', back: true },
+    { t: 'a', d: 'M 690 736 C 690 672, 960 684, 960 616 L 960 566 C 960 544, 930 538, 890 538 L 396 538', back: true },
     { t: 'l', x: 720, y: 698, s: 'Zurück (Android TV): Streifen → Fortsetzen → Seite verlassen', back: true, w: 600 },
   ]);
   F.fmap = tv('D2-focus-map', seriesPage({ focus: 0, extra: map }), 'TV-Fokuskarte (Android TV und Web-Tastatur): nur gerade Wege zwischen ausgerichteten Reihen, kein Sprung zu weit entfernten Elementen.');
@@ -297,14 +337,14 @@ F.square = frame('D2-tablet-square', 1180, 1080, 0.66, seriesPage({ W: 1788, H: 
 // Loading / error
 F.loading = tv('D2-loading', scr(ser({ W: 1920, H: 1080, mode: 'tv', cls: 'series loading' }), `<div class="amb plain"></div>${rail()}
   <div class="copy series" style="bottom:${G.copyB}px"><div class="sk" style="width:330px;height:60px"></div><div class="sk pill" style="width:240px;height:34px;margin-top:22px"></div><div class="sk" style="width:560px;height:52px;margin-top:16px"></div><div class="sk" style="width:420px;height:26px;margin-top:16px"></div><div class="sk" style="width:780px;height:22px;margin-top:22px"></div><div class="sk" style="width:740px;height:22px;margin-top:12px"></div><div class="sk" style="width:520px;height:22px;margin-top:12px"></div>
-  ${actions([['resume'], ['versions'], ['watched']], 0).replace('class="actions"', 'class="actions skel"')}</div>
-  <aside class="info" style="bottom:${G.copyB}px"><div class="sk" style="width:160px;height:20px"></div><div class="sk" style="width:100%;height:18px;margin-top:18px"></div><div class="sk" style="width:90%;height:18px;margin-top:10px"></div><div class="sk" style="width:70%;height:18px;margin-top:10px"></div><div class="sk" style="width:60%;height:18px;margin-top:22px"></div></aside>
+  ${actions([['resume'], ['versions'], ['watched']], 0).replace('class="actions"', 'class="actions skel"')}${vrow(CH.sherE2, { state: 'loading' })}</div>
+  <aside class="info" style="bottom:${G.copyB + VB}px"><div class="sk" style="width:160px;height:20px"></div><div class="sk" style="width:100%;height:18px;margin-top:18px"></div><div class="sk" style="width:90%;height:18px;margin-top:10px"></div><div class="sk" style="width:70%;height:18px;margin-top:10px"></div><div class="sk" style="width:60%;height:18px;margin-top:22px"></div></aside>
   <div class="seasons" style="bottom:${G.seasonsB}px">${[1, 2, 3].map(() => '<span class="sk pill" style="width:150px;height:44px"></span>').join('')}</div>
   <div class="strip" style="bottom:${G.strip}px">${[1, 2, 3, 4, 5].map(() => '<div class="ecard"><div class="still sk"></div><div class="ecap"><div class="sk" style="width:240px;height:22px"></div><div class="sk" style="width:110px;height:18px;margin-top:10px"></div></div></div>').join('')}</div>`),
   'Laden: Skelett in der endgültigen Geometrie (kein Springen), Hintergrund ist die Ambient-Farbe aus dem Katalog-Eintrag, Fokus liegt sofort auf „Abspielen“.');
 F.error = tv('D2-error', scr(ser({ W: 1920, H: 1080, mode: 'tv', cls: 'series' }), `${art('sherlock', 'ser')}${rail()}
   ${seriesCopy(E(1, 2), { bottom: G.copyB, actions: [['resume'], ['restart'], ['versions', ' · 3'], ['watched']], focus: -1, state: { next: true, prog: [62, 'Noch 34 Min.'] } })}
-  ${seriesInfo({ bottom: G.copyB })}
+  ${seriesInfo({ bottom: G.copyB + VB })}
   ${seasons(2, { bottom: G.seasonsB, count: '' })}
   <div class="serr" style="bottom:${G.strip + 40}px"><div class="eic">${ic('wifi', 40)}</div><div><b>Staffel 2 konnte nicht geladen werden</b><span>Der Server antwortet gerade nicht. Die übrige Seite bleibt nutzbar.</span></div><div class="btn f">${ic('restart', 24)}<span>Erneut versuchen</span></div></div>`),
   'Fehler: nur der betroffene Teil (hier die Staffel) zeigt den Fehler mit „Erneut versuchen“ im Fokus; scheitert die ganze Seite, bleibt die heutige Fehlerseite.');
@@ -320,6 +360,53 @@ F.phone = frame('D2-phone', 390, 844, 1, `<div class="scr m-phone phone" style="
   <div class="ph-seasons"><span class="on">Staffel 1</span><span>Staffel 2</span><span>Staffel 3</span></div>
   ${[1, 2, 3].map(n => { const e = E(1, n); return `<div class="ph-ep"><div class="still" style="background-image:var(--sh-1${n})">${n === 2 ? '<span class="sprog"><u style="width:62%"></u></span>' : ''}</div><div><b>${n}. ${e.t}</b><span>${e.min} Min.${n === 1 ? ' · Gesehen' : ''}</span></div></div>`; }).join('')}
   </div><div class="ph-tabs"><span>${ic('home', 22)}</span><span>${ic('search', 22)}</span><span>${ic('film', 22)}</span><span class="on">${ic('tv', 22)}</span></div></div>`, 'Telefon: bleibt wie heute (kompakte Liste, Versionszeile, Sheet). Kein Teil von F7.');
+
+// ---------- D2b: version chip row ----------
+const tall = (id, h, html, cap) => frame(id, 1920, h, 1, html, cap);
+F.b_direct = tv('D2b-movie-direct', moviePage('bunny', { focus: 0 }), 'Film · Abspielen, empfohlene Version läuft direkt (Android TV): grüner Chip „Direkt“, dann 1080P · H.264 · AAC 2.0 · WEB-DL · 360 MB. Die Zeile darunter ersetzt die alte Technikzeile: „4K · HDR10 vorhanden, läuft hier nur transkodiert“.');
+F.b_trans = tv('D2b-movie-transcode', moviePage('tears', { mode: 'atv', actions: [['play'], ['versions', ' · 2'], ['watched']], focus: 0 }), 'Film · Apple TV (Simulator-Profil ohne HDR/HEVC): die empfohlene Version muss transkodiert werden. Gelber Chip „Transkodiert“, darunter die zwei Gründe in Klartext „HDR10 → SDR · HEVC → H.264“; die Chips beschreiben die Datei, die Gründe, was daraus wird.');
+F.b_resume = tv('D2b-movie-resume-other-version', moviePage('bunny', { actions: [['resume', ' · 1:36'], ['restart'], ['versions', ' · 3'], ['watched']], prog: [20, 'Noch 6 Min.'], vr: CH.bunnyBr, vro: { last: true, hint: 'Direkt möglich: <b>1080p WEB-DL</b> in „Versionen“' } }), 'Fortsetzen mit der zuletzt gespielten Version (BluRay, Direkt-Stream), nicht mit der empfohlenen. Marker „Zuletzt gespielt“ am Ende der Zeile; die Grund-Zeile nennt in einem Satzteil, dass eine bessere Version direkt laufen würde. Keine zweite Chip-Zeile.');
+F.b_strip = tv('D2b-series-strip-chips', seriesPage({ ep: E(1, 3), state: {}, actions: [['play'], ['versions', ' · 2'], ['watched']], focus: -1, cardState: { 2: {}, 3: { marked: true, focus: true } }, count: 'Folge 3 von 3', vr: CH.sherE3 }), 'Serie · Folge 3 im Streifen gewählt: die Chips zeigen die Version, die „Abspielen“ für diese Folge startet (WEB-DL, direkt). Bei Folge 2 stand dort „Direkt-Stream“ mit BluRay.');
+{
+  const crop = page => `<div class="sbcrop"><div style="position:absolute;left:-59px;top:-35px;transform:scale(.4929);transform-origin:0 0">${page}</div></div>`;
+  const p1 = seriesPage({ focus: -1, cardState: { 2: { marked: true, focus: true } } });
+  const p2 = seriesPage({ ep: E(1, 3), state: {}, actions: [['play'], ['versions'], ['watched']], focus: -1, cardState: { 2: {}, 3: { marked: true, focus: true } }, count: 'Folge 3 von 3', vro: { state: 'loading' } });
+  const p3 = seriesPage({ ep: E(1, 3), state: {}, actions: [['play'], ['versions', ' · 2'], ['watched']], focus: -1, cardState: { 2: {}, 3: { marked: true, focus: true } }, count: 'Folge 3 von 3', vr: CH.sherE3 });
+  const route = ok => `<div class="route">Route&nbsp;&nbsp; /series/tmdb-tv-19885<br>Verlauf ${ok ? '<span class="ok">unverändert · 2 Einträge</span>' : '2 Einträge (Start → Serie)'}<br>Events&nbsp; ${ok ? '<span class="ok">keine (nur State)</span>' : '–'}</div>`;
+  const arrow = l => `<div class="sbarrow">${ic('right', 54)}<span>${l}</span></div>`;
+  F.b_seq = tall('D2b-series-switch-sequence', 1240, `<div class="sb" style="width:1920px;height:1240px"><h2>Folge wechseln ist Zustand, keine Navigation</h2><div class="sub">Die gewählte Folge (und Staffel) ist lokaler Zustand der Seite. Text, Buttons, Chips und Markierung ändern sich an Ort und Stelle; Route, Verlauf und Fokus-Historie bleiben, wie sie sind. Zurück verlässt die Seite.</div>
+  <div class="sbrow">
+  <div class="sbp">${crop(p1)}<b><em>1</em>Folge 2 markiert</b><p>Fortsetzen · Direkt-Stream (BluRay, Ton wird umgewandelt).</p>${route(false)}</div>${arrow('Rechts')}
+  <div class="sbp">${crop(p2)}<b><em>2</em>Fokus auf Folge 3 · nach 150 ms</b><p>Titel, Text und „Abspielen“ wechseln sofort aus den Folgendaten; die Chips laden als Skelett gleicher Breite.</p>${route(true)}</div>${arrow('Daten da')}
+  <div class="sbp">${crop(p3)}<b><em>3</em>Versionen von Folge 3 geladen</b><p>„Direkt“ · WEB-DL, „Versionen · 2“. Gleiche Seite, kein Übergang, nichts springt.</p>${route(true)}</div></div>
+  <div class="sbfoot"><div class="no"><b>Nie bei Folgen- oder Staffelwechsel</b><code>router.push / replace / setParams / navigate</code>, Web-History-Eintrag, URL-Hash, Seitenübergang, Remount der Seite, Fokus-Reset.</div>
+  <div class="yes"><b>Erlaubt</b>setState der Auswahl, Debounce 150 ms, Cross-Fade von Text und Chips an Ort und Stelle, Versionen der Folge nachladen (Cache 5 min).</div>
+  <div><b>Zurück / Menu</b>Android TV: Streifen → Hauptbutton → Seite verlassen. Apple TV: verlässt die Seite. Web: Browser-Zurück verlässt die Seite (es gibt keinen Eintrag pro Folge).</div></div></div>`, 'Storyboard · Folge wechseln ohne Navigation (Android TV): 1 → 2 → 3 auf derselben Seite. Die Kästen darunter zeigen Route und Verlauf: sie ändern sich nicht. 1920 × 1240.');
+}
+{
+  const rows = [
+    ['Direkt', 'empfohlen, läuft unverändert', CH.bunnyWeb, {}, 'predictedMethod = direct · specGap → Hinweis'],
+    ['Direkt-Stream', 'Ton wird umgewandelt', CH.bunnyBr, {}, 'remux + Grund audio_converted'],
+    ['Direkt-Stream', 'nur umverpackt (leise)', CH.sintelRemuxQuiet, {}, 'remux, nur container_unsupported → keine Grund-Zeile'],
+    ['Transkodiert', 'ein Grund', { ...CH.sintelHdr, why: ['HDR10 → SDR'] }, {}, 'transcode + hdr_unsupported'],
+    ['Transkodiert', 'zwei Gründe (Maximum)', CH.tears4k, {}, 'transcode + hdr_unsupported, video_codec_unsupported'],
+    ['Mit VLC', 'eingebauter Player kann nicht', CH.sintelAv1, {}, 'vlc + vlc_fallback (nur mit vlcAvailable)'],
+    ['Fortsetzen', 'andere Version als empfohlen', CH.bunnyBr, { last: true, hint: 'Direkt möglich: <b>1080p WEB-DL</b>' }, 'watch.lastReleaseId ∈ versions ≠ recommended'],
+    ['Lädt', 'Versionen der Folge kommen', null, { state: 'loading' }, 'useVersions pending: Skelett, gleiche Höhe'],
+    ['Ungeprüft', 'noch kein Geräteprofil', CH.unknown, {}, 'predictedMethod = unknown'],
+    ['Keine Version', '', null, { state: 'none' }, 'versions = [] / versionCount = 0'],
+    ['Fehler', 'Versionen nicht geladen', null, { state: 'error' }, 'useVersions error, Play bleibt möglich'],
+  ];
+  F.b_states = tall('D2b-chip-states', 1300, `<div class="board3" style="width:1920px;height:1300px"><h2>Chip-Zeile · alle Zustände</h2><div class="sub">TV-Größe 1:1 (1920 × 1080 logische pt). Methode zuerst und am stärksten, dann Auflösung · HDR · Video · Ton · Quelle · Größe. Nicht fokussierbar.</div>
+  <div class="cs">${rows.map(([a, b, c, o, src]) => `<div class="lab"><b>${a}</b><span>${b}</span></div><div>${vrow(c || CH.bunnyWeb, o)}</div><div class="src">${src}</div>`).join('')}</div></div>`, 'Board · jeder Zustand der Chip-Zeile in TV-Größe, rechts die Datenquelle. Lädt/Fehler/Keine Version behalten die Höhe, nichts springt beim Folgenwechsel. 1920 × 1300.');
+}
+{
+  const ws = [[1240, 'Platz genug (Referenz)'], [880, 'Bühne: TV, iPad, Web (Copy-Spalte 880 pt, alle Fenster ab 980 pt)'], [760, 'Rest neben „Zuletzt gespielt“ (Marker ≈ 220 pt)'], [640, 'sehr knapp: Größe, Quelle und Tonformat sind weg'], [560, 'Minimum: Methode, Auflösung, HDR, Kanäle']];
+  F.b_fit = tv('D2b-chip-fit', `<div class="board3" style="width:1920px;height:1080px"><h2>Was zuerst wegfällt</h2><div class="sub">Die Zeile bricht nie um. Reicht der Platz nicht, entfällt in dieser Reihenfolge: ① Größe ② Quelle ③ Tonformat (Kanäle bleiben) ④ Video-Codec. Methode, Auflösung und HDR bleiben immer.</div>
+  <div style="display:flex;flex-direction:column;gap:22px;margin-top:40px">${ws.map(([w, l]) => `<div><div style="font:600 19px Figtree;color:rgba(255,255,255,.75);margin-bottom:8px"><span style="font:600 17px 'JetBrains Mono';color:#FFD166;margin-right:14px">${w} pt</span>${l}</div><div class="fitw" style="width:${w}px">${vrow(CH.tearsDv, { maxW: w })}</div></div>`).join('')}</div></div>`, 'Board · Breiten-Regel mit dem längsten Fall (4K · Dolby Vision · Remux · Atmos): bei 880 pt fallen Größe und Quelle, darunter Tonformat und Codec.');
+}
+F.b_ipad = frame('D2b-ipad', 1366, 1024, 0.72, seriesPage({ W: 1897, H: 1422, mode: 'ipad', focus: -1, cardState: { 2: { marked: true, playOverlay: true } } }) , 'iPad Pro 13 quer: die Chip-Zeile unter den Buttons, eine Zeile in 880 pt (× 0,72 = 634 pt); Tippen auf die Zeile öffnet das Versions-Sheet an dieser Version.');
+F.b_web = frame('D2b-web-1280', 1280, 800, 0.6667, moviePage('tears', { W: 1920, H: 1200, mode: 'web', focus: -1, actions: [['play'], ['versions', ' · 2'], ['watched']], vro: { hoverM: true, tip: `<div class="tip"><b>Transkodiert in diesem Browser</b><ul><li>HDR10 wird für diesen Bildschirm in SDR umgewandelt</li><li>HEVC-Video wird für dieses Gerät umgewandelt</li></ul><small>6,1 GB · ≈ 70 Mbit/s · Klick öffnet alle Versionen</small></div>` }, extra: cursor(318, 1068) }), 'Web 1280 × 800: Hover auf den Methoden-Chip zeigt die Gründe als ganze Sätze (Tooltip, auch per Tastaturfokus); Klick öffnet das Sheet. Auf dem TV gibt es keinen Tooltip, dort steht der Grund als Text in der Zeile.');
 
 const cur = f => readFileSync(join(here, 's', f)).toString('base64');
 F.__cur = { ipadSeries: cur('cur-ipad-series.jpg'), atvVersions: cur('cur-atv-versions.jpg'), gtvSintel: cur('cur-gtv-sintel.jpg'), atvNoVersion: cur('cur-atv-noversion.jpg') };

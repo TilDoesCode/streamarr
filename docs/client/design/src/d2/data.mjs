@@ -55,3 +55,23 @@ export const METHOD = { direct: 'Direkte Wiedergabe', remux: 'Direkt-Stream', tr
 const MONTHS = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'];
 export const deDate = iso => { const [y, m, d] = iso.split('-').map(Number); return `${d}. ${MONTHS[m - 1]} ${y}`; };
 export const ep = (s, e) => SH.eps.find(x => x.s === s && x.e === e);
+
+// D2b: the version a button starts, as the chip row shows it (short method label, spec chips in drop order, max two reasons).
+export const METHOD_SHORT = { direct: 'Direkt', remux: 'Direkt-Stream', transcode: 'Transkodiert', vlc: 'Mit VLC', unknown: 'Ungeprüft' };
+export const CH = {
+  bunnyWeb: { m: 'direct', res: '1080P', vc: 'H.264', au: ['AAC', '2.0'], src: 'WEB-DL', size: '360 MB', note: '4K · HDR10 vorhanden, läuft hier nur transkodiert' },
+  bunnyBr: { m: 'remux', res: '1080P', vc: 'H.264', au: ['DD+', '5.1'], src: 'BLURAY', size: '600 MB', why: ['Ton wird umgewandelt (DD+ → AAC)'] },
+  bunny4k: { m: 'transcode', res: '4K', hdr: 'HDR10', vc: 'HEVC 10 BIT', au: ['TRUEHD', '5.1'], src: 'BLURAY', size: '2,4 GB', why: ['HDR10 → SDR', '4K → 1080p'] },
+  tears4k: { m: 'transcode', res: '4K', hdr: 'HDR10', vc: 'HEVC 10 BIT', au: ['TRUEHD', '7.1'], src: 'BLURAY', size: '6,1 GB', why: ['HDR10 → SDR', 'HEVC → H.264'] },
+  tearsDv: { m: 'transcode', res: '4K', hdr: 'DOLBY VISION', vc: 'HEVC 10 BIT', au: ['TRUEHD', '7.1 ATMOS'], src: 'REMUX', size: '58 GB', why: ['Dolby Vision → SDR', '4K → 1080p'] },
+  sintelBr: { m: 'remux', res: '1080P', vc: 'H.264', au: ['DD', '5.1'], src: 'BLURAY', size: '1,3 GB', why: ['Ton wird umgewandelt (DD → AAC)'] },
+  sintelRemuxQuiet: { m: 'remux', res: '1080P', vc: 'H.264', au: ['AAC', '5.1'], src: 'BLURAY', size: '1,1 GB', why: [] },
+  sintelAv1: { m: 'vlc', res: '1080P', vc: 'AV1', au: ['OPUS', '5.1'], src: 'WEB-DL', size: '420 MB', why: ['Eingebauter Player kann AV1 nicht'] },
+  sintelHdr: { m: 'transcode', res: '1080P', hdr: 'HDR10', vc: 'HEVC 10 BIT', au: ['DTS', '5.1'], src: 'BLURAY', size: '840 MB', why: ['HDR10 → SDR', 'DTS → AAC'] },
+  cosmos: { m: 'direct', res: '1080P', vc: 'H.264', au: ['AAC', '2.0'], src: 'WEB-DL', size: '410 MB' },
+  sprite: { m: 'vlc', res: '1080P', vc: 'AV1', au: ['OPUS', '5.1'], src: 'WEB-DL', size: '520 MB', why: ['Eingebauter Player kann AV1 nicht'] },
+  sherE2: { m: 'remux', res: '1080P', vc: 'H.264', au: ['DD', '5.1'], src: 'BLURAY', size: '10,7 GB', why: ['Ton wird umgewandelt (DD → AAC)'] },
+  sherE3: { m: 'direct', res: '1080P', vc: 'H.264', au: ['AAC', '2.0'], src: 'WEB-DL', size: '2,1 GB' },
+  sherE1: { m: 'direct', res: '1080P', vc: 'H.264', au: ['AAC', '2.0'], src: 'WEB-DL', size: '2,3 GB' },
+  unknown: { m: 'unknown', res: '1080P', vc: 'H.264', au: ['DD+', '5.1'], src: 'WEB-DL', size: '1,6 GB', why: ['Gerät noch nicht erkannt, der Server entscheidet beim Start'] },
+};
