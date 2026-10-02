@@ -627,6 +627,26 @@ const TASKS = {
       'no regressions; typecheck, lint and tests green',
     ],
   },
+  'F7': {
+    title: 'Client: widescreen detail page as the Bühne (D2) — versions in a sheet, episode strip, what-plays chips',
+    track: 'Client',
+    deps: ['F5', 'F6'],
+    maxFixes: 2,
+    guide: [
+      '- Part of round H. Implements D2 variant 1 "Bühne" (docs/client/design/detail-concept.html, its F7 outline, and the D2b addendum renders docs/client/design/jpg/D2b-*.jpg) on TV, iPad/tablet and web desktop; phones keep their detail page. Read PLAN.md section 5 "D2 decision" first: it is binding.',
+      '- No navigation events when the episode or season changes: selection is screen-local state (initial value from route params / nextEpisode / deep link); never router.push/replace/setParams/navigate on a selection change; no web history entries; Back/Menu leaves the page (Android TV: strip -> actions -> leave). Screen tests assert the router is not called on selection changes.',
+      '- What-plays chip row next to Play/Resume for exactly the version that button starts (one decision function shared by the chips and the play call): playback method chip most prominent (direct / direct stream / transcode / VLC, colour per the Aurora + Signal tokens, reason when not direct), then resolution, HDR format, video codec, audio codec + channels, source. Resume shows and starts the version it resumes (last played when still offered and playable here, else the recommended one, stated in the chip row). For series it follows the selected episode (versions of the selected episode, debounced, cached).',
+      '- Versions only in a sheet (versions/[workId] as formSheet/transparentModal on iPad/web/TV) opened from "Versionen · N" (one version: "Details", none: hidden); remove the always-visible VersionPanel on large screens. Reuse F6 BackControl and the focus clearance rule; Apple TV: geometry-only focus paths, explicit list heights, no JS focus moves after Menu (I3 findings).',
+      '- Slices per the D2 F7 outline: S1 version sheet, S2 movie Bühne + chip row, S3 episode strip + season chips (no navigation), S4 input per platform (Android TV Back chain, Apple TV autoFocus guides + long press, web keyboard/hover, iPad), S5 sizes (iPad portrait/window, near-square tablet, web 1280/1920) + device pass. Muted playback only.',
+    ].join('\n'),
+    acceptance: [
+      'the Bühne matches the D2/D2b concept on Apple TV, Android TV, iPad and web desktop (movie and series, all states), phones unchanged',
+      'changing episode or season never triggers a navigation event (tests + live: no history entry, Back leaves the page)',
+      'the chip row always names the version and playback method that Play/Resume actually start (checked against the started playback on every platform)',
+      'versions only in the sheet; focus paths work by geometry on Apple TV; no focus ring touches a neighbour',
+      'no regressions; typecheck, lint and tests green',
+    ],
+  },
   'B6': {
     title: 'Server: tone-mapped transcodes tagged SDR, colour metadata consistent with the playlist, B5 follow-ups',
     track: 'Backend',

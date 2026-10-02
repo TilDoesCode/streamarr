@@ -498,3 +498,17 @@ space that should belong to content. Versions are a technical detail you rarely 
   version sheet from there; series facts smaller (e.g. on the right). Mockups for TV, iPad and web desktop.
 - **F7 client**: implements the chosen D2 concept; defined after the choice.
 Order: D2 runs now beside F6 (no devices); F5 after F6; F7 after the user's choice.
+
+**D2 decision (user, 2026-10-02 14:20):** variant 1 **Bühne**. Additions from the user:
+- **No navigation events** when the episode or the season changes: copy, buttons, states, chips and backdrop update in
+  place (screen-local state); no push/replace/setParams, no history entries on web, Back leaves the page. A deep link
+  may still choose the initial season/episode.
+- **What plays must stay visible:** next to Play/Resume a row of chips for exactly the version that button starts:
+  which version (resolution, HDR format, video codec, audio codec + channels, source) and — most important — the
+  playback method (direct play / direct stream (remux) / transcode / VLC) as the most prominent chip, with the reason
+  when it is not direct. Resume shows and starts the same version it resumes. For series this follows the selected
+  episode.
+- Defaults the user did not object to: TV Select on an episode plays it (long press opens its versions); the movie's
+  lower half stays artwork; no network/status line (needs a server field).
+- **D2b** (docs, now): add the version chip row and the no-navigation rule to the Bühne mockups. **F7** implements the
+  Bühne after F5.
