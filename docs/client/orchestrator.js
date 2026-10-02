@@ -644,6 +644,7 @@ const TASKS = {
       'changing episode or season never triggers a navigation event (tests + live: no history entry, Back leaves the page)',
       'the chip row always names the version and playback method that Play/Resume actually start (checked against the started playback on every platform)',
       'versions only in the sheet; focus paths work by geometry on Apple TV; no focus ring touches a neighbour',
+      'forced subtitles follow the audio language on every audio switch (in-session and /switch), a full subtitle the viewer picked stays; phones resume the last played version and their version card names it',
       'no regressions; typecheck, lint and tests green',
     ],
   },

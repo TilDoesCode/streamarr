@@ -512,3 +512,11 @@ Order: D2 runs now beside F6 (no devices); F5 after F6; F7 after the user's choi
   lower half stays artwork; no network/status line (needs a server field).
 - **D2b** (docs, now): add the version chip row and the no-navigation rule to the Bühne mockups. **F7** implements the
   Bühne after F5.
+**User decisions 2026-10-02 18:40 (implemented in F7 S4):**
+- **Forced subtitles follow the audio language.** On an audio switch (in-session or `/switch`) a forced subtitle moves
+  to the forced track of the new audio language, or off when that language has none; the server's `subtitleMode:
+  forced` rule ("a forced track in the audio language") is the reference. A full (non-forced) subtitle the viewer
+  picked on purpose stays as it is. This replaces F5's "an audio switch never changes the subtitle".
+- **Phones resume the last played version too.** Phone Resume uses the same `playTarget` as the Bühne (last played
+  version when it is still offered and playable here, else the recommendation), and the phone version card names that
+  version with the method and a "Zuletzt gespielt" marker, so card and Play never disagree.
