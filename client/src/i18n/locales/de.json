@@ -738,6 +738,14 @@
       "transcode_failed": {
         "title": "Umwandlung fehlgeschlagen",
         "message": "Der Server konnte dieses Video nicht umwandeln. Versuche eine andere Version."
+      },
+      "unknown_audio_rendition": {
+        "title": "Tonspur nicht verfügbar",
+        "message": "Diese Wiedergabe bietet diese Tonspur nicht an. Wähle eine andere oder starte neu."
+      },
+      "rendition_split_failed": {
+        "title": "Tonspur fehlgeschlagen",
+        "message": "Der Server konnte diese Tonspur nicht vorbereiten. Versuche es erneut oder wähle eine andere."
       }
     },
     "actions": {

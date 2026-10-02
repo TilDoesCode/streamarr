@@ -89,6 +89,9 @@ export const VIEWER_ERROR_CODES = [
   'playback_failed',
   'segment_timeout',
   'transcode_failed',
+  // Audio rendition requests of an HLS session (in-session audio switch).
+  'unknown_audio_rendition',
+  'rendition_split_failed',
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

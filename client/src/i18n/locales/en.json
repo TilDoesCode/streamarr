@@ -738,6 +738,14 @@
       "transcode_failed": {
         "title": "Conversion failed",
         "message": "The server couldn’t convert this video. Try another version."
+      },
+      "unknown_audio_rendition": {
+        "title": "Audio track not available",
+        "message": "This playback doesn’t offer that audio track. Pick another one or start again."
+      },
+      "rendition_split_failed": {
+        "title": "Audio track failed",
+        "message": "The server couldn’t prepare this audio track. Try again or pick another one."
       }
     },
     "actions": {

@@ -2,7 +2,8 @@ import type { ApiClient } from '@/api/client';
 import type { EngineEvent, EngineSnapshot, PlayerEngine } from '@/player/engines';
 import type { Playback } from '@/player/playback-api';
 
-import { PlaybackController } from '../controller';
+import { rememberedAudioLanguage } from '../audio-preference';
+import { AUDIO_SWITCH_TIMEOUT_MS, PlaybackController } from '../controller';
 
 class FakeEngine implements PlayerEngine {
   readonly kind = 'expo-video' as const;
@@ -294,5 +295,314 @@ describe('PlaybackController', () => {
       params: { code: 'transcoding_not_allowed' },
     });
     await c.stop();
+  });
+
+  describe('audio switch', () => {
+    const renditions = [
+      {
+        id: '1',
+        streamIndex: 1,
+        language: 'de',
+        label: 'Deutsch · AAC 2.0',
+        channels: 2,
+        codec: 'aac',
+        default: true,
+      },
+      {
+        id: '2',
+        streamIndex: 2,
+        language: 'en',
+        label: 'English · AAC 2.0',
+        channels: 2,
+        codec: 'aac',
+        default: false,
+      },
+    ];
+    const audioTracks = (renditionIds: (string | null)[], deliveredAs = 'remux') => [
+      { index: 1, language: 'ger', selected: true, deliveredAs, renditionId: renditionIds[0] },
+      { index: 2, language: 'eng', selected: false, deliveredAs, renditionId: renditionIds[1] },
+    ];
+    const sintel = (over: Partial<Playback> = {}) =>
+      ready({
+        method: 'remux',
+        url: '/stream/p1/master.m3u8',
+        inSessionAudioSwitch: true,
+        audioRenditions: renditions,
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: audioTracks(['1', '2']),
+          subtitleTracks: [],
+        },
+        ...over,
+      } as never);
+    // Engine order differs from the master on purpose.
+    const engineTracks = (selected: string) => ({
+      audio: [
+        { id: 'e0', label: 'English · AAC 2.0', language: 'en', selected: selected === 'e0' },
+        { id: 'e1', label: 'Deutsch · AAC 2.0', language: 'de', selected: selected === 'e1' },
+      ],
+      subtitles: [],
+    });
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const english = () => ({ index: 2, language: 'eng' }) as never;
+
+    async function playing(playback: Playback) {
+      mockApi.startPlayback.mockResolvedValue(playback);
+      const c = controller(0);
+      await c.start();
+      mockEngine.snapshot.tracks = engineTracks('e1') as never;
+      mockEngine.snapshot.position = 42;
+      mockEngine.emit({ type: 'time', position: 42, duration: 600 });
+      return c;
+    }
+
+    afterEach(() => {
+      mockEngine.snapshot.tracks = { audio: [], subtitles: [] } as never;
+    });
+
+    it('switches a rendition inside the session: engine track by name, no /switch', async () => {
+      const c = await playing(sintel());
+      expect(c.currentAudio()).toBe(1);
+      const switching = c.selectAudio(english());
+      expect(mockEngine.setAudioTrack).toHaveBeenCalledWith('e0');
+      expect(c.currentAudio()).toBe(2);
+      mockEngine.snapshot.tracks = engineTracks('e0') as never;
+      mockEngine.emit({ type: 'tracks', tracks: mockEngine.snapshot.tracks });
+      mockEngine.emit({ type: 'time', position: 42.4, duration: 600 });
+      await switching;
+      expect(mockApi.switchPlayback).not.toHaveBeenCalled();
+      expect(mockEngine.load).toHaveBeenCalledTimes(1);
+      expect(c.currentAudio()).toBe(2);
+      expect(c.audioSwitches).toEqual([
+        expect.objectContaining({
+          via: 'session',
+          from: 1,
+          to: 2,
+          positionBefore: 42,
+          positionAfter: 42.4,
+        }),
+      ]);
+      expect(c.audioSwitches[0]!.ms).toBeGreaterThanOrEqual(0);
+      expect(rememberedAudioLanguage(c.options.accountId)).toBe('en');
+      await c.stop();
+    });
+
+    it.each([
+      ['drops', 's0', null],
+      ['adds', null, 's0'],
+    ])(
+      'keeps the subtitle when the engine %s one on an in-session audio switch (AVPlayer)',
+      async (_case, before, after) => {
+        const c = await playing(sintel());
+        const withSubtitle = (audio: string, selected: string | null) => ({
+          ...engineTracks(audio),
+          subtitles: [
+            { id: 's0', label: 'Deutsch erzwungen', language: 'de', selected: !!selected },
+          ],
+        });
+        mockEngine.snapshot.tracks = withSubtitle('e1', before) as never;
+        const switching = c.selectAudio(english());
+        mockEngine.snapshot.tracks = withSubtitle('e0', after) as never;
+        mockEngine.emit({ type: 'tracks', tracks: mockEngine.snapshot.tracks });
+        expect(mockEngine.setSubtitleTrack).toHaveBeenCalledWith(before);
+        mockEngine.emit({ type: 'time', position: 42.4, duration: 600 });
+        await switching;
+        await c.selectSubtitle(null);
+        mockEngine.setSubtitleTrack.mockClear();
+        mockEngine.emit({ type: 'tracks', tracks: withSubtitle('e0', 's0') as never });
+        expect(mockEngine.setSubtitleTrack).not.toHaveBeenCalled();
+        await c.stop();
+      }
+    );
+
+    it.each([
+      ['plays another rendition', 'e0', ['e1']],
+      ['already plays it', 'e1', []],
+    ])(
+      'selects the server rendition on a new source when the engine %s (ExoPlayer keeps picks)',
+      async (_case, heard, calls) => {
+        mockApi.startPlayback.mockResolvedValue(sintel());
+        const c = controller(0);
+        await c.start();
+        mockEngine.emit({ type: 'tracks', tracks: engineTracks(heard) as never });
+        expect(mockEngine.setAudioTrack.mock.calls.map((call) => call[0])).toEqual(calls);
+        await c.stop();
+      }
+    );
+
+    it('re-applies the server rendition when the engine picks by system language afterwards (Safari)', async () => {
+      mockApi.startPlayback.mockResolvedValue(sintel());
+      const c = controller(0);
+      await c.start();
+      for (let i = 0; i < 5; i++)
+        mockEngine.emit({ type: 'tracks', tracks: engineTracks('e0') as never });
+      expect(mockEngine.setAudioTrack.mock.calls.map((call) => call[0])).toEqual([
+        'e1',
+        'e1',
+        'e1',
+      ]);
+      await c.stop();
+    });
+
+    it('applies the server rendition while the engine lists fewer subtitles (Safari forced kind)', async () => {
+      const playback = sintel();
+      playback.mediaInfo!.subtitleTracks = [
+        { index: 3, language: 'ger', deliveredAs: 'webvtt', selected: false },
+      ] as never;
+      mockApi.startPlayback.mockResolvedValue(playback);
+      const c = controller(0);
+      await c.start();
+      mockEngine.emit({ type: 'tracks', tracks: engineTracks('e0') as never });
+      expect(mockEngine.setAudioTrack).toHaveBeenCalledWith('e1');
+      await c.stop();
+    });
+
+    it('re-applies the server subtitle when the engine picks a forced one by itself (AVPlayer)', async () => {
+      const playback = sintel();
+      playback.mediaInfo!.subtitleTracks = [
+        { index: 5, language: 'ger', forced: true, deliveredAs: 'webvtt', selected: false },
+      ] as never;
+      mockApi.startPlayback.mockResolvedValue(playback);
+      const c = controller(0);
+      await c.start();
+      const withForced = (shown: boolean) => ({
+        ...engineTracks('e1'),
+        subtitles: [{ id: 's0', label: 'Deutsch erzwungen', language: 'de', selected: shown }],
+      });
+      mockEngine.emit({ type: 'tracks', tracks: withForced(false) as never });
+      expect(mockEngine.setSubtitleTrack).not.toHaveBeenCalled();
+      mockEngine.emit({ type: 'tracks', tracks: withForced(true) as never });
+      expect(mockEngine.setSubtitleTrack).toHaveBeenCalledWith(null);
+      mockEngine.snapshot.tracks = withForced(true) as never;
+      await c.selectSubtitle({ index: 5 } as never);
+      mockEngine.setSubtitleTrack.mockClear();
+      mockEngine.emit({ type: 'tracks', tracks: withForced(true) as never });
+      expect(mockEngine.setSubtitleTrack).not.toHaveBeenCalled();
+      await c.stop();
+    });
+
+    it('stops re-applying the server rendition once the viewer picks a track', async () => {
+      mockApi.startPlayback.mockResolvedValue(sintel());
+      const c = controller(0);
+      await c.start();
+      mockEngine.snapshot.tracks = engineTracks('e1') as never;
+      mockEngine.emit({ type: 'tracks', tracks: mockEngine.snapshot.tracks });
+      void c.selectAudio(english());
+      mockEngine.setAudioTrack.mockClear();
+      mockEngine.emit({ type: 'tracks', tracks: engineTracks('e0') as never });
+      expect(mockEngine.setAudioTrack).not.toHaveBeenCalled();
+      await c.stop();
+    });
+
+    it.each([
+      ['inSessionAudioSwitch is false', sintel({ inSessionAudioSwitch: false })],
+      [
+        'the track has no renditionId',
+        sintel({
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: audioTracks(['1', null]),
+            subtitleTracks: [],
+          },
+        } as never),
+      ],
+    ])('uses /switch when %s', async (_case, playback) => {
+      const c = await playing(playback);
+      mockApi.switchPlayback.mockResolvedValue(sintel({ revision: 1, url: '/stream/p1/r1.m3u8' }));
+      const switching = c.selectAudio(english());
+      await flush();
+      expect(mockApi.switchPlayback.mock.calls[0][2]).toMatchObject({ audioStreamIndex: 2 });
+      expect(mockEngine.setAudioTrack).not.toHaveBeenCalled();
+      mockEngine.emit({ type: 'time', position: 42.3, duration: 600 });
+      await switching;
+      expect(c.audioSwitches).toEqual([expect.objectContaining({ via: 'server', to: 2 })]);
+      await c.stop();
+    });
+
+    it('keeps the engine switch for direct play', async () => {
+      const c = await playing(
+        ready({
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: audioTracks([null, null], 'original'),
+            subtitleTracks: [],
+          },
+        } as never)
+      );
+      mockEngine.snapshot.tracks = {
+        audio: [
+          { id: 'v1', label: 'de', selected: true },
+          { id: 'v2', label: 'en', selected: false },
+        ],
+        subtitles: [],
+      } as never;
+      await c.selectAudio(english());
+      expect(mockEngine.setAudioTrack).toHaveBeenCalledWith('v2');
+      expect(mockApi.switchPlayback).not.toHaveBeenCalled();
+      await c.stop();
+    });
+
+    it('falls back to /switch when the rendition fails in the engine', async () => {
+      const c = await playing(sintel());
+      mockApi.switchPlayback.mockResolvedValue(sintel({ revision: 1, url: '/stream/p1/r1.m3u8' }));
+      const switching = c.selectAudio(english());
+      mockEngine.emit({ type: 'audioError', code: 'unknown_audio_rendition' });
+      await flush();
+      await flush();
+      expect(mockApi.switchPlayback.mock.calls[0][2]).toMatchObject({ audioStreamIndex: 2 });
+      mockEngine.emit({ type: 'time', position: 42.3, duration: 600 });
+      await switching;
+      expect(c.audioSwitches).toEqual([
+        expect.objectContaining({ via: 'session', error: 'unknown_audio_rendition' }),
+        expect.objectContaining({
+          via: 'server',
+          to: 2,
+          fallback: 'unknown_audio_rendition',
+          ms: expect.any(Number),
+        }),
+      ]);
+      expect(c.notice).toBeNull();
+      await c.stop();
+    });
+
+    it('uses /switch when no engine track matches the rendition', async () => {
+      const c = await playing(sintel());
+      mockEngine.snapshot.tracks = {
+        audio: [{ id: 'x', label: 'Français', language: 'fr', selected: true }],
+        subtitles: [],
+      } as never;
+      mockApi.switchPlayback.mockResolvedValue(sintel({ revision: 1 }));
+      const switching = c.selectAudio(english());
+      await flush();
+      expect(mockEngine.setAudioTrack).not.toHaveBeenCalled();
+      expect(mockApi.switchPlayback.mock.calls[0][2]).toMatchObject({ audioStreamIndex: 2 });
+      mockEngine.emit({ type: 'time', position: 42.3, duration: 600 });
+      await switching;
+      expect(c.audioSwitches).toEqual([
+        expect.objectContaining({ via: 'server', fallback: 'no_engine_track' }),
+      ]);
+      await c.stop();
+    });
+
+    it('falls back to /switch when the engine never confirms the track', async () => {
+      jest.useFakeTimers();
+      try {
+        const c = await playing(sintel());
+        mockApi.switchPlayback.mockResolvedValue(sintel({ revision: 1 }));
+        const switching = c.selectAudio(english());
+        await jest.advanceTimersByTimeAsync(AUDIO_SWITCH_TIMEOUT_MS);
+        expect(mockApi.switchPlayback).toHaveBeenCalledTimes(1);
+        mockEngine.emit({ type: 'time', position: 42.3, duration: 600 });
+        await switching;
+        expect(c.audioSwitches[0]).toMatchObject({ via: 'session', error: 'audio_switch_timeout' });
+        expect(c.audioSwitches[1]).toMatchObject({
+          via: 'server',
+          fallback: 'audio_switch_timeout',
+        });
+        await c.stop();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 });

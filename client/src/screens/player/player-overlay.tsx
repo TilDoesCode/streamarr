@@ -53,7 +53,7 @@ import {
 import { useRemoteKeys } from '@/player/remote-keys';
 import type { Clock } from '@/player/use-clock';
 import { useWindowControlsInset } from '@/shell/window-controls';
-import { barChipsLabelled, channelLayout, qualityLabel } from '@/player/overlay-labels';
+import { audioLayout, barChipsLabelled, qualityLabel } from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { effectiveMuted, TEST_MUTED } from '@/player/test-muted';
@@ -366,8 +366,8 @@ export function PlayerOverlay({
     audio: audioTrack
       ? [
           audioTrack.language ? languageName(audioTrack.language, i18n.language, t) : '',
-          // The source layout, like the audio panel; Info shows a conversion (5.1 → 2.0).
-          channelLayout(audioTrack.channels ?? audioTrack.deliveredChannels),
+          // What the viewer hears, like the audio panel; Info shows a conversion (5.1 → 2.0).
+          audioLayout(audioTrack, controller.renditionOf(audioTrack.index)),
         ]
           .filter(Boolean)
           .join(' ') || pt('controls.audio')

@@ -6,10 +6,11 @@ import { colors } from '@/theme';
 
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
+import { audioErrorCode } from './hls-audio-error';
 import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
-type NativeTrackList<T> = { length: number; [index: number]: T };
+type NativeTrackList<T> = EventTarget & { length: number; [index: number]: T };
 type NativeAudioTrack = { id: string; label: string; language: string; enabled: boolean };
 type VideoWithTracks = HTMLVideoElement & { audioTracks?: NativeTrackList<NativeAudioTrack> };
 
@@ -54,6 +55,8 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private startSeek = new StartSeek(0, () => undefined);
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private detach: (() => void) | null = null;
+  /** hls.js audio track whose first fragment is buffered (AUDIO_TRACK_SWITCHED), `null` until then. */
+  private audioSwitched: number | null = null;
   readonly mode: 'hls.js' | 'native' = prefersNativeHls() ? 'native' : 'hls.js';
 
   private readonly attachRef = (element: HTMLVideoElement | null) => this.attach(element);
@@ -101,14 +104,20 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.setState('error');
       }),
     ];
-    const textTracks = element.textTracks;
-    const onTextChange = () => this.emitTracks();
-    textTracks.addEventListener('addtrack', onTextChange);
-    textTracks.addEventListener('change', onTextChange);
+    const lists = [element.textTracks, (element as VideoWithTracks).audioTracks].filter(
+      (list) => !!list
+    );
+    const onTracks = () => this.emitTracks();
+    for (const list of lists) {
+      list.addEventListener('addtrack', onTracks);
+      list.addEventListener('change', onTracks);
+    }
     this.detach = () => {
       offs.forEach((off) => off());
-      textTracks.removeEventListener('addtrack', onTextChange);
-      textTracks.removeEventListener('change', onTextChange);
+      for (const list of lists) {
+        list.removeEventListener('addtrack', onTracks);
+        list.removeEventListener('change', onTracks);
+      }
     };
     if (this.pending) this.start(this.pending);
   }
@@ -150,7 +159,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         id: String(index),
         label: track.name || track.lang || `#${index + 1}`,
         language: track.lang,
-        selected: hls.audioTrack === index,
+        selected: (this.audioSwitched ?? hls.audioTrack) === index,
       }));
       subtitles = hls.subtitleTracks.map((track, index) => ({
         id: String(index),
@@ -198,6 +207,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     }
     this.pending = null;
     this.teardown();
+    this.audioSwitched = null;
     this.startSeek.cancel();
     this.watchFirstFrame(video);
     if (source.kind === 'hls' && this.mode === 'hls.js') {
@@ -206,13 +216,18 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       hls.subtitleDisplay = false;
       hls.on(Events.MANIFEST_PARSED, () => this.emitTracks());
       hls.on(Events.AUDIO_TRACKS_UPDATED, () => this.emitTracks());
-      hls.on(Events.AUDIO_TRACK_SWITCHED, () => this.emitTracks());
+      hls.on(Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
+        this.audioSwitched = data.id;
+        this.emitTracks();
+      });
       hls.on(Events.SUBTITLE_TRACKS_UPDATED, () => this.emitTracks());
       hls.on(Events.SUBTITLE_TRACK_SWITCH, () => this.emitTracks());
       hls.on(Events.FRAG_LOADED, () =>
         this.emit({ type: 'stats', stats: { bandwidth: Math.round(hls.bandwidthEstimate) } })
       );
       hls.on(Events.ERROR, (_event, data: ErrorData) => {
+        const audioCode = audioErrorCode(data);
+        if (audioCode) this.emit({ type: 'audioError', code: audioCode });
         if (!data.fatal) return;
         if (data.type === ErrorTypes.MEDIA_ERROR) {
           hls.recoverMediaError();
@@ -300,8 +315,10 @@ export class WebEngine extends EngineBase implements PlayerEngine {
 
   setAudioTrack(id: string): void {
     const index = Number(id);
-    if (this.hls) this.hls.audioTrack = index;
-    else {
+    if (this.hls) {
+      this.audioSwitched ??= this.hls.audioTrack;
+      this.hls.audioTrack = index;
+    } else {
       const list = this.video?.audioTracks;
       for (let i = 0; list && i < list.length; i++) list[i]!.enabled = i === index;
       this.emitTracks();

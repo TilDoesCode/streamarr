@@ -5,7 +5,10 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Decisions for the user
 
-- None open. Round G decisions (TV glass, both specs, metadata language, audio-only conversion) are in PLAN.md section 2.
+- Forced subtitles and audio switches (F5): today an audio switch never changes the subtitle (every engine; AVPlayer's own
+  "forced follows the audio language" is overridden), so German forced subtitles stay on after switching to English.
+  Alternative: a forced subtitle follows the audio language (forced track of the new language, else off), on the
+  client for in-session switches and in the `/switch` request. Round G decisions are in PLAN.md section 2.
 
 ## Needs Xcode (pending-ios)
 
@@ -16,6 +19,9 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - HeroFade has no fallback when the masked-view native module is missing (check after the first iOS pod install).
 
 ## Needs real hardware (Android TV, ideally a 2 GB device; a real phone)
+
+- F5: Android phone pass of the in-session audio switch not done: the dev build ANRs right after the player starts on
+  the 2 GB `Streamarr_Phone` AVD (Google TV covered ExoPlayer). Run it on a real phone or a release build.
 
 - HEVC Main10 / HDR10 / Dolby Vision decode and HDR display modes; AC-3 / E-AC-3 / DTS / TrueHD passthrough; 4K on a TV SoC.
 - VLC: direct rendering (zero copy, black on emulators), first-seek latency in MKV (2.7–7.3 s on emulators), HDR output
@@ -34,6 +40,13 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   hardware decode (the simulator reports H.264-only SDR), top shelf, audio passthrough.
 
 ## Player
+
+- F5: the native engines' in-session error path (rendition 404/500 -> `/switch`, 8 s timeout) is unit-tested only;
+  ExoPlayer/AVPlayer report no per-rendition HTTP error. Force it live once on a fast host (JS hook that alters the
+  rendition URL is not possible natively; needs a server-side test switch).
+- F5: Safari lists the forced subtitle with `kind: "forced"`, the web engine skips that kind, so the subtitle panel on
+  Safari misses the forced track (pre-existing; audio no longer depends on the count).
+- F5: the Apple HLS validator (`mediastreamvalidator`) was still not run on the audio-rendition master.
 
 - Decoder and dropped-frame figures are "—" for expo-video on Android; VLC decoder labels are best effort (needs an
   expo-video API for decoder stats).
@@ -114,6 +127,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
+- Audio renditions (F5): the delivered rendition codec differs between start and `/switch` for the same device and
+  title (Safari: AC-3 2.0 at revision 0, AAC 2.0 after `/switch`; iPhone/Apple TV: AAC 2.0 at start, AC-3 2.0 after some
+  `/switch`es and at a start with `audioLanguage: en`), so the panel label changes ("AAC 2.0" vs "Dolby Digital 2.0");
+  the rendition of Sintel's German AC-3 5.1 source is labelled 2.0.
+
 - Viewer sessions store the English literal "Unknown device" when the finishing request (second-factor, e-mail code
   verify) carries no deviceName, so a German device list shows English text (F4 slice 3). Store null (or carry the
   name from the first step) and let clients show their translated fallback.
@@ -152,11 +170,24 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Android TV and phone AVD boot snapshots hold an ended anna session (re-signed in by each run); refresh the snapshots
   once with a fresh sign-in, or sign in through a deep link in the run scripts.
 
+- F5 verify (mutation run, 7 of 9 caught): no test covers the engine-error -> `/switch` fallback of an in-session
+  switch, and none covers NAME-first track matching (`audio-renditions.ts`); add both.
+- F5 verify: `controller.audioSwitches` (measurement samples) is unbounded and ships in production; cap it or keep it
+  behind `__DEV__`. `audio-renditions.ts` has a three-line doc comment (convention: one line).
+- F5 verify: the remembered audio language is also sent for single-audio titles (harmless; skip it when there is one
+  track).
+- Google TV AVD (F5 verify): with the Metro debugger attached the dev build's JS stalls (~980 MB of 2 GB); one Fabric
+  SIGSEGV at sign-in, probably from an "rr" dev reload during adb text input. Prefer argent paste for passwords.
+
 ## Tests and tooling (more)
 - TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- F5: in-session audio rendition switch on web, Safari, ExoPlayer and AVPlayer with `/switch` fallback; ExoPlayer kept
+  old audio overrides across `/switch`; Safari/AVPlayer autoselect by system language overrode the server's and the
+  remembered pick; AVPlayer changed subtitles on an audio pick; one audio label for chip/panel/Info; jest exit hang.
 
 - F6: iPhone Home edge to edge, shared BackControl on detail pages (iPad/web/tablets/Android phones), season page under
   the rail, Versions panel close X, TV focus spacing rule (focus-clearance) across every focusable row, TV failed-start

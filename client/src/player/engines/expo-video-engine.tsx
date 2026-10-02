@@ -141,7 +141,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     const player = this.player;
     const audio: EngineTrack[] = player.availableAudioTracks.map((track, index) => ({
       id: `a${index}`,
-      label: track.label || track.name || track.language || `#${index + 1}`,
+      // `name` is the HLS NAME / file title; ExoPlayer's `label` is only the localised language.
+      label: track.name || track.label || track.language || `#${index + 1}`,
       language: track.language || undefined,
       selected: sameTrack(player.audioTrack, track),
     }));

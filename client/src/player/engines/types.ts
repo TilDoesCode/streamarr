@@ -48,6 +48,8 @@ export type EngineEvent =
   | { type: 'error'; reason: string }
   | { type: 'ended' }
   | { type: 'pip'; active: boolean }
+  /** An audio rendition failed to load; `code` is the server's error code when known. */
+  | { type: 'audioError'; code: string }
   | { type: 'stats'; stats: EngineStats };
 
 export type EngineSource = {

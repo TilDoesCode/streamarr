@@ -19,6 +19,7 @@ import { ErrorState, type ErrorAction } from '@/components/states/error-state';
 import { Text } from '@/components/ui/text';
 import { detailHref, isDetailOf, openerLeaf, playHref } from '@/navigation/routes';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { rememberedAudioLanguage } from '@/player/audio-preference';
 import { PlaybackController } from '@/player/controller';
 import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
@@ -113,7 +114,7 @@ export function PlayScreen() {
           workId,
           releaseId,
           startSeconds,
-          preferences,
+          preferences: { audioLanguage: rememberedAudioLanguage(account.id), ...preferences },
         });
         setController(current);
         if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;

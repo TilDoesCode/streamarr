@@ -1,6 +1,8 @@
 import type { Version } from '@/browse/queries';
 
 import {
+  audioLayout,
+  audioSpec,
   audioTransfer,
   barChipsLabelled,
   betterVersion,
@@ -92,5 +94,25 @@ describe('barChipsLabelled', () => {
     expect(barChipsLabelled(1032, false)).toBe(true);
     expect(barChipsLabelled(820, false)).toBe(false);
     expect(barChipsLabelled(744, false)).toBe(false);
+  });
+});
+
+describe('audio labels with renditions', () => {
+  const german = { index: 1, codec: 'ac3', channels: 6, deliveredAs: 'remux' } as never;
+  const rendition = {
+    id: '1',
+    streamIndex: 1,
+    language: 'de',
+    label: 'Deutsch · AAC 2.0',
+    channels: 2,
+    codec: 'aac',
+    default: true,
+  };
+
+  it('chip layout, panel spec and info all describe what the session delivers', () => {
+    expect(audioLayout(german, rendition)).toBe('2.0');
+    expect(audioSpec(german, rendition)).toBe('AAC 2.0');
+    expect(audioTransfer(german, rendition)).toBe('Dolby Digital 5.1 → AAC 2.0');
+    expect(audioSpec(german)).toBe('Dolby Digital 5.1');
   });
 });

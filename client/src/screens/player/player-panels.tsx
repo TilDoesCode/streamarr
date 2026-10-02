@@ -1,4 +1,5 @@
 'use no memo';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import { View } from 'react-native';
@@ -10,10 +11,10 @@ import { methodTone, SpecLabel } from '@/components/spec';
 import { Text } from '@/components/ui/text';
 import { VersionPicker } from '@/browse/version-picker';
 import { Sheet, SheetItem } from '@/components/ui/sheet';
-import { audioCodecLabel } from '@/lib/media-labels';
 import type { AudioTrack, PlaybackController, SubtitleTrack } from '@/player/controller';
 import { ENGINE_LABELS } from '@/player/engines';
 import {
+  audioSpec,
   audioTransfer,
   betterVersion,
   containerTransfer,
@@ -60,9 +61,22 @@ function trackLabel(
   );
 }
 
-function audioDescription(track: AudioTrack): string {
-  const codec = track.codec ? audioCodecLabel(track.codec) : '';
-  return [codec, track.channels ? `${track.channels}ch` : ''].filter(Boolean).join(' · ');
+/** Language name; the file's title only tells apart two tracks of one language (e.g. a commentary). */
+function audioLabel(
+  track: AudioTrack,
+  tracks: readonly AudioTrack[],
+  locale: string,
+  pt: PlayerT,
+  t: TFunction
+): string {
+  // With the app's own names (`t`), like the audio chip.
+  const language = track.language ? languageName(track.language, locale, t) : '';
+  const shared = tracks.filter((item) => item.language === track.language).length > 1;
+  if (language && !shared) return language;
+  return (
+    [language, track.title].filter(Boolean).join(' · ') ||
+    pt('trackFallback', { index: track.index })
+  );
 }
 
 function subtitleDescription(track: SubtitleTrack, pt: PlayerT): string {
@@ -80,7 +94,7 @@ export function PlayerPanels({
   onPanel,
 }: Props) {
   const pt = usePlayerT();
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const locale = i18n.language;
   const playback = controller.playback;
   const info = playback?.mediaInfo;
@@ -135,11 +149,11 @@ export function PlayerPanels({
         ) : undefined
       }>
       {panel === 'audio'
-        ? (info?.audioTracks ?? []).map((track) => (
+        ? (info?.audioTracks ?? []).map((track, _index, tracks) => (
             <SheetItem
               key={track.index}
-              label={trackLabel(track, locale, pt)}
-              description={audioDescription(track)}
+              label={audioLabel(track, tracks, locale, pt, t)}
+              description={audioSpec(track, controller.renditionOf(track.index))}
               selected={audio === track.index}
               preferred={audio === track.index}
               onPress={() => pick(() => controller.selectAudio(track))}
@@ -236,7 +250,11 @@ function InfoTable({
     [pt('info.method'), method ? pt(`methods.${method as 'direct'}`) : null, false],
     [pt('info.why'), why, false],
     [pt('info.video'), videoTransfer(info?.video), true],
-    [pt('info.audio'), audioTransfer(audio), true],
+    [
+      pt('info.audio'),
+      audioTransfer(audio, audio ? controller.renditionOf(audio.index) : undefined),
+      true,
+    ],
     [pt('info.container'), containerTransfer(info?.container, method), true],
     [
       pt('info.bitrate'),

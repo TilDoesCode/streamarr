@@ -3,6 +3,13 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import { toAppError, type ErrorParams } from '@/api/errors';
+import { rememberAudioLanguage } from '@/player/audio-preference';
+import {
+  engineTrackFor,
+  renditionFor,
+  renditionOfTrack,
+  type AudioRendition,
+} from '@/player/audio-renditions';
 import {
   createEngine,
   type EngineKind,
@@ -32,6 +39,25 @@ export type SubtitleTrack = NonNullable<
 export type NoticeKind = 'stepDown' | 'switchFailed' | 'offline';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 export type FailedState = { code: string; params?: ErrorParams; actions: string[] };
+/** One audio switch: in the session (rendition) or via `/switch`; `ms` until the new track plays on. */
+export type AudioSwitchSample = {
+  via: 'session' | 'server';
+  from: number | null;
+  to: number;
+  positionBefore: number;
+  positionAfter?: number;
+  ms?: number;
+  /** Why this switch failed / why it replaced a failed in-session switch. */
+  error?: string;
+  fallback?: string;
+};
+type PendingAudio = {
+  sample: AudioSwitchSample;
+  at: number;
+  engineId: string | null;
+  confirmed: boolean;
+  settle: (ok: boolean) => void;
+};
 
 export type ControllerOptions = {
   client: ApiClient;
@@ -49,7 +75,11 @@ export type ControllerOptions = {
 const MIN_RESUME_SECONDS = 30;
 
 const HEARTBEAT_MS = 10_000;
+/** An in-session audio switch that has not played on by then falls back to `/switch`. */
+export const AUDIO_SWITCH_TIMEOUT_MS = 8_000;
 const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
+/** How often a new source re-applies the server's track picks over the engine's own choice. */
+const MAX_SERVER_TRACK_APPLIES = 3;
 const STEADY_STATES = new Set<EngineState>(['playing', 'paused', 'buffering', 'ended']);
 
 /** One playback on this device: server start flow, engine, switches, step-down and progress reporting. */
@@ -71,6 +101,7 @@ export class PlaybackController {
   private abort = new AbortController();
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private engineOff: (() => void) | null = null;
+  private serverTracksOff: (() => void) | null = null;
   private appState: NativeEventSubscription | null = null;
   private stepDownRevision = -1;
   private lastGoodPosition = 0;
@@ -81,6 +112,11 @@ export class PlaybackController {
   private resumeChoice: ((seconds: number) => void) | null = null;
   /** Saved position offered in the `resume` phase. */
   resumeSeconds = 0;
+  readonly audioSwitches: AudioSwitchSample[] = [];
+  private pendingAudio: PendingAudio | null = null;
+  private lastAudioError: string | null = null;
+  /** The subtitle selection an in-session audio switch must not change. */
+  private keptSubtitle: { id: string | null; until: number } | null = null;
   readonly progress: ProgressQueue;
 
   constructor(readonly options: ControllerOptions) {
@@ -232,14 +268,19 @@ export class PlaybackController {
       engine = createEngine(kind);
       this.engine = engine;
       this.engineOff = engine.subscribe((event) => {
-        if (event.type === 'error') void this.stepDown(event.reason);
-        else if (event.type === 'ended') this.onEnded();
+        if (event.type === 'error' && this.pendingAudio?.engineId)
+          this.settleAudio(false, event.reason);
+        else if (event.type === 'error') void this.stepDown(event.reason);
+        else if (event.type === 'audioError') {
+          if (this.pendingAudio?.engineId) this.settleAudio(false, event.code);
+        } else if (event.type === 'ended') this.onEnded();
         // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
         else if (event.type === 'time') {
           if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
             this.startFloor = 0;
           if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
             this.lastGoodPosition = event.position;
+          this.audioPlaying(event.position);
           if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
             this.report('progress');
         } else if (event.type === 'pip') {
@@ -253,6 +294,10 @@ export class PlaybackController {
           // A freshly loaded source may autoplay although the viewer paused before the switch.
           if (event.type === 'state' && event.state === 'playing' && this.paused)
             this.engine?.pause();
+          if (event.type === 'tracks') {
+            this.audioConfirmed(event.tracks.audio);
+            this.holdSubtitle(event.tracks.subtitles);
+          }
           this.changed();
         }
       });
@@ -274,32 +319,54 @@ export class PlaybackController {
   }
 
   private applyServerTracks(engine: PlayerEngine, playback: Playback): void {
+    this.keptSubtitle = null;
     const info = playback.mediaInfo;
     const local = (info?.subtitleTracks ?? []).filter((track) =>
       LOCAL_SUBTITLES.has(track.deliveredAs ?? '')
     );
     const audio = info?.audioTracks?.find((track) => track.selected);
     const subtitle = local.find((track) => track.selected);
-    const expectAudio = audio?.deliveredAs === 'original';
+    const rendition = audio ? renditionFor(playback, audio.index) : undefined;
+    const expectAudio = audio?.deliveredAs === 'original' || !!rendition;
+    const audioCount = rendition
+      ? (playback.audioRenditions?.length ?? 0)
+      : (info?.audioTracks?.length ?? 0);
+    let subtitleId: string | null | undefined;
+    let subtitleApplied = 0;
+    let audioApplied = 0;
+    // Safari, AVPlayer and ExoPlayer may still pick by system or audio language: re-apply until the viewer picks.
     const unsubscribe = engine.subscribe((event) => {
       if (event.type !== 'tracks' || this.playback !== playback) return;
       const { tracks } = event;
-      if (tracks.subtitles.length < local.length) return;
-      if (expectAudio && tracks.audio.length < (info?.audioTracks?.length ?? 0)) return;
-      done();
-      const audioId = expectAudio && audio ? this.localTrackId('audio', audio.index) : null;
-      if (audioId !== null && !tracks.audio.find((track) => track.id === audioId)?.selected)
-        engine.setAudioTrack(audioId);
-      const subtitleId = subtitle ? this.localTrackId('subtitle', subtitle.index) : null;
-      const selected = tracks.subtitles.find((track) => track.selected)?.id ?? null;
-      if (subtitleId !== selected && (subtitleId !== null || local.length))
+      if (subtitleId === undefined && tracks.subtitles.length >= local.length)
+        subtitleId = subtitle ? this.localTrackId('subtitle', subtitle.index, tracks) : null;
+      const shown = tracks.subtitles.find((track) => track.selected)?.id ?? null;
+      if (
+        subtitleId !== undefined &&
+        subtitleId !== shown &&
+        (subtitleId !== null || local.length) &&
+        subtitleApplied < MAX_SERVER_TRACK_APPLIES
+      ) {
+        subtitleApplied += 1;
         engine.setSubtitleTrack(subtitleId);
+      }
+      if (expectAudio && tracks.audio.length < audioCount) return;
+      const audioId = expectAudio && audio ? this.localTrackId('audio', audio.index, tracks) : null;
+      if (audioId === null) return subtitleId !== undefined && !local.length ? done() : undefined;
+      if (audioApplied >= MAX_SERVER_TRACK_APPLIES) return done();
+      if (!tracks.audio.find((track) => track.id === audioId)?.selected) {
+        audioApplied += 1;
+        engine.setAudioTrack(audioId);
+      }
     });
+    this.serverTracksOff?.();
     const timer = setTimeout(() => done(), 15_000);
     const done = () => {
       unsubscribe();
       clearTimeout(timer);
+      if (this.serverTracksOff === done) this.serverTracksOff = null;
     };
+    this.serverTracksOff = done;
   }
 
   private report(event: 'start' | 'progress' | 'stop', position = this.position): void {
@@ -438,14 +505,21 @@ export class PlaybackController {
   }
 
   /** Engine track that renders server track `index` locally, if the delivery allows it. */
-  private localTrackId(kind: 'audio' | 'subtitle', index: number): string | null {
+  private localTrackId(
+    kind: 'audio' | 'subtitle',
+    index: number,
+    tracks = this.engine?.getSnapshot().tracks
+  ): string | null {
     const info = this.playback?.mediaInfo;
-    const engine = this.engine;
-    if (!info || !engine) return null;
-    const tracks = engine.getSnapshot().tracks;
+    if (!info || !tracks) return null;
     if (kind === 'audio') {
       const list = info.audioTracks ?? [];
       const track = list.find((item) => item.index === index);
+      const rendition = renditionFor(this.playback, index);
+      if (rendition) {
+        const renditions = this.playback?.audioRenditions ?? [];
+        return engineTrackFor(rendition, renditions, tracks.audio)?.id ?? null;
+      }
       if (track?.deliveredAs !== 'original') return null;
       return tracks.audio[list.indexOf(track)]?.id ?? null;
     }
@@ -461,6 +535,16 @@ export class PlaybackController {
     const info = this.playback?.mediaInfo;
     const list = info?.audioTracks ?? [];
     const engineTracks = this.engine?.getSnapshot().tracks.audio ?? [];
+    const pending = this.pendingAudio;
+    if (pending) return pending.sample.to;
+    const renditions = this.playback?.inSessionAudioSwitch
+      ? (this.playback.audioRenditions ?? [])
+      : [];
+    const heard = engineTracks.find((track) => track.selected);
+    if (renditions.length && heard) {
+      const rendition = renditionOfTrack(heard, renditions, engineTracks);
+      if (rendition) return rendition.streamIndex;
+    }
     const local = list.every((track) => track.deliveredAs === 'original');
     if (local && engineTracks.length === list.length) {
       const at = engineTracks.findIndex((track) => track.selected);
@@ -481,20 +565,140 @@ export class PlaybackController {
     return list.find((track) => track.selected)?.index ?? null;
   }
 
+  /** The session rendition that delivers server audio track `index`, if any. */
+  renditionOf(index: number): AudioRendition | undefined {
+    return renditionFor(this.playback, index);
+  }
+
   async selectAudio(track: AudioTrack): Promise<void> {
+    if (this.pendingAudio || track.index === this.currentAudio()) return;
+    this.serverTracksOff?.();
+    const from = this.currentAudio();
     const local = this.localTrackId('audio', track.index);
-    if (local !== null) {
+    if (local !== null && !renditionFor(this.playback, track.index)) {
       this.engine?.setAudioTrack(local);
+      this.rememberAudio(track);
       this.changed();
       return;
     }
-    await this.serverSwitch({
+    let fallback: string | undefined;
+    if (renditionFor(this.playback, track.index)) {
+      // No engine track for the rendition (not listed yet, or no match): straight to `/switch`.
+      const result =
+        local === null
+          ? 'no_engine_track'
+          : await this.switchAudio('session', from, track.index, local);
+      if (result === true) return void this.rememberAudio(track);
+      if (this.closed) return;
+      fallback = result;
+    }
+    const switched = this.switchAudio('server', from, track.index, null, fallback);
+    const ok = await this.serverSwitch({
       audioStreamIndex: track.index,
       subtitleStreamIndex: this.currentSubtitle() ?? -1,
     });
+    if (!ok) this.settleAudio(false);
+    else this.rememberAudio(track);
+    await switched;
+  }
+
+  /** The rendition's BCP-47 language when there is one ("en" rather than the file's "eng"). */
+  private rememberAudio(track: AudioTrack): void {
+    const language = this.renditionOf(track.index)?.language ?? track.language;
+    rememberAudioLanguage(this.options.accountId, language);
+  }
+
+  /** Starts measuring an audio switch; in the session it also asks the engine for track `engineId`. */
+  private switchAudio(
+    via: AudioSwitchSample['via'],
+    from: number | null,
+    to: number,
+    engineId: string | null,
+    fallback?: string
+  ): Promise<true | string> {
+    const sample: AudioSwitchSample = {
+      via,
+      from,
+      to,
+      positionBefore: this.resumePosition,
+      ...(fallback ? { fallback } : {}),
+    };
+    this.audioSwitches.push(sample);
+    this.lastAudioError = null;
+    return new Promise((resolve) => {
+      // A server switch runs its own start flow; this guard only frees the switch lock.
+      const timeout = AUDIO_SWITCH_TIMEOUT_MS * (engineId === null ? 4 : 1);
+      const timer = setTimeout(() => this.settleAudio(false, 'audio_switch_timeout'), timeout);
+      this.pendingAudio = {
+        sample,
+        at: Date.now(),
+        engineId,
+        confirmed: false,
+        settle: (ok) => {
+          clearTimeout(timer);
+          resolve(ok ? true : (this.lastAudioError ?? 'audio_switch_failed'));
+        },
+      };
+      if (engineId !== null) {
+        const subtitles = this.engine?.getSnapshot().tracks.subtitles ?? [];
+        this.keptSubtitle = {
+          id: subtitles.find((track) => track.selected)?.id ?? null,
+          until: Date.now() + AUDIO_SWITCH_TIMEOUT_MS,
+        };
+        this.engine?.setAudioTrack(engineId);
+      }
+      this.changed();
+    });
+  }
+
+  private settleAudio(ok: boolean, reason?: string): void {
+    const pending = this.pendingAudio;
+    if (!pending) return;
+    this.pendingAudio = null;
+    if (reason) this.lastAudioError = reason;
+    if (!ok && reason) pending.sample.error = reason;
+    pending.settle(ok);
+    this.changed();
+  }
+
+  private audioConfirmed(tracks: readonly { id: string; selected: boolean }[]): void {
+    const pending = this.pendingAudio;
+    if (!pending?.engineId || pending.confirmed) return;
+    pending.confirmed = tracks.find((track) => track.selected)?.id === pending.engineId;
+    // Paused, the clock does not move: the engine's confirmation completes the switch.
+    if (pending.confirmed && this.paused) this.completeAudio(this.position);
+  }
+
+  /** The new track plays on: the clock moved after the engine confirmed it (session) or the source started (server). */
+  private audioPlaying(position: number): void {
+    const pending = this.pendingAudio;
+    if (!pending || this.engine?.getSnapshot().state !== 'playing') return;
+    const ready = pending.engineId
+      ? pending.confirmed
+      : this.phase === 'playing' && !this.startFloor;
+    if (ready) this.completeAudio(position);
+  }
+
+  private completeAudio(position: number): void {
+    const pending = this.pendingAudio;
+    if (!pending) return;
+    pending.sample.ms = Date.now() - pending.at;
+    pending.sample.positionAfter = position;
+    this.settleAudio(true);
+  }
+
+  /** AVPlayer re-runs its automatic media selection on an audio pick and drops or adds subtitles: put ours back. */
+  private holdSubtitle(subtitles: readonly { id: string; selected: boolean }[]): void {
+    const kept = this.keptSubtitle;
+    if (!kept) return;
+    if (Date.now() > kept.until) return void (this.keptSubtitle = null);
+    const selected = subtitles.find((track) => track.selected)?.id ?? null;
+    if (selected !== kept.id) this.engine?.setSubtitleTrack(kept.id);
   }
 
   async selectSubtitle(track: SubtitleTrack | null): Promise<void> {
+    this.keptSubtitle = null;
+    this.serverTracksOff?.();
     const burnedIn = this.playback?.mediaInfo?.subtitleTracks?.some(
       (item) => item.selected && item.deliveredAs === 'burnedIn'
     );
@@ -570,8 +774,10 @@ export class PlaybackController {
     if (this.closed) return;
     const position = this.ended ? this.duration : this.position;
     this.abort.abort();
+    this.settleAudio(false);
     this.chooseStart(false);
     if (this.heartbeat) clearInterval(this.heartbeat);
+    this.serverTracksOff?.();
     this.appState?.remove();
     this.engineOff?.();
     const { engine, playback } = this;

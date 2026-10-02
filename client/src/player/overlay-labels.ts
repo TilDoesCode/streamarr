@@ -2,6 +2,7 @@ import { predictedMethod, type PredictedMethod } from '@/browse/version-format';
 import type { Version } from '@/browse/queries';
 import { audioCodecLabel, hdrLabel, videoCodecLabel } from '@/lib/media-labels';
 
+import type { AudioRendition } from './audio-renditions';
 import type { Playback } from './playback-api';
 import type { PlayerKey } from './use-player-t';
 
@@ -62,23 +63,40 @@ export function videoTransfer(video: Video | null | undefined): string | null {
   return `${source} → ${delivered}`;
 }
 
+/** What the player receives of a track: its session rendition, else the delivered (or source) format. */
+function received(track: Audio, rendition?: AudioRendition | null) {
+  return {
+    codec: rendition?.codec || track.deliveredCodec || track.codec || '',
+    channels: rendition?.channels || track.deliveredChannels || track.channels,
+  };
+}
+
+const spec = (codec: string, channels: number | null | undefined) =>
+  [codec ? audioCodecLabel(codec) : '', channelLayout(channels)].filter(Boolean).join(' ');
+
+/** Layout the viewer hears ("2.0"): the audio chip and the audio panel use the same value. */
+export function audioLayout(track: Audio, rendition?: AudioRendition | null): string {
+  return channelLayout(received(track, rendition).channels);
+}
+
+/** "AAC 2.0": the format the viewer hears, the audio panel's description. */
+export function audioSpec(track: Audio, rendition?: AudioRendition | null): string {
+  const { codec, channels } = received(track, rendition);
+  return spec(codec, channels);
+}
+
 /** "TrueHD 5.1 → AAC 2.0". */
-export function audioTransfer(track: Audio | null | undefined): string | null {
+export function audioTransfer(
+  track: Audio | null | undefined,
+  rendition?: AudioRendition | null
+): string | null {
   if (!track) return null;
-  const source = [track.codec ? audioCodecLabel(track.codec) : '', channelLayout(track.channels)]
-    .filter(Boolean)
-    .join(' ');
+  const source = spec(track.codec ?? '', track.channels);
+  const delivered = received(track, rendition);
   const changed =
-    (!!track.deliveredCodec && track.deliveredCodec !== track.codec) ||
-    (!!track.deliveredChannels && track.deliveredChannels !== track.channels);
-  if (!changed) return source;
-  const delivered = [
-    audioCodecLabel(track.deliveredCodec ?? track.codec ?? ''),
-    channelLayout(track.deliveredChannels ?? track.channels),
-  ]
-    .filter(Boolean)
-    .join(' ');
-  return `${source} → ${delivered}`;
+    (!!delivered.codec && delivered.codec !== track.codec) ||
+    (!!delivered.channels && delivered.channels !== track.channels);
+  return changed ? `${source} → ${spec(delivered.codec, delivered.channels)}` : source;
 }
 
 /** "MKV → HLS" when the server repackages or converts. */
