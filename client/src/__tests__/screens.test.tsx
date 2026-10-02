@@ -11,7 +11,8 @@ import * as probe from '@/api/probe';
 import type { AuthOptions } from '@/api/probe';
 import { createMemoryVault } from '@/accounts/types';
 import { ToastProvider } from '@/components/ui/toast';
-import { setLanguagePreference } from '@/i18n';
+import i18n, { setLanguagePreference } from '@/i18n';
+import { methodLabel } from '@/screens/settings/account-security';
 import { DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
@@ -630,15 +631,20 @@ describe('Settings account', () => {
     expect(await screen.findByText('aaaa-bbbb', {}, WAIT)).toBeOnTheScreen();
     expect(screen.getByTestId('settings-two-factor-toggle')).toHaveTextContent('Done');
     await user.press(screen.getByTestId('settings-recovery-done'));
-    expect(screen.getByTestId('settings-two-factor-toggle')).toHaveTextContent('Cancel');
+    // Saved: the panel closes instead of falling back to the password step.
+    expect(screen.getByTestId('settings-two-factor-toggle')).toHaveTextContent('Set up');
     expect(screen.queryByText('aaaa-bbbb')).toBeNull();
+    expect(screen.queryByTestId('settings-two-factor-password')).toBeNull();
   });
 
   it('offers new recovery codes and turning off when two-factor is on', async () => {
     handlers['/api/v1/viewer/me'] = () =>
       json(200, { ...profile, twoFactorEnabled: true, recoveryCodesRemaining: 7 });
+    let wrong = true;
     handlers['/api/v1/viewer/me/two-factor/disable'] = () =>
-      json(400, { error: { code: 'invalid_credentials', message: 'x' } });
+      wrong
+        ? json(400, { error: { code: 'invalid_credentials', message: 'x' } })
+        : new Response(null, { status: 204 });
     await open('/settings');
     expect(await screen.findByText('On · 7 recovery codes left')).toBeOnTheScreen();
     const user = userEvent.setup();
@@ -649,5 +655,126 @@ describe('Settings account', () => {
     expect(
       await screen.findByTestId('settings-two-factor-error-invalid_credentials', {}, WAIT)
     ).toBeOnTheScreen();
+    wrong = false;
+    await user.press(screen.getByTestId('settings-two-factor-disable'));
+    await waitFor(
+      () => expect(screen.queryByTestId('settings-two-factor-password')).toBeNull(),
+      WAIT
+    );
+  });
+
+  it('refetches devices and security when the Settings tab is shown again', async () => {
+    let list = sessions;
+    let me = profile;
+    handlers['/api/v1/viewer/me/sessions'] = () => json(200, list);
+    handlers['/api/v1/viewer/me'] = () => json(200, me);
+    const { router } = await open('/settings');
+    expect(await screen.findByText('Chrome (Web)')).toBeOnTheScreen();
+    const user = userEvent.setup();
+    await user.press(screen.getByTestId('nav-movies'));
+    await waitFor(() => expect(router.getPathname()).toBe('/movies'));
+    list = [...sessions, { ...sessions[1]!, id: 's3', deviceName: 'iPad' }];
+    me = { ...profile, twoFactorEnabled: true, recoveryCodesRemaining: 10 };
+    await user.press(screen.getByTestId('nav-settings'));
+    await waitFor(() => expect(router.getPathname()).toBe('/settings'));
+    expect(await screen.findByText('iPad', {}, WAIT)).toBeOnTheScreen();
+    expect(await screen.findByText(/10 recovery codes/, {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('signs out every other device with one request and refreshes the list', async () => {
+    const calls: string[] = [];
+    let list = [
+      ...sessions,
+      { ...sessions[1]!, id: 's3', deviceName: 'iPad', authMethod: 'email_code+2fa' },
+    ];
+    handlers['/api/v1/viewer/me/sessions'] = () => json(200, list);
+    handlers['/api/v1/viewer/me/sessions/sign-out-others'] = (_url, request) => {
+      calls.push(request.method);
+      list = list.filter((s) => s.current);
+      return json(200, { signedOut: 2 });
+    };
+    await open('/settings');
+    const button = await screen.findByTestId('settings-devices-sign-out-others');
+    expect(screen.getByText(/E-mail code \+ two-step code/)).toBeOnTheScreen();
+    await userEvent.setup().press(button);
+    expect(await screen.findByTestId('settings-devices-empty', {}, WAIT)).toBeOnTheScreen();
+    expect(screen.getByText('2 devices signed out')).toBeOnTheScreen();
+    expect(calls).toEqual(['POST']);
+  });
+
+  it('names sign-in methods in the app language', () => {
+    const t = i18n.getFixedT('en');
+    expect(methodLabel(t, 'password+2fa')).toBe('Password + two-step code');
+    expect(methodLabel(t, 'email_code')).toBe('E-mail code');
+    expect(methodLabel(t, 'passkey')).toBe('Other');
+    expect(methodLabel(i18n.getFixedT('de'), 'password+2fa')).toBe('Passwort + Bestätigungscode');
+  });
+
+  it('edits the display name and avatar colour', async () => {
+    const bodies: unknown[] = [];
+    handlers['/api/v1/viewer/me'] = async (_url, request) => {
+      if (request.method !== 'PATCH') return json(200, profile);
+      const body = (await request.json()) as { displayName: string | null; avatarKey: string };
+      bodies.push(body);
+      return json(200, { ...profile, displayName: body.displayName, avatarKey: body.avatarKey });
+    };
+    await open('/settings');
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('settings-edit-profile'));
+    const name = screen.getByTestId('settings-profile-name');
+    await user.clear(name);
+    await user.type(name, 'Anna B.');
+    await user.press(screen.getByTestId('settings-profile-avatar-coral'));
+    expect(screen.getByTestId('settings-profile-avatar-coral')).toBeChecked();
+    await user.press(screen.getByTestId('settings-profile-save'));
+    expect(await screen.findByText('Profile saved', {}, WAIT)).toBeOnTheScreen();
+    expect(bodies).toEqual([{ displayName: 'Anna B.', avatarKey: 'coral' }]);
+    expect(screen.queryByTestId('settings-profile-editor')).toBeNull();
+    expect(screen.getByTestId('settings-account-name')).toHaveTextContent('Anna B.');
+    expect(store.active()).toMatchObject({ displayName: 'Anna B.', avatarKey: 'coral', color: 5 });
+  });
+
+  it('shows the invalid name error from the server', async () => {
+    handlers['/api/v1/viewer/me'] = (_url, request) =>
+      request.method === 'PATCH'
+        ? json(400, { error: { code: 'invalid_display_name', message: 'x' } })
+        : json(200, profile);
+    await open('/settings');
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('settings-edit-profile'));
+    await user.press(screen.getByTestId('settings-profile-save'));
+    expect(
+      await screen.findByText('Names can have up to 64 printable characters.', {}, WAIT)
+    ).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-profile-editor')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('settings-profile-cancel'));
+    expect(screen.queryByTestId('settings-profile-editor')).toBeNull();
+    expect(screen.getByTestId('settings-sign-out')).toBeOnTheScreen();
+  });
+
+  it('counts down the e-mail code cooldown in Settings', async () => {
+    handlers['/api/v1/viewer/me/email'] = () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 'email_code_cooldown', message: 'x', retryAfterSeconds: 2 },
+        }),
+        { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '2' } }
+      );
+    await open('/settings');
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('settings-email-toggle'));
+    await user.type(screen.getByTestId('settings-email-address'), 'new@example.test');
+    await user.type(screen.getByTestId('settings-email-password'), 'streamarr');
+    await user.press(screen.getByTestId('settings-email-submit'));
+    expect(
+      await screen.findByTestId('settings-email-error-email_code_cooldown', {}, WAIT)
+    ).toHaveProp('role', 'status');
+    expect(screen.getByTestId('settings-email-submit')).toHaveTextContent('Wait 2 s');
+    expect(screen.getByTestId('settings-email-submit')).toBeDisabled();
+    await waitFor(
+      () => expect(screen.getByTestId('settings-email-submit')).toHaveTextContent('Send code'),
+      WAIT
+    );
+    expect(screen.queryByTestId('settings-email-error-email_code_cooldown')).toBeNull();
   });
 });

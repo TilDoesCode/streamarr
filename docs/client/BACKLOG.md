@@ -45,59 +45,59 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - iPad Safari (I2 verify): closing the player leaves the page in element fullscreen, so Safari's X covers the rail logo.
 - iPhone Safari (I2): a pause from the system fullscreen controls is not reflected in our Pause button until the next tap.
 - Replay from the end card, then stop at 1:44, keeps no resume point (detail shows "Erneut ansehen"; predates I2).
-- ExpoVideoEngine: the wantPlay/readyToPlay ordering has no unit test (only StartSeek is tested; I2 verify).
+  Root cause (F4 slice 4): `controller.replay()` keeps the same playbackId, and the server's WatchProgressRules ignore
+  later reports of the playback that completed the work (`CompletedBy`, against post-credits reports). Fix either on
+  the server (a report of the same playback after it went back to the start counts as a new play) or in the client
+  (replay starts a new playback via the play route). Needs a decision with the backend track.
 - Android phone (I1 verify): the Sign in button sits half under the keyboard/autofill strip (reachable via the IME Go
-  key or a short scroll); the logo hides only on iOS while typing.
+  key or a short scroll); the logo hides only on iOS while typing. Not re-checked in F4: Streamarr_Phone shows no soft
+  keyboard on a cold boot (hardware keyboard) and the dev build hit ANRs under host load.
 - Google TV dev build (I1 verify): LogBox "Can't perform a React state update on a component that hasn't mounted yet"
   at Home start, no stack.
 - iOS: NativeTabs accessibility labels keep the old language after a live language switch; large titles do not shrink
   on scroll on Search/Settings (I1).
-- TV: Down from the sort control skips the genre row and lands in the grid (F3 verify).
-- TV: Back from Settings goes straight to Home instead of through the rail (existing tab-page behaviour; F3 verify).
-- TV: after signing out a device, focus returns to the first row's Sign out instead of the neighbouring row (F3).
-- TV glass: buttons and chips keep the constant glass; only the Versions panel and the rail are sized per title (F3).
-- TV glass: the contrast table leaves out the release-name line on version cards (`subtleTv`, 14 px), measured about
-  3.4:1 instead of 4.5:1 over bright art; the colour predates F3 (F3 verify).
-- Near-square Android tablet: the rail logo sits under the status bar (F3 verify).
-- Web: a native scrollbar shows on the detail at 500 px (F3 verify).
-- Web: a duplicate history entry after popping the active tab (not re-checked since M2.4; P2 fixed titles and Back after
-  sign-in only).
 - Brand PNGs are large (icon 554 KB, top shelf 2.2–2.6 MB) because of dithered gradients; pngquant bands them. Revisit
   with a noise-free render if bundle size matters.
 
 - tvOS (I3): the native top tab bar stays visible while Settings scrolls (first device row slides under it); "Zurück zu
-  den Details" from a player started on Home focuses the Start tab; the next-episode player title drops the series
-  prefix; the Search heading sits lower than the other pages; the last Versions card's glow is cut at the panel bottom;
-  Left from the first Versions card does nothing; changing the sort moves focus to the Alle chip; Down from the sort
-  pill does nothing when no poster sits below it; Menu from a non-Start tab exits the app (Android TV goes Home first).
-- tvOS player (I3 verify 2): after Menu hides the overlay, focus stays on a hidden button, so Right moves hidden focus
-  and Select can press the hidden Audio button.
-- tvOS (I3 verify 2): a title without a playable version opens with focus on "Als gesehen markieren" (a stray Select
-  marks it watched).
+  den Details" from a player started on Home focuses the Start tab; the last Versions card's glow is cut at the panel
+  bottom; Menu from a non-Start tab exits the app (Android TV goes Home first).
+- tvOS player (I3 verify 2, re-checked in F4 slice 4): after Menu hides the overlay, focus stays on the hidden button
+  (forward30/Audio/Play-Pause), so Right moves hidden focus and Select presses the hidden button (Audio opens its
+  panel). The auto-hide path parks on the seek bar correctly. Tried without success: a deferred second
+  `requestTVFocus` (150/500 ms), `focusable={false}` on the hidden button row (focus left, but Up could not re-enter),
+  switching to the progress zone before hiding, and a press guard (the remote-key handler shows the overlay before the
+  button's onPress arrives). Needs a native look at react-native-tvos Menu handling / focus updates after Menu.
 - Deep link to /movie/<id> over an open movie detail replaces it instead of pushing; once closing the player then
   landed on the older detail (I3 verify).
-- iPhone: after closing the player the UI stays landscape until the device rotates (unlockAsync semantics) (I3 verify).
+
+- iPhone (F4 verify): the first player close after a fresh simulator boot + sign-in stayed landscape (1 of 3 closes;
+  later closes and the first close after an app restart restored portrait); cause not isolated, the orientation test
+  cannot catch it.
 
 ## Accounts
 
-- iOS NSURLCache still holds sign-in/second-factor/refresh responses with tokens from before B7 (the server always sent
-  no-store; iOS stored them anyway): F4 turns the URL cache off for API calls and purges `Cache.db` once (I1 verify).
-- Profile editing (display name, avatar) is not in Settings yet; sessions, password, e-mail and two-step are (F3).
-- Web/phone devices list shows the raw sign-in method "password+2fa" (needs an i18n mapping; F3 verify).
-- Web: the two-step panel stays open after "Saved" or after turning it off (F3 verify).
-- "Sign out all other devices" signs out one by one; a server endpoint would make it atomic. Not pressed live on the
-  shared Dev World account (F3).
-- Phone settings flows had a lighter live pass than web (adb text input unreliable); covered by screen tests (F3 verify).
-- iOS persists API responses in `Library/Caches/<bundle>/Cache.db` (NSURLCache) although the server sends
-  `Cache-Control: private, no-store` + `Pragma: no-cache` (B7 checked the stored entry's own headers): a 2FA sign-in with
-  both tokens, /viewer/me, next-up. F4: turn off the URL cache for the API on iOS (e.g. a custom NSURLSession
-  configuration with `URLCache = nil` / `requestCachePolicy = reloadIgnoringLocalCacheData`, or clear `NSURLCache` after
-  sign-in/refresh) and verify Cache.db holds no `/api/v1/viewer/auth` entry afterwards (B7).
-- Version reasons for a `vlc` prediction are now the VLC candidate's codes (B7): `vlc_fallback`, `image_subtitle_vlc`
-  (`codec`), `hdr_tone_mapped` (`hdr`, `engine`=`vlc`), `direct_play`, plus assumptions. The client's REASONS set does
-  not know the first three yet, so a VLC version shows no reason line (`direct_play` is quiet). F4: add de/en strings
-  ("Plays with VLC, the built-in player cannot play this version", "VLC plays the original file so the {codec} subtitle
-  shows", "VLC tone-maps {hdr} to this display") and map them in `version-format.ts`.
+- DONE in F4 slice 3 (iPhone): API responses no longer reach NSURLCache. Native module client/modules/url-cache gives RN
+  networking and expo/fetch a session without URLCache, purges the old shared cache and replaces it with a 0-byte cache
+  (the dev client's network inspector re-sends requests through a default session). Cache.db before 96 rows / 63 /api/
+  / 4 /viewer/auth, after 0. tvOS: the module (podspec ios + tvos) is in the next tvOS build; the cached tvOS app
+  (~/.cache/streamarr-tvos-app) still lacks it.
+- DONE in F4 slice 2 (Android phone + web; iPhone/iPad live pass in slice 3): profile editing (display name, avatar
+  colour) in Settings; translated sign-in methods incl. `password+2fa`/`email_code+2fa`; the two-step panel closes
+  after "Saved" and after turning it off; "Sign out all other devices" uses the atomic B4 endpoint; the e-mail code
+  cooldown shows a live "Wait N s" on a disabled button (onboarding send/resend, Settings e-mail).
+- Android phone dev build on the 8 GB Mac: ANRs ("isn't responding") under host memory pressure, once on the two-step
+  setup screen (QR + secret; main thread busy in vsync/Choreographer, 78 s CPU). Re-check on a less loaded run; if it
+  reproduces, profile the QR `Svg` path and the Glass panel animations (F4 slice 2). F4 slice 4: the live "I saved
+  them" close on the phone was not reached again (cold-booted Streamarr_Phone: app ANR after the sign-in, then
+  "Process system isn't responding"); it is screen-tested and was verified live on the iPhone (slice 3).
+
+- iOS (F4 slice 3): a `streamarr:///sign-in?...` deep link opened while signed in shows the sign-in screen without a back
+  button (AuthScaffold uses `router.canGoBack()`, false there); only another deep link leaves it. Offer "back to the
+  app" (replace to the tabs) when a profile is active.
+
+- Web (F4 verify): every tab writes the whole account list to localStorage, so a second open tab can overwrite an edited
+  display name until `/viewer/me` resyncs; write per-account or merge on storage events.
 
 ## Tests and tooling
 
@@ -106,11 +106,16 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
+- Viewer sessions store the English literal "Unknown device" when the finishing request (second-factor, e-mail code
+  verify) carries no deviceName, so a German device list shows English text (F4 slice 3). Store null (or carry the
+  name from the first step) and let clients show their translated fallback.
 - Audio renditions: `mediastreamvalidator` never run (Apple HLS tools not installed; ffprobe + hlssim instead); rendition
   segments ignore byte ranges like video; a group stays mixed when the default rendition is copied FLAC/Opus/MP3 (B6).
 - Dev World has no HLG or Dolby Vision source and its ffmpeg has no zscale: HLG/DV tagging is covered by unit tests only,
   and the Dev World HDR10 -> SDR transcode is untone-mapped (washed out, tagged BT.709) (B6).
-- Dev World stream info calls the HDR10 4K source "SDR" in the player Info panel (I3; check server vs client label).
+- Dev World stream info for the HDR10 4K BBB source probably carries `videoRange` SDR next to `hdr` hdr10 (the client
+  label preferred videoRange; fixed in F4 to name the `hdr` format). Not confirmed by a playback request; check the
+  stream tags of the generated file (I3, F4).
 - B6 verify: the SDR tag chain after `hwupload` on VAAPI/QSV is untested on real hardware; one Core test flaked once
   in a full run.
 - B7 verify: docs/api.md versions section does not list `predictedMethod: vlc` and that VLC predictions carry VLC
@@ -130,11 +135,30 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 - Offline downloads of series and movies on phones and tablets.
 
+- F4 verify: `url-cache-module.test.ts` only greps the Objective-C source (a native smoke/Cache.db check in CI would be
+  real coverage); `orientation.test.ts` cannot catch the first-close case.
+
 ## Tests and tooling (more)
 - TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- F4 (slices 2-4): accounts (profile editor with Cancel beside Save, translated sign-in methods, two-step panel closes,
+  atomic sign-out of others, live e-mail cooldown in the info tone), toasts pass taps through and sit in the corner on
+  desktop web/tablet, web 390 Settings without scrollbar, NSURLCache off for API traffic on iOS (modules/url-cache),
+  Settings refetch on refocus, iPhone returns to portrait after the player, tvOS: inert "no versions" note takes the
+  first focus, sort change keeps focus on the pill, Down from the pill reaches the first row's last poster, Left from a
+  Versions card reaches the detail actions, next-episode title keeps the series, Search/Settings headings at the page
+  top; slice-1 TV changes re-checked on Apple TV (release-name tone, neighbour focus); tests for the Glass ambient
+  fallback and the ExpoVideoEngine start ordering; player Info names the HDR format (not SDR) for an HDR10 source; the
+  audio chip shows the source layout like the audio panel.
+
+- F4 (slice 1): Android TV sort -> genre chip (nextFocusDown), tab pages Back -> rail -> Home, device rows reachable
+  again on Android TV + focus to the neighbouring row after a sign-out, glass buttons/chips sized per title (ambient
+  highlight), release-name line 4.5:1 (muted tone on TV, in the contrast table), VLC reason lines, web 500 px detail
+  without scrollbar, popping the active tab is a history pop on web (no duplicate entry); near-square Android rail
+  checked (I2's insets). tvOS re-checked in slice 4 (release-name tone, neighbour focus).
 
 - I3: tvOS build and run on the Apple TV 4K + 1080p simulators (prebuild switches documented), WebDriverAgent remote
   helper `docs/client/tv-remote.sh`; TV lists no longer collapse in the 1 pt TVFocusGuideView; hero/rows/tab-bar focus,

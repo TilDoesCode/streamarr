@@ -35,7 +35,8 @@ function videoLine(codec: string | null | undefined, video: Video, height: numbe
   return [
     codec ? videoCodecLabel(codec) : '',
     video.bitDepth > 8 ? `${video.bitDepth}-bit` : '',
-    hdr ? hdrLabel(video.videoRange ?? video.hdr ?? '') : '',
+    // The format (`hdr`) names it; `videoRange` is the transfer and reads SDR on mistagged files.
+    hdr ? hdrLabel((isHdr(video.hdr) ? video.hdr : video.videoRange) ?? '') : '',
     height ? `${height}p` : '',
   ]
     .filter(Boolean)

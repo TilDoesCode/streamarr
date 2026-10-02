@@ -15,7 +15,7 @@ import { colors, DesignGutter, useDesign } from '@/theme';
 import { SHELL_NAV_THEME } from '@/theme/navigation';
 
 import { ScreenFocusProvider, useScreenFocusHost } from './screen-focus';
-import { HOME_TAB, TAB_TRIGGERS, type TabSpec } from './tabs';
+import { HOME_TAB, TAB_TRIGGERS, TABS, type TabSpec } from './tabs';
 import { exitDialogReducer, tvBackAction } from './tv-back';
 
 const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
@@ -58,8 +58,10 @@ export function LargeShell() {
       railByBack: screens.isRailByBack(),
       canGoBack: router.canGoBack(),
       atHome: pathname === HOME_TAB.href,
+      atTabPage: pathname !== HOME_TAB.href && TABS.some((tab) => tab.href === pathname),
     });
     if (action === 'closeRail') screens.focusActive();
+    if (action === 'rail') screens.host.focusRail();
     if (action === 'home') router.replace(HOME_TAB.href);
     if (action === 'confirmExit') setExitOpen(true);
     return action !== 'navigate';
@@ -95,8 +97,8 @@ export function LargeShell() {
       if (tab.name === activeName) return screens.focusActive();
       screens.focusNext();
     } else if (tab.name === activeName) {
-      // The active tab again: back to its first screen.
-      return router.navigate(tab.href);
+      // The active tab again: back to its first screen (a pop, so web history goes back instead of adding an entry).
+      return router.canDismiss() ? router.dismissAll() : router.navigate(tab.href);
     }
     navigation.dispatch({ type: 'JUMP_TO', payload: { name: tab.name } });
   };

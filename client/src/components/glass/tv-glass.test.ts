@@ -2,6 +2,7 @@ import { composite, contrastRatio, type Rgb } from '@/lib/color';
 import { colors } from '@/theme';
 
 import {
+  glassHighlight,
   minContrast,
   TV_GLASS,
   TV_GLASS_TEXT,
@@ -138,5 +139,28 @@ describe('Android TV glass per title (art highlight)', () => {
     expect(tvGlassBase(null, 'regular', null)).toBe(tvGlassBase(null));
     expect(tvGlassBase(null, 'regular', HIGHLIGHTS.pioneerOne)).not.toBe(tvGlassBase(null));
     expect(tvPanelUnderlay(tvGlassAlpha(null))).toBe(TV_GLASS.panelUnderlay);
+  });
+});
+
+describe('glassHighlight', () => {
+  const title = { image: 'https://art.test/bbb.jpg', highlight: '#FFFFDD' };
+
+  it('follows the ambient title when the glass has no highlight of its own', () => {
+    expect(glassHighlight(undefined, title)).toBe('#FFFFDD');
+    // The bright sky needs a darker glass than the constant fallback.
+    expect(tvGlassBase(null, 'regular', glassHighlight(undefined, title))).not.toBe(
+      tvGlassBase(null, 'regular', null)
+    );
+  });
+
+  it('keeps an explicit highlight, also an explicit null', () => {
+    expect(glassHighlight('#DBDBFF', title)).toBe('#DBDBFF');
+    expect(glassHighlight(null, title)).toBeNull();
+  });
+
+  it('ignores an ambient title without art or without a measured highlight', () => {
+    expect(glassHighlight(undefined, null)).toBeNull();
+    expect(glassHighlight(undefined, { highlight: '#FFFFDD' })).toBeNull();
+    expect(glassHighlight(undefined, { image: 'https://art.test/x.jpg' })).toBeNull();
   });
 });

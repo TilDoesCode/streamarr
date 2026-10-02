@@ -39,7 +39,9 @@ export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
 
-type Envelope = { error?: { code?: unknown; message?: unknown; params?: unknown } };
+type Envelope = {
+  error?: { code?: unknown; message?: unknown; params?: unknown; retryAfterSeconds?: unknown };
+};
 
 function stringParams(value: unknown): ErrorParams | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -74,7 +76,12 @@ export function errorFromResponse(response: Pick<Response, 'status' | 'headers'>
     status: response.status,
     params: stringParams(envelope?.error?.params),
     detail: typeof message === 'string' ? message : typeof body === 'string' ? body : undefined,
-    retryAfter: retryAfterSeconds(response.headers),
+    // Web: CORS may hide Retry-After; cooldown answers repeat it in the body.
+    retryAfter:
+      retryAfterSeconds(response.headers) ??
+      (typeof envelope?.error?.retryAfterSeconds === 'number'
+        ? envelope.error.retryAfterSeconds
+        : undefined),
   });
 }
 

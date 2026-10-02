@@ -1,7 +1,7 @@
 import { Film } from 'lucide-react-native';
-import { useState, type Ref, type RefObject } from 'react';
+import { createContext, use, useState, type Ref, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, View } from 'react-native';
+import { findNodeHandle, Platform, ScrollView, View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { toAppError } from '@/api/errors';
@@ -29,6 +29,8 @@ import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
 import { useShell } from '@/shell/use-shell';
 import { colors, fonts } from '@/theme';
+
+const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 
 export type VersionPanelProps = {
   workId: string | null | undefined;
@@ -189,6 +191,9 @@ export function VersionPanel({
   );
 }
 
+/** Apple TV: where Left from a version card goes (the detail actions; nothing lines up geometrically). */
+export const PanelExitContext = createContext<View | null>(null);
+
 /** One version card of the panel (also the player's glass version panel). */
 export function VersionPanelCard({
   version,
@@ -210,6 +215,7 @@ export function VersionPanelCard({
   const { t, i18n } = useTranslation();
   const format = useFormat();
   const { s, font } = useShell();
+  const exit = use(PanelExitContext);
   const method = predictedMethod(version);
   const reasons = methodReasons(version, t);
   const headline = versionHeadline(version) || version.name || '';
@@ -256,6 +262,7 @@ export function VersionPanelCard({
       testID={`version-${version.rank}`}
       focusable={focusable}
       onFocus={onFocus}
+      nextFocusLeft={APPLE_TV && exit ? (findNodeHandle(exit) ?? undefined) : undefined}
       role="button"
       accessibilityLabel={[headline, spec, facts.join(', '), health, local, methodLabel, why]
         .filter(Boolean)
@@ -336,7 +343,7 @@ export function VersionPanelCard({
           {version.name ? (
             <Text
               testID={`version-${version.rank}-name`}
-              tone="subtle"
+              tone={Platform.isTV ? 'muted' : 'subtle'}
               numberOfLines={1}
               selectable={Platform.OS === 'web'}
               style={{ fontFamily: fonts.mono, fontSize: font(14, 11), lineHeight: font(20, 16) }}>

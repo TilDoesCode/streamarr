@@ -34,9 +34,11 @@ export function WebShell() {
   const items = useRef<(View | null)[]>([]);
 
   const select = (tab: TabSpec) => {
-    // The active tab again: back to its first screen.
-    if (tab.name === activeName) router.navigate(tab.href);
-    else navigation.dispatch({ type: 'JUMP_TO', payload: { name: tab.name } });
+    // The active tab again: back to its first screen (a pop, so the browser goes back instead of adding an entry).
+    if (tab.name === activeName) {
+      if (router.canDismiss()) router.dismissAll();
+      else router.navigate(tab.href);
+    } else navigation.dispatch({ type: 'JUMP_TO', payload: { name: tab.name } });
   };
 
   return (

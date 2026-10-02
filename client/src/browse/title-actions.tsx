@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Check, EyeOff, Film, Layers, Play, RotateCcw } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { useMarkPlayed, useVersions, type WatchState } from '@/browse/queries';
 import { GlassButton } from '@/components/glass';
@@ -197,7 +197,9 @@ export function TitleActions({
             testID={`${testIDPrefix}-no-versions`}
             icon={Film}
             label={t('common.noVersions')}
-            disabled
+            // TV: the inert note takes the first focus, so a stray Select changes nothing.
+            disabled={!Platform.isTV}
+            hasTVPreferredFocus
           />
         ) : workId ? (
           <GlassButton
@@ -236,7 +238,7 @@ export function TitleActions({
             label={t(played ? 'detail.markUnplayed' : 'detail.markPlayed')}
             tint={tint}
             disabled={pending}
-            hasTVPreferredFocus={!workId || noVersions}
+            hasTVPreferredFocus={!workId}
             onPress={toggle}
           />
         ) : null}

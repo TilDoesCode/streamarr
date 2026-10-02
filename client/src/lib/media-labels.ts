@@ -47,12 +47,24 @@ const HDR: Record<string, string> = {
   hdr: 'HDR',
 };
 
+const SUBTITLE: Record<string, string> = {
+  pgs: 'PGS',
+  pgssub: 'PGS',
+  hdmv_pgs_subtitle: 'PGS',
+  dvd_subtitle: 'VobSub',
+  dvdsub: 'VobSub',
+  vobsub: 'VobSub',
+  dvb_subtitle: 'DVB',
+  dvbsub: 'DVB',
+};
+
 const label = (table: Record<string, string>, value: string) =>
   table[value.toLowerCase()] ?? value.toUpperCase();
 
 export const videoCodecLabel = (codec: string) => label(VIDEO, codec);
 export const audioCodecLabel = (codec: string) => label(AUDIO, codec);
 export const hdrLabel = (format: string) => label(HDR, format);
+export const subtitleCodecLabel = (codec: string) => label(SUBTITLE, codec);
 
 /** 2160p → 4K; other heights stay as the release names them. */
 export function resolutionLabel(resolution: string): string {

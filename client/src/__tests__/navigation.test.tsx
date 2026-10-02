@@ -299,6 +299,16 @@ describe('TV back chain', () => {
     expect(tvBackAction({ railFocused: false, canGoBack: false, atHome: false })).toBe('home');
   });
 
+  it('takes a tab page (Settings) through the rail before Home', () => {
+    const page = { canGoBack: true, atHome: false, atTabPage: true };
+    expect(tvBackAction({ ...page, railFocused: false })).toBe('rail');
+    expect(tvBackAction({ ...page, railFocused: true, railByBack: true })).toBe('navigate');
+    expect(tvBackAction({ ...page, railFocused: true })).toBe('closeRail');
+    expect(tvBackAction({ ...page, canGoBack: false, railFocused: true, railByBack: true })).toBe(
+      'home'
+    );
+  });
+
   it('leaves a library page for Home once its own steps handed focus to the rail', () => {
     let zone: LibraryZone = 'grid';
     const back = () => {

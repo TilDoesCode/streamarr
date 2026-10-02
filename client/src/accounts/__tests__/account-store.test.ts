@@ -1,6 +1,7 @@
 import {
   AccountStore,
   AVATAR_COLORS,
+  AVATAR_KEYS,
   profileColor,
   type KeyValueStorage,
 } from '@/accounts/account-store';
@@ -80,6 +81,20 @@ describe('AccountStore', () => {
     expect(profileColor('v-anna')).toBe(alone.color);
     expect(profileColor('v-anna')).toBe(profileColor('v-anna'));
     expect(profileColor('v-anna')).toBeLessThan(AVATAR_COLORS);
+  });
+
+  it('uses the chosen avatar key as the colour slot', async () => {
+    expect(AVATAR_KEYS.map((key) => profileColor('v-anna', key))).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(profileColor('v-anna', 'CORAL')).toBe(5);
+    expect(profileColor('v-anna', 'plaid')).toBe(profileColor('v-anna'));
+    expect(profileColor('v-anna', null)).toBe(profileColor('v-anna'));
+    const store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
+    const anna = await store.addSignedIn(
+      DEV_WORLD,
+      { ...viewer('v-anna', 'anna'), avatarKey: 'rose' },
+      tokens(1)
+    );
+    expect(anna).toMatchObject({ avatarKey: 'rose', color: 6 });
   });
 
   it('ignores stored colours and load order when reading the account list', () => {

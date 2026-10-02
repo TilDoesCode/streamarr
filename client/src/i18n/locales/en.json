@@ -116,6 +116,25 @@
       "signOutTitle": "Sign out {name}?",
       "signOutMessage": "The profile stays on this device. Sign in again to keep watching."
     },
+    "profile": {
+      "edit": "Edit profile",
+      "name": "Display name",
+      "nameHint": "Leave empty to use {username}.",
+      "avatar": "Avatar colour",
+      "automatic": "Automatic",
+      "save": "Save profile",
+      "saved": "Profile saved",
+      "colors": {
+        "cyan": "Cyan",
+        "blue": "Blue",
+        "teal": "Teal",
+        "green": "Green",
+        "amber": "Amber",
+        "coral": "Coral",
+        "rose": "Rose",
+        "slate": "Slate"
+      }
+    },
     "about": {
       "title": "About",
       "appVersion": "App version",
@@ -142,10 +161,13 @@
       "onlyThis": "No other device is signed in.",
       "method": {
         "password": "Password",
+        "password+2fa": "Password + two-step code",
         "email_code": "E-mail code",
+        "email_code+2fa": "E-mail code + two-step code",
         "password_reset": "Password reset",
         "other": "Other"
-      }
+      },
+      "signedOutOthers": "{count, plural, =0 {No other devices were signed in} one {One device signed out} other {# devices signed out}}"
     },
     "security": {
       "title": "Sign-in and security",
@@ -241,7 +263,9 @@
       "codePlaceholder": "ABCD-EFGH",
       "resend": "Send a new code",
       "resent": "A new code is on its way.",
-      "submit": "Sign in"
+      "submit": "Sign in",
+      "wait": "Wait {seconds} s",
+      "waitMinutes": "Wait {minutes} min"
     },
     "forgot": {
       "title": "Reset your password",
@@ -969,7 +993,9 @@
       "direct_play": "Plays the original file",
       "dolby_vision_profile_unknown": "Dolby Vision profile unknown",
       "dolby_vision_profile_unsupported": "Dolby Vision is converted, this profile isn’t supported",
+      "hdr_tone_mapped": "VLC tone-maps {hdr} to this display",
       "hdr_unsupported": "{hdr} is converted to SDR for this screen",
+      "image_subtitle_vlc": "VLC plays the original file so the {codec} subtitle shows",
       "resolution_assumed": "Resolution assumed ({height}p)",
       "resolution_exceeds_limit": "Video is scaled down to the {max}p limit",
       "subtitle_burned_in": "Subtitles are burned into the picture",
@@ -980,7 +1006,8 @@
       "video_codec_not_remuxable": "Video can’t be repackaged, it is converted",
       "video_codec_unknown": "Video format unknown",
       "video_codec_unsupported": "{codec} video is converted for this device",
-      "video_profile_unsupported": "Video is converted, the profile isn’t supported"
+      "video_profile_unsupported": "Video is converted, the profile isn’t supported",
+      "vlc_fallback": "The built-in player can’t play this version"
     },
     "languages": {
       "de": "German",

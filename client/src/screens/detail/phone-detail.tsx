@@ -119,6 +119,8 @@ export function PhoneDetail({
       <Animated.ScrollView
         onScroll={onScroll}
         scrollEventThrottle={16}
+        // Web: no permanent native scrollbar over the full-bleed art (phones show a transient one).
+        showsVerticalScrollIndicator={Platform.OS !== 'web'}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, design.space.lg) + 96 }}>
         <LinearGradient

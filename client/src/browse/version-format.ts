@@ -7,6 +7,7 @@ import {
   hdrLabel,
   MEDIA_LABELS,
   resolutionLabel,
+  subtitleCodecLabel,
   videoCodecLabel,
 } from '@/lib/media-labels';
 
@@ -90,9 +91,19 @@ export function plainReasons(
   ).slice(0, max);
 }
 
-// Picture before sound before packaging before subtitles.
+// Engine, then picture before sound before packaging before subtitles.
 function reasonWeight(code: string | null | undefined): number {
-  const prefix = ['video', 'hdr', 'dolby', 'bit', 'resolution', 'audio', 'container', 'bitrate'];
+  const prefix = [
+    'vlc',
+    'video',
+    'hdr',
+    'dolby',
+    'bit',
+    'resolution',
+    'audio',
+    'container',
+    'bitrate',
+  ];
   const index = prefix.findIndex((part) => code?.startsWith(part));
   return index < 0 ? prefix.length : index;
 }
@@ -162,7 +173,9 @@ const REASONS = new Set([
   'direct_play',
   'dolby_vision_profile_unknown',
   'dolby_vision_profile_unsupported',
+  'hdr_tone_mapped',
   'hdr_unsupported',
+  'image_subtitle_vlc',
   'resolution_assumed',
   'resolution_exceeds_limit',
   'subtitle_burned_in',
@@ -174,6 +187,7 @@ const REASONS = new Set([
   'video_codec_unknown',
   'video_codec_unsupported',
   'video_profile_unsupported',
+  'vlc_fallback',
 ]);
 
 type ReasonCode = typeof REASONS extends Set<infer T> ? T : never;
@@ -186,7 +200,11 @@ export function reasonTexts(reasons: readonly Reason[] | null | undefined, t: TF
     if (!reason.code || !REASONS.has(reason.code)) return [];
     if (converted && reason.code === 'audio_codec_unsupported') return [];
     const params = reason.params ?? {};
-    const codecLabel = reason.code.startsWith('audio_') ? audioCodecLabel : videoCodecLabel;
+    const codecLabel = reason.code.startsWith('audio_')
+      ? audioCodecLabel
+      : reason.code.includes('subtitle')
+        ? subtitleCodecLabel
+        : videoCodecLabel;
     const codec = params.codec ? codecLabel(params.codec) : '';
     return [
       t(`versions.reasons.${reason.code as ReasonCode}` as 'versions.reasons.direct_play', {

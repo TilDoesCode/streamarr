@@ -7,6 +7,10 @@ export type ErrorLike = { code: string; params?: ErrorParams };
 
 export type ErrorText = { title: string; message: string };
 
+/** Wait states (a code-request cooldown) are information, not failures. */
+export const errorTone = (error: ErrorLike): 'info' | 'danger' =>
+  error.code === 'email_code_cooldown' ? 'info' : 'danger';
+
 /** Localized title + message for any error code; unknown codes fall back to the generic text. */
 export function describeError(t: TFunction, error: ErrorLike): ErrorText {
   const code = isKnownErrorCode(error.code) ? error.code : 'unknown';

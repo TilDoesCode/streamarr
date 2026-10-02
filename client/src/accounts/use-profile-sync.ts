@@ -6,11 +6,29 @@ import { useWatchRefreshOnForeground } from '@/browse/queries';
 import { queryKeys } from '@/query/keys';
 import { STALE } from '@/query/query-client';
 
-import { useAccountsApi } from './accounts-provider';
-import { viewerFromProfile } from './auth-api';
+import { useAccountsApi, type AccountsApi } from './accounts-provider';
+import { profileColor } from './account-store';
+import { viewerFromProfile, type ViewerProfile } from './auth-api';
 import type { Account } from './types';
 
-/** Keeps the stored profile (name, forced password change) in step with the server; also checks the session. */
+/** Stores a fresh /viewer/me answer on the local profile (name, avatar, forced password change). */
+export function syncProfile(api: AccountsApi, account: Account, profile: ViewerProfile) {
+  const viewer = viewerFromProfile(profile);
+  const avatarKey = viewer.avatarKey ?? null;
+  if (
+    viewer.displayName !== account.displayName ||
+    avatarKey !== (account.avatarKey ?? null) ||
+    viewer.mustChangePassword !== account.mustChangePassword
+  )
+    api.store.update(account.id, {
+      displayName: viewer.displayName,
+      avatarKey,
+      color: profileColor(account.viewerId, avatarKey),
+      mustChangePassword: viewer.mustChangePassword,
+    });
+}
+
+/** Keeps the stored profile (name, avatar, forced password change) in step with the server; also checks the session. */
 export function useProfileSync(account: Account): void {
   const api = useAccountsApi();
   const { data } = useQuery({
@@ -22,16 +40,7 @@ export function useProfileSync(account: Account): void {
     refetchInterval: STALE.profile,
   });
   useEffect(() => {
-    if (!data) return;
-    const viewer = viewerFromProfile(data);
-    if (
-      viewer.displayName !== account.displayName ||
-      viewer.mustChangePassword !== account.mustChangePassword
-    )
-      api.store.update(account.id, {
-        displayName: viewer.displayName,
-        mustChangePassword: viewer.mustChangePassword,
-      });
+    if (data) syncProfile(api, account, data);
   }, [data, account, api]);
 }
 

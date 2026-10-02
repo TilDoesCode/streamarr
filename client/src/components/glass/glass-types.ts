@@ -9,7 +9,7 @@ export type GlassProps = Omit<ViewProps, 'style'> & {
   intensity?: GlassIntensity;
   /** Optional title tint washed into the glass. */
   tint?: string | null;
-  /** Brightest art behind the surface (`highlight`): Android TV sizes the smoked glass from it. */
+  /** Brightest art behind the surface (`highlight`; omitted = the ambient title): sizes Android TV glass. */
   artHighlight?: string | null;
   radius?: number;
   style?: StyleProp<ViewStyle>;

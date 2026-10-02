@@ -20,6 +20,7 @@ export function viewerFromProfile(profile: ViewerProfile): SignedInViewer {
     id: profile.id,
     username: profile.username,
     displayName: profile.displayName || profile.username,
+    avatarKey: profile.avatarKey ?? null,
     mustChangePassword: profile.mustChangePassword === true,
   };
 }

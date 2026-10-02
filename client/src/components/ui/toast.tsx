@@ -67,15 +67,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 function ToastViewport({ toast }: { toast: ToastItem | null }) {
   const design = useDesign();
   const insets = useSafeAreaInsets();
+  // Wide pointer layouts keep the toast in the corner, beside the content column.
+  const corner = design.formFactor === 'desktop-web' || design.formFactor === 'tablet';
   return (
     <View
       style={{
-        pointerEvents: 'box-none',
+        pointerEvents: 'none',
         position: 'absolute',
         left: 0,
         right: 0,
         bottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space.lg,
-        alignItems: 'center',
+        alignItems: corner ? 'flex-end' : 'center',
         paddingHorizontal: design.layout.gutter,
       }}>
       {toast ? <ToastView key={toast.id} toast={toast} /> : null}

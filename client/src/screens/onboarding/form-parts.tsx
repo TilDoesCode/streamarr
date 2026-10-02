@@ -3,7 +3,7 @@ import { useState, type ReactNode, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View, type TextInput } from 'react-native';
 
-import { describeError } from '@/api/error-text';
+import { describeError, errorTone } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import { FormMessage } from '@/components/ui/form-message';
 import { IconButton } from '@/components/ui/icon-button';
@@ -26,7 +26,7 @@ export function FormError({
   const { title, message } = describeError(t, appError);
   return (
     <FormMessage
-      tone="danger"
+      tone={errorTone(appError)}
       title={title}
       message={message}
       actions={actions}

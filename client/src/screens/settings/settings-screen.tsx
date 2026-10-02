@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
-import { Clapperboard, LayoutGrid, LogOut, Users } from 'lucide-react-native';
-import { useState, type ReactNode } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Clapperboard, LayoutGrid, LogOut, Pencil, Users } from 'lucide-react-native';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,7 @@ import {
 import { platformKey } from '@/lib/platform';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { DevicesSection, SecuritySection } from '@/screens/settings/account-security';
+import { ProfileEditor } from '@/screens/settings/profile-editor';
 import { accountKey } from '@/query/keys';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -43,9 +44,24 @@ function useServerVersion() {
 }
 
 /** Settings tab: account (switch, sign out), language override, app and server info. */
+// Native tabs keep Settings mounted: coming back refetches profile, security and devices (mount uses refetchOnMount).
+function useRefetchAccountOnRefocus() {
+  const queryClient = useQueryClient();
+  const { account } = useActiveAccount();
+  const first = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (first.current) first.current = false;
+      else
+        void queryClient.refetchQueries({ queryKey: accountKey(account.id, 'me'), type: 'active' });
+    }, [queryClient, account.id])
+  );
+}
+
 export function SettingsScreen() {
   const { t } = useTranslation();
   useScreenTitle(t('tabs.settings'));
+  useRefetchAccountOnRefocus();
   const design = useDesign();
   const insets = useSafeAreaInsets();
   const shell = useShell();
@@ -54,9 +70,12 @@ export function SettingsScreen() {
   return (
     <ScrollView
       testID="settings-screen"
-      showsVerticalScrollIndicator={!shell.large}
+      showsVerticalScrollIndicator={!shell.large && Platform.OS !== 'web'}
       style={{ flex: 1 }}
-      contentInsetAdjustmentBehavior="automatic"
+      // Apple TV: no tab-bar inset, so the heading sits at the page top like Filme/Serien.
+      contentInsetAdjustmentBehavior={
+        Platform.OS === 'ios' && Platform.isTV ? 'never' : 'automatic'
+      }
       contentContainerStyle={{
         paddingTop: shell.large
           ? shell.s(SHELL.page.top)
@@ -129,6 +148,7 @@ function AccountSection() {
   const api = useAccountsApi();
   const { account } = useActiveAccount();
   const [confirm, setConfirm] = useState(false);
+  const [editing, setEditing] = useState(false);
   return (
     <Section title={t('settings.account.title')} testID="settings-account" pageTop>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.lg }}>
@@ -154,6 +174,17 @@ function AccountSection() {
           hasTVPreferredFocus
           onPress={() => router.push('/profiles')}
         />
+        {/* TV shows the name and avatar; editing them needs a keyboard (phone or web). */}
+        {design.isTV ? null : (
+          <Button
+            testID="settings-edit-profile"
+            variant="secondary"
+            icon={Pencil}
+            aria-expanded={editing}
+            label={t('settings.profile.edit')}
+            onPress={() => setEditing(!editing)}
+          />
+        )}
         <Button
           testID="settings-sign-out"
           variant="ghost"
@@ -162,6 +193,7 @@ function AccountSection() {
           onPress={() => setConfirm(true)}
         />
       </ButtonRow>
+      {editing && !design.isTV ? <ProfileEditor onDone={() => setEditing(false)} /> : null}
       <Dialog
         testID="sign-out-dialog"
         open={confirm}

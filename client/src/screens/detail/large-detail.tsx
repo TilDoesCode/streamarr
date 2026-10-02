@@ -5,6 +5,7 @@ import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { components } from '@/api/schema';
+import { PanelExitContext } from '@/browse/version-panel';
 
 import { useClearAmbient, useSetAmbient } from '@/components/ambient';
 import {
@@ -153,6 +154,11 @@ function LargeDetailLayout({
   const setAmbient = useSetAmbient();
   const clearAmbient = useClearAmbient();
   const actionsRef = useRef<View>(null);
+  const [actionsNode, setActionsNode] = useState<View | null>(null);
+  const actionsCallback = useCallback((view: View | null) => {
+    actionsRef.current = view;
+    setActionsNode(view);
+  }, []);
   const scrollRef = useRef<ScrollView>(null);
   const scrollY = useRef(0);
   const glowRoom = useFocusGlowRoom();
@@ -312,7 +318,7 @@ function LargeDetailLayout({
               </Text>
             ) : null}
             {status}
-            <FocusGuide ref={actionsRef} remember>
+            <FocusGuide ref={actionsCallback} remember>
               <View
                 style={{
                   flexDirection: 'row',
@@ -361,7 +367,7 @@ function LargeDetailLayout({
                   marginRight: s(DETAIL.panelInset) + insets.right,
                 }
           }>
-          {panel}
+          <PanelExitContext value={actionsNode}>{panel}</PanelExitContext>
         </View>
       </View>
     </View>

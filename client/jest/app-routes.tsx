@@ -21,8 +21,10 @@ import SettingsLayout, {
 } from '@/app/(app)/(tabs)/(settings)/_layout';
 import SettingsRoute from '@/app/(app)/(tabs)/(settings)/settings';
 import ChangePasswordRoute from '@/app/(onboarding)/sign-in/change-password';
+import EmailCodeRoute from '@/app/(onboarding)/sign-in/email-code';
 import SignInRoute from '@/app/(onboarding)/sign-in/index';
 import SecondFactorRoute from '@/app/(onboarding)/sign-in/second-factor';
+import VerifyCodeRoute from '@/app/(onboarding)/sign-in/verify-code';
 import ProfilesRoute from '@/app/(onboarding)/profiles';
 import VersionsRoute from '@/app/(app)/versions/[workId]';
 import ServerRoute from '@/app/(onboarding)/server';
@@ -58,4 +60,6 @@ export const appRoutes = {
   '(onboarding)/sign-in/index': SignInRoute,
   '(onboarding)/sign-in/second-factor': SecondFactorRoute,
   '(onboarding)/sign-in/change-password': ChangePasswordRoute,
+  '(onboarding)/sign-in/email-code': EmailCodeRoute,
+  '(onboarding)/sign-in/verify-code': VerifyCodeRoute,
 };

@@ -116,6 +116,25 @@
       "signOutTitle": "{name} abmelden?",
       "signOutMessage": "Das Profil bleibt auf diesem Gerät. Melde dich wieder an, um weiterzuschauen."
     },
+    "profile": {
+      "edit": "Profil bearbeiten",
+      "name": "Anzeigename",
+      "nameHint": "Leer lassen, um {username} zu verwenden.",
+      "avatar": "Avatarfarbe",
+      "automatic": "Automatisch",
+      "save": "Profil speichern",
+      "saved": "Profil gespeichert",
+      "colors": {
+        "cyan": "Cyan",
+        "blue": "Blau",
+        "teal": "Petrol",
+        "green": "Grün",
+        "amber": "Bernstein",
+        "coral": "Koralle",
+        "rose": "Rosé",
+        "slate": "Schiefer"
+      }
+    },
     "about": {
       "title": "Info",
       "appVersion": "App-Version",
@@ -142,10 +161,13 @@
       "onlyThis": "Kein anderes Gerät ist angemeldet.",
       "method": {
         "password": "Passwort",
+        "password+2fa": "Passwort + Bestätigungscode",
         "email_code": "E-Mail-Code",
+        "email_code+2fa": "E-Mail-Code + Bestätigungscode",
         "password_reset": "Passwort zurückgesetzt",
         "other": "Andere"
-      }
+      },
+      "signedOutOthers": "{count, plural, =0 {Keine anderen Geräte waren angemeldet} one {Ein Gerät abgemeldet} other {# Geräte abgemeldet}}"
     },
     "security": {
       "title": "Anmeldung und Sicherheit",
@@ -241,7 +263,9 @@
       "codePlaceholder": "ABCD-EFGH",
       "resend": "Neuen Code senden",
       "resent": "Ein neuer Code ist unterwegs.",
-      "submit": "Anmelden"
+      "submit": "Anmelden",
+      "wait": "Noch {seconds} s warten",
+      "waitMinutes": "Noch {minutes} min warten"
     },
     "forgot": {
       "title": "Passwort zurücksetzen",
@@ -969,7 +993,9 @@
       "direct_play": "Spielt die Originaldatei",
       "dolby_vision_profile_unknown": "Dolby-Vision-Profil unbekannt",
       "dolby_vision_profile_unsupported": "Dolby Vision wird umgewandelt, das Profil wird nicht unterstützt",
+      "hdr_tone_mapped": "VLC wandelt {hdr} für diesen Bildschirm um",
       "hdr_unsupported": "{hdr} wird für diesen Bildschirm in SDR umgewandelt",
+      "image_subtitle_vlc": "VLC spielt die Originaldatei, damit der {codec}-Untertitel erscheint",
       "resolution_assumed": "Auflösung angenommen ({height}p)",
       "resolution_exceeds_limit": "Video wird auf das Limit von {max}p verkleinert",
       "subtitle_burned_in": "Untertitel werden ins Bild eingebrannt",
@@ -980,7 +1006,8 @@
       "video_codec_not_remuxable": "Video kann nicht umverpackt werden und wird umgewandelt",
       "video_codec_unknown": "Videoformat unbekannt",
       "video_codec_unsupported": "{codec}-Video wird für dieses Gerät umgewandelt",
-      "video_profile_unsupported": "Video wird umgewandelt, das Profil wird nicht unterstützt"
+      "video_profile_unsupported": "Video wird umgewandelt, das Profil wird nicht unterstützt",
+      "vlc_fallback": "Der eingebaute Player kann diese Version nicht abspielen"
     },
     "languages": {
       "de": "Deutsch",

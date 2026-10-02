@@ -37,6 +37,20 @@ describe('overlay labels', () => {
         deliveredHeight: 1080,
       })
     ).toMatch(/^HEVC 10-bit HDR10 2160p → H\.264 1080p SDR$/);
+    // A source whose stream tags read SDR keeps its HDR format name (Dev World BBB 4K, I3).
+    expect(
+      videoTransfer({
+        index: 0,
+        codec: 'hevc',
+        bitDepth: 10,
+        width: 3840,
+        height: 2160,
+        hdr: 'hdr10',
+        videoRange: 'SDR',
+        deliveredCodec: 'h264',
+        deliveredHeight: 1080,
+      })
+    ).toBe('HEVC 10-bit HDR10 2160p → H.264 1080p SDR');
     expect(
       audioTransfer({
         index: 1,

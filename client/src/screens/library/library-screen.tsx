@@ -2,7 +2,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Film, Tv } from 'lucide-react-native';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Platform, View } from 'react-native';
+import { findNodeHandle, FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { toAppError } from '@/api/errors';
@@ -79,6 +79,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
 
   const [size, setSize] = useState(design.window);
   const [selectedGenreNode, setSelectedGenreNode] = useState<View | null>(null);
+  const [rowEnd, setRowEnd] = useState<View | null>(null);
   const selectedGenre = useRef<View>(null);
   useEffect(() => setSelectedGenreNode(selectedGenre.current), [genre, genres.data]);
   const width = size.width;
@@ -145,10 +146,12 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
     if (shownQuery.current === query) return;
     shownQuery.current = query;
     list.current?.scrollToOffset({ offset: 0, animated: false });
-    zone.current = null;
+    // A sort change keeps focus in the sort control (it refocuses its new segment).
+    const fromSort = zone.current === 'sort';
+    zone.current = fromSort ? 'sort' : null;
     ambient.current = null;
     memory?.reset?.();
-    focusChip.current = design.isTV;
+    focusChip.current = design.isTV && !fromSort;
   }, [query, memory, design.isTV]);
   const firstPageShown = !library.isPending;
   useEffect(() => {
@@ -211,6 +214,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
       labelOf={(value) => t(`library.sort.${value}`)}
       onChange={(value) => setFilter({ sort: value })}
       onFocus={() => (zone.current = 'sort')}
+      downTarget={APPLE_TV ? null : selectedGenreNode}
     />
   );
   // One title line (page title + compact sort) above one single-line genre row, on every form factor.
@@ -298,6 +302,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
       scrollEnabled={!design.isTV}
       removeClippedSubviews={false}
       data={rows}
+      extraData={rowEnd}
       keyExtractor={(row) => row.map(itemKey).join('|')}
       ListHeaderComponent={header}
       ListEmptyComponent={body()}
@@ -318,6 +323,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
           {row.map((item, column) => (
             <PosterCard
               key={itemKey(item)}
+              ref={APPLE_TV && rowIndex === 0 && column === row.length - 1 ? setRowEnd : undefined}
               testID={`library-item-${rowIndex * columns + column}`}
               title={item.title ?? ''}
               subtitle={item.year ? String(item.year) : ''}
@@ -336,6 +342,10 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
               onPress={() => router.push(titleHref(item))}
             />
           ))}
+          {/* Apple TV: Down from the sort pill over an empty stretch of the first row lands on its last poster. */}
+          {APPLE_TV && rowIndex === 0 && rowEnd ? (
+            <FocusGuide destinations={[rowEnd]} style={{ flex: 1, alignSelf: 'stretch' }} />
+          ) : null}
         </View>
       )}
     />
@@ -367,18 +377,29 @@ function SortControl({
   labelOf,
   onChange,
   onFocus,
+  downTarget,
 }: {
   value: LibrarySort;
   label: string;
   labelOf: (value: LibrarySort) => string;
   onChange: (value: LibrarySort) => void;
   onFocus: () => void;
+  /** Android TV: Down goes to the selected genre chip (the geometric search skips the row to a poster). */
+  downTarget: View | null;
 }) {
   const design = useDesign();
   const compact = !useShell().large;
   const [selectedNode, setSelectedNode] = useState<View | null>(null);
+  // The pressed segment remounts (keyed by state): hand TV focus to the new selection.
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!refocus.current || !selectedNode) return;
+    refocus.current = false;
+    selectedNode.requestTVFocus?.();
+  }, [selectedNode]);
   const height = design.layout.controlHeight.sm;
   const inset = design.space.xs;
+  const down = design.isTV && downTarget ? (findNodeHandle(downTarget) ?? undefined) : undefined;
   return (
     <Glass intensity="subtle" radius={(height + 2 * inset) / 2} style={{ padding: inset }}>
       <FocusGuide
@@ -401,7 +422,11 @@ function SortControl({
               aria-checked={selected}
               accessibilityLabel={labelOf(option)}
               onFocus={onFocus}
-              onPress={() => onChange(option)}>
+              nextFocusDown={down}
+              onPress={() => {
+                refocus.current = design.isTV && !selected;
+                onChange(option);
+              }}>
               <FocusLift kind="button" radius={height / 2}>
                 <View
                   style={{

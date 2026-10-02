@@ -5,7 +5,7 @@ import { usePreventRemove } from 'expo-router/react-navigation';
 import { Play, RotateCcw, X } from 'lucide-react-native';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Dimensions, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
@@ -23,6 +23,7 @@ import { PlaybackController } from '@/player/controller';
 import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates } from '@/player/engines';
+import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
 import { stepDownKey } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
@@ -130,10 +131,9 @@ export function PlayScreen() {
 
   useEffect(() => {
     if (design.formFactor !== 'phone') return;
+    const { width, height } = Dimensions.get('window');
     // Loaded lazily: expo-screen-orientation has no tvOS native module.
-    const orientation = import('expo-screen-orientation');
-    void orientation.then((o) => o.lockAsync(o.OrientationLock.LANDSCAPE)).catch(() => undefined);
-    return () => void orientation.then((o) => o.unlockAsync()).catch(() => undefined);
+    return lockPlayerLandscape(import('expo-screen-orientation'), height > width);
   }, [design.formFactor]);
 
   const notice = controller?.notice;
@@ -163,7 +163,7 @@ export function PlayScreen() {
 
   const playNext = () => {
     if (!next) return;
-    router.replace(playHref({ workId: next.workId, title: next.title, startSeconds: 0 }));
+    router.replace(playHref({ workId: next.workId, title: next.playTitle, startSeconds: 0 }));
   };
 
   const onBack = () => {

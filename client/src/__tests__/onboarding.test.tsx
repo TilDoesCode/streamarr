@@ -78,6 +78,17 @@ async function fakeServer(input: Request): Promise<Response> {
       viewer: profile('v-anna', 'anna', 'Anna'),
     });
   }
+  if (path === '/api/v1/viewer/auth/email-code')
+    return body.login === 'cool'
+      ? json(429, {
+          error: {
+            code: 'email_code_cooldown',
+            message: 'wait',
+            params: { retryAfterSeconds: '2' },
+            retryAfterSeconds: 2,
+          },
+        })
+      : new Response(null, { status: 202 });
   if (path === '/api/v1/viewer/auth/login/second-factor') {
     if (body.code !== '123456')
       return json(401, { error: { code: 'invalid_code', message: 'no' } });
@@ -200,6 +211,29 @@ it('validates and verifies the second factor', async () => {
   expect(await screen.findByTestId('home-screen')).toBeOnTheScreen();
   expect(screen.getByLabelText(/Ben/)).toBeOnTheScreen();
   expect(store.active()?.username).toBe('ben');
+});
+
+it('counts an e-mail code cooldown down on the disabled send button', async () => {
+  const user = userEvent.setup();
+  const router = renderRouter(routes, {
+    initialUrl: '/sign-in/email-code?server=http%3A%2F%2Fdev.test',
+  });
+  await router;
+  await user.type(await screen.findByTestId('email-code-login'), 'cool');
+  await user.press(screen.getByTestId('email-code-send'));
+  expect(await screen.findByText('Code just sent')).toBeOnTheScreen();
+  expect(screen.getByTestId('form-error-email_code_cooldown')).toHaveProp('role', 'status');
+  expect(screen.getByTestId('email-code-send')).toHaveTextContent('Wait 2 s');
+  expect(screen.getByTestId('email-code-send')).toBeDisabled();
+  expect(await screen.findByText('Wait 1 s', {}, { timeout: 2500 })).toBeOnTheScreen();
+  await waitFor(
+    () => expect(screen.getByTestId('email-code-send')).toHaveTextContent('Send code'),
+    {
+      timeout: 2500,
+    }
+  );
+  expect(screen.getByTestId('email-code-send')).toBeEnabled();
+  expect(screen.queryByText('Code just sent')).toBeNull();
 });
 
 it('sends signed-out profiles to the picker', async () => {

@@ -11,6 +11,8 @@ import {
 } from '@/lib/color';
 import { colors } from '@/theme';
 
+import type { AmbientInput } from '@/components/ambient/ambient-model';
+
 import type { GlassIntensity } from './glass-types';
 
 const FILL: Record<GlassIntensity, string> = {
@@ -76,6 +78,7 @@ export const TV_GLASS_TEXT = {
     { name: 'card name', color: colors.foreground.DEFAULT, size: 20 },
     { name: 'card muted', color: colors.foreground.mutedTv, size: 18 },
     { name: 'card reason', color: colors.foreground.mutedTv, size: 17 },
+    { name: 'card release name', color: colors.foreground.mutedTv, size: 14 },
   ],
 } satisfies Record<string, TvTextStyle[]>;
 
@@ -149,4 +152,13 @@ export function tvGlassVeil(intensity: GlassIntensity): string {
   const veil =
     intensity === 'subtle' ? TV_GLASS.subtleVeil : TV_GLASS.veil * (intensity === 'strong' ? 2 : 1);
   return withAlpha(colors.foreground.DEFAULT, veil);
+}
+
+/** The art a TV glass is sized for: its own `artHighlight` (null = none), else the ambient title with art. */
+export function glassHighlight(
+  artHighlight: string | null | undefined,
+  ambient: AmbientInput | null
+): string | null {
+  if (artHighlight !== undefined) return artHighlight;
+  return ambient?.image ? (ambient.highlight ?? null) : null;
 }

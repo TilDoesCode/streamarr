@@ -13,7 +13,8 @@ import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { colors, fonts, useDesign } from '@/theme';
 
-export type NextEpisode = { workId: string; title: string };
+/** `title` for the cards; `playTitle` (with the series, like the episode list) for the player. */
+export type NextEpisode = { workId: string; title: string; playTitle: string };
 
 const COUNTDOWN_SECONDS = 10;
 
@@ -42,7 +43,16 @@ export function useNextEpisode(workId: string): NextEpisode | null {
     season: seasonNumber,
     episode: episode.episodeNumber,
   });
-  return { workId: episode.workId, title: episode.title ? `${code} · ${episode.title}` : code };
+  const playTitle = t('detail.episodeTitle', {
+    series: (inSeason ? season.data : nextSeason.data)?.seriesTitle ?? '',
+    code,
+    title: episode.title ?? t('media.episodeNumber', { episode: episode.episodeNumber }),
+  });
+  return {
+    workId: episode.workId,
+    title: episode.title ? `${code} · ${episode.title}` : code,
+    playTitle,
+  };
 }
 
 type Props = {

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { createAuthApi } from '@/accounts/auth-api';
 import { signInFlow } from '@/accounts/sign-in-flow';
+import { activeError, CooldownButton, useCooldown } from '@/accounts/cooldown';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { useToast } from '@/components/ui/toast';
@@ -24,8 +25,10 @@ export function EmailCodeScreen() {
   const [login, setLogin] = useState(initialLogin ?? '');
   const [fieldError, setFieldError] = useState<string>();
 
+  const cooldown = useCooldown();
   const send = useMutation({
     mutationFn: () => createAuthApi(serverUrl).requestEmailCode(login.trim()),
+    onError: cooldown.start,
     onSuccess: () =>
       router.push({
         pathname: '/sign-in/verify-code',
@@ -34,7 +37,7 @@ export function EmailCodeScreen() {
   });
 
   const submit = () => {
-    if (send.isPending) return;
+    if (send.isPending || cooldown.active) return;
     if (!login.trim()) return setFieldError(t('onboarding.validation.loginRequired'));
     setFieldError(undefined);
     send.mutate();
@@ -64,10 +67,11 @@ export function EmailCodeScreen() {
         onSubmitEditing={submit}
         initialFocus
       />
-      <FormError error={send.error} />
-      <Button
+      <FormError error={activeError(send.error, cooldown.active)} />
+      <CooldownButton
         testID="email-code-send"
         size="lg"
+        until={cooldown.until}
         label={t('onboarding.emailCode.send')}
         loading={send.isPending}
         onPress={submit}
@@ -103,8 +107,10 @@ export function VerifyCodeScreen() {
       if (info.data) await complete(info.data, result);
     },
   });
+  const cooldown = useCooldown();
   const resend = useMutation({
     mutationFn: () => createAuthApi(serverUrl).requestEmailCode(login),
+    onError: cooldown.start,
     onSuccess: () => toast.show({ tone: 'success', message: t('onboarding.emailCode.resent') }),
   });
 
@@ -141,7 +147,7 @@ export function VerifyCodeScreen() {
         onSubmitEditing={submit}
         initialFocus
       />
-      <FormError error={verify.error ?? resend.error} />
+      <FormError error={verify.error ?? activeError(resend.error, cooldown.active)} />
       <Button
         testID="verify-code-submit"
         size="lg"
@@ -150,9 +156,10 @@ export function VerifyCodeScreen() {
         onPress={submit}
       />
       <FormLinks>
-        <Button
+        <CooldownButton
           testID="verify-code-resend"
           variant="ghost"
+          until={cooldown.until}
           label={t('onboarding.emailCode.resend')}
           loading={resend.isPending}
           disabled={verify.isPending}

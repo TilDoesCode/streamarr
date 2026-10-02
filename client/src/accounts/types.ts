@@ -7,7 +7,9 @@ export type Account = {
   viewerId: string;
   username: string;
   displayName: string;
-  /** Avatar colour slot derived from the viewer id (probing past slots other local profiles use). */
+  /** Server avatar choice (`cyan` … `slate`); null = derived from the viewer id. */
+  avatarKey?: string | null;
+  /** Avatar colour slot: the avatar key's slot, else derived from the viewer id. */
   color: number;
   /** False after sign-out or when the server ended the session; the profile stays in the picker. */
   signedIn: boolean;

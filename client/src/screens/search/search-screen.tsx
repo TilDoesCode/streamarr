@@ -244,7 +244,10 @@ export function SearchScreen() {
       ListHeaderComponent={header}
       ListEmptyComponent={body()}
       keyboardShouldPersistTaps="handled"
-      contentInsetAdjustmentBehavior="automatic"
+      // Apple TV: no tab-bar inset, so the heading sits at the page top like Filme/Serien.
+      contentInsetAdjustmentBehavior={
+        Platform.OS === 'ios' && Platform.isTV ? 'never' : 'automatic'
+      }
       contentContainerStyle={{
         paddingTop: shell.large
           ? shell.s(SHELL.page.top)

@@ -365,7 +365,8 @@ export function PlayerOverlay({
     audio: audioTrack
       ? [
           audioTrack.language ? languageName(audioTrack.language, i18n.language, t) : '',
-          channelLayout(audioTrack.deliveredChannels ?? audioTrack.channels),
+          // The source layout, like the audio panel; Info shows a conversion (5.1 → 2.0).
+          channelLayout(audioTrack.channels ?? audioTrack.deliveredChannels),
         ]
           .filter(Boolean)
           .join(' ') || pt('controls.audio')

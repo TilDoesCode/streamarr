@@ -154,6 +154,28 @@ describe('version format', () => {
     ]);
     expect(predictedMethod(version({ predictedMethod: 'teleport' }))).toBeUndefined();
   });
+
+  it('explains VLC predictions', async () => {
+    const vlc = version({
+      predictedMethod: 'vlc',
+      predictionReasons: [
+        { code: 'vlc_fallback' },
+        { code: 'image_subtitle_vlc', params: { codec: 'hdmv_pgs_subtitle' } },
+        { code: 'hdr_tone_mapped', params: { hdr: 'hdr10', engine: 'vlc' } },
+        { code: 'direct_play' },
+      ],
+    });
+    expect(methodReasons(vlc, t, 3)).toEqual([
+      'The built-in player can’t play this version',
+      'VLC tone-maps HDR10 to this display',
+      'VLC plays the original file so the PGS subtitle shows',
+    ]);
+    await i18n.changeLanguage('de');
+    expect(methodReasons(vlc, i18n.t, 1)).toEqual([
+      'Der eingebaute Player kann diese Version nicht abspielen',
+    ]);
+    await i18n.changeLanguage('en');
+  });
 });
 
 describe('versionHints', () => {

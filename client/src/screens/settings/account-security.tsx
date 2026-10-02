@@ -2,14 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import qrcode from 'qrcode-generator';
 import { KeyRound, LogOut, Mail, MonitorSmartphone, ShieldCheck } from 'lucide-react-native';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
+import { activeError, CooldownButton, useCooldown } from '@/accounts/cooldown';
 import { unwrap } from '@/api/client';
-import { describeError } from '@/api/error-text';
+import { describeError, errorTone } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
@@ -46,7 +47,7 @@ function AccountError({ error, testID }: { error: unknown; testID: string }) {
   const text = accountErrorText(t, error);
   return (
     <FormMessage
-      tone="danger"
+      tone={errorTone(text)}
       title={text.title}
       message={text.message}
       testID={`${testID}-${text.code}`}
@@ -106,27 +107,50 @@ export function DevicesSection() {
   const sessions = useQuery({
     queryKey: key,
     queryFn: ({ signal }) => unwrap(client.GET('/api/v1/viewer/me/sessions', { signal })),
+    // Opening Settings shows the current state, also after changes made on another device.
+    refetchOnMount: 'always',
   });
   const revoke = useMutation({
-    mutationFn: async (ids: string[]) => {
-      for (const id of ids)
-        await unwrap(
-          client.DELETE('/api/v1/viewer/me/sessions/{sessionId}', {
-            params: { path: { sessionId: id } },
-          })
-        );
-      return ids.length;
-    },
+    mutationFn: (id: string) =>
+      unwrap(
+        client.DELETE('/api/v1/viewer/me/sessions/{sessionId}', {
+          params: { path: { sessionId: id } },
+        })
+      ).then(() => 1),
     onSuccess: (count) =>
       toast.show({ tone: 'success', message: t('settings.devices.signedOut', { count }) }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
+  const revokeOthers = useMutation({
+    mutationFn: () =>
+      unwrap(client.POST('/api/v1/viewer/me/sessions/sign-out-others')).then(
+        (result) => result.signedOut ?? 0
+      ),
+    onSuccess: (count) =>
+      toast.show({ tone: 'success', message: t('settings.devices.signedOutOthers', { count }) }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+  const busy = revoke.isPending || revokeOthers.isPending;
   const list = [...(sessions.data ?? [])].sort(
     (a, b) =>
       Number(b.current) - Number(a.current) ||
       (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? '')
   );
   const others = list.filter((s) => !s.current && s.id).map((s) => s.id as string);
+  // TV: after a device sign-out, focus moves to the neighbouring row instead of jumping to the first one.
+  const buttons = useRef(new Map<string, View>());
+  const focusAfter = useRef<{ removed: string; next: string | null } | null>(null);
+  const signOut = (id: string) => {
+    if (design.isTV) focusAfter.current = { removed: id, next: neighbourOf(others, id) };
+    revoke.mutate(id);
+  };
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || busy || others.includes(pending.removed)) return;
+    focusAfter.current = null;
+    const node = pending.next ? buttons.current.get(pending.next) : undefined;
+    node?.requestTVFocus?.();
+  });
   return (
     <FocusSection testID="settings-devices">
       <View style={{ gap: design.space.md }}>
@@ -158,8 +182,13 @@ export function DevicesSection() {
                 key={session.id}
                 session={session}
                 language={i18n.language}
-                busy={revoke.isPending}
-                onSignOut={() => session.id && revoke.mutate([session.id])}
+                busy={busy}
+                buttonRef={(node) => {
+                  if (!session.id) return;
+                  if (node) buttons.current.set(session.id, node);
+                  else buttons.current.delete(session.id);
+                }}
+                onSignOut={() => session.id && signOut(session.id)}
               />
             ))}
             {others.length === 0 ? (
@@ -172,13 +201,17 @@ export function DevicesSection() {
                   testID="settings-devices-sign-out-others"
                   variant="secondary"
                   icon={LogOut}
-                  loading={revoke.isPending}
+                  loading={revokeOthers.isPending}
+                  disabled={revoke.isPending}
                   label={t('settings.devices.signOutOthers', { count: others.length })}
-                  onPress={() => revoke.mutate(others)}
+                  onPress={() => !busy && revokeOthers.mutate()}
                 />
               </Row>
             )}
-            <AccountError error={revoke.error} testID="settings-devices-revoke-error" />
+            <AccountError
+              error={revoke.error ?? revokeOthers.error}
+              testID="settings-devices-revoke-error"
+            />
           </>
         )}
       </View>
@@ -186,23 +219,37 @@ export function DevicesSection() {
   );
 }
 
+/** Sign-in method of a session (`password`, `email_code`, `password+2fa`, …) in the app language. */
+export function methodLabel(t: TFunction, method: string | null | undefined): string {
+  return t(`settings.devices.method.${method || 'other'}`, {
+    defaultValue: t('settings.devices.method.other'),
+  });
+}
+
+/** The row that takes focus after `id` leaves the list: the next one, else the previous one. */
+export function neighbourOf(ids: readonly string[], id: string): string | null {
+  const index = ids.indexOf(id);
+  if (index < 0) return null;
+  return ids[index + 1] ?? ids[index - 1] ?? null;
+}
+
 function DeviceRow({
   session,
   language,
   busy,
+  buttonRef,
   onSignOut,
 }: {
   session: DeviceSession;
   language: string;
   busy: boolean;
+  buttonRef: (node: View | null) => void;
   onSignOut: () => void;
 }) {
   const { t } = useTranslation();
   const design = useDesign();
   const name = session.deviceName || t('settings.devices.unknownDevice');
-  const method = t(`settings.devices.method.${session.authMethod ?? 'other'}`, {
-    defaultValue: session.authMethod ?? '',
-  });
+  const method = methodLabel(t, session.authMethod);
   const details = [
     session.clientName,
     method,
@@ -210,10 +257,10 @@ function DeviceRow({
   ]
     .filter(Boolean)
     .join(' · ');
-  // Full-width guide: on TV, Up/Down through the row lands on its right-aligned sign-out button.
+  // Apple TV: a full-width guide so Up/Down through the row lands on its right-aligned sign-out button.
+  const Line = Platform.OS === 'ios' && Platform.isTV ? FocusGuide : View;
   return (
-    <FocusGuide
-      remember
+    <Line
       testID={`settings-device-${session.id}`}
       style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
       <MonitorSmartphone size={design.px(22)} color={colors.foreground.muted} />
@@ -234,16 +281,18 @@ function DeviceRow({
         <Row>
           <Button
             testID={`settings-device-sign-out-${session.id}`}
+            ref={buttonRef}
             variant="ghost"
             size="sm"
-            disabled={busy}
+            // TV: a disabled button drops focus to the first row; a pending sign-out ignores presses instead.
+            disabled={busy && !design.isTV}
             label={t('settings.devices.signOut')}
             accessibilityLabel={t('settings.devices.signOutNamed', { name })}
-            onPress={onSignOut}
+            onPress={busy ? undefined : onSignOut}
           />
         </Row>
       )}
-    </FocusGuide>
+    </Line>
   );
 }
 
@@ -259,6 +308,7 @@ export function SecuritySection() {
   const me = useQuery({
     queryKey: queryKeys.me(account.id),
     queryFn: ({ signal }) => unwrap(client.GET('/api/v1/viewer/me', { signal })),
+    refetchOnMount: 'always',
   });
   if (design.isTV)
     return (
@@ -342,7 +392,14 @@ export function SecuritySection() {
               open={open === 'twoFactor'}
               done={codesShown}
               onToggle={() => toggle('twoFactor')}>
-              <TwoFactorForm enabled={!!me.data.twoFactorEnabled} onCodesShown={setCodesShown} />
+              <TwoFactorForm
+                enabled={!!me.data.twoFactorEnabled}
+                onCodesShown={setCodesShown}
+                onDone={() => {
+                  setCodesShown(false);
+                  setOpen(null);
+                }}
+              />
             </Item>
           </>
         )}
@@ -486,6 +543,7 @@ function EmailForm({ profile, onDone }: { profile: Profile; onDone: () => void }
   const [code, setCode] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(profile.pendingEmail ?? null);
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.me(account.id) });
+  const cooldown = useCooldown();
   const request = useMutation({
     mutationFn: () =>
       unwrap(
@@ -493,6 +551,7 @@ function EmailForm({ profile, onDone }: { profile: Profile; onDone: () => void }
           body: { email: email.trim(), currentPassword: password },
         })
       ),
+    onError: cooldown.start,
     onSuccess: (result) => {
       void refresh();
       setPassword('');
@@ -579,12 +638,16 @@ function EmailForm({ profile, onDone }: { profile: Profile; onDone: () => void }
         autoComplete="current-password"
         textContentType="password"
         returnKeyType="go"
-        onSubmitEditing={() => password && request.mutate()}
+        onSubmitEditing={() => password && !cooldown.active && request.mutate()}
       />
-      <AccountError error={request.error} testID="settings-email-error" />
+      <AccountError
+        error={activeError(request.error, cooldown.active)}
+        testID="settings-email-error"
+      />
       <Row>
-        <Button
+        <CooldownButton
           testID="settings-email-submit"
+          until={cooldown.until}
           label={t(email.trim() ? 'settings.security.sendCode' : 'settings.security.removeEmail')}
           disabled={!password || (!email.trim() && !profile.email)}
           loading={request.isPending}
@@ -603,9 +666,12 @@ type TwoFactorStep =
 function TwoFactorForm({
   enabled,
   onCodesShown,
+  onDone,
 }: {
   enabled: boolean;
   onCodesShown: (shown: boolean) => void;
+  /** Closes the panel: after the recovery codes were saved and after turning two-step off. */
+  onDone: () => void;
 }) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -639,6 +705,7 @@ function TwoFactorForm({
     onSuccess: () => {
       void refresh();
       toast.show({ tone: 'success', message: t('settings.security.twoFactorDisabled') });
+      onDone();
     },
   });
   const regenerate = useMutation({
@@ -674,8 +741,7 @@ function TwoFactorForm({
             label={t('settings.security.recoverySaved')}
             onPress={() => {
               setStep({ kind: 'idle' });
-              setPassword('');
-              setCode('');
+              onDone();
             }}
           />
         </Row>

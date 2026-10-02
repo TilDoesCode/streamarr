@@ -15,6 +15,7 @@ export type SignedInViewer = {
   id: string;
   username: string;
   displayName: string;
+  avatarKey?: string | null;
   mustChangePassword: boolean;
 };
 
@@ -31,6 +32,17 @@ export type AccountStoreOptions = {
 export const ACCOUNTS_STORAGE_ID = 'streamarr.accounts';
 const LIST_KEY = 'accounts';
 export const AVATAR_COLORS = 8;
+/** Server avatar keys in the order of the client's colour slots (docs/api.md, PATCH /viewer/me). */
+export const AVATAR_KEYS = [
+  'cyan',
+  'blue',
+  'teal',
+  'green',
+  'amber',
+  'coral',
+  'rose',
+  'slate',
+] as const;
 const ACTIVE_KEY = 'active';
 
 function randomId(): string {
@@ -54,7 +66,7 @@ function parseAccounts(raw: string | undefined): Account[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter(isAccount)
-      .map((account) => ({ ...account, color: profileColor(account.viewerId) }));
+      .map((account) => ({ ...account, color: profileColor(account.viewerId, account.avatarKey) }));
   } catch {
     return [];
   }
@@ -94,8 +106,10 @@ export function dedupeAccounts(accounts: readonly Account[]): {
   return { accounts: kept, dropped };
 }
 
-/** Avatar colour slot: a pure function of the viewer id, so every device and launch shows the same one. */
-export function profileColor(viewerId: string): number {
+/** Avatar colour slot: the chosen avatar key, else a pure function of the viewer id (same on every device). */
+export function profileColor(viewerId: string, avatarKey?: string | null): number {
+  const chosen = AVATAR_KEYS.indexOf(avatarKey?.toLowerCase() as (typeof AVATAR_KEYS)[number]);
+  if (chosen >= 0) return chosen;
   let hash = 0x811c9dc5;
   for (const char of viewerId) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
   return hash % AVATAR_COLORS;
@@ -212,7 +226,8 @@ export class AccountStore {
         viewerId: viewer.id,
         username: viewer.username,
         displayName: viewer.displayName || viewer.username,
-        color: profileColor(viewer.id),
+        avatarKey: viewer.avatarKey ?? null,
+        color: profileColor(viewer.id, viewer.avatarKey),
         signedIn: true,
         mustChangePassword: viewer.mustChangePassword,
         addedAt: existing?.addedAt ?? now,
