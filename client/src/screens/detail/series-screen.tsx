@@ -12,7 +12,6 @@ import {
   useSeriesDetail,
   useVersions,
   useWatchRefreshOnFocus,
-  type Episode,
   type NextEpisode,
 } from '@/browse/queries';
 import { seasonName } from '@/browse/season-name';
@@ -24,7 +23,7 @@ import {
   useWatchedToggle,
 } from '@/browse/title-actions';
 import { specNote, versionSpec } from '@/browse/version-format';
-import { entryIndex, VersionPanel } from '@/browse/version-panel';
+import { entryIndex } from '@/browse/version-panel';
 import { useOpenVersions, VersionPicker } from '@/browse/version-picker';
 import { VersionSummary } from '@/browse/version-summary';
 import { GlassChip } from '@/components/glass';
@@ -38,11 +37,18 @@ import { useShell } from '@/shell/use-shell';
 import { gutterPadding, useDesign } from '@/theme';
 
 import { DetailError, routeNumber } from './detail-parts';
-import { LargeDetail, peopleCredits, usePanelEntry } from './large-detail';
+import { peopleCredits } from './large-detail';
 import { PhoneDetail } from './phone-detail';
+import { SeriesStage } from './series-stage';
 
-/** Series: hero with the next-episode call to action, season picker and the season's episodes. */
+/** Series: the Bühne on large screens, the phone detail with the season's episode list on phones. */
 export function SeriesScreen() {
+  const shell = useShell();
+  return shell.large ? <SeriesStage /> : <SeriesPhone />;
+}
+
+/** Phone: hero with the next-episode call to action, season picker and the season's episodes. */
+function SeriesPhone() {
   const { t } = useTranslation();
   const design = useDesign();
   const play = usePlay();
@@ -54,12 +60,6 @@ export function SeriesScreen() {
   // TV: Back from the player lands on the version card that started it.
   const reopenVersions = useReturnTarget(setVersionsOpen);
   const openVersions = useOpenVersions();
-  const shell = useShell();
-  const panel = usePanelEntry();
-  // Large shell: the episode shown in the version panel (default: the series' play target).
-  const [panelEpisode, setPanelEpisode] = useState<(Episode & { seasonNumber: number }) | null>(
-    null
-  );
   useScreenTitle(series.data?.title);
   useWatchRefreshOnFocus();
   const data = series.data;
@@ -86,10 +86,7 @@ export function SeriesScreen() {
         }
       : null;
   const playTarget = next ?? again;
-  const panelWorkId = panelEpisode?.workId ?? playTarget?.workId ?? null;
-  const panelVersions = useVersions(panelWorkId, shell.large);
-  const panelList = panelVersions.data?.versions ?? [];
-  const phoneList = useVersions(playTarget?.workId, !shell.large).data?.versions ?? [];
+  const phoneList = useVersions(playTarget?.workId).data?.versions ?? [];
   const watched = useWatchedToggle({
     ids: data?.workId ? [data.workId] : [],
     played: allPlayed,
@@ -116,167 +113,6 @@ export function SeriesScreen() {
         code: t('media.episodeCode', { season: next.seasonNumber, episode: next.episodeNumber }),
       })
     : undefined;
-  const panelTitle = panelEpisode ? episodeLabel(t, title, panelEpisode) : nextTitle;
-  const panelWatch = panelEpisode?.watch ?? nextWatch;
-
-  if (shell.large) {
-    const episodes =
-      data && seasonNumber !== undefined ? (
-        <View style={{ gap: design.space.lg }}>
-          <FocusGuide
-            remember
-            trap={END_OF_ROW}
-            testID="series-seasons"
-            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: shell.s(12) }}>
-            {seasons.map((item) => (
-              <GlassChip
-                key={item.seasonNumber}
-                testID={`season-${item.seasonNumber}`}
-                tint={data.tint}
-                label={t('detail.seasonTag', {
-                  title: seasonName(t, item.title, item.seasonNumber),
-                  played: item.playedCount ?? 0,
-                  total: item.episodeCount ?? 0,
-                })}
-                selected={item.seasonNumber === seasonNumber}
-                onPress={() => setPicked(item.seasonNumber)}
-              />
-            ))}
-          </FocusGuide>
-          <View testID={`series-episodes-${seasonNumber}`}>
-            {seasonError ? (
-              <ErrorState
-                testID="season-error"
-                code={seasonError.code}
-                params={seasonError.params}
-                actions={['retry']}
-                onAction={() => void season.refetch()}
-              />
-            ) : (
-              <EpisodeList
-                episodes={
-                  season.data?.seasonNumber === seasonNumber
-                    ? (season.data.episodes ?? [])
-                    : undefined
-                }
-                seriesTitle={title}
-                seasonNumber={seasonNumber}
-                focusWorkId={next?.workId}
-                selectedWorkId={panelEpisode?.workId}
-                onVersions={(episode) => {
-                  const same = episode.workId === panelWorkId;
-                  setPanelEpisode({ ...episode, seasonNumber });
-                  panel.enter(!same);
-                }}
-              />
-            )}
-          </View>
-        </View>
-      ) : null;
-    return (
-      <LargeDetail
-        testID={`series-screen-${tmdbId}`}
-        kindLabel={t('detail.series')}
-        title={title}
-        logoUrl={data?.logoUrl}
-        backdropUrl={data?.backdropUrl}
-        tint={data?.tint}
-        tint2={data?.tint2}
-        highlight={data?.highlight}
-        facts={
-          data
-            ? [
-                data.year ? String(data.year) : null,
-                data.seasonCount ? t('media.seasons', { count: data.seasonCount }) : null,
-                data.genres?.slice(0, 3).join(', ') || null,
-                total
-                  ? t('detail.watchedCount', { played: data.watch.playedEpisodes ?? 0, total })
-                  : null,
-              ].filter((part): part is string => !!part)
-            : []
-        }
-        certification={data?.certification}
-        spec={versionSpec(panelList[entryIndex(panelList)])}
-        specNote={specNote(panelList, t)}
-        overview={data?.overview}
-        status={
-          next ? (
-            <View testID="series-next" style={{ gap: design.space.xs }}>
-              <Text variant="callout" numberOfLines={1}>
-                {t('detail.upNextLine', {
-                  code: t('media.episodeCode', {
-                    season: next.seasonNumber,
-                    episode: next.episodeNumber,
-                  }),
-                  title: next.title ?? '',
-                })}
-              </Text>
-              <ResumeProgress
-                testID="series-next-progress"
-                watch={nextWatch}
-                barWidth={shell.s(220)}
-              />
-            </View>
-          ) : total ? (
-            <Text testID="series-all-watched" variant="callout" tone="muted">
-              {t('detail.allWatched')}
-            </Text>
-          ) : null
-        }
-        credits={peopleCredits(data?.people, t)}
-        panelFocused={panel.inside}
-        loading={!data}
-        actions={
-          data ? (
-            <TitleActions
-              shell
-              tint={data.tint}
-              testIDPrefix="series"
-              workId={playTarget?.workId ?? null}
-              title={nextTitle}
-              markTitle={title}
-              watch={nextWatch}
-              playLabel={nextPlayLabel}
-              onVersions={
-                playTarget?.workId
-                  ? () => {
-                      const same = panelWorkId === playTarget.workId;
-                      setPanelEpisode(null);
-                      panel.enter(!same);
-                    }
-                  : undefined
-              }
-              markWorkIds={data.workId ? [data.workId] : undefined}
-              markPlayed={allPlayed}
-            />
-          ) : null
-        }
-        panel={
-          <VersionPanel
-            workId={panelWorkId}
-            currentReleaseId={panelEpisode?.watch.lastReleaseId}
-            tint={data?.tint}
-            artHighlight={data?.highlight}
-            entryRef={panel.entryRef}
-            highlight={panel.highlight}
-            onFocusInside={panel.setInside}
-            onEntry={panel.onEntry}
-            subtitle={panelWorkId ? t('versions.panelEpisode', { episode: panelTitle }) : undefined}
-            onPlay={(version) =>
-              panelWorkId &&
-              play({
-                workId: panelWorkId,
-                title: panelTitle,
-                releaseId: version.releaseId,
-                startSeconds: resumeSeconds(panelWatch),
-              })
-            }
-          />
-        }>
-        {episodes}
-      </LargeDetail>
-    );
-  }
 
   return (
     <PhoneDetail
@@ -333,6 +169,7 @@ export function SeriesScreen() {
         playTarget?.workId ? (
           <VersionSummary
             workId={playTarget.workId}
+            watch={nextWatch}
             onOpen={() =>
               openVersions(
                 {

@@ -18,6 +18,8 @@ export const SHELL = {
     tvCardGap: 40,
     arrow: 44,
   },
+  // Apple TV: bottom edge of the native top tab bar (sheets and the Bühne info column stay below it).
+  tvosTabBarBottom: 136,
   landscape: { width: 352, height: 198 },
   poster: { width: 208, height: 312 },
   type: {

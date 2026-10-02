@@ -27,6 +27,7 @@ import SecondFactorRoute from '@/app/(onboarding)/sign-in/second-factor';
 import VerifyCodeRoute from '@/app/(onboarding)/sign-in/verify-code';
 import ProfilesRoute from '@/app/(onboarding)/profiles';
 import VersionsRoute from '@/app/(app)/versions/[workId]';
+import AboutRoute from '@/app/(app)/about/[kind]/[id]';
 import ServerRoute from '@/app/(onboarding)/server';
 import { LargeShell } from '@/navigation/large-shell';
 
@@ -55,6 +56,7 @@ export const appRoutes = {
   // The player lab needs native video modules; tests only need the route to exist.
   '(app)/dev/player': () => null,
   '(app)/versions/[workId]': VersionsRoute,
+  '(app)/about/[kind]/[id]': AboutRoute,
   '(onboarding)/server': ServerRoute,
   '(onboarding)/profiles': ProfilesRoute,
   '(onboarding)/sign-in/index': SignInRoute,

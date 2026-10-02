@@ -91,7 +91,25 @@
     "unwatch": "Ungesehen",
     "details": "Details",
     "lessDetails": "Weniger",
-    "specGap": "{best} vorhanden · hier {here}"
+    "specGap": "{best} vorhanden · hier {here}",
+    "rating": "Bewertung",
+    "ratingSource": " TMDB",
+    "airsOn": "Ab {date}",
+    "notAired": "Noch nicht ausgestrahlt",
+    "noVersionShort": "Keine Version",
+    "episodeSelectHint": "Zeigt diese Folge oben an",
+    "playEpisode": "{title} abspielen",
+    "continueWith": "Weiter mit",
+    "aboutSeries": "Über die Serie",
+    "episodePosition": "Folge {episode} von {total}",
+    "stagePill": "Staffel {season} · Folge {episode}",
+    "stagePillNext": "Staffel {season} · Folge {episode} · Als Nächstes",
+    "stagePillSpecial": "Specials · Folge {episode}",
+    "yearSpan": "{from} – {to}",
+    "genres": "Genres",
+    "originalTitle": "Originaltitel",
+    "moreDetails": "Alle Details",
+    "moreAboutSeries": "Mehr zur Serie"
   },
   "player": {
     "title": "Player",
@@ -374,7 +392,8 @@
     "recommended": "Empfohlen",
     "ready": "Bereit",
     "airDate": "Ausgestrahlt am {date}",
-    "upNext": "Als Nächstes"
+    "upNext": "Als Nächstes",
+    "specials": "Specials"
   },
   "format": {
     "duration": {
@@ -1048,8 +1067,53 @@
     "showDetails": "Technische Details anzeigen",
     "hideDetails": "Technische Details ausblenden",
     "panelSubtitle": "{count, plural, one {# Version} other {# Versionen}} · erwartete Wiedergabe auf diesem Gerät",
-    "panelEpisode": "{episode} · erwartete Wiedergabe auf diesem Gerät",
-    "card": "Version"
+    "card": "Version",
+    "bestPicture": "Bestes Bild",
+    "onDevice": "Auf diesem Gerät",
+    "expected": {
+      "device": "{title} · erwartete Wiedergabe auf diesem Gerät",
+      "tablet": "{title} · erwartete Wiedergabe auf diesem iPad",
+      "browser": "{title} · erwartete Wiedergabe in diesem Browser"
+    },
+    "methodShort": {
+      "direct": "Direkt",
+      "remux": "Direkt-Stream",
+      "transcode": "Transkodiert",
+      "vlc": "Mit VLC",
+      "unknown": "Ungeprüft"
+    },
+    "reasonsShort": {
+      "audio_codec_unsupported": "Ton wird umgewandelt ({codec})",
+      "audio_converted": "Ton wird umgewandelt ({from} → {to})",
+      "bit_depth_unsupported": "{bitDepth} Bit → 8 Bit",
+      "dolby_vision_profile_unsupported": "Dolby Vision wird umgewandelt",
+      "hdr_unsupported": "{hdr} → SDR",
+      "image_subtitle_vlc": "Bild-Untertitel nur mit VLC",
+      "resolution_exceeds_limit": "Auf {max}p verkleinert",
+      "subtitle_burned_in": "Untertitel eingebrannt",
+      "video_codec_not_remuxable": "{codec} wird umgewandelt",
+      "video_codec_unsupported": "{codec} wird umgewandelt",
+      "vlc_fallback": "Eingebauter Player kann diese Version nicht",
+      "bitrate_exceeds_limit": "Bitrate wird gesenkt"
+    },
+    "chips": {
+      "openHint": "Öffnet die Versionen",
+      "label": "Spielt: {chips}. {reasons}",
+      "unknown": "Gerät noch nicht erkannt, der Server entscheidet beim Start",
+      "lastMissing": "Zuletzt gespielte Version nicht mehr verfügbar",
+      "directPossible": "Direkt möglich:",
+      "inVersions": "in „Versionen“",
+      "noneMovie": "Für diesen Film gibt es noch keine abspielbare Version.",
+      "noneEpisode": "Für diese Folge gibt es noch keine abspielbare Version.",
+      "error": "Versionen nicht geladen · Abspielen startet die Empfehlung des Servers",
+      "betterOnly": {
+        "direct": "{best} vorhanden",
+        "remux": "{best} vorhanden, läuft hier als Direkt-Stream",
+        "transcode": "{best} vorhanden, läuft hier nur transkodiert",
+        "vlc": "{best} vorhanden, läuft hier nur mit VLC",
+        "unknown": "{best} vorhanden"
+      }
+    }
   },
   "library": {
     "genres": "Genres",

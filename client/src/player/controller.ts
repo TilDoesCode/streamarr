@@ -28,6 +28,7 @@ import {
   type PlaybackPreferences,
   type PlaybackSwitch,
 } from '@/player/playback-api';
+import { subtitleAfterAudio } from '@/player/forced-subtitle';
 import { ProgressQueue } from '@/player/progress-queue';
 
 export type ControllerPhase =
@@ -115,7 +116,7 @@ export class PlaybackController {
   readonly audioSwitches: AudioSwitchSample[] = [];
   private pendingAudio: PendingAudio | null = null;
   private lastAudioError: string | null = null;
-  /** The subtitle selection an in-session audio switch must not change. */
+  /** The subtitle selection an in-session audio switch ends with (kept, or the new language's forced track). */
   private keptSubtitle: { id: string | null; until: number } | null = null;
   readonly progress: ProgressQueue;
 
@@ -575,19 +576,34 @@ export class PlaybackController {
     this.serverTracksOff?.();
     const from = this.currentAudio();
     const local = this.localTrackId('audio', track.index);
-    if (local !== null && !renditionFor(this.playback, track.index)) {
+    const subtitle = this.subtitleFor(track);
+    // A subtitle that must change but cannot change in the engine (burned in, not delivered) needs `/switch`.
+    const subtitleLocal =
+      subtitle.index === null ? null : this.localTrackId('subtitle', subtitle.index);
+    const inEngine =
+      !subtitle.changes ||
+      (!subtitle.burnedIn && (subtitle.index === null || subtitleLocal !== null));
+    if (inEngine && local !== null && !renditionFor(this.playback, track.index)) {
       this.engine?.setAudioTrack(local);
+      if (subtitle.changes) this.keepSubtitle(subtitleLocal);
       this.rememberAudio(track);
       this.changed();
       return;
     }
     let fallback: string | undefined;
-    if (renditionFor(this.playback, track.index)) {
+    if (inEngine && renditionFor(this.playback, track.index)) {
       // No engine track for the rendition (not listed yet, or no match): straight to `/switch`.
       const result =
         local === null
           ? 'no_engine_track'
-          : await this.switchAudio('session', from, track.index, local);
+          : await this.switchAudio(
+              'session',
+              from,
+              track.index,
+              local,
+              undefined,
+              subtitle.changes ? subtitleLocal : undefined
+            );
       if (result === true) return void this.rememberAudio(track);
       if (this.closed) return;
       fallback = result;
@@ -595,11 +611,31 @@ export class PlaybackController {
     const switched = this.switchAudio('server', from, track.index, null, fallback);
     const ok = await this.serverSwitch({
       audioStreamIndex: track.index,
-      subtitleStreamIndex: this.currentSubtitle() ?? -1,
+      subtitleStreamIndex: subtitle.index ?? -1,
     });
     if (!ok) this.settleAudio(false);
     else this.rememberAudio(track);
     await switched;
+  }
+
+  /** Server subtitle after switching to `track`: a forced one follows the audio language (PLAN § 5, 18:40). */
+  private subtitleFor(track: AudioTrack): {
+    index: number | null;
+    changes: boolean;
+    burnedIn: boolean;
+  } {
+    const list = this.playback?.mediaInfo?.subtitleTracks ?? [];
+    const current = this.currentSubtitle();
+    const language = this.renditionOf(track.index)?.language ?? track.language;
+    const index = subtitleAfterAudio(list, current, language, this.preferences.subtitleMode);
+    const burnedIn = list.some((item) => item.selected && item.deliveredAs === 'burnedIn');
+    return { index, changes: index !== current, burnedIn };
+  }
+
+  /** Engine subtitle `id` to show after an audio pick; AVPlayer's own automatic selection is overridden. */
+  private keepSubtitle(id: string | null): void {
+    this.keptSubtitle = { id, until: Date.now() + AUDIO_SWITCH_TIMEOUT_MS };
+    this.engine?.setSubtitleTrack(id);
   }
 
   /** The rendition's BCP-47 language when there is one ("en" rather than the file's "eng"). */
@@ -614,7 +650,8 @@ export class PlaybackController {
     from: number | null,
     to: number,
     engineId: string | null,
-    fallback?: string
+    fallback?: string,
+    subtitleId?: string | null
   ): Promise<true | string> {
     const sample: AudioSwitchSample = {
       via,
@@ -641,11 +678,14 @@ export class PlaybackController {
       };
       if (engineId !== null) {
         const subtitles = this.engine?.getSnapshot().tracks.subtitles ?? [];
+        const keep = subtitles.find((track) => track.selected)?.id ?? null;
         this.keptSubtitle = {
-          id: subtitles.find((track) => track.selected)?.id ?? null,
+          id: subtitleId === undefined ? keep : subtitleId,
           until: Date.now() + AUDIO_SWITCH_TIMEOUT_MS,
         };
         this.engine?.setAudioTrack(engineId);
+        if (subtitleId !== undefined && subtitleId !== keep)
+          this.engine?.setSubtitleTrack(subtitleId);
       }
       this.changed();
     });
@@ -687,7 +727,7 @@ export class PlaybackController {
     this.settleAudio(true);
   }
 
-  /** AVPlayer re-runs its automatic media selection on an audio pick and drops or adds subtitles: put ours back. */
+  /** AVPlayer re-runs its automatic media selection on an audio pick and drops or adds subtitles: put ours in place. */
   private holdSubtitle(subtitles: readonly { id: string; selected: boolean }[]): void {
     const kept = this.keptSubtitle;
     if (!kept) return;

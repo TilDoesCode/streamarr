@@ -74,7 +74,7 @@ const client = {
 } as unknown as ApiClient;
 
 let account = 0;
-function controller(startSeconds?: number) {
+function controller(startSeconds?: number, preferences?: { subtitleMode: string }) {
   account += 1;
   return new PlaybackController({
     client,
@@ -84,6 +84,7 @@ function controller(startSeconds?: number) {
     nativeEngine: 'expo-video',
     workId: 'w1',
     startSeconds,
+    preferences,
   });
 }
 
@@ -346,9 +347,9 @@ describe('PlaybackController', () => {
     const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
     const english = () => ({ index: 2, language: 'eng' }) as never;
 
-    async function playing(playback: Playback) {
+    async function playing(playback: Playback, mode?: string) {
       mockApi.startPlayback.mockResolvedValue(playback);
-      const c = controller(0);
+      const c = controller(0, mode ? { subtitleMode: mode } : undefined);
       await c.start();
       mockEngine.snapshot.tracks = engineTracks('e1') as never;
       mockEngine.snapshot.position = 42;
@@ -603,6 +604,109 @@ describe('PlaybackController', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+    describe('forced subtitles follow the audio language', () => {
+      const subtitleTracks = (englishForced: boolean) => [
+        { index: 5, language: 'ger', forced: true, deliveredAs: 'webvtt', selected: false },
+        ...(englishForced
+          ? [{ index: 6, language: 'eng', forced: true, deliveredAs: 'webvtt', selected: false }]
+          : []),
+        { index: 7, language: 'eng', forced: false, deliveredAs: 'webvtt', selected: false },
+      ];
+      const withSubtitles = (playback: Playback, englishForced: boolean) => {
+        playback.mediaInfo!.subtitleTracks = subtitleTracks(englishForced) as never;
+        return playback;
+      };
+      const tracks = (audio: string, englishForced: boolean, shown: number | null) => ({
+        ...engineTracks(audio),
+        subtitles: subtitleTracks(englishForced).map((track) => ({
+          id: `s${track.index}`,
+          label: track.language,
+          language: track.language,
+          selected: track.index === shown,
+        })),
+      });
+
+      async function sessionSwitch(englishForced: boolean, shown: number | null, mode?: string) {
+        const c = await playing(withSubtitles(sintel(), englishForced), mode);
+        mockEngine.snapshot.tracks = tracks('e1', englishForced, shown) as never;
+        const switching = c.selectAudio(english());
+        // AVPlayer's own selection keeps the German forced track: the controller overrides it.
+        mockEngine.snapshot.tracks = tracks('e0', englishForced, shown) as never;
+        mockEngine.emit({ type: 'tracks', tracks: mockEngine.snapshot.tracks });
+        mockEngine.emit({ type: 'time', position: 42.4, duration: 600 });
+        await switching;
+        expect(mockApi.switchPlayback).not.toHaveBeenCalled();
+        const calls = mockEngine.setSubtitleTrack.mock.calls.map((call) => call[0]);
+        await c.stop();
+        return calls;
+      }
+
+      it('moves a German forced subtitle to the English forced track', async () => {
+        expect(await sessionSwitch(true, 5)).toEqual(['s6', 's6']);
+      });
+
+      it('turns a German forced subtitle off when English has no forced track', async () => {
+        expect(await sessionSwitch(false, 5)).toEqual([null, null]);
+      });
+
+      it('keeps a full subtitle the viewer picked', async () => {
+        expect(await sessionSwitch(true, 7)).toEqual([]);
+      });
+
+      it('shows the new language forced track when subtitles are off in mode forced', async () => {
+        expect(await sessionSwitch(true, null)).toEqual(['s6', 's6']);
+      });
+
+      it('keeps subtitles off in mode off', async () => {
+        expect(await sessionSwitch(true, null, 'off')).toEqual([]);
+      });
+
+      it.each([
+        [true, 6],
+        [false, -1],
+      ])(
+        'sends the new forced track on /switch (English forced: %s)',
+        async (englishForced, index) => {
+          const c = await playing(
+            withSubtitles(sintel({ inSessionAudioSwitch: false }), englishForced)
+          );
+          mockEngine.snapshot.tracks = tracks('e1', englishForced, 5) as never;
+          mockApi.switchPlayback.mockResolvedValue(
+            sintel({ revision: 1, url: '/stream/p1/r1.m3u8' })
+          );
+          const switching = c.selectAudio(english());
+          await flush();
+          expect(mockApi.switchPlayback.mock.calls[0][2]).toMatchObject({
+            audioStreamIndex: 2,
+            subtitleStreamIndex: index,
+          });
+          mockEngine.emit({ type: 'time', position: 42.3, duration: 600 });
+          await switching;
+          await c.stop();
+        }
+      );
+
+      it('uses /switch when the forced subtitle is burned in', async () => {
+        const playback = withSubtitles(sintel(), false);
+        playback.mediaInfo!.subtitleTracks = [
+          { index: 5, language: 'ger', forced: true, deliveredAs: 'burnedIn', selected: true },
+        ] as never;
+        const c = await playing(playback);
+        mockApi.switchPlayback.mockResolvedValue(
+          sintel({ revision: 1, url: '/stream/p1/r1.m3u8' })
+        );
+        const switching = c.selectAudio(english());
+        await flush();
+        expect(mockEngine.setAudioTrack).not.toHaveBeenCalled();
+        expect(mockApi.switchPlayback.mock.calls[0][2]).toMatchObject({
+          audioStreamIndex: 2,
+          subtitleStreamIndex: -1,
+        });
+        mockEngine.emit({ type: 'time', position: 42.3, duration: 600 });
+        await switching;
+        await c.stop();
+      });
     });
   });
 });

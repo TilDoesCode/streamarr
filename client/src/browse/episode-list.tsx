@@ -24,10 +24,6 @@ export type EpisodeListProps = {
   takeFocus?: boolean;
   /** Grid columns (wide layouts). */
   columns?: number;
-  /** Large shell: an episode's "Versions" shows it in the detail's version panel instead of a sheet. */
-  onVersions?: (episode: Episode) => void;
-  /** Episode whose versions the panel shows (marked in the list). */
-  selectedWorkId?: string | null;
 };
 
 /** Episodes of one season: play/resume on press, versions and the watched toggle beside each row. */
@@ -38,8 +34,6 @@ export function EpisodeList({
   focusWorkId,
   takeFocus = false,
   columns = 1,
-  onVersions,
-  selectedWorkId,
 }: EpisodeListProps) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -118,7 +112,6 @@ export function EpisodeList({
                 unavailable={unavailable}
                 noVersions={noVersions}
                 spec={episode.spec}
-                selected={!!selectedWorkId && episode.workId === selectedWorkId}
                 hasTVPreferredFocus={takeFocus && episode === preferred}
                 onPress={() =>
                   episode.workId &&
@@ -137,17 +130,15 @@ export function EpisodeList({
                           icon={Film}
                           accessibilityLabel={t('detail.episodeVersions', { title })}
                           onPress={() =>
-                            onVersions
-                              ? onVersions(episode)
-                              : openVersions(
-                                  {
-                                    workId: episode.workId,
-                                    title: episodeTitle(episode),
-                                    startSeconds: resumeSeconds(episode.watch),
-                                    currentReleaseId: episode.watch.lastReleaseId,
-                                  },
-                                  () => setVersionsFor(episode)
-                                )
+                            openVersions(
+                              {
+                                workId: episode.workId,
+                                title: episodeTitle(episode),
+                                startSeconds: resumeSeconds(episode.watch),
+                                currentReleaseId: episode.watch.lastReleaseId,
+                              },
+                              () => setVersionsFor(episode)
+                            )
                           }
                         />
                       )}

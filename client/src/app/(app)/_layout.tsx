@@ -1,4 +1,5 @@
 import { Redirect, Stack } from 'expo-router';
+import type { ComponentProps } from 'react';
 import { Platform } from 'react-native';
 
 import { useSessionGate } from '@/accounts/accounts-provider';
@@ -38,19 +39,28 @@ export default function AppLayout() {
             contentStyle: { backgroundColor: colors.video },
           }}
         />
-        <Stack.Screen
-          name="versions/[workId]"
-          options={{
-            presentation: 'formSheet',
-            sheetAllowedDetents: [0.6, 1],
-            sheetGrabberVisible: true,
-            sheetCornerRadius: 28,
-            // Transparent content: iOS 26 renders the formSheet itself in Liquid Glass.
-            contentStyle: { backgroundColor: colors.scrim.clear },
-          }}
-        />
+        <Stack.Screen name="versions/[workId]" options={SHEET_OPTIONS} />
+        <Stack.Screen name="about/[kind]/[id]" options={SHEET_OPTIONS} />
         <Stack.Screen name="dev/player" />
       </Stack>
     </>
   );
 }
+
+/** Version and About sheets: iOS formSheet in Liquid Glass; TV, web and Android draw their own glass panel. */
+const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>['options'] =
+  Platform.OS === 'ios' && !Platform.isTV
+    ? {
+        presentation: 'formSheet',
+        sheetAllowedDetents: [0.6, 1],
+        sheetGrabberVisible: true,
+        sheetCornerRadius: 28,
+        // Transparent content: iOS 26 renders the formSheet itself in Liquid Glass.
+        contentStyle: { backgroundColor: colors.scrim.clear },
+      }
+    : {
+        // TV, web, Android tablets: the sheet draws its own glass over the page.
+        presentation: 'transparentModal',
+        animation: 'none',
+        contentStyle: { backgroundColor: colors.scrim.clear },
+      };

@@ -1,11 +1,9 @@
-import { Film } from 'lucide-react-native';
-import { createContext, use, useState, type Ref, type RefObject } from 'react';
+import { type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
-import { findNodeHandle, Platform, ScrollView, View } from 'react-native';
+import { Platform, View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
-import { toAppError } from '@/api/errors';
-import { useVersions, type Version } from '@/browse/queries';
+import { type Version } from '@/browse/queries';
 import {
   methodReasons,
   predictedMethod,
@@ -13,45 +11,12 @@ import {
   versionFormats,
   versionHeadline,
 } from '@/browse/version-format';
-import {
-  Focusable,
-  FocusGuide,
-  FocusLift,
-  useFocusGlowRoom,
-  useFocusState,
-} from '@/components/focus';
-import { Glass, tvGlassAlpha, tvPanelUnderlay } from '@/components/glass';
+import { Focusable, FocusLift, useFocusState } from '@/components/focus';
 import { methodTone, SignalBars, SPEC_TONES, versionSignal } from '@/components/spec';
-import { EmptyState } from '@/components/states/empty-state';
-import { ErrorState } from '@/components/states/error-state';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
 import { useShell } from '@/shell/use-shell';
-import { colors, fonts, useFocusGap } from '@/theme';
-
-const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
-
-export type VersionPanelProps = {
-  workId: string | null | undefined;
-  /** The version the viewer played last ("Last played" badge). */
-  currentReleaseId?: string | null;
-  onPlay: (version: Version) => void;
-  tint?: string | null;
-  /** Title art highlight: Android TV sizes the panel glass from it. */
-  artHighlight?: string | null;
-  /** The card Right from the actions (and "Versions") lands on: Recommended, else the first. */
-  entryRef?: RefObject<View | null>;
-  /** The entry card mounted (or unmounted: null). */
-  onEntry?: (view: View | null) => void;
-  /** TV: focus entered (true) or left (false) the panel. */
-  onFocusInside?: (inside: boolean) => void;
-  /** Web: briefly highlighted after "Versions" was pressed. */
-  highlight?: boolean;
-  /** Heading override (series: the episode the panel belongs to). */
-  subtitle?: string;
-  testID?: string;
-};
+import { colors, fonts } from '@/theme';
 
 /** Index of the card focus enters on: Recommended, else the first. */
 export function entryIndex(versions: readonly Pick<Version, 'recommended'>[]): number {
@@ -61,141 +26,7 @@ export function entryIndex(versions: readonly Pick<Version, 'recommended'>[]): n
   );
 }
 
-// Android TV glass is already smoked; a lighter underlay keeps muted text >= 4.5:1 (tv-glass.test.ts).
-const SMOKED_TV = Platform.OS === 'android' && Platform.isTV;
-
-/** Large shell: the always-visible glass version panel of a detail screen (Aurora C-detail). */
-export function VersionPanel({
-  workId,
-  currentReleaseId,
-  onPlay,
-  tint,
-  artHighlight,
-  entryRef,
-  highlight = false,
-  subtitle,
-  onFocusInside,
-  onEntry,
-  testID = 'version-panel',
-}: VersionPanelProps) {
-  const { t } = useTranslation();
-  const { s } = useShell();
-  const cardGap = useFocusGap(s(18), 'ring');
-  const glowRoom = useFocusGlowRoom();
-  const versions = useVersions(workId, !!workId);
-  const list = versions.data?.versions ?? [];
-  const error = versions.error ? toAppError(versions.error) : undefined;
-  const entry = entryIndex(list);
-  const [entryView, setEntryView] = useState<View | null>(null);
-  const entryCallback = (view: View | null) => {
-    setEntryView(view);
-    if (entryRef) entryRef.current = view;
-    onEntry?.(view);
-  };
-
-  let body;
-  if (!workId || (versions.data === undefined && !error))
-    body = [0, 1, 2].map((index) => <PanelCardSkeleton key={index} />);
-  else if (versions.data === undefined && error)
-    body = (
-      <ErrorState
-        testID="versions-error"
-        code={error.code}
-        actions={['retry']}
-        onAction={() => void versions.refetch()}
-      />
-    );
-  else if (!list.length)
-    body = (
-      <EmptyState
-        testID="versions-empty"
-        icon={Film}
-        title={t('versions.emptyTitle')}
-        message={t('versions.emptyMessage')}
-      />
-    );
-  else
-    body = list.map((version, index) => (
-      <VersionPanelCard
-        key={version.releaseId ?? index}
-        ref={index === entry ? entryCallback : undefined}
-        version={version}
-        current={!!currentReleaseId && version.releaseId === currentReleaseId}
-        tint={tint}
-        onPress={() => onPlay(version)}
-      />
-    ));
-
-  const count = versions.data ? list.length : undefined;
-  return (
-    <Glass
-      testID={testID}
-      intensity="regular"
-      tint={highlight ? tint : null}
-      artHighlight={artHighlight}
-      radius={s(44)}
-      style={[
-        { flex: 1 },
-        highlight && { borderWidth: s(2), borderColor: colors.foreground.DEFAULT },
-      ]}>
-      {/* Smoked underlay: keeps the copy legible over bright artwork (mockup C-detail). */}
-      <View
-        style={{
-          position: 'absolute',
-          inset: 0,
-          borderRadius: s(44),
-          borderCurve: 'continuous',
-          backgroundColor: colors.glass.tinted,
-          opacity: SMOKED_TV
-            ? tvPanelUnderlay(tvGlassAlpha(artHighlight, highlight ? tint : null))
-            : 0.7,
-        }}
-      />
-      <View style={{ paddingHorizontal: s(40), paddingTop: s(48), gap: s(6) }}>
-        <Text
-          role="heading"
-          style={{
-            fontFamily: fonts.displayBold,
-            fontSize: s(44),
-            lineHeight: s(52),
-            color: colors.foreground.DEFAULT,
-          }}>
-          {t('versions.title')}
-        </Text>
-        <Text tone="muted" style={{ fontSize: s(20), lineHeight: s(28) }} numberOfLines={2}>
-          {subtitle ??
-            (count !== undefined
-              ? t('versions.panelSubtitle', { count })
-              : t('versions.predicted'))}
-        </Text>
-      </View>
-      <FocusGuide
-        remember={false}
-        destinations={entryView ? [entryView] : undefined}
-        trap={['up', 'down', 'right']}
-        onFocusEnter={() => onFocusInside?.(true)}
-        onFocusLeave={() => onFocusInside?.(false)}
-        style={{ flex: 1 }}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          // Ring and glow room stays inside the viewport, which starts below the subtitle (no overlap when scrolled).
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            padding: Math.max(s(40), glowRoom),
-            paddingTop: Math.max(s(28), glowRoom),
-            gap: cardGap,
-          }}>
-          {body}
-        </ScrollView>
-      </FocusGuide>
-    </Glass>
-  );
-}
-
-/** Apple TV: where Left from a version card goes (the detail actions; nothing lines up geometrically). */
-export const PanelExitContext = createContext<View | null>(null);
-
-/** One version card of the panel (also the player's glass version panel). */
+/** One version card of the version sheet (also the player's glass version panel). */
 export function VersionPanelCard({
   version,
   current,
@@ -204,6 +35,7 @@ export function VersionPanelCard({
   ref,
   focusable,
   onFocus,
+  preferred,
 }: {
   version: Version;
   current: boolean;
@@ -212,11 +44,12 @@ export function VersionPanelCard({
   ref?: Ref<View>;
   focusable?: boolean;
   onFocus?: () => void;
+  /** TV: takes the first focus when its screen appears (the version sheet). */
+  preferred?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const format = useFormat();
   const { s, font } = useShell();
-  const exit = use(PanelExitContext);
   const method = predictedMethod(version);
   const reasons = methodReasons(version, t);
   const headline = versionHeadline(version) || version.name || '';
@@ -263,7 +96,7 @@ export function VersionPanelCard({
       testID={`version-${version.rank}`}
       focusable={focusable}
       onFocus={onFocus}
-      nextFocusLeft={APPLE_TV && exit ? (findNodeHandle(exit) ?? undefined) : undefined}
+      hasTVPreferredFocus={preferred}
       role="button"
       accessibilityLabel={[headline, spec, facts.join(', '), health, local, methodLabel, why]
         .filter(Boolean)
@@ -365,15 +198,17 @@ function Pill({ label, tone }: { label: string; tone: 'recommended' | 'neutral' 
       style={{
         borderRadius: s(14),
         paddingHorizontal: s(12),
-        paddingVertical: s(3),
-        backgroundColor: recommended ? SPEC_TONES.ok.fg : colors.glass.strong,
+        paddingVertical: s(3) - (recommended ? 0 : s(1.5)),
+        backgroundColor: recommended ? SPEC_TONES.ok.fg : undefined,
+        borderWidth: recommended ? 0 : s(1.5),
+        borderColor: colors.foreground.subtle,
       }}>
       <Text
         style={{
           fontFamily: fonts.bodySemiBold,
           fontSize: s(15),
           lineHeight: s(22),
-          color: recommended ? colors.background : colors.foreground.DEFAULT,
+          color: recommended ? colors.background : colors.foreground.muted,
         }}>
         {label}
       </Text>
@@ -407,17 +242,5 @@ function CardSurface({ radius, children }: { radius: number; children: React.Rea
       ]}>
       {children}
     </Animated.View>
-  );
-}
-
-function PanelCardSkeleton() {
-  const { s } = useShell();
-  return (
-    <View testID="versions-loading" style={{ gap: s(12), padding: s(26) }}>
-      <Skeleton width={s(140)} height={s(26)} radius={s(13)} />
-      <Skeleton width="60%" height={s(34)} radius={s(8)} />
-      <Skeleton width="85%" height={s(22)} radius={s(6)} />
-      <Skeleton width="45%" height={s(20)} radius={s(6)} />
-    </View>
   );
 }

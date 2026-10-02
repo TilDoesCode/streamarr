@@ -99,3 +99,10 @@ export function versionsHref({
     },
   };
 }
+
+export type AboutRequest = { kind: 'movie' | 'series'; tmdbId: number; title: string };
+
+/** "About the series" / movie details as a sheet (same presentation as the version sheet). */
+export function aboutHref({ kind, tmdbId, title }: AboutRequest): Href {
+  return { pathname: '/about/[kind]/[id]', params: { kind, id: String(tmdbId), title } };
+}

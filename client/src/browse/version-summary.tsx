@@ -4,7 +4,9 @@ import { View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { toAppError } from '@/api/errors';
+import { playTarget } from '@/browse/play-target';
 import { useVersions } from '@/browse/queries';
+import { resumeSeconds, type PlayWatchState } from '@/browse/title-actions';
 import { predictedMethod, versionFormats, versionHeadline } from '@/browse/version-format';
 import { Focusable, FocusLift, useFocusState } from '@/components/focus';
 import { Glass } from '@/components/glass';
@@ -20,19 +22,21 @@ import { colors, fonts, useDesign } from '@/theme';
 /** Phone: the glass "Version" card (the version that would play, its method, the count); opens the sheet. */
 export function VersionSummary({
   workId,
-  currentReleaseId,
+  watch,
   onOpen,
 }: {
   workId: string | null | undefined;
-  currentReleaseId?: string | null;
+  watch?: PlayWatchState;
   onOpen: () => void;
 }) {
   const { t } = useTranslation();
   const design = useDesign();
   const versions = useVersions(workId);
   const list = versions.data?.versions ?? [];
-  // Play without a release id starts the server's pick: the recommended version.
-  const version = list.find((item) => item.recommended) ?? list[0];
+  // The version Play/Resume starts (same rule as the large screens' chip row).
+  const target = playTarget(list, watch, resumeSeconds(watch) ? 'resume' : 'play');
+  const version = target.state === 'ready' ? target.version : undefined;
+  const currentReleaseId = watch?.lastReleaseId;
   const lastPlayed = currentReleaseId
     ? list.find((item) => item.releaseId === currentReleaseId)
     : undefined;
@@ -87,8 +91,12 @@ export function VersionSummary({
                 <Text variant="overline" tone="muted">
                   {t('versions.card')}
                 </Text>
-                {lastPlayed === version ? (
-                  <Badge testID="versions-summary-last" label={t('versions.current')} />
+                {lastPlayed === version && !version.recommended ? (
+                  <Badge
+                    testID="versions-summary-last"
+                    label={t('versions.current')}
+                    variant="outline"
+                  />
                 ) : null}
               </View>
               <Text

@@ -88,6 +88,8 @@ export function useFormat() {
       relativeDay: (value: Date | string | number, now?: Date) =>
         formatRelativeDay(value, lang, t, now),
       fileSize: (bytes: number) => formatFileSize(bytes, lang, t),
+      decimal: (value: number) =>
+        formatNumber(value, lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
     }),
     [lang, t]
   );

@@ -242,3 +242,24 @@ export function specNote(versions: readonly Version[], t: TFunction): string | u
   const gap = specGap(versions);
   return gap ? t('detail.specGap', gap) : undefined;
 }
+
+/** Version sheet header: the best picture on offer and what plays here (Recommended), SDR named. */
+export function sheetSpecs(
+  versions: readonly Version[]
+): { best: string; here: string } | undefined {
+  const here = versions.find((version) => version.recommended) ?? versions[0];
+  const best = versions.reduce<Version | undefined>(
+    (top, version) =>
+      !top || (version.qualityRank ?? version.rank) < (top.qualityRank ?? top.rank) ? version : top,
+    undefined
+  );
+  const label = (version: Version) => {
+    const spec = versionSpec(version);
+    return [spec?.resolution, spec?.hdr ?? (spec?.resolution ? 'SDR' : null)]
+      .filter(Boolean)
+      .join(' · ');
+  };
+  if (!here || !best) return undefined;
+  const specs = { best: label(best), here: label(here) };
+  return specs.best && specs.here ? specs : undefined;
+}

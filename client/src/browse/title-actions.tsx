@@ -2,7 +2,9 @@ import { useRouter } from 'expo-router';
 import { Check, EyeOff, Film, Layers, Play, RotateCcw } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
+import type { Ref } from 'react';
 
+import { playTarget, type PlayAction } from '@/browse/play-target';
 import { useMarkPlayed, useVersions, type WatchState } from '@/browse/queries';
 import { GlassButton } from '@/components/glass';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,9 @@ import { TICKS_PER_SECOND } from '@/player/playback-api';
 import { useDesign } from '@/theme';
 
 type WatchLike = Pick<WatchState, 'positionTicks' | 'durationTicks' | 'played'> | null | undefined;
+type PlayWatch = { lastReleaseId?: string | null } | null | undefined;
+/** What the play rule reads from a watch state (resume point and last played version). */
+export type PlayWatchState = WatchLike & PlayWatch;
 
 /** Seconds to resume from (a played work being rewatched too), or 0 when there is no saved position. */
 export function resumeSeconds(watch: WatchLike): number {
@@ -26,6 +31,15 @@ export function resumeSeconds(watch: WatchLike): number {
 export function watchProgress(watch: WatchLike): number | undefined {
   if (!watch?.durationTicks || !watch.positionTicks) return undefined;
   return Math.min(1, watch.positionTicks / watch.durationTicks);
+}
+
+/** The main button's action and the version it starts (shared by the buttons and the chip row). */
+export function usePlayTarget(workId: string | null | undefined, watch: WatchLike & PlayWatch) {
+  const versions = useVersions(workId);
+  const action: PlayAction = resumeSeconds(watch) ? 'resume' : 'play';
+  const list = versions.data ? (versions.data.versions ?? []) : undefined;
+  const target = playTarget(list, watch, action, versions.isError);
+  return { action, target, versions: list ?? [] };
 }
 
 export function usePlay() {
@@ -103,7 +117,7 @@ export function useWatchedToggle({
 export type TitleActionsProps = {
   workId: string | null | undefined;
   title: string;
-  watch: WatchLike;
+  watch: WatchLike & PlayWatch;
   /** Overrides the play label (series: "Play S1 E2"). */
   playLabel?: string;
   onVersions?: () => void;
@@ -119,6 +133,10 @@ export type TitleActionsProps = {
   /** Phone (Aurora C-phone): full-width solid Play and Start over only; Versions and Watched live elsewhere. */
   compact?: boolean;
   tint?: string | null;
+  /** TV: the main button takes the first focus when it appears (series: only before any selection). */
+  preferFocus?: boolean;
+  /** Large shell: the main button (Back from the episode strip focuses it on Android TV). */
+  mainRef?: Ref<View>;
 };
 
 /** Play/Resume, Start over, Versions and the watched toggle of a detail hero. */
@@ -135,12 +153,16 @@ export function TitleActions({
   shell = false,
   compact = false,
   tint,
+  preferFocus = true,
+  mainRef,
 }: TitleActionsProps) {
   const { t } = useTranslation();
   const play = usePlay();
-  const versions = useVersions(workId);
-  const noVersions = versions.data !== undefined && !versions.data.versions?.length;
+  const { target, versions: list } = usePlayTarget(workId, watch);
+  const noVersions = target.state === 'none';
   const resume = resumeSeconds(watch);
+  // The version the chip row (large) or the version card (phone) names.
+  const releaseId = target.state === 'ready' ? target.releaseId : undefined;
   const played = markPlayed ?? !!watch?.played;
   const playLabelKey = resume
     ? 'common.resume'
@@ -172,7 +194,7 @@ export function TitleActions({
           label={playLabel ?? t(playLabelKey)}
           tint={tint}
           style={{ alignSelf: 'stretch' }}
-          onPress={() => play({ workId, title, startSeconds: resume })}
+          onPress={() => play({ workId, title, releaseId, startSeconds: resume })}
         />
         {resume ? (
           <GlassButton
@@ -181,7 +203,7 @@ export function TitleActions({
             label={t('common.startOver')}
             tint={tint}
             style={{ alignSelf: 'stretch' }}
-            onPress={() => play({ workId, title, startSeconds: 0 })}
+            onPress={() => play({ workId, title, releaseId, startSeconds: 0 })}
           />
         ) : null}
       </>
@@ -189,7 +211,7 @@ export function TitleActions({
   }
 
   if (shell) {
-    const count = versions.data?.versions?.length;
+    const count = list.length || undefined;
     return (
       <>
         {workId && noVersions ? (
@@ -199,7 +221,8 @@ export function TitleActions({
             label={t('common.noVersions')}
             // TV: the inert note takes the first focus, so a stray Select changes nothing.
             disabled={!Platform.isTV}
-            hasTVPreferredFocus
+            hasTVPreferredFocus={preferFocus}
+            ref={mainRef}
           />
         ) : workId ? (
           <GlassButton
@@ -208,8 +231,9 @@ export function TitleActions({
             icon={played && !resume ? RotateCcw : Play}
             label={playLabel ?? t(playLabelKey)}
             tint={tint}
-            hasTVPreferredFocus
-            onPress={() => play({ workId, title, startSeconds: resume })}
+            hasTVPreferredFocus={preferFocus}
+            ref={mainRef}
+            onPress={() => play({ workId, title, releaseId, startSeconds: resume })}
           />
         ) : null}
         {resume && workId && !noVersions ? (
@@ -218,14 +242,20 @@ export function TitleActions({
             icon={RotateCcw}
             label={t('common.startOver')}
             tint={tint}
-            onPress={() => play({ workId, title, startSeconds: 0 })}
+            onPress={() => play({ workId, title, releaseId, startSeconds: 0 })}
           />
         ) : null}
         {onVersions && !noVersions ? (
           <GlassButton
             testID={`${testIDPrefix}-versions`}
             icon={Layers}
-            label={count ? t('common.versionsCount', { count }) : t('common.versions')}
+            label={
+              count === 1
+                ? t('detail.details')
+                : count
+                  ? t('common.versionsCount', { count })
+                  : t('common.versions')
+            }
             tint={tint}
             onPress={onVersions}
           />
@@ -238,7 +268,7 @@ export function TitleActions({
             label={t(played ? 'detail.markUnplayed' : 'detail.markPlayed')}
             tint={tint}
             disabled={pending}
-            hasTVPreferredFocus={!workId}
+            hasTVPreferredFocus={preferFocus && !workId}
             onPress={toggle}
           />
         ) : null}
@@ -262,7 +292,7 @@ export function TitleActions({
           icon={played && !resume ? RotateCcw : Play}
           label={playLabel ?? t(playLabelKey)}
           hasTVPreferredFocus
-          onPress={() => play({ workId, title, startSeconds: resume })}
+          onPress={() => play({ workId, title, releaseId, startSeconds: resume })}
         />
       ) : null}
       {resume && workId && !noVersions ? (
@@ -271,7 +301,7 @@ export function TitleActions({
           variant="secondary"
           icon={RotateCcw}
           label={t('common.startOver')}
-          onPress={() => play({ workId, title, startSeconds: 0 })}
+          onPress={() => play({ workId, title, releaseId, startSeconds: 0 })}
         />
       ) : null}
       {onVersions && !noVersions ? (

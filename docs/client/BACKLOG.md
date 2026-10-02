@@ -5,10 +5,8 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Decisions for the user
 
-- Forced subtitles and audio switches (F5): today an audio switch never changes the subtitle (every engine; AVPlayer's own
-  "forced follows the audio language" is overridden), so German forced subtitles stay on after switching to English.
-  Alternative: a forced subtitle follows the audio language (forced track of the new language, else off), on the
-  client for in-session switches and in the `/switch` request. Round G decisions are in PLAN.md section 2.
+- None open. Decided 2026-10-02: forced subtitles follow the audio language; phones resume the last played version
+  (PLAN.md section 5, implemented in F7 S4). Round G decisions are in PLAN.md section 2.
 
 ## Needs Xcode (pending-ios)
 
@@ -52,6 +50,29 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   expo-video API for decoder stats).
 
 ## Browse, navigation and UX
+
+- TV (F7 verify): while an episode's versions load, the stage shows Play + Versions and flips to "No versions yet"
+  once they arrive (~15 s on the Google TV AVD). A neutral main button would need the same Focusable to stay mounted
+  across the swap (TV focus must not move) — give TitleActions a loading state that keeps the main button's identity.
+- Google TV (F7 verify): the stage pill once showed "Season 3 · Episode" without the number after an in-place update
+  (Android text clipping on a width change?); seen once on the 1080p AVD.
+
+- Apple TV (F7): the Versions sheet (transparentModal) gets no initial focus; the first arrow press focuses the top card.
+  react-native-tvos sends hasTVPreferredFocus/requestTVFocus through the app root view, which does not reach a view in a
+  presented modal; needs a native preferredFocusEnvironments hook on the modal VC. Lead (S5): the About sheet, same
+  route presentation and `SheetPanel`, does get initial focus on its single GlassButton (hasTVPreferredFocus +
+  useInitialFocus) — compare with the sheet cards (cards render after the versions query; maybe the timing).
+  F7 verify 2: not reproduced — on Apple TV 4K the About sheet also opens without focus (first Down lands on
+  "Schließen"); Google TV focuses Close at once. So both sheets need the native hook, the lead does not hold.
+- Google TV dev client (F7 verify 2): crashed once on the first deep link after a snapshot boot ("App react context
+  shouldn't be created before"); fine after restart-app. Dev client only; check whether a release build is affected.
+- Android TV emulator (F7): a detail page pop takes ~5 s and deep links land seconds late on the 2 GB Google TV AVD
+  (it swaps ~580 MB); check on hardware. The emulator's anna session also ends between runs ("Signed out for your
+  security" / "Your session has ended") — find out which side ends it (refresh reuse after an emulator kill?).
+- TV (F7): the long-season strip position (focused card at x = 552 from the second card on) is unit-tested only; Dev
+  World seasons have 3 episodes. Check with a long season (seed one or use a real library).
+- iPad (F7): Split View / Stage Manager widths not checked live (needs Mac UI input in the simulator); the narrow rule is
+  covered by web 1024×900 and a jest test at 820 pt.
 
 - TV (F6): a detail deep link opened from another detail page keeps the previous page's focused slot (Sintel opened on
   the watched toggle after Wing It!); deep-link-only, focus memory keyed per route.

@@ -91,7 +91,25 @@
     "unwatch": "Unwatch",
     "details": "Details",
     "lessDetails": "Less",
-    "specGap": "{best} available · plays here in {here}"
+    "specGap": "{best} available · plays here in {here}",
+    "rating": "Rating",
+    "ratingSource": " TMDB",
+    "airsOn": "From {date}",
+    "notAired": "Not aired yet",
+    "noVersionShort": "No version",
+    "episodeSelectHint": "Shows this episode above",
+    "playEpisode": "Play {title}",
+    "continueWith": "Continue with",
+    "aboutSeries": "About the series",
+    "episodePosition": "Episode {episode} of {total}",
+    "stagePill": "Season {season} · Episode {episode}",
+    "stagePillNext": "Season {season} · Episode {episode} · Up next",
+    "stagePillSpecial": "Specials · Episode {episode}",
+    "yearSpan": "{from} – {to}",
+    "genres": "Genres",
+    "originalTitle": "Original title",
+    "moreDetails": "All details",
+    "moreAboutSeries": "More about the series"
   },
   "player": {
     "title": "Player",
@@ -374,7 +392,8 @@
     "recommended": "Recommended",
     "ready": "Ready",
     "airDate": "Aired {date}",
-    "upNext": "Up next"
+    "upNext": "Up next",
+    "specials": "Specials"
   },
   "format": {
     "duration": {
@@ -1048,8 +1067,53 @@
     "showDetails": "Show technical details",
     "hideDetails": "Hide technical details",
     "panelSubtitle": "{count, plural, one {# version} other {# versions}} · playback method expected on this device",
-    "panelEpisode": "{episode} · playback method expected on this device",
-    "card": "Version"
+    "card": "Version",
+    "bestPicture": "Best picture",
+    "onDevice": "On this device",
+    "expected": {
+      "device": "{title} · expected playback on this device",
+      "tablet": "{title} · expected playback on this iPad",
+      "browser": "{title} · expected playback in this browser"
+    },
+    "methodShort": {
+      "direct": "Direct",
+      "remux": "Direct stream",
+      "transcode": "Transcoded",
+      "vlc": "With VLC",
+      "unknown": "Unchecked"
+    },
+    "reasonsShort": {
+      "audio_codec_unsupported": "Audio is converted ({codec})",
+      "audio_converted": "Audio is converted ({from} → {to})",
+      "bit_depth_unsupported": "{bitDepth} bit → 8 bit",
+      "dolby_vision_profile_unsupported": "Dolby Vision is converted",
+      "hdr_unsupported": "{hdr} → SDR",
+      "image_subtitle_vlc": "Image subtitles only with VLC",
+      "resolution_exceeds_limit": "Scaled down to {max}p",
+      "subtitle_burned_in": "Subtitles burned in",
+      "video_codec_not_remuxable": "{codec} is converted",
+      "video_codec_unsupported": "{codec} is converted",
+      "vlc_fallback": "Built-in player cannot play this version",
+      "bitrate_exceeds_limit": "Bitrate is lowered"
+    },
+    "chips": {
+      "openHint": "Opens the versions",
+      "label": "Plays: {chips}. {reasons}",
+      "unknown": "Device not recognised yet, the server decides at start",
+      "lastMissing": "Last played version no longer available",
+      "directPossible": "Direct possible:",
+      "inVersions": "in “Versions”",
+      "noneMovie": "There is no playable version of this movie yet.",
+      "noneEpisode": "There is no playable version of this episode yet.",
+      "error": "Versions not loaded · Play starts the server’s recommendation",
+      "betterOnly": {
+        "direct": "{best} available",
+        "remux": "{best} available, plays here as a direct stream",
+        "transcode": "{best} available, plays here only transcoded",
+        "vlc": "{best} available, plays here only with VLC",
+        "unknown": "{best} available"
+      }
+    }
   },
   "library": {
     "genres": "Genres",
