@@ -836,6 +836,25 @@ const TASKS = {
       'OpenAPI re-frozen, contract check, e2e and the full server suite green; web and client types regenerated',
     ],
   },
+  'B10': {
+    title: 'Server: image sizes per use, tagline only in the viewer language, long-season artwork, alias cooldown',
+    track: 'Backend',
+    deps: ['B9'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (findings of R1 S1, F9 S2a and BACKLOG). (1) Image weight: R1 measured card images of ~130-156 KB (w780-class) for ~233 px web cards, about 1 MB of the ~1.6 MB on web Home (docs/client/journal/R1.md). Find where the server (and Dev World) chooses the artwork URLs/sizes for list items (home rows, library, search, next-up/continue, episodes/stills) vs detail/hero backdrops, and give the client size-appropriate images: either additive size-class URLs on the items (e.g. posterUrl small/medium, stillUrl small, backdrop for hero) or a documented `size` parameter on the image route; real TMDB paths must map to the TMDB size buckets (w92/w154/w185/w342/w500/w780/w1280/original), Dev World must serve the same classes (generate the smaller files once in the media cache). Keep current fields working (additive contract change, OpenAPI re-frozen). Measure bytes per card before/after on Dev World.',
+      '- (2) Tagline language: the German About sheet shows an English tagline when TMDB has none in German. Rule: tagline only in the viewer language (null otherwise); overview keeps its current fallback. Tests.',
+      '- (3) Dev World: generated artwork for "The Lighthouse Logs" (poster, backdrop, logo-less title is fine, episode stills) so it appears in Home rows and looks realistic on the Bühne; ids stay stable.',
+      '- (4) BACKLOG: username and e-mail of one account share the sign-in code cooldown, so the 429 on the second alias reveals that both belong together: key the cooldown per (account, alias) or answer the second alias exactly like a first send without sending; pick the variant that does not leak and does not allow mail flooding; tests + docs.',
+      '- Test on your own Dev World 39310; regenerate web and client types at the very end if the contract changed (client code otherwise untouched; the client switch to the new sizes is a client task).',
+    ].join('\n'),
+    acceptance: [
+      'list items carry size-appropriate artwork (documented size classes; Dev World serves them); bytes per web Home card measured before/after',
+      'tagline only in the viewer language (tests); Lighthouse Logs has artwork in Dev World with stable ids',
+      'the sign-in code cooldown no longer reveals that two aliases belong to one account and still limits mail (tests, docs)',
+      'OpenAPI re-frozen, contract check, e2e and the full server suite green; web and client types regenerated if the contract changed',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
