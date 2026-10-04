@@ -221,6 +221,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   tombstone lookup (B9 code); account deletion writes tombstones outside the session lock (a racing refresh can answer
   `unknown`); the hourly ViewerSessionCleanup job has no unit test of its own (verified live).
 
+- F8 verify V2: on Mobile Safari the first tap on a hidden player overlay toggles playback instead of only showing the
+  controls (since M4.2); Apple TV focus lands on the "Start" tab after the player when the played title left Home;
+  once, Up right after Down kept focus on the seek bar (not reproduced); while the secure storage keeps failing to read,
+  signing out or signing the same account in again throws (S6, P3); the iPhone video full-screen leave path
+  (`webkitEnterFullscreen`) is untested; after leaving the system full screen paused, the overlay stays hidden (P3).
+
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.
