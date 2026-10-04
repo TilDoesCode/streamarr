@@ -117,3 +117,5 @@ Append-only. One line per task outcome; details in `journal/<TASK-ID>.md`.
   neighbour touched; ToS Details clear; About sheet open/close with focus return (Apple TV, Google TV); web card click
   selects, corner/double click plays, no history entry; gates green; non-blocking: Apple TV About sheet has no initial
   focus (like the Versions sheet), Google TV dev client crashed once on a deep link after snapshot boot → journal/F7.md
+- T1 · done · tests and code health: audio fallback/NAME-first/bound/single-audio tests with mutation proof, TV focus-gap screen tests (action row, chips), dead code + 43 unused i18n keys + keys-used test, web tabs keep another tab's profile edit, brand PNGs 7.9 MB → 0.93 MB unchanged look; jest 72/696 → journal/T1.md
+- T1 · verify 1 · pass (independent verifier, worktree): gates green (jest 72/696); every new test fails under its mutation (audio fallback, NAME-first, cap, single-audio, profile-sync race, keys-used, parity, no-literal-text, focus gap); removed symbols had no callers; brand PNGs 7945 -> 939 KB, max 4 levels, no visible change; non-blocking items -> BACKLOG

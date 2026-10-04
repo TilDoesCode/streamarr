@@ -16,3 +16,14 @@ export function rememberAudioLanguage(
   const primary = primaryLanguage(language);
   if (primary) deviceSettings.set(key(accountId), primary);
 }
+
+const singleAudio = new Set<string>();
+
+/** Releases seen with at most one audio track: their next start sends no remembered language. */
+export function noteAudioTracks(releaseId: string | null | undefined, count: number): void {
+  if (releaseId && count <= 1) singleAudio.add(releaseId);
+}
+
+export function isSingleAudio(releaseId: string | null | undefined): boolean {
+  return !!releaseId && singleAudio.has(releaseId);
+}

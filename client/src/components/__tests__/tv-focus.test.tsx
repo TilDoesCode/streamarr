@@ -205,8 +205,7 @@ describe('Shelf on TV', () => {
   it('restores the remembered item after a remount, starting at the gutter', async () => {
     const first = await renderWithProviders(shelf);
     const list = ancestorWith(screen.getByTestId('item-0'), 'getItemLayout');
-    // Offsets include the leading gutter (48 dp on TV), so FlatList's window math is exact; the gap is the
-    // shell's 40 pt card gap scaled to the 750 dp test window (15.5 dp).
+    // Offsets include the 48 dp TV gutter; the gap is the 40 pt card gap scaled to the 750 dp window (15.5 dp).
     expect(list?.props.getItemLayout(null, 3)).toEqual({
       length: 115.5,
       offset: 48 + 3 * 115.5,

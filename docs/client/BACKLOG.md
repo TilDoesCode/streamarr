@@ -201,6 +201,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   SIGSEGV at sign-in, probably from an "rr" dev reload during adb text input. Prefer argent paste for passwords.
 
 ## Tests and tooling (more)
+- T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
+  one failure also cascades into later tests of controller.test.ts.
+- T1 verify: `audioTracks?.length ?? 2` (unknown track count) is repeated three times in controller.ts; the
+  single-audio release set is module-global with no reset; testID `stage-actions` exists only for a test.
+- T1: assets/brand/render.sh now needs python3 + Pillow (denoise.py); not checked by any script.
 - TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 

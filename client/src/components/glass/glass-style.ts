@@ -122,10 +122,7 @@ export function tvGlassLegible(
 
 const alphaCache = new Map<string, number>();
 
-/**
- * Smallest glass alpha that keeps every text style legible over the title's art highlight (docs/api.md
- * "Art highlight"), between a floor that keeps the glass and focus ring readable and today's constants.
- */
+/** Smallest glass alpha that keeps text legible over the art highlight (docs/api.md), above a readable floor. */
 export function tvGlassAlpha(
   artHighlight: string | null | undefined,
   tint?: string | null,

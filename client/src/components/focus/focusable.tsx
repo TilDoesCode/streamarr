@@ -45,10 +45,10 @@ const EASE_OUT = Easing.bezier(...easing.out);
 // Web: our ring replaces the browser focus outline (RN's types lack 'none'; react-native-web accepts it).
 const NO_OUTLINE = { outlineStyle: 'none' } as unknown as ViewStyle;
 
-// Web: react-native-web activates only buttons with Space; these roles expect it too (WAI-ARIA).
 // Web hover shows the ring at reduced strength (Aurora: 2 px ring on hover, full ring on keyboard focus).
 const HOVER_RING = 0.7;
 
+// Web: react-native-web activates only buttons with Space; these roles expect it too (WAI-ARIA).
 const SPACE_ROLES: ReadonlySet<string> = new Set(['radio', 'checkbox', 'switch']);
 
 /** Shared values (0..1) of the nearest Focusable: focus (remote/keyboard), pressed, hover (web). */

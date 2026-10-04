@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 
 import { unwrap } from '@/api/client';
 import { useWatchRefreshOnForeground } from '@/browse/queries';
@@ -29,7 +29,7 @@ export function syncProfile(api: AccountsApi, account: Account, profile: ViewerP
 }
 
 /** Keeps the stored profile (name, avatar, forced password change) in step with the server; also checks the session. */
-export function useProfileSync(account: Account): void {
+function useProfileSync(account: Account): void {
   const api = useAccountsApi();
   const { data } = useQuery({
     queryKey: queryKeys.me(account.id),
@@ -39,9 +39,11 @@ export function useProfileSync(account: Account): void {
     // Polls while the app is in the foreground (a TV can stay there for hours), not in the background.
     refetchInterval: STALE.profile,
   });
+  const apply = useEffectEvent((profile: ViewerProfile) => syncProfile(api, account, profile));
+  // Only a new answer syncs: another tab's edit changes `account` while this tab's answer is older.
   useEffect(() => {
-    if (data) syncProfile(api, account, data);
-  }, [data, account, api]);
+    if (data) apply(data);
+  }, [data]);
 }
 
 /** Mount point for useProfileSync, rendered only while a profile is in use (no query without an account). */

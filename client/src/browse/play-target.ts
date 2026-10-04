@@ -22,7 +22,7 @@ export type PlayTarget =
     };
 
 /** The recommended version (else rank 1, else the first). */
-export function recommendedVersion(versions: readonly Version[]): Version | undefined {
+function recommendedVersion(versions: readonly Version[]): Version | undefined {
   return (
     versions.find((version) => version.recommended) ??
     [...versions].sort((a, b) => a.rank - b.rank)[0]

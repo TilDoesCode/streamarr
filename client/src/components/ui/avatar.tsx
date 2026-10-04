@@ -6,7 +6,7 @@ import { colors, fonts, useDesign } from '@/theme';
 const PALETTE = Object.values(colors.avatar);
 
 /** Up to two initials: first letters of the first two words, else the first two letters. */
-export function initials(name: string): string {
+function initials(name: string): string {
   const words = name
     .trim()
     .split(/[\s._-]+/)

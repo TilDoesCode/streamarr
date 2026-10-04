@@ -43,7 +43,7 @@ function writeChosen(): void {
 
 let defaultStore: AccountStore | undefined;
 
-export function getDefaultAccountStore(): AccountStore {
+function getDefaultAccountStore(): AccountStore {
   if (defaultStore) return defaultStore;
   const web = Platform.OS === 'web' && typeof window !== 'undefined';
   defaultStore = new AccountStore({

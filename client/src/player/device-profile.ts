@@ -19,7 +19,7 @@ export function loadDeviceCaps(): Promise<DeviceCaps> {
   return pending;
 }
 
-export function loadDeviceProfile(): Promise<DeviceProfile> {
+function loadDeviceProfile(): Promise<DeviceProfile> {
   return loadDeviceCaps().then((caps) => caps.profile);
 }
 

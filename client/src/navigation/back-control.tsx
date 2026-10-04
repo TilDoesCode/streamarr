@@ -15,19 +15,19 @@ const MIN_SIZE = 44;
 export const PHONE_HEADER_HEIGHT = 60;
 
 /** Pushed pages need a drawn back control everywhere but TV (Menu/Back) and iPhone (native header). */
-export function useNeedsBackControl(): boolean {
+function useNeedsBackControl(): boolean {
   const design = useDesign();
   const shell = useShell();
   return !design.isTV && (shell.large || Platform.OS !== 'ios');
 }
 
-export function useBackControlSize(): number {
+function useBackControlSize(): number {
   const shell = useShell();
   return shell.large ? Math.max(MIN_SIZE, shell.s(SHELL.button)) : MIN_SIZE;
 }
 
 /** Top-leading corner of a pushed page: below the safe area and the iPadOS window controls. */
-export function useBackControlFrame(): { top: number; left: number } {
+function useBackControlFrame(): { top: number; left: number } {
   const design = useDesign();
   const shell = useShell();
   const insets = useSafeAreaInsets();

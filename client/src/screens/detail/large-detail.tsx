@@ -30,12 +30,13 @@ import { ShellDesign } from '@/shell/shell-design';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 
+import { StageActionRow } from './stage-action-row';
 import { liftedTop, MOVIE_INFO_MAX_CUT, movieInfoPlan, nextInfoCut } from './stage-info-fit';
-import { colors, fonts, useDesign, useFocusGap } from '@/theme';
+import { colors, fonts, useDesign } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 /** D2 Bühne (1920 × 1080 points): copy column, info column right, bottom margin. */
-export const STAGE = {
+const STAGE = {
   copyWidth: 880,
   infoWidth: 460,
   infoRight: 96,
@@ -155,7 +156,6 @@ function StageLayout({
   const format = useFormat();
   const { s } = useShell();
   const design = useDesign();
-  const actionGap = useFocusGap(s(28));
   const insets = useSafeAreaInsets();
   const setAmbient = useSetAmbient();
   const clearAmbient = useClearAmbient();
@@ -387,13 +387,7 @@ function StageLayout({
               </Animated.View>
               <View>
                 <FocusGuide remember>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: actionGap,
-                      marginTop: s(12),
-                    }}>
+                  <StageActionRow>
                     {actions}
                     {infoButton && !loading ? (
                       <GlassButton
@@ -405,7 +399,7 @@ function StageLayout({
                         onPress={onInfo}
                       />
                     ) : null}
-                  </View>
+                  </StageActionRow>
                 </FocusGuide>
                 {chips}
               </View>
@@ -437,7 +431,7 @@ function StageLayout({
 }
 
 /** Opacity of the stage copy: a new `key` fades it in from 0.35 over 180 ms (skipped with reduced motion). */
-export function useCopyFade(key: string | undefined) {
+function useCopyFade(key: string | undefined) {
   const reduced = useReducedMotion();
   const opacity = useSharedValue(1);
   const first = useRef(key);
@@ -552,7 +546,7 @@ export function StageInfo({
 }
 
 /** TV: the highest y a lifted Bühne element may reach (Apple TV: below the native tab bar; Android TV: screen top). */
-export function useStageTopLimit(): number {
+function useStageTopLimit(): number {
   const { s } = useShell();
   return Platform.OS === 'ios' ? s(SHELL.tvosTabBarBottom) : 0;
 }

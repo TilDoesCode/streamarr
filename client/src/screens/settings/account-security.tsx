@@ -856,7 +856,7 @@ function groupSecret(secret: string) {
 }
 
 /** otpauth:// URI as a QR code, drawn black on a white quiet zone so every scanner reads it. */
-export function QrCode({ value, size, label }: { value: string; size: number; label: string }) {
+function QrCode({ value, size, label }: { value: string; size: number; label: string }) {
   const { path, count } = useMemo(() => {
     const qr = qrcode(0, 'M');
     qr.addData(value);

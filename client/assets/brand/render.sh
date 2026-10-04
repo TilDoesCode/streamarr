@@ -21,3 +21,4 @@ shot topshelf 1920 720 ../tv/apple-topshelf-1920x720.png
 shot topshelf 3840 1440 ../tv/apple-topshelf-3840x1440.png
 shot topshelf 2320 720 ../tv/apple-topshelf-wide-2320x720.png
 shot topshelf 4640 1440 ../tv/apple-topshelf-wide-4640x1440.png
+python3 denoise.py ../images/icon.png ../images/android-icon-background.png ../tv/apple-icon-*.png ../tv/apple-topshelf-*.png

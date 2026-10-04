@@ -313,6 +313,21 @@ describe('AccountStore in several browser tabs (one shared storage)', () => {
     expect(vault.entries.has(gast.id)).toBe(false);
   });
 
+  it("a stale tab's own writes keep another tab's display name edit", async () => {
+    const { open } = browser();
+    const tabA = open();
+    const anna = await tabA.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
+    const ben = await tabA.addSignedIn(DEV_WORLD, viewer('v-ben', 'ben'), tokens(2));
+    const tabB = open();
+    tabA.update(anna.id, { displayName: 'Anna B.' });
+    tabB.setActive(ben.id);
+    tabB.update(ben.id, { mustChangePassword: true });
+    expect(tabB.get(anna.id)?.displayName).toBe('Anna B.');
+    tabA.reload();
+    expect(tabA.get(anna.id)?.displayName).toBe('Anna B.');
+    expect(tabA.get(ben.id)?.mustChangePassword).toBe(true);
+  });
+
   it('profiles added in two tabs both stay', async () => {
     const { open } = browser();
     const tabA = open();

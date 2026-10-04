@@ -13,7 +13,7 @@ export type FormFactorInput = {
 };
 
 /** Android TV lays out on a 960 dp wide canvas; the TV ramp is authored against it. */
-export const TV_CANVAS_WIDTH = 960;
+const TV_CANVAS_WIDTH = 960;
 
 export function detectFormFactor({
   os,

@@ -4,7 +4,7 @@ import { AppState, Platform } from 'react-native';
 
 import { isAppError } from '@/api/errors';
 
-export const MINUTE = 60_000;
+const MINUTE = 60_000;
 
 /** Stale times per kind of data; rows and details change slowly, the viewer's own state often. */
 export const STALE = {

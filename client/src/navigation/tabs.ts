@@ -68,7 +68,3 @@ export const TAB_TRIGGERS: UseTabsWithTriggersOptions['triggers'] = TABS.map((ta
   name: tab.name,
   href: tab.href,
 }));
-
-export function tabByName(name: string | undefined): TabSpec {
-  return TABS.find((tab) => tab.name === name) ?? HOME_TAB;
-}

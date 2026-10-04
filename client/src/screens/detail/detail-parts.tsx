@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { toAppError } from '@/api/errors';
 import { ErrorState } from '@/components/states/error-state';
-import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { colors, useDesign } from '@/theme';
 
 /** A positive TMDB id / season number from a route param, else undefined. */
@@ -30,44 +29,6 @@ export function DetailScroll({ children, testID }: { children: ReactNode; testID
       snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
       {children}
     </ScrollView>
-  );
-}
-
-/** Hero-shaped placeholder while the title loads. */
-export function HeroSkeleton() {
-  const design = useDesign();
-  const { gutter, heroHeight, controlHeight } = design.layout;
-  const wide = design.formFactor !== 'phone';
-  return (
-    <View
-      testID="hero-skeleton"
-      aria-busy
-      collapsable={false}
-      scrollSnapAlign={design.isTV ? 'start' : undefined}
-      style={{ height: heroHeight, justifyContent: 'flex-end' }}>
-      <Skeleton
-        radius={0}
-        height={heroHeight}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0 }}
-      />
-      <View
-        style={{
-          paddingHorizontal: gutter,
-          paddingBottom: design.space['2xl'],
-          maxWidth: wide ? design.px(560) + gutter : undefined,
-          gap: design.space.sm,
-        }}>
-        <SkeletonText width="30%" variant="caption" />
-        <Skeleton width="80%" height={design.type.display.fontSize} radius={design.radius.sm} />
-        <SkeletonText width="45%" />
-        <SkeletonText width="95%" />
-        <SkeletonText width="70%" />
-        <View style={{ flexDirection: 'row', gap: design.space.md, marginTop: design.space.sm }}>
-          <Skeleton width={design.px(120)} height={controlHeight.md} />
-          <Skeleton width={design.px(120)} height={controlHeight.md} />
-        </View>
-      </View>
-    </View>
   );
 }
 

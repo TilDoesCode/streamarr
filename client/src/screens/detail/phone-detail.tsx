@@ -1,6 +1,5 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-
 import { ChevronUp, Info, type LucideIcon } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +21,7 @@ import { SpecLabels, type CatalogSpec } from '@/components/spec';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { withAlpha } from '@/lib/color';
-import { BackControl } from '@/navigation/back-control';
+import { BackControl, PHONE_HEADER_HEIGHT } from '@/navigation/back-control';
 import { colors, fonts, useDesign } from '@/theme';
 
 import type { Credit } from './large-detail';
@@ -96,7 +95,7 @@ export function PhoneDetail({
   const { width, height } = design.window;
   const gutter = design.layout.gutter;
   const artHeight = Math.min(width * 1.15, height * 0.62);
-  const copyTop = Math.max(artHeight * 0.58, insets.top + HEADER_HEIGHT + design.space.md);
+  const copyTop = Math.max(artHeight * 0.58, insets.top + PHONE_HEADER_HEIGHT + design.space.md);
   // Title tint washed under the copy; the art fades into the same colour.
   const wash = withAlpha(tint ?? colors.accent.DEFAULT, 0.22);
   const hasMore = !!overview || !!credits?.length;
@@ -257,14 +256,12 @@ export function PhoneDetail({
         <HeaderStrip
           title={title}
           scrollY={scrollY}
-          fadeEnd={artHeight - insets.top - HEADER_HEIGHT}
+          fadeEnd={artHeight - insets.top - PHONE_HEADER_HEIGHT}
         />
       )}
     </View>
   );
 }
-
-const HEADER_HEIGHT = 60;
 
 /** Android and web: glass strip with the title that fades in once the art has scrolled away. */
 function HeaderStrip({
@@ -297,7 +294,7 @@ function HeaderStrip({
         radius={0}
         intensity="strong"
         style={{
-          height: HEADER_HEIGHT,
+          height: PHONE_HEADER_HEIGHT,
           justifyContent: 'center',
           paddingLeft: design.layout.gutter + 44 + design.space.md,
           paddingRight: design.layout.gutter,
