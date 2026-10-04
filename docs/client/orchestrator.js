@@ -818,6 +818,22 @@ const TASKS = {
       'no P1/P2 open on any target, or each listed with repro for a follow-up fix round',
     ],
   },
+  'B9': {
+    title: 'Server: series next episode prefers an active replay, next-up without versions',
+    track: 'Backend',
+    deps: ['B8'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (server requests from F9 S1, docs/client/journal/F9.md "Server request"). (1) `SeriesWatchSummaryDto.nextEpisode` (ViewerCatalogService.NextEpisodeAsync) returns next-up before any resume point, so after a B8 replay of a watched episode the series still points at the following episode (Sherlock: hero continues S2E2, series says S3E1). Rule: the most recent in-progress episode (resume point, reason "resume") wins when its lastPlayedAt is newer than the latest completion in that series; otherwise next-up as today. Same rule wherever the server picks a series\' current episode (continue watching, hero, next-up), so all surfaces agree.',
+      '- (2) `/watch/next-up` and continue/next rows offer episodes without any version (Sherlock S3E1): add `available` (bool, at least one playable release exists) to the next-up/continue item contracts (additive, OpenAPI re-frozen) and keep the order truthful: pick the next episode in order; if it has no version, still return it with available=false so the client can show "not available yet". Document the rule in docs/api.md.',
+      '- Tests for both rules (unit + e2e on your own Dev World 39310 with anna-like data you create: replay of a watched episode -> nextEpisode = that episode; next episode without versions -> available=false). Regenerate web and client types at the very end; do not change client code otherwise.',
+    ].join('\n'),
+    acceptance: [
+      'series nextEpisode/continue/hero agree: an active replay of a watched episode wins over next-up (tests)',
+      'next-up and continue items carry available; an episode without versions is returned with available=false (tests, docs)',
+      'OpenAPI re-frozen, contract check, e2e and the full server suite green; web and client types regenerated',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
