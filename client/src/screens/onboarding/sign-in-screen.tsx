@@ -8,6 +8,7 @@ import { View, type TextInput } from 'react-native';
 import { useSessionGate } from '@/accounts/accounts-provider';
 import { createAuthApi } from '@/accounts/auth-api';
 import { signInFlow } from '@/accounts/sign-in-flow';
+import { parseEndedReason } from '@/accounts/ended-reason';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import { ErrorState } from '@/components/states/error-state';
@@ -132,7 +133,7 @@ function SignInForm({
   };
 
   const loginParams = { server: serverUrl, ...(login.trim() ? { login: login.trim() } : {}) };
-  const ended = reason ? describeError(t, { code: reason }) : null;
+  const ended = reason ? describeError(t, parseEndedReason(reason)) : null;
 
   return (
     <AuthScaffold

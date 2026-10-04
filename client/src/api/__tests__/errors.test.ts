@@ -148,6 +148,74 @@ describe('localized error text', () => {
   });
 });
 
+describe('why a session ended (B11 refresh refusals, F8 S7)', () => {
+  const ended = (code: string, reason?: string) =>
+    describeError(i18n.t, { code, params: reason ? { reason } : undefined });
+
+  afterAll(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('every refresh refusal of the api.md table is a known code', () => {
+    const api = readFileSync(join(DOCS, 'api.md'), 'utf8');
+    const table = api.slice(
+      api.indexOf('**Refresh failures.**'),
+      api.indexOf('`params.reason` of')
+    );
+    const codes = [...table.matchAll(/^\| `([a-z_]+)` \|/gm)].map((match) => match[1]!);
+    expect(codes).toEqual([
+      'refresh_token_reused',
+      'refresh_session_expired',
+      'refresh_session_revoked',
+      'refresh_token_unknown',
+    ]);
+    expect(codes.filter((code) => !isKnownErrorCode(code))).toEqual([]);
+  });
+
+  it('words every case in German', async () => {
+    await i18n.changeLanguage('de');
+    expect(ended('refresh_token_unknown')).toEqual({
+      title: 'Anmeldung veraltet',
+      message: 'Diese Anmeldung auf dem Gerät ist veraltet. Bitte melde dich neu an.',
+    });
+    expect(ended('refresh_session_expired').message).toBe(
+      'Deine Anmeldung ist abgelaufen. Bitte melde dich neu an.'
+    );
+    expect(ended('refresh_session_revoked', 'session_limit').message).toBe(
+      'Abgemeldet, weil zu viele Geräte angemeldet waren. Bitte melde dich neu an.'
+    );
+    expect(ended('refresh_session_revoked', 'password_changed').message).toBe(
+      'Abgemeldet, weil das Passwort geändert wurde. Melde dich mit dem neuen Passwort an.'
+    );
+    expect(ended('refresh_session_revoked', 'token_reused')).toEqual(ended('refresh_token_reused'));
+    expect(ended('refresh_session_revoked', 'account_disabled')).toEqual(ended('account_disabled'));
+  });
+
+  it('gives each revoke reason its own text and treats unlisted reasons like "other"', async () => {
+    await i18n.changeLanguage('en');
+    const reasons = [
+      'signed_out',
+      'revoked_by_viewer',
+      'session_limit',
+      'admin',
+      'password_changed',
+      'account_disabled',
+      'token_reused',
+      'other',
+    ];
+    const texts = reasons.map((reason) => ended('refresh_session_revoked', reason));
+    expect(new Set(texts.map((text) => text.message)).size).toBe(reasons.length);
+    for (const text of texts) expect(text.message).toMatch(/sign in|admin/i);
+    expect(ended('refresh_session_revoked', 'brand_new_reason')).toEqual(
+      ended('refresh_session_revoked', 'other')
+    );
+    expect(ended('refresh_session_revoked')).toEqual(ended('refresh_session_revoked', 'other'));
+    expect(ended('refresh_session_revoked', 'session_limit').title).toBe(
+      'Too many devices signed in'
+    );
+  });
+});
+
 describe('documented viewer error codes', () => {
   // Every "`NNN code`" of the viewer sections and every failed-playback code in the docs has text.
   function documentedCodes(): string[] {

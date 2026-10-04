@@ -74,8 +74,8 @@ export function createAccountsApi({
   const signOut = async (accountId: string) => {
     signInFlow.forgetPassword(accountId);
     const account = store.get(accountId);
-    // Fresh from the vault: another tab may have rotated the pair this session ends with.
-    const tokens = await store.readTokens(accountId, true);
+    // Fresh from the vault: another tab may have rotated the pair this session ends with; unreadable = sign out locally.
+    const tokens = await store.readTokens(accountId, true).catch(() => null);
     await store.signOut(accountId);
     queryClient.removeQueries({ queryKey: ['account', accountId] });
     if (account && tokens) void endOnServer(account.serverUrl, tokens);
@@ -90,7 +90,9 @@ export function createAccountsApi({
       const existing = store
         .getSnapshot()
         .accounts.find((item) => item.serverUrl === server.url && item.viewerId === viewer.id);
-      const previous = existing ? await store.readTokens(existing.id, true) : null;
+      const previous = existing
+        ? await store.readTokens(existing.id, true).catch(() => null)
+        : null;
       const account = await store.addSignedIn(server, viewer, tokens);
       // Signing in again replaces the device's session: end the old one instead of orphaning it.
       if (previous && previous.sessionId !== tokens.sessionId)

@@ -33,6 +33,8 @@ export const VIEWER_ERROR_CODES = [
   'email_code_cooldown',
   'refresh_token_reused',
   'refresh_session_expired',
+  'refresh_session_revoked',
+  'refresh_token_unknown',
   'password_change_required',
   // The signed-in viewer (/viewer/me).
   'invalid_password',

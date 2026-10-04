@@ -327,7 +327,7 @@
     "edit": "Edit {name}"
   },
   "accounts": {
-    "sessionEnded": "{name} was signed out. Sign in again to continue."
+    "sessionEnded": "{name}: {reason}"
   },
   "notFound": {
     "title": "Page not found"
@@ -541,8 +541,16 @@
         "message": "This sign-in was used somewhere else, so the server ended it. Sign in again."
       },
       "refresh_session_expired": {
-        "title": "Your session has ended",
-        "message": "The session expired, was ended on another device, or the account was disabled. Sign in again."
+        "title": "Sign-in expired",
+        "message": "Your sign-in has expired. Please sign in again."
+      },
+      "refresh_session_revoked": {
+        "title": "Signed out",
+        "message": "This sign-in was ended. Please sign in again."
+      },
+      "refresh_token_unknown": {
+        "title": "Sign-in out of date",
+        "message": "The sign-in on this device is out of date. Please sign in again."
       },
       "password_change_required": {
         "title": "Choose a new password",
@@ -751,6 +759,28 @@
       "token_storage_unavailable": {
         "title": "Can’t read this device’s sign-in",
         "message": "The secure storage on this device didn’t answer. Try again in a moment; you stay signed in."
+      }
+    },
+    "sessionRevoked": {
+      "signed_out": {
+        "title": "Signed out",
+        "message": "This device was signed out. Please sign in again."
+      },
+      "revoked_by_viewer": {
+        "title": "Signed out from another device",
+        "message": "This sign-in was ended on another device. Please sign in again."
+      },
+      "session_limit": {
+        "title": "Too many devices signed in",
+        "message": "Signed out because too many devices were signed in. Please sign in again."
+      },
+      "admin": {
+        "title": "Signed out by the server admin",
+        "message": "The server admin ended this sign-in. Please sign in again."
+      },
+      "password_changed": {
+        "title": "Password changed",
+        "message": "Signed out because the password was changed. Sign in with the new password."
       }
     },
     "actions": {
