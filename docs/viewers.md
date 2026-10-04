@@ -86,9 +86,15 @@ details, seasons and versions of such a title answer `403 age_restricted` with t
   same `202` answer, so the endpoint does not reveal who has an account. Mail is sent with
   [MailKit](https://github.com/jstedfast/MailKit) off the request path.
 - **Sessions** are per device: a short-lived opaque access token (default 60 minutes) and
-  a rotating refresh token (default 30 days). Reusing an old refresh token after the
-  30-second concurrency grace ends the session. Viewers see and revoke their devices;
-  admins can revoke all of them.
+  a rotating refresh token (default 30 days). Each refresh hands out a new pair. The
+  previous refresh token gets that same pair again within 30 seconds (two tabs refreshing at
+  once) and also later while the new pair is still unused — no request was authenticated with
+  its access token and its refresh token was never presented — as long as the previous token
+  is within its own lifetime. That covers an app killed after the server rotated but before it
+  stored the new pair; if the replayed access token has expired meanwhile, a fresh one comes with
+  the same refresh token. Once the new pair has been used, presenting the previous token — or
+  any older one of the session — ends the session (`refresh_token_reused`, theft detection).
+  Viewers see and revoke their devices; admins can revoke all of them.
 - **Lockout** after repeated failures (default 10 attempts → 15 minutes). A locked
   account only says so when the correct password is supplied.
 - **Rate limit** per client IP on all sign-in, code, and reset endpoints
@@ -130,6 +136,10 @@ Clients report playback with `POST /api/v1/viewer/watch/progress`
   suggests the first unplayed, already aired episode after it, crossing into the next
   season when needed. Episode lists come from TMDB (cached; no indexer searches). If
   TMDB cannot be asked for a series, the response sets `incomplete: true`.
+- **Current episode of a series:** an episode with a resume point that was played more recently
+  than the latest completion in its series (e.g. a replay of a watched episode) wins over next up —
+  in next up, continue watching (which then shows only that episode of the series) and the series'
+  `nextEpisode`. Next up never skips an episode without versions; it comes with `available: false`.
 - **Played / unplayed** accept movie and episode ids, and also season (`tmdb-tv-1396-s02`)
   and series (`tmdb-tv-1396`) ids that expand to all aired episodes.
 - A report that includes a `releaseId` (and optionally the stream token) is also passed

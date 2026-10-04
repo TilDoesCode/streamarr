@@ -62,11 +62,11 @@ public sealed class CatalogSpecTests
 
             var store = new CatalogSpecStore(db, TimeProvider.System, NullLogger<CatalogSpecStore>.Instance);
             await store.StartAsync(CancellationToken.None);
-            store.Record("tmdb-tv-7-s01", hd);
-            store.Record("tmdb-tv-7-s02", uhd);
-            store.Record("tmdb-tv-7-s02e01", uhd);
-            store.Record("tmdb-tv-77-s01", hd);
-            store.Record("tmdb-movie-7", null);
+            store.Record("tmdb-tv-7-s01", hd, true);
+            store.Record("tmdb-tv-7-s02", uhd, true);
+            store.Record("tmdb-tv-7-s02e01", uhd, true);
+            store.Record("tmdb-tv-77-s01", hd, true);
+            store.Record("tmdb-movie-7", null, false);
 
             Assert.Equal(uhd, store.Get("tmdb-tv-7"));
             Assert.Equal(hd, store.Get("tmdb-tv-7-s01"));
@@ -74,6 +74,9 @@ public sealed class CatalogSpecTests
             Assert.Null(store.Get("tmdb-tv-7-s02e02"));
             Assert.Null(store.Get("tmdb-movie-7"));
             Assert.Null(store.Get("tmdb-tv-8"));
+            Assert.True(store.Available("tmdb-tv-7-s02e01"));
+            Assert.False(store.Available("tmdb-movie-7"));
+            Assert.Null(store.Available("tmdb-tv-7-s02e02"));
             for (var i = 0; i < 100; i++)
             {
                 await using var context = await db.CreateDbContextAsync();
@@ -89,6 +92,8 @@ public sealed class CatalogSpecTests
                 await Task.Delay(20);
             Assert.Equal(uhd, reloaded.Get("tmdb-tv-7"));
             Assert.Equal(hd, reloaded.Get("tmdb-tv-77"));
+            Assert.False(reloaded.Available("tmdb-movie-7"));
+            Assert.True(reloaded.Available("tmdb-tv-7-s02e01"));
             await reloaded.StopAsync(CancellationToken.None);
         }
         finally

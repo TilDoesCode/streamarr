@@ -8,5 +8,7 @@ public sealed class CatalogSpecSummaryEntity
     public string? Hdr { get; set; }
     public string? VideoCodec { get; set; }
     public string? Audio { get; set; }
+    /// <summary>At least one version that is not known dead; null = not recorded yet.</summary>
+    public bool? Available { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

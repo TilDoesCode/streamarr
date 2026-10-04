@@ -161,12 +161,105 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
             .Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(secondAccess, raced.GetProperty("accessToken").GetString());
 
+        using (var current = factory.Viewer(secondAccess))
+            Assert.Equal(HttpStatusCode.OK, (await current.GetAsync("/api/v1/viewer/me")).StatusCode);
         factory.Clock.Advance(TimeSpan.FromSeconds(31));
         var reused = await anon.PostAsJsonAsync("/api/v1/viewer/auth/refresh", new { refreshToken = firstRefresh });
         Assert.Equal(HttpStatusCode.Unauthorized, reused.StatusCode);
         Assert.Equal("refresh_token_reused", await ViewerApi.ErrorCodeAsync(reused));
         using var revoked = factory.Viewer(secondAccess);
         Assert.Equal(HttpStatusCode.Unauthorized, (await revoked.GetAsync("/api/v1/viewer/me")).StatusCode);
+    }
+
+    private static async Task<HttpResponseMessage> RefreshAsync(HttpClient anon, string refreshToken)
+        => await anon.PostAsJsonAsync("/api/v1/viewer/auth/refresh", new { refreshToken });
+
+    private static async Task<(string Access, string Refresh)> PairAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return (body.GetProperty("accessToken").GetString()!, body.GetProperty("refreshToken").GetString()!);
+    }
+
+    [Fact]
+    public async Task Refresh_After_An_App_Kill_Replays_The_Unused_Rotation_And_Reuse_After_Use_Revokes()
+    {
+        await NewViewerAsync("kill-viewer");
+        using var anon = factory.CreateClient();
+        var first = (await ViewerApi.SignInAsync(anon, "kill-viewer", Password)).GetProperty("refreshToken").GetString()!;
+
+        var rotated = await PairAsync(await RefreshAsync(anon, first));
+        factory.Clock.Advance(TimeSpan.FromMinutes(10));
+        Assert.Equal(rotated, await PairAsync(await RefreshAsync(anon, first)));
+        factory.Clock.Advance(TimeSpan.FromHours(30));
+        var late = await PairAsync(await RefreshAsync(anon, first));
+        Assert.Equal(rotated.Refresh, late.Refresh);
+        Assert.NotEqual(rotated.Access, late.Access);
+        Assert.Equal(late, await PairAsync(await RefreshAsync(anon, first)));
+        rotated = late;
+
+        using (var app = factory.Viewer(rotated.Access))
+            Assert.Equal(HttpStatusCode.OK, (await app.GetAsync("/api/v1/viewer/me")).StatusCode);
+        factory.Clock.Advance(TimeSpan.FromSeconds(31));
+        var reused = await RefreshAsync(anon, first);
+        Assert.Equal(HttpStatusCode.Unauthorized, reused.StatusCode);
+        Assert.Equal("refresh_token_reused", await ViewerApi.ErrorCodeAsync(reused));
+        using var revoked = factory.Viewer(rotated.Access);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await revoked.GetAsync("/api/v1/viewer/me")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_Presenting_The_Rotated_Token_Confirms_It_And_Older_Tokens_Revoke()
+    {
+        await NewViewerAsync("older-viewer");
+        using var anon = factory.CreateClient();
+        var first = (await ViewerApi.SignInAsync(anon, "older-viewer", Password)).GetProperty("refreshToken").GetString()!;
+        var second = await PairAsync(await RefreshAsync(anon, first));
+        factory.Clock.Advance(TimeSpan.FromMinutes(5));
+        var third = await PairAsync(await RefreshAsync(anon, second.Refresh));
+        factory.Clock.Advance(TimeSpan.FromMinutes(5));
+
+        Assert.Equal(third, await PairAsync(await RefreshAsync(anon, second.Refresh)));
+        var older = await RefreshAsync(anon, first);
+        Assert.Equal(HttpStatusCode.Unauthorized, older.StatusCode);
+        Assert.Equal("refresh_token_reused", await ViewerApi.ErrorCodeAsync(older));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RefreshAsync(anon, third.Refresh)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_Replay_Ends_With_The_Lifetime_Of_The_Previous_Token()
+    {
+        await NewViewerAsync("expiry-viewer");
+        using var anon = factory.CreateClient();
+        var first = (await ViewerApi.SignInAsync(anon, "expiry-viewer", Password)).GetProperty("refreshToken").GetString()!;
+        factory.Clock.Advance(TimeSpan.FromDays(29));
+        var rotated = await PairAsync(await RefreshAsync(anon, first));
+        factory.Clock.Advance(TimeSpan.FromDays(1) + TimeSpan.FromMinutes(1));
+
+        var late = await RefreshAsync(anon, first);
+        Assert.Equal(HttpStatusCode.Unauthorized, late.StatusCode);
+        Assert.Equal("refresh_token_reused", await ViewerApi.ErrorCodeAsync(late));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RefreshAsync(anon, rotated.Refresh)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Concurrent_Refreshes_With_One_Token_Get_One_Rotation()
+    {
+        await NewViewerAsync("race-viewer");
+        using var anon = factory.CreateClient();
+        var first = (await ViewerApi.SignInAsync(anon, "race-viewer", Password)).GetProperty("refreshToken").GetString()!;
+        using var start = new ManualResetEventSlim();
+        var racers = Enumerable.Range(0, 12).Select(_ => Task.Run(async () =>
+        {
+            using var client = factory.CreateClient();
+            start.Wait();
+            return await PairAsync(await RefreshAsync(client, first));
+        })).ToList();
+        start.Set();
+        var pairs = await Task.WhenAll(racers);
+        Assert.Single(pairs.Distinct());
+        using var app = factory.Viewer(pairs[0].Access);
+        Assert.Equal(HttpStatusCode.OK, (await app.GetAsync("/api/v1/viewer/me")).StatusCode);
     }
 
     [Fact]

@@ -14437,6 +14437,10 @@
             "type": "string",
             "description": "`resume` (in progress), `next` (after the furthest played) or `start` (nothing watched yet).",
             "nullable": true
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False when the last version lookup found no playable version (show \"not available yet\"); true when one exists or no lookup ran yet (one is queued in the background)."
           }
         },
         "additionalProperties": false
@@ -16470,6 +16474,7 @@
       },
       "NextUpItemResponse": {
         "required": [
+          "available",
           "episodeNumber",
           "episodeTitle",
           "lastActivityAt",
@@ -16538,6 +16543,10 @@
           "lastActivityAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False when the last version lookup found no playable version (show \"not available yet\"); true when one exists or no lookup ran yet (one is queued in the background)."
           },
           "tint": {
             "type": "string",
@@ -23068,6 +23077,11 @@
                 "$ref": "#/components/schemas/CatalogSpecDto"
               }
             ],
+            "nullable": true
+          },
+          "available": {
+            "type": "boolean",
+            "description": "Continue watching only (null elsewhere): false when the last version lookup found no playable version; true when one exists or no lookup ran yet.",
             "nullable": true
           }
         },

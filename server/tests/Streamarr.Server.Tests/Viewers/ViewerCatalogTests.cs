@@ -656,6 +656,84 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
         foreach (var path in new[] { $"{Base}/discover", $"{Base}/movies/501", $"{Base}/works/tmdb-movie-501/versions" })
             Assert.Equal("password_change_required", (await ErrorAsync(viewer, path, HttpStatusCode.Forbidden)).GetProperty("code").GetString());
     }
+
+    private static async Task ReportAsync(HttpClient viewer, string workId, double percent, string playbackId)
+    {
+        var duration = ViewerApi.Ticks(45 * 60);
+        (await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress", new
+        {
+            @event = "progress", workId, positionTicks = (long)(duration * percent / 100), durationTicks = duration, playbackId,
+        })).EnsureSuccessStatusCode();
+    }
+
+    private static async Task<JsonElement?> NextUpAsync(HttpClient viewer, string seriesWorkId)
+        => (await OkAsync(viewer, $"/api/v1/viewer/watch/next-up?seriesWorkId={seriesWorkId}")).GetProperty("items").EnumerateArray()
+            .Select(i => (JsonElement?)i).FirstOrDefault();
+
+    private static async Task<string[]> ContinueAsync(HttpClient viewer)
+        => (await OkAsync(viewer, "/api/v1/viewer/watch/resume")).EnumerateArray().Select(i => i.GetProperty("workId").GetString()!).ToArray();
+
+    [Fact]
+    public async Task ActiveReplay_OfAWatchedEpisode_IsTheSeriesCurrentEpisode_OnEverySurface()
+    {
+        using var viewer = await ViewerAsync("replay");
+        foreach (var episode in new[] { "s01e01", "s01e02", "s01e03" })
+        {
+            await ReportAsync(viewer, $"tmdb-tv-600-{episode}", 100, $"pb-{episode}");
+            factory.Clock.Advance(TimeSpan.FromMinutes(1));
+        }
+        await ReportAsync(viewer, "tmdb-tv-600-s01e02", 2, "pb-replay");
+        await ReportAsync(viewer, "tmdb-tv-600-s01e02", 20, "pb-replay");
+
+        var next = (await NextUpAsync(viewer, "tmdb-tv-600"))!.Value;
+        Assert.Equal("tmdb-tv-600-s01e02", next.GetProperty("workId").GetString());
+        Assert.True(next.GetProperty("positionTicks").GetInt64() > 0);
+        Assert.Equal("tmdb-tv-600-s01e02", next.GetProperty("lastWatchedWorkId").GetString());
+        Assert.Equal("Episode 2", next.GetProperty("episodeTitle").GetString());
+        var series = (await OkAsync(viewer, $"{Base}/series/600")).GetProperty("watch").GetProperty("nextEpisode");
+        Assert.Equal(("tmdb-tv-600-s01e02", "resume"), (series.GetProperty("workId").GetString(), series.GetProperty("reason").GetString()));
+        Assert.Equal(["tmdb-tv-600-s01e02"], await ContinueAsync(viewer));
+
+        factory.Clock.Advance(TimeSpan.FromMinutes(1));
+        await ReportAsync(viewer, "tmdb-tv-600-s01e03", 100, "pb-again");
+
+        Assert.Equal("tmdb-tv-600-s02e01", (await NextUpAsync(viewer, "tmdb-tv-600"))!.Value.GetProperty("workId").GetString());
+        series = (await OkAsync(viewer, $"{Base}/series/600")).GetProperty("watch").GetProperty("nextEpisode");
+        Assert.Equal(("tmdb-tv-600-s02e01", "next"), (series.GetProperty("workId").GetString(), series.GetProperty("reason").GetString()));
+        Assert.Empty(await ContinueAsync(viewer));
+    }
+
+    [Fact]
+    public async Task NextEpisode_WithoutAnyVersion_StaysInOrder_WithAvailableFalse()
+    {
+        using var viewer = await ViewerAsync("available");
+        await ReportAsync(viewer, "tmdb-tv-601-s01e01", 100, "pb-adult-1");
+        await ReportAsync(viewer, "tmdb-tv-600-s01e01", 100, "pb-show-1");
+
+        var before = (await NextUpAsync(viewer, "tmdb-tv-601"))!.Value;
+        Assert.Equal("tmdb-tv-601-s01e02", before.GetProperty("workId").GetString());
+        Assert.True(before.GetProperty("available").GetBoolean());
+
+        await OkAsync(viewer, $"{Base}/series/601/seasons/1?availability=true");
+        await OkAsync(viewer, $"{Base}/series/600/seasons/1?availability=true");
+
+        var after = (await NextUpAsync(viewer, "tmdb-tv-601"))!.Value;
+        Assert.Equal(("tmdb-tv-601-s01e02", false), (after.GetProperty("workId").GetString(), after.GetProperty("available").GetBoolean()));
+        var available = (await NextUpAsync(viewer, "tmdb-tv-600"))!.Value;
+        Assert.Equal(("tmdb-tv-600-s01e02", true), (available.GetProperty("workId").GetString(), available.GetProperty("available").GetBoolean()));
+        var series = (await OkAsync(viewer, $"{Base}/series/601")).GetProperty("watch").GetProperty("nextEpisode");
+        Assert.Equal(("tmdb-tv-601-s01e02", false), (series.GetProperty("workId").GetString(), series.GetProperty("available").GetBoolean()));
+
+        factory.Clock.Advance(TimeSpan.FromMinutes(1));
+        await ReportAsync(viewer, "tmdb-tv-601-s01e02", 30, "pb-adult-2");
+        factory.Clock.Advance(TimeSpan.FromMinutes(1));
+        await ReportAsync(viewer, "tmdb-tv-600-s01e02", 30, "pb-show-2");
+        var resume = (await OkAsync(viewer, "/api/v1/viewer/watch/resume")).EnumerateArray()
+            .ToDictionary(i => i.GetProperty("workId").GetString()!, i => i.GetProperty("available").GetBoolean());
+        Assert.Equal(new Dictionary<string, bool> { ["tmdb-tv-600-s01e02"] = true, ["tmdb-tv-601-s01e02"] = false }, resume);
+        var history = (await OkAsync(viewer, "/api/v1/viewer/watch/history")).GetProperty("items")[0];
+        Assert.True(!history.TryGetProperty("available", out var none) || none.ValueKind == JsonValueKind.Null);
+    }
 }
 
 /// <summary>Health overlay on its own host: a dead mark outlives the test and would change other tests' lists.</summary>

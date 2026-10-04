@@ -184,6 +184,13 @@ public sealed class ViewerCatalogService(
         var states = await watch.GetSeriesAsync(viewer.Id, seriesWorkId, ct);
         var regular = catalog.Seasons.Where(s => s.SeasonNumber > 0).ToList();
         var (next, incomplete) = await NextEpisodeAsync(viewer.Id, catalog, states, ct);
+        if (next is not null)
+        {
+            var available = specs.Available(next.WorkId);
+            if (available is null)
+                warmup.Request([next.WorkId]);
+            next = next with { Available = available ?? true };
+        }
         var palette = palettes.For(series.BackdropUrl, series.PosterUrl);
         return new CatalogSeriesResponse
         {
@@ -327,7 +334,7 @@ public sealed class ViewerCatalogService(
                 var lookup = await versionCache.GetAsync(
                     $"movie:{movieId}", refresh, _ => MovieVersionsAsync(movie, key.WorkId), v => !v.Incomplete, ct);
                 (releases, runtime, packEpisodes) = (lookup.Value.Releases, movie.RuntimeMinutes, 1);
-                specs.Record(key.WorkId, BestSpec(releases));
+                specs.Record(key.WorkId, BestSpec(releases), HasLive(releases));
                 (checkedAt, fromCache, incomplete) = (lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete);
                 break;
             }
@@ -452,14 +459,17 @@ public sealed class ViewerCatalogService(
     {
         var lookup = await versionCache.GetAsync($"season:{tmdbId}:{seasonNumber}", refresh, _ => ComputeSeasonAsync(tmdbId, seasonNumber), v => !v.Incomplete, ct);
         CatalogSpecDto? seasonBest = null;
+        var seasonAvailable = false;
         foreach (var (episode, releases) in lookup.Value.Episodes)
         {
             var best = BestSpec(releases);
-            specs.Record(WorkKey.ForEpisode(tmdbId, seasonNumber, episode).WorkId, best);
+            var available = HasLive(releases);
+            seasonAvailable |= available;
+            specs.Record(WorkKey.ForEpisode(tmdbId, seasonNumber, episode).WorkId, best, available);
             if (best is not null && (seasonBest is null || CatalogSpecMapper.Score(best) > CatalogSpecMapper.Score(seasonBest)))
                 seasonBest = best;
         }
-        specs.Record(TvCatalogService.SeasonWorkId(tmdbId, seasonNumber), seasonBest);
+        specs.Record(TvCatalogService.SeasonWorkId(tmdbId, seasonNumber), seasonBest, seasonAvailable);
         return lookup;
     }
 
@@ -555,11 +565,7 @@ public sealed class ViewerCatalogService(
             }, next.Incomplete);
         }
 
-        var resume = states
-            .Where(s => s.PositionTicks > 0 && s.SeasonNumber is not null && s.EpisodeNumber is not null)
-            .OrderByDescending(s => s.LastPlayedAt)
-            .FirstOrDefault();
-        if (resume is not null)
+        if (CurrentEpisodeRule.ActiveResume(states) is { } resume)
         {
             var episode = await EpisodeAsync(tmdbId, resume.SeasonNumber!.Value, resume.EpisodeNumber!.Value, ct);
             return (NextDto(catalog, resume.SeasonNumber.Value, resume.EpisodeNumber.Value, episode, resume.PositionTicks, resume.DurationTicks, "resume")
@@ -654,6 +660,8 @@ public sealed class ViewerCatalogService(
         return decision.Allowed ? decision : throw ViewerContentPolicy.AgeRestricted(decision);
     }
 
+    private bool HasLive(IReadOnlyList<ParsedRelease> releases) => releases.Any(r => !IsDead(r.Release));
+
     private bool IsDead(Release release) => (healthCache.Get(release.ReleaseId) ?? release.Health) == ReleaseHealth.Dead;
 
     /// <summary>A TMDB list; null when TMDB is unavailable right now.</summary>
@@ -720,7 +728,7 @@ public sealed class ViewerCatalogService(
                 return;
             var workId = $"tmdb-movie-{target.TmdbId}";
             var lookup = await versionCache.GetAsync($"movie:{target.TmdbId}", false, _ => MovieVersionsAsync(movie, workId), v => !v.Incomplete, ct);
-            specs.Record(workId, BestSpec(lookup.Value.Releases));
+            specs.Record(workId, BestSpec(lookup.Value.Releases), HasLive(lookup.Value.Releases));
             return;
         }
         var season = target.Season;

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Streamarr.Server.Persistence;
 
@@ -10,9 +11,11 @@ using Streamarr.Server.Persistence;
 namespace Streamarr.Server.Persistence.Migrations
 {
     [DbContext(typeof(StreamarrDbContext))]
-    partial class StreamarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261004164320_AddCatalogSpecAvailable")]
+    partial class AddCatalogSpecAvailable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.30");
@@ -953,9 +956,6 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<long>("LastSeenAt")
                         .HasColumnType("INTEGER");
 
-                    b.Property<long?>("PreviousRefreshExpiresAt")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("PreviousRefreshTokenHash")
                         .HasColumnType("TEXT");
 
@@ -964,9 +964,6 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.Property<string>("RefreshTokenHash")
                         .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RetiredRefreshTokenHashes")
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("RevokedAt")
@@ -980,9 +977,6 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.Property<string>("RotatedTokensEncrypted")
                         .HasColumnType("TEXT");
-
-                    b.Property<long?>("RotationConfirmedAt")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ViewerId")
                         .IsRequired()
