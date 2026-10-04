@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr – Player: jeder Zustand erkannt und erklärt (F10a)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: var(--cc-bg, #ffffff);
+    --fg: var(--cc-fg, #15171c);
+    --muted: var(--cc-muted, #f2f3f6);
+    --muted-fg: var(--cc-muted-fg, #5d6370);
+    --border: var(--cc-border, #dfe2e8);
+    --primary: var(--cc-primary, #2f6fe4);
+    --primary-fg: var(--cc-primary-fg, #ffffff);
+    --radius: var(--cc-radius, 10px);
+    --ok: #1f8f4e; --ok-bg: #e3f5ea;
+    --warn: #a86a00; --warn-bg: #fdf1dc;
+    --info: #2f6fe4; --info-bg: #e5eefc;
+    --block: #b3261e; --block-bg: #fbe5e3;
+    --server: #7a4fd6; --server-bg: #efe8fc;
+    --client: #1d8a6b; --client-bg: #e2f4ee;
+    --concept: #a3527a; --concept-bg: #f8e6ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f1116);
+      --fg: var(--cc-fg, #e8eaf0);
+      --muted: var(--cc-muted, #1a1d25);
+      --muted-fg: var(--cc-muted-fg, #9aa1b0);
+      --border: var(--cc-border, #2a2e39);
+      --primary: var(--cc-primary, #6c9cff);
+      --primary-fg: var(--cc-primary-fg, #0f1116);
+      --ok: #5fd08f; --ok-bg: #15301f;
+      --warn: #f0b34a; --warn-bg: #33270f;
+      --info: #7fa9ff; --info-bg: #17223a;
+      --block: #ff8a80; --block-bg: #3a1714;
+      --server: #b597ff; --server-bg: #241b3a;
+      --client: #5fd0ad; --client-bg: #12302a;
+      --concept: #f09cc4; --concept-bg: #3a1a2a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--cc-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 22px 56px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 38px 0 12px; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+  p { margin: 6px 0; }
+  .sub { color: var(--muted-fg); }
+  code { font-family: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; background: var(--bg); min-width: 0; }
+  .card.s-card { border-left: 4px solid var(--server); }
+  .card.c-card { border-left: 4px solid var(--client); }
+  .card.k-card { border-left: 4px solid var(--concept); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-right: 4px; white-space: nowrap; }
+  .ok { color: var(--ok); background: var(--ok-bg); }
+  .warn { color: var(--warn); background: var(--warn-bg); }
+  .info { color: var(--info); background: var(--info-bg); }
+  .block { color: var(--block); background: var(--block-bg); }
+  .srv { color: var(--server); background: var(--server-bg); }
+  .cli { color: var(--client); background: var(--client-bg); }
+  .kon { color: var(--concept); background: var(--concept-bg); }
+  ul { margin: 6px 0 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th { color: var(--muted-fg); font-weight: 600; font-size: 13px; background: var(--muted); }
+  .lanes { display: grid; grid-template-columns: 80px 1fr; gap: 10px 14px; align-items: center; margin: 12px 0 4px; }
+  .lane-label { font-weight: 600; font-size: 13px; color: var(--muted-fg); }
+  .lane { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill { border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; border: 1px solid transparent; }
+  .pill small { display: block; font-weight: 400; color: var(--muted-fg); }
+  .pill.s { color: var(--server); background: var(--server-bg); border-color: var(--server); }
+  .pill.c { color: var(--client); background: var(--client-bg); border-color: var(--client); }
+  .pill.k { color: var(--concept); background: var(--concept-bg); border-color: var(--concept); }
+  .pill.star { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .arrow { color: var(--muted-fg); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+  .kpi { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
+  .kpi b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--muted-fg); font-size: 13px; }
+  .lat { margin-top: 10px; }
+  .lat-row { display: grid; grid-template-columns: 190px 1fr 120px; gap: 10px; align-items: center; margin: 8px 0; font-size: 14px; }
+  .lat-bars { display: grid; gap: 4px; }
+  .rb { position: relative; height: 9px; border-radius: 5px; background: var(--muted); }
+  .rb > span { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+  .rb .in { background: var(--primary); }
+  .rb .sw { background: var(--warn); }
+  .lat-num { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; line-height: 1.35; }
+  .axis { position: relative; height: 16px; margin-left: 200px; margin-right: 130px; font-size: 11px; color: var(--muted-fg); }
+  .axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted-fg); margin-top: 6px; }
+  .legend i { display: inline-block; width: 18px; height: 9px; border-radius: 5px; vertical-align: 0; margin-right: 6px; }
+  .gallery { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin: 12px 0; }
+  .gallery.phones { grid-template-columns: repeat(auto-fit, minmax(200px, 260px)); }
+  figure { margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--muted); }
+  figure img { display: block; width: 100%; height: auto; }
+  figure.phone img { max-height: 520px; object-fit: contain; background: #000; }
+  figcaption { padding: 8px 12px; font-size: 13px; color: var(--muted-fg); background: var(--bg); border-top: 1px solid var(--border); }
+  .placeholder { border: 2px dashed var(--border); border-radius: var(--radius); padding: 4px 18px 12px; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--block); font-weight: 600; }
+  footer { margin-top: 40px; color: var(--muted-fg); font-size: 13px; }
+  @media (max-width: 640px) {
+    main { padding: 22px 14px 40px; }
+    .lanes { grid-template-columns: 1fr; }
+    .lat-row { grid-template-columns: 1fr 96px; }
+    .lat-name { grid-column: 1 / -1; font-weight: 600; }
+    .axis { margin-left: 0; margin-right: 106px; }
+    .gallery, .gallery.phones { grid-template-columns: 1fr; }
+    th, td { padding: 7px 8px; }
+  }
+
+  .sev { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev.p1 { color: var(--block); background: var(--block-bg); }
+  .sev.p2 { color: var(--warn); background: var(--warn-bg); }
+  .sev.p3, .sev.okk { color: var(--ok); background: var(--ok-bg); }
+  tr.r-p1 td:first-child { box-shadow: inset 4px 0 0 var(--block); }
+  tr.r-p2 td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
+  tr.r-p3 td:first-child, tr.r-okk td:first-child { box-shadow: inset 4px 0 0 var(--ok); }
+  td.id { font-family: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; white-space: nowrap; }
+  details { margin: 14px 0; }
+  summary { cursor: pointer; font-weight: 600; font-size: 16px; padding: 6px 0; }
+  summary .counts { font-weight: 400; color: var(--muted-fg); font-size: 13px; margin-left: 8px; }
+  .ladder { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; margin: 12px 0; }
+  .step { flex: 1 1 120px; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--muted); }
+  .step b { display: block; font-size: 14px; }
+  .step small { color: var(--muted-fg); }
+  .step.go { border-color: var(--ok); }
+  .step.end { border-color: var(--block); }
+  .chev { align-self: center; color: var(--muted-fg); font-size: 18px; }
+  .flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+  .flow .card h3 { margin-bottom: 4px; }
+  .tl { display: grid; grid-template-columns: repeat(5, 1fr); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); margin: 12px 0; font-size: 13px; }
+  .tl div { padding: 8px 10px; border-right: 1px solid var(--border); }
+  .tl div:last-child { border-right: 0; }
+  .tl b { display: block; font-variant-numeric: tabular-nums; }
+  .tl .t0 { background: var(--muted); }
+  .tl .t1 { background: var(--info-bg); }
+  .tl .t2 { background: var(--warn-bg); }
+  .tl .t3 { background: var(--concept-bg); }
+  .tl .t4 { background: var(--block-bg); }
+  @media (max-width: 640px) { .flow, .tl { grid-template-columns: 1fr; } .tl div { border-right: 0; border-bottom: 1px solid var(--border); } }
+</style>
+
+</head>
+<body>
+<main>
+<h1>Player: jeder Zustand wird erkannt und erklärt</h1>
+<p class="sub">Runde I · F10a Zustandsmatrix · Stand 5. Oktober 2026 · nur Recherche, noch keine Änderung am Player</p>
+<p>Deine Vorgabe: Niemand sieht eine allgemeine Fehlermeldung, ein schwarzes Bild oder ein eingefrorenes Bild. Jeder Zustand wird entweder automatisch ausgeglichen oder mit einem klaren Hinweis erklärt: was passiert ist, was die App tut, was man selbst tun kann.</p>
+<p>Dafür haben wir den Code von App, Server und Dev World durchgesehen und jeden denkbaren Zustand aufgeschrieben. Die Farben zeigen, wie es <b>heute</b> aussieht.</p>
+<div class="kpis"><div class="kpi"><b>148</b><span>Zustände</span></div><div class="kpi"><b style="color:var(--block)">43</b><span>rot: allgemein, schwarz oder eingefroren</span></div><div class="kpi"><b style="color:var(--warn)">51</b><span>gelb: unklar oder falsche Reaktion</span></div><div class="kpi"><b style="color:var(--ok)">54</b><span>grün: ok (29 davon verbesserbar)</span></div></div>
+<h2>Die größten Lücken heute</h2>
+<ul>
+<li><b>Kein Lade- oder Puffer-Hinweis im laufenden Player.</b> Sobald der Server „bereit“ meldet, verschwindet die Startkarte. Lädt das Video danach noch oder puffert es, steht das Bild – ohne Spinner, ohne Wort. Gemessen: 12–16 Sekunden Schwarz bei 0:00.</li>
+<li><b>Jeder Player-Fehler gilt als „Format geht nicht“.</b> Auch ein kurzer Netzausfall führt zu einer schwereren Wiedergabeart (bis zur Umwandlung) oder zur Fehlerkarte.</li>
+<li><b>Im Browser kann ein Medienfehler das Bild für immer einfrieren.</b> Die Reparatur wird ohne Grenze wiederholt.</li>
+<li><b>Endet eine Datei zu früh, bleibt das letzte Bild stehen.</b> Die App hält das für einen Fehlalarm.</li>
+<li><b>Anruf, Sperrbildschirm, Kopfhörer weg:</b> iPhone und Android pausieren still. Die App merkt es nicht, zeigt „Pause“ und blendet die Bedienung aus.</li>
+<li><b>Schwarzes Bild, stehendes Bild, fehlender Ton</b> werden nur bei VLC auf Android teilweise erkannt.</li>
+<li><b>Server-Neustart oder 10 Minuten im Hintergrund</b> enden in „Wiedergabe beendet – neu starten“ statt in einem stillen Neustart an der Position.</li>
+<li><b>Neue Fehlercodes ohne Text</b> (z. B. die Abmelde-Gründe aus B11) erscheinen als „Etwas ist schiefgelaufen“.</li>
+</ul>
+<h2>So soll es werden</h2>
+<div class="flow">
+<div class="card c-card"><h3>1. Erkennen</h3><p>Ein <b>Wächter</b> pro Player prüft jede Sekunde: Läuft die Uhr? Kommen neue Bilder? Kommt Ton? Wie schnell ist die Leitung?</p></div>
+<div class="card s-card"><h3>2. Ausgleichen</h3><p>Eine feste <b>Leiter</b> pro Fehlerart: erst warten, dann neu laden, neu starten, Qualität senken, andere Wiedergabeart. Immer an der letzten guten Position.</p></div>
+<div class="card k-card"><h3>3. Erklären</h3><p>Genau <b>ein Hinweis</b> pro Lage, auf Deutsch und Englisch, mit einer passenden Aktion: Erneut versuchen, Niedrigere Qualität, Andere Version, Erneut anmelden, Zurück.</p></div>
+</div>
+<h3>Der Wächter</h3>
+<p>Er vergleicht die Uhr des Players mit dem, was wirklich passiert. Er greift nie ein, solange man pausiert, spult, die App im Hintergrund ist, Bild-in-Bild läuft oder AirPlay aktiv ist.</p>
+<div class="table-wrap"><table>
+<tr><th>Erkennt</th><th>Wenn</th><th>Browser</th><th>Android</th><th>iPhone / Apple TV</th><th>VLC</th></tr>
+<tr><td>Schwarzes Bild</td><td>Uhr läuft 3 s, aber noch kein Bild</td><td>ja</td><td>ja</td><td>ja</td><td>ja (neu auch ohne erstes Bild)</td></tr>
+<tr><td>Stehendes Bild</td><td>Uhr läuft 3 s, keine neuen Bilder</td><td>ja</td><td>ja</td><td>ja</td><td>ja (heute nur Android)</td></tr>
+<tr><td>Stehende Uhr</td><td>Spielt laut Player, Uhr bewegt sich 4 s nicht</td><td>ja</td><td>ja</td><td>ja</td><td>ja</td></tr>
+<tr><td>Kein Ton</td><td>Uhr läuft 3 s, Ton-Zähler steht</td><td>Chrome/Safari</td><td>ja</td><td>nur Schätzung</td><td>ja</td></tr>
+<tr><td>Diashow</td><td>Mehr als 30 % der Bilder verworfen</td><td>ja</td><td>ja</td><td>ja</td><td>ja</td></tr>
+</table></div>
+<h3>Die Leiter</h3>
+<p>Jede Stufe hat ein Zeit- und Versuchsbudget. Erst wenn es aufgebraucht ist, kommt die nächste Stufe. Die Position bleibt immer erhalten.</p>
+<div class="ladder">
+<div class="step go"><b>Warten</b><small>Player versucht es selbst, Hinweis läuft</small></div><span class="chev">→</span><div class="step go"><b>Neu laden</b><small>gleiche Quelle, gleiche Position</small></div><span class="chev">→</span><div class="step go"><b>Neu starten</b><small>neue Wiedergabe beim Server, gleiche Position</small></div><span class="chev">→</span><div class="step "><b>Qualität senken</b><small>2160 → 1080 → 720 → 480</small></div><span class="chev">→</span><div class="step "><b>Andere Wiedergabeart</b><small>Direkt → Direct Stream → VLC → Umwandlung</small></div><span class="chev">→</span><div class="step "><b>Andere Version</b><small>wenn der Server eine vorschlägt</small></div><span class="chev">→</span><div class="step end"><b>Karte</b><small>was passiert ist, was versucht wurde, Aktionen</small></div>
+</div>
+<p>Netzfehler gehen nie auf „Andere Wiedergabeart“: Ein Funkloch macht aus einem direkt abspielbaren Film keine Umwandlung mehr. Nur Format- und Decoderfehler wechseln die Wiedergabeart.</p>
+<h3>Wann aus dem Spinner ein Hinweis wird</h3>
+<div class="tl">
+<div class="t0"><b>0–1 s</b>nichts (nach dem Spulen sofort Spinner)</div><div class="t1"><b>1–4 s</b>Spinner in der Mitte</div><div class="t2"><b>ab 4 s</b>Hinweis mit Grund, z. B. „Langsame Verbindung: 3 von 8 Mbit/s“</div><div class="t3"><b>ab 15 s</b>nächste Stufe, z. B. niedrigere Qualität, mit kurzer Meldung</div><div class="t4"><b>ab 60 s</b>Karte mit Aktionen</div>
+</div>
+<p>Beim Start bleibt die Startkarte stehen, bis das erste Bild da ist (neuer Schritt „Bild wird geladen“). Nach 8 Sekunden erklärt sie, warum es dauert.</p>
+<h3>Beispiele für Hinweise</h3>
+<div class="table-wrap"><table>
+<tr><th>Lage</th><th>Hinweis</th><th>Aktion</th></tr>
+<tr><td>Leitung zu langsam</td><td>Langsame Verbindung: 3 von 8 Mbit/s. Wird gepuffert …</td><td>Niedrigere Qualität</td></tr>
+<tr><td>Server wandelt zu langsam um</td><td>Der Server wandelt langsamer um, als abgespielt wird. Wird gepuffert …</td><td>Niedrigere Qualität</td></tr>
+<tr><td>Netz weg</td><td>Keine Netzwerkverbindung. Es geht weiter, sobald das Gerät wieder online ist.</td><td>Zurück</td></tr>
+<tr><td>Server neu gestartet</td><td>Der Server hat die Wiedergabe beendet. Sie startet neu bei 1:12:04 …</td><td>—</td></tr>
+<tr><td>Bild hängt</td><td>Das Bild hängt. Wird bei 0:41:10 neu geladen …</td><td>—</td></tr>
+<tr><td>Kein Ton</td><td>Kein Ton. Die Tonspur wird neu geladen …</td><td>Andere Tonspur</td></tr>
+<tr><td>Datei zu kurz</td><td>Die Datei endet bei 1:12:04, 9 Minuten vor dem Ende.</td><td>Andere Version · Zurück</td></tr>
+<tr><td>Anruf</td><td>Pausiert: Anruf.</td><td>Weiter</td></tr>
+<tr><td>Abgemeldet</td><td>Abgemeldet: auf einem anderen Gerät abgemeldet. Deine Position 0:41:10 ist gespeichert.</td><td>Erneut anmelden</td></tr>
+</table></div>
+<h2>Die Matrix</h2>
+<p class="legend"><span><span class="sev p1">rot</span> heute allgemein, schwarz oder eingefroren</span> <span><span class="sev p2">gelb</span> heute unklar oder falsche Reaktion</span> <span><span class="sev p3">grün</span> ok (manches verbesserbar)</span></p>
+<p class="sub">Die technische Fassung mit Datei- und Zeilenangaben steht in <code>docs/client/player/state-matrix.md</code>.</p>
+<details open><summary>A – App, Anmeldung, Gerät und System<span class="counts">28 Zustände · 8 rot · 9 gelb · 11 grün</span></summary>
+<div class="table-wrap"><table>
+<tr><th>ID</th><th>Zustand</th><th>Heute sichtbar</th><th>Ziel</th><th>Heute</th></tr>
+<tr class="r-okk"><td class="id">A01</td><td>Zugangs-Token läuft während der Wiedergabe ab</td><td>Nichts (wird still erneuert)</td><td>So lassen, mit Test absichern</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p3"><td class="id">A02</td><td>Token-Erneuerung scheitert kurz (offline, Serverfehler)</td><td>Nichts; ein Wechsel in dieser Zeit endet mit Fehler</td><td>Laufendes Video nie anfassen, Wechsel später wiederholen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">A03</td><td>Sitzung abgelaufen (refresh_session_expired)</td><td>Player verschwindet, Profilseite sagt „Sitzung beendet“; letzte Sekunden der Position gehen verloren</td><td>Player pausiert, Position gespeichert, Karte „Abgemeldet“ mit „Erneut anmelden“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">A04</td><td>Sitzung beendet: anderes Gerät, Passwort geändert, zu viele Geräte, Konto gesperrt, unbekanntes Token (B11-Codes)</td><td>„Etwas ist schiefgelaufen“ – die neuen Codes kennt die App noch nicht</td><td>Eigener Text pro Grund („Auf einem anderen Gerät abgemeldet“ …)</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">A05</td><td>Anmeldung woanders benutzt (refresh_token_reused)</td><td>Player verschwindet, Text „Zu deiner Sicherheit abgemeldet“</td><td>Wie A03</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">A06</td><td>Konto wird während der Wiedergabe deaktiviert</td><td>Nach bis zu 60 min: allgemeiner Fehlertext</td><td>Text „Konto deaktiviert“ im Player</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">A07</td><td>Passwortänderung wird verlangt</td><td>Player verschwindet ohne Erklärung</td><td>Pausieren, Position sichern, Hinweis „Passwort ändern“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">A08</td><td>App geht in den Hintergrund (ohne Bild-in-Bild)</td><td>Pausiert, beim Zurückkehren steht das Overlay</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p2"><td class="id">A09</td><td>Länger als 10 min im Hintergrund – Server beendet die Wiedergabe</td><td>Nach Play: Karte „Wiedergabe beendet – neu starten“</td><td>Beim Zurückkehren prüfen und still an der Position neu starten</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">A10</td><td>Hintergrund mit Bild-in-Bild</td><td>Läuft im Fenster weiter, Position wird gemeldet</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-okk"><td class="id">A11</td><td>System beendet die App</td><td>Beim nächsten Start wird „Fortsetzen“ angeboten</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p1"><td class="id">A12</td><td>Bildschirm gesperrt / Gerät schläft</td><td>Eingefrorenes Bild, Knopf zeigt „Pause“, Overlay weg</td><td>Pause übernehmen, Hinweis „Pausiert – Bildschirm gesperrt“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">A13</td><td>Anruf, Siri, Wecker oder andere App spielt Ton</td><td>Eingefrorenes Bild ohne Erklärung, läuft nach dem Anruf nicht weiter</td><td>Hinweis „Pausiert für einen Anruf“, danach automatisch weiter</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">A14</td><td>Kopfhörer oder Bluetooth getrennt</td><td>Eingefrorenes Bild, Knopf zeigt „Pause“</td><td>Hinweis „Pausiert – Kopfhörer getrennt“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-okk"><td class="id">A15</td><td>Bild-in-Bild starten/beenden</td><td>Funktioniert</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p2"><td class="id">A16</td><td>Bild-in-Bild-Fenster geschlossen (✕)</td><td>Zurück in der App: eingefrorenes Bild, „Pause“-Knopf</td><td>Pause übernehmen</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">A17</td><td>Fehler während Bild-in-Bild</td><td>Fenster zeigt ein stehendes Bild</td><td>Bild-in-Bild beenden, Karte beim Zurückkehren</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">A18</td><td>AirPlay startet</td><td>Schwarze Fläche unter den Bedienelementen</td><td>Hinweis „Läuft auf Wohnzimmer“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">A19</td><td>AirPlay-Empfänger weg</td><td>Eingefrorenes Bild, „Pause“-Knopf</td><td>Hinweis „Pausiert – AirPlay getrennt“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">A20</td><td>Chromecast / Remote Playback</td><td>Nicht angeboten</td><td>—</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p3"><td class="id">A21</td><td>Wenig Speicher</td><td>Decoder-Fehler führt zu schwererer Wiedergabeart</td><td>Erst an der Position neu laden</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-okk"><td class="id">A22</td><td>Drehen (Handy)</td><td>Funktioniert</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p1"><td class="id">A23</td><td>Netzwechsel WLAN ↔ Mobilfunk</td><td>Bis zu einer Minute eingefrorenes Bild, dann „Server nicht erreichbar“</td><td>Hinweis „Verbindung unterbrochen“, automatisch neu verbinden</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">A24</td><td>Gerät ist offline</td><td>Eingefrorenes Bild (iPhone/Apple TV ewig), sonst nach ~1 min Fehlerkarte</td><td>Sofort Banner „Keine Verbindung“, weiter, sobald online</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">A25</td><td>Wieder online nach einem Fehler</td><td>Karte bleibt, man muss selbst „Erneut versuchen“</td><td>Automatisch an der Position weiter</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">A26</td><td>Hotel-WLAN fängt die Verbindung ab</td><td>„Serverfehler“</td><td>„Das Netzwerk fängt die Verbindung ab (Anmeldeseite?)“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">A27</td><td>Uhr des Geräts falsch</td><td>Nichts</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p3"><td class="id">A28</td><td>TLS-Zertifikat geändert</td><td>Erst ein sinnloser Methodenwechsel, dann Karte</td><td>Sofort Karte, kein Methodenwechsel</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+</table></div>
+</details>
+<details open><summary>B – Wiedergabe-Schnittstelle (Server-API)<span class="counts">27 Zustände · 2 rot · 10 gelb · 15 grün</span></summary>
+<div class="table-wrap"><table>
+<tr><th>ID</th><th>Zustand</th><th>Heute sichtbar</th><th>Ziel</th><th>Heute</th></tr>
+<tr class="r-p3"><td class="id">B01</td><td>Start abgelehnt: ungültige Anfrage/Geräteprofil</td><td>Karte mit „Erneut versuchen“, das gleich scheitert</td><td>Kein „Erneut versuchen“, Code anzeigen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">B02</td><td>Altersgrenze</td><td>Richtiger Text, aber sinnloses „Erneut versuchen“</td><td>Nur „Zurück“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">B03</td><td>Titel/Staffel/Folge nicht mehr da</td><td>Richtiger Text, sinnloses „Erneut versuchen“</td><td>„Zurück“ und „Zu den Details“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">B04</td><td>Zu viele Streams (anderes Gerät schaut)</td><td>Text nennt das Gerät, man muss wiederholt tippen</td><td>Startet automatisch, sobald das andere Gerät stoppt</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p3"><td class="id">B05</td><td>Zu viele Wiedergaben in Vorbereitung</td><td>Text + „Erneut versuchen“</td><td>Automatisch nach Wartezeit, Countdown</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p3"><td class="id">B06</td><td>Version kaputt/fehlt/abgelaufen u. ä.</td><td>Eigene Texte, Stepper zeigt den Schritt</td><td>Vorgeschlagene Version gleich vorauswählen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p3"><td class="id">B07</td><td>Umwandlung nicht erlaubt/möglich, keine passende Methode</td><td>Eigene Texte + „Andere Version“</td><td>Grund zusätzlich zeigen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p3"><td class="id">B08</td><td>Server ausgelastet (Kapazität, Platte voll)</td><td>„Server ist ausgelastet“ + „Erneut versuchen“</td><td>Automatisch 3× mit Countdown</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-okk"><td class="id">B09</td><td>Umwandlung beim Start zu langsam/gescheitert</td><td>Eigene Texte</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p2"><td class="id">B10</td><td>„Wiedergabe fehlgeschlagen“ (playback_failed)</td><td>Allgemeiner Text ohne Grund</td><td>Grund-Code anzeigen</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">B11</td><td>Alle Methoden probiert (no_more_methods)</td><td>„Keine Möglichkeiten mehr“ – warum, bleibt offen</td><td>Karte listet, was versucht wurde und warum es scheiterte</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">B12</td><td>Fehlercode, den die App nicht kennt</td><td>„Etwas ist schiefgelaufen“</td><td>Kategorie-Text + Code; Test gegen docs/api.md</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p3"><td class="id">B13</td><td>Server antwortet 5xx beim Start</td><td>„Serverfehler“</td><td>Automatisch 2× wiederholen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p3"><td class="id">B14</td><td>Start-Anfrage dauert zu lange</td><td>„Server antwortet zu langsam“</td><td>Einmal automatisch wiederholen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">B15</td><td>Eine Statusabfrage beim Start scheitert</td><td>Ganzer Start bricht ab</td><td>30 s lang wiederholen</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">B16</td><td>Server hängt in einem Schritt</td><td>Spinner im Stepper für immer</td><td>Zeitbudget pro Schritt, dann Hinweis und Karte</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">B17</td><td>Wiedergabe beim Start verschwunden (Neustart)</td><td>„Wiedergabe beendet“</td><td>Einmal still neu starten</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">B18</td><td>Wechsel mit unbekannter Spur abgelehnt</td><td>Unnötiges Neuladen + Hinweis</td><td>Nur Hinweis, Video läuft weiter</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p3"><td class="id">B19</td><td>Wechsel (Qualität/Version) scheitert</td><td>Neuladen + „Wechsel nicht möglich“</td><td>Alte Quelle an der Position weiter</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">B20</td><td>Wechsel scheitert am Netz</td><td>Laufendes Video wird gestoppt, Fehlerkarte</td><td>Altes Video läuft weiter, Wechsel später</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">B21</td><td>Methodenwechsel scheitert am Netz</td><td>Fehlerkarte</td><td>Kein Methodenwechsel bei Netzfehlern</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">B22</td><td>Fortschritt kann nicht gesendet werden (kurz)</td><td>Nichts, wird nachgeholt</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p2"><td class="id">B23</td><td>Fortschritt abgelehnt (abgemeldet)</td><td>Nichts – Position geht still verloren</td><td>Aufheben, bis wieder angemeldet</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">B24</td><td>Fortschritt für eine beendete Wiedergabe</td><td>Server sagt trotzdem „OK“</td><td>Beim Zurückkehren prüfen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p1"><td class="id">B25</td><td>Server-Neustart während der Wiedergabe</td><td>Bild läuft aus dem Puffer, friert ein, dann „Wiedergabe beendet“</td><td>Still an der Position neu starten: „Startet neu bei 1:12:04 …“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-okk"><td class="id">B26</td><td>Server kurz weg, Puffer reicht</td><td>Nichts</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-okk"><td class="id">B27</td><td>Stopp-Meldung scheitert</td><td>Nichts</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+</table></div>
+</details>
+<details open><summary>C – Auslieferung (Datei, Playlists, Teile, Spuren)<span class="counts">34 Zustände · 12 rot · 14 gelb · 8 grün</span></summary>
+<div class="table-wrap"><table>
+<tr><th>ID</th><th>Zustand</th><th>Heute sichtbar</th><th>Ziel</th><th>Heute</th></tr>
+<tr class="r-p2"><td class="id">C01</td><td>Direktwiedergabe: Freigabe abgelaufen</td><td>Eingefroren, dann „Auf Direct Stream gewechselt“</td><td>Gleiche Methode neu holen statt schwerer zu werden</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C02</td><td>Direktwiedergabe: Datei kürzer/Bereichsfehler</td><td>Eingefrorenes Bild</td><td>Neu laden, dann „Datei endet bei …“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">C03</td><td>Leitung zu langsam (Direktwiedergabe)</td><td>Eingefrorenes Bild, kein Spinner</td><td>Spinner, dann „Langsame Verbindung: 3 von 8 Mbit/s“, dann niedrigere Qualität</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">C04</td><td>Usenet-Lücke, Server repariert (bis 90 s)</td><td>Bis 90 s eingefroren, dann Wechsel</td><td>Hinweis „Server repariert fehlende Daten“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p3"><td class="id">C05</td><td>Verbindung bricht kurz ab</td><td>Kurz eingefroren</td><td>Spinner</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-okk"><td class="id">C06</td><td>Umwandlung startet nicht</td><td>Server nimmt die nächste Methode</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p2"><td class="id">C07</td><td>ffmpeg stürzt mitten im Film ab</td><td>~30 s eingefroren, dann Wechsel oder Karte</td><td>Hinweis „Bild hängt – wird neu geladen“, nach 30 s gleicher Weg</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">C08</td><td>Server wandelt langsamer als Echtzeit um</td><td>Wiederholt eingefroren, ohne Hinweis</td><td>„Der Server wandelt zu langsam um“ + niedrigere Qualität</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">C09</td><td>Weit zurückspulen in langer Umwandlung (vermuteter Serverfehler)</td><td>~50 s eingefroren</td><td>Server-Fix; Client lädt nach 15 s neu</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">C10</td><td>Umwandlungssitzung auf dem Server weg</td><td>Eingefroren, dann „Wiedergabe beendet“</td><td>Still an der Position neu starten</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">C11</td><td>Playlist liefert Serverfehler</td><td>Eingefroren, dann Wechsel</td><td>Wiederholen, dann neu starten</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">C12</td><td>Endlose Playlist ohne neue Teile</td><td>Kommt vom Server nicht vor</td><td>Wächter erkennt es trotzdem</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">C13</td><td>Teil fehlt kurz vor dem Ende</td><td>Eingefroren kurz vor Schluss</td><td>Als Ende behandeln</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C14</td><td>Teil gerade nicht verfügbar (503)</td><td>~30 s eingefroren</td><td>Spinner, Wartezeit des Servers beachten</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C15</td><td>Sitzung während der Anfrage geschlossen (410)</td><td>Eingefroren, dann Wechsel</td><td>Still neu starten</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">C16</td><td>Teil abgeschnitten</td><td>Kurz eingefroren</td><td>Spinner</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p1"><td class="id">C17</td><td>Teil beschädigt</td><td>Browser: Bild steht für immer</td><td>Begrenzte Reparaturversuche, Teil überspringen, dann Wechsel</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-okk"><td class="id">C18</td><td>Zeitsprung zwischen ffmpeg-Läufen</td><td>Kurz</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p3"><td class="id">C19</td><td>Tonspur fehlt beim Tonspurwechsel</td><td>Kurz still, dann Neuladen</td><td>So lassen, mit Fehlerinjektion testen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p1"><td class="id">C20</td><td>Tonspur fällt während der Wiedergabe aus</td><td>Bild ohne Ton oder eingefroren</td><td>„Kein Ton – Tonspur wird neu geladen“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">C21</td><td>Videospur/Init fehlt</td><td>Schwarz oder eingefroren</td><td>Wiederholen, dann Wechsel</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C22</td><td>Untertitel lassen sich nicht laden</td><td>Untertitel fehlen still; auf iPhone/Android kippt die ganze Wiedergabe</td><td>Untertitel aus + Hinweis „Untertitel … nicht ladbar“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C23</td><td>Untertitel kaputt</td><td>Untertitel fehlen</td><td>Wie C22</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C24</td><td>Gewählte Untertitel nicht lieferbar</td><td>Nichts (nur im Info-Bereich)</td><td>Hinweis + „Mit VLC abspielen“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C25</td><td>Falscher Inhaltstyp (Proxy)</td><td>iPhone/Apple TV: Wechsel/Fehler</td><td>„Der Server liefert ein unerwartetes Format (Proxy?)“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">C26</td><td>HDR/SDR passt nicht (-12927)</td><td>„Keine Möglichkeiten mehr“</td><td>„Gerät lehnt das HDR-Format ab – wird umgewandelt“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">C27</td><td>Tonformat geht doch nicht</td><td>Bild ohne Ton (Apple/Android) oder Bild steht (Browser)</td><td>Kein-Ton-Wächter, Ton umwandeln, „Kein Ton …“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">C28</td><td>Videoformat geht doch nicht</td><td>Schwarzes Bild mit Ton</td><td>Schwarzbild-Wächter → andere Methode, „Kein Bild …“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">C29</td><td>Auflösung zu hoch für den Decoder</td><td>Diashow oder schwarz</td><td>„Gerät kommt nicht hinterher“ + niedrigere Qualität</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">C30</td><td>Verschlüsselte Datei</td><td>„Keine Möglichkeiten mehr“</td><td>„Diese Version ist verschlüsselt“ + andere Version</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">C31</td><td>Leere oder sehr kurze Datei</td><td>Schwarz, Overlay sagt „läuft“</td><td>„Datei endet bei …“ + andere Version</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">C32</td><td>Datei endet vor dem Filmende</td><td>Letztes Bild steht, kein Abspann-Bildschirm</td><td>Neu laden, dann „Datei endet 9 min vor dem Ende“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-okk"><td class="id">C33</td><td>Angegebene Dauer zu kurz</td><td>Normal</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-okk"><td class="id">C34</td><td>Bild-Untertitel brauchen VLC/Einbrennen</td><td>Normal</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+</table></div>
+</details>
+<details open><summary>D – Player und Decoder<span class="counts">41 Zustände · 16 rot · 15 gelb · 10 grün</span></summary>
+<div class="table-wrap"><table>
+<tr><th>ID</th><th>Zustand</th><th>Heute sichtbar</th><th>Ziel</th><th>Heute</th></tr>
+<tr class="r-p2"><td class="id">D01</td><td>Browser (hls.js): Netzfehler</td><td>Eingefroren, dann „gewechselt“</td><td>Nach Ursache: neu verbinden, neu starten, Serverfehler</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D02</td><td>Browser (hls.js): Medienfehler</td><td>Bild steht für immer</td><td>Höchstens 2 Reparaturen, dann Wechsel</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D03</td><td>Browser (hls.js): sonstige schwere Fehler</td><td>Hinweis</td><td>Nach Kategorie</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">D04</td><td>Browser (hls.js): Puffer leer</td><td>Kurz eingefroren</td><td>Spinner</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">D05</td><td>Browser: Puffer voll</td><td>Nichts</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p2"><td class="id">D06</td><td>Browser: Player-Modul lädt nicht</td><td>Sinnloser Methodenwechsel</td><td>„Seite neu laden“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">D07</td><td>Browser startet nur stumm</td><td>Video läuft stumm, ohne Hinweis</td><td>„Ton aus – zum Einschalten tippen“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D08</td><td>Browser blockiert den Start ganz</td><td>Schwarz, Knopf zeigt „Pause“</td><td>Großer Abspielen-Knopf + Hinweis</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D09</td><td>Safari: Medienfehler 1–4</td><td>Wechsel/Karte</td><td>Nach Fehlercode einordnen</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D10</td><td>Safari: stalled/waiting</td><td>Eingefroren</td><td>Spinner + Wächter</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D11</td><td>Android (ExoPlayer): Quellfehler</td><td>Wechsel mit freiem Text</td><td>Fehlercode + HTTP-Status durchreichen</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">D12</td><td>Android: Decoderfehler</td><td>„Gewechselt …“ ohne Grund</td><td>Grund nennen („kann HEVC nicht“)</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">D13</td><td>Android: Tonausgabe scheitert (Passthrough)</td><td>Wechsel der ganzen Methode</td><td>Erst nur den Ton umwandeln</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">D14</td><td>Android: hinter Live-Fenster</td><td>Kommt nicht vor (kein Live)</td><td>—</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p1"><td class="id">D15</td><td>Android: puffert ewig</td><td>Eingefroren</td><td>Spinner + Zeitbudget</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">D16</td><td>Android: Ton ohne Bild</td><td>Schwarz mit Ton</td><td>Schwarzbild-Wächter</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D17</td><td>Android: Decoder weggenommen</td><td>Schwerere Methode</td><td>Erst neu laden</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p2"><td class="id">D18</td><td>iPhone/Apple TV (AVPlayer): Wiedergabefehler</td><td>Hinweis oder „Keine Möglichkeiten mehr“</td><td>Fehlerdomäne/-code durchreichen und einordnen</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D19</td><td>iPhone/Apple TV: wartet ewig</td><td>Eingefroren</td><td>Spinner + Grund des Wartens als Text</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">D20</td><td>iPhone/Apple TV: schwarzes Bild, Uhr läuft</td><td>Schwarz/erstes Bild bis 45 s</td><td>Schwarzbild-Wächter → neu laden</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">D21</td><td>iPhone/Apple TV: Bild ohne Ton</td><td>Stille</td><td>Heuristik + „Kein Ton …“ mit „Andere Tonspur“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D22</td><td>VLC: Fehler</td><td>Hinweis/Karte ohne Grund</td><td>„VLC kann diese Datei nicht abspielen“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D23</td><td>VLC: nie ein Bild</td><td>Schwarz, Uhr läuft</td><td>Wächter ohne „schon gestartet“-Bedingung</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D24</td><td>VLC: Bild steht, Uhr läuft</td><td>Bis ~15 s eingefroren (nur Android erkannt)</td><td>Hinweis während der Reparatur; auch auf Apple</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D25</td><td>VLC: kein Ton</td><td>Stille</td><td>Ton-Zähler auswerten</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">D26</td><td>VLC: endet zu früh</td><td>Letztes Bild steht</td><td>Wie C32</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D27</td><td>VLC: Rückfrage-Dialog</td><td>Kann hängen</td><td>Dialog behandeln</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-okk"><td class="id">D28</td><td>VLC: Stoppen hängt</td><td>Nichts</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p1"><td class="id">D29</td><td>Spulen in noch nicht geladenen Bereich</td><td>Altes Bild steht, Uhr zeigt schon die neue Zeit</td><td>Spinner sofort, Hinweis nach 8 s</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-okk"><td class="id">D30</td><td>Spulen über das Ende</td><td>Normal</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p3"><td class="id">D31</td><td>Schnelles Spulen in Umwandlung</td><td>Mehrfach eingefroren</td><td>Spulen bündeln</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p3"><td class="id">D32</td><td>Tonspurwechsel bestätigt sich nicht</td><td>Alter Ton läuft weiter, dann Neuladen</td><td>Kurzer Hinweis</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p1"><td class="id">D33</td><td>Schwarzes Bild, Uhr läuft (alle Player)</td><td>Schwarz</td><td>Wächter „Schwarzbild“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">D34</td><td>Bild steht, Uhr läuft (alle Player)</td><td>Eingefroren</td><td>Wächter „Standbild“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">D35</td><td>Bild läuft, Uhr steht</td><td>Uhr bleibt stehen, Position wird falsch gemeldet</td><td>Uhr direkt beim Player lesen</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D36</td><td>Bild läuft, kein Ton (alle Player)</td><td>Stille</td><td>Wächter „kein Ton“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p3"><td class="id">D37</td><td>Ton und Bild versetzt</td><td>Lippen nicht synchron</td><td>Nur messen und protokollieren</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">D38</td><td>Viele verworfene Bilder (Diashow)</td><td>Ruckeln ohne Hinweis</td><td>„Gerät kommt nicht hinterher“</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">D39</td><td>Player kommt nie zum ersten Bild</td><td>Schwarz bei 0:00</td><td>Zeitbudget, Hinweis, dann neu laden</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p3"><td class="id">D40</td><td>Laden der Quelle scheitert (expo-video)</td><td>Hinweis, Zustand bleibt „lädt“</td><td>Zustand korrekt setzen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-okk"><td class="id">D41</td><td>Zweiter Fehler während eines Wechsels</td><td>Nichts (neue Quelle kommt)</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+</table></div>
+</details>
+<details open><summary>E – Oberfläche des Players<span class="counts">18 Zustände · 5 rot · 3 gelb · 10 grün</span></summary>
+<div class="table-wrap"><table>
+<tr><th>ID</th><th>Zustand</th><th>Heute sichtbar</th><th>Ziel</th><th>Heute</th></tr>
+<tr class="r-okk"><td class="id">E01</td><td>Start-Schritte (Prüfen, Reparieren, Methode, Start)</td><td>Schritte mit Erklärung</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p3"><td class="id">E02</td><td>Ein Start-Schritt dauert sehr lange</td><td>Spinner</td><td>Hinweis nach Zeitbudget</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p1"><td class="id">E03</td><td>Zwischen „bereit“ und erstem Bild</td><td>Schwarz mit Bedienelementen bei 0:00 (12–16 s gemessen)</td><td>Startkarte bleibt mit Schritt „Bild wird geladen“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p1"><td class="id">E04</td><td>Puffern mitten im Film</td><td>Eingefroren, kein Spinner</td><td>Spinner, nach 4 s Hinweis mit Grund</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-okk"><td class="id">E05</td><td>Pausiert</td><td>Overlay</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p1"><td class="id">E06</td><td>Vom System pausiert</td><td>„Pause“-Knopf auf stehendem Bild</td><td>Hinweis „Pausiert: …“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p3"><td class="id">E07</td><td>Ende: Nächste Folge / Abspann / Nochmal</td><td>Funktioniert; Countdown läuft trotz Pause</td><td>Countdown bei Pause anhalten</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-okk"><td class="id">E08</td><td>Schließen</td><td>Funktioniert</td><td>So lassen</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p3"><td class="id">E09</td><td>Endgültige Fehlerkarte</td><td>Text + Aktionen; „Erneut versuchen“ fragt wieder nach Fortsetzen</td><td>„Was versucht wurde“ + an der Position weiter</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">E10</td><td>Fehler bei offenem Seitenpanel</td><td>Panel bleibt über der Karte, TV-Fokus evtl. gefangen</td><td>Panels schließen, Fokus auf die Karte</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">E11</td><td>Hinweise bei ausgeblendetem Overlay</td><td>6 s sichtbar</td><td>Auf TV 8 s</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-okk"><td class="id">E12</td><td>Fehler auf dem TV</td><td>Fokus in der Karte</td><td>So lassen; Hinweise nie fokussierbar</td><td><span class="sev okk" title="ok">grün</span></td></tr>
+<tr class="r-p1"><td class="id">E13</td><td>Offline-Banner</td><td>Gibt es nicht</td><td>Banner „Keine Verbindung“</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p3"><td class="id">E14</td><td>Hinweis nach Methodenwechsel</td><td>„Zu Transcoding gewechselt“ – ohne Grund</td><td>Grund nennen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+<tr class="r-p2"><td class="id">E15</td><td>Hinweis „Wechsel nicht möglich“</td><td>Bei unbekannten Codes allgemein</td><td>Kategorie-Texte</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p1"><td class="id">E16</td><td>Gerätefähigkeiten lassen sich nicht lesen</td><td>„Etwas ist schiefgelaufen“</td><td>Mit Standardprofil abspielen</td><td><span class="sev p1" title="heute allgemein / schwarz / eingefroren">rot</span></td></tr>
+<tr class="r-p2"><td class="id">E17</td><td>„Fortsetzen?“ länger als 10 min offen</td><td>Nach der Wahl: „Wiedergabe beendet“</td><td>Bei der Wahl prüfen und neu starten</td><td><span class="sev p2" title="heute unklar oder falsch">gelb</span></td></tr>
+<tr class="r-p3"><td class="id">E18</td><td>Karte „Wird gewechselt …“</td><td>Schwarz darunter bei Neuladen</td><td>Letztes Bild stehen lassen</td><td><span class="sev p3" title="ok, verbesserbar">grün</span></td></tr>
+</table></div>
+</details>
+<h2>Geplante Schritte (F10)</h2>
+<div class="table-wrap"><table>
+<tr><th>Schritt</th><th>Inhalt</th><th>Aufwand</th></tr>
+<tr><td>S1 Fehlerarten und Texte</td><td>Jeder Fehler aus App, Server und Player landet in einer von 11 Kategorien. Alle fehlenden Codes bekommen Texte. Nie mehr „Etwas ist schiefgelaufen“.</td><td>1 Tag</td></tr>
+<tr><td>S2 Test-Gerüst</td><td>Nachgebaute Player, die jedes Ereignis und jeden Fehler auslösen können. Ein Test pro Zeile der Matrix.</td><td>1 Tag</td></tr>
+<tr><td>S3 Anzeige im Player</td><td>Spinner, Hinweiszeile, Startkarte bis zum ersten Bild, Offline-Banner, „Pausiert: …“, „Ton aus“, „Läuft auf …“, Karte „Was versucht wurde“.</td><td>1,5 Tage</td></tr>
+<tr><td>S4 Die Leiter</td><td>Neu laden, neu starten, Qualität senken, Wiedergabeart wechseln – mit Budgets und immer an der letzten guten Position. Position geht auch beim Abmelden nicht verloren.</td><td>2,5 Tage</td></tr>
+<tr><td>S5 Wächter + Browser</td><td>Der Wächter und alle Messwerte im Browser; bessere Behandlung der hls.js-Fehler.</td><td>1,5 Tage</td></tr>
+<tr><td>S6 iPhone, Apple TV, Android</td><td>Erweiterung von expo-video: Fehlercodes, Bild- und Tonzähler, Anruf/Kopfhörer/AirPlay-Ereignisse.</td><td>2,5 Tage</td></tr>
+<tr><td>S7 VLC</td><td>Bild- und Tonzähler auf Android und Apple, schwarzes Bild erkennen, Dialoge behandeln.</td><td>1 Tag</td></tr>
+<tr><td>S8 Untertitel und Sonderfälle</td><td>Fehlende Untertitel, verschlüsselte oder leere Dateien, Spulen bündeln.</td><td>0,5 Tage</td></tr>
+<tr><td>S9 Echte Fehler auf allen Geräten</td><td>Mit der Fehlerinjektion (B12) jede Zeile auf jedem Player nachstellen; unabhängige Prüfung mit der Matrix als Checkliste.</td><td>2–3 Tage</td></tr>
+</table></div>
+<h2>Fehler auf Knopfdruck (B12)</h2>
+<p>Damit wir jede Zeile wirklich prüfen können, bekommt die Dev World eine Fehlerinjektion – nur dort, nie im echten Server. Ein Fehler wird für genau eine Wiedergabe scharf geschaltet, so stören sich die Agenten nicht gegenseitig.</p>
+<ul>
+<li>Teile verzögern, hängen lassen, abbrechen, abschneiden oder beschädigen</li>
+<li>Playlists, Tonspuren und Untertitel mit 404/500/503/504 beantworten oder kaputt machen</li>
+<li>Falscher Inhaltstyp, endlose Playlist, Datei endet zu früh, Leitung drosseln, Usenet-Lücke</li>
+<li>ffmpeg abschießen, verlangsamen oder gar nicht starten lassen</li>
+<li>API-Antworten ändern: zu viele Streams, Server ausgelastet, Serverfehler, hängender Start</li>
+<li>Token abgelaufen, Anmeldung widerrufen (mit Grund), Passwortänderung verlangt</li>
+<li>Wiedergabe auf dem Server „vergessen“ (wie Neustart oder Leerlauf), echter Neustart auf eigenem Port</li>
+</ul>
+<p class="sub">Spezifikation: <code>docs/client/player/b12-fault-spec.md</code></p>
+<h2>Was noch offen ist</h2>
+<ul>
+<li>Kein Ton auf iPhone/Apple TV lässt sich nur schätzen. Ein echter Pegelmesser wäre zu teuer.</li>
+<li>Der Bild-Zähler auf Apple braucht etwas Rechenleistung. Wir messen das auf dem Apple TV, bevor er bleibt.</li>
+<li>Einige Zustände gibt es nur auf echter Hardware: AirPlay, Anrufe, HDR/Dolby Vision, Tonformate am Receiver.</li>
+<li>Vermuteter Serverfehler: weites Zurückspulen in einer langen Umwandlung hängt bis zu 90 Sekunden. Das ist eine eigene Server-Aufgabe.</li>
+</ul>
+<footer>F10a · Recherche ohne Geräte · Quellen: Client-Code, Server-Code (nur gelesen), Dev World, Journale M3.1–I4, Q1, B11, BACKLOG.</footer>
+</main>
+</body>
+</html>
