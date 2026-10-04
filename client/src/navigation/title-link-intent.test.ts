@@ -17,13 +17,16 @@ function deps(root: LinkState, popToScreen: TitleLinkDeps['popToScreen'] = () =>
   const listeners = new Set<() => void>();
   const value = {
     root,
-    stateFromPath: (route: string) => {
+    stateFromPathInner: (route: string): LinkState => {
+      const id = /^\/movie\/([^/?]+)/.exec(route)?.[1];
+      return id ? home(id) : { routes: [{ name: 'settings' }] };
+    },
+    stateFromPath: (route: string): LinkState | undefined => {
       const id = /^\/movie\/([^/?]+)/.exec(route)?.[1];
       return id ? home(id) : { routes: [{ name: 'settings' }] };
     },
     rootState: () => value.root,
     dispatch: jest.fn(),
-    navigate: jest.fn(),
     popToScreen: jest.fn(popToScreen),
     onState: (listener: () => void) => {
       listeners.add(listener);
@@ -84,32 +87,56 @@ describe('handleTitleLink (I4 item 8)', () => {
     expect(d.dispatch).not.toHaveBeenCalled();
   });
 
-  it('shows another tab only once the pop reached the navigation state', async () => {
+  it('leaves the player and the stack under it alone (the viewer closes the player)', () => {
+    const covered: LinkState = {
+      type: 'stack',
+      index: 1,
+      routes: [{ name: '(tabs)', state: home('1', '2') }, { name: 'play/[playbackId]' }],
+    };
+    const d = deps(covered, () => Promise.resolve(true));
+    d.stateFromPath = (route: string) => ({
+      routes: [{ name: '(tabs)', state: d.stateFromPathInner(route) }],
+    });
+    expect(handleTitleLink('streamarr:///movie/1', d)).toBeNull();
+    expect(d.popToScreen).not.toHaveBeenCalled();
+    expect(d.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('switches to the hidden tab first and returns to the title once that tab is in view', async () => {
     jest.useFakeTimers();
-    const root = home('1', '2');
-    const otherTab: LinkState = { index: 1, routes: [...root.routes, { name: '(movies)' }] };
-    const d = deps(otherTab, () => Promise.resolve(true));
-    handleTitleLink('streamarr:///movie/1', d);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(d.navigate).not.toHaveBeenCalled();
-    d.emit({ index: 1, routes: [...home('1').routes, { name: '(movies)' }] });
-    expect(d.navigate).toHaveBeenCalledWith('/movie/1');
+    const inMovies = (stack: LinkState): LinkState => ({
+      type: 'tab',
+      key: 'tabs',
+      index: 1,
+      routes: [...stack.routes, { name: '(movies)' }],
+    });
+    const d = deps(inMovies(home('1', '2')), () => Promise.resolve(true));
+    expect(handleTitleLink('streamarr:///movie/1', d)).toBeNull();
+    expect(d.dispatch).toHaveBeenCalledWith({
+      type: 'JUMP_TO',
+      payload: { name: '(home)' },
+      target: 'tabs',
+    });
+    expect(d.popToScreen).not.toHaveBeenCalled();
+    d.emit({ ...inMovies(home('1', '2')), index: 0 });
+    expect(d.popToScreen).toHaveBeenCalledWith('movie-screen-1', 1);
     jest.useRealTimers();
   });
 
-  it('shows the tab after the bound when the state never reports the pop', async () => {
+  it('gives up after the bound when the tab switch never reaches the state', () => {
     jest.useFakeTimers();
-    const d = deps({ index: 1, routes: [...home('1', '2').routes, { name: '(movies)' }] }, () =>
-      Promise.resolve(true)
+    const d = deps(
+      {
+        type: 'tab',
+        key: 'tabs',
+        index: 1,
+        routes: [...home('1', '2').routes, { name: '(movies)' }],
+      },
+      () => Promise.resolve(true)
     );
     handleTitleLink('streamarr:///movie/1', d);
-    await Promise.resolve();
-    await Promise.resolve();
-    jest.advanceTimersByTime(POP_SYNC_TIMEOUT_MS - 1);
-    expect(d.navigate).not.toHaveBeenCalled();
-    jest.advanceTimersByTime(1);
-    expect(d.navigate).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(POP_SYNC_TIMEOUT_MS);
+    expect(d.popToScreen).not.toHaveBeenCalled();
     jest.useRealTimers();
   });
 });

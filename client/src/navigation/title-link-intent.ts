@@ -1,6 +1,6 @@
-import { titleLinkAction, routeFromUrl, type LinkState } from './title-link';
+import { titleLinkAction, routeFromUrl, type LinkPlace, type LinkState } from './title-link';
 
-// A pop that has not reached the navigation state by then is taken as done (slow device): the tab is shown anyway.
+// A tab switch that has not reached the navigation state by then is given up (slow device): the link does nothing.
 export const POP_SYNC_TIMEOUT_MS = 2000;
 
 export type TitleLinkDeps = {
@@ -8,7 +8,6 @@ export type TitleLinkDeps = {
   rootState(): LinkState | undefined;
   dispatch(action: { type: string; payload?: object; target?: string }): void;
   onState(listener: () => void): () => void;
-  navigate(route: string): void;
   /** The native pop (Apple TV), null where the stack is popped in JS. */
   popToScreen(testID: string, count: number): Promise<boolean> | null;
 };
@@ -19,30 +18,37 @@ export function handleTitleLink(url: string, deps: TitleLinkDeps): string | null
   const target = deps.stateFromPath(route);
   const action = titleLinkAction(target, deps.rootState());
   if (action.type === 'open') return url;
-  const show = () => {
-    if (!action.shown) deps.navigate(route);
-  };
-  if (action.type === 'stay') {
-    show();
+  // A screen above the tabs (the player) stays until the viewer leaves it; its stack below keeps its pages.
+  if (action.place.kind === 'covered') return null;
+  if (action.place.kind === 'tab') {
+    // A stack in a hidden tab is detached: switch first (keeps its pages), then return to the title in view.
+    const { tabsKey, tabName } = action.place;
+    deps.dispatch({ type: 'JUMP_TO', payload: { name: tabName }, target: tabsKey });
+    whenState(
+      deps,
+      () => placeOf(target, deps) === 'shown',
+      () => {
+        if (placeOf(target, deps) === 'shown') handleTitleLink(url, deps);
+      }
+    );
     return null;
   }
+  if (action.type === 'stay') return null;
+  const native = deps.popToScreen(action.screenTestID, action.count);
   const popInJs = () =>
     deps.dispatch({ type: 'POP', payload: { count: action.count }, target: action.stackKey });
-  const native = deps.popToScreen(action.screenTestID, action.count);
-  if (!native) {
-    popInJs();
-    show();
-    return null;
-  }
-  void native.then((popped) => {
-    if (!popped) popInJs();
-    afterPop(target, deps, show);
-  });
+  if (!native) popInJs();
+  else void native.then((popped) => popped || popInJs());
   return null;
 }
 
-/** Runs `then` once the navigation state shows the title on top (the native pop synced), or after the bound. */
-function afterPop(target: LinkState | undefined, deps: TitleLinkDeps, then: () => void) {
+function placeOf(target: LinkState | undefined, deps: TitleLinkDeps): LinkPlace['kind'] | null {
+  const action = titleLinkAction(target, deps.rootState());
+  return action.type === 'open' ? null : action.place.kind;
+}
+
+/** Runs `then` once `ready()` holds in the navigation state, or after the bound (slow device). */
+function whenState(deps: TitleLinkDeps, ready: () => boolean, then: () => void) {
   let done = false;
   const finish = () => {
     if (done) return;
@@ -51,10 +57,9 @@ function afterPop(target: LinkState | undefined, deps: TitleLinkDeps, then: () =
     clearTimeout(timer);
     then();
   };
-  const synced = () => titleLinkAction(target, deps.rootState()).type === 'stay';
   const unsubscribe = deps.onState(() => {
-    if (synced()) finish();
+    if (ready()) finish();
   });
   const timer = setTimeout(finish, POP_SYNC_TIMEOUT_MS);
-  if (synced()) finish();
+  if (ready()) finish();
 }

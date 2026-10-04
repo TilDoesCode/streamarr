@@ -17,6 +17,9 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   at its root when a page below was pushed by a deep link (react-native-screens skips its controller as removed); Menu
   (a native pop) is fine. Deep links now pop natively (tv-native `popToScreen`); any future JS back in a tvOS tab stack
   must use the same path or be checked live.
+- Apple TV dev builds (I4 S4): a Metro reload can crash in expo-modules-core `ExpoFabricView.injectInitializer`
+  (AppContextLost) while a TVFocusHost view mounts during the reload; dev-only, seen once. A deep link to a new title
+  while the player is open still closes the player through the router.
 - HeroFade has no fallback when the masked-view native module is missing (check after the first iOS pod install).
 
 ## Needs real hardware (Android TV, ideally a 2 GB device; a real phone)

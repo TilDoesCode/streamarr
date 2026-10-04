@@ -454,7 +454,7 @@ describe('expo-router internals the link handler relies on (I4 review: fails whe
       expect(JSON.stringify(target)).toContain('"movie/[id]"');
       expect(titleLinkAction(target, routerInternals.rootState())).toEqual({
         type: 'stay',
-        shown: true,
+        place: { kind: 'shown' },
       });
     }
     const listener = jest.fn();
