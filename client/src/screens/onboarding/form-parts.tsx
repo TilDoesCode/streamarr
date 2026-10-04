@@ -39,9 +39,10 @@ export type PasswordFieldProps = Omit<TextFieldProps, 'secureTextEntry' | 'trail
   ref?: Ref<TextInput>;
 };
 
-/** Password input with a show/hide toggle beside it (a separate focus stop on TV). */
+/** Password input with a show/hide toggle at its end (beside it and a separate focus stop on TV). */
 export function PasswordField({ ref, testID, ...props }: PasswordFieldProps) {
   const { t } = useTranslation();
+  const design = useDesign();
   const [visible, setVisible] = useState(false);
   const [visibleKeyboard, setVisibleKeyboard] = useState(false);
   const toggle = () => {
@@ -64,7 +65,7 @@ export function PasswordField({ ref, testID, ...props }: PasswordFieldProps) {
         <IconButton
           icon={visible ? EyeOff : Eye}
           variant="ghost"
-          size="lg"
+          size={design.isTV ? 'lg' : 'md'}
           testID={testID ? `${testID}-toggle` : undefined}
           accessibilityLabel={
             visible ? t('onboarding.signIn.hidePassword') : t('onboarding.signIn.showPassword')

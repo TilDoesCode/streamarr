@@ -14,11 +14,23 @@ export type Featured = {
   overview?: string | null;
   /** Episode line of continue watching / next up. */
   detail?: string;
+  /** The episode a continue / next-up card stands for: the hero plays it and "More info" opens on it. */
+  episode?: FeaturedEpisode;
   progress?: number;
   tint?: string | null;
   tint2?: string | null;
   highlight?: string | null;
   spec?: CatalogSpec | null;
+};
+
+export type FeaturedEpisode = {
+  workId: string;
+  season: number;
+  episode: number;
+  playTitle: string;
+  positionTicks?: number;
+  durationTicks?: number | null;
+  lastReleaseId?: string | null;
 };
 
 // The ambient backdrop debounces again (150 ms); the hero itself settles quickly.

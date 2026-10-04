@@ -24,7 +24,11 @@ import { HeroTitle } from '@/components/media/hero';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
-import { BackControl, useBackControlClearance } from '@/navigation/back-control';
+import {
+  BackControl,
+  useBackControlClearance,
+  useStageBackLayout,
+} from '@/navigation/back-control';
 import { HeroFade } from '@/shell/hero-fade';
 import { ShellDesign } from '@/shell/shell-design';
 import { SHELL } from '@/shell/shell-metrics';
@@ -160,6 +164,7 @@ function StageLayout({
   const setAmbient = useSetAmbient();
   const clearAmbient = useClearAmbient();
   const backClearance = useBackControlClearance();
+  const stageBack = useStageBackLayout(s(SHELL.height - STAGE.stripTop), s(STAGE.stripTop));
   const copyStyle = useCopyFade(copyKey);
   // Concept "long titles": a two-line episode title shortens the overview to two lines (the stage height is fixed).
   const [headingLines, setHeadingLines] = useState(1);
@@ -256,7 +261,7 @@ function StageLayout({
           paddingLeft: gutters.start,
           paddingRight: gutters.end,
           // Series: the strip brings its own focus room at the bottom; the copy may start under the tvOS tab bar.
-          paddingTop: Math.max(s(children ? STAGE.stripTop : STAGE.top), backClearance),
+          paddingTop: children ? stageBack.paddingTop : Math.max(s(STAGE.top), backClearance),
           paddingBottom: s(children ? STAGE.stripBottom : STAGE.bottom) + insets.bottom,
         }}>
         <View
@@ -278,19 +283,21 @@ function StageLayout({
           ) : (
             <View style={{ width: s(STAGE.copyWidth), maxWidth: '100%', gap: s(18) }}>
               {heading ? (
-                <HeroTitle
-                  title={title}
-                  logoUri={logoUrl}
-                  logoHeight={s(62)}
-                  // Apple TV: clear of the native tab bar, which starts at x ≈ 540.
-                  logoWidth={s(340)}
-                  textStyle={{
-                    fontFamily: fonts.displayBold,
-                    fontSize: s(48),
-                    lineHeight: s(56),
-                    color: colors.foreground.DEFAULT,
-                  }}
-                />
+                <View style={{ marginLeft: children ? stageBack.indent : 0 }}>
+                  <HeroTitle
+                    title={title}
+                    logoUri={logoUrl}
+                    logoHeight={s(62)}
+                    // Apple TV: clear of the native tab bar, which starts at x ≈ 540.
+                    logoWidth={s(340)}
+                    textStyle={{
+                      fontFamily: fonts.displayBold,
+                      fontSize: s(48),
+                      lineHeight: s(56),
+                      color: colors.foreground.DEFAULT,
+                    }}
+                  />
+                </View>
               ) : null}
               <View
                 style={{

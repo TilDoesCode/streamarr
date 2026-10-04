@@ -84,9 +84,7 @@
       "cast": "Mit"
     },
     "watched": "Gesehen",
-    "unwatch": "Ungesehen",
     "details": "Details",
-    "lessDetails": "Weniger",
     "specGap": "{best} vorhanden · hier {here}",
     "rating": "Bewertung",
     "ratingSource": " TMDB",
@@ -105,7 +103,8 @@
     "genres": "Genres",
     "originalTitle": "Originaltitel",
     "moreDetails": "Alle Details",
-    "moreAboutSeries": "Mehr zur Serie"
+    "moreAboutSeries": "Mehr zur Serie",
+    "markWatchedShort": "Als gesehen"
   },
   "settings": {
     "account": {
@@ -134,7 +133,8 @@
         "coral": "Koralle",
         "rose": "Rosé",
         "slate": "Schiefer"
-      }
+      },
+      "nameBlank": "Der Name darf nicht nur aus Leerzeichen bestehen. Lass das Feld leer, um {username} zu verwenden."
     },
     "about": {
       "title": "Info",
@@ -168,7 +168,10 @@
         "password_reset": "Passwort zurückgesetzt",
         "other": "Andere"
       },
-      "signedOutOthers": "{count, plural, =0 {Keine anderen Geräte waren angemeldet} one {Ein Gerät abgemeldet} other {# Geräte abgemeldet}}"
+      "signedOutOthers": "{count, plural, =0 {Keine anderen Geräte waren angemeldet} one {Ein Gerät abgemeldet} other {# Geräte abgemeldet}}",
+      "signOutOthersTitle": "{count, plural, one {Das andere Gerät abmelden?} other {Alle # anderen Geräte abmelden?}}",
+      "signOutOthersMessage": "Dort musst du dich wieder anmelden, um weiterzuschauen. Dieses Gerät bleibt angemeldet.",
+      "signOutOthersConfirm": "Abmelden"
     },
     "security": {
       "title": "Anmeldung und Sicherheit",
@@ -241,7 +244,8 @@
       "forgot": "Passwort vergessen?",
       "changeServer": "Server wechseln",
       "showPassword": "Passwort anzeigen",
-      "hidePassword": "Passwort verbergen"
+      "hidePassword": "Passwort verbergen",
+      "backToApp": "Zurück zur App"
     },
     "secondFactor": {
       "title": "Bestätigung in zwei Schritten",
@@ -1077,11 +1081,11 @@
       "noneEpisode": "Für diese Folge gibt es noch keine abspielbare Version.",
       "error": "Versionen nicht geladen · Abspielen startet die Empfehlung des Servers",
       "betterOnly": {
-        "direct": "{best} vorhanden",
-        "remux": "{best} vorhanden, läuft hier als Direkt-Stream",
-        "transcode": "{best} vorhanden, läuft hier nur transkodiert",
-        "vlc": "{best} vorhanden, läuft hier nur mit VLC",
-        "unknown": "{best} vorhanden"
+        "direct": "Beste Version {best}: hier direkt",
+        "remux": "Beste Version {best}: hier als Direkt-Stream",
+        "transcode": "Beste Version {best}: hier nur transkodiert",
+        "vlc": "Beste Version {best}: hier nur mit VLC",
+        "unknown": "Beste Version: {best}"
       }
     }
   },
@@ -1099,5 +1103,15 @@
       "movie": "Keine Filme in diesem Genre.",
       "series": "Keine Serien in diesem Genre."
     }
+  },
+  "genreNames": {
+    "scifiFantasy": "Science-Fiction & Fantasy",
+    "warPolitics": "Krieg & Politik",
+    "actionAdventure": "Action & Abenteuer",
+    "kids": "Kinder",
+    "news": "Nachrichten",
+    "reality": "Reality-TV",
+    "soap": "Seifenoper",
+    "talk": "Talkshow"
   }
 }

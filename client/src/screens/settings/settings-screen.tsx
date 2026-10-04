@@ -188,7 +188,7 @@ function AccountSection() {
         )}
         <Button
           testID="settings-sign-out"
-          variant="ghost"
+          variant="secondary"
           icon={LogOut}
           label={t('settings.account.signOut')}
           onPress={() => setConfirm(true)}

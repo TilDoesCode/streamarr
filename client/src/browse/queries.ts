@@ -16,7 +16,9 @@ import { unwrap } from '@/api/client';
 import type { components } from '@/api/schema';
 import { useDeviceProfile, versionHints } from '@/player/device-profile';
 
+import { genreName, localizeDetail } from './catalog-labels';
 import { fetchLibraryPage, type LibraryKind, type LibrarySort } from './library';
+import { seriesFocus } from './series-selection';
 
 import { accountKey, queryKeys } from '@/query/keys';
 import { accountPersister } from '@/query/persist';
@@ -66,12 +68,18 @@ export function useLibrary(kind: LibraryKind, genre: number | null, sort: Librar
 export function useGenres(kind: LibraryKind) {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
+  const { t } = useTranslation();
   return useQuery({
     queryKey: accountKey(account.id, 'catalog', 'genres', kind, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/genres', { params: { query: { type: kind } }, signal })
-      ).then((response) => response.genres ?? []),
+      ).then((response) =>
+        (response.genres ?? []).map((genre) => ({
+          ...genre,
+          name: genre.name ? genreName(genre.name, t) : genre.name,
+        }))
+      ),
     staleTime: STALE.homeRows,
   });
 }
@@ -110,6 +118,15 @@ export function useContinueWatching() {
   });
 }
 
+/** The episode the series is at (resume point first); `settled` once the continue list is known, so nothing jumps. */
+export function useSeriesFocus(series: SeriesDetail | undefined) {
+  const resume = useContinueWatching();
+  return {
+    focus: series ? seriesFocus(series, resume.data) : null,
+    settled: !!series && (resume.data !== undefined || resume.isError),
+  };
+}
+
 export function useNextUp() {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
@@ -128,6 +145,7 @@ export function useNextUp() {
 export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
+  const { t } = useTranslation();
   return useQuery({
     queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId, language),
     queryFn: ({ signal }) =>
@@ -136,7 +154,7 @@ export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
           params: { path: { tmdbId: tmdbId ?? 0 } },
           signal,
         })
-      ),
+      ).then((detail) => localizeDetail(detail, t)),
     enabled: enabled && tmdbId !== undefined,
   });
 }
@@ -144,6 +162,7 @@ export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
 export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
+  const { t } = useTranslation();
   return useQuery({
     queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, language),
     queryFn: ({ signal }) =>
@@ -152,7 +171,7 @@ export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
           params: { path: { tmdbId: tmdbId ?? 0 } },
           signal,
         })
-      ),
+      ).then((detail) => localizeDetail(detail, t)),
     enabled: enabled && tmdbId !== undefined,
   });
 }
@@ -216,25 +235,38 @@ export function useSearch(query: string, type: SearchType, enabled: boolean) {
 }
 
 /** Ranked versions with the predicted method for this device (once its profile is known). */
-export function useVersions(workId: string | null | undefined, enabled = true) {
+function useVersionsOptions() {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
   const profile = useDeviceProfile();
   const hints = profile.data ? versionHints(profile.data) : undefined;
   // A failed capability probe still lists the versions, just without predictions.
   const ready = profile.data !== undefined || profile.isError;
-  return useQuery({
+  const options = (workId: string | null | undefined) => ({
     queryKey: accountKey(account.id, 'catalog', 'versions', workId, hints ?? null, language),
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/works/{workId}/versions', {
           params: { path: { workId: workId ?? '' }, query: hints },
           signal,
         })
       ),
-    enabled: enabled && !!workId && ready,
     staleTime: 5 * 60_000,
   });
+  return { options, ready };
+}
+
+export function useVersions(workId: string | null | undefined, enabled = true) {
+  const { options, ready } = useVersionsOptions();
+  return useQuery({ ...options(workId), enabled: enabled && !!workId && ready });
+}
+
+/** Loads a work's versions on demand (same cache as useVersions), e.g. when a Home card is pressed. */
+export function useFetchVersions() {
+  const queryClient = useQueryClient();
+  const { options } = useVersionsOptions();
+  return (workId: string) =>
+    queryClient.fetchQuery(options(workId)).then((response) => response.versions ?? []);
 }
 
 /** Marks works played or unplayed and refreshes every watch-dependent query of the account. */

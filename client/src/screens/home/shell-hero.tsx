@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
+import { resumeSeconds, watchProgress } from '@/browse/title-actions';
 import { useClearAmbient, useSetAmbient } from '@/components/ambient';
 import { GlassButton } from '@/components/glass';
 import { Artwork } from '@/components/media/artwork';
@@ -20,7 +20,6 @@ import { HeroTitle } from '@/components/media/hero';
 import { SpecLabels } from '@/components/spec';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
-import { titleHref } from '@/navigation/routes';
 import { TICKS_PER_SECOND } from '@/player/playback-api';
 import { CopyWash, HeroFade } from '@/shell/hero-fade';
 import { SHELL } from '@/shell/shell-metrics';
@@ -30,7 +29,7 @@ import { colors, fonts, motion, useFocusGap } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 import { useFeatured, type Featured, type FeaturedStore } from './featured';
-import { useFeaturedDetail, useMeta } from './home-hero';
+import { featuredInfoHref, useFeaturedDetail, useMeta, usePlayFeatured } from './home-hero';
 
 const LOGO_HEIGHT =
   Platform.OS === 'ios' && Platform.isTV ? SHELL.logo.tvosHeight : SHELL.logo.height;
@@ -38,14 +37,23 @@ const LOGO_HEIGHT =
 const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
 /** Copy top: the mockup's, raised on short windows (tablet text/button floors), never above the rail top. */
-export function heroCopyTop(s: (value: number) => number, copyHeight: number, safeTop: number) {
-  const fitTop = s(SHELL.row.top - SHELL.row.gap * 2) - copyHeight;
+export function heroCopyTop(
+  s: (value: number) => number,
+  copyHeight: number,
+  safeTop: number,
+  rowsTop = s(SHELL.row.top)
+) {
+  const fitTop = rowsTop - s(SHELL.row.gap * 2) - copyHeight;
   return Math.max(safeTop + s(SHELL.rail.top), Math.min(s(SHELL.hero.copyTop), fitTop));
 }
 
 /** Rows top: the mockup's, or lower when the copy still ends within two row gaps of it. */
-export function heroRowsTop(s: (value: number) => number, copyBottom: number) {
-  return Math.max(s(SHELL.row.top), copyBottom + s(SHELL.row.gap * 2));
+export function heroRowsTop(
+  s: (value: number) => number,
+  copyBottom: number,
+  rowsTop = s(SHELL.row.top)
+) {
+  return Math.max(rowsTop, copyBottom + s(SHELL.row.gap * 2));
 }
 
 export type ShellHeroProps = {
@@ -66,7 +74,7 @@ export function ShellHero({
   onButtonFocus,
   onCopyBottom,
 }: ShellHeroProps) {
-  const { s } = useShell();
+  const { s, heroFrame } = useShell();
   const shown = useSharedValue(1);
   useEffect(() => {
     shown.set(withTiming(collapsed ? 0 : 1, { duration: motion.enter }));
@@ -99,7 +107,7 @@ export function ShellHero({
         left: 0,
         top: 0,
         right: 0,
-        height: s(SHELL.hero.height),
+        height: heroFrame.heroHeight,
       }}>
       <Animated.View
         style={[
@@ -178,8 +186,7 @@ function HeroCopy({
   const { t } = useTranslation();
   const format = useFormat();
   const router = useRouter();
-  const play = usePlay();
-  const { s } = useShell();
+  const { s, heroFrame } = useShell();
   const buttonGap = useFocusGap(s(16));
   const insets = useSafeAreaInsets();
   const controls = useWindowControlsInset();
@@ -207,9 +214,7 @@ function HeroCopy({
       };
     }, [])
   );
-  const playFeatured = () =>
-    detail?.playWorkId &&
-    play({ workId: detail.playWorkId, title: detail.playTitle, startSeconds: resume });
+  const playFeatured = usePlayFeatured(detail);
   // Set when Play/Pause hit a card the hero has not caught up with; plays once its detail is loaded.
   const playWhenReady = useRef<string | null>(null);
   useEffect(() => {
@@ -235,10 +240,7 @@ function HeroCopy({
     onFocus: () => onButtonFocus?.(true),
     onBlur: () => onButtonFocus?.(false),
   };
-  const openInfo = () =>
-    router.push(
-      titleHref({ mediaType: featured.kind === 'series' ? 'tv' : 'movie', tmdbId: featured.tmdbId })
-    );
+  const openInfo = () => router.push(featuredInfoHref(featured, detail));
 
   return (
     <View
@@ -250,7 +252,7 @@ function HeroCopy({
       style={{
         position: 'absolute',
         left: s(SHELL.hero.copyLeft),
-        top: heroCopyTop(s, copyHeight, insets.top + controls),
+        top: heroCopyTop(s, copyHeight, insets.top + controls, heroFrame.rowsTop),
         width: s(SHELL.hero.copyWidth),
         gap: s(14),
       }}>

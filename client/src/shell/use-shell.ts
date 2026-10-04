@@ -3,7 +3,14 @@ import type { TextStyle } from 'react-native';
 
 import { fonts, useDesign } from '@/theme';
 
-import { isLargeShell, SHELL, shellFont, shellScale } from './shell-metrics';
+import {
+  isLargeShell,
+  SHELL,
+  shellFont,
+  shellHeroFrame,
+  shellScale,
+  type ShellHeroFrame,
+} from './shell-metrics';
 
 export type Shell = {
   /** TV, web desktop and tablet share the large layout; phones use the compact one. */
@@ -15,12 +22,14 @@ export type Shell = {
   font: (value: number, min: number) => number;
   /** Page heading of the large shell (Search, Settings); undefined on phones. */
   pageTitle?: TextStyle;
+  /** Home hero height and rows top, capped on short windows. */
+  heroFrame: ShellHeroFrame;
 };
 
 export function useShell(): Shell {
   const design = useDesign();
   const { formFactor } = design;
-  const { width } = design.window;
+  const { width, height } = design.window;
   return useMemo(() => {
     const scale = shellScale(formFactor, width);
     const s = (value: number) => Math.round(value * scale * 2) / 2;
@@ -31,6 +40,7 @@ export function useShell(): Shell {
       scale,
       s,
       font: (value: number, min: number) => shellFont(formFactor, scale, value, min),
+      heroFrame: shellHeroFrame(formFactor, s, height),
       pageTitle: large
         ? {
             fontFamily: fonts.displayBold,
@@ -40,5 +50,5 @@ export function useShell(): Shell {
           }
         : undefined,
     };
-  }, [formFactor, width]);
+  }, [formFactor, width, height]);
 }

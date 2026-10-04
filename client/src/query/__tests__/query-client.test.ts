@@ -4,7 +4,7 @@ import { AppState } from 'react-native';
 
 import { AppError } from '@/api/errors';
 import { queryKeys } from '@/query/keys';
-import { setupQueryManagers, shouldRetry } from '@/query/query-client';
+import { createQueryClient, setupQueryManagers, shouldRetry } from '@/query/query-client';
 
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
@@ -50,5 +50,26 @@ describe('managers', () => {
     expect(focusManager.isFocused()).toBe(false);
     appStateListeners.forEach((listener) => listener('active'));
     expect(focusManager.isFocused()).toBe(true);
+  });
+});
+
+describe('offline (Q1-24)', () => {
+  afterEach(() => onlineManager.setOnline(true));
+
+  it('fails into the error state instead of pausing on a skeleton, and refetches when back online', async () => {
+    onlineManager.setOnline(false);
+    const client = createQueryClient();
+    let online = false;
+    const queryFn = jest.fn(() =>
+      online ? Promise.resolve('rows') : Promise.reject(new AppError('network_unreachable'))
+    );
+    await expect(
+      client.fetchQuery({ queryKey: ['offline'], queryFn, retry: false })
+    ).rejects.toMatchObject({ code: 'network_unreachable' });
+    expect(client.getQueryState(['offline'])?.status).toBe('error');
+    expect(client.getDefaultOptions().queries?.refetchOnReconnect).toBe(true);
+    online = true;
+    await expect(client.fetchQuery({ queryKey: ['offline'], queryFn })).resolves.toBe('rows');
+    client.clear();
   });
 });

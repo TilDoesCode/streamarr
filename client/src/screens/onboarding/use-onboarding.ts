@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Platform } from 'react-native';
 
 import { useAccountsApi, useSessionGate } from '@/accounts/accounts-provider';
 import type { SignInResult } from '@/accounts/auth-api';
@@ -22,14 +23,43 @@ export function useServerInfo(serverUrl: string | undefined) {
   });
 }
 
-/** Web: Back into a finished onboarding (history entries before sign-in) returns to the app instead. */
+type NavigationEntry = { type?: string; name?: string };
+
+/** Web: the page load itself opened an onboarding address (link, typed URL, reload), not Back/Forward. */
+export function openedAtOnboarding(entry: NavigationEntry | undefined): boolean {
+  if (!entry?.name || entry.type === 'back_forward') return false;
+  try {
+    return /\/(sign-in|server)(\/|$)/.test(new URL(entry.name).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function pageLoadEntry(): NavigationEntry | undefined {
+  if (Platform.OS !== 'web' || typeof performance === 'undefined') return undefined;
+  return performance.getEntriesByType?.('navigation')[0] as NavigationEntry | undefined;
+}
+
+// Set once this page load has left onboarding, so later Back entries to it redirect again.
+let pageLoadUsed = false;
+
+/** Web: Back into a finished onboarding returns to the app; a fresh link to it (add a profile) shows it. */
+export function leftOnboarding(state: { ready: boolean; done: boolean; opened: boolean }): boolean {
+  return state.ready && state.done && !state.opened;
+}
+
 export function useLeftOnboarding(): boolean {
   const gate = useSessionGate();
-  return gate.reason === 'ready' && onboardingExit.done();
+  return leftOnboarding({
+    ready: gate.reason === 'ready',
+    done: onboardingExit.done(),
+    opened: !pageLoadUsed && openedAtOnboarding(pageLoadEntry()),
+  });
 }
 
 /** Leaves onboarding for the signed-in app with nothing to go back to. */
 export function enterApp(router: ReturnType<typeof useRouter>): void {
+  pageLoadUsed = true;
   onboardingExit.mark();
   if (router.canDismiss()) router.dismissAll();
   router.replace('/');

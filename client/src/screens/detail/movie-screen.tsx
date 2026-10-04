@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
 import { useMovieDetail, useVersions, useWatchRefreshOnFocus } from '@/browse/queries';
-import { Check, EyeOff } from 'lucide-react-native';
 
 import {
   ResumeProgress,
@@ -29,7 +28,7 @@ import { useShell } from '@/shell/use-shell';
 import { DetailError, routeNumber } from './detail-parts';
 import { useAboutSheet } from './about-sheet';
 import { LargeDetail, peopleCredits } from './large-detail';
-import { PhoneDetail } from './phone-detail';
+import { PhoneDetail, watchedAction } from './phone-detail';
 
 /** Movie: hero with logo, play/resume, versions and the watched toggle. */
 export function MovieScreen() {
@@ -138,6 +137,7 @@ export function MovieScreen() {
   return (
     <>
       <PhoneDetail
+        about={{ kind: 'movie', tmdbId, title }}
         testID={`movie-screen-${tmdbId}`}
         kindLabel={t('detail.movie')}
         title={title}
@@ -149,7 +149,6 @@ export function MovieScreen() {
         spec={versionSpec(list[entryIndex(list)])}
         specNote={specNote(list, t)}
         overview={data?.overview}
-        credits={peopleCredits(data?.people, t)}
         loading={!data}
         status={data ? <ResumeProgress testID="movie-progress" watch={data.watch} /> : null}
         play={
@@ -169,6 +168,7 @@ export function MovieScreen() {
             <VersionSummary
               workId={data.workId}
               watch={data.watch}
+              kind="movie"
               onOpen={() =>
                 openVersions(
                   {
@@ -188,10 +188,7 @@ export function MovieScreen() {
             ? [
                 {
                   testID: 'movie-mark',
-                  icon: played ? EyeOff : Check,
-                  label: t(played ? 'detail.unwatch' : 'detail.watched'),
-                  accessibilityLabel: t(played ? 'detail.markUnplayed' : 'detail.markPlayed'),
-                  selected: played,
+                  ...watchedAction(played, t),
                   disabled: watched.pending,
                   onPress: watched.toggle,
                 },

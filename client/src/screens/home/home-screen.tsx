@@ -114,7 +114,7 @@ export function HomeScreen() {
   };
   const lift = useSharedValue(0);
   const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -lift.get() }] }));
-  const tvRowsTop = heroRowsTop(s, copyBottom);
+  const tvRowsTop = heroRowsTop(s, copyBottom, shell.heroFrame.rowsTop);
   useEffect(() => {
     const frame = rowFrames.current[focusedRow];
     if (!frame) return;
@@ -362,7 +362,9 @@ export function HomeScreen() {
               left: 0,
               right: 0,
               bottom: 0,
-              top: raised ? s(SHELL.row.focusTop) : heroRowsTop(s, copyBottom),
+              top: raised
+                ? s(SHELL.row.focusTop)
+                : heroRowsTop(s, copyBottom, shell.heroFrame.rowsTop),
             },
             scrolled && topFade(s(56)),
           ]}
@@ -390,8 +392,10 @@ export function HomeScreen() {
       {statusScrim ? (
         // A real height: Android clips a zero-height sticky header; the negative margin takes no layout room.
         <View
-          pointerEvents="none"
+          testID="home-status-scrim"
+          // In style, not a prop: the sticky header wrapper takes the style, and it covers the avatar.
           style={{
+            pointerEvents: 'none',
             height: scrimHeight,
             marginBottom: -scrimHeight - design.layout.sectionGap,
             zIndex: 1,

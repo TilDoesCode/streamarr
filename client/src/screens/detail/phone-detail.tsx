@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronUp, Info, type LucideIcon } from 'lucide-react-native';
-import { useState, type ReactNode } from 'react';
+import { Check, CheckCircle2, Info, type LucideIcon } from 'lucide-react-native';
+import type { TFunction } from 'i18next';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
@@ -24,7 +25,9 @@ import { withAlpha } from '@/lib/color';
 import { BackControl, PHONE_HEADER_HEIGHT } from '@/navigation/back-control';
 import { colors, fonts, useDesign } from '@/theme';
 
-import type { Credit } from './large-detail';
+import type { AboutRequest } from '@/navigation/routes';
+
+import { useAboutSheet } from './about-sheet';
 
 export type PhoneAction = {
   testID: string;
@@ -49,7 +52,6 @@ export type PhoneDetailProps = {
   /** Best available vs device spec when they differ. */
   specNote?: string | null;
   overview?: string | null;
-  credits?: Credit[];
   /** Resume bar / up-next line under the facts. */
   status?: ReactNode;
   /** Full-width Play (and Start over). */
@@ -58,10 +60,32 @@ export type PhoneDetailProps = {
   version?: ReactNode;
   /** Small icon row under the synopsis (Watched); "Details" is added here. */
   actions?: PhoneAction[];
+  /** "Details" opens the About sheet of this title (genres, rating, credits), like web, TV and iPad. */
+  about: AboutRequest;
   loading?: boolean;
   /** Seasons and episodes (series). */
   children?: ReactNode;
 };
+
+/** The watched toggle of the action row: an action while unwatched, the highlighted state once watched. */
+export function watchedAction(
+  played: boolean,
+  t: TFunction
+): Pick<PhoneAction, 'icon' | 'label' | 'accessibilityLabel' | 'selected'> {
+  return played
+    ? {
+        icon: CheckCircle2,
+        label: t('detail.watched'),
+        accessibilityLabel: t('detail.markUnplayed'),
+        selected: true,
+      }
+    : {
+        icon: Check,
+        label: t('detail.markWatchedShort'),
+        accessibilityLabel: t('detail.markPlayed'),
+        selected: false,
+      };
+}
 
 /** Phone detail (Aurora C-phone): art on top, glass back button, copy, full-width Play, Version card, synopsis. */
 export function PhoneDetail({
@@ -76,18 +100,17 @@ export function PhoneDetail({
   spec,
   specNote,
   overview,
-  credits,
   status,
   play,
   version,
   actions = [],
+  about,
   loading = false,
   children,
 }: PhoneDetailProps) {
   const { t } = useTranslation();
   const design = useDesign();
   const insets = useSafeAreaInsets();
-  const [expanded, setExpanded] = useState(false);
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollY.set(event.contentOffset.y);
@@ -98,20 +121,15 @@ export function PhoneDetail({
   const copyTop = Math.max(artHeight * 0.58, insets.top + PHONE_HEADER_HEIGHT + design.space.md);
   // Title tint washed under the copy; the art fades into the same colour.
   const wash = withAlpha(tint ?? colors.accent.DEFAULT, 0.22);
-  const hasMore = !!overview || !!credits?.length;
+  const aboutSheet = useAboutSheet(about);
   const row: PhoneAction[] = [
     ...actions,
-    ...(hasMore
-      ? [
-          {
-            testID: `${testID}-details`,
-            icon: expanded ? ChevronUp : Info,
-            label: t(expanded ? 'detail.lessDetails' : 'detail.details'),
-            selected: expanded,
-            onPress: () => setExpanded((value) => !value),
-          },
-        ]
-      : []),
+    {
+      testID: `${testID}-details`,
+      icon: Info,
+      label: t('detail.details'),
+      onPress: aboutSheet.open,
+    },
   ];
 
   return (
@@ -218,26 +236,9 @@ export function PhoneDetail({
               </FocusGuide>
               {version}
               {overview ? (
-                <Text
-                  testID={`${testID}-overview`}
-                  variant="body"
-                  numberOfLines={expanded ? undefined : 4}>
+                <Text testID={`${testID}-overview`} variant="body" numberOfLines={4}>
                   {overview}
                 </Text>
-              ) : null}
-              {expanded && credits?.length ? (
-                <View style={{ gap: design.space.xs }}>
-                  {credits.map((credit) => (
-                    <View key={credit.label} style={{ flexDirection: 'row', gap: design.space.md }}>
-                      <Text variant="callout" tone="muted" style={{ width: 88 }}>
-                        {credit.label}
-                      </Text>
-                      <Text variant="callout" style={{ flex: 1 }}>
-                        {credit.value}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
               ) : null}
               {row.length ? (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
@@ -251,6 +252,7 @@ export function PhoneDetail({
         </View>
         {loading ? null : children}
       </Animated.ScrollView>
+      {aboutSheet.drawer}
       <StatusBarScrim />
       {Platform.OS === 'ios' ? null : (
         <HeaderStrip

@@ -19,6 +19,43 @@ function browserName(userAgent: string): string {
   return 'Browser';
 }
 
+// Manufacturers whose spelling is not just a capital first letter.
+const BRANDS: Record<string, string> = {
+  htc: 'HTC',
+  lge: 'LG',
+  lg: 'LG',
+  nvidia: 'NVIDIA',
+  oneplus: 'OnePlus',
+  tcl: 'TCL',
+  zte: 'ZTE',
+  hmd: 'HMD',
+};
+
+function brandName(brand: string): string {
+  const known = BRANDS[brand.toLowerCase()];
+  if (known) return known;
+  return brand === brand.toLowerCase() ? brand.charAt(0).toUpperCase() + brand.slice(1) : brand;
+}
+
+/** Android brand + model as people say it: "Google Pixel 8", "Samsung SM-S921B", emulators as "Emulator". */
+export function friendlyModel(brand: string | undefined, model: string | undefined): string {
+  const name = (model ?? '').trim();
+  const maker = (brand ?? '').trim();
+  if (/^sdk_|_sdk_|^sdk$|emulator|^generic/i.test(name)) return 'Emulator';
+  if (!maker) return name;
+  if (!name) return brandName(maker);
+  if (name.toLowerCase().startsWith(maker.toLowerCase())) return name;
+  return `${brandName(maker)} ${name}`;
+}
+
+/** A stored device name for display: older Android clients sent the raw lowercase brand and model; null if unknown. */
+export function displayDeviceName(name: string | null | undefined): string | null {
+  const trimmed = name?.trim();
+  if (!trimmed || trimmed === 'Unknown device') return null;
+  const raw = /^([a-z]+) (.+) \(([^()]+)\)$/.exec(trimmed);
+  return raw ? `${friendlyModel(raw[1], raw[2])} (${raw[3]})` : trimmed;
+}
+
 /** Name the server shows in the viewer's device list (not UI copy: model or browser, not translated). */
 export function deviceName(): string {
   if (Platform.OS === 'web') {
@@ -27,7 +64,7 @@ export function deviceName(): string {
   }
   if (Platform.OS === 'android') {
     const { Brand, Model } = Platform.constants as { Brand?: string; Model?: string };
-    const model = [Brand, Model].filter(Boolean).join(' ');
+    const model = friendlyModel(Brand, Model);
     return model ? `${model} (${PLATFORM_NAMES[platformKey()]})` : PLATFORM_NAMES[platformKey()];
   }
   if (Platform.isTV) return PLATFORM_NAMES.appletv;

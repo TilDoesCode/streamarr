@@ -5,7 +5,13 @@ import { Platform, View } from 'react-native';
 import type { Ref } from 'react';
 
 import { playTarget, type PlayAction } from '@/browse/play-target';
-import { useMarkPlayed, useVersions, type WatchState } from '@/browse/queries';
+import {
+  useFetchVersions,
+  useMarkPlayed,
+  useVersions,
+  type Version,
+  type WatchState,
+} from '@/browse/queries';
 import { GlassButton } from '@/components/glass';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -45,6 +51,43 @@ export function usePlayTarget(workId: string | null | undefined, watch: WatchLik
 export function usePlay() {
   const router = useRouter();
   return (request: PlayRequest) => router.push(playHref(request));
+}
+
+/** Play request by the playTarget rule (Resume = last played version); null = no version (`checkVersions`). */
+export async function resolvePlay(
+  fetchVersions: (workId: string) => Promise<readonly Version[]>,
+  { workId, title, watch }: { workId: string; title: string; watch: PlayWatchState },
+  checkVersions = false
+): Promise<PlayRequest | null> {
+  const startSeconds = resumeSeconds(watch);
+  const request = { workId, title, startSeconds };
+  const resume = !!startSeconds && !!watch?.lastReleaseId;
+  // Without a last played version the server's recommendation starts anyway.
+  if (!resume && !checkVersions) return request;
+  try {
+    const versions = await fetchVersions(workId);
+    if (!versions.length) return null;
+    const target = playTarget(versions, watch, resume ? 'resume' : 'play');
+    return target.state === 'ready' && target.releaseId
+      ? { ...request, releaseId: target.releaseId }
+      : request;
+  } catch {
+    return request;
+  }
+}
+
+/** Plays a work from a card or the Home hero with the same version the detail would start. */
+export function usePlayWork() {
+  const play = usePlay();
+  const fetchVersions = useFetchVersions();
+  return (
+    work: { workId: string; title: string; watch: PlayWatchState },
+    /** Checks the versions first and calls this instead of opening a player that cannot start. */
+    onNoVersions?: () => void
+  ) =>
+    void resolvePlay(fetchVersions, work, !!onNoVersions).then((request) =>
+      request ? play(request) : onNoVersions?.()
+    );
 }
 
 /** Resume progress under a title: bar plus the time left. */

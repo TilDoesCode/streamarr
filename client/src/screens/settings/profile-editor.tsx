@@ -22,6 +22,11 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 
 const DISPLAY_NAME_MAX = 64;
 
+/** A name of only whitespace: neither a name nor the empty "use my username". */
+export function isBlankName(name: string): boolean {
+  return name.length > 0 && name.trim().length === 0;
+}
+
 /** Display name and avatar colour (PATCH /viewer/me); an empty name or "Automatic" resets to the default. */
 export function ProfileEditor({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation();
@@ -47,6 +52,8 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
       onDone();
     },
   });
+  // Empty resets to the username; only spaces is a mistake the server rejects (400).
+  const blank = isBlankName(name);
   const error = save.error ? accountErrorText(t, save.error) : null;
   const preview = name.trim() || account.username;
   const swatch = design.px(40);
@@ -57,8 +64,17 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
         label={t('settings.profile.name')}
         hint={t('settings.profile.nameHint', { username: account.username })}
         value={name}
-        onChangeText={setName}
-        error={error?.code === 'invalid_display_name' ? error.message : undefined}
+        onChangeText={(value) => {
+          setName(value);
+          save.reset();
+        }}
+        error={
+          blank
+            ? t('settings.profile.nameBlank', { username: account.username })
+            : error?.code === 'invalid_display_name'
+              ? error.message
+              : undefined
+        }
         maxLength={DISPLAY_NAME_MAX}
         autoComplete="nickname"
         autoCorrect={false}
@@ -136,11 +152,12 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
           testID="settings-profile-save"
           label={t('settings.profile.save')}
           loading={save.isPending}
-          onPress={() => !save.isPending && save.mutate()}
+          disabled={blank}
+          onPress={() => !save.isPending && !blank && save.mutate()}
         />
         <Button
           testID="settings-profile-cancel"
-          variant="ghost"
+          variant="secondary"
           label={t('common.cancel')}
           onPress={onDone}
         />

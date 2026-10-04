@@ -29,6 +29,8 @@ export function createQueryClient(): QueryClient {
       queries: {
         staleTime: STALE.default,
         gcTime: 30 * MINUTE,
+        // Offline: fail into the screens' error state (retry, refetch on reconnect) instead of a paused skeleton.
+        networkMode: 'always',
         retry: shouldRetry,
         retryDelay: (attempt, error) =>
           isAppError(error) && error.retryAfter !== undefined

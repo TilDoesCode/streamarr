@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useMarkPlayed, type Episode } from '@/browse/queries';
-import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
+import { resumeSeconds, usePlay, usePlayWork, watchProgress } from '@/browse/title-actions';
 import { useOpenVersions, VersionPicker } from '@/browse/version-picker';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { EpisodeRow, EpisodeRowAction } from '@/components/media/episode-row';
@@ -38,6 +38,7 @@ export function EpisodeList({
   const { t } = useTranslation();
   const design = useDesign();
   const play = usePlay();
+  const playWork = usePlayWork();
   const mark = useMarkPlayed();
   const toast = useToast();
   const [versionsFor, setVersionsFor] = useState<Episode | null>(null);
@@ -115,10 +116,10 @@ export function EpisodeList({
                 hasTVPreferredFocus={takeFocus && episode === preferred}
                 onPress={() =>
                   episode.workId &&
-                  play({
+                  playWork({
                     workId: episode.workId,
                     title: episodeTitle(episode),
-                    startSeconds: resumeSeconds(episode.watch),
+                    watch: episode.watch,
                   })
                 }
                 actions={

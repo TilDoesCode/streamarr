@@ -10,12 +10,14 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { activeError, CooldownButton, useCooldown } from '@/accounts/cooldown';
 import { unwrap } from '@/api/client';
+import { displayDeviceName } from '@/api/device';
 import { describeError, errorTone } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import { FormMessage } from '@/components/ui/form-message';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -132,6 +134,7 @@ export function DevicesSection() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
   const busy = revoke.isPending || revokeOthers.isPending;
+  const [confirmOthers, setConfirmOthers] = useState(false);
   const list = [...(sessions.data ?? [])].sort(
     (a, b) =>
       Number(b.current) - Number(a.current) ||
@@ -205,10 +208,33 @@ export function DevicesSection() {
                   loading={revokeOthers.isPending}
                   disabled={revoke.isPending}
                   label={t('settings.devices.signOutOthers', { count: others.length })}
-                  onPress={() => !busy && revokeOthers.mutate()}
+                  onPress={() => !busy && setConfirmOthers(true)}
                 />
               </Row>
             )}
+            <Dialog
+              testID="sign-out-others-dialog"
+              open={confirmOthers}
+              onClose={() => setConfirmOthers(false)}
+              title={t('settings.devices.signOutOthersTitle', { count: others.length })}
+              message={t('settings.devices.signOutOthersMessage')}
+              actions={[
+                {
+                  label: t('common.cancel'),
+                  variant: 'secondary',
+                  preferred: true,
+                  onPress: () => setConfirmOthers(false),
+                },
+                {
+                  label: t('settings.devices.signOutOthersConfirm'),
+                  variant: 'destructive',
+                  onPress: () => {
+                    setConfirmOthers(false);
+                    if (!busy) revokeOthers.mutate();
+                  },
+                },
+              ]}
+            />
             <AccountError
               error={revoke.error ?? revokeOthers.error}
               testID="settings-devices-revoke-error"
@@ -249,7 +275,7 @@ function DeviceRow({
 }) {
   const { t } = useTranslation();
   const design = useDesign();
-  const name = session.deviceName || t('settings.devices.unknownDevice');
+  const name = displayDeviceName(session.deviceName) ?? t('settings.devices.unknownDevice');
   const method = methodLabel(t, session.authMethod);
   const details = [
     session.clientName,
