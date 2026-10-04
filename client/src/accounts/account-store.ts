@@ -299,7 +299,15 @@ export class AccountStore {
       const cached = this.tokenCache.get(id);
       if (cached) return cached;
     }
-    const stored = await this.vault.get(id);
+    let stored: SessionTokens | null;
+    try {
+      stored = await this.vault.get(id);
+    } catch (error) {
+      // A storage hiccup is not a sign-out: keep using the pair this process holds, else fail transiently.
+      const cached = this.tokenCache.get(id);
+      if (cached) return cached;
+      throw error;
+    }
     if (stored) this.tokenCache.set(id, stored);
     else this.tokenCache.delete(id);
     return stored;
