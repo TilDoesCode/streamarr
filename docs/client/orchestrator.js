@@ -871,6 +871,52 @@ const TASKS = {
       'OpenAPI frozen, contract check, e2e and the full server suite green; web and client types regenerated if the contract changed',
     ],
   },
+  'B12': {
+    title: 'Dev World: fault injection for the player (every delivery and session failure on demand)',
+    track: 'Backend',
+    deps: ['B11'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I, user requirement 2026-10-05 00:50 (PLAN.md section 5 "I"): the player must catch and explain every state. Implement the spec docs/client/player/b12-fault-spec.md exactly (API /devworld/faults to arm faults per playback/work/global, once/always, list/clear; 38 faults + the real restart and the short-idle scenario; hooks on the segment/playlist/rendition/subtitle/direct-stream endpoints, the transcode session and auth). Dev World only: nothing under server/src changes unless the spec says so, and nothing reaches the product build.',
+      '- Each fault verified on your own Dev World 39310 with a script (curl/python/ffprobe) that arms it, provokes it and shows the effect; a tools/faults_smoke.py the client agents can reuse; README section with one example per fault.',
+    ].join('\n'),
+    acceptance: [
+      'every fault of the spec armable per playback and globally, listed and cleared via /devworld/faults; once/always honoured',
+      'each fault demonstrated by tools/faults_smoke.py on a fresh Dev World; product server build unchanged',
+      'contract check, e2e and the full server suite green; README documents every fault with an example',
+    ],
+  },
+  'B13': {
+    title: 'Server: playback robustness follow-ups found by F10a',
+    track: 'Backend',
+    deps: ['B12'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (docs/client/journal/F10.md "Server follow-ups", docs/client/player/state-matrix.md § 0 items 7-8 and § 2). (1) Seek back > 15 min inside one long transcode run waits on a run that never rewrites the retained-away segment -> 90 s hang -> 504 (TranscodeSessionManager.cs ~358-366, ~614-633): reproduce with B12 or a long fixture, fix so a seek outside the retained window restarts the run at that position. (2) Cap each segment wait at ~25 s and answer 504 with Retry-After (and Retry-After on 503 segment_evicted) so the server and the client timeouts agree. (3) A progress report for a dead playbackId answers 200 today: add an additive `playbackAlive` (or a documented 404 playback_not_found that old clients survive) so the client notices a lost server playback from its heartbeat. (4) Audio fallback for /switch: a flag to convert the selected audio track to AAC (ladder step A).',
+      '- Tests for each, docs/api.md + docs/transcoding.md, OpenAPI re-frozen if the contract changes, web and client types regenerated at the very end.',
+    ].join('\n'),
+    acceptance: [
+      'seek outside the retained window restarts the run (no 90 s hang), proven with a test/e2e',
+      'segment waits capped with 504 + Retry-After; segment_evicted carries Retry-After',
+      'heartbeat/progress tells a dead playback apart; /switch audio fallback flag; docs, contract, e2e and the full server suite green',
+    ],
+  },
+  'F10': {
+    title: 'Client: the player catches and explains every state (watchdog, taxonomy, recovery ladder, hints)',
+    track: 'Client',
+    deps: ['F8', 'F9', 'I4', 'B12'],
+    maxFixes: 2,
+    guide: [
+      '- Part of round I, user requirement 2026-10-05 00:50 (PLAN.md section 5 "I"): the viewer never sees a generic error, a black screen or a frozen picture; every state is compensated or explained with a specific de/en hint and an action. The binding design is docs/client/player/state-matrix.md (§ 1 matrix of 148 rows, § 2 design: watchdog, taxonomy T1-T11, ladder W/R/N/Q/S/A/V/G with budgets, hint catalogue, timelines, test and live strategy, § 2 f slices S1-S9). Deviations only with a recorded reason in docs/client/journal/F10.md.',
+      '- Every matrix row gets a jest test (fake engines / fake server, § 2 d) named by its row id; a coverage test fails when a row has no test. Native probes (S6 expo-video patch, S7 libVLC/VLCKit) and live fault runs on every engine with Dev World fault injection (B12) follow the design; one device and one native build at a time.',
+    ].join('\n'),
+    acceptance: [
+      'every matrix row has a passing jest test with its id, and the row coverage test is green',
+      'no path shows a generic error, a black or frozen picture without a hint inside the budget (live fault runs per engine: hls.js, Safari native, ExoPlayer, AVPlayer iOS/tvOS, VLC)',
+      'network-class failures never step down the playback method; the position survives every recovery; hints de/en complete',
+      'no regressions on TV/phone/web; typecheck, lint and tests green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
