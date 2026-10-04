@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -71,6 +72,55 @@ public class DevWorldBootTests(FakeWorld world) : IClassFixture<FakeWorld>
             var cached = await File.ReadAllBytesAsync(world.Media[file.Media.Key].Path, ct);
             Assert.True(streamed.AsSpan().SequenceEqual(cached), $"{check.Name} for {check.WorkId} streamed {streamed.Length} bytes that differ from {file.FileName}");
         }
+    }
+
+    [Fact]
+    public async Task GeneratedArtwork_IsDrawnInEverySizeClass_AndNamedByTheCallersOrigin()
+    {
+        var ct = CancellationToken.None;
+        await using var booted = await BootAsync(ct);
+        var options = booted.Options;
+        DevWorldArtwork.Ensure(options, world.Plan.Catalog);
+        Assert.Equal(0, DevWorldArtwork.Ensure(options, world.Plan.Catalog));
+        int Files(string size) => Directory.GetFiles(Path.Combine(DevWorldArtwork.ArtDir(options), size)).Length;
+        Assert.Equal((2, 2, 29, 27, 27), (Files("w185"), Files("w342"), Files("w780"), Files("w300"), Files("w1280")));
+
+        using var http = new HttpClient { BaseAddress = new Uri(options.LocalUrl) };
+        using var login = await http.PostAsJsonAsync("/api/v1/viewer/auth/login", new { login = "anna", password = WorldSeeder.ViewerPassword }, ct);
+        var token = (await login.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("session").GetProperty("accessToken").GetString();
+
+        async Task<JsonElement> GetAsync(string path, string? host)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.Authorization = new("Bearer", token);
+            if (host is not null)
+                request.Headers.Host = host;
+            using var response = await http.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        }
+
+        var emulator = $"10.0.2.2:{options.Port}";
+        var series = await GetAsync("/api/v1/viewer/catalog/series/990001", emulator);
+        Assert.Equal($"http://{emulator}/devworld/art/t/p/w780/lighthouse-logs-poster.jpg", series.GetProperty("posterUrl").GetString());
+        Assert.Equal($"http://{emulator}/devworld/art/t/p/w185/lighthouse-logs-poster.jpg", series.GetProperty("posterSizes").GetProperty("small").GetString());
+        var local = await GetAsync("/api/v1/viewer/catalog/series/990001", null);
+        Assert.Equal($"{options.LocalUrl}/devworld/art/t/p/w300/lighthouse-logs-backdrop.jpg", local.GetProperty("backdropSizes").GetProperty("small").GetString());
+
+        var season = await GetAsync("/api/v1/viewer/catalog/series/990001/seasons/1", emulator);
+        var episodes = season.GetProperty("episodes").EnumerateArray().ToList();
+        Assert.Equal(Enumerable.Range(1, 26).Select(n => $"tmdb-tv-990001-s01e{n:00}"), episodes.Select(e => e.GetProperty("workId").GetString()));
+        Assert.All(episodes, e => Assert.StartsWith($"http://{emulator}/devworld/art/t/p/w300/lighthouse-logs-s01e", e.GetProperty("stillSizes").GetProperty("small").GetString()));
+
+        var discover = await GetAsync("/api/v1/viewer/catalog/discover", null);
+        Assert.Contains(discover.GetProperty("rows").EnumerateArray().SelectMany(r => r.GetProperty("items").EnumerateArray()),
+            i => i.GetProperty("workId").GetString() == "tmdb-tv-990001");
+
+        using var image = await http.GetAsync(new Uri(local.GetProperty("posterSizes").GetProperty("small").GetString()!).PathAndQuery, ct);
+        Assert.Equal("image/jpeg", image.Content.Headers.ContentType?.MediaType);
+        using var bitmap = SkiaSharp.SKBitmap.Decode(await image.Content.ReadAsByteArrayAsync(ct));
+        Assert.Equal((185, 277), (bitmap.Width, bitmap.Height));
+        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/devworld/art/t/p/w92/lighthouse-logs-poster.jpg", ct)).StatusCode);
     }
 
     private async Task<BootedWorld> BootAsync(CancellationToken ct)

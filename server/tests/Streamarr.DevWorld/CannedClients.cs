@@ -92,7 +92,8 @@ public sealed class CannedNewznabClient(IReadOnlyList<PublishedRelease> releases
 }
 
 /// <summary>TMDB fixture: search, details and the TV season directory from the catalog.</summary>
-public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
+/// <param name="artworkOrigin">Base URL that <c>devworld:/</c> artwork resolves against (see <see cref="DevWorldArtwork"/>).</param>
+public sealed class CannedTmdbClient(DevCatalog catalog, string artworkOrigin = "http://127.0.0.1") : ITmdbClient
 {
     public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(string query, MediaType? mediaType, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<TmdbMatch>>(Candidates(query, mediaType).ToList());
@@ -125,7 +126,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
                     SeasonNumber = season.SeasonNumber,
                     Title = SeasonTitle(season),
                     AirDate = season.Episodes.FirstOrDefault()?.AirDate,
-                    PosterUrl = season.PosterUrl,
+                    PosterUrl = Art(season.PosterUrl),
                     EpisodeCount = season.Episodes.Count,
                 }).ToList(),
             });
@@ -142,7 +143,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
                 SeasonNumber = seasonNumber,
                 Title = SeasonTitle(season),
                 AirDate = season.Episodes.FirstOrDefault()?.AirDate,
-                PosterUrl = season.PosterUrl,
+                PosterUrl = Art(season.PosterUrl),
                 Episodes = season.Episodes.Select(e => new TmdbEpisode
                 {
                     EpisodeNumber = e.EpisodeNumber,
@@ -150,7 +151,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
                     Overview = German ? e.OverviewDe ?? e.Overview : e.Overview,
                     AirDate = e.AirDate,
                     RuntimeMinutes = e.RuntimeMinutes,
-                    StillUrl = e.StillUrl,
+                    StillUrl = Art(e.StillUrl),
                 }).ToList(),
             });
     }
@@ -271,7 +272,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
             .Select(t => ToMatch(t.Entry, t.Type));
     }
 
-    /// <summary>Like TMDB with language=de: German texts where the fixture has them, English otherwise.</summary>
+    /// <summary>Like TMDB with language=de: German texts where the fixture has them, English otherwise (taglines: German only).</summary>
     private static bool German => TmdbLanguage.Primary(TmdbLanguage.Current) == "de";
 
     /// <summary>TMDB's German genre names (genre/movie|tv/list?language=de) for the ids in <see cref="GenreIds"/>.</summary>
@@ -287,7 +288,9 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
     private static string SeasonTitle(SeasonEntry season)
         => German && season.Title.StartsWith("Season ", StringComparison.Ordinal) ? "Staffel " + season.Title["Season ".Length..] : season.Title;
 
-    private static TmdbMatch ToMatch(TitleEntry entry, MediaType type) => new()
+    private string? Art(string? url) => DevWorldArtwork.Resolve(url, artworkOrigin);
+
+    private TmdbMatch ToMatch(TitleEntry entry, MediaType type) => new()
     {
         MediaType = type,
         TmdbId = entry.TmdbId,
@@ -295,11 +298,11 @@ public sealed class CannedTmdbClient(DevCatalog catalog) : ITmdbClient
         Title = German ? entry.TitleDe ?? entry.Title : entry.Title,
         Year = entry.Year,
         Overview = German ? entry.OverviewDe ?? entry.Overview : entry.Overview,
-        PosterUrl = German ? entry.PosterUrlDe ?? entry.PosterUrl : entry.PosterUrl,
-        BackdropUrl = German ? entry.BackdropUrlDe ?? entry.BackdropUrl : entry.BackdropUrl,
-        LogoUrl = German ? entry.LogoUrlDe ?? entry.LogoUrl : entry.LogoUrl,
+        PosterUrl = Art(German ? entry.PosterUrlDe ?? entry.PosterUrl : entry.PosterUrl),
+        BackdropUrl = Art(German ? entry.BackdropUrlDe ?? entry.BackdropUrl : entry.BackdropUrl),
+        LogoUrl = Art(German ? entry.LogoUrlDe ?? entry.LogoUrl : entry.LogoUrl),
         OriginalTitle = entry.OriginalTitle,
-        Tagline = German ? entry.TaglineDe ?? entry.Tagline : entry.Tagline,
+        Tagline = German ? entry.TaglineDe : entry.Tagline,
         OfficialRating = entry.OfficialRating,
         CommunityRating = entry.CommunityRating,
         Genres = German ? entry.GenresDe ?? entry.Genres.Select(GenreName).ToList() : entry.Genres,

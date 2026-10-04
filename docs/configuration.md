@@ -69,7 +69,8 @@ Metadata language: `Streamarr:Tmdb:Language` (unset = TMDB's default, English) i
 the management UI, Jellyfin and every indexer search. Viewer apps may ask for another language per
 request with `Accept-Language`; `Streamarr:Tmdb:ViewerLanguages` (default `de,en,es,fr,it,nl,pl,pt`)
 lists the primary tags that are honoured, others get the server language. Each language has its own
-TMDB cache entries; empty overviews, taglines and episode names fall back to English. Indexers are
+TMDB cache entries; empty overviews and episode names fall back to English, a tagline is only shown in the
+viewer's language (none otherwise). Indexers are
 never searched with a viewer's translated title.
 
 ## Quality profiles and release selection

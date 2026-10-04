@@ -494,13 +494,40 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
         await AssertCooldownAsync(await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-ghost" }));
         Assert.Equal(1, await OutboxCountAsync("cool-login@example.com"));
 
-        // the same account by its address: the per-account cooldown still holds, so no second mail
-        await AssertCooldownAsync(await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-login@example.com" }));
+        // the same account by its address: answered like a first send (no link between the aliases), still no second mail
+        var alias = await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-login@example.com" });
+        Assert.Equal(HttpStatusCode.Accepted, alias.StatusCode);
+        Assert.False(alias.Headers.Contains("Retry-After"));
         Assert.Equal(1, await OutboxCountAsync("cool-login@example.com"));
+        await AssertCooldownAsync(await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-login@example.com" }));
 
         factory.Clock.Advance(TimeSpan.FromSeconds(26));
         Assert.Equal(HttpStatusCode.Accepted, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = "cool-login" })).StatusCode);
         Assert.Equal(2, await OutboxCountAsync("cool-login@example.com"));
+    }
+
+    [Fact]
+    public async Task Sign_In_Code_Aliases_Answer_Alike_And_Share_The_Mail_Limit()
+    {
+        await NewViewerAsync("alias-login", email: "alias-login@example.com");
+        using var anon = factory.CreateClient();
+        string[] aliases = ["alias-login", "alias-login@example.com"];
+
+        Assert.Equal(HttpStatusCode.Accepted, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = aliases[0] })).StatusCode);
+        var code = await LatestCodeAsync("login_code");
+        factory.Clock.Advance(TimeSpan.FromSeconds(16));
+        var alias = await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = aliases[1] });
+        Assert.Equal(HttpStatusCode.Accepted, alias.StatusCode);
+        Assert.Equal(1, await OutboxCountAsync("alias-login@example.com"));
+        Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code/verify", new { login = aliases[1], code })).StatusCode);
+
+        // alternating aliases every 31 s: always a plain 202, but the account still gets at most 5 mails per hour
+        for (var i = 1; i <= 8; i++)
+        {
+            factory.Clock.Advance(TimeSpan.FromSeconds(31));
+            Assert.Equal(HttpStatusCode.Accepted, (await anon.PostAsJsonAsync("/api/v1/viewer/auth/email-code", new { login = aliases[i % 2] })).StatusCode);
+        }
+        Assert.Equal(5, await OutboxCountAsync("alias-login@example.com"));
     }
 
     [Fact]

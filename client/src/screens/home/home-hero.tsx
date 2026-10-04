@@ -60,6 +60,7 @@ export function useFeaturedDetail(featured: Featured | null) {
     ? {
         logoUrl: data.logoUrl,
         backdropUrl: data.backdropUrl,
+        backdropSizes: data.backdropSizes,
         certification: data.certification,
         runtimeMinutes: null,
         genres: data.genres,
@@ -129,11 +130,18 @@ export function HandheldHomeHero({ featured }: { featured: Featured }) {
   const resume = resumeSeconds(detail?.watch);
   const { gutter } = design.layout;
   const image = featured.backdropUrl ?? detail?.backdropUrl;
+  const imageSizes = featured.backdropUrl ? featured.backdropSizes : detail?.backdropSizes;
   return (
     <View testID="home-hero" collapsable={false}>
       <View style={{ width: '100%', aspectRatio: 4 / 3.4 }}>
         <HeroFade left={false}>
-          <Artwork uri={image} title={featured.title} />
+          <Artwork
+            uri={image}
+            sizes={imageSizes}
+            // Phones: the full-width hero needs w780, not the w1280 of TV and desktop.
+            request={{ kind: 'backdrop', size: 'medium' }}
+            title={featured.title}
+          />
         </HeroFade>
       </View>
       <View style={{ marginTop: -design.px(96), paddingHorizontal: gutter, gap: design.space.md }}>

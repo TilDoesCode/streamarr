@@ -27,6 +27,7 @@ import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, fonts, useDesign } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
+import type { ArtworkSizes } from '@/lib/artwork';
 
 /** One corner badge: two wrap on a 233 px web card (Q1-03); "No version" wins, the stage pill already says next. */
 export function cardBadges({ next, noVersion }: { next: boolean; noVersion: boolean }) {
@@ -37,6 +38,11 @@ export function cardBadges({ next, noVersion }: { next: boolean; noVersion: bool
 /** A card without a still: its number moves to the bottom-left corner when a badge or the ▶ may cover the middle. */
 export function numberInCorner({ badges, touch }: { badges: number; touch: boolean }): boolean {
   return touch || badges > 0;
+}
+
+/** Bottom padding of a corner number: above the progress bar when the card has one (V1: "26" over the bar). */
+export function cornerNumberBottom(inset: number, hasBar: boolean, barRoom: number): number {
+  return hasBar ? inset + barRoom : inset;
 }
 
 /** TV marks the selected card by its caption bar only: a ring would read as a second focus ring. */
@@ -55,6 +61,7 @@ export type EpisodeStripProps = {
   nextWorkId?: string | null;
   /** Fallback art for episodes without a still. */
   backdropUrl?: string | null;
+  backdropSizes?: ArtworkSizes | null;
   tint?: string | null;
   /** Scroll target changes (season switch, first load): the strip brings the selection to its start. */
   scrollKey: string;
@@ -82,6 +89,7 @@ export function EpisodeStrip({
   selected,
   nextWorkId,
   backdropUrl,
+  backdropSizes,
   tint,
   scrollKey,
   gutterStart,
@@ -202,6 +210,7 @@ export function EpisodeStrip({
         selected={item.episodeNumber === selected}
         next={!!nextWorkId && item.workId === nextWorkId}
         backdropUrl={backdropUrl}
+        backdropSizes={backdropSizes}
         tint={tint}
         cardRef={cardRef(item)}
         tabStop={item.episodeNumber === tabStop}
@@ -316,6 +325,7 @@ function EpisodeCard({
   selected,
   next,
   backdropUrl,
+  backdropSizes,
   tint,
   cardRef,
   tabStop,
@@ -330,6 +340,7 @@ function EpisodeCard({
   selected: boolean;
   next: boolean;
   backdropUrl?: string | null;
+  backdropSizes?: ArtworkSizes | null;
   tint?: string | null;
   cardRef?: (view: View | null) => void;
   tabStop: boolean;
@@ -442,10 +453,19 @@ function EpisodeCard({
             }}>
             <View style={{ flex: 1 }}>
               {episode.stillUrl ? (
-                <Artwork uri={episode.stillUrl} title={title} />
+                <Artwork
+                  uri={episode.stillUrl}
+                  sizes={episode.stillSizes}
+                  request={{ kind: 'backdrop', cssWidth: width, scale }}
+                  title={title}
+                />
               ) : (
                 <>
-                  <Artwork uri={backdropUrl} />
+                  <Artwork
+                    uri={backdropUrl}
+                    sizes={backdropSizes}
+                    request={{ kind: 'backdrop', cssWidth: width, scale }}
+                  />
                   <View
                     testID={`episode-card-${episode.episodeNumber}-number`}
                     style={{
@@ -453,6 +473,9 @@ function EpisodeCard({
                       alignItems: corner ? 'flex-start' : 'center',
                       justifyContent: corner ? 'flex-end' : 'center',
                       padding: corner ? inset : 0,
+                      paddingBottom: corner
+                        ? cornerNumberBottom(inset, progress !== undefined, design.px(5) + s(8))
+                        : 0,
                       backgroundColor: colors.scrim.DEFAULT,
                     }}>
                     <Text

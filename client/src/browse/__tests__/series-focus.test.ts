@@ -1,7 +1,7 @@
 import type { SeriesDetail, Version, WatchState } from '@/browse/queries';
 import { initialSelection, seriesFocus } from '@/browse/series-selection';
 import { cardBadges, showsSelectionRing } from '@/browse/episode-strip';
-import { resolvePlay } from '@/browse/title-actions';
+import { isPlayPending, resolvePlay } from '@/browse/title-actions';
 
 const SERIES = 'tmdb-tv-19885';
 const s3e1 = { workId: `${SERIES}-s03e01`, seasonNumber: 3, episodeNumber: 1, reason: 'next' };
@@ -126,5 +126,15 @@ describe('Home cards play by the playTarget rule (Q1-05)', () => {
       })
     ).resolves.toEqual({ workId: 's3e1', title: 't', startSeconds: 0 });
     expect(fetchVersions).not.toHaveBeenCalled();
+  });
+});
+
+describe('play pending (V1 readability)', () => {
+  it('only the resolving work is pending; no work id never is', () => {
+    expect(isPlayPending('w1', 'w1')).toBe(true);
+    expect(isPlayPending('w1', 'w2')).toBe(false);
+    expect(isPlayPending(null, null)).toBe(false);
+    expect(isPlayPending(null, undefined)).toBe(false);
+    expect(isPlayPending(null, 'w1')).toBe(false);
   });
 });

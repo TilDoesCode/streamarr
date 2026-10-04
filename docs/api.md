@@ -915,9 +915,12 @@ Errors: `401 invalid_credentials`, `401 invalid_code`, `401 mfa_expired`,
              "params": { "retryAfterSeconds": "27" }, "retryAfterSeconds": 27 } }
 ```
 
-The app shows "wait N seconds" and keeps the code already sent valid. For the sign-in code the cooldown is kept
-per typed login (trimmed, case-insensitive) *before* the account lookup, so known and unknown logins answer
-alike (`202`, then `429` on a repeat). `POST …/password/forgot` stays generic: always `202`, a repeat inside the
+The app shows "wait N seconds" and keeps the code already sent valid. For the sign-in code the `429` comes only
+from a cooldown kept per typed login (trimmed, case-insensitive) *before* the account lookup, so known and unknown
+logins answer alike (`202`, then `429` on a repeat). The per-account mail limit (one code per 30 seconds, 5 per hour)
+still holds across aliases, but silently: when the username was just used, the account's e-mail address (or the
+other way round) answers `202` like a first send and no mail goes out, so the answers never reveal that two logins
+belong to one account. The code already sent stays valid and works with either login. `POST …/password/forgot` stays generic: always `202`, a repeat inside the
 cooldown sends no mail.
 
 **Language of viewer e-mails.** Sign-in code, password reset and address verification mails are written in the
@@ -1014,7 +1017,8 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
 - **Language:** every viewer endpoint honours `Accept-Language` (the highest-weighted primary tag the server
   allows, `Tmdb:ViewerLanguages`, e.g. `de` or `en`; a missing or unknown tag means the server default
   `Tmdb:Language`). Titles, overviews, taglines, season and episode names and genre names come from TMDB in
-  that language; when TMDB has no translation of an overview, tagline or episode name, the English text is used.
+  that language; when TMDB has no translation of an overview or episode name, the English text is used. A
+  `tagline` is only ever in the viewer's language: when TMDB has none in it, `tagline` is null (no English fallback).
   Artwork follows the same language: the `posterUrl` is the best rated poster in the viewer's language, else a
   textless one, else English; the `backdropUrl` prefers a textless backdrop (text sits over it), then the viewer's
   language, then English; the `logoUrl` is the viewer's language, then English, then textless. TMDB's default image
@@ -1022,6 +1026,21 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
   Bunny (its textless poster, TMDB has no German one) and Sherlock (the German TMDB poster).
   TMDB caches are kept per language, and viewer responses carry `Vary: Accept-Language`. Indexer searches
   (versions) always use the server default language, so release matching does not depend on the viewer.
+- **Artwork sizes:** next to every artwork URL of a list item or detail sits an additive size-class object
+  `{ small, medium, large }` (never null when its URL is set): `posterSizes`, `backdropSizes` (cards, movie/series
+  details), `posterSizes` on seasons, `stillSizes` (episodes, `watch.nextEpisode`, next up) and `seriesPosterSizes`
+  (next up). Pick the smallest class whose width covers the rendered width in device pixels:
+
+  | class | posters | backdrops, episode stills | typical use |
+  |---|---|---|---|
+  | `small` | `w185` (185 px) | `w300` (300 px) | cards and thumbnails at 1× |
+  | `medium` | `w342` (342 px) | `w780` (780 px) | cards on 2×/3× screens, TV rows |
+  | `large` | `w780` | `w1280` | detail and hero; same size as the plain URL field (default `Tmdb:PosterSize` / `BackdropSize`) |
+
+  TMDB URLs (`…/t/p/{size}/{file}`) map to these TMDB size buckets; any other URL (e.g. a non-TMDB image) is the same
+  URL in every class. The plain `posterUrl`/`backdropUrl`/`stillUrl` fields are unchanged. Measured on the Dev World
+  Home rows (12 TMDB cards): poster 160 KB (`posterUrl`, w780) → 17 KB `small` / 43 KB `medium`; backdrop 145 KB
+  (w1280) → 15 KB `small` / 67 KB `medium`.
 - **Spec warm-up:** a card's `spec` may be null on the first fetch; discover, browse, continue watching and next up
   queue a background version lookup for such titles (bounded, see `Streamarr:SpecWarmup` in configuration.md), so a
   later fetch carries it. List requests never wait for an indexer search.
@@ -1047,7 +1066,7 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
 
 **Items and rows.** A `CatalogItem` is a card: `workId` (`tmdb-movie-603` or `tmdb-tv-1396`),
 `mediaType` (`movie` or `series`), `tmdbId`, `title`, `originalTitle`, `year`, `overview`,
-`posterUrl`, `backdropUrl`, `voteAverage`, `tint`, `tint2` and `spec`. `search` accepts `type=movie`, `tv` (alias `series`)
+`posterUrl`, `backdropUrl` (+ `posterSizes`, `backdropSizes`), `voteAverage`, `tint`, `tint2` and `spec`. `search` accepts `type=movie`, `tv` (alias `series`)
 or `any`. `discover` rows are `trending-movies`, `trending-series`, `popular-movies`,
 `popular-series` (in that order; a row without any title the viewer may watch is left out).
 Rows are TMDB data only: a title in a row may have no versions.

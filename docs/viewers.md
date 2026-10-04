@@ -83,7 +83,10 @@ details, seasons and versions of such a title answer `403 age_restricted` with t
 - **Email sign-in codes** and **password reset codes**: eight characters from an
   unambiguous alphabet (`ABCD-EFGH`), valid for 10 (sign-in) or 30 minutes, burned after
   five wrong attempts, at most five per hour. Requests for unknown accounts receive the
-  same `202` answer, so the endpoint does not reveal who has an account. Mail is sent with
+  same `202` answer, so the endpoint does not reveal who has an account. Username and e-mail address of
+  one account are not linkable either: the only "wait" answer (`429`) is a cooldown per typed login, and
+  asking by the other login while the account's code was just sent answers `202` without a second mail
+  (at most one code per 30 seconds and five per hour per account, whichever login is used). Mail is sent with
   [MailKit](https://github.com/jstedfast/MailKit) off the request path.
 - **Sessions** are per device: a short-lived opaque access token (default 60 minutes) and
   a rotating refresh token (default 30 days). Each refresh hands out a new pair. The

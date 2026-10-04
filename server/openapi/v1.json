@@ -13578,6 +13578,33 @@
         "additionalProperties": false,
         "description": "Current transfer state and diagnostic evidence for one ordered release article."
       },
+      "ArtworkSizesDto": {
+        "required": [
+          "large",
+          "medium",
+          "small"
+        ],
+        "type": "object",
+        "properties": {
+          "small": {
+            "type": "string",
+            "description": "Thumbnails and cards at 1x (poster `w185`, backdrop/still `w300`).",
+            "nullable": true
+          },
+          "medium": {
+            "type": "string",
+            "description": "Cards on high-density screens and TV rows (poster `w342`, backdrop/still `w780`).",
+            "nullable": true
+          },
+          "large": {
+            "type": "string",
+            "description": "Detail and hero artwork (poster `w780`, backdrop/still `w1280`); the size of the plain URL field.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One image in three size classes. Pick the smallest class whose width covers the rendered width in device pixels:\r\nposters 185 / 342 / 780 px wide, backdrops and episode stills 300 / 780 / 1280 px wide."
+      },
       "AudioCodecProfileDto": {
         "type": "object",
         "properties": {
@@ -14125,6 +14152,14 @@
             "type": "string",
             "nullable": true
           },
+          "stillSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
           "voteAverage": {
             "type": "number",
             "format": "float",
@@ -14237,8 +14272,24 @@
             "type": "string",
             "nullable": true
           },
+          "posterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
           "backdropUrl": {
             "type": "string",
+            "nullable": true
+          },
+          "backdropSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
             "nullable": true
           },
           "voteAverage": {
@@ -14343,8 +14394,24 @@
             "type": "string",
             "nullable": true
           },
+          "posterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
           "backdropUrl": {
             "type": "string",
+            "nullable": true
+          },
+          "backdropSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
             "nullable": true
           },
           "logoUrl": {
@@ -14417,6 +14484,14 @@
           },
           "stillUrl": {
             "type": "string",
+            "nullable": true
+          },
+          "stillSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
             "nullable": true
           },
           "runtimeMinutes": {
@@ -14545,6 +14620,14 @@
             "type": "string",
             "nullable": true
           },
+          "posterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
           "tint": {
             "type": "string",
             "description": "Vivid accent of the series (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed.",
@@ -14610,6 +14693,14 @@
           },
           "posterUrl": {
             "type": "string",
+            "nullable": true
+          },
+          "posterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
             "nullable": true
           },
           "episodeCount": {
@@ -14697,8 +14788,24 @@
             "type": "string",
             "nullable": true
           },
+          "posterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
           "backdropUrl": {
             "type": "string",
+            "nullable": true
+          },
+          "backdropSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
             "nullable": true
           },
           "logoUrl": {
@@ -16502,6 +16609,14 @@
             "type": "string",
             "nullable": true
           },
+          "seriesPosterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
           "seasonNumber": {
             "type": "integer",
             "format": "int32"
@@ -16520,6 +16635,14 @@
           },
           "stillUrl": {
             "type": "string",
+            "nullable": true
+          },
+          "stillSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
             "nullable": true
           },
           "runtimeMinutes": {

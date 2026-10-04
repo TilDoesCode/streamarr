@@ -21,6 +21,7 @@ import { Scrim, StatusBarScrim } from '@/components/media/scrim';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { artworkFor, type ArtworkSizes } from '@/lib/artwork';
 import { withAlpha } from '@/lib/color';
 import { BackControl, PHONE_HEADER_HEIGHT } from '@/navigation/back-control';
 import { colors, fonts, useDesign } from '@/theme';
@@ -45,6 +46,8 @@ export type PhoneDetailProps = {
   title: string;
   logoUrl?: string | null;
   backdropUrl?: string | null;
+  /** Size classes of the backdrop (B10): phones load w780. */
+  backdropSizes?: ArtworkSizes | null;
   tint?: string | null;
   facts: string[];
   certification?: string | null;
@@ -94,6 +97,7 @@ export function PhoneDetail({
   title,
   logoUrl,
   backdropUrl,
+  backdropSizes,
   tint,
   facts,
   certification,
@@ -151,7 +155,11 @@ export function PhoneDetail({
         <View style={{ height: artHeight }}>
           {backdropUrl ? (
             <Image
-              source={{ uri: backdropUrl }}
+              source={{
+                uri:
+                  artworkFor(backdropSizes, backdropUrl, { kind: 'backdrop', size: 'medium' }) ??
+                  backdropUrl,
+              }}
               contentFit="cover"
               style={StyleSheet.absoluteFill}
               accessibilityIgnoresInvertColors

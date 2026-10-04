@@ -126,6 +126,7 @@ function SeriesPhone() {
       title={title}
       logoUrl={data?.logoUrl}
       backdropUrl={data?.backdropUrl}
+      backdropSizes={data?.backdropSizes}
       tint={data?.tint}
       facts={[
         data?.year ? String(data.year) : null,

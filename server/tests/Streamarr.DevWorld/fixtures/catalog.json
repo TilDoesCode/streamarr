@@ -7,7 +7,7 @@
     "Indexer-reported sizes are nominal (variant/release nominalMbps x TMDB runtime); the generated clips are short.",
     "health: ready (default) | dead (missing articles) | degraded (STAT probes drop the connection).",
     "discover: title keys of the canned TMDB trending/popular lists (viewer home rows). Titles without releases (agent-327, wing-it: metadata only) exercise the empty-versions state; at most two are allowed.",
-    "lighthouse-logs (tmdbId 990001) is fictional: one long season (26 short episodes) for long episode strips; no artwork, so it stays out of the discover rows (find it by search)."
+    "lighthouse-logs (tmdbId 990001) is fictional: one long season (26 short episodes) for long episode strips; its artwork is generated (devworld:/ URLs, drawn into the cache and served in TMDB size classes under /devworld/art); English tagline only (German viewers get none)."
   ],
   "defaults": {
     "movieDurationSeconds": 180,
@@ -1245,7 +1245,7 @@
       "year": 2024,
       "overview": "A fictional Dev World series: one long season of short weekly episodes about the keepers of a remote lighthouse. It exists to exercise long episode strips.",
       "overviewDe": "Eine fiktive Dev-World-Serie: eine lange Staffel kurzer Wochenfolgen über die Wärter eines abgelegenen Leuchtturms. Sie dient langen Episodenleisten.",
-      "tagline": null,
+      "tagline": "Every night, someone keeps the light.",
       "taglineDe": null,
       "genres": [
         "Drama"
@@ -1254,8 +1254,9 @@
         "Drama"
       ],
       "communityRating": 7.0,
-      "posterUrl": null,
-      "backdropUrl": null,
+      "posterUrl": "devworld:/t/p/w780/lighthouse-logs-poster.jpg",
+      "posterUrlDe": "devworld:/t/p/w780/lighthouse-logs-poster-de.jpg",
+      "backdropUrl": "devworld:/t/p/w1280/lighthouse-logs-backdrop.jpg",
       "logoUrl": null,
       "license": "Dev World fixture (generated clips, fictional metadata)",
       "accentColor": "#4a90b8",
@@ -1269,7 +1270,7 @@
         {
           "seasonNumber": 1,
           "title": "Season 1",
-          "posterUrl": null,
+          "posterUrl": "devworld:/t/p/w780/lighthouse-logs-poster.jpg",
           "episodes": [
             {
               "episodeNumber": 1,
@@ -1279,7 +1280,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 1 on the island: first light keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 1 auf der Insel: Erstes Licht hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e01.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E01.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1297,7 +1298,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 2 on the island: the keeper's ledger keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 2 auf der Insel: Das Logbuch des Wärters hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e02.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E02.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1315,7 +1316,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 3 on the island: fog bank keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 3 auf der Insel: Nebelbank hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e03.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E03.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1333,7 +1334,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 4 on the island: supply boat keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 4 auf der Insel: Das Versorgungsboot hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e04.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E04.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1351,7 +1352,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 5 on the island: gull season keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 5 auf der Insel: Möwenzeit hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e05.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E05.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1369,7 +1370,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 6 on the island: the broken lens keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 6 auf der Insel: Die gesprungene Linse hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e06.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E06.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1387,7 +1388,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 7 on the island: storm warning keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 7 auf der Insel: Sturmwarnung hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e07.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E07.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1405,7 +1406,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 8 on the island: night watch keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 8 auf der Insel: Nachtwache hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e08.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E08.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1423,7 +1424,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 9 on the island: the wreck keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 9 auf der Insel: Das Wrack hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e09.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E09.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1441,7 +1442,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 10 on the island: signal flags keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 10 auf der Insel: Signalflaggen hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e10.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E10.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1459,7 +1460,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 11 on the island: low tide keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 11 auf der Insel: Ebbe hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e11.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E11.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1477,7 +1478,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 12 on the island: the visitor keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 12 auf der Insel: Der Besucher hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e12.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E12.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1495,7 +1496,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 13 on the island: spring tide keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 13 auf der Insel: Springflut hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e13.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E13.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1513,7 +1514,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 14 on the island: radio silence keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 14 auf der Insel: Funkstille hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e14.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E14.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1531,7 +1532,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 15 on the island: the lamp room keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 15 auf der Insel: Der Lampenraum hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e15.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E15.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1549,7 +1550,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 16 on the island: salt and rust keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 16 auf der Insel: Salz und Rost hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e16.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E16.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1567,7 +1568,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 17 on the island: midsummer keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 17 auf der Insel: Mittsommer hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e17.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E17.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1585,7 +1586,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 18 on the island: the inspector keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 18 auf der Insel: Der Inspektor hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e18.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E18.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1603,7 +1604,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 19 on the island: lost at sea keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 19 auf der Insel: Auf See verschollen hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e19.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E19.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1621,7 +1622,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 20 on the island: foghorn keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 20 auf der Insel: Nebelhorn hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e20.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E20.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1639,7 +1640,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 21 on the island: the long night keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 21 auf der Insel: Die lange Nacht hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e21.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E21.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1657,7 +1658,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 22 on the island: ice on the rocks keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 22 auf der Insel: Eis auf den Klippen hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e22.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E22.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1675,7 +1676,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 23 on the island: relief keeper keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 23 auf der Insel: Der Ablöser hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e23.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E23.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1693,7 +1694,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 24 on the island: old charts keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 24 auf der Insel: Alte Seekarten hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e24.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E24.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1711,7 +1712,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 25 on the island: last ferry keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 25 auf der Insel: Die letzte Fähre hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e25.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E25.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1729,7 +1730,7 @@
               "runtimeMinutes": 24,
               "overview": "Week 26 on the island: dark water keeps the keepers of Skerry Point busy.",
               "overviewDe": "Woche 26 auf der Insel: Dunkles Wasser hält die Wärter von Skerry Point auf Trab.",
-              "stillUrl": null,
+              "stillUrl": "devworld:/t/p/w1280/lighthouse-logs-s01e26.jpg",
               "releases": [
                 {
                   "name": "The.Lighthouse.Logs.S01E26.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
@@ -1771,7 +1772,8 @@
     ],
     "popularSeries": [
       "pioneer-one",
-      "sherlock"
+      "sherlock",
+      "lighthouse-logs"
     ]
   }
 }

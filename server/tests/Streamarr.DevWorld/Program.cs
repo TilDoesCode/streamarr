@@ -20,6 +20,8 @@ mediaWatch.Stop();
 var generated = media.Values.Count(m => !m.Reused);
 var payloadBytes = media.Values.Sum(m => m.SizeBytes);
 Log($"media ready in {mediaWatch.Elapsed.TotalSeconds:0.0}s: {generated} generated, {media.Count - generated} reused, {payloadBytes / 1024.0 / 1024.0:0.0} MiB total ({payloadBytes:N0} bytes)");
+var drawnArt = DevWorldArtwork.Ensure(options, plan.Catalog);
+Log($"artwork ready: {drawnArt} images drawn into {DevWorldArtwork.ArtDir(options)}");
 if (options.GenerateOnly)
     return;
 

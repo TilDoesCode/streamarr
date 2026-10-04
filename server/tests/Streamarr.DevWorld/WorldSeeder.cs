@@ -296,7 +296,7 @@ public static class WorldSeeder
             {
                 key = movie.Key, type = "movie", tmdbId = movie.TmdbId, imdbId = movie.ImdbId, title = movie.Title,
                 year = movie.Year, workId, runtimeMinutes = movie.RuntimeMinutes, access = Access(movie),
-                posterUrl = movie.PosterUrl, backdropUrl = movie.BackdropUrl, logoUrl = movie.LogoUrl, license = movie.License,
+                posterUrl = DevWorldArtwork.Resolve(movie.PosterUrl, options.LocalUrl), backdropUrl = DevWorldArtwork.Resolve(movie.BackdropUrl, options.LocalUrl), logoUrl = movie.LogoUrl, license = movie.License,
                 releases = store.Releases.Where(r => r.Plan.WorkId == workId)
                     .OrderBy(r => ranks.GetValueOrDefault($"{workId}|{r.ReleaseId}")?.Rank ?? 99)
                     .Select(r => ReleaseJson(r, workId)).ToList(),
@@ -309,7 +309,7 @@ public static class WorldSeeder
             {
                 key = series.Key, type = "tv", tmdbId = series.TmdbId, imdbId = series.ImdbId, title = series.Title,
                 year = series.Year, seriesWorkId = $"tmdb-tv-{series.TmdbId}", access = Access(series),
-                posterUrl = series.PosterUrl, backdropUrl = series.BackdropUrl, logoUrl = series.LogoUrl, license = series.License,
+                posterUrl = DevWorldArtwork.Resolve(series.PosterUrl, options.LocalUrl), backdropUrl = DevWorldArtwork.Resolve(series.BackdropUrl, options.LocalUrl), logoUrl = series.LogoUrl, license = series.License,
                 seasons = series.Seasons.Select(season => new
                 {
                     seasonNumber = season.SeasonNumber,

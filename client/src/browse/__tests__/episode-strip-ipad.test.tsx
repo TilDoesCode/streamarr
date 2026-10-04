@@ -1,11 +1,11 @@
-import { act } from '@testing-library/react-native';
-import { FlatList } from 'react-native';
+import { act, screen } from '@testing-library/react-native';
+import { FlatList, StyleSheet } from 'react-native';
 
 import type { Episode } from '@/browse/queries';
 import i18n from '@/i18n';
 import { renderWithProviders } from '@/../jest/render';
 
-import { EpisodeStrip, numberInCorner, stripClip } from '../episode-strip';
+import { cornerNumberBottom, EpisodeStrip, numberInCorner, stripClip } from '../episode-strip';
 
 let mockWindow = { width: 1024, height: 1366, scale: 2, fontScale: 1 };
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
@@ -57,6 +57,11 @@ describe('episode strip on iPad (Q1-49/50/51)', () => {
     expect(numberInCorner({ badges: 0, touch: false })).toBe(false);
   });
 
+  it('lifts a corner number above the progress bar (V1: "26" drawn over the bar)', () => {
+    expect(cornerNumberBottom(14, false, 13)).toBe(14);
+    expect(cornerNumberBottom(14, true, 13)).toBe(27);
+  });
+
   it('scrolls the marked card back into view after a rotation', async () => {
     const scroll = jest.spyOn(FlatList.prototype, 'scrollToOffset');
     const view = await renderWithProviders(strip());
@@ -70,5 +75,31 @@ describe('episode strip on iPad (Q1-49/50/51)', () => {
     // Card 21 at the start again with the landscape card size.
     expect(after).toBeGreaterThan(first);
     scroll.mockRestore();
+  });
+
+  it('draws the number of a started card without a still above its progress bar', async () => {
+    mockWindow = { width: 1280, height: 657, scale: 1, fontScale: 1 };
+    const started = {
+      workId: 'tmdb-tv-990001-s01e26',
+      episodeNumber: 26,
+      title: 'E26',
+      aired: true,
+      watch: { played: false, positionTicks: 320_000_000, durationTicks: 600_000_000 },
+    } as unknown as Episode;
+    await renderWithProviders(
+      <EpisodeStrip
+        episodes={[started]}
+        selected={26}
+        scrollKey="1"
+        gutterStart={101}
+        gutterEnd={58}
+        onPreview={jest.fn()}
+        onSelect={jest.fn()}
+        onPlay={jest.fn()}
+        onVersions={jest.fn()}
+      />
+    );
+    const number = StyleSheet.flatten(screen.getByTestId('episode-card-26-number').props.style);
+    expect(number.paddingBottom).toBeGreaterThan(number.padding as number);
   });
 });

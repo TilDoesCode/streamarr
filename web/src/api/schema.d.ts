@@ -9472,6 +9472,18 @@ export interface components {
             attemptsTruncated?: boolean;
             attempts?: components["schemas"]["ArticleProviderAttemptResponse"][] | null;
         };
+        /**
+         * @description One image in three size classes. Pick the smallest class whose width covers the rendered width in device pixels:
+         *     posters 185 / 342 / 780 px wide, backdrops and episode stills 300 / 780 / 1280 px wide.
+         */
+        ArtworkSizesDto: {
+            /** @description Thumbnails and cards at 1x (poster `w185`, backdrop/still `w300`). */
+            small: string | null;
+            /** @description Cards on high-density screens and TV rows (poster `w342`, backdrop/still `w780`). */
+            medium: string | null;
+            /** @description Detail and hero artwork (poster `w780`, backdrop/still `w1280`); the size of the plain URL field. */
+            large: string | null;
+        };
         AudioCodecProfileDto: {
             /** @description `aac`, `ac3`, `eac3`, `truehd`, `dts`, `flac`, `opus`, `mp3`, … */
             codec?: string | null;
@@ -9658,6 +9670,7 @@ export interface components {
             /** Format: int32 */
             runtimeMinutes?: number | null;
             stillUrl?: string | null;
+            stillSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             /** Format: float */
             voteAverage?: number | null;
             watch: components["schemas"]["WatchStateResponse"];
@@ -9697,7 +9710,9 @@ export interface components {
             year?: number | null;
             overview?: string | null;
             posterUrl?: string | null;
+            posterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             backdropUrl?: string | null;
+            backdropSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             /**
              * Format: float
              * @description TMDB vote average (0–10).
@@ -9730,7 +9745,9 @@ export interface components {
             /** Format: float */
             voteAverage?: number | null;
             posterUrl?: string | null;
+            posterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             backdropUrl?: string | null;
+            backdropSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             logoUrl?: string | null;
             trailerUrl?: string | null;
             /** @description Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
@@ -9752,6 +9769,7 @@ export interface components {
             title?: string | null;
             airDate?: string | null;
             stillUrl?: string | null;
+            stillSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             /** Format: int32 */
             runtimeMinutes?: number | null;
             /** Format: int64 */
@@ -9789,6 +9807,7 @@ export interface components {
             overview?: string | null;
             airDate?: string | null;
             posterUrl?: string | null;
+            posterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             /** @description Vivid accent of the series (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
             tint?: string | null;
             /** @description Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
@@ -9810,6 +9829,7 @@ export interface components {
             overview?: string | null;
             airDate?: string | null;
             posterUrl?: string | null;
+            posterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             /** Format: int32 */
             episodeCount?: number;
             /** Format: int32 */
@@ -9838,7 +9858,9 @@ export interface components {
             /** Format: float */
             voteAverage?: number | null;
             posterUrl?: string | null;
+            posterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             backdropUrl?: string | null;
+            backdropSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             logoUrl?: string | null;
             trailerUrl?: string | null;
             /** @description Vivid accent from the artwork (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
@@ -10417,6 +10439,7 @@ export interface components {
             seriesWorkId: string | null;
             seriesTitle: string | null;
             seriesPosterUrl?: string | null;
+            seriesPosterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             /** Format: int32 */
             seasonNumber: number;
             /** Format: int32 */
@@ -10424,6 +10447,7 @@ export interface components {
             episodeTitle: string | null;
             airDate?: string | null;
             stillUrl?: string | null;
+            stillSizes?: components["schemas"]["ArtworkSizesDto"] | null;
             /** Format: int32 */
             runtimeMinutes?: number | null;
             /** Format: int64 */

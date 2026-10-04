@@ -2,6 +2,7 @@ import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
+import type { ArtworkSizes } from '@/lib/artwork';
 import { CardCaption, PlayedMark, useCardScale } from '@/components/media/card-parts';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -13,6 +14,8 @@ export type PosterCardProps = Omit<FocusableProps, 'children'> & {
   title: string;
   subtitle?: string;
   imageUri?: string | null;
+  /** Size classes of the image (B10): the card loads the one that fits its width. */
+  imageSizes?: ArtworkSizes | null;
   /** 0..1 watch progress; hidden when played. */
   progress?: number;
   played?: boolean;
@@ -28,6 +31,7 @@ export function PosterCard({
   title,
   subtitle,
   imageUri,
+  imageSizes,
   progress,
   played = false,
   badge,
@@ -59,7 +63,12 @@ export function PosterCard({
             borderCurve: 'continuous',
             overflow: 'hidden',
           }}>
-          <Artwork uri={imageUri} title={title} />
+          <Artwork
+            uri={imageUri}
+            sizes={imageSizes}
+            request={{ kind: 'poster', cssWidth: cardWidth, scale }}
+            title={title}
+          />
           {badge ? (
             <View style={{ position: 'absolute', top: inset, left: inset }}>
               <Badge label={badge} variant="solid" />

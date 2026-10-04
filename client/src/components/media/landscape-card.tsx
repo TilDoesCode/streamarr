@@ -2,6 +2,7 @@ import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
+import type { ArtworkSizes } from '@/lib/artwork';
 import { CardCaption, PlayedMark, useCardScale } from '@/components/media/card-parts';
 import { Scrim } from '@/components/media/scrim';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +15,8 @@ export type LandscapeCardProps = Omit<FocusableProps, 'children'> & {
   title: string;
   subtitle?: string;
   imageUri?: string | null;
+  /** Size classes of the image (B10): the card loads the one that fits its width. */
+  imageSizes?: ArtworkSizes | null;
   progress?: number;
   played?: boolean;
   badge?: string;
@@ -29,6 +32,7 @@ export function LandscapeCard({
   title,
   subtitle,
   imageUri,
+  imageSizes,
   progress,
   played = false,
   badge,
@@ -61,7 +65,12 @@ export function LandscapeCard({
             borderCurve: 'continuous',
             overflow: 'hidden',
           }}>
-          <Artwork uri={imageUri} title={title} />
+          <Artwork
+            uri={imageUri}
+            sizes={imageSizes}
+            request={{ kind: 'backdrop', cssWidth: cardWidth, scale }}
+            title={title}
+          />
           {hasProgress ? (
             <Scrim
               color={colors.scrim.DEFAULT}

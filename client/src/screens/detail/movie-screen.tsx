@@ -143,6 +143,7 @@ export function MovieScreen() {
         title={title}
         logoUrl={data?.logoUrl}
         backdropUrl={data?.backdropUrl}
+        backdropSizes={data?.backdropSizes}
         tint={data?.tint}
         facts={facts.slice(0, 2)}
         certification={data?.certification}

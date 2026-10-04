@@ -91,10 +91,11 @@ public sealed class TmdbClient(
     public async Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
     {
         var movie = await ReadMovieAsync(tmdbId, cancellationToken);
-        if (movie is null || !NeedsEnglishFallback || (movie.Overview is not null && movie.Tagline is not null))
+        if (movie is null || !NeedsEnglishFallback || movie.Overview is not null)
             return movie;
+        // Taglines stay in the requested language only (null when TMDB has none in it).
         var english = await EnglishAsync(() => ReadMovieAsync(tmdbId, cancellationToken));
-        return english is null ? movie : movie with { Overview = movie.Overview ?? english.Overview, Tagline = movie.Tagline ?? english.Tagline };
+        return english is null ? movie : movie with { Overview = english.Overview };
     }
 
     private async Task<TmdbMatch?> ReadMovieAsync(int tmdbId, CancellationToken cancellationToken)
@@ -143,7 +144,7 @@ public sealed class TmdbClient(
     {
         var catalog = await ReadTvSeriesCatalogAsync(tmdbId, cancellationToken);
         if (catalog is null || !NeedsEnglishFallback
-            || (catalog.Series.Overview is not null && catalog.Series.Tagline is not null && catalog.Seasons.All(s => s.Overview is not null)))
+            || (catalog.Series.Overview is not null && catalog.Seasons.All(s => s.Overview is not null)))
             return catalog;
         var english = await EnglishAsync(() => ReadTvSeriesCatalogAsync(tmdbId, cancellationToken));
         if (english is null)
@@ -154,7 +155,6 @@ public sealed class TmdbClient(
             Series = catalog.Series with
             {
                 Overview = catalog.Series.Overview ?? english.Series.Overview,
-                Tagline = catalog.Series.Tagline ?? english.Series.Tagline,
             },
             Seasons = catalog.Seasons
                 .Select(s => s.Overview is null && englishSeasons.TryGetValue(s.SeasonNumber, out var en) ? s with { Overview = en.Overview } : s)
