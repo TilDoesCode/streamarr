@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { CalendarClock } from 'lucide-react-native';
+import { CalendarClock } from '@/components/icons';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';

@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, RotateCcw } from 'lucide-react-native';
+import { ArrowLeft, Play, RotateCcw } from '@/components/icons';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';

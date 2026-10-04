@@ -1,8 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Info, Play } from 'lucide-react-native';
+import { Info, Play } from '@/components/icons';
 import { useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, StyleSheet, useTVEventHandler, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTVEvents } from '@/components/focus/use-tv-events';
 import { resumeSeconds, watchProgress } from '@/browse/title-actions';
 import { useClearAmbient, useSetAmbient } from '@/components/ambient';
 import { GlassButton } from '@/components/glass';
@@ -33,8 +34,6 @@ import { featuredInfoHref, useFeaturedDetail, useMeta, usePlayFeatured } from '.
 
 const LOGO_HEIGHT =
   Platform.OS === 'ios' && Platform.isTV ? SHELL.logo.tvosHeight : SHELL.logo.height;
-
-const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
 const TITLE_LINE = 1.05;
 
@@ -250,17 +249,20 @@ function HeroCopy({
   };
   const openInfo = () => router.push(featuredInfoHref(featured, detail));
 
+  const copyTop = heroCopyTop(s, copyHeight, insets.top + controls, heroFrame.rowsTop);
+  // From the computed top: web's onLayout misses moves without a resize, so its y can be stale (Q1-22).
+  useEffect(() => {
+    if (copyHeight) onCopyBottom?.(copyTop + copyHeight);
+  }, [copyTop, copyHeight, onCopyBottom]);
+
   return (
     <View
-      onLayout={(event) => {
-        const { y, height } = event.nativeEvent.layout;
-        setCopyHeight(height);
-        onCopyBottom?.(y + height);
-      }}
+      testID="home-tv-hero-copy"
+      onLayout={(event) => setCopyHeight(event.nativeEvent.layout.height)}
       style={{
         position: 'absolute',
         left: s(SHELL.hero.copyLeft),
-        top: heroCopyTop(s, copyHeight, insets.top + controls, heroFrame.rowsTop),
+        top: copyTop,
         width: s(SHELL.hero.copyWidth),
         gap: s(14),
       }}>

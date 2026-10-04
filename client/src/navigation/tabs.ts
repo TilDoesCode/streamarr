@@ -1,4 +1,4 @@
-import { Film, House, Search, Settings, Tv, type LucideIcon } from 'lucide-react-native';
+import { Film, House, Search, Settings, Tv, type LucideIcon } from '@/components/icons';
 
 import type { UseTabsWithTriggersOptions } from 'expo-router/ui';
 import type { AndroidSymbol, SFSymbol } from 'expo-symbols';

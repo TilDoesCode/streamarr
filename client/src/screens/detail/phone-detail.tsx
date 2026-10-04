@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, CheckCircle2, Info, type LucideIcon } from 'lucide-react-native';
+import { Check, CheckCircle2, Info, type LucideIcon } from '@/components/icons';
 import type { TFunction } from 'i18next';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';

@@ -1,4 +1,4 @@
-import { Info, Layers, Play } from 'lucide-react-native';
+import { Info, Layers, Play } from '@/components/icons';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View, type View as ViewType } from 'react-native';

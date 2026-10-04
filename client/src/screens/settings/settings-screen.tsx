@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Clapperboard, LayoutGrid, LogOut, Pencil, Users } from 'lucide-react-native';
+import { Clapperboard, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';

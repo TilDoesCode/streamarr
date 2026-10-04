@@ -7,6 +7,8 @@ export function isFullscreen(): boolean {
 
 export function toggleFullscreen(): void {}
 
+export function exitPlayerFullscreen(): void {}
+
 export function onFullscreenChange(_listener: () => void): () => void {
   return () => undefined;
 }

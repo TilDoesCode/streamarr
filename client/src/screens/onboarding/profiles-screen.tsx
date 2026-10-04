@@ -1,5 +1,5 @@
 import { Redirect, useRouter } from 'expo-router';
-import { Pencil, Plus } from 'lucide-react-native';
+import { Pencil, Plus } from '@/components/icons';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';

@@ -7,7 +7,7 @@ import {
   RefreshCw,
   TrafficCone,
   type LucideIcon,
-} from 'lucide-react-native';
+} from '@/components/icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';

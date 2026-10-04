@@ -1,4 +1,4 @@
-import { Pause, Play, type LucideIcon } from 'lucide-react-native';
+import { Pause, Play, type LucideIcon } from '@/components/icons';
 import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';

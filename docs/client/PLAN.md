@@ -564,3 +564,8 @@ Assignment of the Q1 S1 findings (P1/P2 must be fixed, P3 fixed when cheap, else
 - **Deep link over an open detail (item 8):** push by title id with de-duplication on every platform — a link to the
   title that is already open returns to it (no second copy), a link to another title is pushed so Back returns to
   where the viewer was.
+**R1 decisions (orchestrator, 2026-10-04 21:25):** release builds ignore `EXPO_PUBLIC_TEST_MUTED` by design, so Apple
+release builds on the simulators never start playback (the user sits next to the Mac): first frame is measured in
+release on Android (AVDs without audio output) and web (`--mute-audio`) only; Apple targets keep their dev numbers.
+R8 and resource shrinking are tried in S2 with a smoke test and adopted in app.config only if the release build
+still plays, signs in and browses; the APK ships arm64 + x86_64 only if the AVDs need it, else arm64-v8a.

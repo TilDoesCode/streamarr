@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, userEvent } from '@testing-library/react-native';
-import { Play } from 'lucide-react-native';
+import { Play } from '@/components/icons';
 import { Pressable } from 'react-native';
 
 import { PosterCard } from '@/components/media/poster-card';

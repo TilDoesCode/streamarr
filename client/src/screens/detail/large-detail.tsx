@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronRight, Info } from 'lucide-react-native';
+import { ChevronRight, Info } from '@/components/icons';
 import { useFocusEffect } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';

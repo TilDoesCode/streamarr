@@ -1,15 +1,7 @@
 'use no memo';
 // The overlay reads a mutable PlayerSession; React Compiler memoisation would freeze it.
 
-import {
-  Activity,
-  AudioLines,
-  Pause,
-  Play,
-  Rewind,
-  FastForward,
-  Square,
-} from 'lucide-react-native';
+import { Activity, AudioLines, Pause, Play, Rewind, FastForward, Square } from '@/components/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';

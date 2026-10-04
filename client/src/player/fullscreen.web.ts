@@ -25,15 +25,36 @@ export function isFullscreen(): boolean {
   return !!document.fullscreenElement;
 }
 
+/** The player put the page/video into full screen (a full screen the viewer entered elsewhere is left alone). */
+let enteredByPlayer = false;
+
 export function toggleFullscreen(): void {
   if (videoFullscreen) {
     const video = playerVideo();
     if (video?.webkitDisplayingFullscreen) video.webkitExitFullscreen?.();
-    else video?.webkitEnterFullscreen?.();
+    else {
+      enteredByPlayer = true;
+      video?.webkitEnterFullscreen?.();
+    }
     return;
   }
   if (document.fullscreenElement) void document.exitFullscreen();
-  else void document.documentElement.requestFullscreen().catch(() => undefined);
+  else {
+    enteredByPlayer = true;
+    void document.documentElement.requestFullscreen().catch(() => undefined);
+  }
+}
+
+/** Closing the player leaves the full screen it entered (iPad Safari kept the page in element full screen). */
+export function exitPlayerFullscreen(): void {
+  if (!enteredByPlayer || typeof document === 'undefined') return;
+  enteredByPlayer = false;
+  const video = playerVideo();
+  if (videoFullscreen) {
+    if (video?.webkitDisplayingFullscreen) video.webkitExitFullscreen?.();
+    return;
+  }
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
 }
 
 export function onFullscreenChange(listener: () => void): () => void {

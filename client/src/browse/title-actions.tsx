@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Check, EyeOff, Film, Layers, Play, RotateCcw } from 'lucide-react-native';
+import { Check, EyeOff, Film, Layers, Play, RotateCcw } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSyncExternalStore, type Ref } from 'react';
@@ -278,7 +278,6 @@ export function TitleActions({
       <>
         {workId && noVersions ? (
           <GlassButton
-            key="main"
             testID={`${testIDPrefix}-no-versions`}
             icon={Film}
             label={t('common.noVersions')}
@@ -289,7 +288,6 @@ export function TitleActions({
           />
         ) : workId ? (
           <GlassButton
-            key="main"
             testID={`${testIDPrefix}-play`}
             tone="solid"
             icon={played && !resume ? RotateCcw : Play}

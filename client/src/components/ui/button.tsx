@@ -1,4 +1,4 @@
-import { Play, type LucideIcon } from 'lucide-react-native';
+import { Play, type LucideIcon } from '@/components/icons';
 import { View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 

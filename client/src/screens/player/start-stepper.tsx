@@ -1,4 +1,4 @@
-import { Check, Circle, X } from 'lucide-react-native';
+import { Check, Circle, X } from '@/components/icons';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';

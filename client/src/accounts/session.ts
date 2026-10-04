@@ -12,6 +12,12 @@ const REFRESH_PATH = '/api/v1/viewer/auth/refresh';
 /** Refresh this long before the access token expires, so requests do not race the expiry. */
 export const EXPIRY_SKEW_MS = 30_000;
 
+/** A refresh that timed out or got a broken/5xx answer may have rotated on the server; a refused connection did not. */
+function mayHaveReachedServer(error: unknown): boolean {
+  const code = toAppError(error).code;
+  return code === 'timeout' || code === 'server_error';
+}
+
 /** Waits before re-sending a refresh whose answer was lost; the server replays a rotation for 30 s. */
 const REFRESH_RETRY_DELAYS_MS = [1_000, 3_000];
 
@@ -112,8 +118,14 @@ export class AccountSession implements AuthSession {
         body = await response.json().catch(() => undefined);
         if (response.ok && body === undefined) throw new AppError('server_error');
       } catch (error) {
+        // Unreachable (offline, refused): nothing reached the server, fail fast so waiting requests error at once.
+        if (!mayHaveReachedServer(error)) throw toAppError(error);
         // The server may have rotated already: re-send the same token while it still replays that rotation.
         lost = error;
+        continue;
+      }
+      if (response.status >= 500) {
+        lost = errorFromResponse(response, body);
         continue;
       }
       if (response.ok) {

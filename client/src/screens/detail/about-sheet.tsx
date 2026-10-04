@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
-import { X } from 'lucide-react-native';
+import { X } from '@/components/icons';
 import { useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Platform, ScrollView, View } from 'react-native';

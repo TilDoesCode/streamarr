@@ -289,6 +289,11 @@ export class PlaybackController {
         } else if (event.type === 'pip') {
           this.pictureInPicture = event.active;
           this.changed();
+        } else if (event.type === 'userPlayback') {
+          // Paused/resumed from the system controls: adopt it, so the next start of a source does not undo it.
+          this.paused = event.paused;
+          if (event.paused) this.report('progress');
+          this.changed();
         } else if (
           event.type === 'state' ||
           event.type === 'tracks' ||

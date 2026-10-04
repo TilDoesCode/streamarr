@@ -1,4 +1,4 @@
-import { Check, EyeOff, Film, Tv } from 'lucide-react-native';
+import { Check, EyeOff, Film, Tv } from '@/components/icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';

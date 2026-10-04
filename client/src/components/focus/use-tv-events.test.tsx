@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react-native';
 
-import { useTVEvents } from '../use-tv-events';
+import { useTVEvents } from './use-tv-events';
 
 type TVEvent = { eventType: string };
 const mockTV = { handlers: new Set<(event: TVEvent) => void>() };

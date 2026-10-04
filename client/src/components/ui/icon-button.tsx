@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react-native';
+import type { LucideIcon } from '@/components/icons';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { Focusable, FocusLift, useFocusState, type FocusableProps } from '@/components/focus';

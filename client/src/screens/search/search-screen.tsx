@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Search, X } from 'lucide-react-native';
+import { Search, X } from '@/components/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Platform, View } from 'react-native';

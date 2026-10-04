@@ -1,5 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
-import { Info, Play } from 'lucide-react-native';
+import { Info, Play } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 

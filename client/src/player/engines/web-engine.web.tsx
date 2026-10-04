@@ -1,4 +1,5 @@
-import HlsPlayer, { ErrorTypes, Events, type ErrorData } from 'hls.js';
+import type HlsPlayer from 'hls.js';
+import type { ErrorData } from 'hls.js';
 import { createElement, memo, type ComponentType } from 'react';
 import { View } from 'react-native';
 
@@ -7,6 +8,7 @@ import { colors } from '@/theme';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
 import { audioErrorCode } from './hls-audio-error';
+import { importHls } from './hls-import';
 import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
@@ -15,6 +17,22 @@ type NativeAudioTrack = { id: string; label: string; language: string; enabled: 
 type VideoWithTracks = HTMLVideoElement & { audioTracks?: NativeTrackList<NativeAudioTrack> };
 
 const MAX_SUBTITLE_REASSERTS = 5;
+
+type HlsModule = typeof import('hls.js');
+let hlsModule: HlsModule | null = null;
+let hlsLoading: Promise<HlsModule> | null = null;
+
+/** hls.js is a separate web chunk: only the MSE player needs it (Safari plays HLS natively). */
+export function loadHls(): Promise<HlsModule> {
+  hlsLoading ??= importHls().then(
+    (loaded) => (hlsModule = loaded),
+    (error: unknown) => {
+      hlsLoading = null;
+      throw error;
+    }
+  );
+  return hlsLoading;
+}
 
 function mseAvailable(): boolean {
   const scope = globalThis as { MediaSource?: unknown; ManagedMediaSource?: unknown };
@@ -61,7 +79,11 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private audioSwitched: number | null = null;
   /** hls.js subtitle track the app picked (-1 = off); hls.js's own text-track polling must not override it. */
   private wantedSubtitle: number | undefined;
+  /** What the app asked for last; a pause/play the element reports against it came from the system controls. */
+  private wantPaused = false;
   private subtitleReasserts = 0;
+  /** Source waiting for the hls.js chunk; a newer load or a release replaces it. */
+  private deferred: EngineSource | null = null;
   readonly mode: 'hls.js' | 'native' = prefersNativeHls() ? 'native' : 'hls.js';
 
   private readonly attachRef = (element: HTMLVideoElement | null) => this.attach(element);
@@ -91,8 +113,15 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.setState('playing');
       }),
       on('pause', () => {
-        if (!element.ended) this.setState('paused');
+        if (element.ended) return;
+        this.setState('paused');
+        this.syncUserPlayback(element);
       }),
+      on('play', () => this.syncUserPlayback(element)),
+      // iPhone: leaving the system full-screen player may pause the video without a pause from the app.
+      on('webkitendfullscreen' as keyof HTMLMediaElementEventMap, () =>
+        this.syncUserPlayback(element)
+      ),
       on('ended', () => {
         this.setState('ended');
         this.emit({ type: 'ended' });
@@ -189,11 +218,13 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       }
       for (let index = 0; index < video.textTracks.length; index++) {
         const track = video.textTracks[index]!;
-        if (track.kind !== 'subtitles' && track.kind !== 'captions') continue;
+        const kind = track.kind as string;
+        if (kind !== 'subtitles' && kind !== 'captions' && kind !== 'forced') continue;
         subtitles.push({
           id: String(index),
           label: track.label || track.language || `#${index + 1}`,
           language: track.language,
+          ...(kind === 'forced' ? { forced: true } : null),
           selected: track.mode === 'showing',
         });
       }
@@ -216,12 +247,27 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     }
     this.pending = null;
     this.teardown();
+    if (source.kind === 'hls' && this.mode === 'hls.js' && !hlsModule) {
+      this.deferred = source;
+      loadHls().then(
+        () => {
+          if (this.deferred === source && this.video === video) this.start(source);
+        },
+        () => {
+          if (this.deferred !== source) return;
+          this.emit({ type: 'error', reason: 'hlsjs:load' });
+          this.setState('error');
+        }
+      );
+      return;
+    }
     this.audioSwitched = null;
     this.wantedSubtitle = undefined;
     this.startSeek.cancel();
     this.watchFirstFrame(video);
-    if (source.kind === 'hls' && this.mode === 'hls.js') {
-      const hls = new HlsPlayer({ startPosition: source.startPosition ?? -1, enableWebVTT: true });
+    if (source.kind === 'hls' && this.mode === 'hls.js' && hlsModule) {
+      const { default: Hls, Events, ErrorTypes } = hlsModule;
+      const hls = new Hls({ startPosition: source.startPosition ?? -1, enableWebVTT: true });
       this.hls = hls;
       hls.subtitleDisplay = false;
       hls.on(Events.MANIFEST_PARSED, () => this.emitTracks());
@@ -292,6 +338,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   }
 
   private teardown(): void {
+    this.deferred = null;
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
     this.hls?.destroy();
@@ -306,10 +353,12 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   load(source: EngineSource): void {
     this.resetForLoad(source);
     this.started = false;
+    this.wantPaused = false;
     this.start(source);
   }
 
   play(): void {
+    this.wantPaused = false;
     if (this.video) void this.autoplay(this.video);
   }
 
@@ -318,12 +367,22 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   }
 
   pause(): void {
+    this.wantPaused = true;
     this.video?.pause();
+  }
+
+  private syncUserPlayback(video: HTMLVideoElement): void {
+    if (!this.started || video.paused === this.wantPaused) return;
+    this.wantPaused = video.paused;
+    this.emit({ type: 'userPlayback', paused: video.paused });
   }
 
   seek(position: number): void {
     this.startSeek.cancel();
-    if (this.video) this.video.currentTime = Math.max(0, position);
+    if (!this.video) return;
+    this.video.currentTime = Math.max(0, position);
+    // `seeked` may take a while on a stream: the clock shows the target at once.
+    this.emitTime();
   }
 
   setAudioTrack(id: string): void {
