@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import type { SeriesDetail } from '@/browse/queries';
@@ -32,12 +33,16 @@ export function SeasonChips({
   const { t } = useTranslation();
   const { s, font } = useShell();
   const gap = useFocusGap(s(16));
+  // TV: entering the chips from above lands on the active season, not the geometrically nearest chip.
+  const [activeNode, setActiveNode] = useState<View | null>(null);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(24) }}>
       <FocusGuide
-        remember
+        // tvOS ignores destinations once the guide remembers a child: enter on the active season every time.
+        remember={!activeNode}
         trap={END_OF_ROW}
         testID="series-seasons"
+        destinations={activeNode ? [activeNode] : undefined}
         onFocusEnter={() => onFocusInside?.(true)}
         onFocusLeave={() => onFocusInside?.(false)}
         style={{ flexDirection: 'row', gap, flexShrink: 1 }}>
@@ -56,6 +61,7 @@ export function SeasonChips({
                   })
             }
             selected={item.seasonNumber === season}
+            ref={item.seasonNumber === season ? setActiveNode : undefined}
             onPress={() => item.seasonNumber !== season && onSeason(item.seasonNumber)}
           />
         ))}

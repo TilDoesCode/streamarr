@@ -14,6 +14,7 @@ import { ToastProvider } from '@/components/ui/toast';
 import i18n, { setLanguagePreference } from '@/i18n';
 import { aboutSheetHost } from '@/screens/detail/about-sheet';
 import { versionSheetHost } from '@/browse/version-sheet';
+import { SERIES_TITLE_WIDTH } from '@/screens/detail/large-detail';
 import { methodLabel } from '@/screens/settings/account-security';
 import { colors, DesignProvider } from '@/theme';
 
@@ -675,6 +676,12 @@ describe('Series Bühne', () => {
     // One line, remounted per label: the episode number can never end up on a hidden second line.
     const pill = screen.getByTestId('stage-pill');
     expect(pill.props.numberOfLines).toBe(1);
+    // No logo: the text title keeps the logo width and two lines (Apple TV tab bar, Q1-52).
+    const seriesTitle = screen.getByTestId('hero-title');
+    expect(seriesTitle.props.numberOfLines).toBe(2);
+    expect(StyleSheet.flatten(seriesTitle.props.style).maxWidth).toBeLessThanOrEqual(
+      SERIES_TITLE_WIDTH
+    );
     expect(screen.getByTestId('series-play')).toHaveTextContent('Resume');
     expect(screen.getByTestId('series-start-over')).toBeOnTheScreen();
     await waitFor(

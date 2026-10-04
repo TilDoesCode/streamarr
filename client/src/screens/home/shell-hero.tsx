@@ -378,7 +378,8 @@ function HeroCopy({
         ) : null}
         <GlassButton
           testID="home-hero-info"
-          ref={detail?.playWorkId ? undefined : targetRef}
+          // Only once the details are known: a Play button that appears later must not lose focus to it.
+          ref={detail && !detail.playWorkId ? targetRef : undefined}
           icon={Info}
           {...focusProps}
           tint={featured.tint}

@@ -76,6 +76,9 @@ export function peopleCredits(
   });
 }
 
+/** Series Bühne: width of the series logo or text title (shell px), left of the Apple TV tab bar. */
+export const SERIES_TITLE_WIDTH = 340;
+
 export type LargeDetailProps = {
   testID: string;
   kindLabel: string;
@@ -288,9 +291,10 @@ function StageLayout({
                     title={title}
                     logoUri={logoUrl}
                     logoHeight={s(62)}
-                    // Apple TV: clear of the native tab bar, which starts at x ≈ 540.
-                    logoWidth={s(340)}
+                    // Apple TV: logo and text title clear of the native tab bar, which starts at x ≈ 540.
+                    logoWidth={s(SERIES_TITLE_WIDTH)}
                     textStyle={{
+                      maxWidth: s(SERIES_TITLE_WIDTH),
                       fontFamily: fonts.displayBold,
                       fontSize: s(48),
                       lineHeight: s(56),
