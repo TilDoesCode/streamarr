@@ -32,8 +32,14 @@ import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { aspect, colors, gutterPadding, motion, useDesign } from '@/theme';
 
-import { FeaturedStore, useFeatured, type Featured } from './featured';
-import { ContinueCard, DiscoverCard, featuredFromItem, NextUpCard } from './home-cards';
+import { continueRowKeys, FeaturedStore, useFeatured, type Featured } from './featured';
+import {
+  ContinueCard,
+  DiscoverCard,
+  featuredFromItem,
+  featuredKey,
+  NextUpCard,
+} from './home-cards';
 import { HandheldHomeHero } from './home-hero';
 import { heroRowsTop, ShellHero } from './shell-hero';
 
@@ -143,6 +149,15 @@ export function HomeScreen() {
   const feature = shell.large
     ? (item: Parameters<FeaturedStore['set']>[0]) => store.set(item)
     : undefined;
+  const continueKeys = continueRowKeys(continueItems.map((item) => item.workId));
+  const cardKeys = [
+    ...continueItems.map((item) => featuredKey.continue(item.workId)),
+    ...nextItems.map((item) => featuredKey.next(item.workId)),
+    ...discover.flatMap((row) =>
+      row.items.map((item) => featuredKey.item(item.mediaType, item.tmdbId))
+    ),
+  ].join('|');
+  useEffect(() => store.present(new Set(cardKeys.split('|'))), [store, cardKeys]);
   // Every form factor opens on the same featured title: the first Continue watching card, else the top pick.
   const lead = (item: Featured) => store.lead(item);
   const phoneHero = useFeatured(store) ?? topPick;
@@ -158,7 +173,7 @@ export function HomeScreen() {
       title: continueTitle,
       kind: 'landscape',
       items: continueItems,
-      itemKey: (index) => continueItems[index]?.workId ?? String(index),
+      itemKey: (index) => continueKeys[index] ?? String(index),
       render: (index, preferred) => (
         <ContinueCard
           testID={`home-card-continue-${index}`}

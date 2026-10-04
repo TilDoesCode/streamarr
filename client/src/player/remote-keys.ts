@@ -1,6 +1,8 @@
 import { addKeyListener, playerKeysAvailable, setKeyCapture } from '@modules/player-keys';
 import { useEffect, useEffectEvent } from 'react';
-import { Platform, useTVEventHandler } from 'react-native';
+import { Platform } from 'react-native';
+
+import { useTVEvents } from './use-tv-events';
 
 export type RemoteAction =
   | 'toggle'
@@ -62,7 +64,7 @@ export function useRemoteKeys(
     };
   }, [dpad]);
 
-  useTVEventHandler((event) => {
+  useTVEvents((event) => {
     if (playerKeysAvailable) return;
     const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
     if (Platform.OS === 'ios') {

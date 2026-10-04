@@ -11,6 +11,9 @@ import {
   qualityLabel,
   stepDownKey,
   videoTransfer,
+  LARGE_TITLE_MAX_WIDTH,
+  subtitleFormat,
+  subtitleLabel,
 } from '../overlay-labels';
 
 const version = (releaseId: string, prediction: string, rank: number) =>
@@ -114,5 +117,74 @@ describe('audio labels with renditions', () => {
     expect(audioSpec(german, rendition)).toBe('AAC 2.0');
     expect(audioTransfer(german, rendition)).toBe('Dolby Digital 5.1 → AAC 2.0');
     expect(audioSpec(german)).toBe('Dolby Digital 5.1');
+  });
+});
+
+describe('subtitle labels (Q1-15)', () => {
+  const sherlock = [
+    {
+      index: 3,
+      codec: 'ass',
+      language: 'ger',
+      title: 'Deutsch (forced)',
+      forced: true,
+      deliveredAs: 'webvtt',
+    },
+    {
+      index: 4,
+      codec: 'ass',
+      language: 'ger',
+      title: 'Deutsch (styled)',
+      forced: false,
+      deliveredAs: 'webvtt',
+    },
+    {
+      index: 5,
+      codec: 'subrip',
+      language: 'eng',
+      title: 'English',
+      forced: false,
+      deliveredAs: 'webvtt',
+    },
+  ];
+  const names: Record<string, string> = { ger: 'Deutsch', eng: 'Englisch' };
+  const label = (index: number, tracks = sherlock) =>
+    subtitleLabel(
+      tracks.find((track) => track.index === index)!,
+      tracks,
+      (code) => names[code]!,
+      'Spur'
+    );
+
+  it('names the language only when forced or format already tell the tracks apart', () => {
+    expect(label(3)).toBe('Deutsch');
+    expect(label(4)).toBe('Deutsch');
+    expect(label(5)).toBe('Englisch');
+  });
+
+  it('adds the file title for two tracks of one language, kind and format', () => {
+    const sdh = [...sherlock, { ...sherlock[1]!, index: 6, title: 'SDH' }];
+    expect(label(4, sdh)).toBe('Deutsch · Deutsch (styled)');
+    expect(label(6, sdh)).toBe('Deutsch · SDH');
+  });
+
+  it('shows readable formats instead of raw codec ids', () => {
+    expect(subtitleFormat('subrip')).toBe('SRT');
+    expect(subtitleFormat('SUBRIP')).toBe('SRT');
+    expect(subtitleFormat('hdmv_pgs_subtitle')).toBe('PGS');
+    expect(subtitleFormat('ass')).toBe('ASS');
+    expect(subtitleFormat(null)).toBe('');
+  });
+});
+
+describe('large player title (Q1-13)', () => {
+  it('fits "Sherlock · S2, F2 · Die Hunde von Baskerville" on one line at 1280 px', () => {
+    const scale = 1280 / 1920;
+    const bar = 1280 - 2 * 96 * scale;
+    const title = 'Sherlock · S2, F2 · Die Hunde von Baskerville';
+    // Display bold averages ~0.5 em per character.
+    const needed = title.length * 0.5 * 56 * scale;
+    expect((parseFloat(LARGE_TITLE_MAX_WIDTH) / 100) * bar).toBeGreaterThan(needed);
+    expect(0.62 * bar).toBeLessThan(needed);
   });
 });

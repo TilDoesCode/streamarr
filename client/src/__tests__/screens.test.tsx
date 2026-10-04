@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { cleanup, fireEvent, userEvent, within } from '@testing-library/react-native';
-import { Stack } from 'expo-router';
+import { router as appRouter, Stack } from 'expo-router';
 import { act, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
 import { ActionSheetIOS, FlatList, Platform, StyleSheet } from 'react-native';
@@ -18,6 +18,20 @@ import { methodLabel } from '@/screens/settings/account-security';
 import { colors, DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
+
+// Counts MovieScreen mounts: a new title must remount the page (TV focus memory lives in its focus guides).
+const mockMovieMounts = { count: 0 };
+jest.mock('@/screens/detail/movie-screen', () => {
+  const actual = jest.requireActual('@/screens/detail/movie-screen');
+  const { useEffect } = jest.requireActual('react');
+  return {
+    ...actual,
+    MovieScreen: () => {
+      useEffect(() => void (mockMovieMounts.count += 1), []);
+      return actual.MovieScreen();
+    },
+  };
+});
 
 // Phone tests override the window (the jest default is tablet-sized).
 let mockWindow: { width: number; height: number; scale: number; fontScale: number } | undefined;
@@ -658,6 +672,9 @@ describe('Series Bühne', () => {
     await open('/series/7');
     await waitFor(() => expect(heading()).toHaveTextContent('S1 Episode 2'), WAIT);
     expect(screen.getByText('Season 1 · Episode 2 · Up next')).toBeOnTheScreen();
+    // One line, remounted per label: the episode number can never end up on a hidden second line.
+    const pill = screen.getByTestId('stage-pill');
+    expect(pill.props.numberOfLines).toBe(1);
     expect(screen.getByTestId('series-play')).toHaveTextContent('Resume');
     expect(screen.getByTestId('series-start-over')).toBeOnTheScreen();
     await waitFor(
@@ -884,11 +901,37 @@ describe('Version picker', () => {
     expect(router.getSearchParams()).toMatchObject({ releaseId: 'r1' });
   });
 
+  it('a link to another movie over an open detail starts a fresh page (focus memory per route)', async () => {
+    handlers['/api/v1/viewer/catalog/movies/456'] = () =>
+      json(200, { ...movie, tmdbId: 456, workId: 'tmdb-movie-456', title: 'Wing It!' });
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-456/versions'] = () =>
+      json(200, { workId: 'tmdb-movie-456', versions: [version(1, true, 'direct')] });
+    await open('/movie/123');
+    await screen.findByTestId('movie-play', {}, WAIT);
+    const mounts = mockMovieMounts.count;
+    await act(async () => appRouter.setParams({ id: '456' }));
+    await screen.findByTestId('movie-play', {}, WAIT);
+    expect(mockMovieMounts.count).toBe(mounts + 1);
+  });
+
   it('shows a skeleton while versions load', async () => {
     handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = never;
-    await open('/movie/123');
-    await userEvent.setup().press(await screen.findByTestId('movie-versions', {}, WAIT));
+    await open('/versions/tmdb-movie-123?title=Sintel');
     expect((await screen.findAllByTestId('versions-loading', {}, WAIT)).length).toBeGreaterThan(0);
+  });
+
+  it('keeps the main button and adds Versions only once the versions arrived (TV focus)', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const pending = new Promise<Response>((resolve) => (answer = resolve));
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = () =>
+      pending.then((response) => response.clone());
+    await open('/movie/123');
+    const main = await screen.findByTestId('movie-play', {}, WAIT);
+    expect(screen.queryByTestId('movie-versions')).toBeNull();
+    await act(async () => answer(json(200, { workId: 'tmdb-movie-123', versions: [] })));
+    const none = await screen.findByTestId('movie-no-versions', {}, WAIT);
+    expect(none).toBe(main);
+    expect(screen.queryByTestId('movie-versions')).toBeNull();
   });
 
   it('shows an error with retry', async () => {

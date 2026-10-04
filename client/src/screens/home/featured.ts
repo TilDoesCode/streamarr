@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import type { CatalogSpec } from '@/components/spec';
+import { parseWorkId } from '@/lib/work-id';
 
 /** What the home hero shows: the focused card on TV, the top pick elsewhere. */
 export type Featured = {
@@ -50,6 +51,8 @@ export class FeaturedStore {
   private chosen = false;
   /** The latest focused/hovered title, before the debounce applies it. */
   private pending: Featured | null = null;
+  /** The first card's title, kept so it can take over once the chosen card leaves Home. */
+  private leadItem: Featured | null = null;
 
   get = () => this.current;
 
@@ -84,8 +87,16 @@ export class FeaturedStore {
 
   /** The first card's title: shown until something else is featured, kept current while it loads. */
   lead(item: Featured) {
+    this.leadItem = item;
     if (this.chosen && this.current?.key !== item.key) return;
     this.replace(item);
+  }
+
+  /** The cards on Home now; a chosen title that is gone (watched on, refreshed away) hands the hero back to the lead. */
+  present(keys: ReadonlySet<string>) {
+    if (!this.chosen || !this.current || keys.has(this.current.key)) return;
+    this.chosen = false;
+    if (this.leadItem && keys.has(this.leadItem.key)) this.replace(this.leadItem);
   }
 
   /** Sets a default only while nothing was featured yet. */
@@ -106,4 +117,16 @@ export class FeaturedStore {
 
 export function useFeatured(store: FeaturedStore): Featured | null {
   return useSyncExternalStore(store.subscribe, store.get);
+}
+
+/** Continue row keys: one series keeps its card across episodes, so TV focus stays on it after the next one played. */
+export function continueRowKeys(workIds: readonly (string | null | undefined)[]): string[] {
+  const series = workIds.map((workId) => {
+    const ref = parseWorkId(workId);
+    return ref?.kind === 'episode' ? `series-${ref.tmdbId}` : undefined;
+  });
+  return workIds.map((workId, index) => {
+    const key = series[index];
+    return key && series.indexOf(key) === series.lastIndexOf(key) ? key : (workId ?? String(index));
+  });
 }

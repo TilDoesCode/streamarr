@@ -112,7 +112,12 @@ async function setup({
   const fetch = expoFetch
     ? async (input: Request) => foreign(await server.fetch(input))
     : server.fetch;
-  const session = new AccountSession('acc1', store, { baseUrl: BASE, fetch, now });
+  const session = new AccountSession('acc1', store, {
+    baseUrl: BASE,
+    fetch,
+    now,
+    sleep: async () => undefined,
+  });
   const client = createApiClient({ baseUrl: BASE, session, fetch });
   const ended = jest.fn();
   store.onSessionEnded(ended);

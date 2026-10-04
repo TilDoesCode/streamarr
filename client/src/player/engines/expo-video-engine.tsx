@@ -55,6 +55,9 @@ function createExpoVideoSurface(
   return memo(ExpoVideoSurface);
 }
 
+/** Time events while playing; the clock shows whole seconds. */
+const TIME_UPDATE_SECONDS = 0.5;
+
 /** expo-video (ExoPlayer on Android, AVPlayer on Apple). */
 export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   readonly kind = 'expo-video' as const;
@@ -68,7 +71,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   constructor() {
     super();
     const player = this.player;
-    player.timeUpdateEventInterval = 0.1;
+    player.timeUpdateEventInterval = TIME_UPDATE_SECONDS;
     player.keepScreenOnWhilePlaying = true;
     player.muted = effectiveMuted(false);
     if (AIRPLAY) player.allowsExternalPlayback = true;
@@ -88,6 +91,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         }
       }),
       player.addListener('playingChange', ({ isPlaying }) => {
+        // Android keeps posting time updates while paused; each one wakes the JS thread.
+        player.timeUpdateEventInterval = isPlaying ? TIME_UPDATE_SECONDS : 0;
         if (this.getSnapshot().state === 'ended' && !isPlaying) return;
         if (player.status === 'readyToPlay') this.setState(isPlaying ? 'playing' : 'paused');
       }),
@@ -220,6 +225,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   seek(position: number): void {
     this.start.cancel();
     this.player.currentTime = Math.max(0, position);
+    if (!this.player.playing) {
+      const { duration, buffered } = this.getSnapshot();
+      this.emit({ type: 'time', position: Math.max(0, position), duration, buffered });
+    }
   }
 
   setAudioTrack(id: string): void {
