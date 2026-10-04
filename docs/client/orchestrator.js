@@ -683,6 +683,141 @@ const TASKS = {
       'OpenAPI frozen, contract check, e2e and the full server suite green; client and web types regenerated if the contract changed',
     ],
   },
+  'Q1': {
+    title: 'Client: quality walkthrough on every device (audit, no code changes)',
+    track: 'Client',
+    deps: ['F7'],
+    maxFixes: 0,
+    guide: [
+      '- Part of round I ("tip top"). An audit, not a fix task: do NOT change product code. Output: docs/client/journal/Q1.md with one findings table (id Q1-NN, target, screen/flow, severity P1/P2/P3 per PLAN.md section 5 "I", what is wrong, exact repro, expected, screenshot path, suspected file/area, "BACKLOG" when already listed there) and screenshots docs/client/screenshots/Q1/.',
+      '- Targets, one at a time: S1 web Chrome (1280, 1920, 390 px; DE and EN), Google TV emulator, Android phone emulator (if the dev build stays responsive; record ANRs as a finding with host load); S2 iPhone 18 Pro, iPad Pro 13 (portrait + landscape), Apple TV 4K. Mobile Safari only as a short smoke (iPhone).',
+      '- Flows per target (the same checklist is reused by Q2): first start / sign-in (deep link + password, wrong password, unreachable server via a wrong port), profile picker and switch (anna, ben with 2FA, the kid profile), Home (hero, rows, continue watching, next up, row memory), Movies/Series browse (genres, sort, paging, empty genre), Search (typing, recent searches, no results), movie and series detail (Bühne on TV/iPad/web, phone detail), versions sheet, About sheet, player (start stepper, seek, audio + subtitles incl. forced, next episode/up-next, end card, replay, close, resume afterwards), Settings (profile edit, devices, sign out others, language switch DE<->EN live, sign out), error/empty/loading states, back/Menu chains, rotation on phones, focus on TV (lost focus, rings touching neighbours, focus after closing sheets/player).',
+      '- Look at every screenshot you judge; judge like a picky designer and a picky QA engineer (alignment, clipping, truncation, wrong language, inconsistent spacing between platforms, jank, slow transitions with a number). Do not report emulator-only slowness as P1/P2 unless it would plausibly happen on hardware; mark it "emulator".',
+      '- Muted playback only. Leave anna signed in, ben unchanged; record every test-data change (watch state, last played version) in the journal.',
+    ].join('\n'),
+    acceptance: [
+      'every target and every flow of the checklist covered or explicitly marked as not reachable with the reason',
+      'findings table complete (severity, repro, screenshot) and cross-referenced with BACKLOG.md',
+      'no product code changed; all devices, Metro and Chromium stopped',
+    ],
+  },
+  'B8': {
+    title: 'Server: replay resume point, consistent rendition codec, round I follow-ups, Dev World long season',
+    track: 'Backend',
+    deps: ['B7'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I. Replay keeps a resume point (PLAN.md section 5 "I" decision): after a playback completed the work (CompletedBy), a later report of the same playback whose position went back below the resume threshold starts a new viewing (resume point again, played state stays); post-credits reports stay ignored. Tests for both.',
+      '- Audio renditions (docs/client/BACKLOG.md Server, F5): the delivered rendition codec must not depend on start vs /switch or on audioLanguage for the same device and title (Safari AC-3 2.0 at start vs AAC 2.0 after /switch; iPhone/Apple TV the reverse); the rendition label/channels describe what is delivered (Sintel German AC-3 5.1 is labelled 2.0 — find out whether it is downmixed and label it truthfully). Tests.',
+      '- Viewer sessions: never store the English literal "Unknown device"; store null (or carry the name from the first sign-in step) so clients show their translated fallback; migrate existing rows. A display name of only spaces answers 400 (validation), docs.',
+      '- B7 leftovers: docs/api.md versions section lists predictedMethod vlc and VLC reasons; the no-store route-walk test also asserts Expires: 0 and walks HEAD/OPTIONS; verify_devworld.py always removes its probe viewer (try/finally); one-line XML summary on NoStoreApiResponses. Dev World stream info of the 4K HDR10 BBB: videoRange must agree with hdr (check the generated file tags, fix the fixture or the probe).',
+      '- Dev World: add one long season (at least 24 episodes, short generated media like the existing episodes, artwork optional) to an existing or a new fixture series so the TV long-season strip can be checked live; keep existing fixture ids stable (clients and tests depend on them); update e2e/verify scripts and the fixture docs.',
+      '- Never start an emulator or simulator, never touch client/ (except regenerating client/src/api/schema.d.ts once at the end if the OpenAPI changes), never restart or republish 39300 (a client audit uses it); test on 39310. Keep host load modest: filtered dotnet test runs while iterating, the full suite once at the end.',
+    ].join('\n'),
+    acceptance: [
+      'replay after completion leaves a resume point; post-credits reports stay ignored (tests)',
+      'same device + title deliver the same rendition codec at start and after /switch; rendition labels match the delivered channels (tests)',
+      'no stored "Unknown device" literal (migration); whitespace display name -> 400; B7 leftovers fixed; HDR10 BBB videoRange consistent',
+      'Dev World has a season with >= 24 episodes; existing ids stable; OpenAPI frozen, contract check, e2e and the full server suite green; client/web types regenerated if the contract changed',
+    ],
+  },
+  'T1': {
+    title: 'Client: tests and code health (no devices, own git worktree)',
+    track: 'Client',
+    deps: ['F7'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I. Runs beside a device audit in the main tree, so you work ONLY in the git worktree given in your prompt (never edit /Users/til/Development/streamarr itself) and never start Metro, a simulator, an emulator or Chromium. jest with --maxWorkers=2.',
+      '- Test gaps from docs/client/BACKLOG.md: engine-error -> /switch fallback of an in-session audio switch and NAME-first track matching in audio-renditions.ts (both missing per the F5 mutation run; add tests that fail when the logic is broken — prove it by a temporary mutation, then revert it); focus-clearance screen tests per primitive (action row, chip row) asserting the gap; url-cache test beyond grepping the source if feasible in jest.',
+      '- Code health: controller.audioSwitches bounded or behind __DEV__; no remembered audio language sent for single-audio titles; PHONE_HEADER_HEIGHT duplicate and stray import in phone-detail.tsx; multi-line doc comments -> one line (project rule); dead code and unused exports (run a tool such as knip/ts-prune via npx without adding a dependency, judge each hit); unused i18n keys and a jest test that de.json and en.json have the same keys and that no user-visible string literal is hardcoded in src/ (reasonable heuristic, allowlist for technical strings).',
+      '- Web multi-tab: each tab writes the whole account list to localStorage, so a second tab can overwrite an edited display name; write per account or merge on storage events; tests.',
+      '- Brand PNGs (icon 554 KB, top shelf 2.2-2.6 MB): smaller without visible banding (noise-free re-render or a better encoder; compare crops before/after); do not change the look.',
+    ].join('\n'),
+    acceptance: [
+      'the new tests fail on a deliberate mutation of the code they guard (evidence in the journal) and pass on the real code',
+      'audioSwitches bounded, single-audio titles send no remembered language, duplicates/dead code removed with judgement, de/en key parity test and hardcoded-string test green',
+      'web tabs no longer overwrite each other\'s account edits (test)',
+      'brand PNGs smaller with no visible change (before/after crops)',
+      'typecheck, lint, prettier and jest green in the worktree; nothing changed outside it',
+    ],
+  },
+  'F8': {
+    title: 'Client: TV polish (Google TV + Apple TV, JS level) incl. Q1 TV findings',
+    track: 'Client',
+    deps: ['Q1', 'B8'],
+    maxFixes: 2,
+    guide: [
+      '- Part of round I. Fix every P1/P2 TV finding of docs/client/journal/Q1.md assigned to F8 by the orchestrator (list in your prompt) plus these BACKLOG items: sessions of anna end on the Google TV AVD between runs ("Signed out for your security" / "Your session has ended") — find out which side ends it (refresh rotation interrupted by an app kill -> refresh_token_reused -> sign-out would hit real users: reproduce with an app kill during and right after a refresh, fix at the root on client and/or report a server change to the orchestrator); TitleActions loading state that keeps the main button mounted (focus must not move) while an episode\'s versions load; stage pill "Season 3 · Episode" without number (Android text clipping); deep link from one detail to another keeps the previous page\'s focused slot (focus memory per route); genre scroller vs sort control gap from the focus rule; useFocusGap on non-focus platforms (decide and record); LogBox "state update on a component that hasn\'t mounted yet" at Google TV Home; long-season strip position live with the B8 long season.',
+      '- Check every fix live on Google TV and Apple TV 4K (cached tvOS app, docs/client/tv-remote.sh), one device at a time; tests for each root cause.',
+    ].join('\n'),
+    acceptance: [
+      'every assigned Q1 TV finding fixed (before/after screenshots) or moved to BACKLOG with a sound reason',
+      'the Google TV sign-out cause found and fixed (or proven to be emulator-only with evidence)',
+      'versions-loading state keeps focus, long-season strip checked live, deep-link focus memory per route',
+      'no focus ring touches a neighbour; no regressions; typecheck, lint and tests green',
+    ],
+  },
+  'I4': {
+    title: 'Client: Apple TV native focus and Menu (tvOS rebuild)',
+    track: 'Client',
+    deps: ['F8'],
+    maxFixes: 2,
+    guide: [
+      '- Part of round I. The tvOS items react-native-tvos cannot solve from JS (docs/client/BACKLOG.md "Needs Xcode" + Apple TV entries): initial focus inside presented sheets (Versions, About: native preferredFocusEnvironments on the presented controller or an equivalent native hook); Menu inside the Versions sheet and on library grid chips must step back one level, not pop the whole detail or exit; Menu from a non-Start tab goes to Start first (like Android TV); player: after Menu hides the overlay no hidden button keeps focus; the native top tab bar while Settings scrolls (content slides under it); "Zurück zu den Details" from a player started on Home must not focus the Start tab; the last Versions card glow cut at the panel bottom; deep link over an open detail pushes instead of replacing. Plus Q1 Apple TV findings assigned to I4.',
+      '- Build: switch the prebuild to tvOS (cd client && node scripts/prebuild-ios.mjs tvos), xcodebuild for the Apple TV simulator, refresh ~/.cache/streamarr-tvos-app; at the end switch back to iOS (node scripts/prebuild-ios.mjs ios) and, if native code shared with iOS changed, rebuild the iPhone app once and refresh ~/.cache/streamarr-ios-app. Check free disk space before each build (stop and report if < 8 GB). Native code as an Expo module or config plugin under client/modules or client/plugins (never hand-edit generated ios/ files that a prebuild overwrites).',
+      '- VLCKit on tvOS: verify once whether it plays; if yes enable VLC hints on tvOS, else record why it stays native-only.',
+    ].join('\n'),
+    acceptance: [
+      'Versions and About sheets open with focus inside; Menu steps back exactly one level in sheets, grid chips and non-Start tabs',
+      'player: no hidden focus after Menu; Settings content never slides under the tab bar; back-to-details focus correct; no glow cut',
+      'tvOS build reproducible from the prebuild (documented), cached apps refreshed, iOS prebuild restored',
+      'no regressions on iPhone/iPad (same native modules); typecheck, lint and tests green',
+    ],
+  },
+  'F9': {
+    title: 'Client: phones, tablets and web polish incl. Q1 findings',
+    track: 'Client',
+    deps: ['I4'],
+    maxFixes: 2,
+    guide: [
+      '- Part of round I. Fix every P1/P2 phone/tablet/web finding of docs/client/journal/Q1.md assigned to F9 (list in your prompt) plus these BACKLOG items: web Escape / Alt+Left for the BackControl; iPad Safari stays in element fullscreen after closing the player; iPhone Safari pause from system controls not reflected; iOS sign-in deep link while signed in has no way back (offer "back to the app"); Android phone Sign in button half under the keyboard; iOS NativeTabs labels keep the old language after a live switch; large titles do not shrink on Search/Settings; first player close after a fresh boot stays landscape; Safari forced subtitle (kind "forced") missing in the subtitle panel; client trims and validates the display name (B8 answers 400 for blanks); Replay from the end card keeps a resume point with B8 (check live).',
+      '- Check live on web Chrome (1280/390), Mobile Safari (iPhone, iPad), iPhone 18 Pro, iPad Pro 13 and the Android phone AVD; one device at a time; tests per root cause.',
+    ].join('\n'),
+    acceptance: [
+      'every assigned Q1 finding fixed (before/after screenshots) or moved to BACKLOG with a sound reason',
+      'listed BACKLOG items fixed or answered with evidence',
+      'no regressions on TV (shared code paths: jest + one Google TV smoke); typecheck, lint and tests green',
+    ],
+  },
+  'R1': {
+    title: 'Client: release builds — start time, memory, dev-only crashes, bundle size',
+    track: 'Client',
+    deps: ['F9'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I. Build release variants: Android (assembleRelease or an expo release build for the Google TV AVD and the phone AVD), iOS and tvOS Release for the simulators, web production export (expo export -p web). Disk is tight: check free space before each build, clean old build outputs you created, stop and report below 8 GB.',
+      '- Measure and compare with the dev builds: cold start to Home, Home memory (Android dumpsys meminfo / iOS footprint), detail push/pop time on Google TV (dev: ~5 s on the AVD), first frame of a muted direct play; check whether the dev-only issues reproduce in release (Google TV deep-link crash "App react context shouldn\'t be created before", LogBox warnings, Android phone ANR at player start); web bundle size per route chunk and image weight.',
+      '- Fix cheap release-only problems (proguard/hermes/asset issues) at the root; everything else to BACKLOG with numbers. Leave the dev builds installed afterwards (agents rely on them).',
+    ].join('\n'),
+    acceptance: [
+      'release builds exist for Android TV/phone, iOS, tvOS and web, each launched and signed in once',
+      'numbers table dev vs release (start, memory, pop time, first frame, bundle size) in the journal',
+      'dev-only issues classified (gone in release / still there -> fixed or BACKLOG); dev builds restored',
+    ],
+  },
+  'Q2': {
+    title: 'Client: final walkthrough with the Q1 checklist on every device',
+    track: 'Client',
+    deps: ['R1'],
+    maxFixes: 0,
+    guide: [
+      '- Part of round I. Repeat the Q1 checklist (docs/client/journal/Q1.md) on every target; re-check every Q1 finding (fixed / still open) and look for new defects. No code changes; findings table like Q1 in docs/client/journal/Q2.md, screenshots docs/client/screenshots/Q2/.',
+    ].join('\n'),
+    acceptance: [
+      'every Q1 finding re-checked with status; every target and flow covered',
+      'no P1/P2 open on any target, or each listed with repro for a follow-up fix round',
+    ],
+  },
 }
 
 const TRACK_PATHS = {

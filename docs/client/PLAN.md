@@ -520,3 +520,24 @@ Order: D2 runs now beside F6 (no devices); F5 after F6; F7 after the user's choi
 - **Phones resume the last played version too.** Phone Resume uses the same `playTarget` as the Bühne (last played
   version when it is still offered and playable here, else the recommendation), and the phone version card names that
   version with the method and a "Zuletzt gespielt" marker, so card and Play never disagree.
+
+### I — tip top (user request 2026-10-04 16:10: "mach weiter bis die app tip top ist")
+Goal: every target feels finished. No known defect in the core flows, no visual rough edge, the Apple TV native gaps
+closed, release builds checked, the backlog cleared or parked with a reason (real hardware only). Real hardware stays
+out of scope (the user tests it). Order and parallelism (8 GB RAM, one simulator/emulator at a time, disk ~14 GB free):
+- **Phase 1 (parallel):** **Q1** quality walkthrough on every device (no code changes) ‖ **B8** server follow-ups
+  (no devices, Dev World 39310) ‖ **T1** tests and code health (no devices, in its own git worktree, merged by the
+  orchestrator).
+- **Phase 2 (client, one after the other, each verified):** **F8** TV polish (JS, Google TV + Apple TV) → **I4** Apple
+  TV native focus and Menu (tvOS rebuild) → **F9** phones, tablets and web. Q1 findings are assigned to these three by
+  the orchestrator (P1/P2 must be fixed, P3 fixed when cheap, rest to BACKLOG).
+- **Phase 3:** **R1** release builds (Android TV APK on the Google TV AVD, iOS/tvOS Release on the simulators, web
+  production export): start time, memory, the dev-only crashes, bundle size → **Q2** final walkthrough with the Q1
+  checklist on every device + round I report.
+Decisions taken by the orchestrator (technical, no user decision needed):
+- **Replay keeps a resume point** (backlog, F4 slice 4): fixed on the server. After a playback completed the work, a
+  later report of the same playback whose position went back below the resume threshold starts a new viewing (resume
+  point again, played state stays); post-credits reports past the completion threshold stay ignored.
+- **Severity scale for Q1/Q2:** P1 broken flow, crash, data loss, security, sign-out without reason; P2 visible defect
+  (layout break, clipped/wrong text or language, lost focus, wrong state, focus ring touching a neighbour); P3 polish
+  (spacing, alignment, motion, copy tone). Round I is done when Q2 finds no P1/P2 on any target.
