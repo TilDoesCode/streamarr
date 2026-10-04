@@ -39,7 +39,13 @@ export type SubtitleTrack = NonNullable<
 >[number];
 export type NoticeKind = 'stepDown' | 'switchFailed' | 'offline';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
-export type FailedState = { code: string; params?: ErrorParams; actions: string[] };
+/** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
+export type FailedState = {
+  code: string;
+  params?: ErrorParams;
+  status?: number;
+  actions: string[];
+};
 /** One audio switch: in the session (rendition) or via `/switch`; `ms` until the new track plays on. */
 export type AudioSwitchSample = {
   via: 'session' | 'server';
@@ -112,6 +118,7 @@ export class PlaybackController {
   private startFloor = 0;
   private noticeId = 0;
   private lastError = '';
+  private lastErrorStatus: number | undefined;
   private resumeChoice: ((seconds: number) => void) | null = null;
   /** Saved position offered in the `resume` phase. */
   resumeSeconds = 0;
@@ -194,7 +201,12 @@ export class PlaybackController {
     } catch (error) {
       if (this.closed) return;
       const appError = toAppError(error);
-      this.fail({ code: appError.code, params: appError.params, actions: ['retry'] });
+      this.fail({
+        code: appError.code,
+        params: appError.params,
+        status: appError.status,
+        actions: ['retry'],
+      });
     }
   }
 
@@ -231,6 +243,7 @@ export class PlaybackController {
     if (ready.state !== 'failed') return ready;
     if (!failPlayback) {
       this.lastError = ready.error?.code ?? 'playback_failed';
+      this.lastErrorStatus = undefined;
       return null;
     }
     this.fail({
@@ -469,10 +482,16 @@ export class PlaybackController {
       if (this.closed) return false;
       const appError = toAppError(error);
       if (!notifyFailure) {
-        this.fail({ code: appError.code, params: appError.params, actions: ['retry'] });
+        this.fail({
+          code: appError.code,
+          params: appError.params,
+          status: appError.status,
+          actions: ['retry'],
+        });
         return false;
       }
       this.lastError = appError.code;
+      this.lastErrorStatus = appError.status;
       await this.restore(playback, position, previousPreferences);
       return false;
     }
@@ -507,11 +526,20 @@ export class PlaybackController {
       const ready = await this.wait(switched);
       if (!ready) return;
       await this.attach(ready, position);
-      this.showNotice('switchFailed', { code });
+      const status = this.lastErrorStatus;
+      this.showNotice(
+        'switchFailed',
+        status === undefined ? { code } : { code, status: `${status}` }
+      );
     } catch (error) {
       if (this.closed) return;
       const appError = toAppError(error);
-      this.fail({ code: appError.code, params: appError.params, actions: ['retry'] });
+      this.fail({
+        code: appError.code,
+        params: appError.params,
+        status: appError.status,
+        actions: ['retry'],
+      });
     }
   }
 

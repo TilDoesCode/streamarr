@@ -24,6 +24,8 @@ export type ErrorStateProps = {
   code?: string;
   /** Server error params (age-gate reason, other device) for a more specific message. */
   params?: ErrorParams;
+  /** HTTP status (0 = no answer): picks the category text of a code the app does not know. */
+  status?: number;
   /** Actions in priority order; the first is rendered as the primary button. */
   actions?: readonly ErrorAction[];
   onAction?: (action: ErrorAction) => void;
@@ -37,6 +39,7 @@ export type ErrorStateProps = {
 export function ErrorState({
   code = 'unknown',
   params,
+  status,
   actions = ['retry'],
   onAction,
   autoFocus = false,
@@ -44,7 +47,7 @@ export function ErrorState({
   testID,
 }: ErrorStateProps) {
   const { t } = useTranslation();
-  const text = describeError(t, { code, params });
+  const text = describeError(t, { code, params, status });
   return (
     <EmptyState
       testID={testID}

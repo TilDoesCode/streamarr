@@ -1,5 +1,6 @@
 import { predictedMethod, type PredictedMethod } from '@/browse/version-format';
 import type { Version } from '@/browse/queries';
+import type { ErrorLike } from '@/api/error-text';
 import { audioCodecLabel, hdrLabel, videoCodecLabel } from '@/lib/media-labels';
 
 import type { AudioRendition } from './audio-renditions';
@@ -186,4 +187,13 @@ const STEP_DOWN_KEYS: Record<string, PlayerKey> = {
 export function stepDownKey(params?: Readonly<Record<string, string>>): PlayerKey {
   if (params?.engine === 'vlc') return 'notice.stepDownVlc';
   return STEP_DOWN_KEYS[params?.to ?? ''] ?? 'notice.stepDown';
+}
+
+/** The error behind a `switchFailed` notice; the HTTP status picks the category text of an unknown code. */
+export function noticeError(params?: Readonly<Record<string, string>>): ErrorLike {
+  const status = params?.status;
+  return {
+    code: params?.code ?? 'unknown',
+    status: status === undefined ? undefined : Number(status),
+  };
 }

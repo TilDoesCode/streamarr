@@ -751,6 +751,106 @@
       "token_storage_unavailable": {
         "title": "Anmeldung auf diesem Gerät nicht lesbar",
         "message": "Der sichere Speicher dieses Geräts hat nicht geantwortet. Versuche es gleich noch einmal; du bleibst angemeldet."
+      },
+      "device_caps_unavailable": {
+        "title": "Player konnte nicht starten",
+        "message": "Der Player dieses Geräts ließ sich nicht einrichten. Versuche es erneut oder starte die App neu."
+      },
+      "unknown_stream": {
+        "title": "Stream beendet",
+        "message": "Der Server hat diesen Stream geschlossen. Starte die Wiedergabe neu, um weiterzuschauen."
+      },
+      "stream_capacity": {
+        "title": "Server ist ausgelastet",
+        "message": "Der Server streamt gerade zu viel. Versuche es gleich noch einmal."
+      },
+      "unknown_transcode": {
+        "title": "Stream auf dem Server beendet",
+        "message": "Der Server hat diesen Stream nicht mehr, zum Beispiel nach einem Neustart. Starte die Wiedergabe neu, um weiterzuschauen."
+      },
+      "unknown_segment": {
+        "title": "Teil des Videos fehlt",
+        "message": "Der Server hat für diese Stelle kein Video. Versuche eine andere Version."
+      },
+      "end_of_stream": {
+        "title": "Video endet zu früh",
+        "message": "Das Video endet vor seiner angegebenen Länge. Versuche eine andere Version."
+      },
+      "session_closed": {
+        "title": "Stream auf dem Server beendet",
+        "message": "Der Server hat diesen Stream beim Laden geschlossen. Starte die Wiedergabe neu, um weiterzuschauen."
+      },
+      "segment_evicted": {
+        "title": "Teil des Videos entfernt",
+        "message": "Der Server hat diesen Teil entfernt, um Platz zu schaffen. Versuche es gleich noch einmal."
+      },
+      "init_unavailable": {
+        "title": "Video noch nicht bereit",
+        "message": "Der Server konnte den Anfang des Videos nicht rechtzeitig vorbereiten. Versuche es erneut oder wähle eine niedrigere Qualität."
+      },
+      "segment_unavailable": {
+        "title": "Video noch nicht bereit",
+        "message": "Der Server konnte diesen Teil des Videos nicht rechtzeitig vorbereiten. Versuche es erneut oder wähle eine niedrigere Qualität."
+      },
+      "too_many_sessions": {
+        "title": "Server ist ausgelastet",
+        "message": "Der Server bereitet gerade zu viele Videos vor. Versuche es gleich noch einmal."
+      },
+      "ffmpeg_unavailable": {
+        "title": "Umwandlung nicht verfügbar",
+        "message": "Der Server kann gerade keine Videos umwandeln (ffmpeg fehlt). Versuche eine andere Version."
+      },
+      "transcoding_disabled": {
+        "title": "Umwandlung ausgeschaltet",
+        "message": "Die Umwandlung ist auf diesem Server ausgeschaltet. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "invalid_transcode_request": {
+        "title": "Anfrage nicht angenommen",
+        "message": "Der Server hat die Umwandlungsanfrage dieser App nicht angenommen. Aktualisiere die App oder melde den Code."
+      },
+      "remux_not_possible": {
+        "title": "Direktstream nicht möglich",
+        "message": "Dieses Video lässt sich für dieses Gerät nicht umpacken. Versuche eine andere Version."
+      },
+      "no_video_stream": {
+        "title": "Kein Bild in der Datei",
+        "message": "Diese Version enthält kein Video. Wähle eine andere Version."
+      },
+      "unknown_duration": {
+        "title": "Länge unbekannt",
+        "message": "Der Server kann die Länge dieses Videos nicht bestimmen und es deshalb nicht umwandeln. Wähle eine andere Version."
+      },
+      "viewer_not_found": {
+        "title": "Konto nicht gefunden",
+        "message": "Dieses Konto gibt es auf dem Server nicht mehr. Melde dich erneut an."
+      },
+      "decode_error": {
+        "title": "Video lässt sich nicht dekodieren",
+        "message": "Der Player dieses Geräts konnte das Video nicht dekodieren. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "encrypted_media": {
+        "title": "Video ist verschlüsselt",
+        "message": "Diese Version ist kopiergeschützt und lässt sich nicht abspielen. Wähle eine andere Version."
+      },
+      "player_load_failed": {
+        "title": "Player konnte nicht laden",
+        "message": "Ein Teil des Players konnte nicht geladen werden. Lade die Seite neu oder starte die App neu."
+      },
+      "video_stalled": {
+        "title": "Das Bild ist hängen geblieben",
+        "message": "Das Bild blieb stehen, obwohl die Wiedergabe weiterlief. Versuche eine andere Version oder eine niedrigere Qualität."
+      },
+      "engine_error": {
+        "title": "Der Player hat angehalten",
+        "message": "Der Player dieses Geräts konnte das Video nicht weiter abspielen. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "unexpected_format": {
+        "title": "Unerwartete Antwort vom Server",
+        "message": "Der Server hat etwas geschickt, das kein Video ist, zum Beispiel von einem Proxy oder einer Anmeldeseite. Prüfe das Netzwerk und versuche es erneut."
+      },
+      "decoder_reclaimed": {
+        "title": "Der Video-Decoder wurde entzogen",
+        "message": "Eine andere App oder das System hat den Video-Decoder übernommen. Versuche es erneut."
       }
     },
     "actions": {
@@ -763,7 +863,53 @@
       "back": "Zurück"
     },
     "ageRestricted": "{reason, select, above_age_limit {Dieser Titel liegt über der Altersgrenze dieses Profils.} unrated_blocked {Dieses Profil darf nur Titel mit bekannter Altersfreigabe sehen.} rating_unavailable {Die Altersfreigabe dieses Titels ließ sich nicht prüfen, deshalb ist er für dieses Profil gesperrt.} other {Dieser Titel ist für dieses Profil nicht verfügbar.}}",
-    "tooManyStreamsOn": "Dieses Profil schaut bereits auf {device}. Beende die Wiedergabe dort, um hier zu schauen."
+    "tooManyStreamsOn": "Dieses Profil schaut bereits auf {device}. Beende die Wiedergabe dort, um hier zu schauen.",
+    "categories": {
+      "T1": {
+        "title": "Verbindungsproblem",
+        "message": "Die Verbindung zum Server wurde unterbrochen. Prüfe das Netzwerk und versuche es erneut."
+      },
+      "T2": {
+        "title": "Wiedergabe auf dem Server beendet",
+        "message": "Der Server kennt diese Wiedergabe nicht mehr. Starte sie neu, um an derselben Stelle weiterzuschauen."
+      },
+      "T3": {
+        "title": "Abgemeldet",
+        "message": "Dieses Gerät wurde abgemeldet. Melde dich erneut an, um weiterzumachen."
+      },
+      "T4": {
+        "title": "Server ist ausgelastet",
+        "message": "Der Server hat gerade zu viel zu tun. Versuche es gleich noch einmal."
+      },
+      "T5": {
+        "title": "Zu langsam für die Wiedergabe",
+        "message": "Das Video kommt nicht schnell genug an. Versuche eine niedrigere Qualität."
+      },
+      "T6": {
+        "title": "Problem auf dem Server",
+        "message": "Auf dem Server ist beim Vorbereiten dieses Videos etwas fehlgeschlagen. Versuche es erneut oder wähle eine andere Version."
+      },
+      "T7": {
+        "title": "Dieses Gerät kann das Video nicht abspielen",
+        "message": "Das Format wird hier nicht unterstützt. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "T8": {
+        "title": "Diese Version lässt sich nicht abspielen",
+        "message": "Die Datei ist beschädigt, unvollständig oder nicht verfügbar. Wähle eine andere Version."
+      },
+      "T9": {
+        "title": "Nicht verfügbar",
+        "message": "Das ist für dieses Profil oder auf diesem Server nicht erlaubt."
+      },
+      "T10": {
+        "title": "Vom Gerät pausiert",
+        "message": "Das Gerät hat die Wiedergabe unterbrochen. Drücke Abspielen, um weiterzuschauen."
+      },
+      "T11": {
+        "title": "Unerwartetes Problem in der App",
+        "message": "Versuche es erneut. Wenn es wieder passiert, melde den Code unten."
+      }
+    }
   },
   "gallery": {
     "title": "Komponenten-Galerie",

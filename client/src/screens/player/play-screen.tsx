@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
-import { toAppError } from '@/api/errors';
 import { invalidateWatchQueries } from '@/browse/queries';
 import { VersionPicker } from '@/browse/version-picker';
 import { CENTRED_ROW, FocusGuide } from '@/components/focus';
@@ -29,7 +28,7 @@ import { nativeCandidates } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
-import { stepDownKey } from '@/player/overlay-labels';
+import { noticeError, stepDownKey } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
 import { usePlayerClock } from '@/player/use-clock';
 import { usePlayerT } from '@/player/use-player-t';
@@ -126,7 +125,8 @@ export function PlayScreen() {
         void current.start();
       })
       .catch((error: unknown) => {
-        if (!cancelled) setCapsError(toAppError(error).code);
+        if (__DEV__) console.warn('[player] device caps failed', error);
+        if (!cancelled) setCapsError('device_caps_unavailable');
       });
     return () => {
       cancelled = true;
@@ -249,6 +249,7 @@ export function PlayScreen() {
               compact
               code={code}
               params={failure?.params}
+              status={failure?.status}
               actions={workId ? actions : ['back']}
               autoFocus={!picker}
               onAction={onFailureAction}
@@ -338,7 +339,7 @@ export function PlayScreen() {
             {notice.kind === 'stepDown'
               ? pt(stepDownKey(notice.params))
               : pt('notice.switchFailed', {
-                  reason: describeError(t, { code: notice.params?.code ?? 'unknown' }).message,
+                  reason: describeError(t, noticeError(notice.params)).message,
                 })}
           </Text>
         </Glass>

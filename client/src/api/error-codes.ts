@@ -12,6 +12,15 @@ export const CLIENT_ERROR_CODES = [
   'not_found',
   'session_ended',
   'token_storage_unavailable',
+  'device_caps_unavailable',
+  // Engine failures without a server code (player/recovery/classify.ts).
+  'decode_error',
+  'encrypted_media',
+  'player_load_failed',
+  'video_stalled',
+  'engine_error',
+  'unexpected_format',
+  'decoder_reclaimed',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */
@@ -93,6 +102,24 @@ export const VIEWER_ERROR_CODES = [
   // Audio rendition requests of an HLS session (in-session audio switch).
   'unknown_audio_rendition',
   'rendition_split_failed',
+  // Media delivery: stream capabilities, HLS sessions and segments (docs/api.md §5, §11).
+  'unknown_stream',
+  'stream_capacity',
+  'unknown_transcode',
+  'unknown_segment',
+  'end_of_stream',
+  'session_closed',
+  'segment_evicted',
+  'init_unavailable',
+  'segment_unavailable',
+  'too_many_sessions',
+  'ffmpeg_unavailable',
+  'transcoding_disabled',
+  'invalid_transcode_request',
+  'remux_not_possible',
+  'no_video_stream',
+  'unknown_duration',
+  'viewer_not_found',
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

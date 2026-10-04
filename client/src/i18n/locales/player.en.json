@@ -111,5 +111,53 @@
     "replay": "Replay",
     "backToDetails": "Back to details",
     "nextEpisode": "Next: {title}"
+  },
+  "hints": {
+    "starting": "Starting playback…",
+    "startSlow": "Starting takes longer than usual. {cause}",
+    "slowNet": "Slow connection: {measured, number} of {needed, number} Mbit/s. Buffering…",
+    "serverSlow": "The server converts slower than playback. Buffering…",
+    "reconnecting": "Connection lost. Retrying in {seconds} s…",
+    "offline": "No network connection. Playback continues once this device is back online.",
+    "serverDown": "Can’t reach the server. Retrying in {seconds} s…",
+    "restarting": "The server ended this playback. Restarting at {time}…",
+    "recovering": "The picture is stuck. Reloading at {time}…",
+    "noPicture": "No picture. Trying another way to play…",
+    "noAudio": "No sound. Reloading the audio…",
+    "decoder": "This device can’t play {format}. Converting instead…",
+    "deviceSlow": "This device can’t keep up ({percent, number}% of frames dropped).",
+    "endedEarly": "The file ends at {time}, {missing} before the end.",
+    "subtitleFailed": "Subtitles “{label}” couldn’t be loaded.",
+    "pausedBySystem": "Paused: {cause}.",
+    "airplay": "Playing on {device}.",
+    "mutedAutoplay": "Sound off — tap to unmute.",
+    "autoplayBlocked": "The browser blocked autoplay.",
+    "signedOut": "Signed out: {reason}. Your position {time} is saved.",
+    "serverBusy": "The server is busy. Retrying in {seconds} s…",
+    "waitingForStream": "Starts as soon as playback on {device} stops.",
+    "causes": {
+      "call": "call",
+      "otherAudio": "another app plays audio",
+      "headphones": "headphones disconnected",
+      "locked": "screen locked",
+      "pipClosed": "picture-in-picture closed",
+      "airplayLost": "AirPlay disconnected",
+      "converting": "The server is converting the video.",
+      "slowConnection": "The connection is slow.",
+      "preparing": "The server is still preparing the video."
+    },
+    "actions": {
+      "lowerQuality": "Lower quality",
+      "cancel": "Cancel",
+      "tryNow": "Try now",
+      "back": "Back",
+      "otherVersion": "Other version",
+      "otherAudio": "Other audio track",
+      "otherSubtitles": "Other subtitles",
+      "resume": "Resume",
+      "unmute": "Unmute",
+      "play": "Play",
+      "signIn": "Sign in again"
+    }
   }
 }
