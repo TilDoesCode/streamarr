@@ -99,11 +99,13 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
   const focused = useRef(false);
   const { onFeature } = props;
   const signature = featured ? JSON.stringify(featured) : '';
+  const leads = !!props.onLead;
+  // Also when this card becomes the first one (the card before it left the row, Q1-40 phone).
   useEffect(() => {
     if (focused.current && featured) onFeature?.(featured);
     if (featured) props.onLead?.(featured);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [signature, leads]);
 
   return (
     <LandscapeCard
@@ -193,10 +195,11 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
   const feature = () => featured && props.onFeature?.(featured);
   const { onLead } = props;
   const signature = featured ? JSON.stringify(featured) : '';
+  const leads = !!onLead;
   useEffect(() => {
     if (featured) onLead?.(featured);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [signature, leads]);
   return (
     <LandscapeCard
       testID={props.testID}

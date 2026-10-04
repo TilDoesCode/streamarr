@@ -1813,6 +1813,35 @@ describe('F9: one play target and one series focus (Q1)', () => {
     );
   });
 
+  it('phone: when the first continue card leaves the row, the hero follows the new first card', async () => {
+    const movieEntry = {
+      workId: 'tmdb-movie-123',
+      kind: 'movie',
+      title: 'Sintel',
+      positionTicks: ticks(60),
+      durationTicks: ticks(600),
+      played: false,
+    };
+    let rows: unknown[] = [movieEntry, replay];
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, rows);
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    await open('/');
+    await waitFor(
+      () => expect(within(screen.getByTestId('home-hero')).getByText(/Sintel/)).toBeOnTheScreen(),
+      WAIT
+    );
+    // Sintel hidden from continue watching: the series card (same key) becomes the first card.
+    rows = [replay];
+    await act(async () => {
+      void testQueryClient.invalidateQueries();
+    });
+    await waitFor(
+      () => expect(screen.getByTestId('home-hero-episode')).toHaveTextContent(/S2, E1/),
+      WAIT
+    );
+    expect(within(screen.getByTestId('home-hero')).queryByText(/Sintel/)).toBeNull();
+  });
+
   it('Back from the player: the continue card stays (same element) and the hero follows S2E2 -> S2E3 (Q1-40)', async () => {
     const entry = (n: number) => ({
       ...replay,

@@ -57,7 +57,7 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   // Handheld keyboard up: the focused field moves to the top so the submit button below it stays visible.
   const reveal = useCallback(() => {
     const field = TextInput.State.currentlyFocusedInput?.() as HostInstance | null;
-    const inner = scrollRef.current?.getInnerViewNode?.() as HostInstance | null | undefined;
+    const inner = scrollContent(scrollRef.current);
     if (!field || !inner) return;
     field.measureLayout(
       inner,
@@ -199,6 +199,13 @@ export function keyboardEvents(os: string) {
   return os === 'ios'
     ? ({ show: 'keyboardWillShow', hide: 'keyboardWillHide' } as const)
     : ({ show: 'keyboardDidShow', hide: 'keyboardDidHide' } as const);
+}
+
+/** The scroll content as a host ref: Fabric's measureLayout rejects the node handle of getInnerViewNode. */
+export function scrollContent(scroll: ScrollView | null): HostInstance | null {
+  return (
+    (scroll as { getInnerViewRef?: () => HostInstance | null } | null)?.getInnerViewRef?.() ?? null
+  );
 }
 
 /** Scroll offset that puts the focused field (and what follows) at the top, or null if it is already there. */
