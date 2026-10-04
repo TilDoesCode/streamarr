@@ -7,7 +7,7 @@ import { lastMenuInTabBar, resetMenu, setMenuMode, type MenuMode } from '@module
 export type MenuClaim = MenuMode | 'native';
 
 const appleTV = () => Platform.OS === 'ios' && Platform.isTV;
-const STRENGTH: Record<MenuClaim, number> = { observe: 0, tabBar: 1, always: 2, native: 3 };
+const STRENGTH: Record<MenuClaim, number> = { tabBar: 1, always: 2, native: 3 };
 const claims: { mode: MenuClaim }[] = [];
 let suspended = false;
 
@@ -47,7 +47,8 @@ export function useMenuClaim(mode: MenuClaim | null): void {
 
 /** True while the Menu press being handled came from the tab bar (the tab-bar rule wins over page steps there). */
 export function menuPressInTabBar(): boolean {
-  return lastMenuInTabBar();
+  // Only a press through the armed gate records where focus was; an RN Modal's own Menu leaves the old value.
+  return currentMenuMode() !== null && lastMenuInTabBar();
 }
 
 // Lowest priority (registered first): a Menu that nobody handled switches the gate off, so the next one goes to tvOS.
