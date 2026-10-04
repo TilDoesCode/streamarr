@@ -183,7 +183,17 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     };
     if (typeof video.requestVideoFrameCallback === 'function')
       video.requestVideoFrameCallback(done);
-    else video.addEventListener('playing', done, { once: true });
+    // Safari's native HLS may never call the frame callback: a clock that runs over decoded data also counts.
+    const startedAt = video.currentTime;
+    const onTime = () => {
+      if (this.started) return void video.removeEventListener('timeupdate', onTime);
+      if (video.readyState < 2 || video.paused || video.currentTime === startedAt) return;
+      video.removeEventListener('timeupdate', onTime);
+      done();
+    };
+    video.addEventListener('timeupdate', onTime);
+    if (typeof video.requestVideoFrameCallback !== 'function')
+      video.addEventListener('playing', done, { once: true });
   }
 
   private emitTracks(): void {

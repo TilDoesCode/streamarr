@@ -41,4 +41,19 @@ describe('Sheet Back while the exit animation runs (TV Back chain, P3)', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(mockModal.props.visible).toBe(false);
   });
+
+  it('a second Back before the re-render goes to the screen, not to the closing sheet (Google TV, S4b)', async () => {
+    const onClose = jest.fn();
+    const onBackWhileClosing = jest.fn();
+    await renderWithProviders(
+      <Sheet open onClose={onClose} title="Subtitles" onBackWhileClosing={onBackWhileClosing}>
+        <Text>Off</Text>
+      </Sheet>
+    );
+    const request = mockModal.props.onRequestClose;
+    request?.();
+    request?.();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onBackWhileClosing).toHaveBeenCalledTimes(1);
+  });
 });

@@ -13,7 +13,7 @@ jest.mock('hls.js', () => ({
 type FakeTrack = { kind: string; label: string; language: string; mode: string };
 
 /** A `<video>` in Safari's native HLS mode: currentTime, paused and text tracks under test control. */
-function fakeVideo(textTracks: FakeTrack[] = []) {
+function fakeVideo(textTracks: FakeTrack[] = [], frameCallbacks = true) {
   const list = Object.assign(new EventTarget(), { length: textTracks.length }, textTracks);
   const video = Object.assign(new EventTarget(), {
     textTracks: list,
@@ -36,7 +36,9 @@ function fakeVideo(textTracks: FakeTrack[] = []) {
     }),
     load: jest.fn(),
     removeAttribute: jest.fn(),
-    requestVideoFrameCallback: (done: () => void) => done(),
+    readyState: 4,
+    // Safari's native HLS (iOS 27 simulator) never calls it back.
+    requestVideoFrameCallback: (done: () => void) => void (frameCallbacks && done()),
   });
   return video;
 }
@@ -101,6 +103,21 @@ describe('web engine (Safari native HLS)', () => {
     video.dispatchEvent(new Event('play'));
     expect(user()).toEqual([
       { type: 'userPlayback', paused: true },
+      { type: 'userPlayback', paused: false },
+    ]);
+  });
+
+  it('adopts a system play when the frame callback never fires (Safari native HLS, S4b)', async () => {
+    const video = fakeVideo([], false);
+    const { engine, events } = engineOn(video);
+    await Promise.resolve();
+    video.currentTime = 30.4;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(events.some((event) => event.type === 'firstFrame')).toBe(true);
+    engine.pause();
+    video.paused = false;
+    video.dispatchEvent(new Event('play'));
+    expect(events.filter((event) => event.type === 'userPlayback')).toEqual([
       { type: 'userPlayback', paused: false },
     ]);
   });

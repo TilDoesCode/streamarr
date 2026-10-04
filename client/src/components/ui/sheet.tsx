@@ -182,6 +182,7 @@ export function Sheet({
   const glassInset = s(64);
   const phoneSheetInset = Math.max(0, (design.window.width - 600) / 2);
   const [mounted, setMounted] = useState(open);
+  const closeRequested = useRef(false);
   // Apple TV: the Modal's own Menu recogniser closes it, so no screen claim may take Menu meanwhile.
   useMenuClaim(mounted ? 'native' : null);
   const [extent, setExtent] = useState(design.window.height * 0.6);
@@ -191,6 +192,10 @@ export function Sheet({
   const drag = useSharedValue(0);
 
   if (open && !mounted) setMounted(true);
+
+  useEffect(() => {
+    if (open) closeRequested.current = false;
+  }, [open]);
 
   // Keeps the Modal up while the panel's exit animation plays.
   useEffect(() => {
@@ -252,7 +257,11 @@ export function Sheet({
       transparent
       animationType="none"
       onRequestClose={() => {
-        if (open) return onClose();
+        // A second Back before the re-render still sees `open`: it belongs to the screen, not to this sheet.
+        if (open && !closeRequested.current) {
+          closeRequested.current = true;
+          return onClose();
+        }
         // The closing Modal still owns the Back key: finish the exit and hand the press on instead of losing it.
         drag.set(0);
         setActive(null);

@@ -47,7 +47,7 @@ beforeAll(async () => {
   await i18n.changeLanguage('en');
 });
 
-async function overlay() {
+async function overlay(backRef = createRef<(() => boolean) | null>()) {
   const controller = fakeController();
   await renderWithProviders(
     <PlayerOverlay
@@ -57,7 +57,7 @@ async function overlay() {
       suspended={false}
       onPanel={jest.fn()}
       onClose={jest.fn()}
-      backRef={createRef()}
+      backRef={backRef}
     />
   );
   return controller;
@@ -77,5 +77,15 @@ describe('player overlay reads the live engine position (review S1)', () => {
     await act(async () => jest.runOnlyPendingTimers());
     expect(controller.seekTo).toHaveBeenCalledWith(42);
     jest.useRealTimers();
+  });
+
+  it('a second Back before the re-render leaves the player instead of hiding again (S4b, Google TV)', async () => {
+    const backRef = createRef<(() => boolean) | null>();
+    await overlay(backRef);
+    const steps = [backRef.current?.(), backRef.current?.()];
+    expect(steps).toEqual([true, false]);
+    await act(async () => undefined);
+    await act(async () => mockKeys.listener?.({ key: 'down', repeat: 0 }));
+    expect(backRef.current?.()).toBe(true);
   });
 });

@@ -132,6 +132,7 @@ export function PlayerOverlay({
   const windowInset = useWindowControlsInset();
   const window = useWindowDimensions();
   const [visible, setVisible] = useState(true);
+  const hiddenByBack = useRef(false);
   const [zone, setZone] = useState<Zone>('buttons');
   const [scrub, setScrub] = useState<number | null>(null);
   const [muted, setMuted] = useState(TEST_MUTED);
@@ -195,6 +196,10 @@ export function PlayerOverlay({
 
   useEffect(() => onVisibleChange?.(visible), [visible, onVisibleChange]);
 
+  useEffect(() => {
+    if (visible) hiddenByBack.current = false;
+  }, [visible]);
+
   // TV: focus follows the zone so focus is never lost while the overlay shows.
   useEffect(() => {
     if (!tv || !visible || suspended) return;
@@ -218,7 +223,9 @@ export function PlayerOverlay({
 
   useEffect(() => {
     backRef.current = () => {
-      if (!visible) return false;
+      // A second Back before the re-render must see the overlay as hidden already (it would be swallowed).
+      if (!visible || hiddenByBack.current) return false;
+      hiddenByBack.current = true;
       setVisible(false);
       setScrub(null);
       scrubRef.current = null;

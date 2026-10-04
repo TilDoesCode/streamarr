@@ -55,6 +55,14 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Decoder and dropped-frame figures are "—" for expo-video on Android; VLC decoder labels are best effort (needs an
   expo-video API for decoder stats).
 
+- Google TV (F8 S4b): a Back pressed within ~0.5 s after a side panel closed is dropped natively: neither the RN
+  Modal's onRequestClose nor BackHandler sees it (Android dialog dismissal; also with an immediate unmount). The JS
+  stale-closure cases are fixed (overlay `hiddenByBack`, Sheet `closeRequested`). Lead: ReactModalHostView key
+  handling during dismiss, or a non-Modal side panel on TV. Back, pause, Back works; Apple TV Menu Menu works.
+- Player (F8 S4b, iPhone Safari): the up-next countdown keeps running while the player is paused (P3).
+- Web/Safari (F8 S4b): two tabs playing the same title on one browser run two playbacks of one device (seen as a
+  test artifact: a background tab kept playing); no guard today (P3).
+
 ## Browse, navigation and UX
 
 - TV (F7 verify): while an episode's versions load, the stage shows Play + Versions and flips to "No versions yet"
@@ -104,6 +112,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   demand; re-check on hardware. The cold-start `releaseLaunchOrientation` (S1b) does not affect it.
 - Onboarding (F9 S2a, P3): the server step reached while a profile is signed in has no "Zurück zur App" (the sign-in step
   has one).
+
+- Web (F8 S4a): each genre/sort change pushes a history entry and keeps the previous Library screen mounted (21 after
+  21 clicks); consider replacing params when the previous entry is the same tab (F9 area).
+- Android phone (F8 S4b): on a genre switch that has to fetch, the grid is blank (no skeleton) until data or the
+  error card arrives (~4 s offline) (F9 area, P3).
 
 ## Accounts
 
