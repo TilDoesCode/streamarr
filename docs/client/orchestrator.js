@@ -855,6 +855,22 @@ const TASKS = {
       'OpenAPI re-frozen, contract check, e2e and the full server suite green; web and client types regenerated if the contract changed',
     ],
   },
+  'B11': {
+    title: 'Server: precise refresh failure codes, refresh failures logged, session tombstones',
+    track: 'Backend',
+    deps: ['B9'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (server request from F8 S6, docs/client/journal/F8.md "## Android session ended (S6)" -> "### Server request"). Today every non-reuse refresh 401 is `refresh_session_expired`, so the client can only say "Your session has ended". (1) Keep `refresh_token_reused`; answer `refresh_session_expired` only when the session exists and its refresh window is over; `refresh_session_revoked` with `params.reason` (signed_out / revoked_by_viewer / session_limit / admin / password_changed / account_disabled) when the session was ended on purpose; `refresh_token_unknown` when no session or tombstone matches (deleted, never issued here, or a device restored from an old backup/snapshot). Same 401 status, additive codes in the documented error list (OpenAPI re-frozen if the error code enum is part of the contract); docs/api.md + docs/viewers.md.',
+      '- (2) Log every refresh failure at Information with the case and, when known, the session id and viewer id — never the token or its hash. (3) Tombstones: when a session is deleted or revoked, keep a small record (session id, viewer id, refresh-token hash prefix or the retired hashes, reason, time) for 30 days so an old token maps to "revoked: <reason>" instead of "unknown"; cleanup job; migration. Tests for every case incl. the B9 replay path and the 20-session limit eviction (session_limit).',
+      '- Security: the new codes must not let someone without a valid token learn anything about an account (an unknown/garbage token must get `refresh_token_unknown` with no other detail; tombstone lookups by hash only). Test on your own Dev World 39310; regenerate web and client types at the very end if the contract changed; do not change client code otherwise.',
+    ].join('\n'),
+    acceptance: [
+      'refresh 401s distinguish expired / revoked (with reason) / unknown / reused; tombstones map old tokens to their reason for 30 days (tests, docs)',
+      'refresh failures are logged without token material; no account information leaks to a caller without a valid token',
+      'OpenAPI frozen, contract check, e2e and the full server suite green; web and client types regenerated if the contract changed',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
