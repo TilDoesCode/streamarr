@@ -24,11 +24,12 @@ import { PlaybackController } from '@/player/controller';
 import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates } from '@/player/engines';
+import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
 import { stepDownKey } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
-import { useClock } from '@/player/use-clock';
+import { usePlayerClock } from '@/player/use-clock';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { colors, useDesign, useFocusGap } from '@/theme';
@@ -95,8 +96,10 @@ export function PlayScreen() {
     controller?.getVersion ?? zero,
     controller?.getVersion ?? zero
   );
-  const [overlayShown, setOverlayShown] = useState(true);
-  const clockState = useClock(controller?.engine, !overlayShown && panel === null);
+  const { clock: clockState, onVisibleChange: setOverlayShown } = usePlayerClock(
+    controller?.engine,
+    panel !== null
+  );
   const next = useNextEpisode(workId);
 
   useEffect(() => {
@@ -138,6 +141,8 @@ export function PlayScreen() {
     // Loaded lazily: expo-screen-orientation has no tvOS native module.
     return lockPlayerLandscape(import('expo-screen-orientation'), height > width);
   }, [design.formFactor]);
+
+  useEffect(() => exitPlayerFullscreen, []);
 
   const notice = controller?.notice;
   useEffect(() => {
@@ -358,6 +363,7 @@ export function PlayScreen() {
           glass={large}
           clock={clockState}
           onPanel={setPanel}
+          onBack={onBack}
         />
       ) : null}
       <VersionPicker

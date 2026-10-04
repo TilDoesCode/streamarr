@@ -225,10 +225,9 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   seek(position: number): void {
     this.start.cancel();
     this.player.currentTime = Math.max(0, position);
-    if (!this.player.playing) {
-      const { duration, buffered } = this.getSnapshot();
-      this.emit({ type: 'time', position: Math.max(0, position), duration, buffered });
-    }
+    // The next time event is up to 0.5 s away (none while paused): the clock jumps to the target now.
+    const { duration, buffered } = this.getSnapshot();
+    this.emit({ type: 'time', position: Math.max(0, position), duration, buffered });
   }
 
   setAudioTrack(id: string): void {

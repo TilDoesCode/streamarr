@@ -53,6 +53,8 @@ type Props = {
   glass?: boolean;
   clock?: Clock;
   onPanel?: (panel: PanelKind) => void;
+  /** Back pressed while a panel is still sliding out (TV): the player's next Back step. */
+  onBack?: () => void;
 };
 
 /** Language name; the file's title only tells apart two tracks of one language (e.g. a commentary). */
@@ -88,6 +90,7 @@ export function PlayerPanels({
   glass = false,
   clock,
   onPanel,
+  onBack,
 }: Props) {
   const pt = usePlayerT();
   const { i18n, t } = useTranslation();
@@ -125,6 +128,7 @@ export function PlayerPanels({
     <Sheet
       open={panel !== null}
       onClose={onClose}
+      onBackWhileClosing={onBack}
       testID={panel ? `player-panel-${panel}` : undefined}
       title={panel ? pt(panel === 'info' ? 'info.title' : `controls.${panel}`) : ''}
       subtitle={

@@ -1,4 +1,6 @@
-import { clockMoved } from '../use-clock';
+import { act, renderHook } from '@testing-library/react-native';
+
+import { clockMoved, usePlayerClock } from '../use-clock';
 
 const shown = { position: 10, duration: 600, buffered: 30 };
 
@@ -44,5 +46,46 @@ describe('clockMoved while the overlay is hidden (Q1-25)', () => {
   it('still follows a seek and a new duration', () => {
     expect(clockMoved(shown, { ...shown, position: 2 }, true)).toBe(true);
     expect(clockMoved(shown, { ...shown, duration: 601 }, true)).toBe(true);
+  });
+});
+
+describe('usePlayerClock wiring (review S1: coarse clock while hidden)', () => {
+  function fakeEngine() {
+    const listeners = new Set<(event: { type: string }) => void>();
+    const snapshot = { position: 100, duration: 600, buffered: 120 };
+    return {
+      snapshot,
+      getSnapshot: () => snapshot,
+      subscribe: (listener: (event: { type: string }) => void) => {
+        listeners.add(listener);
+        return () => void listeners.delete(listener);
+      },
+      tick(position: number) {
+        snapshot.position = position;
+        for (const listener of listeners) listener({ type: 'time' });
+      },
+    };
+  }
+
+  it('steps in whole seconds while the overlay shows and in ten while it is hidden', async () => {
+    const engine = fakeEngine();
+    const { result } = await renderHook(() => usePlayerClock(engine as never, false));
+    await act(async () => engine.tick(101));
+    expect(result.current.clock.position).toBe(101);
+    await act(async () => result.current.onVisibleChange(false));
+    for (let second = 102; second <= 108; second++) {
+      await act(async () => engine.tick(second));
+      expect(result.current.clock.position).toBe(101);
+    }
+    await act(async () => engine.tick(112));
+    expect(result.current.clock.position).toBe(112);
+  });
+
+  it('keeps whole seconds while a panel is open, even with the overlay hidden', async () => {
+    const engine = fakeEngine();
+    const { result } = await renderHook(() => usePlayerClock(engine as never, true));
+    await act(async () => result.current.onVisibleChange(false));
+    await act(async () => engine.tick(102));
+    expect(result.current.clock.position).toBe(102);
   });
 });

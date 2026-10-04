@@ -128,6 +128,8 @@ export class AccountStore {
   private readonly listeners = new Set<() => void>();
   private readonly endedListeners = new Set<EndedListener>();
   private readonly tokenCache = new Map<string, SessionTokens>();
+  /** Rotated pairs the vault refused to store: still the valid ones for this run, written again on the next read. */
+  private readonly unsaved = new Map<string, SessionTokens>();
   private readonly storage: KeyValueStorage;
   private readonly tabStorage: KeyValueStorage | undefined;
   private readonly vault: TokenVault;
@@ -194,8 +196,13 @@ export class AccountStore {
 
   /** Forgets tokens held in memory (another tab rotated or removed them); all of them without an id. */
   forgetCachedTokens(id?: string): void {
-    if (id === undefined) this.tokenCache.clear();
-    else this.tokenCache.delete(id);
+    if (id === undefined) {
+      this.tokenCache.clear();
+      this.unsaved.clear();
+    } else {
+      this.tokenCache.delete(id);
+      this.unsaved.delete(id);
+    }
   }
 
   /** Adds or refreshes the account for (server, viewer) after a successful sign-in and stores its tokens. */
@@ -213,6 +220,7 @@ export class AccountStore {
     const stale = matches.filter((account) => account.id !== id).map((account) => account.id);
     for (const staleId of stale) {
       this.tokenCache.delete(staleId);
+      this.unsaved.delete(staleId);
       await this.vault.remove(staleId);
     }
     await this.writeTokens(id, tokens);
@@ -278,6 +286,11 @@ export class AccountStore {
 
   /** Tokens from memory; `fresh` re-reads the vault (another browser tab may have rotated them). */
   async readTokens(id: string, fresh = false): Promise<SessionTokens | null> {
+    const pending = this.unsaved.get(id);
+    if (pending) {
+      await this.persist(id, pending);
+      return pending;
+    }
     if (!fresh) {
       const cached = this.tokenCache.get(id);
       if (cached) return cached;
@@ -290,8 +303,19 @@ export class AccountStore {
 
   /** Persists first: a rotated pair must never be used before it survives an app kill. */
   async writeTokens(id: string, tokens: SessionTokens): Promise<void> {
-    await this.vault.set(id, tokens);
+    this.unsaved.delete(id);
+    await this.persist(id, tokens);
     this.tokenCache.set(id, tokens);
+  }
+
+  /** A failed vault write keeps the pair for this run: the old refresh token is spent once the server rotated. */
+  private async persist(id: string, tokens: SessionTokens): Promise<void> {
+    try {
+      await this.vault.set(id, tokens);
+      this.unsaved.delete(id);
+    } catch {
+      this.unsaved.set(id, tokens);
+    }
   }
 
   /** Forgets the tokens, keeps the profile; `endedReason` = ended by the server. Already signed out: no change. */
@@ -307,6 +331,7 @@ export class AccountStore {
         : undefined
     );
     this.tokenCache.delete(id);
+    this.unsaved.delete(id);
     await this.vault.remove(id);
     const account = this.get(id);
     if (changed && endedReason && account)
@@ -316,6 +341,7 @@ export class AccountStore {
   /** Removes the profile from this device (tokens included). */
   async remove(id: string): Promise<void> {
     this.tokenCache.delete(id);
+    this.unsaved.delete(id);
     await this.vault.remove(id);
     this.mutate(({ accounts, activeId }) =>
       hasId(accounts, id)

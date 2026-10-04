@@ -51,7 +51,7 @@ import {
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
 import { useFadedOut } from '@/player/use-faded-out';
-import { useTVEvents } from '@/player/use-tv-events';
+import { useTVEvents } from '@/components/focus/use-tv-events';
 import type { Clock } from '@/player/use-clock';
 import { useWindowControlsInset } from '@/shell/window-controls';
 import {

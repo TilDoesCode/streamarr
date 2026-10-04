@@ -13,6 +13,8 @@ export type EngineTrack = {
   label: string;
   language?: string;
   codec?: string;
+  /** A forced-narrative subtitle (Safari exposes HLS FORCED=YES renditions as kind "forced"). */
+  forced?: boolean;
   selected: boolean;
 };
 
@@ -48,6 +50,8 @@ export type EngineEvent =
   | { type: 'error'; reason: string }
   | { type: 'ended' }
   | { type: 'pip'; active: boolean }
+  /** The viewer paused or resumed outside the app's controls (system full-screen player, lock screen). */
+  | { type: 'userPlayback'; paused: boolean }
   /** An audio rendition failed to load; `code` is the server's error code when known. */
   | { type: 'audioError'; code: string }
   | { type: 'stats'; stats: EngineStats };
