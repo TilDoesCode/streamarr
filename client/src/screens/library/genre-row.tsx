@@ -34,7 +34,9 @@ export function GenreRow({
   const design = useDesign();
   const chipGap = useFocusGap(design.space.sm);
   const { start, end: gutterEnd } = gutters(design);
-  const end = trailing ? design.space.md : gutterEnd;
+  // Apple TV: the sort control follows the scroller, so the last chip's ring needs the focus clearance there.
+  const trailingGap = useFocusGap(design.space.md);
+  const end = trailing ? trailingGap : gutterEnd;
   const glow = useFocusGlowRoom();
   const scroll = useRef<ScrollView>(null);
   const boxes = useRef(new Map<string, Box>());

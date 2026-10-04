@@ -15,6 +15,50 @@ export function barChipsLabelled(windowWidth: number, tv: boolean): boolean {
   return tv || windowWidth >= 960;
 }
 
+/** Large player title: up to 80 % of the bar (the Aurora 62 % cut "Die Hunde von Baskervi…" at 1280 px, Q1-13). */
+export const LARGE_TITLE_MAX_WIDTH = '80%';
+
+type Subtitle = NonNullable<Info['subtitleTracks']>[number];
+
+const SUBTITLE_FORMATS: Readonly<Record<string, string>> = {
+  subrip: 'SRT',
+  srt: 'SRT',
+  ass: 'ASS',
+  ssa: 'SSA',
+  webvtt: 'WebVTT',
+  mov_text: 'Text',
+  hdmv_pgs_subtitle: 'PGS',
+  pgssub: 'PGS',
+  dvd_subtitle: 'VobSub',
+  dvdsub: 'VobSub',
+  dvb_subtitle: 'DVB',
+};
+
+/** "subrip" → "SRT", "hdmv_pgs_subtitle" → "PGS"; unknown codecs upper-cased. */
+export function subtitleFormat(codec: string | null | undefined): string {
+  if (!codec) return '';
+  return SUBTITLE_FORMATS[codec.toLowerCase()] ?? codec.toUpperCase();
+}
+
+/** Language in the app's words; the file's title only when nothing else (forced, format) tells two tracks apart. */
+export function subtitleLabel(
+  track: Subtitle,
+  tracks: readonly Subtitle[],
+  languageOf: (code: string) => string,
+  fallback: string
+): string {
+  const language = track.language ? languageOf(track.language) : '';
+  const twin = tracks.some(
+    (other) =>
+      other.index !== track.index &&
+      other.language === track.language &&
+      !!other.forced === !!track.forced &&
+      subtitleFormat(other.codec) === subtitleFormat(track.codec)
+  );
+  if (language && !twin) return language;
+  return [language, track.title].filter(Boolean).join(' · ') || fallback;
+}
+
 /** 6 → "5.1", 2 → "2.0", 1 → "1.0". */
 export function channelLayout(channels: number | null | undefined): string {
   if (!channels) return '';

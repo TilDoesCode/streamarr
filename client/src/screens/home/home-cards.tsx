@@ -64,7 +64,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
     : title;
   const featured: Featured | undefined = ref
     ? {
-        key: `continue-${state.workId}`,
+        key: featuredKey.continue(state.workId),
         kind: ref.kind === 'movie' ? 'movie' : 'series',
         tmdbId: ref.tmdbId,
         title,
@@ -135,7 +135,7 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
     played: false,
   });
   const featured: Featured | undefined = ref && {
-    key: `next-${item.workId}`,
+    key: featuredKey.next(item.workId),
     kind: 'series',
     tmdbId: ref.tmdbId,
     title,
@@ -188,10 +188,17 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
   );
 }
 
+/** Hero keys of the Home cards (continue, next up, discover). */
+export const featuredKey = {
+  continue: (workId: string | null) => `continue-${workId}`,
+  next: (workId: string | null) => `next-${workId}`,
+  item: (mediaType: string | null, tmdbId: number) => `item-${mediaType}-${tmdbId}`,
+};
+
 /** Discover item as featured content. */
 export function featuredFromItem(item: CatalogItem, eyebrow: string): Featured {
   return {
-    key: `item-${item.mediaType}-${item.tmdbId}`,
+    key: featuredKey.item(item.mediaType, item.tmdbId),
     kind: item.mediaType === 'tv' || item.mediaType === 'series' ? 'series' : 'movie',
     tmdbId: item.tmdbId,
     title: item.title ?? '',

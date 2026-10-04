@@ -311,7 +311,12 @@ function StageLayout({
                     backgroundColor: tint ?? colors.accent.DEFAULT,
                   }}
                 />
-                <Text style={[text(18, fonts.bodyMedium), { color: colors.foreground.DEFAULT }]}>
+                {/* Keyed + one line: Android kept a stale width after an in-place update and hid the number on line 2. */}
+                <Text
+                  key={kindLabel}
+                  testID="stage-pill"
+                  numberOfLines={1}
+                  style={[text(18, fonts.bodyMedium), { color: colors.foreground.DEFAULT }]}>
                   {kindLabel}
                 </Text>
               </View>

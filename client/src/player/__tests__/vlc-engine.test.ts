@@ -105,3 +105,19 @@ describe('VlcEngine paused load', () => {
     engine.release();
   });
 });
+
+describe('VlcEngine time events (Q1-25)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('passes at most four libVLC time reports a second to the clock', async () => {
+    const { engine, internals, events } = setup({ displayedPictures: 1 });
+    events.length = 0;
+    for (let i = 1; i <= 20; i++) {
+      internals.onTime(10.5 + i * 0.05);
+      await jest.advanceTimersByTimeAsync(50);
+    }
+    expect(events.filter((event) => event.type === 'time').length).toBeLessThanOrEqual(4);
+    engine.release();
+  });
+});

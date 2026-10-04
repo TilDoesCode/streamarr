@@ -328,6 +328,23 @@ describe('PlaybackController', () => {
     await c.stop();
   });
 
+  it('reports position 0 right away when the viewer replays, so the server starts a new viewing', async () => {
+    mockApi.startPlayback.mockResolvedValue(ready());
+    const c = controller(0);
+    const report = jest.spyOn(c.progress, 'report').mockResolvedValue(undefined as never);
+    await c.start();
+    mockEngine.snapshot.duration = 60;
+    mockEngine.snapshot.position = 59;
+    mockEngine.emit({ type: 'ended' });
+    report.mockClear();
+    c.replay();
+    expect(report.mock.calls.map(([sent]) => [sent.event, sent.positionTicks])).toEqual([
+      ['progress', 0],
+    ]);
+    expect(c.ended).toBe(false);
+    await c.stop();
+  });
+
   it('restores the previous playback when a user switch is refused', async () => {
     mockApi.startPlayback.mockResolvedValue(ready());
     const c = controller(0);

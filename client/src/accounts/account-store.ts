@@ -288,9 +288,10 @@ export class AccountStore {
     return stored;
   }
 
+  /** Persists first: a rotated pair must never be used before it survives an app kill. */
   async writeTokens(id: string, tokens: SessionTokens): Promise<void> {
-    this.tokenCache.set(id, tokens);
     await this.vault.set(id, tokens);
+    this.tokenCache.set(id, tokens);
   }
 
   /** Forgets the tokens, keeps the profile; `endedReason` = ended by the server. Already signed out: no change. */

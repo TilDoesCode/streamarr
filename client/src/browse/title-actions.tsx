@@ -160,6 +160,8 @@ export function TitleActions({
   const play = usePlay();
   const { target, versions: list } = usePlayTarget(workId, watch);
   const noVersions = target.state === 'none';
+  // Versions shows once they arrived: a button that vanishes on "No versions yet" would drop TV focus.
+  const loading = !!workId && target.state === 'loading';
   const resume = resumeSeconds(watch);
   // The version the chip row (large) or the version card (phone) names.
   const releaseId = target.state === 'ready' ? target.releaseId : undefined;
@@ -216,6 +218,7 @@ export function TitleActions({
       <>
         {workId && noVersions ? (
           <GlassButton
+            key="main"
             testID={`${testIDPrefix}-no-versions`}
             icon={Film}
             label={t('common.noVersions')}
@@ -226,6 +229,7 @@ export function TitleActions({
           />
         ) : workId ? (
           <GlassButton
+            key="main"
             testID={`${testIDPrefix}-play`}
             tone="solid"
             icon={played && !resume ? RotateCcw : Play}
@@ -245,7 +249,7 @@ export function TitleActions({
             onPress={() => play({ workId, title, releaseId, startSeconds: 0 })}
           />
         ) : null}
-        {onVersions && !noVersions ? (
+        {onVersions && !noVersions && !loading ? (
           <GlassButton
             testID={`${testIDPrefix}-versions`}
             icon={Layers}
