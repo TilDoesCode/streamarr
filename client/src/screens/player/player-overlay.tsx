@@ -20,7 +20,7 @@ import {
   VolumeX,
   type LucideIcon,
   Ellipsis,
-} from 'lucide-react-native';
+} from '@/components/icons';
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {

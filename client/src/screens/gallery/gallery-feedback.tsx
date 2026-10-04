@@ -1,4 +1,4 @@
-import { History, Search } from 'lucide-react-native';
+import { History, Search } from '@/components/icons';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';

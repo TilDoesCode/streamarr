@@ -1,5 +1,5 @@
 import { screen, within } from '@testing-library/react-native';
-import { X } from 'lucide-react-native';
+import { X } from '@/components/icons';
 import { Platform } from 'react-native';
 
 import { IconButton } from '@/components/ui/icon-button';

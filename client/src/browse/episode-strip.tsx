@@ -1,4 +1,4 @@
-import { ChevronRight, Play, Tv } from 'lucide-react-native';
+import { ChevronRight, Play, Tv } from '@/components/icons';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {

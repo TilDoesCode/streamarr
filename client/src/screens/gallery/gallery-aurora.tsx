@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { Info, Play } from 'lucide-react-native';
+import { Info, Play } from '@/components/icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';

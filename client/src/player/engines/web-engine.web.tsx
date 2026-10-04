@@ -1,4 +1,5 @@
-import HlsPlayer, { ErrorTypes, Events, type ErrorData } from 'hls.js';
+import type HlsPlayer from 'hls.js';
+import type { ErrorData } from 'hls.js';
 import { createElement, memo, type ComponentType } from 'react';
 import { View } from 'react-native';
 
@@ -7,6 +8,7 @@ import { colors } from '@/theme';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
 import { audioErrorCode } from './hls-audio-error';
+import { importHls } from './hls-import';
 import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
@@ -15,6 +17,22 @@ type NativeAudioTrack = { id: string; label: string; language: string; enabled: 
 type VideoWithTracks = HTMLVideoElement & { audioTracks?: NativeTrackList<NativeAudioTrack> };
 
 const MAX_SUBTITLE_REASSERTS = 5;
+
+type HlsModule = typeof import('hls.js');
+let hlsModule: HlsModule | null = null;
+let hlsLoading: Promise<HlsModule> | null = null;
+
+/** hls.js is a separate web chunk: only the MSE player needs it (Safari plays HLS natively). */
+export function loadHls(): Promise<HlsModule> {
+  hlsLoading ??= importHls().then(
+    (loaded) => (hlsModule = loaded),
+    (error: unknown) => {
+      hlsLoading = null;
+      throw error;
+    }
+  );
+  return hlsLoading;
+}
 
 function mseAvailable(): boolean {
   const scope = globalThis as { MediaSource?: unknown; ManagedMediaSource?: unknown };
@@ -64,6 +82,8 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   /** What the app asked for last; a pause/play the element reports against it came from the system controls. */
   private wantPaused = false;
   private subtitleReasserts = 0;
+  /** Source waiting for the hls.js chunk; a newer load or a release replaces it. */
+  private deferred: EngineSource | null = null;
   readonly mode: 'hls.js' | 'native' = prefersNativeHls() ? 'native' : 'hls.js';
 
   private readonly attachRef = (element: HTMLVideoElement | null) => this.attach(element);
@@ -227,12 +247,27 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     }
     this.pending = null;
     this.teardown();
+    if (source.kind === 'hls' && this.mode === 'hls.js' && !hlsModule) {
+      this.deferred = source;
+      loadHls().then(
+        () => {
+          if (this.deferred === source && this.video === video) this.start(source);
+        },
+        () => {
+          if (this.deferred !== source) return;
+          this.emit({ type: 'error', reason: 'hlsjs:load' });
+          this.setState('error');
+        }
+      );
+      return;
+    }
     this.audioSwitched = null;
     this.wantedSubtitle = undefined;
     this.startSeek.cancel();
     this.watchFirstFrame(video);
-    if (source.kind === 'hls' && this.mode === 'hls.js') {
-      const hls = new HlsPlayer({ startPosition: source.startPosition ?? -1, enableWebVTT: true });
+    if (source.kind === 'hls' && this.mode === 'hls.js' && hlsModule) {
+      const { default: Hls, Events, ErrorTypes } = hlsModule;
+      const hls = new Hls({ startPosition: source.startPosition ?? -1, enableWebVTT: true });
       this.hls = hls;
       hls.subtitleDisplay = false;
       hls.on(Events.MANIFEST_PARSED, () => this.emitTracks());
@@ -303,6 +338,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   }
 
   private teardown(): void {
+    this.deferred = null;
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
     this.hls?.destroy();

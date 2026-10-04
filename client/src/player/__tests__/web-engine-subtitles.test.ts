@@ -1,4 +1,4 @@
-import { WebEngine } from '@/player/engines/web-engine.web';
+import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 
 type Handler = (...args: unknown[]) => void;
 
@@ -74,6 +74,8 @@ function fakeVideo() {
     videoHeight: 1080,
   });
 }
+
+beforeAll(() => loadHls());
 
 const engines: WebEngine[] = [];
 afterEach(() => engines.splice(0).forEach((engine) => engine.release()));

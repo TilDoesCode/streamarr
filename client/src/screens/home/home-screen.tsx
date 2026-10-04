@@ -1,4 +1,4 @@
-import { Film } from 'lucide-react-native';
+import { Film } from '@/components/icons';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';

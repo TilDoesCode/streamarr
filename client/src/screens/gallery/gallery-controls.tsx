@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { Check, Download, Heart, Info, Play, Settings, Trash2, X } from 'lucide-react-native';
+import { Check, Download, Heart, Info, Play, Settings, Trash2, X } from '@/components/icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';

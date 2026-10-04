@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, Info, type LucideIcon } from 'lucide-react-native';
+import { CircleAlert, CircleCheck, Info, type LucideIcon } from '@/components/icons';
 import { createContext, use, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Platform, View } from 'react-native';
 import Animated, { Easing, FadeInDown, FadeOutDown } from 'react-native-reanimated';

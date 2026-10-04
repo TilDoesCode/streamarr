@@ -1,5 +1,5 @@
 import { useIsFocused, useRouter } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft } from '@/components/icons';
 import { useEffect, useEffectEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';

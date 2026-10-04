@@ -19,3 +19,7 @@ jest.mock('@modules/media-caps/src/MediaCapsModule', () => ({
   getCapabilitiesAsync: () => Promise.reject(new Error('media-caps is native only')),
   readCodecLogAsync: () => Promise.resolve([]),
 }));
+
+jest.mock('@/player/engines/hls-import', () => ({
+  importHls: async () => require('hls.js'),
+}));

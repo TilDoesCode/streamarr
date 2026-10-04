@@ -1,5 +1,5 @@
 import { Image, type ImageContentFit } from 'expo-image';
-import { Clapperboard } from 'lucide-react-native';
+import { Clapperboard } from '@/components/icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';

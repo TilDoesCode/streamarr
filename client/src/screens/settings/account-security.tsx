@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import qrcode from 'qrcode-generator';
-import { KeyRound, LogOut, Mail, MonitorSmartphone, ShieldCheck } from 'lucide-react-native';
+import { KeyRound, LogOut, Mail, MonitorSmartphone, ShieldCheck } from '@/components/icons';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';

@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, type LucideIcon } from '@/components/icons';
 import { useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Platform, View, type ListRenderItemInfo } from 'react-native';

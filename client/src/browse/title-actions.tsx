@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Check, EyeOff, Film, Layers, Play, RotateCcw } from 'lucide-react-native';
+import { Check, EyeOff, Film, Layers, Play, RotateCcw } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSyncExternalStore, type Ref } from 'react';

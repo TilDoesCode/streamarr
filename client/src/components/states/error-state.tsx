@@ -1,4 +1,4 @@
-import { CircleAlert, Lock, WifiOff, type LucideIcon } from 'lucide-react-native';
+import { CircleAlert, Lock, WifiOff, type LucideIcon } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
 
 import { describeError } from '@/api/error-text';

@@ -2,7 +2,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import { Play, RotateCcw, X } from 'lucide-react-native';
+import { Play, RotateCcw, X } from '@/components/icons';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dimensions, Platform, ScrollView, StyleSheet, View } from 'react-native';

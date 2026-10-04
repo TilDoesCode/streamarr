@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Film, Tv } from 'lucide-react-native';
+import { Film, Tv } from '@/components/icons';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { findNodeHandle, FlatList, Platform, View } from 'react-native';
