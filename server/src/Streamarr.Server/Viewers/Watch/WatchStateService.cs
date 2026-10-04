@@ -134,14 +134,28 @@ public sealed class WatchStateService(
             .ToListAsync(ct);
     }
 
+    /// <summary>Continue watching: movies with a resume point and each series' active resume point (<see cref="CurrentEpisodeRule"/>), most recent first.</summary>
     public async Task<IReadOnlyList<ViewerWatchStateEntity>> ResumeAsync(string viewerId, int limit, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.ViewerWatchStates.AsNoTracking()
+        var resumable = await db.ViewerWatchStates.AsNoTracking()
             .Where(s => s.ViewerId == viewerId && s.PositionTicks > 0)
             .OrderByDescending(s => s.LastPlayedAt)
-            .Take(Math.Clamp(limit, 1, 100))
             .ToListAsync(ct);
+        var seriesIds = resumable.Where(s => s.SeriesWorkId != null).Select(s => s.SeriesWorkId!).Distinct().ToList();
+        var current = seriesIds.Count == 0
+            ? []
+            : (await db.ViewerWatchStates.AsNoTracking()
+                .Where(s => s.ViewerId == viewerId && s.SeriesWorkId != null && seriesIds.Contains(s.SeriesWorkId))
+                .ToListAsync(ct))
+            .GroupBy(s => s.SeriesWorkId!)
+            .Select(g => CurrentEpisodeRule.ActiveResume(g)?.WorkId)
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        return resumable
+            .Where(s => s.SeriesWorkId is null || current.Contains(s.WorkId))
+            .Take(Math.Clamp(limit, 1, 100))
+            .ToList();
     }
 
     public async Task<(IReadOnlyList<ViewerWatchStateEntity> Items, int Total)> HistoryAsync(string viewerId, int limit, int offset, CancellationToken ct)

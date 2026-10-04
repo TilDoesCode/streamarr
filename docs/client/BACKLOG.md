@@ -183,6 +183,13 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Google TV AVD (F5 verify): with the Metro debugger attached the dev build's JS stalls (~980 MB of 2 GB); one Fabric
   SIGSEGV at sign-in, probably from an "rr" dev reload during adb text input. Prefer argent paste for passwords.
 
+- B9 verify: on the very first fetch an episode whose versions were never looked up is `available: true` (optimistic,
+  queued for the warm-up) while the series page may already know false; a previous-token replay does not check
+  `IsDisabled` (moot today: disabling revokes sessions); the retired-hash lookup scans ViewerSessions for unknown tokens;
+  continue watching loads every resumable row of a viewer before the limit.
+- Server tests (B9): ReleaseContainerStoreTests.Store_EvictsTheLeastRecentlyUsed_AndSurvivesARestart and
+  RepairConcurrencyTests flake under load (timing of background writers); green on reruns.
+
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.

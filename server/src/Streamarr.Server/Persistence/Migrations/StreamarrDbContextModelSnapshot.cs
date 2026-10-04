@@ -175,6 +175,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("Audio")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool?>("Available")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Hdr")
                         .HasColumnType("TEXT");
 
@@ -950,6 +953,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<long>("LastSeenAt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("PreviousRefreshExpiresAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("PreviousRefreshTokenHash")
                         .HasColumnType("TEXT");
 
@@ -958,6 +964,9 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.Property<string>("RefreshTokenHash")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RetiredRefreshTokenHashes")
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("RevokedAt")
@@ -971,6 +980,9 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.Property<string>("RotatedTokensEncrypted")
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("RotationConfirmedAt")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ViewerId")
                         .IsRequired()

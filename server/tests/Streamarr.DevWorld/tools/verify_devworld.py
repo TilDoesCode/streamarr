@@ -228,6 +228,8 @@ def main():
                 check("replay after completion keeps a resume point", status == 200 and entry is not None
                       and entry.get("positionTicks") == 60 * tick and entry.get("played") is True, str(entry))
 
+            verify_current_episode(manifest, probe)
+
         if "kind" in sessions:
             gate = manifest["scenarios"]["ageGate"]
             blocked = next(t for t in manifest["titles"] if t["title"] == gate["blocked"][0]["title"])
@@ -259,6 +261,51 @@ def main():
     print(f"\n{'OK' if not failures else 'FAILED'}: {len(failures)} failure(s)")
     if failures:
         sys.exit(1)
+
+
+def verify_current_episode(manifest, probe):
+    """Series current episode (B9): an episode without versions stays next with available=false; an active replay wins."""
+    series = next((t for t in manifest["titles"] if t["type"] == "tv" and t.get("key") == "sherlock"), None)
+    if not series:
+        return
+    episodes = [e for s in series["seasons"] for e in s["episodes"]]
+    gap = next((i for i, e in enumerate(episodes) if i > 0 and not e["releases"] and episodes[i - 1]["releases"]), None)
+    if gap is None or gap < 2:
+        return
+    tick, duration = 10_000_000, 60 * 60 * 10_000_000
+
+    def report(work_id, seconds, playback):
+        http("POST", "/api/v1/viewer/watch/progress", {"event": "progress", "workId": work_id, "positionTicks": seconds * tick,
+                                                       "durationTicks": duration, "playbackId": playback}, probe)
+
+    for episode in episodes[:gap]:
+        report(episode["workId"], 3600, f"verify-cur-{episode['workId']}")
+        time.sleep(0.02)
+    missing, replayed = episodes[gap], episodes[gap - 2]
+    tv = series["seriesWorkId"]
+    season = int(missing["workId"].split("-s")[-1].split("e")[0])
+    http("GET", f"/api/v1/viewer/catalog/series/{series['tmdbId']}/seasons/{season}?availability=true", token=probe)
+    _, _, nextup = http("GET", f"/api/v1/viewer/watch/next-up?seriesWorkId={tv}", token=probe)
+    item = ((nextup or {}).get("items") or [None])[0] or {}
+    check(f"next up keeps {missing['workId']} without versions, available=false",
+          item.get("workId") == missing["workId"] and item.get("available") is False, str({k: item.get(k) for k in ("workId", "available")}))
+    _, _, detail = http("GET", f"/api/v1/viewer/catalog/series/{series['tmdbId']}", token=probe)
+    nxt = ((detail or {}).get("watch") or {}).get("nextEpisode") or {}
+    check("series nextEpisode agrees (available=false)", nxt.get("workId") == missing["workId"] and nxt.get("available") is False, str(nxt.get("workId")))
+
+    time.sleep(0.05)
+    report(replayed["workId"], 60, "verify-cur-replay")
+    report(replayed["workId"], 600, "verify-cur-replay")
+    _, _, nextup = http("GET", f"/api/v1/viewer/watch/next-up?seriesWorkId={tv}", token=probe)
+    item = ((nextup or {}).get("items") or [None])[0] or {}
+    _, _, detail = http("GET", f"/api/v1/viewer/catalog/series/{series['tmdbId']}", token=probe)
+    nxt = ((detail or {}).get("watch") or {}).get("nextEpisode") or {}
+    _, _, resume = http("GET", "/api/v1/viewer/watch/resume", token=probe)
+    mine = [s["workId"] for s in resume or [] if s.get("seriesWorkId") == tv]
+    check(f"active replay of {replayed['workId']} is the current episode on next up, series and continue",
+          item.get("workId") == replayed["workId"] and item.get("positionTicks") == 600 * tick and item.get("available") is True
+          and nxt.get("workId") == replayed["workId"] and nxt.get("reason") == "resume" and mine == [replayed["workId"]],
+          str((item.get("workId"), nxt.get("workId"), nxt.get("reason"), mine)))
 
 
 def verify_catalog(manifest, sessions, admin_token, probe=None):

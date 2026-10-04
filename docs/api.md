@@ -888,7 +888,7 @@ never unlock viewer endpoints.
 | `POST …/login/second-factor` | `{ mfaToken, code }` with a 6-digit authenticator code or a recovery code. |
 | `POST …/email-code` · `POST …/email-code/verify` | Request (always `202`) and redeem an emailed sign-in code. |
 | `POST …/password/forgot` · `POST …/password/reset` | Request (always `202`) and redeem a reset code with a new password (`204`, ends all sessions). |
-| `POST …/refresh` | `{ refreshToken }` or the refresh cookie → rotated tokens. `401 refresh_token_reused` ends a replayed session. |
+| `POST …/refresh` | `{ refreshToken }` or the refresh cookie → rotated tokens. The previous refresh token is answered with the same rotated pair within 30 s and later while that pair is unused (a fresh access token if its own expired); after the pair was used, the previous or any older token gets `401 refresh_token_reused` and ends the session (see viewers.md). |
 | `POST …/logout` | Ends the current session (bearer, refresh token, or cookies). |
 
 ```json
@@ -958,13 +958,25 @@ number of sessions ended (`0` when there were none). Replaces looping over `DELE
 | Endpoint | Purpose |
 |---|---|
 | `POST …/progress` | `{ event: start\|progress\|stop, workId, positionTicks, durationTicks, playbackId, releaseId?, streamToken?, title? }` → the updated `WatchStateResponse`. A `playbackId` from `/viewer/playback` (same device, same work) fills `releaseId` and `streamToken`, counts as that playback's heartbeat and `stop` ends it (§ 13); any other id is just the client's play id. |
-| `GET …/resume` · `DELETE …/resume/{workId}` | Continue watching, and hiding an entry from it. Items carry `title` in the viewer's language (the movie title, the series title for episodes; the last reported `title` when TMDB has none, else `null`), plus `tint`, `tint2`, `highlight` and `spec`. |
-| `GET …/next-up?seriesWorkId=` | `{ items, incomplete }` — the next aired, unplayed episode per recently watched series. |
+| `GET …/resume` · `DELETE …/resume/{workId}` | Continue watching, and hiding an entry from it. Items carry `title` in the viewer's language (the movie title, the series title for episodes; the last reported `title` when TMDB has none, else `null`), plus `tint`, `tint2`, `highlight`, `spec` and `available`. A series appears with its current episode only (see *Current episode* below): a resume point older than the latest completion in its series is left out. |
+| `GET …/next-up?seriesWorkId=` | `{ items, incomplete }` — the current episode per recently watched series (see below); items carry `available`. |
 | `GET …/history?limit&offset` | `{ items, total }`, most recent first. |
 | `POST …/state` | `{ workIds }` → one state per id (unknown ids come back unplayed). |
 | `GET …/series/{seriesWorkId}` | Every recorded episode state of one series. |
 | `POST …/played` · `POST …/unplayed` | `{ workIds }`; season and series ids expand to their aired episodes. |
 | `GET /api/v1/viewer/access/{workId}` | Age gate: `{ allowed, reason, rating, minimumAge, viewerMaxAge }`. |
+
+**Current episode of a series** (one rule for next up, continue watching and the series' `nextEpisode`,
+so every surface — continue row, next-up row, hero, series page — names the same episode): the most
+recently played episode with a resume point wins when its `lastPlayedAt` is newer than the latest
+completion (`playedAt`) of any episode of that series — e.g. a replay of a watched episode (`reason:
+resume`, `positionTicks` set, `lastWatchedWorkId` = that episode). Otherwise it is next up: the first
+aired episode after the furthest played one that is not played without a resume point, in catalog
+order. Episodes are never skipped for missing versions: **`available`** (next-up and continue items,
+`nextEpisode`) is `false` when the last version lookup of that episode found no version that is not
+known dead — show "not available yet" — and `true` when one exists or no lookup ran yet (the spec
+warm-up then queues one, so a later fetch is truthful; opening the season with `availability=true`
+records it immediately). `available` is `null` on other watch-state responses (history, state, series).
 
 ### Admin management — `/api/v1/config/viewers` (admin only)
 
@@ -1092,13 +1104,15 @@ viewer's `watch` state (a `WatchStateResponse`, empty when never played) and `ac
 { "playedEpisodes": 1, "inProgressEpisodes": 1, "totalEpisodes": 5, "incomplete": false,
   "nextEpisode": { "workId": "tmdb-tv-600-s01e02", "seasonNumber": 1, "episodeNumber": 2,
                    "title": "Episode 2", "runtimeMinutes": 46, "positionTicks": 9000000000,
-                   "durationTicks": 27600000000, "reason": "resume" } }
+                   "durationTicks": 27600000000, "reason": "resume", "available": true } }
 ```
 
-`nextEpisode.reason` is `next` (the first aired, unplayed episode after the furthest played one —
-the same rule as `/viewer/watch/next-up`), `resume` (that episode or, failing that, the most
-recently played episode has a resume position) or `start` (nothing watched yet: the first aired
-episode of the first regular season). It is `null` once everything aired is played.
+`nextEpisode` follows the *current episode* rule of the watch API: `reason` is `resume` (an
+active resume point — newer than the latest completion in the series — or the next-up episode has
+a resume position), `next` (the first aired, unplayed episode after the furthest played one — the
+same episode as `/viewer/watch/next-up`) or `start` (nothing watched yet: the first aired episode
+of the first regular season). It is `null` once everything aired is played. `available` is `false`
+when the last version lookup found no playable version for it (see above).
 Season episodes carry `workId`, `episodeNumber`, `title`, `overview`, `airDate`, `aired`,
 `runtimeMinutes`, `stillUrl`, `voteAverage`, `watch` and `versionCount` (only with
 `availability=true`). `availability` is `{ checkedAt, fromCache, incomplete, error }`; when the

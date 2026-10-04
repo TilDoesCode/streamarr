@@ -24,7 +24,7 @@ public enum RefreshFailure
     Disabled,
 }
 
-/// <summary>Opaque, hashed viewer session tokens: short access token, rotating refresh token, reuse detection.</summary>
+/// <summary>Opaque, hashed viewer session tokens: short access token, rotating refresh token, reuse detection with replay of an unused rotation.</summary>
 public sealed class ViewerSessionService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     ViewerSettingsService settings,
@@ -34,6 +34,7 @@ public sealed class ViewerSessionService(
 {
     private static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SeenResolution = TimeSpan.FromMinutes(1);
+    private const int MaxRetiredTokens = 8;
     private readonly IDataProtector _rotated = dataProtection.CreateProtector("Streamarr.Viewers.RotatedTokens.v1");
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -101,7 +102,12 @@ public sealed class ViewerSessionService(
         if (viewer is null || viewer.IsDisabled)
             return null;
 
-        if (now - session.LastSeenAt >= SeenResolution)
+        if (session.RotatedAt is not null && session.RotationConfirmedAt is null)
+        {
+            await db.ViewerSessions.Where(s => s.Id == session.Id && s.AccessTokenHash == hash && s.RotationConfirmedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.RotationConfirmedAt, now).SetProperty(x => x.LastSeenAt, now), ct);
+        }
+        else if (now - session.LastSeenAt >= SeenResolution)
         {
             await db.ViewerSessions.Where(s => s.Id == session.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.LastSeenAt, now), ct);
@@ -122,15 +128,29 @@ public sealed class ViewerSessionService(
             await using var db = await dbFactory.CreateDbContextAsync(ct);
             var session = await db.ViewerSessions.SingleOrDefaultAsync(
                 s => s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash, ct);
+            var retired = session is null;
+            if (retired)
+            {
+                session = await db.ViewerSessions.FirstOrDefaultAsync(
+                    s => s.RetiredRefreshTokenHashes != null && s.RetiredRefreshTokenHashes.Contains(hash), ct);
+                if (session is not null && !session.RetiredRefreshTokenHashes!.Split(' ').Contains(hash))
+                    session = null;
+            }
             if (session is null || session.RevokedAt is not null || session.RefreshExpiresAt <= now)
                 return (null, RefreshFailure.Invalid);
 
             if (session.RefreshTokenHash != hash)
             {
-                if (session.RotatedAt is { } rotatedAt && now - rotatedAt <= RotationGrace &&
-                    ReplayRotation(session) is { } replay)
+                if (!retired && CanReplay(session, now) && ReplayRotation(session) is { } replay)
                 {
-                    return (replay, RefreshFailure.None);
+                    if (replay.AccessExpiresAt > now)
+                        return (replay, RefreshFailure.None);
+                    var renewed = ViewerAuth.NewToken(ViewerAuth.AccessTokenPrefix);
+                    session.AccessTokenHash = ViewerAuth.Hash(renewed);
+                    session.AccessExpiresAt = now.AddMinutes(current.AccessTokenMinutes);
+                    session.RotatedTokensEncrypted = _rotated.Protect($"{renewed}|{replay.RefreshToken}");
+                    await db.SaveChangesAsync(ct);
+                    return (replay with { AccessToken = renewed, AccessExpiresAt = session.AccessExpiresAt }, RefreshFailure.None);
                 }
 
                 session.RevokedAt = now;
@@ -147,7 +167,10 @@ public sealed class ViewerSessionService(
 
             var access = ViewerAuth.NewToken(ViewerAuth.AccessTokenPrefix);
             var refresh = ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix);
+            session.RetiredRefreshTokenHashes = Retire(session.RetiredRefreshTokenHashes, session.PreviousRefreshTokenHash);
             session.PreviousRefreshTokenHash = hash;
+            session.PreviousRefreshExpiresAt = session.RefreshExpiresAt;
+            session.RotationConfirmedAt = null;
             session.RefreshTokenHash = ViewerAuth.Hash(refresh);
             session.RotatedTokensEncrypted = _rotated.Protect($"{access}|{refresh}");
             session.AccessTokenHash = ViewerAuth.Hash(access);
@@ -163,6 +186,20 @@ public sealed class ViewerSessionService(
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>The previous token gets the same rotated pair inside the concurrency grace, or later while that pair is unused (an app killed before it stored the pair) and the old token has not expired.</summary>
+    private static bool CanReplay(ViewerSessionEntity session, DateTimeOffset now)
+        => session.RotatedAt is { } rotatedAt &&
+           (now - rotatedAt <= RotationGrace ||
+            (session.RotationConfirmedAt is null && session.PreviousRefreshExpiresAt is { } previousExpiry && now < previousExpiry));
+
+    private static string? Retire(string? retired, string? hash)
+    {
+        if (hash is null)
+            return retired;
+        var hashes = (retired?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? []).Prepend(hash).Take(MaxRetiredTokens);
+        return string.Join(' ', hashes);
     }
 
     private ViewerTokens? ReplayRotation(ViewerSessionEntity session)

@@ -252,6 +252,9 @@ public sealed record WatchStateResponse
 
     /// <summary>Best known version by quality (from the last version lookup); continue watching only; null when none is known yet.</summary>
     public CatalogSpecDto? Spec { get; init; }
+
+    /// <summary>Continue watching only (null elsewhere): false when the last version lookup found no playable version; true when one exists or no lookup ran yet.</summary>
+    public bool? Available { get; init; }
 }
 
 public sealed record WatchHistoryResponse
@@ -282,6 +285,9 @@ public sealed record NextUpItemResponse
     public long? DurationTicks { get; init; }
     public required string LastWatchedWorkId { get; init; }
     public required DateTimeOffset LastActivityAt { get; init; }
+
+    /// <summary>False when the last version lookup found no playable version (show "not available yet"); true when one exists or no lookup ran yet (one is queued in the background).</summary>
+    public required bool Available { get; init; }
 
     /// <summary>Vivid accent of the series (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
     public string? Tint { get; init; }

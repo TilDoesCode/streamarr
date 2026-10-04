@@ -9760,6 +9760,8 @@ export interface components {
             durationTicks?: number | null;
             /** @description `resume` (in progress), `next` (after the furthest played) or `start` (nothing watched yet). */
             reason: string | null;
+            /** @description False when the last version lookup found no playable version (show "not available yet"); true when one exists or no lookup ran yet (one is queued in the background). */
+            available?: boolean;
         };
         /** @description One home row. */
         CatalogRowDto: {
@@ -10431,6 +10433,8 @@ export interface components {
             lastWatchedWorkId: string | null;
             /** Format: date-time */
             lastActivityAt: string;
+            /** @description False when the last version lookup found no playable version (show "not available yet"); true when one exists or no lookup ran yet (one is queued in the background). */
+            available: boolean;
             /** @description Vivid accent of the series (`#RRGGBB`, at least 3:1 against `#0A0C12`); null until computed. */
             tint?: string | null;
             /** @description Deep shade of the series (`#RRGGBB`, white text reaches 4.5:1 on it); null until computed. */
@@ -12648,6 +12652,8 @@ export interface components {
             /** @description Bright colour of the backdrop behind the TV glass (`#RRGGBB`, 95th luminance percentile); null when unknown. */
             highlight?: string | null;
             spec?: components["schemas"]["CatalogSpecDto"] | null;
+            /** @description Continue watching only (null elsewhere): false when the last version lookup found no playable version; true when one exists or no lookup ran yet. */
+            available?: boolean | null;
         };
         WatchWorkIdsRequest: {
             /** @description Movie/episode ids; for played/unplayed also season (`tmdb-tv-1-s02`) or series (`tmdb-tv-1`) ids. */

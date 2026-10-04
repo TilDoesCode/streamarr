@@ -116,6 +116,7 @@ internal static class ViewerMappings
         DurationTicks = i.DurationTicks,
         LastWatchedWorkId = i.LastWatchedWorkId,
         LastActivityAt = i.LastActivityAt,
+        Available = true,
     };
 
     public static ContentAccessResponse Access(ContentAccessDecision d) => new()

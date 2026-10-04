@@ -131,6 +131,9 @@ public sealed class CatalogSpecStore(
             .MaxBy(CatalogSpecMapper.Score);
     }
 
+    /// <summary>Whether the last version lookup of a movie, episode or season found a version that is not known dead; null before any lookup.</summary>
+    public bool? Available(string workId) => _entries.TryGetValue(workId, out var entry) ? entry.Available : null;
+
     /// <summary>The series id of a season work id (<c>tmdb-tv-7-s01</c> → <c>tmdb-tv-7</c>); null for anything else.</summary>
     internal static string? SeriesOfSeason(string workId)
     {
@@ -146,8 +149,8 @@ public sealed class CatalogSpecStore(
             _seasonsBySeries.GetOrAdd(series, _ => new ConcurrentDictionary<string, byte>(StringComparer.Ordinal)).TryAdd(workId, 0);
     }
 
-    /// <summary>Records the best version of a work (null clears it, e.g. when no version is left).</summary>
-    public void Record(string workId, CatalogSpecDto? spec)
+    /// <summary>Records the best version of a work (null clears it, e.g. when no version is left) and whether any version is left.</summary>
+    public void Record(string workId, CatalogSpecDto? spec, bool available)
     {
         var entity = new CatalogSpecSummaryEntity
         {
@@ -156,6 +159,7 @@ public sealed class CatalogSpecStore(
             Hdr = spec?.Hdr,
             VideoCodec = spec?.VideoCodec,
             Audio = spec?.Audio,
+            Available = available,
             UpdatedAt = time.GetUtcNow(),
         };
         if (_entries.TryGetValue(workId, out var existing) && Same(existing, entity))
@@ -204,5 +208,5 @@ public sealed class CatalogSpecStore(
             : new CatalogSpecDto { Resolution = e.Resolution, Hdr = e.Hdr, VideoCodec = e.VideoCodec, Audio = e.Audio };
 
     private static bool Same(CatalogSpecSummaryEntity a, CatalogSpecSummaryEntity b)
-        => a.Resolution == b.Resolution && a.Hdr == b.Hdr && a.VideoCodec == b.VideoCodec && a.Audio == b.Audio;
+        => a.Resolution == b.Resolution && a.Hdr == b.Hdr && a.VideoCodec == b.VideoCodec && a.Audio == b.Audio && a.Available == b.Available;
 }

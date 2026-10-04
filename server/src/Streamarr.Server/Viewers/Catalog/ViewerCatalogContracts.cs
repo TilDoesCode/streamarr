@@ -227,6 +227,9 @@ public sealed record CatalogNextEpisodeDto
 
     /// <summary><c>resume</c> (in progress), <c>next</c> (after the furthest played) or <c>start</c> (nothing watched yet).</summary>
     public required string Reason { get; init; }
+
+    /// <summary>False when the last version lookup found no playable version (show "not available yet"); true when one exists or no lookup ran yet (one is queued in the background).</summary>
+    public bool Available { get; init; } = true;
 }
 
 public sealed record CatalogSeasonResponse

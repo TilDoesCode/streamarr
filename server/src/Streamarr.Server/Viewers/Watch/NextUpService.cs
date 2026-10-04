@@ -25,7 +25,7 @@ public sealed record NextUpItem(
 
 public sealed record NextUpResult(IReadOnlyList<NextUpItem> Items, bool Incomplete);
 
-/// <summary>Suggests the first unplayed, already aired episode after the furthest played one per recently watched series.</summary>
+/// <summary>Suggests per recently watched series its current episode: an active resume point (<see cref="CurrentEpisodeRule"/>), else the first unplayed, aired episode after the furthest played one.</summary>
 public sealed class NextUpService(
     IDbContextFactory<StreamarrDbContext> dbFactory,
     ViewerSettingsService settings,
@@ -62,7 +62,8 @@ public sealed class NextUpService(
                 g.Where(s => s.Played && s.SeasonNumber > 0)
                     .OrderByDescending(s => s.SeasonNumber).ThenByDescending(s => s.EpisodeNumber)
                     .FirstOrDefault(),
-                g.ToDictionary(s => s.WorkId, StringComparer.Ordinal)))
+                g.ToDictionary(s => s.WorkId, StringComparer.Ordinal),
+                CurrentEpisodeRule.ActiveResume(g)))
             .Where(p => p.Anchor is not null && (seriesWorkId is not null || p.LastActivity >= cutoff))
             .OrderByDescending(p => p.LastActivity)
             .Take(limit * 2)
@@ -98,6 +99,16 @@ public sealed class NextUpService(
             if (series is null)
                 return (null, true);
 
+            if (progress.Resume is { } resume)
+            {
+                var resumeSeason = await tmdb.GetTvSeasonCatalogAsync(progress.TmdbId, resume.SeasonNumber!.Value, ct);
+                if (resumeSeason is null)
+                    return (null, true);
+                var current = resumeSeason.Episodes.FirstOrDefault(e => e.EpisodeNumber == resume.EpisodeNumber);
+                return (Item(progress, series, resume.SeasonNumber.Value, resume.EpisodeNumber!.Value,
+                    current?.Title ?? resume.Title ?? string.Empty, current, resume, resume.WorkId), false);
+            }
+
             var anchor = progress.Anchor!;
             var seasons = series.Seasons
                 .Select(s => s.SeasonNumber)
@@ -119,22 +130,7 @@ public sealed class NextUpService(
                     progress.States.TryGetValue(key.WorkId, out var state);
                     if (state is { Played: true, PositionTicks: 0 })
                         continue;
-                    return (new NextUpItem(
-                        key.WorkId,
-                        progress.SeriesWorkId,
-                        series.Series.Title,
-                        series.Series.PosterUrl,
-                        series.Series.BackdropUrl,
-                        number,
-                        episode.EpisodeNumber,
-                        episode.Title,
-                        episode.AirDate,
-                        episode.StillUrl,
-                        episode.RuntimeMinutes,
-                        state?.PositionTicks ?? 0,
-                        state?.DurationTicks,
-                        anchor.WorkId,
-                        progress.LastActivity), false);
+                    return (Item(progress, series, number, episode.EpisodeNumber, episode.Title, episode, state, anchor.WorkId), false);
                 }
             }
             return (null, false);
@@ -146,10 +142,31 @@ public sealed class NextUpService(
         }
     }
 
+    private static NextUpItem Item(
+        SeriesProgress progress, TmdbTvSeriesCatalog series, int season, int episodeNumber, string title, TmdbEpisode? episode,
+        ViewerWatchStateEntity? state, string lastWatchedWorkId)
+        => new(
+            WorkKey.ForEpisode(progress.TmdbId, season, episodeNumber).WorkId,
+            progress.SeriesWorkId,
+            series.Series.Title,
+            series.Series.PosterUrl,
+            series.Series.BackdropUrl,
+            season,
+            episodeNumber,
+            title,
+            episode?.AirDate,
+            episode?.StillUrl,
+            episode?.RuntimeMinutes,
+            state?.PositionTicks ?? 0,
+            state?.DurationTicks,
+            lastWatchedWorkId,
+            progress.LastActivity);
+
     private sealed record SeriesProgress(
         string SeriesWorkId,
         int TmdbId,
         DateTimeOffset LastActivity,
         ViewerWatchStateEntity? Anchor,
-        Dictionary<string, ViewerWatchStateEntity> States);
+        Dictionary<string, ViewerWatchStateEntity> States,
+        ViewerWatchStateEntity? Resume);
 }
