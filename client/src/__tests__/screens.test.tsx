@@ -3,7 +3,7 @@ import { cleanup, fireEvent, userEvent, within } from '@testing-library/react-na
 import { router as appRouter, Stack } from 'expo-router';
 import { act, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
-import { ActionSheetIOS, FlatList, Platform, StyleSheet } from 'react-native';
+import { ActionSheetIOS, FlatList, PixelRatio, Platform, StyleSheet } from 'react-native';
 
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
@@ -197,6 +197,40 @@ describe('Home', () => {
     fail = false;
     await userEvent.setup().press(screen.getByText('Try again'));
     expect(await screen.findByTestId('home-row-trending-movies', {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('Home cards load the small/medium size class, not the w780 poster (B10)', async () => {
+    const ratio = jest.spyOn(PixelRatio, 'get').mockReturnValue(1);
+    const posterSizes = {
+      small: 'http://img/w185.jpg',
+      medium: 'http://img/w342.jpg',
+      large: 'http://img/w780.jpg',
+    };
+    handlers['/api/v1/viewer/catalog/discover'] = () =>
+      json(200, {
+        rows: [
+          {
+            id: 'trending-movies',
+            kind: 'trending',
+            mediaType: 'movie',
+            items: [{ ...sintel, posterUrl: 'http://img/w780.jpg', posterSizes }],
+          },
+        ],
+      });
+    try {
+      await open('/');
+      const card = await screen.findByTestId('home-card-trending-movies-0', {}, WAIT);
+      const uris: string[] = [];
+      const walk = (node: { props?: { recyclingKey?: string }; children?: unknown[] } | string) => {
+        if (typeof node === 'string') return;
+        if (node.props?.recyclingKey) uris.push(node.props.recyclingKey);
+        for (const child of node.children ?? []) walk(child as never);
+      };
+      walk(card as never);
+      expect(uris).toEqual(['http://img/w185.jpg']);
+    } finally {
+      ratio.mockRestore();
+    }
   });
 
   it('opens a title from a row', async () => {

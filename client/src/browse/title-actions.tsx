@@ -90,7 +90,13 @@ export const playPending = {
 
 /** True while this work's play request resolves (the card stays focusable, presses are ignored). */
 export function usePlayPending(workId: string | null | undefined): boolean {
-  return useSyncExternalStore(playPending.subscribe, playPending.get) === (workId ?? undefined);
+  const pending = useSyncExternalStore(playPending.subscribe, playPending.get);
+  return isPlayPending(pending, workId);
+}
+
+/** A card without a work id is never pending, also while nothing resolves (null === null). */
+export function isPlayPending(pending: string | null, workId: string | null | undefined): boolean {
+  return !!workId && pending === workId;
 }
 
 /** Plays a work from a card or the Home hero with the same version the detail would start; one press at a time. */

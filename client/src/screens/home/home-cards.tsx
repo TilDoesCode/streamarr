@@ -60,6 +60,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
   const remaining = left ? t('media.remaining', { time: format.duration(left) }) : undefined;
   const subtitle = [code, remaining].filter(Boolean).join(' · ');
   const image = episode?.stillUrl ?? movie.data?.backdropUrl;
+  const imageSizes = episode?.stillUrl ? episode.stillSizes : movie.data?.backdropSizes;
   const progress = watchProgress(state);
   const playTitle = code
     ? t('detail.episodeTitle', { series: title, code, title: episode?.title ?? '' })
@@ -72,6 +73,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
         title,
         eyebrow: props.eyebrow,
         backdropUrl: movie.data?.backdropUrl ?? episode?.stillUrl,
+        backdropSizes: movie.data?.backdropUrl ? movie.data.backdropSizes : episode?.stillSizes,
         year: movie.data?.year,
         overview: episode?.overview ?? movie.data?.overview,
         detail: code ? [code, episode?.title].filter(Boolean).join(' · ') : undefined,
@@ -113,6 +115,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
       title={title}
       subtitle={subtitle || undefined}
       imageUri={image}
+      imageSizes={imageSizes}
       progress={progress}
       width={props.width}
       spec={state.spec}
@@ -174,6 +177,7 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
     title,
     eyebrow: props.eyebrow,
     backdropUrl: item.stillUrl,
+    backdropSizes: item.stillSizes,
     detail: [code, item.episodeTitle].filter(Boolean).join(' · '),
     episode: item.workId
       ? {
@@ -206,6 +210,7 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
       title={title}
       subtitle={[code, item.episodeTitle].filter(Boolean).join(' · ')}
       imageUri={item.stillUrl ?? item.seriesPosterUrl}
+      imageSizes={item.stillUrl ? item.stillSizes : item.seriesPosterSizes}
       progress={progress}
       width={props.width}
       spec={item.spec}
@@ -254,6 +259,7 @@ export function featuredFromItem(item: CatalogItem, eyebrow: string): Featured {
     title: item.title ?? '',
     eyebrow,
     backdropUrl: item.backdropUrl ?? item.posterUrl,
+    backdropSizes: item.backdropUrl ? item.backdropSizes : item.posterSizes,
     year: item.year,
     overview: item.overview,
     tint: item.tint,
@@ -272,6 +278,7 @@ export function DiscoverCard({ item, ...props }: CardProps & { item: CatalogItem
       title={item.title ?? ''}
       subtitle={item.year ? String(item.year) : undefined}
       imageUri={item.posterUrl}
+      imageSizes={item.posterSizes}
       width={props.width}
       spec={item.spec}
       tint={item.tint}

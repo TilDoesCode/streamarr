@@ -338,6 +338,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
               title={item.title ?? ''}
               subtitle={item.year ? String(item.year) : ''}
               imageUri={item.posterUrl}
+              imageSizes={item.posterSizes}
               width={cardWidth}
               spec={item.spec}
               tint={item.tint}

@@ -106,6 +106,7 @@ export function EpisodeList({
                 title={title}
                 overview={episode.overview ?? undefined}
                 stillUri={episode.stillUrl}
+                stillSizes={episode.stillSizes}
                 runtimeMinutes={episode.runtimeMinutes ?? undefined}
                 airDate={episode.airDate ?? undefined}
                 played={played}

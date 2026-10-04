@@ -289,6 +289,7 @@ export function SearchScreen() {
                   .filter(Boolean)
                   .join(' · ')}
                 imageUri={item.posterUrl}
+                imageSizes={item.posterSizes}
                 width={cardWidth}
                 spec={item.spec}
                 tint={item.tint}

@@ -18,6 +18,7 @@ import { IconButton, type IconButtonProps } from '@/components/ui/icon-button';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
+import type { ArtworkSizes } from '@/lib/artwork';
 import { aspect, colors, useDesign } from '@/theme';
 
 export type EpisodeRowProps = Omit<FocusableProps, 'children'> & {
@@ -25,6 +26,8 @@ export type EpisodeRowProps = Omit<FocusableProps, 'children'> & {
   title: string;
   overview?: string;
   stillUri?: string | null;
+  /** Size classes of the still (B10). */
+  stillSizes?: ArtworkSizes | null;
   runtimeMinutes?: number;
   airDate?: string;
   progress?: number;
@@ -84,6 +87,7 @@ export function EpisodeRow({
   title,
   overview,
   stillUri,
+  stillSizes,
   runtimeMinutes,
   airDate,
   progress,
@@ -165,7 +169,12 @@ export function EpisodeRow({
                     borderCurve: 'continuous',
                     overflow: 'hidden',
                   }}>
-                  <Artwork uri={stillUri} title={title} />
+                  <Artwork
+                    uri={stillUri}
+                    sizes={stillSizes}
+                    request={{ kind: 'backdrop', cssWidth: design.layout.episodeThumbWidth }}
+                    title={title}
+                  />
                   {played ? <PlayedMark /> : null}
                   {progress != null && progress > 0 ? (
                     <ProgressBar

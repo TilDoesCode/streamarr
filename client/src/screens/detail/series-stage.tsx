@@ -308,6 +308,7 @@ export function SeriesStage() {
                 selected={shown?.season === selection.season ? episode?.episodeNumber : undefined}
                 nextWorkId={next?.workId}
                 backdropUrl={data.backdropUrl}
+                backdropSizes={data.backdropSizes}
                 tint={data.tint}
                 scrollKey={`${selection.season}-${backSteps}`}
                 onFocusInside={(inside) => (inLower.current.strip = inside)}

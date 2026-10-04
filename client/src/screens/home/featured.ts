@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import type { CatalogSpec } from '@/components/spec';
 import { parseWorkId } from '@/lib/work-id';
+import type { ArtworkSizes } from '@/lib/artwork';
 
 /** What the home hero shows: the focused card on TV, the top pick elsewhere. */
 export type Featured = {
@@ -11,6 +12,8 @@ export type Featured = {
   title: string;
   eyebrow: string;
   backdropUrl?: string | null;
+  /** Size classes of `backdropUrl` (B10). */
+  backdropSizes?: ArtworkSizes | null;
   year?: number | null;
   overview?: string | null;
   /** Episode line of continue watching / next up. */
