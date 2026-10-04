@@ -554,3 +554,13 @@ Assignment of the Q1 S1 findings (P1/P2 must be fixed, P3 fixed when cheap, else
   selection = the episode with an active resume point first, then next up; watched + resume point shown together),
   05, 06, 07, 08, 09-12, 14, 15 (genre and certification names), 17-24, 34, 37, 38, 43, 44, 45.
 - Dev-client-only and emulator-load items (Q1-29, 32, 33, 35, 30) go to R1 (release builds).
+**I4 approach and decisions (orchestrator, 2026-10-04 20:05, after the I4 research in docs/client/journal/I4.md):**
+- One small Expo module `client/modules/tv-native` (tvOS only, so the cached iPhone/iPad dev build stays valid; JS
+  calls guarded to Apple TV): a Menu gate that hands Menu to the app's BackHandler only while JS claims it, a focus
+  request that does not go through the React Native root view (+ `TVFocusHost` at screen/sheet roots), and the tab
+  bar's content scroll view for Settings. Built in its own git worktree (`../streamarr-i4`, Pods APFS-cloned,
+  single-arch DerivedData) so the main tree's iOS prebuild stays untouched; a probe build settles the two unproven
+  causes before the fixes.
+- **Deep link over an open detail (item 8):** push by title id with de-duplication on every platform — a link to the
+  title that is already open returns to it (no second copy), a link to another title is pushed so Back returns to
+  where the viewer was.
