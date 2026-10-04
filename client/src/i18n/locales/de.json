@@ -747,6 +747,10 @@
       "rendition_split_failed": {
         "title": "Tonspur fehlgeschlagen",
         "message": "Der Server konnte diese Tonspur nicht vorbereiten. Versuche es erneut oder wähle eine andere."
+      },
+      "token_storage_unavailable": {
+        "title": "Anmeldung auf diesem Gerät nicht lesbar",
+        "message": "Der sichere Speicher dieses Geräts hat nicht geantwortet. Versuche es gleich noch einmal; du bleibst angemeldet."
       }
     },
     "actions": {

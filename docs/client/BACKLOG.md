@@ -184,6 +184,15 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - F6 verify: `PHONE_HEADER_HEIGHT` duplicates `HEADER_HEIGHT` in `phone-detail.tsx`; a stray blank import line.
 - Android TV and phone AVD boot snapshots hold an ended anna session (re-signed in by each run); refresh the snapshots
   once with a fresh sign-in, or sign in through a deep link in the run scripts.
+  F8 S6 proof (F9 V2 "Your session has ended" at 23:51): Streamarr_Phone `default_boot` RAM/disk snapshot is from
+  2026-10-01 19:25 local; a snapshot boot restores the app storage to that day, so the app presents a refresh token
+  of a session the server has since deleted -> 401 `refresh_session_expired`, no revoke. Cold boots
+  (`-no-snapshot-load`) use the current disk and keep the live session. Emulator-only; re-save the snapshot after a
+  fresh sign-in (or always cold-boot) to stop it.
+- Auth residual (F8 S6, P3): if the Keystore *write* of a rotated pair fails, the app uses the pair from memory
+  (S3), which confirms the rotation on the server; if the app is then killed before the throttled retry stores it,
+  the next launch presents the previous token and B9 revokes the session for reuse ("Signed out for your
+  security"). Needs a failed write plus a kill within the retry window; no client-only fix without the vault.
 
 - F5 verify (mutation run, 7 of 9 caught): no test covers the engine-error -> `/switch` fallback of an in-session
   switch, and none covers NAME-first track matching (`audio-renditions.ts`); add both.

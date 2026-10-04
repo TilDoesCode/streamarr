@@ -11,6 +11,7 @@ export const CLIENT_ERROR_CODES = [
   'server_error',
   'not_found',
   'session_ended',
+  'token_storage_unavailable',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */

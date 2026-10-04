@@ -747,6 +747,10 @@
       "rendition_split_failed": {
         "title": "Audio track failed",
         "message": "The server couldn’t prepare this audio track. Try again or pick another one."
+      },
+      "token_storage_unavailable": {
+        "title": "Can’t read this device’s sign-in",
+        "message": "The secure storage on this device didn’t answer. Try again in a moment; you stay signed in."
       }
     },
     "actions": {
