@@ -2,8 +2,8 @@ import { requireNativeView, requireOptionalNativeModule } from 'expo';
 import type { ComponentType } from 'react';
 import { Platform, View, type ViewProps } from 'react-native';
 
-/** `always`: Menu goes to JS; `tabBar`: only while the tab bar holds focus; `observe`: dev probe, UIKit unchanged. */
-export type MenuMode = 'always' | 'tabBar' | 'observe';
+/** `always`: Menu goes to JS; `tabBar`: only while the tab bar holds focus. */
+export type MenuMode = 'always' | 'tabBar';
 
 /** `cancelled`: a newer request or the user's own move replaced it, so nobody may fall back to the old target. */
 export type FocusResult = 'focused' | 'missed' | 'cancelled';

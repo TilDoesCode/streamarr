@@ -27,6 +27,7 @@ function deps(root: LinkState, popToScreen: TitleLinkDeps['popToScreen'] = () =>
     },
     rootState: () => value.root,
     dispatch: jest.fn(),
+    open: jest.fn(),
     popToScreen: jest.fn(popToScreen),
     onState: (listener: () => void) => {
       listeners.add(listener);
@@ -137,6 +138,28 @@ describe('handleTitleLink (I4 item 8)', () => {
     handleTitleLink('streamarr:///movie/1', d);
     jest.advanceTimersByTime(POP_SYNC_TIMEOUT_MS);
     expect(d.popToScreen).not.toHaveBeenCalled();
+    // No retry loop: the tab switch is asked for once, also long after the bound.
+    jest.advanceTimersByTime(POP_SYNC_TIMEOUT_MS * 5);
+    expect(d.dispatch).toHaveBeenCalledTimes(1);
+    expect(d.open).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('opens the title like a fresh link when it was closed while the tab switched (V1 leftover)', () => {
+    jest.useFakeTimers();
+    const tabs = (stack: LinkState, index: number): LinkState => ({
+      type: 'tab',
+      key: 'tabs',
+      index,
+      routes: [...stack.routes, { name: '(movies)' }],
+    });
+    const d = deps(tabs(home('1', '2'), 1), () => Promise.resolve(true));
+    handleTitleLink('streamarr:///movie/1', d);
+    // The tab is in view, but its stack no longer holds the title.
+    d.emit(tabs(home(), 0));
+    expect(d.popToScreen).not.toHaveBeenCalled();
+    expect(d.open).toHaveBeenCalledWith('/movie/1');
+    expect(d.dispatch).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
   });
 });

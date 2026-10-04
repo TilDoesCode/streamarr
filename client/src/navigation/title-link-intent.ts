@@ -8,6 +8,8 @@ export type TitleLinkDeps = {
   rootState(): LinkState | undefined;
   dispatch(action: { type: string; payload?: object; target?: string }): void;
   onState(listener: () => void): () => void;
+  /** Opens a route like a fresh link (the title was closed while the tab switched). */
+  open(route: string): void;
   /** The native pop (Apple TV), null where the stack is popped in JS. */
   popToScreen(testID: string, count: number): Promise<boolean> | null;
 };
@@ -26,9 +28,11 @@ export function handleTitleLink(url: string, deps: TitleLinkDeps): string | null
     deps.dispatch({ type: 'JUMP_TO', payload: { name: tabName }, target: tabsKey });
     whenState(
       deps,
-      () => placeOf(target, deps) === 'shown',
+      () => placeOf(target, deps) !== 'tab',
       () => {
-        if (placeOf(target, deps) === 'shown') handleTitleLink(url, deps);
+        const place = placeOf(target, deps);
+        if (place === 'shown') handleTitleLink(url, deps);
+        else if (place === null) deps.open(route);
       }
     );
     return null;

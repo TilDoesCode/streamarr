@@ -5,6 +5,7 @@ import { BackHandler, Platform, View } from 'react-native';
 const mockNative = {
   setMenuMode: jest.fn(),
   resetMenu: jest.fn(),
+  lastMenuInTabBar: jest.fn(() => false),
   focusView: jest.fn((_tag: number) => Promise.resolve('focused') as Promise<string> | null),
 };
 
@@ -15,7 +16,7 @@ jest.mock('@modules/tv-native', () => {
     TVFocusHost: MockView,
     setMenuMode: (mode: string | null) => mockNative.setMenuMode(mode),
     resetMenu: () => mockNative.resetMenu(),
-    lastMenuInTabBar: () => false,
+    lastMenuInTabBar: () => mockNative.lastMenuInTabBar(),
     focusView: (tag: number) => mockNative.focusView(tag),
   };
 });
@@ -121,6 +122,29 @@ describe('Apple TV Menu claims (I4 primitive A)', () => {
     // No claim in this bundle, but the native gate may still be armed from the previous one.
     expect(pressMenu()).toBe(false);
     expect(mockNative.setMenuMode).toHaveBeenLastCalledWith(null);
+  });
+
+  it('ignores a stale tab-bar flag when Menu came through an RN Modal, not the gate (V1 leftover)', async () => {
+    const { menu } = load('appleTV');
+    // The last press through the armed gate came from the tab bar; the native side keeps that value.
+    mockNative.lastMenuInTabBar.mockReturnValue(true);
+    const releaseTab = menu.claimMenu('tabBar');
+    expect(menu.menuPressInTabBar()).toBe(true);
+    const releaseModal = menu.claimMenu('native');
+    expect(menu.menuPressInTabBar()).toBe(false);
+    releaseModal();
+    releaseTab();
+    expect(menu.menuPressInTabBar()).toBe(false);
+    mockNative.lastMenuInTabBar.mockReturnValue(false);
+  });
+
+  it('has no dev-only observe claim (V1 leftover)', () => {
+    // Type-level: tsc fails while 'observe' is still a claim.
+    const never = (menu: Menu) => {
+      // @ts-expect-error observe is a removed dev probe mode
+      menu.claimMenu('observe');
+    };
+    expect(typeof never).toBe('function');
   });
 
   it('runs below every screen handler: a handled Menu keeps the claim', async () => {
