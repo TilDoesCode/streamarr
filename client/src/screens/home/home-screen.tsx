@@ -32,8 +32,14 @@ import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { aspect, colors, gutterPadding, motion, useDesign } from '@/theme';
 
-import { FeaturedStore, useFeatured, type Featured } from './featured';
-import { ContinueCard, DiscoverCard, featuredFromItem, NextUpCard } from './home-cards';
+import { continueRowKeys, FeaturedStore, useFeatured, type Featured } from './featured';
+import {
+  ContinueCard,
+  DiscoverCard,
+  featuredFromItem,
+  featuredKey,
+  NextUpCard,
+} from './home-cards';
 import { HandheldHomeHero } from './home-hero';
 import { heroRowsTop, ShellHero } from './shell-hero';
 
@@ -114,7 +120,7 @@ export function HomeScreen() {
   };
   const lift = useSharedValue(0);
   const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -lift.get() }] }));
-  const tvRowsTop = heroRowsTop(s, copyBottom);
+  const tvRowsTop = heroRowsTop(s, copyBottom, shell.heroFrame.rowsTop);
   useEffect(() => {
     const frame = rowFrames.current[focusedRow];
     if (!frame) return;
@@ -143,6 +149,15 @@ export function HomeScreen() {
   const feature = shell.large
     ? (item: Parameters<FeaturedStore['set']>[0]) => store.set(item)
     : undefined;
+  const continueKeys = continueRowKeys(continueItems.map((item) => item.workId));
+  const cardKeys = [
+    ...continueItems.map((item) => featuredKey.continue(item.workId)),
+    ...nextItems.map((item) => featuredKey.next(item.workId)),
+    ...discover.flatMap((row) =>
+      row.items.map((item) => featuredKey.item(item.mediaType, item.tmdbId))
+    ),
+  ].join('|');
+  useEffect(() => store.present(new Set(cardKeys.split('|'))), [store, cardKeys]);
   // Every form factor opens on the same featured title: the first Continue watching card, else the top pick.
   const lead = (item: Featured) => store.lead(item);
   const phoneHero = useFeatured(store) ?? topPick;
@@ -158,7 +173,7 @@ export function HomeScreen() {
       title: continueTitle,
       kind: 'landscape',
       items: continueItems,
-      itemKey: (index) => continueItems[index]?.workId ?? String(index),
+      itemKey: (index) => continueKeys[index] ?? String(index),
       render: (index, preferred) => (
         <ContinueCard
           testID={`home-card-continue-${index}`}
@@ -362,7 +377,9 @@ export function HomeScreen() {
               left: 0,
               right: 0,
               bottom: 0,
-              top: raised ? s(SHELL.row.focusTop) : heroRowsTop(s, copyBottom),
+              top: raised
+                ? s(SHELL.row.focusTop)
+                : heroRowsTop(s, copyBottom, shell.heroFrame.rowsTop),
             },
             scrolled && topFade(s(56)),
           ]}
@@ -390,8 +407,10 @@ export function HomeScreen() {
       {statusScrim ? (
         // A real height: Android clips a zero-height sticky header; the negative margin takes no layout room.
         <View
-          pointerEvents="none"
+          testID="home-status-scrim"
+          // In style, not a prop: the sticky header wrapper takes the style, and it covers the avatar.
           style={{
+            pointerEvents: 'none',
             height: scrimHeight,
             marginBottom: -scrimHeight - design.layout.sectionGap,
             zIndex: 1,

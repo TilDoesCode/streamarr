@@ -14,6 +14,8 @@ type NativeTrackList<T> = EventTarget & { length: number; [index: number]: T };
 type NativeAudioTrack = { id: string; label: string; language: string; enabled: boolean };
 type VideoWithTracks = HTMLVideoElement & { audioTracks?: NativeTrackList<NativeAudioTrack> };
 
+const MAX_SUBTITLE_REASSERTS = 5;
+
 function mseAvailable(): boolean {
   const scope = globalThis as { MediaSource?: unknown; ManagedMediaSource?: unknown };
   return scope.MediaSource !== undefined || scope.ManagedMediaSource !== undefined;
@@ -57,6 +59,9 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private detach: (() => void) | null = null;
   /** hls.js audio track whose first fragment is buffered (AUDIO_TRACK_SWITCHED), `null` until then. */
   private audioSwitched: number | null = null;
+  /** hls.js subtitle track the app picked (-1 = off); hls.js's own text-track polling must not override it. */
+  private wantedSubtitle: number | undefined;
+  private subtitleReasserts = 0;
   readonly mode: 'hls.js' | 'native' = prefersNativeHls() ? 'native' : 'hls.js';
 
   private readonly attachRef = (element: HTMLVideoElement | null) => this.attach(element);
@@ -107,7 +112,11 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     const lists = [element.textTracks, (element as VideoWithTracks).audioTracks].filter(
       (list) => !!list
     );
-    const onTracks = () => this.emitTracks();
+    const onTracks = () => {
+      this.emitTracks();
+      // hls.js re-reads text track modes on the next tick and may switch the app's subtitle off.
+      if (this.hls) setTimeout(() => this.hls && this.keepSubtitle(this.hls), 0);
+    };
     for (const list of lists) {
       list.addEventListener('addtrack', onTracks);
       list.addEventListener('change', onTracks);
@@ -208,6 +217,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     this.pending = null;
     this.teardown();
     this.audioSwitched = null;
+    this.wantedSubtitle = undefined;
     this.startSeek.cancel();
     this.watchFirstFrame(video);
     if (source.kind === 'hls' && this.mode === 'hls.js') {
@@ -221,7 +231,10 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.emitTracks();
       });
       hls.on(Events.SUBTITLE_TRACKS_UPDATED, () => this.emitTracks());
-      hls.on(Events.SUBTITLE_TRACK_SWITCH, () => this.emitTracks());
+      hls.on(Events.SUBTITLE_TRACK_SWITCH, () => {
+        this.emitTracks();
+        this.keepSubtitle(hls);
+      });
       hls.on(Events.FRAG_LOADED, () =>
         this.emit({ type: 'stats', stats: { bandwidth: Math.round(hls.bandwidthEstimate) } })
       );
@@ -327,14 +340,26 @@ export class WebEngine extends EngineBase implements PlayerEngine {
 
   setSubtitleTrack(id: string | null): void {
     if (this.hls) {
+      this.wantedSubtitle = id === null ? -1 : Number(id);
+      this.subtitleReasserts = 0;
       this.hls.subtitleDisplay = id !== null;
-      this.hls.subtitleTrack = id === null ? -1 : Number(id);
+      this.hls.subtitleTrack = this.wantedSubtitle;
       this.emitTracks();
       return;
     }
     const tracks = this.video?.textTracks;
     for (let i = 0; tracks && i < tracks.length; i++)
       tracks[i]!.mode = id !== null && i === Number(id) ? 'showing' : 'disabled';
+  }
+
+  private keepSubtitle(hls: HlsPlayer): void {
+    const wanted = this.wantedSubtitle;
+    if (wanted === undefined || this.subtitleReasserts >= MAX_SUBTITLE_REASSERTS) return;
+    if (hls.subtitleTrack === wanted && (wanted < 0 || hls.subtitleDisplay)) return;
+    this.subtitleReasserts += 1;
+    hls.subtitleDisplay = wanted >= 0;
+    hls.subtitleTrack = wanted;
+    this.emitTracks();
   }
 
   release(): void {

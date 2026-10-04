@@ -34,6 +34,13 @@ const TV_TONE_CLASS: Partial<Record<TextTone, string>> = {
 
 const HEADINGS: ReadonlySet<TypeVariant> = new Set(['display', 'title', 'heading']);
 
+const RESOLUTION = /\b(\d{3,4})([pi])\b/gi;
+
+/** Spec caps that keep resolution suffixes lower case ("1080p", not "1080P"). */
+export function specCase(label: string): string {
+  return label.toUpperCase().replace(RESOLUTION, (_, n: string, x: string) => n + x.toLowerCase());
+}
+
 export type TextProps = RNTextProps & {
   variant?: TypeVariant;
   tone?: TextTone;
@@ -46,9 +53,13 @@ export function Text({
   className,
   style,
   selectable,
+  children,
   ...props
 }: TextProps) {
   const design = useDesign();
+  // Spec strings with a resolution are cased in JS; CSS uppercase would turn "1080p" into "1080P".
+  const specString =
+    variant === 'spec' && typeof children === 'string' && new RegExp(RESOLUTION).test(children);
   return (
     <RNText
       // Android TV: a selectable TextView takes remote focus when attached, then drops it (nothing focused).
@@ -61,10 +72,13 @@ export function Text({
       )}
       style={[
         design.type[variant],
-        (variant === 'overline' || variant === 'spec') && { textTransform: 'uppercase' },
+        (variant === 'overline' || (variant === 'spec' && !specString)) && {
+          textTransform: 'uppercase',
+        },
         style,
       ]}
-      {...props}
-    />
+      {...props}>
+      {specString ? specCase(children) : children}
+    </RNText>
   );
 }

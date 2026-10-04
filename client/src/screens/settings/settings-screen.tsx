@@ -188,7 +188,7 @@ function AccountSection() {
         )}
         <Button
           testID="settings-sign-out"
-          variant="ghost"
+          variant="secondary"
           icon={LogOut}
           label={t('settings.account.signOut')}
           onPress={() => setConfirm(true)}
@@ -222,9 +222,10 @@ function AccountSection() {
   );
 }
 
-function LanguageSection() {
+export function LanguageSection() {
   const { t, i18n } = useTranslation();
   const design = useDesign();
+  const chipGap = useFocusGap(design.space.sm);
   const preference = useLanguagePreference();
   const label = (value: LanguagePreference) => t(`language.${value}`);
   return (
@@ -232,7 +233,8 @@ function LanguageSection() {
       <FocusGuide
         remember
         trap={END_OF_ROW}
-        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.sm }}>
+        testID="settings-language-chips"
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: chipGap }}>
         {LANGUAGE_PREFERENCES.map((value) => (
           <GlassChip
             key={value}

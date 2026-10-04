@@ -4,6 +4,7 @@ import {
   MIN_WEB_SCALE,
   SHELL,
   shellFont,
+  shellHeroFrame,
   shellScale,
 } from './shell-metrics';
 
@@ -39,5 +40,29 @@ describe('shell scale', () => {
       shellFont('tablet', tablet, SHELL.type.cardTitle, MIN_TEXT.caption)
     ).toBeGreaterThanOrEqual(15);
     expect(shellFont('tv', 0.5, SHELL.type.spec, MIN_TEXT.spec)).toBe(SHELL.type.spec / 2);
+  });
+});
+
+describe('shellHeroFrame (Q1-22)', () => {
+  const scaler = (scale: number) => (value: number) => Math.round(value * scale * 2) / 2;
+
+  it('web 1280 × 657: hero and rows keep their 1080p share of the height', () => {
+    const s = scaler(shellScale('desktop-web', 1280));
+    const frame = shellHeroFrame('desktop-web', s, 657);
+    expect(frame.rowsTop / 657).toBeLessThanOrEqual(SHELL.row.top / SHELL.height);
+    expect(frame.heroHeight / 657).toBeLessThanOrEqual(SHELL.hero.height / SHELL.height);
+    expect(frame.rowsTop).toBeLessThan(s(SHELL.row.top));
+  });
+
+  it('keeps the mockup frame on 16:9 and taller windows and always on TV', () => {
+    const tv = scaler(0.5);
+    expect(shellHeroFrame('tv', tv, 400)).toEqual({ heroHeight: 330, rowsTop: 324 });
+    const s = scaler(1);
+    expect(shellHeroFrame('desktop-web', s, 1080)).toEqual({ heroHeight: 660, rowsTop: 648 });
+    const tablet = scaler(shellScale('tablet', 1024));
+    expect(shellHeroFrame('tablet', tablet, 1366)).toEqual({
+      heroHeight: tablet(660),
+      rowsTop: tablet(648),
+    });
   });
 });

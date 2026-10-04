@@ -1,10 +1,10 @@
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Info, Play } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useMovieDetail, useSeriesDetail } from '@/browse/queries';
-import { ResumeProgress, resumeSeconds, usePlay } from '@/browse/title-actions';
+import { useMovieDetail, useSeriesDetail, useSeriesFocus } from '@/browse/queries';
+import { ResumeProgress, resumeSeconds, usePlayWork } from '@/browse/title-actions';
 import { GlassButton } from '@/components/glass';
 import { Artwork } from '@/components/media/artwork';
 import { HeroTitle } from '@/components/media/hero';
@@ -12,7 +12,6 @@ import { SpecLabels } from '@/components/spec';
 import { Badge } from '@/components/ui/badge';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
-import { titleHref } from '@/navigation/routes';
 import { HeroFade } from '@/shell/hero-fade';
 import { useDesign } from '@/theme';
 
@@ -22,6 +21,7 @@ import type { Featured } from './featured';
 export function useFeaturedDetail(featured: Featured | null) {
   const movie = useMovieDetail(featured?.tmdbId, featured?.kind === 'movie');
   const series = useSeriesDetail(featured?.tmdbId, featured?.kind === 'series');
+  const { focus } = useSeriesFocus(featured?.kind === 'series' ? series.data : undefined);
   if (!featured) return undefined;
   if (featured.kind === 'movie') {
     const data = movie.data;
@@ -34,11 +34,24 @@ export function useFeaturedDetail(featured: Featured | null) {
           playWorkId: data.workId,
           watch: data.watch,
           playTitle: data.title ?? featured.title,
+          season: undefined,
+          episode: undefined,
         }
       : undefined;
   }
   const data = series.data;
-  const next = data?.watch.nextEpisode;
+  // A continue / next-up card plays its own episode; a discover title the series focus.
+  const card = featured.episode;
+  const next = card
+    ? {
+        workId: card.workId,
+        seasonNumber: card.season,
+        episodeNumber: card.episode,
+        positionTicks: card.positionTicks,
+        durationTicks: card.durationTicks,
+        lastReleaseId: card.lastReleaseId,
+      }
+    : focus;
   return data
     ? {
         logoUrl: data.logoUrl,
@@ -48,11 +61,45 @@ export function useFeaturedDetail(featured: Featured | null) {
         genres: data.genres,
         playWorkId: next?.workId ?? null,
         watch: next
-          ? { positionTicks: next.positionTicks, durationTicks: next.durationTicks, played: false }
+          ? {
+              positionTicks: next.positionTicks,
+              durationTicks: next.durationTicks,
+              played: false,
+              lastReleaseId: next.lastReleaseId,
+            }
           : null,
-        playTitle: featured.title,
+        playTitle: card?.playTitle ?? featured.title,
+        season: next?.seasonNumber,
+        episode: next?.episodeNumber,
       }
     : undefined;
+}
+
+/** "More info": a series opens on the episode the hero shows (its play target), a movie on its detail. */
+export function featuredInfoHref(
+  featured: Featured,
+  detail: ReturnType<typeof useFeaturedDetail>
+): Href {
+  const id = String(featured.tmdbId);
+  if (featured.kind === 'movie') return { pathname: '/movie/[id]', params: { id } };
+  const season = featured.episode?.season ?? detail?.season;
+  const episode = featured.episode?.episode ?? detail?.episode;
+  return {
+    pathname: '/series/[id]',
+    params: {
+      id,
+      ...(season !== undefined ? { season: String(season) } : null),
+      ...(season !== undefined && episode !== undefined ? { episode: String(episode) } : null),
+    },
+  };
+}
+
+/** The hero's Play / Resume: the same version the detail would start. */
+export function usePlayFeatured(detail: ReturnType<typeof useFeaturedDetail>) {
+  const playWork = usePlayWork();
+  return () =>
+    detail?.playWorkId &&
+    playWork({ workId: detail.playWorkId, title: detail.playTitle, watch: detail.watch });
 }
 
 export function useMeta(featured: Featured, detail: ReturnType<typeof useFeaturedDetail>) {
@@ -68,9 +115,9 @@ export function useMeta(featured: Featured, detail: ReturnType<typeof useFeature
 export function HandheldHomeHero({ featured }: { featured: Featured }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const play = usePlay();
   const design = useDesign();
   const detail = useFeaturedDetail(featured);
+  const playFeatured = usePlayFeatured(detail);
   const meta = useMeta(featured, detail);
   const resume = resumeSeconds(detail?.watch);
   const { gutter } = design.layout;
@@ -94,6 +141,11 @@ export function HandheldHomeHero({ featured }: { featured: Featured }) {
             logoWidth={design.px(240)}
           />
         </View>
+        {featured.detail ? (
+          <Text testID="home-hero-episode" variant="callout" numberOfLines={1}>
+            {featured.detail}
+          </Text>
+        ) : null}
         <View
           style={{
             flexDirection: 'row',
@@ -122,10 +174,7 @@ export function HandheldHomeHero({ featured }: { featured: Featured }) {
               tone="solid"
               icon={Play}
               label={t(resume ? 'common.resume' : 'common.play')}
-              onPress={() =>
-                detail.playWorkId &&
-                play({ workId: detail.playWorkId, title: detail.playTitle, startSeconds: resume })
-              }
+              onPress={playFeatured}
             />
           ) : null}
           <GlassButton
@@ -133,14 +182,7 @@ export function HandheldHomeHero({ featured }: { featured: Featured }) {
             icon={Info}
             tint={featured.tint}
             label={t('common.moreInfo')}
-            onPress={() =>
-              router.push(
-                titleHref({
-                  mediaType: featured.kind === 'series' ? 'tv' : 'movie',
-                  tmdbId: featured.tmdbId,
-                })
-              )
-            }
+            onPress={() => router.push(featuredInfoHref(featured, detail))}
           />
         </View>
       </View>

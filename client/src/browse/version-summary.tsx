@@ -23,10 +23,13 @@ import { colors, fonts, useDesign } from '@/theme';
 export function VersionSummary({
   workId,
   watch,
+  kind,
   onOpen,
 }: {
   workId: string | null | undefined;
   watch?: PlayWatchState;
+  /** Names the subject of the empty state (a series plays one episode, not "this title"). */
+  kind?: 'movie' | 'episode';
   onOpen: () => void;
 }) {
   const { t } = useTranslation();
@@ -72,7 +75,9 @@ export function VersionSummary({
   } else if (!version) {
     body = (
       <Text testID="versions-summary-empty" variant="body" tone="muted">
-        {t('versions.emptyMessage')}
+        {kind
+          ? t(kind === 'episode' ? 'versions.chips.noneEpisode' : 'versions.chips.noneMovie')
+          : t('versions.emptyMessage')}
       </Text>
     );
   } else {

@@ -65,3 +65,21 @@ export function shellScale(formFactor: FormFactor, width: number): number {
   const fit = width / SHELL.width;
   return formFactor === 'tv' ? fit : Math.max(MIN_WEB_SCALE, fit);
 }
+
+export type ShellHeroFrame = { heroHeight: number; rowsTop: number };
+
+/** Home hero height and rows top; windows wider than 16:9 (web, tablet) keep the 1080p share of the height. */
+export function shellHeroFrame(
+  formFactor: FormFactor,
+  s: (value: number) => number,
+  windowHeight: number
+): ShellHeroFrame {
+  const heroHeight = s(SHELL.hero.height);
+  const rowsTop = s(SHELL.row.top);
+  if (formFactor === 'tv') return { heroHeight, rowsTop };
+  const fit = (value: number) => Math.floor((value * windowHeight) / SHELL.height);
+  return {
+    heroHeight: Math.min(heroHeight, fit(SHELL.hero.height)),
+    rowsTop: Math.min(rowsTop, fit(SHELL.row.top)),
+  };
+}

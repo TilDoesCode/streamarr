@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -9,7 +9,7 @@ import {
   type NextUpItem,
   type WatchState,
 } from '@/browse/queries';
-import { resumeSeconds, usePlay, watchProgress } from '@/browse/title-actions';
+import { usePlayWork, watchProgress } from '@/browse/title-actions';
 import { LandscapeCard } from '@/components/media/landscape-card';
 import { PosterCard } from '@/components/media/poster-card';
 import { useFormat } from '@/i18n/format';
@@ -34,7 +34,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
   const { t } = useTranslation();
   const format = useFormat();
   const router = useRouter();
-  const play = usePlay();
+  const playWork = usePlayWork();
   const ref = parseWorkId(state.workId);
   const movie = useMovieDetail(ref?.tmdbId, ref?.kind === 'movie');
   const season = useSeasonDetail(
@@ -64,7 +64,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
     : title;
   const featured: Featured | undefined = ref
     ? {
-        key: `continue-${state.workId}`,
+        key: featuredKey.continue(state.workId),
         kind: ref.kind === 'movie' ? 'movie' : 'series',
         tmdbId: ref.tmdbId,
         title,
@@ -73,6 +73,18 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
         year: movie.data?.year,
         overview: episode?.overview ?? movie.data?.overview,
         detail: code ? [code, episode?.title].filter(Boolean).join(' · ') : undefined,
+        episode:
+          ref.kind === 'episode' && state.workId
+            ? {
+                workId: state.workId,
+                season: ref.season,
+                episode: ref.episode,
+                playTitle,
+                positionTicks: state.positionTicks,
+                durationTicks: state.durationTicks,
+                lastReleaseId: state.lastReleaseId,
+              }
+            : undefined,
         progress,
         tint: state.tint,
         tint2: state.tint2,
@@ -110,8 +122,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
         focused.current = false;
       }}
       onPress={() =>
-        state.workId &&
-        play({ workId: state.workId, title: playTitle, startSeconds: resumeSeconds(state) })
+        state.workId && playWork({ workId: state.workId, title: playTitle, watch: state })
       }
       onLongPress={() => {
         const href = workHref(state.workId);
@@ -125,23 +136,39 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
 export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const play = usePlay();
+  const playWork = usePlayWork();
   const ref = parseWorkId(item.workId);
   const code = t('media.episodeCode', { season: item.seasonNumber, episode: item.episodeNumber });
   const title = item.seriesTitle ?? '';
-  const progress = watchProgress({
+  const watch = {
     positionTicks: item.positionTicks,
     durationTicks: item.durationTicks,
     played: false,
+  };
+  const progress = watchProgress(watch);
+  const playTitle = t('detail.episodeTitle', {
+    series: title,
+    code,
+    title: item.episodeTitle ?? '',
   });
   const featured: Featured | undefined = ref && {
-    key: `next-${item.workId}`,
+    key: featuredKey.next(item.workId),
     kind: 'series',
     tmdbId: ref.tmdbId,
     title,
     eyebrow: props.eyebrow,
     backdropUrl: item.stillUrl,
     detail: [code, item.episodeTitle].filter(Boolean).join(' · '),
+    episode: item.workId
+      ? {
+          workId: item.workId,
+          season: item.seasonNumber,
+          episode: item.episodeNumber,
+          playTitle,
+          positionTicks: item.positionTicks,
+          durationTicks: item.durationTicks,
+        }
+      : undefined,
     progress,
     tint: item.tint,
     tint2: item.tint2,
@@ -170,15 +197,10 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
       onFocus={feature}
       onPress={() =>
         item.workId &&
-        play({
-          workId: item.workId,
-          title: t('detail.episodeTitle', { series: title, code, title: item.episodeTitle ?? '' }),
-          startSeconds: resumeSeconds({
-            positionTicks: item.positionTicks,
-            durationTicks: item.durationTicks,
-            played: false,
-          }),
-        })
+        playWork({ workId: item.workId, title: playTitle, watch }, () =>
+          // No version yet (Q1-08): the series explains it on that episode instead of a failing player.
+          router.push(episodeHref(ref?.tmdbId ?? 0, item.seasonNumber, item.episodeNumber))
+        )
       }
       onLongPress={() => {
         const href = workHref(item.workId);
@@ -188,10 +210,25 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
   );
 }
 
+/** The series detail opened on one episode. */
+export function episodeHref(tmdbId: number, season: number, episode: number): Href {
+  return {
+    pathname: '/series/[id]',
+    params: { id: String(tmdbId), season: String(season), episode: String(episode) },
+  };
+}
+
+/** Hero keys of the Home cards (continue, next up, discover). */
+export const featuredKey = {
+  continue: (workId: string | null) => `continue-${workId}`,
+  next: (workId: string | null) => `next-${workId}`,
+  item: (mediaType: string | null, tmdbId: number) => `item-${mediaType}-${tmdbId}`,
+};
+
 /** Discover item as featured content. */
 export function featuredFromItem(item: CatalogItem, eyebrow: string): Featured {
   return {
-    key: `item-${item.mediaType}-${item.tmdbId}`,
+    key: featuredKey.item(item.mediaType, item.tmdbId),
     kind: item.mediaType === 'tv' || item.mediaType === 'series' ? 'series' : 'movie',
     tmdbId: item.tmdbId,
     title: item.title ?? '',

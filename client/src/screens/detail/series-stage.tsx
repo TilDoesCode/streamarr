@@ -9,6 +9,7 @@ import { EpisodeStrip } from '@/browse/episode-strip';
 import {
   useSeasonWithVersions,
   useSeriesDetail,
+  useSeriesFocus,
   useWatchRefreshOnFocus,
   type Episode,
   type SeriesDetail,
@@ -28,6 +29,7 @@ import {
   TitleActions,
   usePlay,
   usePlayTarget,
+  usePlayWork,
 } from '@/browse/title-actions';
 import { VersionChips } from '@/browse/version-chips';
 import { useVersionSheet } from '@/browse/version-sheet';
@@ -56,6 +58,7 @@ export function SeriesStage() {
   const format = useFormat();
   const shell = useShell();
   const play = usePlay();
+  const playWork = usePlayWork();
   const sheet = useVersionSheet();
   // Android TV Back: strip or season chips -> the main button (strip back at the marked episode) -> leave.
   const mainButton = useRef<View & { requestTVFocus?: () => void }>(null);
@@ -93,16 +96,17 @@ export function SeriesStage() {
   );
   const data = series.data;
   const [picked, setPicked] = useState<Selection | null>(null);
+  const { focus: next, settled } = useSeriesFocus(data);
+  const deepLink = {
+    season: routeNumber(params.season ?? params.n),
+    episode: routeNumber(params.episode),
+  };
   const selection =
     picked ??
-    (data
-      ? initialSelection(data, {
-          season: routeNumber(params.season ?? params.n),
-          episode: routeNumber(params.episode),
-        })
+    (data && (settled || deepLink.season !== undefined)
+      ? initialSelection(data, deepLink, next)
       : undefined);
   const season = useSeasonWithVersions(data ? tmdbId : undefined, selection?.season);
-  const next = data?.watch.nextEpisode ?? null;
   const episodes =
     selection && season.data?.seasonNumber === selection.season
       ? (season.data.episodes ?? [])
@@ -141,12 +145,14 @@ export function SeriesStage() {
   const playEpisode = (item: Episode, fromStart = false) => {
     if (!selection || !item.workId || !playable(item)) return;
     select(item);
-    // The stage's target only when it is this episode; otherwise the server's recommendation.
-    const same = item.workId === episode?.workId && target.target.state === 'ready';
+    const title = episodeTitle(item, selection.season);
+    // The stage's target when it is this episode; another card resolves the same rule on press.
+    const own = item.workId === episode?.workId && target.target.state === 'ready';
+    if (!own && !fromStart) return playWork({ workId: item.workId, title, watch: item.watch });
     play({
       workId: item.workId,
-      title: episodeTitle(item, selection.season),
-      releaseId: same && target.target.state === 'ready' ? target.target.releaseId : undefined,
+      title,
+      releaseId: own && target.target.state === 'ready' ? target.target.releaseId : undefined,
       startSeconds: fromStart ? 0 : resumeSeconds(item.watch),
     });
   };

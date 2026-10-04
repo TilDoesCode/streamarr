@@ -18,6 +18,8 @@ import {
   audioTransfer,
   betterVersion,
   containerTransfer,
+  subtitleFormat,
+  subtitleLabel,
   videoTransfer,
 } from '@/player/overlay-labels';
 import type { Clock } from '@/player/use-clock';
@@ -49,18 +51,6 @@ type Props = {
   onPanel?: (panel: PanelKind) => void;
 };
 
-function trackLabel(
-  track: { index: number; language?: string | null; title?: string | null },
-  locale: string,
-  pt: PlayerT
-): string {
-  const language = track.language ? languageName(track.language, locale) : '';
-  return (
-    [language, track.title].filter(Boolean).join(' · ') ||
-    pt('trackFallback', { index: track.index })
-  );
-}
-
 /** Language name; the file's title only tells apart two tracks of one language (e.g. a commentary). */
 function audioLabel(
   track: AudioTrack,
@@ -80,7 +70,9 @@ function audioLabel(
 }
 
 function subtitleDescription(track: SubtitleTrack, pt: PlayerT): string {
-  return [track.codec?.toUpperCase(), track.forced ? pt('forced') : ''].filter(Boolean).join(' · ');
+  return [subtitleFormat(track.codec), track.forced ? pt('forced') : '']
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /** Audio, subtitle, version, quality, engine and info panels of the player. */
@@ -168,10 +160,15 @@ export function PlayerPanels({
             preferred={subtitle === null}
             onPress={() => pick(() => controller.selectSubtitle(null))}
           />
-          {(info?.subtitleTracks ?? []).map((track) => (
+          {(info?.subtitleTracks ?? []).map((track, _index, tracks) => (
             <SheetItem
               key={track.index}
-              label={trackLabel(track, locale, pt)}
+              label={subtitleLabel(
+                track,
+                tracks,
+                (code) => languageName(code, locale, t),
+                pt('trackFallback', { index: track.index })
+              )}
               description={subtitleDescription(track, pt)}
               selected={subtitle === track.index}
               preferred={subtitle === track.index}

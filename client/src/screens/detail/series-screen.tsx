@@ -1,6 +1,5 @@
 import type { TFunction } from 'i18next';
 import { useLocalSearchParams } from 'expo-router';
-import { Check, EyeOff } from 'lucide-react-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -10,6 +9,7 @@ import { EpisodeList } from '@/browse/episode-list';
 import {
   useSeasonWithVersions,
   useSeriesDetail,
+  useSeriesFocus,
   useVersions,
   useWatchRefreshOnFocus,
   type NextEpisode,
@@ -37,8 +37,7 @@ import { useShell } from '@/shell/use-shell';
 import { gutterPadding, useDesign } from '@/theme';
 
 import { DetailError, routeNumber } from './detail-parts';
-import { peopleCredits } from './large-detail';
-import { PhoneDetail } from './phone-detail';
+import { PhoneDetail, watchedAction } from './phone-detail';
 import { SeriesStage } from './series-stage';
 
 /** Series: the Bühne on large screens, the phone detail with the season's episode list on phones. */
@@ -64,7 +63,7 @@ function SeriesPhone() {
   useWatchRefreshOnFocus();
   const data = series.data;
   const seasons = data?.seasons ?? [];
-  const next = data?.watch.nextEpisode ?? null;
+  const { focus: next } = useSeriesFocus(data);
   const seasonNumber =
     picked ??
     next?.seasonNumber ??
@@ -104,7 +103,12 @@ function SeriesPhone() {
   const columns = design.formFactor === 'desktop-web' && design.window.width >= 1280 ? 2 : 1;
   const seasonError = season.error && !season.data ? toAppError(season.error) : undefined;
   const nextWatch = next
-    ? { positionTicks: next.positionTicks, durationTicks: next.durationTicks, played: false }
+    ? {
+        positionTicks: next.positionTicks,
+        durationTicks: next.durationTicks,
+        played: false,
+        lastReleaseId: next.lastReleaseId,
+      }
     : again
       ? { positionTicks: 0, durationTicks: 0, played: true }
       : null;
@@ -116,6 +120,7 @@ function SeriesPhone() {
 
   return (
     <PhoneDetail
+      about={{ kind: 'series', tmdbId, title }}
       testID={`series-screen-${tmdbId}`}
       kindLabel={t('detail.series')}
       title={title}
@@ -130,7 +135,6 @@ function SeriesPhone() {
       spec={versionSpec(phoneList[entryIndex(phoneList)])}
       specNote={specNote(phoneList, t)}
       overview={data?.overview}
-      credits={peopleCredits(data?.people, t)}
       loading={!data}
       status={
         next ? (
@@ -170,6 +174,7 @@ function SeriesPhone() {
           <VersionSummary
             workId={playTarget.workId}
             watch={nextWatch}
+            kind="episode"
             onOpen={() =>
               openVersions(
                 {
@@ -188,10 +193,7 @@ function SeriesPhone() {
           ? [
               {
                 testID: 'series-mark',
-                icon: allPlayed ? EyeOff : Check,
-                label: t(allPlayed ? 'detail.unwatch' : 'detail.watched'),
-                accessibilityLabel: t(allPlayed ? 'detail.markUnplayed' : 'detail.markPlayed'),
-                selected: allPlayed,
+                ...watchedAction(allPlayed, t),
                 disabled: watched.pending,
                 onPress: watched.toggle,
               },

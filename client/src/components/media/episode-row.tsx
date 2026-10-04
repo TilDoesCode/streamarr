@@ -167,7 +167,7 @@ export function EpisodeRow({
                   }}>
                   <Artwork uri={stillUri} title={title} />
                   {played ? <PlayedMark /> : null}
-                  {!played && progress != null && progress > 0 ? (
+                  {progress != null && progress > 0 ? (
                     <ProgressBar
                       value={progress}
                       onMedia

@@ -111,6 +111,8 @@ export function SearchScreen() {
       <TextField
         testID="search-field"
         label={t('search.label')}
+        // The page heading (or the native header) already says "Search".
+        labelHidden
         placeholder={t('search.placeholder')}
         value={text}
         onChangeText={setText}
@@ -162,6 +164,8 @@ export function SearchScreen() {
           size="sm"
           variant="ghost"
           label={t('search.clearRecent')}
+          // The label, not the ghost padding, lines up with the field's right edge (TV: the focus fill does).
+          style={design.isTV ? undefined : { marginRight: -design.space.md }}
           onPress={() => clearRecentSearches(account.id)}
         />
       </View>

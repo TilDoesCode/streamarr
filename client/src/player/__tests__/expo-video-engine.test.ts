@@ -14,6 +14,8 @@ class FakePlayer {
   audioTrack = null;
   subtitleTrack = null;
   videoTrack = null;
+  duration = 600;
+  timeUpdateEventInterval = 0;
   set currentTime(value: number) {
     this.calls.push(`seek ${value}`);
   }
@@ -97,4 +99,28 @@ it('keeps a pause from before readyToPlay: seeks but does not play', async () =>
   await flush();
   mockPlayer.ready();
   expect(mockPlayer.calls).toEqual(['pause', 'seek 96']);
+});
+
+it('posts time events twice a second while playing and none while paused (Q1-25)', () => {
+  const engine = engineWith(0);
+  expect(mockPlayer.timeUpdateEventInterval).toBe(0.5);
+  mockPlayer.ready();
+  mockPlayer.fire('playingChange', { isPlaying: false });
+  expect(mockPlayer.timeUpdateEventInterval).toBe(0);
+  mockPlayer.fire('playingChange', { isPlaying: true });
+  expect(mockPlayer.timeUpdateEventInterval).toBe(0.5);
+  engine.release();
+});
+
+it('a seek while paused still moves the clock without time events', () => {
+  const engine = engineWith(0);
+  mockPlayer.ready();
+  const times: number[] = [];
+  engine.subscribe((event) => {
+    if (event.type === 'time') times.push(event.position);
+  });
+  engine.seek(120);
+  expect(times).toEqual([120]);
+  expect(engine.getSnapshot().position).toBe(120);
+  engine.release();
 });

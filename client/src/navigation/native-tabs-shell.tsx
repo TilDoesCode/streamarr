@@ -48,6 +48,8 @@ export function NativeTabsShell() {
         <NativeTabs.Trigger
           key={tab.name}
           name={tab.name}
+          // Explicit: the native default is the label at creation and misses a live language switch.
+          accessibilityLabel={t(`tabs.${tab.id}`)}
           role={tab.id === 'search' && Platform.OS === 'ios' ? 'search' : undefined}
           disableAutomaticContentInsets={edgeToEdgeHome && tab.id === 'home'}>
           <NativeTabs.Trigger.Icon sf={tab.sf} md={tab.md} />

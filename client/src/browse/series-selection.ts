@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { Episode, SeriesDetail } from '@/browse/queries';
+import type { Episode, NextEpisode, SeriesDetail, WatchState } from '@/browse/queries';
 
 /** TV focus previews a card after this much rest (same as the home hero). */
 export const PREVIEW_DELAY_MS = 150;
@@ -15,15 +15,49 @@ export function orderedSeasons(seasons: readonly Season[] | null | undefined): S
   return [...(seasons ?? [])].sort((a, b) => (a.seasonNumber || 1e6) - (b.seasonNumber || 1e6));
 }
 
-/** Start: deep link (?season=&episode=), else the next episode, else the first regular season. */
+/** The episode a series is "at": the server's next episode, or the last played version on a resume point. */
+export type SeriesFocus = NextEpisode & { lastReleaseId?: string | null };
+
+/** One rule for Home, stage and phone detail: an episode with a resume point first (a replay too), then next up. */
+export function seriesFocus(
+  series: Pick<SeriesDetail, 'workId' | 'watch'>,
+  resume?: readonly WatchState[] | null
+): SeriesFocus | null {
+  const next = series.watch.nextEpisode ?? null;
+  const active = series.workId
+    ? resume?.find(
+        (state) =>
+          state.seriesWorkId === series.workId &&
+          !!state.workId &&
+          (state.positionTicks ?? 0) > 0 &&
+          state.seasonNumber != null &&
+          state.episodeNumber != null
+      )
+    : undefined;
+  if (!active || active.workId === next?.workId)
+    return next && { ...next, lastReleaseId: active?.lastReleaseId };
+  return {
+    workId: active.workId,
+    seasonNumber: active.seasonNumber!,
+    episodeNumber: active.episodeNumber!,
+    title: active.title,
+    positionTicks: active.positionTicks,
+    durationTicks: active.durationTicks,
+    reason: 'resume',
+    lastReleaseId: active.lastReleaseId,
+  };
+}
+
+/** Start: deep link (?season=&episode=), else the series focus, else the first regular season. */
 export function initialSelection(
   series: Pick<SeriesDetail, 'seasons' | 'watch'>,
-  params: { season?: number; episode?: number }
+  params: { season?: number; episode?: number },
+  focus: NextEpisode | null | undefined = series.watch.nextEpisode
 ): Selection | undefined {
   const seasons = orderedSeasons(series.seasons);
   if (params.season !== undefined && seasons.some((s) => s.seasonNumber === params.season))
     return { season: params.season, episode: params.episode ?? null };
-  const next = series.watch.nextEpisode;
+  const next = focus;
   if (next) return { season: next.seasonNumber, episode: next.episodeNumber };
   return seasons[0] ? { season: seasons[0].seasonNumber, episode: null } : undefined;
 }

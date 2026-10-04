@@ -95,7 +95,8 @@ export function PlayScreen() {
     controller?.getVersion ?? zero,
     controller?.getVersion ?? zero
   );
-  const clockState = useClock(controller?.engine);
+  const [overlayShown, setOverlayShown] = useState(true);
+  const clockState = useClock(controller?.engine, !overlayShown && panel === null);
   const next = useNextEpisode(workId);
 
   useEffect(() => {
@@ -218,6 +219,7 @@ export function PlayScreen() {
           panel={panel}
           onClose={close}
           backRef={overlayBack}
+          onVisibleChange={setOverlayShown}
         />
       ) : null}
       {failed ? (

@@ -169,7 +169,7 @@ describe('chip row model', () => {
     });
     const direct = playTarget([webdl, uhd], null, 'play');
     expect(text(reasonLine(direct, [webdl, uhd], t))).toBe(
-      '4K · HDR10 available, plays here only transcoded'
+      'Best version 4K · HDR10: transcoded only here'
     );
     expect(text(reasonLine({ state: 'error' }, [], t))).toMatch(/Versions not loaded/);
   });

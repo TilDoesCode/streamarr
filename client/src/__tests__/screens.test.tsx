@@ -1,9 +1,9 @@
 import { QueryClient } from '@tanstack/react-query';
 import { cleanup, fireEvent, userEvent, within } from '@testing-library/react-native';
-import { Stack } from 'expo-router';
+import { router as appRouter, Stack } from 'expo-router';
 import { act, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
-import { ActionSheetIOS, FlatList } from 'react-native';
+import { ActionSheetIOS, FlatList, Platform, StyleSheet } from 'react-native';
 
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
@@ -18,6 +18,20 @@ import { methodLabel } from '@/screens/settings/account-security';
 import { colors, DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
+
+// Counts MovieScreen mounts: a new title must remount the page (TV focus memory lives in its focus guides).
+const mockMovieMounts = { count: 0 };
+jest.mock('@/screens/detail/movie-screen', () => {
+  const actual = jest.requireActual('@/screens/detail/movie-screen');
+  const { useEffect } = jest.requireActual('react');
+  return {
+    ...actual,
+    MovieScreen: () => {
+      useEffect(() => void (mockMovieMounts.count += 1), []);
+      return actual.MovieScreen();
+    },
+  };
+});
 
 // Phone tests override the window (the jest default is tablet-sized).
 let mockWindow: { width: number; height: number; scale: number; fontScale: number } | undefined;
@@ -188,6 +202,16 @@ describe('Home', () => {
     const { router } = await open('/');
     await userEvent.setup().press(await screen.findByTestId('home-card-trending-movies-0'));
     await waitFor(() => expect(router.getPathname()).toBe('/movie/123'));
+  });
+
+  it('phone: the status bar scrim lets the avatar through, which opens the picker (Q1-43)', async () => {
+    mockWindow = { width: 412, height: 915, scale: 2.6, fontScale: 1 };
+    const { router } = await open('/');
+    const scrim = await screen.findByTestId('home-status-scrim');
+    // ScrollView moves a sticky header's style (not its props) onto a wrapper that covers the avatar.
+    expect(StyleSheet.flatten(scrim.props.style).pointerEvents).toBe('none');
+    await userEvent.setup().press(screen.getByTestId('home-profile'));
+    await waitFor(() => expect(router.getPathname()).toBe('/profiles'));
   });
 });
 
@@ -648,6 +672,9 @@ describe('Series Bühne', () => {
     await open('/series/7');
     await waitFor(() => expect(heading()).toHaveTextContent('S1 Episode 2'), WAIT);
     expect(screen.getByText('Season 1 · Episode 2 · Up next')).toBeOnTheScreen();
+    // One line, remounted per label: the episode number can never end up on a hidden second line.
+    const pill = screen.getByTestId('stage-pill');
+    expect(pill.props.numberOfLines).toBe(1);
     expect(screen.getByTestId('series-play')).toHaveTextContent('Resume');
     expect(screen.getByTestId('series-start-over')).toBeOnTheScreen();
     await waitFor(
@@ -874,11 +901,37 @@ describe('Version picker', () => {
     expect(router.getSearchParams()).toMatchObject({ releaseId: 'r1' });
   });
 
+  it('a link to another movie over an open detail starts a fresh page (focus memory per route)', async () => {
+    handlers['/api/v1/viewer/catalog/movies/456'] = () =>
+      json(200, { ...movie, tmdbId: 456, workId: 'tmdb-movie-456', title: 'Wing It!' });
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-456/versions'] = () =>
+      json(200, { workId: 'tmdb-movie-456', versions: [version(1, true, 'direct')] });
+    await open('/movie/123');
+    await screen.findByTestId('movie-play', {}, WAIT);
+    const mounts = mockMovieMounts.count;
+    await act(async () => appRouter.setParams({ id: '456' }));
+    await screen.findByTestId('movie-play', {}, WAIT);
+    expect(mockMovieMounts.count).toBe(mounts + 1);
+  });
+
   it('shows a skeleton while versions load', async () => {
     handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = never;
-    await open('/movie/123');
-    await userEvent.setup().press(await screen.findByTestId('movie-versions', {}, WAIT));
+    await open('/versions/tmdb-movie-123?title=Sintel');
     expect((await screen.findAllByTestId('versions-loading', {}, WAIT)).length).toBeGreaterThan(0);
+  });
+
+  it('keeps the main button and adds Versions only once the versions arrived (TV focus)', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const pending = new Promise<Response>((resolve) => (answer = resolve));
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = () =>
+      pending.then((response) => response.clone());
+    await open('/movie/123');
+    const main = await screen.findByTestId('movie-play', {}, WAIT);
+    expect(screen.queryByTestId('movie-versions')).toBeNull();
+    await act(async () => answer(json(200, { workId: 'tmdb-movie-123', versions: [] })));
+    const none = await screen.findByTestId('movie-no-versions', {}, WAIT);
+    expect(none).toBe(main);
+    expect(screen.queryByTestId('movie-versions')).toBeNull();
   });
 
   it('shows an error with retry', async () => {
@@ -1358,7 +1411,13 @@ describe('Settings account', () => {
     await open('/settings');
     const button = await screen.findByTestId('settings-devices-sign-out-others');
     expect(screen.getByText(/E-mail code \+ two-step code/)).toBeOnTheScreen();
-    await userEvent.setup().press(button);
+    const user = userEvent.setup();
+    await user.press(button);
+    await user.press(
+      within(screen.getByTestId('sign-out-others-dialog')).getByRole('button', {
+        name: 'Sign out',
+      })
+    );
     expect(await screen.findByTestId('settings-devices-empty', {}, WAIT)).toBeOnTheScreen();
     expect(screen.getByText('2 devices signed out')).toBeOnTheScreen();
     expect(calls).toEqual(['POST']);
@@ -1438,5 +1497,208 @@ describe('Settings account', () => {
       WAIT
     );
     expect(screen.queryByTestId('settings-email-error-email_code_cooldown')).toBeNull();
+  });
+});
+
+describe('F9: one play target and one series focus (Q1)', () => {
+  let afterThis: (() => void) | undefined;
+  afterEach(() => {
+    afterThis?.();
+    afterThis = undefined;
+  });
+  const ticks = (seconds: number) => seconds * 10_000_000;
+  const ep = (season: number, n: number, extra: Record<string, unknown> = {}) => ({
+    workId: `tmdb-tv-7-s0${season}e0${n}`,
+    episodeNumber: n,
+    title: `S${season} Episode ${n}`,
+    runtimeMinutes: 90,
+    aired: true,
+    watch: { played: true },
+    ...extra,
+  });
+  // S2E1 was watched and is being replayed (B8): played AND a resume point; the server's next is S3E1 without versions.
+  const replay = {
+    workId: 'tmdb-tv-7-s02e01',
+    kind: 'episode',
+    seriesWorkId: 'tmdb-tv-7',
+    seasonNumber: 2,
+    episodeNumber: 1,
+    title: 'S2 Episode 1',
+    positionTicks: ticks(600),
+    durationTicks: ticks(5400),
+    played: true,
+    lastReleaseId: 'r1',
+  };
+  const seasons: Record<number, unknown[]> = {
+    1: [ep(1, 1)],
+    2: [ep(2, 1, { watch: replay }), ep(2, 2)],
+    3: [ep(3, 1, { watch: { played: false }, versionCount: 0 })],
+  };
+  const series = {
+    workId: 'tmdb-tv-7',
+    tmdbId: 7,
+    title: 'Sherlock',
+    seasonCount: 3,
+    episodeCount: 4,
+    genres: ['Drama', 'Sci-Fi & Fantasy'],
+    certification: 'NR',
+    seasons: [1, 2, 3].map((n) => ({ seasonNumber: n, title: `Season ${n}`, episodeCount: 1 })),
+    watch: {
+      totalEpisodes: 4,
+      playedEpisodes: 3,
+      nextEpisode: {
+        workId: 'tmdb-tv-7-s03e01',
+        seasonNumber: 3,
+        episodeNumber: 1,
+        title: 'S3 Episode 1',
+        reason: 'next',
+      },
+    },
+  };
+  const episodeVersions = (workId: string) => () =>
+    json(200, {
+      workId,
+      versions: [version(1, false, 'direct'), version(2, true, 'direct')],
+    });
+
+  beforeEach(() => {
+    handlers['/api/v1/viewer/catalog/series/7'] = () => json(200, series);
+    for (const n of [1, 2, 3])
+      handlers[`/api/v1/viewer/catalog/series/7/seasons/${n}`] = () =>
+        json(200, {
+          seasonNumber: n,
+          title: `Season ${n}`,
+          seriesTitle: 'Sherlock',
+          episodes: seasons[n],
+        });
+    for (const id of ['s01e01', 's02e01', 's02e02'])
+      handlers[`/api/v1/viewer/catalog/works/tmdb-tv-7-${id}/versions`] = episodeVersions(
+        `tmdb-tv-7-${id}`
+      );
+    handlers['/api/v1/viewer/catalog/works/tmdb-tv-7-s03e01/versions'] = () =>
+      json(200, { workId: 'tmdb-tv-7-s03e01', versions: [] });
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, [replay]);
+  });
+
+  it('stage opens on the episode with the resume point, not the next one (Q1-04/26)', async () => {
+    mockWindow = { width: 1366, height: 1024, scale: 2, fontScale: 1 };
+    await open('/series/7');
+    await waitFor(
+      () => expect(screen.getByTestId('stage-heading')).toHaveTextContent('S2 Episode 1'),
+      WAIT
+    );
+    expect(await screen.findByText('Resume', {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('phone detail offers Resume S2E1 instead of "no playable version" (Q1-06/36)', async () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    const { router } = await open('/series/7');
+    expect(await screen.findByTestId('series-next', {}, WAIT)).toHaveTextContent(/S2.*E1/);
+    expect(await screen.findByTestId('versions-summary', {}, WAIT)).toBeOnTheScreen();
+    expect(screen.queryByTestId('versions-summary-empty')).toBeNull();
+    await userEvent.setup().press(await screen.findByTestId('series-play', {}, WAIT));
+    await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
+    expect(router.getSearchParams()).toMatchObject({
+      workId: 'tmdb-tv-7-s02e01',
+      releaseId: 'r1',
+      start: '600',
+    });
+  });
+
+  it('a series without any versions names the episode, not the title (Q1-06)', async () => {
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, []);
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    await open('/series/7');
+    expect(await screen.findByTestId('versions-summary-empty', {}, WAIT)).toHaveTextContent(
+      'There is no playable version of this episode yet.'
+    );
+  });
+
+  it('translates TMDB genre names and hides "NR" (Q1-15)', async () => {
+    await act(async () => {
+      await setLanguagePreference('de');
+    });
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    await open('/series/7');
+    await screen.findByTestId('series-next', {}, WAIT);
+    expect(screen.queryByTestId('detail-certification')).toBeNull();
+  });
+
+  it('Home continue card resumes the version the detail would resume (Q1-05)', async () => {
+    handlers['/api/v1/viewer/watch/resume'] = () =>
+      json(200, [
+        {
+          ...movie.watch,
+          positionTicks: ticks(88),
+          durationTicks: ticks(180),
+          lastReleaseId: 'r1',
+        },
+      ]);
+    const { router } = await open('/');
+    await userEvent.setup().press(await screen.findByTestId('home-card-continue-0', {}, WAIT));
+    await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
+    expect(router.getSearchParams()).toMatchObject({
+      workId: 'tmdb-movie-123',
+      releaseId: 'r1',
+      start: '88',
+    });
+  });
+
+  it('a next-up episode without versions opens its series instead of the player (Q1-08)', async () => {
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, []);
+    handlers['/api/v1/viewer/watch/next-up'] = () =>
+      json(200, {
+        items: [
+          {
+            workId: 'tmdb-tv-7-s03e01',
+            seriesWorkId: 'tmdb-tv-7',
+            seriesTitle: 'Sherlock',
+            seasonNumber: 3,
+            episodeNumber: 1,
+            episodeTitle: 'S3 Episode 1',
+            lastWatchedWorkId: 'tmdb-tv-7-s02e02',
+            lastActivityAt: '2026-10-04T16:00:00Z',
+          },
+        ],
+      });
+    const { router } = await open('/');
+    await userEvent.setup().press(await screen.findByTestId('home-card-next-up-0', {}, WAIT));
+    await waitFor(() => expect(router.getPathname()).toBe('/series/7'));
+    expect(router.getSearchParams()).toMatchObject({ season: '3', episode: '1' });
+  });
+
+  it('phone hero names the episode and "More info" opens on it (Q1-04/18/37)', async () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    const { router } = await open('/');
+    expect(await screen.findByTestId('home-hero-episode', {}, WAIT)).toHaveTextContent(/S2.*E1/);
+    expect(await screen.findByTestId('home-hero-play', {}, WAIT)).toHaveTextContent('Resume');
+    await userEvent.setup().press(screen.getByTestId('home-hero-info'));
+    await waitFor(() => expect(router.getPathname()).toBe('/series/7'));
+    expect(router.getSearchParams()).toMatchObject({ season: '2', episode: '1' });
+  });
+
+  it('Android phone version sheet shows "Best picture · On this device" like web and TV (Q1-45)', async () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'android');
+    afterThis = () => os.restore();
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = () =>
+      json(200, {
+        workId: 'tmdb-movie-123',
+        versions: [
+          { ...version(1, true, 'direct'), resolution: '1080p', source: 'WEB-DL', qualityRank: 2 },
+          {
+            ...version(2, false, 'transcode'),
+            resolution: '2160p',
+            hdrFormats: ['HDR10'],
+            qualityRank: 1,
+          },
+        ],
+      });
+    await open('/movie/123');
+    await userEvent.setup().press(await screen.findByTestId('versions-summary', {}, WAIT));
+    const picker = await screen.findByTestId('version-picker', {}, WAIT);
+    expect(await within(picker).findByTestId('version-sheet-specs', {}, WAIT)).toHaveTextContent(
+      /Best picture.*On this device/
+    );
   });
 });

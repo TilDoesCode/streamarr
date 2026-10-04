@@ -29,6 +29,19 @@ import { colors, fonts, useDesign } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 /** D2 episode card (1920 × 1080 points) and the caption block under it (title, subline, selection bar). */
+/** The card's corner badges, side by side in one row (never stacked on top of each other). */
+export function cardBadges({ next, noVersion }: { next: boolean; noVersion: boolean }) {
+  return [
+    ...(next ? (['media.upNext'] as const) : []),
+    ...(noVersion ? (['detail.noVersionShort'] as const) : []),
+  ];
+}
+
+/** TV marks the selected card by its caption bar only: a ring would read as a second focus ring. */
+export function showsSelectionRing(selected: boolean, isTV: boolean) {
+  return selected && !isTV;
+}
+
 export const EPISODE_CARD = { width: 352, height: 198, radius: 20, caption: 76, bar: 5 } as const;
 const CONTINUE_WIDTH = 220;
 
@@ -328,19 +341,21 @@ function EpisodeCard({
   const notAired = episode.aired === false || !episode.workId;
   const noVersion = !notAired && episode.versionCount === 0;
   const played = !!episode.watch.played;
-  const progress = played ? undefined : watchProgress(episode.watch);
+  // A replay of a watched episode shows both: the watched mark and its resume progress.
+  const progress = watchProgress(episode.watch);
   const left =
     ((episode.watch.durationTicks ?? 0) - (episode.watch.positionTicks ?? 0)) / TICKS_PER_SECOND;
+  const badges = cardBadges({ next, noVersion }).map((key) => t(key));
   const subline = notAired
     ? episode.airDate
       ? t('detail.airsOn', { date: format.date(episode.airDate) })
       : t('detail.notAired')
     : noVersion
       ? t('detail.noVersionShort')
-      : played
-        ? t('media.played')
-        : progress !== undefined
-          ? format.remaining(left)
+      : progress !== undefined
+        ? format.remaining(left)
+        : played
+          ? t('media.played')
           : episode.runtimeMinutes
             ? format.duration(episode.runtimeMinutes * 60)
             : '';
@@ -452,14 +467,21 @@ function EpisodeCard({
                 }}
               />
             ) : null}
-            {next ? (
-              <View style={{ position: 'absolute', top: inset, left: inset }}>
-                <Badge label={t('media.upNext')} variant="solid" />
-              </View>
-            ) : null}
-            {noVersion ? (
-              <View style={{ position: 'absolute', top: inset, left: inset }}>
-                <Badge label={t('detail.noVersionShort')} variant="solid" />
+            {badges.length ? (
+              <View
+                testID={`episode-card-${episode.episodeNumber}-badges`}
+                style={{
+                  position: 'absolute',
+                  top: inset,
+                  left: inset,
+                  right: inset,
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: s(8),
+                }}>
+                {badges.map((badge) => (
+                  <Badge key={badge} label={badge} variant="solid" />
+                ))}
               </View>
             ) : null}
             {played ? <PlayedMark /> : null}
@@ -470,7 +492,7 @@ function EpisodeCard({
                 style={{ position: 'absolute', left: inset, right: inset, bottom: inset }}
               />
             ) : null}
-            {selected ? (
+            {showsSelectionRing(selected, design.isTV) ? (
               <View
                 testID={`episode-card-${episode.episodeNumber}-selected`}
                 style={{

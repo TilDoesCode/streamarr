@@ -39,6 +39,8 @@ type Props = {
   mute: boolean;
 };
 
+const TIME_EVENT_MS = 250;
+
 /** libVLC (Android) / VLCKit 4 (Apple) via expo-libvlc-player: the fallback engine. */
 export class VlcEngine extends EngineBase implements PlayerEngine {
   readonly kind = 'vlc' as const;
@@ -56,6 +58,7 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   private pendingPause = false;
   private onStopped: (() => void) | null = null;
   private seekGuard: { target: number; until: number } | null = null;
+  private timeAt = 0;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private stall = { pictures: -1, position: 0, recoveries: 0 };
 
@@ -138,6 +141,11 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
         void this.view.current?.pause();
       }
     }
+    // libVLC reports time unthrottled; the clock needs at most four updates a second.
+    const now = Date.now();
+    const seeking = !!guard && now < guard.until;
+    if (this.started && !seeking && now - this.timeAt < TIME_EVENT_MS) return;
+    this.timeAt = now;
     this.emitTime(this.started ? reported : Math.max(reported, start));
   }
 

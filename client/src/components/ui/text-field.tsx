@@ -26,10 +26,12 @@ const NO_OUTLINE = { outlineStyle: 'none' } as unknown as TextStyle;
 
 export type TextFieldProps = Omit<TextInputProps, 'style' | 'placeholderTextColor'> & {
   label: string;
+  /** The label names the input for assistive tech only (a page heading already says it). */
+  labelHidden?: boolean;
   /** Shown under the field in the danger tone; marks the field invalid. */
   error?: string;
   hint?: string;
-  /** Control beside the input (e.g. show-password). */
+  /** Control at the input's end (e.g. show-password): inside the field; beside it on TV (its own focus stop). */
   trailing?: ReactNode;
   /** Initial focus: TV remote focus, desktop web keyboard focus (phones would pop the keyboard). */
   initialFocus?: boolean;
@@ -39,6 +41,7 @@ export type TextFieldProps = Omit<TextInputProps, 'style' | 'placeholderTextColo
 /** Labelled input with a strong focus border. TV: OK opens the keyboard; Up/Down always move between fields. */
 export function TextField({
   label,
+  labelHidden = false,
   error,
   hint,
   trailing,
@@ -70,6 +73,15 @@ export function TextField({
         },
         blur: () => inputRef.current?.blur(),
         clear: () => inputRef.current?.clear(),
+        setSelection: (start: number, end: number) => {
+          // Web: the ref is the DOM input.
+          const node = inputRef.current as unknown as {
+            setSelection?: (start: number, end: number) => void;
+            setSelectionRange?: (start: number, end: number) => void;
+          } | null;
+          if (node?.setSelection) node.setSelection(start, end);
+          else node?.setSelectionRange?.(start, end);
+        },
         isFocused: () => inputRef.current?.isFocused() ?? false,
       }) as unknown as TextInput,
     [tv]
@@ -94,10 +106,13 @@ export function TextField({
   // iOS/iPad Safari zoom into inputs below 16 px.
   const fontSize = Platform.OS === 'web' ? Math.max(16, typeStep.fontSize) : typeStep.fontSize;
   const active = focused || editing;
+  const inside = !tv && !!trailing;
   const box: ViewStyle = {
     flex: 1,
     height,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: inside ? design.space.xs : 0,
     borderRadius: design.radius.md,
     borderCurve: 'continuous',
     borderWidth: design.focus.ringWidth,
@@ -112,7 +127,7 @@ export function TextField({
       ref={inputRef}
       testID={testID}
       accessibilityLabel={label}
-      aria-labelledby={labelId}
+      aria-labelledby={labelHidden ? undefined : labelId}
       accessibilityHint={error}
       editable={editable && (!tv || editing)}
       focusable={!tv || editing}
@@ -152,9 +167,11 @@ export function TextField({
 
   return (
     <View style={{ gap: design.space.xs, alignSelf: 'stretch' }}>
-      <Text variant="label" tone="muted" nativeID={labelId}>
-        {label}
-      </Text>
+      {labelHidden ? null : (
+        <Text variant="label" tone="muted" nativeID={labelId}>
+          {label}
+        </Text>
+      )}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
         {tv ? (
           <Focusable
@@ -171,9 +188,12 @@ export function TextField({
             <View style={box}>{input}</View>
           </Focusable>
         ) : (
-          <View style={box}>{input}</View>
+          <View testID={testID ? `${testID}-box` : undefined} style={box}>
+            {input}
+            {trailing}
+          </View>
         )}
-        {trailing}
+        {tv ? trailing : null}
       </View>
       {error ? (
         // Separate keys: NativeWind on web keeps the old tone class when one Text replaces the other.

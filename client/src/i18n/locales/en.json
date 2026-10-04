@@ -84,9 +84,7 @@
       "cast": "Starring"
     },
     "watched": "Watched",
-    "unwatch": "Unwatch",
     "details": "Details",
-    "lessDetails": "Less",
     "specGap": "{best} available · plays here in {here}",
     "rating": "Rating",
     "ratingSource": " TMDB",
@@ -105,7 +103,8 @@
     "genres": "Genres",
     "originalTitle": "Original title",
     "moreDetails": "All details",
-    "moreAboutSeries": "More about the series"
+    "moreAboutSeries": "More about the series",
+    "markWatchedShort": "Mark watched"
   },
   "settings": {
     "account": {
@@ -134,7 +133,8 @@
         "coral": "Coral",
         "rose": "Rose",
         "slate": "Slate"
-      }
+      },
+      "nameBlank": "A name can’t be only spaces. Leave the field empty to use {username}."
     },
     "about": {
       "title": "About",
@@ -168,7 +168,10 @@
         "password_reset": "Password reset",
         "other": "Other"
       },
-      "signedOutOthers": "{count, plural, =0 {No other devices were signed in} one {One device signed out} other {# devices signed out}}"
+      "signedOutOthers": "{count, plural, =0 {No other devices were signed in} one {One device signed out} other {# devices signed out}}",
+      "signOutOthersTitle": "{count, plural, one {Sign out the other device?} other {Sign out all # other devices?}}",
+      "signOutOthersMessage": "They need to sign in again to keep watching. This device stays signed in.",
+      "signOutOthersConfirm": "Sign out"
     },
     "security": {
       "title": "Sign-in and security",
@@ -241,7 +244,8 @@
       "forgot": "Forgot password?",
       "changeServer": "Change server",
       "showPassword": "Show password",
-      "hidePassword": "Hide password"
+      "hidePassword": "Hide password",
+      "backToApp": "Back to the app"
     },
     "secondFactor": {
       "title": "Two-step verification",
@@ -1077,11 +1081,11 @@
       "noneEpisode": "There is no playable version of this episode yet.",
       "error": "Versions not loaded · Play starts the server’s recommendation",
       "betterOnly": {
-        "direct": "{best} available",
-        "remux": "{best} available, plays here as a direct stream",
-        "transcode": "{best} available, plays here only transcoded",
-        "vlc": "{best} available, plays here only with VLC",
-        "unknown": "{best} available"
+        "direct": "Best version {best}: direct here",
+        "remux": "Best version {best}: direct stream here",
+        "transcode": "Best version {best}: transcoded only here",
+        "vlc": "Best version {best}: VLC only here",
+        "unknown": "Best version: {best}"
       }
     }
   },
@@ -1099,5 +1103,15 @@
       "movie": "No movies match this genre.",
       "series": "No series match this genre."
     }
+  },
+  "genreNames": {
+    "scifiFantasy": "Sci-Fi & Fantasy",
+    "warPolitics": "War & Politics",
+    "actionAdventure": "Action & Adventure",
+    "kids": "Kids",
+    "news": "News",
+    "reality": "Reality",
+    "soap": "Soap",
+    "talk": "Talk"
   }
 }

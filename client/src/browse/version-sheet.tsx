@@ -149,43 +149,63 @@ export function useVersionSheetParts({
             : t(subtitleKey, { title })
           : title}
       </Text>
-      {specs ? (
-        <View
-          testID="version-sheet-specs"
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            columnGap: s(40),
-            rowGap: s(6),
-            marginTop: s(14),
-            paddingHorizontal: s(20),
-            paddingVertical: s(14),
-            borderRadius: s(16),
-            borderCurve: 'continuous',
-            backgroundColor: colors.glass.subtle,
-          }}>
-          <SpecPair label={t('versions.bestPicture')} value={specs.best} />
-          <SpecPair label={t('versions.onDevice')} value={specs.here} />
-        </View>
-      ) : null}
+      {specs ? <VersionSpecs specs={specs} size={s} /> : null}
     </View>
   );
 
   return { header, cards: <View style={{ gap: cardGap }}>{body}</View> };
 }
 
-function SpecPair({ label, value }: { label: string; value: string }) {
-  const { s } = useShell();
+/** "Best picture · On this device" above the version cards (every size, Q1-45). */
+export function VersionSpecs({
+  specs,
+  size,
+}: {
+  specs: { best: string; here: string };
+  /** Design scale of the surrounding sheet. */
+  size: (value: number) => number;
+}) {
+  const { t } = useTranslation();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: s(12) }}>
-      <Text tone="muted" style={{ fontSize: s(18), lineHeight: s(26) }}>
+    <View
+      testID="version-sheet-specs"
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        columnGap: size(40),
+        rowGap: size(6),
+        marginTop: size(14),
+        paddingHorizontal: size(20),
+        paddingVertical: size(14),
+        borderRadius: size(16),
+        borderCurve: 'continuous',
+        backgroundColor: colors.glass.subtle,
+      }}>
+      <SpecPair label={t('versions.bestPicture')} value={specs.best} size={size} />
+      <SpecPair label={t('versions.onDevice')} value={specs.here} size={size} />
+    </View>
+  );
+}
+
+function SpecPair({
+  label,
+  value,
+  size,
+}: {
+  label: string;
+  value: string;
+  size: (value: number) => number;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: size(12) }}>
+      <Text tone="muted" style={{ fontSize: size(18), lineHeight: size(26) }}>
         {label}
       </Text>
       <Text
         style={{
           fontFamily: fonts.bodySemiBold,
-          fontSize: s(20),
-          lineHeight: s(28),
+          fontSize: size(20),
+          lineHeight: size(28),
           color: colors.foreground.DEFAULT,
         }}>
         {value}

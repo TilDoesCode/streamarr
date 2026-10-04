@@ -26,7 +26,6 @@ import { useTranslation } from 'react-i18next';
 import {
   Platform,
   StyleSheet,
-  useTVEventHandler,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
@@ -51,9 +50,15 @@ import {
   toggleFullscreen,
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
+import { useTVEvents } from '@/player/use-tv-events';
 import type { Clock } from '@/player/use-clock';
 import { useWindowControlsInset } from '@/shell/window-controls';
-import { audioLayout, barChipsLabelled, qualityLabel } from '@/player/overlay-labels';
+import {
+  audioLayout,
+  barChipsLabelled,
+  LARGE_TITLE_MAX_WIDTH,
+  qualityLabel,
+} from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { effectiveMuted, TEST_MUTED } from '@/player/test-muted';
@@ -67,7 +72,6 @@ const COMMIT_MS = 700;
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 const HIDDEN_ALPHA = APPLE_TV ? 0.011 : 0;
 // react-native-web has no TV event hook.
-const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 const DOUBLE_TAP_SECONDS = 10;
 const DOUBLE_TAP_WINDOW_MS = 300;
 
@@ -96,6 +100,8 @@ export type PlayerOverlayProps = {
   onClose: () => void;
   /** Registers the overlay's Back step: true when it hid the overlay. */
   backRef: RefObject<(() => boolean) | null>;
+  /** The overlay showed or hid (the player slows its clock while nothing shows it). */
+  onVisibleChange?: (visible: boolean) => void;
 };
 
 /** Our own controls over every engine: title, progress with buffered range, transport, panels, keys and gestures. */
@@ -109,6 +115,7 @@ export function PlayerOverlay({
   panel: openPanel = null,
   onClose,
   backRef,
+  onVisibleChange,
 }: PlayerOverlayProps) {
   const pt = usePlayerT();
   const design = useDesign();
@@ -183,6 +190,8 @@ export function PlayerOverlay({
 
   useEffect(() => onFullscreenChange(() => setFullscreen(isFullscreen())), []);
 
+  useEffect(() => onVisibleChange?.(visible), [visible, onVisibleChange]);
+
   // TV: focus follows the zone so focus is never lost while the overlay shows.
   useEffect(() => {
     if (!tv || !visible || suspended) return;
@@ -240,7 +249,8 @@ export function PlayerOverlay({
   };
 
   const scrubBy = (direction: -1 | 1, repeat: number) => {
-    const base = scrubRef.current ?? clock.position;
+    // The live position: the clock is coarse while the overlay is hidden.
+    const base = scrubRef.current ?? controller.position;
     scrubTo(base + scrubStep(direction, repeat));
     if (!visible) setZone('progress');
   };
@@ -483,7 +493,7 @@ export function PlayerOverlay({
                   testID="player-title"
                   numberOfLines={1}
                   style={{
-                    maxWidth: '62%',
+                    maxWidth: LARGE_TITLE_MAX_WIDTH,
                     fontFamily: fonts.displayBold,
                     fontSize: s(56),
                     lineHeight: s(68),

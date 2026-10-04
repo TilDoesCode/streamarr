@@ -6,6 +6,7 @@ import { renderWithProviders } from '@/../jest/render';
 import { SeasonChips } from '@/browse/season-chips';
 import { StageActionRow } from '@/screens/detail/stage-action-row';
 import { GenreRow } from '@/screens/library/genre-row';
+import { LanguageSection } from '@/screens/settings/settings-screen';
 import { createDesign } from '@/theme/design';
 
 // RN's Jest mock of the native View lacks Commands; TVFocusGuideView sends setDestinations on TV.
@@ -72,5 +73,29 @@ describe('TV focus gaps per row primitive', () => {
     expect(gapOf('library-genres-scroll', 'contentContainerStyle')).toBeGreaterThanOrEqual(
       focus.rowGap
     );
+  });
+
+  it('genre scroller before the Apple TV sort control (end padding)', async () => {
+    await renderWithProviders(
+      <GenreRow
+        chips={[1, 2, 3].map((id) => ({ id, name: `G${id}` }))}
+        selected={null}
+        selectedRef={{ current: null }}
+        selectedNode={null}
+        label="Genres"
+        onSelect={() => undefined}
+        onChipFocus={() => undefined}
+        trailing={<View testID="sort" />}
+      />
+    );
+    const content = StyleSheet.flatten(
+      screen.getByTestId('library-genres-scroll').props.contentContainerStyle
+    );
+    expect(content.paddingRight).toBeGreaterThanOrEqual(focus.rowGap);
+  });
+
+  it('chip row (settings language, Q1-28)', async () => {
+    await renderWithProviders(<LanguageSection />);
+    expect(gapOf('settings-language-chips')).toBeGreaterThanOrEqual(focus.rowGap);
   });
 });

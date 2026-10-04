@@ -1,9 +1,17 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Server } from 'lucide-react-native';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TextInput,
+  View,
+  type HostInstance,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AmbientBackdrop } from '@/components/ambient';
@@ -42,7 +50,29 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   const router = useRouter();
   const { large, s } = useShell();
   const split = design.isTV || large;
-  const keyboard = useKeyboardShown(!split && Platform.OS === 'ios');
+  const keyboard = useKeyboardShown(!split && Platform.OS !== 'web');
+  const scrollRef = useRef<ScrollView>(null);
+  const metrics = useRef({ viewport: 0, content: 0, current: 0 });
+  const margin = design.space['2xl'];
+  // Handheld keyboard up: the focused field moves to the top so the submit button below it stays visible.
+  const reveal = useCallback(() => {
+    const field = TextInput.State.currentlyFocusedInput?.() as HostInstance | null;
+    const inner = scrollRef.current?.getInnerViewNode?.() as HostInstance | null | undefined;
+    if (!field || !inner) return;
+    field.measureLayout(
+      inner,
+      (_x, top) => {
+        const y = revealScrollY({ fieldTop: top, margin, ...metrics.current });
+        if (y !== null) scrollRef.current?.scrollTo({ y, animated: true });
+      },
+      () => undefined
+    );
+  }, [margin]);
+  useEffect(() => {
+    if (!keyboard) return;
+    const frame = requestAnimationFrame(reveal);
+    return () => cancelAnimationFrame(frame);
+  }, [keyboard, reveal]);
   const logo = design.px(split ? 56 : 48);
   const back =
     !design.isTV && router.canGoBack() ? (
@@ -127,8 +157,21 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
       {/* Handheld: shrink above the keyboard (Android edge-to-edge no longer resizes the window). */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={split ? undefined : 'padding'}>
         <ScrollView
+          ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
+          scrollEventThrottle={64}
+          onScroll={(event) => {
+            metrics.current.current = event.nativeEvent.contentOffset.y;
+          }}
+          onContentSizeChange={(_width, height) => {
+            metrics.current.content = height;
+          }}
+          onLayout={(event) => {
+            metrics.current.viewport = event.nativeEvent.layout.height;
+            // The keyboard avoidance shrank the view: reveal again with the final height.
+            if (keyboard) reveal();
+          }}
           contentContainerStyle={{
             flexGrow: 1,
             justifyContent: 'center',
@@ -151,13 +194,40 @@ function AuthLayout({ title, subtitle, server, children, testID }: AuthScaffoldP
   );
 }
 
-/** iOS handheld: true while the software keyboard is up (the logo makes room for the submit button). */
+/** Keyboard events per platform: Android only emits the "did" pair. */
+export function keyboardEvents(os: string) {
+  return os === 'ios'
+    ? ({ show: 'keyboardWillShow', hide: 'keyboardWillHide' } as const)
+    : ({ show: 'keyboardDidShow', hide: 'keyboardDidHide' } as const);
+}
+
+/** Scroll offset that puts the focused field (and what follows) at the top, or null if it is already there. */
+export function revealScrollY({
+  fieldTop,
+  margin,
+  viewport,
+  content,
+  current,
+}: {
+  fieldTop: number;
+  margin: number;
+  viewport: number;
+  content: number;
+  current: number;
+}): number | null {
+  const max = Math.max(0, content - viewport);
+  const target = Math.min(max, Math.max(0, fieldTop - margin));
+  return Math.abs(target - current) < 1 ? null : target;
+}
+
+/** Handheld: true while the software keyboard is up (the logo makes room for the submit button). */
 function useKeyboardShown(enabled: boolean): boolean {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     if (!enabled) return;
-    const show = Keyboard.addListener('keyboardWillShow', () => setShown(true));
-    const hide = Keyboard.addListener('keyboardWillHide', () => setShown(false));
+    const events = keyboardEvents(Platform.OS);
+    const show = Keyboard.addListener(events.show, () => setShown(true));
+    const hide = Keyboard.addListener(events.hide, () => setShown(false));
     return () => {
       show.remove();
       hide.remove();

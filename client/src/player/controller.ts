@@ -802,6 +802,8 @@ export class PlaybackController {
   replay(): void {
     this.ended = false;
     this.seekTo(0);
+    // Below the server's resume threshold at once: the completed playback starts a new viewing (B8).
+    this.report('progress', 0);
     this.paused = false;
     this.engine?.play();
     this.changed();

@@ -7,6 +7,8 @@ import { Platform, View } from 'react-native';
 import { toAppError } from '@/api/errors';
 import { useVersions, type Version } from '@/browse/queries';
 import { VersionPanelCard } from '@/browse/version-panel';
+import { sheetSpecs } from '@/browse/version-format';
+import { VersionSpecs } from '@/browse/version-sheet';
 import { useInitialFocus } from '@/components/focus';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -38,6 +40,7 @@ export function VersionPicker({
   glass = false,
 }: VersionPickerProps) {
   const { t } = useTranslation();
+  const design = useDesign();
   const versions = useVersions(workId, open);
   const list = versions.data?.versions ?? [];
   const error = versions.error ? toAppError(versions.error) : undefined;
@@ -65,21 +68,29 @@ export function VersionPicker({
       />
     );
   else {
+    const specs = sheetSpecs(list);
     const defaultIndex = Math.max(
       0,
       list.findIndex((item) =>
         currentReleaseId ? item.releaseId === currentReleaseId : item.recommended
       )
     );
-    body = list.map((version, index) => (
-      <PanelOption
-        key={version.releaseId ?? index}
-        version={version}
-        preferred={index === defaultIndex}
-        current={!!currentReleaseId && version.releaseId === currentReleaseId}
-        onPress={() => onPlay(version)}
-      />
-    ));
+    body = [
+      specs ? (
+        <View key="specs" style={{ marginBottom: design.space.sm }}>
+          <VersionSpecs specs={specs} size={(value) => design.px(value * 0.75)} />
+        </View>
+      ) : null,
+      ...list.map((version, index) => (
+        <PanelOption
+          key={version.releaseId ?? index}
+          version={version}
+          preferred={index === defaultIndex}
+          current={!!currentReleaseId && version.releaseId === currentReleaseId}
+          onPress={() => onPlay(version)}
+        />
+      )),
+    ];
   }
 
   return (

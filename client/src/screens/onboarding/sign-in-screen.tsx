@@ -1,9 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View, type TextInput } from 'react-native';
 
+import { useSessionGate } from '@/accounts/accounts-provider';
 import { createAuthApi } from '@/accounts/auth-api';
 import { signInFlow } from '@/accounts/sign-in-flow';
 import { describeError } from '@/api/error-text';
@@ -17,7 +19,7 @@ import { colors, useDesign } from '@/theme';
 
 import { AuthScaffold } from './auth-scaffold';
 import { FormError, FormLinks, PasswordField } from './form-parts';
-import { useCompleteSignIn, useLeftOnboarding, useServerInfo } from './use-onboarding';
+import { enterApp, useCompleteSignIn, useLeftOnboarding, useServerInfo } from './use-onboarding';
 
 export type SignInParams = { server?: string; login?: string; reason?: string };
 
@@ -51,7 +53,7 @@ export function SignInScreen() {
                 ? void info.refetch()
                 : router.canGoBack()
                   ? router.back()
-                  : router.replace('/server')
+                  : router.replace({ pathname: '/server', params: { address: serverUrl } })
             }
           />
         ) : (
@@ -108,7 +110,15 @@ function SignInForm({
       }
       if (info.data) await complete(info.data, result, password);
     },
+    onError: (error) => {
+      // Wrong password: back into the field with it selected, ready to retype (TV: no keyboard pop-up).
+      if (design.isTV || toAppError(error).code !== 'invalid_credentials') return;
+      passwordRef.current?.focus();
+      passwordRef.current?.setSelection(0, password.length);
+    },
   });
+  // Opened while a profile is signed in (deep link, add profile): a way back to it.
+  const signedIn = useSessionGate().reason === 'ready';
 
   const submit = () => {
     if (signIn.isPending) return;
@@ -204,6 +214,16 @@ function SignInForm({
           disabled={signIn.isPending}
           onPress={() => router.push('/server')}
         />
+        {signedIn ? (
+          <Button
+            testID="sign-in-back-to-app"
+            variant="ghost"
+            icon={ArrowLeft}
+            label={t('onboarding.signIn.backToApp')}
+            disabled={signIn.isPending}
+            onPress={() => enterApp(router)}
+          />
+        ) : null}
       </FormLinks>
       <View style={{ height: design.space.xs }} />
     </AuthScaffold>
