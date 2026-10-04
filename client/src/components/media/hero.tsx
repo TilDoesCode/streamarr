@@ -140,7 +140,12 @@ export function HeroTitle({
   const height = logoHeight ?? design.px(design.formFactor === 'phone' ? 72 : 96);
   if (!logoUri || failed === logoUri)
     return (
-      <Text variant="display" numberOfLines={2} role="heading" style={textStyle}>
+      <Text
+        testID="hero-title"
+        variant="display"
+        numberOfLines={2}
+        role="heading"
+        style={textStyle}>
         {title}
       </Text>
     );

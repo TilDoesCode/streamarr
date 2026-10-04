@@ -37,6 +37,10 @@ export const PANELS: readonly PanelKind[] = [
   'info',
 ];
 
+/** Large-shell glass panels (shell px); Info holds its title, the method pill and Close on one line (Q1-01). */
+export const PANEL_WIDTH = 520;
+export const INFO_PANEL_WIDTH = 700;
+
 const QUALITIES = [null, 2160, 1080, 720, 480] as const;
 const ENGINES = ['auto', 'native', 'vlc'] as const;
 
@@ -131,7 +135,7 @@ export function PlayerPanels({
             : undefined
       }
       wide={panel === 'info'}
-      glass={glass ? { width: panel === 'info' ? 620 : 520 } : false}
+      glass={glass ? { width: panel === 'info' ? INFO_PANEL_WIDTH : PANEL_WIDTH } : false}
       accessory={
         panel === 'info' && playback?.method ? (
           <SpecLabel

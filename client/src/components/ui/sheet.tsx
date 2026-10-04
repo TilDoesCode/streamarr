@@ -26,6 +26,10 @@ import Animated, {
   interpolateColor,
   Keyframe,
   ReduceMotion,
+  SlideInDown,
+  SlideInRight,
+  SlideOutDown,
+  SlideOutRight,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -61,6 +65,13 @@ const REDUCED_IN = FadeIn.duration(motion.state).reduceMotion(ReduceMotion.Never
 const REDUCED_OUT = FadeOut.duration(motion.exit).reduceMotion(ReduceMotion.Never);
 
 // Mount-driven slide: the panel's resting state is its plain style, never a JS-started animation.
+/** Web: Reanimated pins a custom Keyframe's element to its first measured box, so a panel that changes width ran off-screen (Q1-01). */
+export function webSlide(side: boolean) {
+  return side
+    ? { enter: SlideInRight.duration(ENTER_MS), exit: SlideOutRight.duration(motion.exit) }
+    : { enter: SlideInDown.duration(ENTER_MS), exit: SlideOutDown.duration(motion.exit) };
+}
+
 function slide(distance: number, side: boolean) {
   const at = (offset: number) => (side ? [{ translateX: offset }] : [{ translateY: offset }]);
   return {
@@ -193,7 +204,9 @@ export function Sheet({
     () =>
       reduced
         ? { enter: REDUCED_IN, exit: REDUCED_OUT }
-        : slide(side ? panelWidth : design.window.height, side),
+        : Platform.OS === 'web'
+          ? webSlide(side)
+          : slide(side ? panelWidth : design.window.height, side),
     [reduced, side, panelWidth, design.window.height]
   );
 

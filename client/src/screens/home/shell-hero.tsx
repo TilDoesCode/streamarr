@@ -36,6 +36,13 @@ const LOGO_HEIGHT =
 
 const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
+const TITLE_LINE = 1.05;
+
+/** A text title (no logo) gets two full lines in the logo box: smaller type rather than a cut first line (Q1-55). */
+export function heroTitleSize(boxHeight: number, size: number): number {
+  return Math.min(size, Math.floor(boxHeight / (2 * TITLE_LINE)));
+}
+
 /** Copy top: the mockup's, raised on short windows (tablet text/button floors), never above the rail top. */
 export function heroCopyTop(
   s: (value: number) => number,
@@ -205,6 +212,7 @@ function HeroCopy({
     lineHeight: s(size * 1.4),
   });
   const { type } = SHELL;
+  const titleSize = heroTitleSize(s(LOGO_HEIGHT), s(type.heroTitle));
   const screenFocused = useRef(false);
   useFocusEffect(
     useCallback(() => {
@@ -293,8 +301,8 @@ function HeroCopy({
           logoWidth={s(SHELL.logo.width)}
           textStyle={{
             fontFamily: fonts.displayBold,
-            fontSize: s(type.heroTitle),
-            lineHeight: s(type.heroTitle * 1.05),
+            fontSize: titleSize,
+            lineHeight: titleSize * TITLE_LINE,
             letterSpacing: -s(1.5),
           }}
         />
@@ -378,7 +386,8 @@ function HeroCopy({
         ) : null}
         <GlassButton
           testID="home-hero-info"
-          ref={detail?.playWorkId ? undefined : targetRef}
+          // Only once the details are known: a Play button that appears later must not lose focus to it.
+          ref={detail && !detail.playWorkId ? targetRef : undefined}
           icon={Info}
           {...focusProps}
           tint={featured.tint}

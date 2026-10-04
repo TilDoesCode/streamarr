@@ -50,6 +50,7 @@ import {
   toggleFullscreen,
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
+import { useFadedOut } from '@/player/use-faded-out';
 import { useTVEvents } from '@/player/use-tv-events';
 import type { Clock } from '@/player/use-clock';
 import { useWindowControlsInset } from '@/shell/window-controls';
@@ -71,6 +72,7 @@ const COMMIT_MS = 700;
 // UIKit drops focus from views below alpha 0.01 or without interaction; the AVPlayer view would then eat the remote.
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 const HIDDEN_ALPHA = APPLE_TV ? 0.011 : 0;
+const FADE_OUT_MS = 400;
 // react-native-web has no TV event hook.
 const DOUBLE_TAP_SECONDS = 10;
 const DOUBLE_TAP_WINDOW_MS = 300;
@@ -156,7 +158,8 @@ export function PlayerOverlay({
   const seekRef = useRef<View>(null);
   const paused = controller.paused;
   const duration = clock.duration || controller.duration;
-  const position = scrub ?? clock.position;
+  // Live engine position: the clock steps coarsely while the overlay is hidden, so its first visible frame may lag.
+  const position = scrub ?? controller.position;
   const tv = design.isTV;
   const Surface = controller.engine?.Surface;
 
@@ -312,9 +315,13 @@ export function PlayerOverlay({
   });
 
   const fade = useAnimatedStyle(
-    () => ({ opacity: withTiming(visible ? 1 : HIDDEN_ALPHA, { duration: visible ? 150 : 400 }) }),
+    () => ({
+      opacity: withTiming(visible ? 1 : HIDDEN_ALPHA, { duration: visible ? 150 : FADE_OUT_MS }),
+    }),
     [visible]
   );
+  // iOS Liquid Glass may outlive an ancestor's fade: native touch shells drop the controls after it (TV/web keep focus).
+  const gone = useFadedOut(visible, FADE_OUT_MS + 50, !tv && Platform.OS !== 'web');
 
   /* eslint-disable react-hooks/refs -- gesture callbacks run on touch, not during render */
   const tap = Gesture.Tap()
@@ -428,7 +435,7 @@ export function PlayerOverlay({
           <Animated.View
             testID={visible ? 'player-overlay' : 'player-overlay-hidden'}
             pointerEvents={visible || APPLE_TV ? 'box-none' : 'none'}
-            style={[StyleSheet.absoluteFill, fade]}>
+            style={[StyleSheet.absoluteFill, fade, gone && styles.gone]}>
             <Scrim
               direction="down"
               color={colors.scrim.DEFAULT}
@@ -1048,6 +1055,7 @@ const styles = StyleSheet.create({
   centre: { alignItems: 'center', justifyContent: 'center' },
   topShade: { position: 'absolute', top: 0, left: 0, right: 0 },
   bottomShade: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  gone: { display: 'none' },
 });
 
 /** AVRoutePickerView in a glass circle, sized like the other chips. */

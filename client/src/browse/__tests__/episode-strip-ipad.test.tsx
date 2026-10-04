@@ -1,0 +1,74 @@
+import { act } from '@testing-library/react-native';
+import { FlatList } from 'react-native';
+
+import type { Episode } from '@/browse/queries';
+import i18n from '@/i18n';
+import { renderWithProviders } from '@/../jest/render';
+
+import { EpisodeStrip, numberInCorner, stripClip } from '../episode-strip';
+
+let mockWindow = { width: 1024, height: 1366, scale: 2, fontScale: 1 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
+
+beforeAll(async () => {
+  await i18n.changeLanguage('de');
+});
+
+const episodes = Array.from(
+  { length: 26 },
+  (_, at) =>
+    ({
+      workId: `tmdb-tv-990001-s01e${String(at + 1).padStart(2, '0')}`,
+      episodeNumber: at + 1,
+      title: `E${at + 1}`,
+      aired: true,
+      watch: { played: false },
+    }) as unknown as Episode
+);
+
+const strip = () => (
+  <EpisodeStrip
+    episodes={episodes}
+    selected={21}
+    scrollKey="1"
+    gutterStart={101}
+    gutterEnd={58}
+    onPreview={jest.fn()}
+    onSelect={jest.fn()}
+    onPlay={jest.fn()}
+    onVersions={jest.fn()}
+  />
+);
+
+describe('episode strip on iPad (Q1-49/50/51)', () => {
+  it('starts at the rail edge on touch and web, full bleed on TV', () => {
+    expect(stripClip(false, 62, 101)).toEqual({ left: 62, paddingLeft: 39 });
+    expect(stripClip(true, 52, 84)).toEqual({ left: 0, paddingLeft: 84 });
+    // Phones have no rail.
+    expect(stripClip(false, 0, 20)).toEqual({ left: 0, paddingLeft: 20 });
+  });
+
+  it('moves the number of a card without a still out of the middle and the badge corner', () => {
+    expect(numberInCorner({ badges: 0, touch: true })).toBe(true);
+    expect(numberInCorner({ badges: 1, touch: false })).toBe(true);
+    expect(numberInCorner({ badges: 0, touch: false })).toBe(false);
+  });
+
+  it('scrolls the marked card back into view after a rotation', async () => {
+    const scroll = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    const view = await renderWithProviders(strip());
+    const first = scroll.mock.calls.at(-1)?.[0].offset ?? 0;
+    expect(first).toBeGreaterThan(0);
+    scroll.mockClear();
+    mockWindow = { width: 1366, height: 1024, scale: 2, fontScale: 1 };
+    await act(async () => view.rerender(strip()));
+    expect(scroll).toHaveBeenCalled();
+    const after = scroll.mock.calls.at(-1)![0].offset!;
+    // Card 21 at the start again with the landscape card size.
+    expect(after).toBeGreaterThan(first);
+    scroll.mockRestore();
+  });
+});

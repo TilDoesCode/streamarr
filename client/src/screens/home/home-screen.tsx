@@ -41,6 +41,7 @@ import {
   NextUpCard,
 } from './home-cards';
 import { HandheldHomeHero } from './home-hero';
+import { useLaunchFocus } from './launch-focus';
 import { heroRowsTop, ShellHero } from './shell-hero';
 
 export { useHomeRows } from '@/browse/queries';
@@ -99,6 +100,8 @@ export function HomeScreen() {
   const [focusedRow, setFocusedRow] = useState(0);
   // Only the first visit takes focus; a card mounted later (reordered Continue watching) must not steal it.
   const [focusTaken, setFocusTaken] = useState(false);
+  // Apple TV starts on the hero's main button (useLaunchFocus); Android TV on the first card.
+  const cardFocus = !focusTaken && !(Platform.OS === 'ios' && Platform.isTV);
   const [heroTarget, setHeroTarget] = useState<View | null>(null);
   const [inHero, setInHero] = useState(false);
   const rowFrames = useRef<{ y: number; height: number }[]>([]);
@@ -182,7 +185,7 @@ export function HomeScreen() {
           eyebrow={continueTitle}
           onFeature={feature}
           onLead={preferred ? lead : undefined}
-          hasTVPreferredFocus={preferred && !focusTaken}
+          hasTVPreferredFocus={cardFocus && preferred}
         />
       ),
     });
@@ -201,7 +204,7 @@ export function HomeScreen() {
           eyebrow={nextTitle}
           onFeature={feature}
           onLead={preferred ? lead : undefined}
-          hasTVPreferredFocus={preferred && !focusTaken}
+          hasTVPreferredFocus={cardFocus && preferred}
         />
       ),
     });
@@ -220,7 +223,7 @@ export function HomeScreen() {
           width={posterWidth}
           eyebrow={title}
           onFeature={feature}
-          hasTVPreferredFocus={preferred && !focusTaken}
+          hasTVPreferredFocus={cardFocus && preferred}
         />
       ),
     });
@@ -234,6 +237,7 @@ export function HomeScreen() {
   const pending = (query: { data: unknown; error: unknown }) =>
     query.data === undefined && !query.error;
   const loading = pending(rows) || pending(resume) || pending(nextUp);
+  useLaunchFocus(heroTarget, !focusTaken && !loading);
 
   const body =
     rows.data === undefined && rows.error ? (

@@ -9,7 +9,7 @@ import {
   type NextUpItem,
   type WatchState,
 } from '@/browse/queries';
-import { usePlayWork, watchProgress } from '@/browse/title-actions';
+import { usePlayPending, usePlayWork, watchProgress } from '@/browse/title-actions';
 import { LandscapeCard } from '@/components/media/landscape-card';
 import { PosterCard } from '@/components/media/poster-card';
 import { useFormat } from '@/i18n/format';
@@ -35,6 +35,8 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
   const format = useFormat();
   const router = useRouter();
   const playWork = usePlayWork();
+  const pending = usePlayPending(state.workId);
+  const unavailable = state.available === false;
   const ref = parseWorkId(state.workId);
   const movie = useMovieDetail(ref?.tmdbId, ref?.kind === 'movie');
   const season = useSeasonDetail(
@@ -83,6 +85,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
                 positionTicks: state.positionTicks,
                 durationTicks: state.durationTicks,
                 lastReleaseId: state.lastReleaseId,
+                available: state.available !== false,
               }
             : undefined,
         progress,
@@ -121,9 +124,19 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
       onBlur={() => {
         focused.current = false;
       }}
-      onPress={() =>
-        state.workId && playWork({ workId: state.workId, title: playTitle, watch: state })
-      }
+      badge={unavailable ? t('media.notAvailableYet') : undefined}
+      aria-busy={pending}
+      onPress={() => {
+        if (!state.workId) return;
+        // No version (B9 `available: false`): the series or movie explains it instead of a failing player.
+        if (unavailable && ref)
+          return router.push(
+            ref.kind === 'episode'
+              ? episodeHref(ref.tmdbId, ref.season, ref.episode)
+              : workHref(state.workId)!
+          );
+        playWork({ workId: state.workId, title: playTitle, watch: state });
+      }}
       onLongPress={() => {
         const href = workHref(state.workId);
         if (href) router.push(href);
@@ -137,6 +150,7 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
   const { t } = useTranslation();
   const router = useRouter();
   const playWork = usePlayWork();
+  const pending = usePlayPending(item.workId);
   const ref = parseWorkId(item.workId);
   const code = t('media.episodeCode', { season: item.seasonNumber, episode: item.episodeNumber });
   const title = item.seriesTitle ?? '';
@@ -167,6 +181,7 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
           playTitle,
           positionTicks: item.positionTicks,
           durationTicks: item.durationTicks,
+          available: item.available,
         }
       : undefined,
     progress,
@@ -195,13 +210,15 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
       hasTVPreferredFocus={props.hasTVPreferredFocus}
       onHoverIn={feature}
       onFocus={feature}
-      onPress={() =>
-        item.workId &&
-        playWork({ workId: item.workId, title: playTitle, watch }, () =>
-          // No version yet (Q1-08): the series explains it on that episode instead of a failing player.
-          router.push(episodeHref(ref?.tmdbId ?? 0, item.seasonNumber, item.episodeNumber))
-        )
-      }
+      badge={item.available === false ? t('media.notAvailableYet') : undefined}
+      aria-busy={pending}
+      onPress={() => {
+        if (!item.workId || !ref) return;
+        // No version (B9 `available: false`): the series explains it on that episode instead of a failing player.
+        if (item.available === false)
+          return router.push(episodeHref(ref.tmdbId, item.seasonNumber, item.episodeNumber));
+        playWork({ workId: item.workId, title: playTitle, watch });
+      }}
       onLongPress={() => {
         const href = workHref(item.workId);
         if (href) router.push(href);
