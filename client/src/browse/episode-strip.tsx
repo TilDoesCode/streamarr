@@ -28,7 +28,6 @@ import { useShell } from '@/shell/use-shell';
 import { colors, fonts, useDesign } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
-/** D2 episode card (1920 × 1080 points) and the caption block under it (title, subline, selection bar). */
 /** The card's corner badges, side by side in one row (never stacked on top of each other). */
 export function cardBadges({ next, noVersion }: { next: boolean; noVersion: boolean }) {
   return [
@@ -37,11 +36,17 @@ export function cardBadges({ next, noVersion }: { next: boolean; noVersion: bool
   ];
 }
 
+/** A card without a still: its number moves to the bottom-left corner when a badge or the ▶ may cover the middle. */
+export function numberInCorner({ badges, touch }: { badges: number; touch: boolean }): boolean {
+  return touch || badges > 0;
+}
+
 /** TV marks the selected card by its caption bar only: a ring would read as a second focus ring. */
 export function showsSelectionRing(selected: boolean, isTV: boolean) {
   return selected && !isTV;
 }
 
+/** D2 episode card (1920 × 1080 points) and the caption block under it (title, subline, selection bar). */
 export const EPISODE_CARD = { width: 352, height: 198, radius: 20, caption: 76, bar: 5 } as const;
 const CONTINUE_WIDTH = 220;
 
@@ -141,15 +146,17 @@ export function EpisodeStrip({
 
   // Season switch / first load: the marked card starts at the gutter (TV geometry then hits it first).
   const loaded = !!episodes?.length;
+  // A size change (rotation, window resize) brings the marked card back too (Q1-50).
   useEffect(() => {
     if (!loaded || index < 0) return;
     listRef.current?.scrollToOffset({
       offset: design.isTV ? stripOffset(index, gutterStart, stride) : index * stride,
       animated: false,
     });
-    // Only the scroll key moves the strip; taps and focus scroll by themselves.
+    // Only the scroll key and the card size move the strip; taps and focus scroll by themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollKey, loaded, index >= 0]);
+  }, [scrollKey, loaded, index >= 0, stride]);
+  const clip = stripClip(design.isTV, design.inset, gutterStart);
 
   if (!episodes)
     return (
@@ -235,15 +242,15 @@ export function EpisodeStrip({
         keyExtractor={(episode) => String(episode.episodeNumber)}
         renderItem={renderCell}
         showsHorizontalScrollIndicator={false}
-        style={{ height, marginVertical: 0 }}
+        style={{ height, marginVertical: 0, marginLeft: clip.left }}
         contentContainerStyle={{
-          paddingLeft: gutterStart,
+          paddingLeft: clip.paddingLeft,
           paddingRight: gutterEnd,
           paddingVertical: focusRoom + glowRoom,
         }}
         getItemLayout={(_, at) => ({
           length: stride,
-          offset: gutterStart + at * stride,
+          offset: clip.paddingLeft + at * stride,
           index: at,
         })}
         initialNumToRender={design.isTV ? 12 : 6}
@@ -262,6 +269,12 @@ export function EpisodeStrip({
 }
 
 const EMPTY: View[] = [];
+
+/** Touch and web: the strip starts at the rail's edge (cards never scroll under it, Q1-49); TV stays full bleed. */
+export function stripClip(isTV: boolean, railInset: number, gutterStart: number) {
+  const left = isTV ? 0 : Math.min(railInset, gutterStart);
+  return { left, paddingLeft: gutterStart - left };
+}
 
 /** TV: a focused card snaps one card in from the gutter, so from the second card on one episode stays left of it. */
 function stripSnapPadding(gutterStart: number, stride: number): number {
@@ -346,6 +359,7 @@ function EpisodeCard({
   const left =
     ((episode.watch.durationTicks ?? 0) - (episode.watch.positionTicks ?? 0)) / TICKS_PER_SECOND;
   const badges = cardBadges({ next, noVersion }).map((key) => t(key));
+  const corner = numberInCorner({ badges: badges.length, touch: !design.isTV });
   const subline = notAired
     ? episode.airDate
       ? t('detail.airsOn', { date: format.date(episode.airDate) })
@@ -435,17 +449,19 @@ function EpisodeCard({
                 <>
                   <Artwork uri={backdropUrl} />
                   <View
+                    testID={`episode-card-${episode.episodeNumber}-number`}
                     style={{
                       flex: 1,
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      alignItems: corner ? 'flex-start' : 'center',
+                      justifyContent: corner ? 'flex-end' : 'center',
+                      padding: corner ? inset : 0,
                       backgroundColor: colors.scrim.DEFAULT,
                     }}>
                     <Text
                       style={{
                         fontFamily: fonts.displayBold,
-                        fontSize: s(96),
-                        lineHeight: s(104),
+                        fontSize: s(corner ? 56 : 96),
+                        lineHeight: s(corner ? 60 : 104),
                         color: colors.foreground.DEFAULT,
                       }}>
                       {episode.episodeNumber}

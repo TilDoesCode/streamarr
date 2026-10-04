@@ -15,37 +15,18 @@ export function orderedSeasons(seasons: readonly Season[] | null | undefined): S
   return [...(seasons ?? [])].sort((a, b) => (a.seasonNumber || 1e6) - (b.seasonNumber || 1e6));
 }
 
-/** The episode a series is "at": the server's next episode, or the last played version on a resume point. */
+/** The series' current episode (the server's `nextEpisode`) with the version last played on it. */
 export type SeriesFocus = NextEpisode & { lastReleaseId?: string | null };
 
-/** One rule for Home, stage and phone detail: an episode with a resume point first (a replay too), then next up. */
+/** The server decides the current episode (B9: an active replay wins); continue watching only adds the version. */
 export function seriesFocus(
-  series: Pick<SeriesDetail, 'workId' | 'watch'>,
+  series: Pick<SeriesDetail, 'watch'>,
   resume?: readonly WatchState[] | null
 ): SeriesFocus | null {
   const next = series.watch.nextEpisode ?? null;
-  const active = series.workId
-    ? resume?.find(
-        (state) =>
-          state.seriesWorkId === series.workId &&
-          !!state.workId &&
-          (state.positionTicks ?? 0) > 0 &&
-          state.seasonNumber != null &&
-          state.episodeNumber != null
-      )
-    : undefined;
-  if (!active || active.workId === next?.workId)
-    return next && { ...next, lastReleaseId: active?.lastReleaseId };
-  return {
-    workId: active.workId,
-    seasonNumber: active.seasonNumber!,
-    episodeNumber: active.episodeNumber!,
-    title: active.title,
-    positionTicks: active.positionTicks,
-    durationTicks: active.durationTicks,
-    reason: 'resume',
-    lastReleaseId: active.lastReleaseId,
-  };
+  if (!next) return null;
+  const entry = next.workId ? resume?.find((state) => state.workId === next.workId) : undefined;
+  return { ...next, lastReleaseId: entry?.lastReleaseId };
 }
 
 /** Start: deep link (?season=&episode=), else the series focus, else the first regular season. */

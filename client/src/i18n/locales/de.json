@@ -374,7 +374,8 @@
     "recommended": "Empfohlen",
     "ready": "Bereit",
     "upNext": "Als Nächstes",
-    "specials": "Specials"
+    "specials": "Specials",
+    "notAvailableYet": "Noch nicht verfügbar"
   },
   "format": {
     "duration": {

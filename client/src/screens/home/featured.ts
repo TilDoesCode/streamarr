@@ -32,6 +32,8 @@ export type FeaturedEpisode = {
   positionTicks?: number;
   durationTicks?: number | null;
   lastReleaseId?: string | null;
+  /** False: the server found no version yet (B9), the hero offers no Play. */
+  available?: boolean;
 };
 
 // The ambient backdrop debounces again (150 ms); the hero itself settles quickly.

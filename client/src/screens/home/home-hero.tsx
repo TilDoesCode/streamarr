@@ -21,7 +21,7 @@ import type { Featured } from './featured';
 export function useFeaturedDetail(featured: Featured | null) {
   const movie = useMovieDetail(featured?.tmdbId, featured?.kind === 'movie');
   const series = useSeriesDetail(featured?.tmdbId, featured?.kind === 'series');
-  const { focus } = useSeriesFocus(featured?.kind === 'series' ? series.data : undefined);
+  const focus = useSeriesFocus(featured?.kind === 'series' ? series.data : undefined);
   if (!featured) return undefined;
   if (featured.kind === 'movie') {
     const data = movie.data;
@@ -36,6 +36,7 @@ export function useFeaturedDetail(featured: Featured | null) {
           playTitle: data.title ?? featured.title,
           season: undefined,
           episode: undefined,
+          unavailable: false,
         }
       : undefined;
   }
@@ -50,8 +51,11 @@ export function useFeaturedDetail(featured: Featured | null) {
         positionTicks: card.positionTicks,
         durationTicks: card.durationTicks,
         lastReleaseId: card.lastReleaseId,
+        available: card.available,
       }
     : focus;
+  // B9: no version yet, so no Play into a failing player; "More info" stays and explains it.
+  const unavailable = next?.available === false;
   return data
     ? {
         logoUrl: data.logoUrl,
@@ -59,7 +63,8 @@ export function useFeaturedDetail(featured: Featured | null) {
         certification: data.certification,
         runtimeMinutes: null,
         genres: data.genres,
-        playWorkId: next?.workId ?? null,
+        playWorkId: unavailable ? null : (next?.workId ?? null),
+        unavailable,
         watch: next
           ? {
               positionTicks: next.positionTicks,
@@ -103,8 +108,10 @@ export function usePlayFeatured(detail: ReturnType<typeof useFeaturedDetail>) {
 }
 
 export function useMeta(featured: Featured, detail: ReturnType<typeof useFeaturedDetail>) {
+  const { t } = useTranslation();
   const format = useFormat();
   return [
+    detail?.unavailable ? t('media.notAvailableYet') : null,
     featured.year ? String(featured.year) : null,
     detail?.runtimeMinutes ? format.duration(detail.runtimeMinutes * 60) : null,
     detail?.genres?.slice(0, 2).join(', ') || null,
