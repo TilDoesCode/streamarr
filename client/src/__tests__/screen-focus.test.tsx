@@ -8,7 +8,9 @@ import '@/i18n';
 import {
   RESTORE_ATTEMPTS,
   RESTORE_INTERVAL_MS,
+  expireReturnFocus,
   requestReturnFocus,
+  RETURN_FOCUS_MS,
   ScreenFocusProvider,
   ScreenFocusScope,
   useScreenFocusHost,
@@ -225,5 +227,25 @@ describe('ScreenFocusScope on TV', () => {
     await emit('blur');
     await emit('focus');
     expect(guideRequests()).toBe(1);
+  });
+  it('drops a return-focus request that no screen took in time (player opened from a sheet)', async () => {
+    Platform.OS = 'ios';
+    await renderWithProviders(<Shell showScreen />);
+    await emit('blur');
+    requestReturnFocus();
+    jest.advanceTimersByTime(RETURN_FOCUS_MS + 1);
+    await emit('focus');
+    expect(guideRequests()).toBe(0);
+  });
+
+  it('expires the request shortly after the player unmounted', async () => {
+    Platform.OS = 'ios';
+    await renderWithProviders(<Shell showScreen />);
+    await emit('blur');
+    requestReturnFocus();
+    expireReturnFocus(100);
+    jest.advanceTimersByTime(101);
+    await emit('focus');
+    expect(guideRequests()).toBe(0);
   });
 });

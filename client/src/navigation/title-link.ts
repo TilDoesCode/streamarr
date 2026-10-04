@@ -32,10 +32,7 @@ function landingStack(
   return wrapper ? landingStack(target, wrapper, shown) : null;
 }
 
-/**
- * A link to a title that is already open in the stack it lands in returns to it (pop) instead of a second copy.
- * The router would move that page to the top, which react-native-screens' native stack turns into a reset.
- */
+/** A link to an open title returns to it (pop): the router's move-to-top resets react-native-screens' native stack. */
 export function titleLinkAction(
   target: LinkState | undefined,
   current: LinkState | undefined
@@ -57,4 +54,17 @@ export function titleLinkAction(
     screenTestID: `${prefix}-${String(id)}`,
     shown: found.shown,
   };
+}
+
+const WEB_SCHEMES = new Set(['http', 'https']);
+
+/** The app route of an incoming link: `streamarr://movie/1`, `streamarr:///movie/1` and `/movie/1` are the same. */
+export function routeFromUrl(url: string): string {
+  const match = /^([a-z][\w+.-]*):(\/\/)?([^/?#]*)(.*)$/i.exec(url);
+  if (!match) return url.startsWith('/') ? url : `/${url}`;
+  const [, scheme = '', slashes, host = '', rest = ''] = match;
+  // App schemes carry the first path segment as the host; web links carry a domain.
+  const head = slashes && host && !WEB_SCHEMES.has(scheme.toLowerCase()) ? `/${host}` : '';
+  const route = `${head}${rest}`;
+  return route.startsWith('/') ? route : `/${route}`;
 }

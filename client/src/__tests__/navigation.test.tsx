@@ -19,7 +19,8 @@ import {
   type LibraryZone,
 } from '@/screens/library/library-back';
 import { DesignProvider } from '@/theme';
-import { store as store_ } from 'expo-router/build/global-state/router-store';
+import { routerInternals } from '@/navigation/router-internals';
+import { routeFromUrl, titleLinkAction } from '@/navigation/title-link';
 import { getActionFromState } from 'expo-router/build/react-navigation/core';
 
 import { appRoutes } from '../../jest/app-routes';
@@ -394,10 +395,9 @@ describe('TV exit dialog across route changes', () => {
 
 /** What expo-router does with an incoming URL (fork/useLinking.native.js): state from the path, then its action. */
 function deepLink(path: string) {
-  const linking = store_.linking!;
-  const state = linking.getStateFromPath!(path, linking.config);
-  const action = getActionFromState(state!, linking.config);
-  store_.navigationRef.dispatch(action!);
+  const state = routerInternals.stateFromPath(path);
+  const action = getActionFromState(state as never, routerInternals.linkingConfig() as never);
+  routerInternals.dispatch(action as never);
 }
 
 describe('deep link over an open detail (I4 item 8: push by title id, de-duplicated)', () => {
@@ -441,5 +441,26 @@ describe('Apple TV library Menu claim (I4 item 2)', () => {
     expect(libraryMenuClaim('genres', true)).toBeNull();
     expect(libraryMenuClaim(null, true)).toBeNull();
     expect(libraryMenuClaim('grid', false)).toBeNull();
+  });
+});
+
+describe('expo-router internals the link handler relies on (I4 review: fails when they move)', () => {
+  it('parses both link forms with the real route config and reads the live state', async () => {
+    await signIn();
+    const router = renderRouter(routes, { initialUrl: '/movie/123' });
+    await router;
+    for (const url of ['streamarr:///movie/123', 'streamarr://movie/123']) {
+      const target = routerInternals.stateFromPath(routeFromUrl(url));
+      expect(JSON.stringify(target)).toContain('"movie/[id]"');
+      expect(titleLinkAction(target, routerInternals.rootState())).toEqual({
+        type: 'stay',
+        shown: true,
+      });
+    }
+    const listener = jest.fn();
+    const unsubscribe = routerInternals.onState(listener);
+    await act(async () => navigate.navigate('/movie/124'));
+    expect(listener).toHaveBeenCalled();
+    unsubscribe();
   });
 });

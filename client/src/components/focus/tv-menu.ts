@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { BackHandler, Platform } from 'react-native';
 
-import { setMenuMode, type MenuMode } from '@modules/tv-native';
+import { lastMenuInTabBar, resetMenu, setMenuMode, type MenuMode } from '@modules/tv-native';
 
 /** `native`: an RN Modal (own Menu recogniser) is open, so the gate stays off whatever else claims. */
 export type MenuClaim = MenuMode | 'native';
@@ -45,12 +45,17 @@ export function useMenuClaim(mode: MenuClaim | null): void {
   }, [mode]);
 }
 
-// Lowest priority (registered first): a claimed Menu that nobody handled lets the next one go to tvOS.
+/** True while the Menu press being handled came from the tab bar (the tab-bar rule wins over page steps there). */
+export function menuPressInTabBar(): boolean {
+  return lastMenuInTabBar();
+}
+
+// Lowest priority (registered first): a Menu that nobody handled switches the gate off, so the next one goes to tvOS.
 if (appleTV()) {
+  resetMenu();
   BackHandler.addEventListener('hardwareBackPress', () => {
-    if (currentMenuMode() === null) return false;
     suspended = true;
-    apply();
+    setMenuMode(null);
     return false;
   });
 }

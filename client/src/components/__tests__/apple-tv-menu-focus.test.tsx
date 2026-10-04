@@ -4,7 +4,8 @@ import { BackHandler, Platform, View } from 'react-native';
 
 const mockNative = {
   setMenuMode: jest.fn(),
-  focusView: jest.fn((_tag: number) => Promise.resolve(true) as Promise<boolean> | null),
+  resetMenu: jest.fn(),
+  focusView: jest.fn((_tag: number) => Promise.resolve('focused') as Promise<string> | null),
 };
 
 jest.mock('@modules/tv-native', () => {
@@ -13,6 +14,8 @@ jest.mock('@modules/tv-native', () => {
     tvNativeAvailable: true,
     TVFocusHost: MockView,
     setMenuMode: (mode: string | null) => mockNative.setMenuMode(mode),
+    resetMenu: () => mockNative.resetMenu(),
+    lastMenuInTabBar: () => false,
     focusView: (tag: number) => mockNative.focusView(tag),
   };
 });
@@ -69,6 +72,10 @@ function load(kind: 'appleTV' | 'androidTV' | 'iPhone') {
 beforeEach(() => {
   Object.values(mockNative).forEach((fn) => fn.mockClear());
 });
+
+const flush = async () => {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+};
 afterEach(() => {
   Platform.OS = os;
   jest.restoreAllMocks();
@@ -105,6 +112,15 @@ describe('Apple TV Menu claims (I4 primitive A)', () => {
     // The next claim change re-arms it (the strongest claim still decides).
     menu.claimMenu('tabBar');
     expect(menu.currentMenuMode()).toBe('always');
+  });
+
+  it('switches a stale native gate off at start and on every unhandled Menu (JS reload)', async () => {
+    const { pressMenu } = load('appleTV');
+    expect(mockNative.resetMenu).toHaveBeenCalledTimes(1);
+    mockNative.setMenuMode.mockClear();
+    // No claim in this bundle, but the native gate may still be armed from the previous one.
+    expect(pressMenu()).toBe(false);
+    expect(mockNative.setMenuMode).toHaveBeenLastCalledWith(null);
   });
 
   it('runs below every screen handler: a handled Menu keeps the claim', async () => {
@@ -150,12 +166,46 @@ describe('Apple TV focus requests (I4 primitive B)', () => {
 
   it('falls back to requestTVFocus when the module could not focus the view', async () => {
     const { focus } = load('appleTV');
-    mockNative.focusView.mockReturnValueOnce(Promise.resolve(false));
+    mockNative.focusView.mockReturnValueOnce(Promise.resolve('missed'));
     const requestTVFocus = jest.fn();
     focus.tvFocus({ requestTVFocus });
     await Promise.resolve();
     await Promise.resolve();
     expect(requestTVFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves focus alone when the request was cancelled (a newer one or the user moved)', async () => {
+    const { focus } = load('appleTV');
+    mockNative.focusView.mockReturnValueOnce(Promise.resolve('cancelled'));
+    const requestTVFocus = jest.fn();
+    focus.tvFocus({ requestTVFocus });
+    await flush();
+    expect(requestTVFocus).not.toHaveBeenCalled();
+  });
+
+  it('never falls back to an older target once a newer request started', async () => {
+    const { focus } = load('appleTV');
+    let missOld!: (result: string) => void;
+    mockNative.focusView.mockReturnValueOnce(new Promise((resolve) => (missOld = resolve)));
+    const seekBar = { requestTVFocus: jest.fn() };
+    const play = { requestTVFocus: jest.fn() };
+    focus.tvFocus(seekBar);
+    focus.tvFocus(play);
+    missOld('missed');
+    await flush();
+    expect(seekBar.requestTVFocus).not.toHaveBeenCalled();
+  });
+
+  it('falls back after the bound when the native request never settles', async () => {
+    jest.useFakeTimers();
+    const { focus } = load('appleTV');
+    mockNative.focusView.mockReturnValueOnce(new Promise(() => undefined));
+    const requestTVFocus = jest.fn();
+    focus.tvFocus({ requestTVFocus });
+    jest.advanceTimersByTime(focus.NATIVE_FOCUS_TIMEOUT_MS);
+    await flush();
+    expect(requestTVFocus).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
   });
 
   it.each(['androidTV', 'iPhone'] as const)('keeps requestTVFocus on %s', async (kind) => {

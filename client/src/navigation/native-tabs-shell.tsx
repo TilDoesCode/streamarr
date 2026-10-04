@@ -3,7 +3,12 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { currentMenuMode, useBackHandler, useMenuClaim } from '@/components/focus';
+import {
+  currentMenuMode,
+  menuPressInTabBar,
+  useBackHandler,
+  useMenuClaim,
+} from '@/components/focus';
 import { colors } from '@/theme';
 
 import { HOME_TAB, TABS } from './tabs';
@@ -74,8 +79,8 @@ function AppleTvTabBack() {
   const atTabPage = pathname !== HOME_TAB.href && TABS.some((tab) => tab.href === pathname);
   useMenuClaim(atTabPage ? 'tabBar' : null);
   useBackHandler(() => {
-    // A page step (library grid, sheet) claims Menu more strongly and runs its own handler.
-    if (currentMenuMode() !== 'tabBar') return false;
+    // Only from the tab bar; a page step (library grid, sheet) handles Menu inside the page.
+    if (currentMenuMode() !== 'tabBar' && !menuPressInTabBar()) return false;
     router.navigate(HOME_TAB.href);
     return true;
   }, atTabPage);

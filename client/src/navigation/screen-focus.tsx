@@ -11,11 +11,24 @@ export const RESTORE_INTERVAL_MS = 120;
 // tvOS keeps focus in the top tab bar while tabs switch and UIKit restores it on Back; a JS restore would pull it away.
 const appleTV = () => Platform.OS === 'ios' && Platform.isTV;
 
-let returnFocus = false;
+// The screen a closed player returns to shows within this; a later screen focus must not take it.
+export const RETURN_FOCUS_MS = 1500;
+let returnFocusUntil = 0;
 
 /** Apple TV: the screen a JS close returns to takes its focus back (UIKit restores only after native pops). */
 export function requestReturnFocus(): void {
-  if (appleTV()) returnFocus = true;
+  if (appleTV()) returnFocusUntil = Date.now() + RETURN_FOCUS_MS;
+}
+
+/** The requester is gone (player unmounted): an unused request expires shortly instead of lingering. */
+export function expireReturnFocus(withinMs = 300): void {
+  returnFocusUntil = Math.min(returnFocusUntil, Date.now() + withinMs);
+}
+
+function takeReturnFocus(): boolean {
+  const active = Date.now() <= returnFocusUntil;
+  returnFocusUntil = 0;
+  return active;
 }
 
 type ScreenFocusHost = {
@@ -143,8 +156,7 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
     const enter = () => {
       unregister?.();
       unregister = host?.show(restore);
-      if (returnFocus && appleTV()) {
-        returnFocus = false;
+      if (appleTV() && takeReturnFocus()) {
         hidden = false;
         tvFocus(last.current ?? guide);
         return;

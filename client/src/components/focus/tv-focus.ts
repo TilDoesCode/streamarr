@@ -7,14 +7,28 @@ type TVFocusTarget = { requestTVFocus?: () => void } | null | undefined;
 
 const appleTV = () => Platform.OS === 'ios' && Platform.isTV;
 
+// The native request settles within ~2 s (20 retries); past this bound the JS fallback runs anyway.
+export const NATIVE_FOCUS_TIMEOUT_MS = 3000;
+
+let latest = 0;
+
 /** TV focus request; on Apple TV through the focus system, so views in presented sheets and after transitions get it. */
 export function tvFocus(target: TVFocusTarget): void {
   if (!target) return;
+  const request = ++latest;
   if (appleTV() && tvNativeAvailable) {
     const tag = findNodeHandle(target as Parameters<typeof findNodeHandle>[0]);
     const landed = tag == null ? null : focusView(tag);
     if (landed) {
-      void landed.then((ok) => ok || target.requestTVFocus?.());
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<'missed'>((resolve) => {
+        timer = setTimeout(() => resolve('missed'), NATIVE_FOCUS_TIMEOUT_MS);
+      });
+      void Promise.race([landed, timeout]).then((result) => {
+        clearTimeout(timer);
+        // Only a miss of the newest request falls back; a cancelled or superseded one leaves focus alone.
+        if (result === 'missed' && request === latest) target.requestTVFocus?.();
+      });
       return;
     }
   }

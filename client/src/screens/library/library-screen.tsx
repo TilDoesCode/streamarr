@@ -1,4 +1,4 @@
-import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Film, Tv } from '@/components/icons';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +25,7 @@ import {
   FocusLift,
   useBackHandler,
   useFocusGlowRoom,
-  useMenuClaim,
+  menuPressInTabBar,
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { PosterCard } from '@/components/media/poster-card';
@@ -41,7 +41,7 @@ import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
 import { GenreRow } from './genre-row';
-import { backToChip, libraryBackStep, libraryMenuClaim, type LibraryZone } from './library-back';
+import { backToChip, libraryBack, useLibraryMenuClaim, type LibraryZone } from './library-back';
 
 // Request the next page while the last loaded rows are this close to the viewport.
 const PAGING_ROWS = 2;
@@ -128,11 +128,10 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   };
   const list = useRef<FlatList<CatalogItem[]>>(null);
   // Apple TV: grid and sort hand Menu to the chain below (one level); at the chips tvOS moves to the tab bar.
-  const isFocused = useIsFocused();
-  useMenuClaim(libraryMenuClaim(menuZone, isFocused));
+  useLibraryMenuClaim(menuZone);
   useBackHandler(() => {
     if (!screenFocused.current) return false;
-    const back = libraryBackStep(zone.current);
+    const back = libraryBack(zone.current, menuPressInTabBar());
     setZone(back.zone);
     if (back.step === 'rail') focusRail();
     if (back.step === 'chip') backToChip(list.current, () => selectedGenre.current);

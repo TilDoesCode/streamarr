@@ -11,9 +11,12 @@ jest.mock('@/components/focus/tv-menu', () => ({
   ...jest.requireActual('@/components/focus/tv-menu'),
   currentMenuMode: () => mockMode,
 }));
+let mockInTabBar = false;
 jest.mock('@modules/tv-native', () => ({
   tvNativeAvailable: true,
   setMenuMode: (mode: string | null) => mockSetMenuMode(mode),
+  resetMenu: () => undefined,
+  lastMenuInTabBar: () => mockInTabBar,
 }));
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
@@ -84,6 +87,18 @@ describe('NativeTabsShell on Apple TV (I4 item 3: Menu goes to Start first)', ()
     expect(pressMenu()).toBe(false);
     expect(mockNavigate).not.toHaveBeenCalled();
     mockMode = 'tabBar';
+    await view.unmount();
+  });
+
+  it('goes to Start when a page claims Menu but the press came from the tab bar (library sort -> Up)', async () => {
+    mockPath = '/movies';
+    mockMode = 'always';
+    mockInTabBar = true;
+    const view = await renderShell();
+    expect(pressMenu()).toBe(true);
+    expect(mockNavigate).toHaveBeenCalledWith('/');
+    mockMode = 'tabBar';
+    mockInTabBar = false;
     await view.unmount();
   });
 
