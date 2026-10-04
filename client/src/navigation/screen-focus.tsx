@@ -2,13 +2,21 @@ import { useNavigation } from 'expo-router';
 import { createContext, use, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Platform, type View } from 'react-native';
 
-import { FocusGuide, FocusMemoryContext, type FocusMemory } from '@/components/focus';
+import { FocusGuide, FocusMemoryContext, tvFocus, type FocusMemory } from '@/components/focus';
+import { TVFocusHost, tvNativeAvailable } from '@modules/tv-native';
 
 // A request can land before the screen's views are attached (first visit of a lazily mounted tab): retry until one reports focus.
 export const RESTORE_ATTEMPTS = 10;
 export const RESTORE_INTERVAL_MS = 120;
 // tvOS keeps focus in the top tab bar while tabs switch and UIKit restores it on Back; a JS restore would pull it away.
 const appleTV = () => Platform.OS === 'ios' && Platform.isTV;
+
+let returnFocus = false;
+
+/** Apple TV: the screen a JS close returns to takes its focus back (UIKit restores only after native pops). */
+export function requestReturnFocus(): void {
+  if (appleTV()) returnFocus = true;
+}
 
 type ScreenFocusHost = {
   /** Registers the visible screen's restore; returns its unregister. */
@@ -135,6 +143,12 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
     const enter = () => {
       unregister?.();
       unregister = host?.show(restore);
+      if (returnFocus && appleTV()) {
+        returnFocus = false;
+        hidden = false;
+        tvFocus(last.current ?? guide);
+        return;
+      }
       const requested = host?.takeFocusRequest() ?? false;
       if (!hidden && !requested) return;
       hidden = false;
@@ -155,11 +169,15 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
   }, [navigation, host]);
 
   if (!Platform.isTV) return children;
+  const guide = (
+    <FocusGuide ref={ref} remember collapsable={false} style={{ flex: 1 }}>
+      {children}
+    </FocusGuide>
+  );
   return (
     <FocusMemoryContext value={memory}>
-      <FocusGuide ref={ref} remember collapsable={false} style={{ flex: 1 }}>
-        {children}
-      </FocusGuide>
+      {/* Apple TV: focus requests for this screen resolve inside its own host (after transitions too). */}
+      {tvNativeAvailable ? <TVFocusHost style={{ flex: 1 }}>{guide}</TVFocusHost> : guide}
     </FocusMemoryContext>
   );
 }

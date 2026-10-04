@@ -29,6 +29,7 @@ import { DevicesSection, SecuritySection } from '@/screens/settings/account-secu
 import { ProfileEditor } from '@/screens/settings/profile-editor';
 import { accountKey } from '@/query/keys';
 import { SHELL } from '@/shell/shell-metrics';
+import { TabBarClip } from '@/shell/tab-bar-clip';
 import { useShell } from '@/shell/use-shell';
 import { gutterPadding, useDesign, useFocusGap } from '@/theme';
 
@@ -68,40 +69,42 @@ export function SettingsScreen() {
   // The large shell (TV, web, tablet) has no native header: the page draws its own heading.
   const pageHeading = design.isTV || Platform.OS === 'web' || shell.large;
   return (
-    <ScrollView
-      testID="settings-screen"
-      showsVerticalScrollIndicator={!shell.large && Platform.OS !== 'web'}
-      style={{ flex: 1 }}
-      // Apple TV: no tab-bar inset, so the heading sits at the page top like Filme/Serien.
-      contentInsetAdjustmentBehavior={
-        Platform.OS === 'ios' && Platform.isTV ? 'never' : 'automatic'
-      }
-      contentContainerStyle={{
-        paddingTop: shell.large
-          ? shell.s(SHELL.page.top)
-          : pageHeading
-            ? design.layout.edgeVertical + insets.top
-            : design.space.lg,
-        paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-        ...gutterPadding(design),
-        gap: design.layout.sectionGap,
-        width: '100%',
-        maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
-      }}
-      snapToAlignment={design.isTV ? 'item' : undefined}
-      snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
-      {pageHeading ? (
-        <Text variant="title" role="heading" style={shell.pageTitle}>
-          {t('tabs.settings')}
-        </Text>
-      ) : null}
-      <AccountSection />
-      <SecuritySection />
-      <DevicesSection />
-      <LanguageSection />
-      <AboutSection />
-      {__DEV__ ? <DeveloperSection /> : null}
-    </ScrollView>
+    <TabBarClip>
+      <ScrollView
+        testID="settings-screen"
+        showsVerticalScrollIndicator={!shell.large && Platform.OS !== 'web'}
+        style={{ flex: 1 }}
+        // Apple TV: no tab-bar inset, so the heading sits at the page top like Filme/Serien.
+        contentInsetAdjustmentBehavior={
+          Platform.OS === 'ios' && Platform.isTV ? 'never' : 'automatic'
+        }
+        contentContainerStyle={{
+          paddingTop: shell.large
+            ? shell.s(SHELL.page.top)
+            : pageHeading
+              ? design.layout.edgeVertical + insets.top
+              : design.space.lg,
+          paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+          ...gutterPadding(design),
+          gap: design.layout.sectionGap,
+          width: '100%',
+          maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
+        }}
+        snapToAlignment={design.isTV ? 'item' : undefined}
+        snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
+        {pageHeading ? (
+          <Text variant="title" role="heading" style={shell.pageTitle}>
+            {t('tabs.settings')}
+          </Text>
+        ) : null}
+        <AccountSection />
+        <SecuritySection />
+        <DevicesSection />
+        <LanguageSection />
+        <AboutSection />
+        {__DEV__ ? <DeveloperSection /> : null}
+      </ScrollView>
+    </TabBarClip>
   );
 }
 

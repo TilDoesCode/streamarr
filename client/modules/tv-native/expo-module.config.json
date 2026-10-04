@@ -1,0 +1,6 @@
+{
+  "platforms": ["tvos"],
+  "apple": {
+    "modules": ["TVNativeModule"]
+  }
+}

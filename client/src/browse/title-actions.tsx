@@ -12,6 +12,7 @@ import {
   type Version,
   type WatchState,
 } from '@/browse/queries';
+import { useTvPreferredFocus } from '@/components/focus';
 import { GlassButton } from '@/components/glass';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -232,6 +233,7 @@ export function TitleActions({
   const ids = markWorkIds ?? (workId ? [workId] : []);
 
   const { toggle, pending } = useWatchedToggle({ ids, played, title: markTitle ?? title });
+  const mainButton = useTvPreferredFocus(preferFocus, mainRef);
 
   if (compact) {
     if (!workId) return null;
@@ -282,7 +284,7 @@ export function TitleActions({
             // TV: the inert note takes the first focus, so a stray Select changes nothing.
             disabled={!Platform.isTV}
             hasTVPreferredFocus={preferFocus}
-            ref={mainRef}
+            ref={mainButton}
           />
         ) : workId ? (
           <GlassButton
@@ -292,7 +294,7 @@ export function TitleActions({
             label={playLabel ?? t(playLabelKey)}
             tint={tint}
             hasTVPreferredFocus={preferFocus}
-            ref={mainRef}
+            ref={mainButton}
             onPress={() => play({ workId, title, releaseId, startSeconds: resume })}
           />
         ) : null}
