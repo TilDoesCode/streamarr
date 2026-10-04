@@ -48,9 +48,13 @@ public static class WatchProgressRules
             return;
         }
 
-        // Late or post-credits reports of the playback that completed the work must not revive a resume point.
+        // Late reports of the completing playback stay ignored; one back below the resume threshold is a replay.
         if (CompletedBy(state, report.PlaybackId))
-            return;
+        {
+            if (percent >= settings.MinResumePercent)
+                return;
+            state.CountedPlaybackId = null;
+        }
 
         var tooShort = duration < TimeSpan.FromSeconds(settings.MinResumeDurationSeconds).Ticks;
         state.PositionTicks = tooShort || percent < settings.MinResumePercent ? 0 : position;

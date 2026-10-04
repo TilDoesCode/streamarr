@@ -81,11 +81,6 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   not reproduced in I2 after the StartSeek fix; watch for it on hardware.
 - iPad Safari (I2 verify): closing the player leaves the page in element fullscreen, so Safari's X covers the rail logo.
 - iPhone Safari (I2): a pause from the system fullscreen controls is not reflected in our Pause button until the next tap.
-- Replay from the end card, then stop at 1:44, keeps no resume point (detail shows "Erneut ansehen"; predates I2).
-  Root cause (F4 slice 4): `controller.replay()` keeps the same playbackId, and the server's WatchProgressRules ignore
-  later reports of the playback that completed the work (`CompletedBy`, against post-credits reports). Fix either on
-  the server (a report of the same playback after it went back to the start counts as a new play) or in the client
-  (replay starts a new playback via the play route). Needs a decision with the backend track.
 - Android phone (I1 verify): the Sign in button sits half under the keyboard/autofill strip (reachable via the IME Go
   key or a short scroll); the logo hides only on iOS while typing. Not re-checked in F4: Streamarr_Phone shows no soft
   keyboard on a cold boot (hardware keyboard) and the dev build hit ANRs under host load.
@@ -148,31 +143,19 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
-- Audio renditions (F5): the delivered rendition codec differs between start and `/switch` for the same device and
-  title (Safari: AC-3 2.0 at revision 0, AAC 2.0 after `/switch`; iPhone/Apple TV: AAC 2.0 at start, AC-3 2.0 after some
-  `/switch`es and at a start with `audioLanguage: en`), so the panel label changes ("AAC 2.0" vs "Dolby Digital 2.0");
-  the rendition of Sintel's German AC-3 5.1 source is labelled 2.0.
 
-- Viewer sessions store the English literal "Unknown device" when the finishing request (second-factor, e-mail code
-  verify) carries no deviceName, so a German device list shows English text (F4 slice 3). Store null (or carry the
-  name from the first step) and let clients show their translated fallback.
 - Audio renditions: `mediastreamvalidator` never run (Apple HLS tools not installed; ffprobe + hlssim instead); rendition
-  segments ignore byte ranges like video; a group stays mixed when the default rendition is copied FLAC/Opus/MP3 (B6).
+  segments ignore byte ranges like video; a group stays mixed only when every rendition is copied FLAC/Opus/MP3
+  (B6, narrowed in B8).
 - Dev World has no HLG or Dolby Vision source and its ffmpeg has no zscale: HLG/DV tagging is covered by unit tests only,
   and the Dev World HDR10 -> SDR transcode is untone-mapped (washed out, tagged BT.709) (B6).
-- Dev World stream info for the HDR10 4K BBB source probably carries `videoRange` SDR next to `hdr` hdr10 (the client
-  label preferred videoRange; fixed in F4 to name the `hdr` format). Not confirmed by a playback request; check the
-  stream tags of the generated file (I3, F4).
 - B6 verify: the SDR tag chain after `hwupload` on VAAPI/QSV is untested on real hardware; one Core test flaked once
   in a full run.
-- B7 verify: docs/api.md versions section does not list `predictedMethod: vlc` and that VLC predictions carry VLC
-  reasons; the route-walk test asserts Cache-Control + Pragma but not `Expires: 0` and does not walk HEAD/OPTIONS (live
-  OK); verify_devworld.py leaves its probe viewer behind if it crashes mid-run; `NoStoreApiResponses` XML summary spans
-  two lines.
 - Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
   the whole-image value too strict.
-- A display name of only spaces resets to the username (200) instead of 400; documented, the client should trim and
-  validate first (B4 verify).
+- B8 verify: a replay is only detected when a report of the completing playback lands below 5 %; the client must send
+  a report at position 0 when it replays (check `controller.replay()` in F8/F9). The group conversion reuses the
+  `audio_converted` reason code. The long-season series (The Lighthouse Logs) has no artwork.
 - Username and e-mail of one account share the sign-in code cooldown, so someone who knows both can link them (429 on
   the second alias within 30 s); documented, low impact (B4 verify).
 - Dev World artwork uses fixed per-language URLs; the real selection rule is covered by `TmdbDiscoverTests` only. No
@@ -205,6 +188,14 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- B8 (2026-10-04): replay inside the completing playback keeps a resume point (report back below the minimum resume
+  percentage = new viewing; later reports of the completing playback still ignored); one remux audio group codec per
+  device and title (fewest conversions, ties to the lowest source index) at start, any audioLanguage and after
+  `/switch`, labels = delivered channels (2-ch devices get a real AC-3 2.0 downmix); viewer sessions store null instead
+  of "Unknown device" (migration clears old rows); display name of only spaces -> 400; B7 verify leftovers; HDR10 BBB
+  videoRange checked (PQ when not transcoded, SDR transcode by contract; e2e guard); Dev World long season
+  (The Lighthouse Logs, 26 episodes, tmdb-tv-990001).
 
 - F5: in-session audio rendition switch on web, Safari, ExoPlayer and AVPlayer with `/switch` fallback; ExoPlayer kept
   old audio overrides across `/switch`; Safari/AVPlayer autoselect by system language overrode the server's and the

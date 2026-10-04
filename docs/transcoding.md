@@ -333,10 +333,13 @@ the keyframe-accurate remux segmenter and run every rendition on its own playlis
 **Names, codecs, languages.** `NAME` (and the playback response's `label`) is the language in its own name plus
 what is delivered after conversion, e.g. `Deutsch · AAC 2.0` for a German AC-3 5.1 track a browser gets as AAC
 stereo (not the source title, which describes the source). Each fMP4 audio track carries its ISO 639-2 language
-(`-metadata:s:a:i language=deu`). Apple's authoring spec wants one codec per audio group: a remux rendition whose
-codec differs from the default rendition's is converted to that codec when it is AAC, AC-3 or E-AC-3 (e.g. TrueHD
-next to a copied AC-3 → AC-3 5.1); a copied default in another codec (FLAC, Opus, MP3) keeps a mixed group, because
-ffmpeg cannot write a matching track for every source. Transcode renditions are always AAC. A malformed muxed
+(`-metadata:s:a:i language=deu`). Apple's authoring spec wants one codec per audio group. The remux group codec does
+not depend on which rendition is selected (start, `audioLanguage` or `/switch` give the same group for one device and
+title): among AAC, AC-3 and E-AC-3 (with an ffmpeg encoder) it is the codec most renditions would copy anyway, ties go
+to the lowest source index, and every rendition in another codec — the selected one too — is converted to it (e.g.
+TrueHD next to a copied AC-3 → AC-3 5.1; Sintel's German AC-3 5.1 on a 2-channel device → AC-3 2.0, really downmixed
+with `-ac:a:i 2`, next to the copied English AC-3 2.0). Only a group whose renditions are all copied FLAC/Opus/MP3
+stays mixed, because ffmpeg cannot write a matching track for every source. Transcode renditions are always AAC. A malformed muxed
 fragment never becomes a generic error: splitting an init throws only `InvalidDataException`, splitting a segment
 `InvalidDataException` (bounded `trun` sample counts) or `EndOfStreamException` (a truncated file), and the route
 answers both with `500 rendition_split_failed` (logged with the stack; no internals in the body). When the segment

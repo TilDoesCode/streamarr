@@ -223,7 +223,14 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
         factory.Clock.Advance(TimeSpan.FromSeconds(30));
         var ok = await anon.PostAsJsonAsync("/api/v1/viewer/auth/login/second-factor", new { mfaToken, code = ViewerApi.Totp(secret, factory.Clock.GetUtcNow()) });
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-        Assert.Equal("authenticated", (await ok.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+        var okBody = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("authenticated", okBody.GetProperty("status").GetString());
+        using (var unnamed = factory.Viewer(okBody.GetProperty("session").GetProperty("accessToken").GetString()!))
+        {
+            var current = (await unnamed.GetFromJsonAsync<JsonElement>("/api/v1/viewer/me/sessions"))
+                .EnumerateArray().Single(d => d.GetProperty("current").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, current.GetProperty("deviceName").ValueKind);
+        }
 
         var second = (await (await ViewerApi.LoginAsync(anon, "totp-viewer", Password)).Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("mfaToken").GetString();
@@ -517,6 +524,9 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
         Assert.Equal("invalid_display_name", await ViewerApi.ErrorCodeAsync(tooLong));
         var control = await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "a\u0007b" });
         Assert.Equal("invalid_display_name", await ViewerApi.ErrorCodeAsync(control));
+        var spaces = await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "   " });
+        Assert.Equal(HttpStatusCode.BadRequest, spaces.StatusCode);
+        Assert.Equal("invalid_display_name", await ViewerApi.ErrorCodeAsync(spaces));
 
         await NewViewerAsync("profile-twin");
         var shared = await viewer.PatchAsJsonAsync("/api/v1/viewer/me", new { displayName = "profile-twin" });

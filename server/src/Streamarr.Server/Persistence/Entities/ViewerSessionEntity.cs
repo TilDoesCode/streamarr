@@ -12,7 +12,7 @@ public sealed class ViewerSessionEntity
     public DateTimeOffset? RotatedAt { get; set; }
     public string? RotatedTokensEncrypted { get; set; }
     public DateTimeOffset RefreshExpiresAt { get; set; }
-    public string DeviceName { get; set; } = string.Empty;
+    public string? DeviceName { get; set; }
     public string ClientName { get; set; } = string.Empty;
     public string AuthMethod { get; set; } = string.Empty;
     public bool CookieMode { get; set; }

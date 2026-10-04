@@ -2,10 +2,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Streamarr.Server.Security;
 
-/// <summary>
-/// The one caching rule for the API: every response under /api (tokens, one-time codes, 2FA secrets, stream
-/// capability URLs, personal data) is private and never stored, no matter what an endpoint sets itself.
-/// </summary>
+/// <summary>Every /api response (tokens, codes, secrets, stream URLs, personal data) is private and never stored, whatever an endpoint sets.</summary>
 public static class NoStoreApiResponses
 {
     public const string CacheControl = "private, no-store, max-age=0";

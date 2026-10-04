@@ -938,7 +938,7 @@ admin-assigned password must be changed, other viewer endpoints answer `403 pass
 
 | Field | Rule |
 | --- | --- |
-| `displayName` | Trimmed, 1–64 printable characters (no control characters), otherwise `400 invalid_display_name`. `null` or `""` resets it to the username. Display names are **not unique** (the username is the unique handle). |
+| `displayName` | Trimmed, 1–64 printable characters (no control characters), otherwise `400 invalid_display_name` — a name of only spaces too. `null` or `""` resets it to the username. Display names are **not unique** (the username is the unique handle). |
 | `avatarKey` | One of `cyan`, `blue`, `teal`, `green`, `amber`, `coral`, `rose`, `slate` (case-insensitive; stored lower case), otherwise `400 invalid_avatar`. `null` = no choice, the client derives a default. The keys map in order to the client's avatar colour slots 1–8. |
 
 ```json
@@ -1178,7 +1178,9 @@ Out-of-range values answer `400 invalid_device_profile`.
 GET …/works/tmdb-movie-603/versions?videoCodecs=h264&audioCodecs=aac&containers=mp4&vlcAvailable=true&vlcVideoCodecs=h264,hevc:1080&vlcSupports10Bit=true
 ```
 
-`predictedMethod` is `direct`, `remux`, `transcode` or `unknown`. It is **only a prediction**: the
+`predictedMethod` is `direct`, `remux`, `vlc`, `transcode`, `unknown` or `unplayable` (best first; `vlc` = the
+device's VLC engine plays the original file because no native path works, only when the query declares VLC). It is
+**only a prediction**: the
 server runs the transcoding planner (§ 11) on a source made up from the release name, because
 nothing has been downloaded yet. `predictionReasons` lists the planner's reason codes (with
 `params`) plus every assumption: `container_assumed` (names rarely say MKV or MP4; MKV is assumed
@@ -1187,7 +1189,9 @@ stream session — its real container is used and the note disappears), `audio_c
 `dolby_vision_profile_unknown` (a Dolby Vision name without an HDR10/HLG base layer),
 `video_codec_unknown` (→ `unknown`), and `transcoding_not_allowed` / `transcoding_disabled` when the
 viewer or server could not do what the prediction needs. The real decision (with the probed file)
-happens when playback starts (see *Playback* below).
+happens when playback starts (see *Playback* below). A `vlc` prediction lists the VLC candidate's own reasons —
+`vlc_fallback`, `image_subtitle_vlc`, `hdr_tone_mapped` (`params.engine` = `vlc`) or `direct_play` — not the
+conversions the native engine would have needed.
 
 ### Playback — `/api/v1/viewer/playback`
 

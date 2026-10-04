@@ -45,6 +45,7 @@ public static class DevWorldHost
             ["Streamarr:NzbCachePath"] = State("nzb-cache"),
             ["Streamarr:ConnectionBudget"] = "12",
             ["Streamarr:ConnectionWarmupCount"] = "2",
+            ["Streamarr:MaxSessions"] = "256",
             ["Streamarr:SegmentCacheSizeMb"] = "64",
             ["Streamarr:EphemeralCacheSizeMb"] = "4096",
             // Short so the dead-release fallback can be exercised repeatedly without a restart.

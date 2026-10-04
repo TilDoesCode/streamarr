@@ -15,9 +15,13 @@ public class WorldPlanTests
         Assert.InRange(catalog.Movies.Count(m => m.Releases.Count == 0), 1, DiscoverLists.MaxTitlesWithoutReleases);
         Assert.InRange(catalog.Series.Count, 2, int.MaxValue);
         Assert.Contains(catalog.Series, s => s.Seasons.Count(season => season.Episodes.Any(e => e.Releases.Count > 0)) >= 2);
-        Assert.All(
-            catalog.Series.SelectMany(s => s.Seasons).Where(season => season.Episodes.Any(e => e.Releases.Count > 0)),
-            season => Assert.InRange(season.Episodes.Count, 3, 6));
+        var playableSeasons = catalog.Series.SelectMany(s => s.Seasons).Where(season => season.Episodes.Any(e => e.Releases.Count > 0)).ToList();
+        var longSeason = Assert.Single(playableSeasons, season => season.Episodes.Count > 6);
+        Assert.InRange(longSeason.Episodes.Count, 24, 30);
+        Assert.All(longSeason.Episodes, e => Assert.Single(e.Releases));
+        Assert.All(playableSeasons.Where(season => season != longSeason), season => Assert.InRange(season.Episodes.Count, 3, 6));
+        Assert.Equal(["pioneer-one", "sherlock"], catalog.Series.Where(s => s != catalog.Series.Last()).Select(s => s.Key));
+        Assert.Equal((33050, 19885), (catalog.Series[0].TmdbId, catalog.Series[1].TmdbId));
 
         var variants = plan.Releases.Select(r => r.Files[0].Media.Variant).ToList();
         Assert.Superset(new HashSet<string> { "h264", "hevc", "av1", "mpeg2video" }, variants.Select(v => v.Video.Codec).ToHashSet());

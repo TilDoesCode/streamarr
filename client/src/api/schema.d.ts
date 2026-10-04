@@ -12369,7 +12369,8 @@ export interface components {
         };
         ViewerDeviceSessionResponse: {
             id: string | null;
-            deviceName: string | null;
+            /** @description Null when the device sent no name; clients show their own (translated) fallback. */
+            deviceName?: string | null;
             clientName: string | null;
             authMethod: string | null;
             cookieMode?: boolean;
@@ -12467,7 +12468,7 @@ export interface components {
         };
         /** @description Partial update: an omitted field stays unchanged. */
         ViewerProfileUpdateRequest: {
-            /** @description 1-64 printable characters (trimmed, not unique); null or empty resets it to the username. */
+            /** @description 1-64 printable characters (trimmed, not unique; only spaces is 400); null or empty resets it to the username. */
             displayName?: string | null;
             /** @description One of cyan, blue, teal, green, amber, coral, rose, slate (case-insensitive); null resets to the derived default. */
             avatarKey?: string | null;

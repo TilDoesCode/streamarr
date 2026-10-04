@@ -195,46 +195,58 @@ def main():
     status, _, created = http("POST", "/api/v1/config/viewers", {"username": probe_name, "password": probe_password,
                                                                  "mustChangePassword": False}, token)
     probe_id = (created or {}).get("viewer", {}).get("id") if isinstance(created, dict) else None
-    status, _, body = http("POST", "/api/v1/viewer/auth/login",
-                           {"login": probe_name, "password": probe_password, "deviceName": "verify", "clientName": "devworld-verify"})
-    probe = body["session"]["accessToken"] if check("probe viewer signs in", status == 200 and (body or {}).get("status") == "authenticated",
-                                                    str(status)) else None
-    if probe:
-        movie = next(t for t in manifest["titles"] if t["type"] == "movie")
-        tick = 10_000_000
-        for event, position in (("start", 0), ("progress", 90), ("stop", 95)):
-            status, _, _ = http("POST", "/api/v1/viewer/watch/progress",
-                                {"event": event, "workId": movie["workId"], "positionTicks": position * tick,
-                                 "durationTicks": 180 * tick, "playbackId": "verify-1"}, probe)
-        check("watch progress accepted", status == 200, str(status))
-        status, _, resume = http("GET", "/api/v1/viewer/watch/resume", token=probe)
-        check("continue watching lists the movie", status == 200 and any(s["workId"] == movie["workId"] for s in resume), str(status))
-        series = next(t for t in manifest["titles"] if t["type"] == "tv" and len(t["seasons"]) > 1)
-        first = series["seasons"][0]["episodes"][0]
-        status, _, _ = http("POST", "/api/v1/viewer/watch/played", {"workIds": [first["workId"]]}, probe)
-        status, _, nextup = http("GET", "/api/v1/viewer/watch/next-up", token=probe)
-        items = (nextup or {}).get("items", [])
-        check("next up offers the next episode", status == 200 and any(i["workId"] == series["seasons"][0]["episodes"][1]["workId"] for i in items),
-              str([i["workId"] for i in items]))
+    try:
+        status, _, body = http("POST", "/api/v1/viewer/auth/login",
+                               {"login": probe_name, "password": probe_password, "deviceName": "verify", "clientName": "devworld-verify"})
+        probe = body["session"]["accessToken"] if check("probe viewer signs in", status == 200 and (body or {}).get("status") == "authenticated",
+                                                        str(status)) else None
+        if probe:
+            movie = next(t for t in manifest["titles"] if t["type"] == "movie")
+            tick = 10_000_000
+            for event, position in (("start", 0), ("progress", 90), ("stop", 95)):
+                status, _, _ = http("POST", "/api/v1/viewer/watch/progress",
+                                    {"event": event, "workId": movie["workId"], "positionTicks": position * tick,
+                                     "durationTicks": 180 * tick, "playbackId": "verify-1"}, probe)
+            check("watch progress accepted", status == 200, str(status))
+            status, _, resume = http("GET", "/api/v1/viewer/watch/resume", token=probe)
+            check("continue watching lists the movie", status == 200 and any(s["workId"] == movie["workId"] for s in resume), str(status))
+            series = next(t for t in manifest["titles"] if t["type"] == "tv" and len(t["seasons"]) > 1)
+            first = series["seasons"][0]["episodes"][0]
+            status, _, _ = http("POST", "/api/v1/viewer/watch/played", {"workIds": [first["workId"]]}, probe)
+            status, _, nextup = http("GET", "/api/v1/viewer/watch/next-up", token=probe)
+            items = (nextup or {}).get("items", [])
+            check("next up offers the next episode", status == 200 and any(i["workId"] == series["seasons"][0]["episodes"][1]["workId"] for i in items),
+                  str([i["workId"] for i in items]))
+            replay = next((t for t in manifest["titles"] if t["type"] == "movie" and t["workId"] != movie["workId"]), None)
+            if replay:
+                # Replay inside the completing playback: back below the resume threshold starts a new viewing with a resume point.
+                for event, position in (("progress", 175), ("progress", 4), ("stop", 60)):
+                    http("POST", "/api/v1/viewer/watch/progress", {"event": event, "workId": replay["workId"], "positionTicks": position * tick,
+                                                                   "durationTicks": 180 * tick, "playbackId": "verify-replay"}, probe)
+                status, _, resume = http("GET", "/api/v1/viewer/watch/resume", token=probe)
+                entry = next((s for s in resume or [] if s["workId"] == replay["workId"]), None)
+                check("replay after completion keeps a resume point", status == 200 and entry is not None
+                      and entry.get("positionTicks") == 60 * tick and entry.get("played") is True, str(entry))
 
-    if "kind" in sessions:
-        gate = manifest["scenarios"]["ageGate"]
-        blocked = next(t for t in manifest["titles"] if t["title"] == gate["blocked"][0]["title"])
-        allowed = next(t for t in manifest["titles"] if t["title"] == gate["allowed"][0]["title"])
-        for title, want in ((blocked, False), (allowed, True)):
-            work_id = title.get("workId") or title["seriesWorkId"]
-            status, _, access = http("GET", f"/api/v1/viewer/access/{work_id}", token=sessions["kind"])
-            check(f"age gate for kind on {title['title']} = {want}", status == 200 and access.get("allowed") is want, str(access))
+        if "kind" in sessions:
+            gate = manifest["scenarios"]["ageGate"]
+            blocked = next(t for t in manifest["titles"] if t["title"] == gate["blocked"][0]["title"])
+            allowed = next(t for t in manifest["titles"] if t["title"] == gate["allowed"][0]["title"])
+            for title, want in ((blocked, False), (allowed, True)):
+                work_id = title.get("workId") or title["seriesWorkId"]
+                status, _, access = http("GET", f"/api/v1/viewer/access/{work_id}", token=sessions["kind"])
+                check(f"age gate for kind on {title['title']} = {want}", status == 200 and access.get("allowed") is want, str(access))
 
-    if "gast" in sessions:
-        status, _, me = http("GET", "/api/v1/viewer/me", token=sessions["gast"])
-        perms = (me or {}).get("permissions", {})
-        check("gast permissions (no transcoding, 1 stream)", perms.get("allowTranscoding") is False and perms.get("maxConcurrentStreams") == 1, str(perms))
+        if "gast" in sessions:
+            status, _, me = http("GET", "/api/v1/viewer/me", token=sessions["gast"])
+            perms = (me or {}).get("permissions", {})
+            check("gast permissions (no transcoding, 1 stream)", perms.get("allowTranscoding") is False and perms.get("maxConcurrentStreams") == 1, str(perms))
 
-    verify_catalog(manifest, sessions, token, probe)
-    if probe_id:
-        status, _, _ = http("DELETE", f"/api/v1/config/viewers/{probe_id}", token=token)
-        check("probe viewer removed", status in (200, 204), str(status))
+        verify_catalog(manifest, sessions, token, probe)
+    finally:
+        if probe_id:
+            status, _, _ = http("DELETE", f"/api/v1/config/viewers/{probe_id}", token=token)
+            check("probe viewer removed", status in (200, 204), str(status))
 
     status, _, sent = http("POST", "/api/v1/viewer/auth/email-code", {"login": "anna@devworld.example"})
     # A rerun within the cooldown gets 429 email_code_cooldown; the earlier code is then already in the outbox.
@@ -265,6 +277,12 @@ def verify_catalog(manifest, sessions, admin_token, probe=None):
             "popular-movies": want["popularMovies"], "popular-series": want["popularSeries"]}, str(rows))
         status, _, found = http("GET", f"{cat}/search?q=sintel", token=anna)
         check("catalog search finds Sintel", status == 200 and [i["workId"] for i in found["items"]][:1] == ["tmdb-movie-45745"], str(found))
+        long_title, long_season = next(((t, s) for t in series for s in t["seasons"] if len(s["episodes"]) >= 24), (None, None))
+        if check("the fixture has a long season (>= 24 episodes)", long_season is not None):
+            status, _, season = http("GET", f"{cat}/series/{long_title['tmdbId']}/seasons/{long_season['seasonNumber']}", token=anna)
+            listed = [e.get("workId") for e in (season or {}).get("episodes", [])]
+            check(f"catalog season {long_title['title']} S{long_season['seasonNumber']:02d} lists all {len(long_season['episodes'])} episodes",
+                  status == 200 and listed == [e["workId"] for e in long_season["episodes"]], f"{status} {len(listed)}")
 
         first = movies[0]
         status, _, details = http("GET", f"{cat}/movies/{first['tmdbId']}", token=anna)

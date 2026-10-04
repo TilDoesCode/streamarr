@@ -22196,7 +22196,6 @@
         "required": [
           "authMethod",
           "clientName",
-          "deviceName",
           "id"
         ],
         "type": "object",
@@ -22207,6 +22206,7 @@
           },
           "deviceName": {
             "type": "string",
+            "description": "Null when the device sent no name; clients show their own (translated) fallback.",
             "nullable": true
           },
           "clientName": {
@@ -22503,7 +22503,7 @@
         "properties": {
           "displayName": {
             "type": "string",
-            "description": "1-64 printable characters (trimmed, not unique); null or empty resets it to the username.",
+            "description": "1-64 printable characters (trimmed, not unique; only spaces is 400); null or empty resets it to the username.",
             "nullable": true
           },
           "avatarKey": {

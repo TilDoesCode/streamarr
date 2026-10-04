@@ -339,11 +339,11 @@ public sealed class ViewerAccountService(
 
     private static string? CleanDisplayName(string? value)
     {
-        var trimmed = value?.Trim();
-        if (string.IsNullOrEmpty(trimmed))
+        if (string.IsNullOrEmpty(value))
             return null;
-        if (trimmed.Length > 64 || trimmed.Any(char.IsControl))
-            throw ViewerProblem.BadRequest("invalid_display_name", "Display names are at most 64 printable characters.");
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 64 || trimmed.Any(char.IsControl))
+            throw ViewerProblem.BadRequest("invalid_display_name", "Display names are 1-64 printable characters, not only spaces.");
         return trimmed;
     }
 }

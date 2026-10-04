@@ -117,9 +117,10 @@ public sealed class ViewerPlaybackService(
                 if (active.Count >= limit)
                 {
                     var other = active.OrderByDescending(LastActive).First();
+                    var otherDevice = other.DeviceName.Length > 0 ? other.DeviceName : null;
                     throw new ViewerProblem(StatusCodes.Status409Conflict, "too_many_streams",
-                        $"This profile may play {limit} stream(s) at a time and '{other.DeviceName}' is already playing.",
-                        TrackSelector.Params(("limit", limit), ("device", other.DeviceName), ("workId", other.Work.WorkId), ("releaseName", other.Version?.Name)));
+                        $"This profile may play {limit} stream(s) at a time and {(otherDevice is null ? "another device" : $"'{otherDevice}'")} is already playing.",
+                        TrackSelector.Params(("limit", limit), ("device", otherDevice), ("workId", other.Work.WorkId), ("releaseName", other.Version?.Name)));
                 }
             }
             foreach (var old in mine.Except(superseded).Where(p => !IsActive(p, now)).Take(Math.Max(0, mine.Count - superseded.Count - (MaxPlaybacksPerViewer - 1))))

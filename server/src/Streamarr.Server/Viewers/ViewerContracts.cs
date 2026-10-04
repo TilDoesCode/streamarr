@@ -118,7 +118,7 @@ public sealed record ViewerProfileUpdateRequest
     private readonly string? _displayName;
     private readonly string? _avatarKey;
 
-    /// <summary>1-64 printable characters (trimmed, not unique); null or empty resets it to the username.</summary>
+    /// <summary>1-64 printable characters (trimmed, not unique; only spaces is 400); null or empty resets it to the username.</summary>
     public string? DisplayName
     {
         get => _displayName;
@@ -190,7 +190,8 @@ public sealed record ViewerRecoveryCodesResponse
 public sealed record ViewerDeviceSessionResponse
 {
     public required string Id { get; init; }
-    public required string DeviceName { get; init; }
+    /// <summary>Null when the device sent no name; clients show their own (translated) fallback.</summary>
+    public string? DeviceName { get; init; }
     public required string ClientName { get; init; }
     public required string AuthMethod { get; init; }
     public bool CookieMode { get; init; }

@@ -279,6 +279,10 @@ def media_matrix(manifest, anna):
                       ",".join(r["code"] for r in body["decision"]["reasons"]))
                 check(f"{label}: mediaInfo lists audio + subtitle tracks", len(body["mediaInfo"]["audioTracks"]) >= 1,
                       f"audio={len(body['mediaInfo']['audioTracks'])} subs={len(body['mediaInfo']['subtitleTracks'])}")
+                video = body["mediaInfo"]["video"] or {}
+                want_range = "SDR" if method == "transcode" or video.get("hdr") in (None, "none") else {"hdr10": "PQ", "hlg": "HLG"}.get(video["hdr"])
+                check(f"{label}: videoRange agrees with hdr and the method", video.get("videoRange") == want_range,
+                      f"hdr={video.get('hdr')} videoRange={video.get('videoRange')} method={method}")
                 play_url(label, body, None if method == "transcode" else video_codec)
             check(f"{label}: stop 204", stop(anna, created["playbackId"]) == 204)
 
@@ -347,6 +351,36 @@ def kind_checks(manifest, picks):
         _, ready, _ = wait(kind, body["playbackId"])
         check("kind: Big Buck Bunny becomes ready", ready and ready["state"] == "ready", str(ready and ready["state"]))
         stop(kind, body["playbackId"])
+
+
+def rendition_codec_checks(picks, anna):
+    """B8: the same device and title deliver the same rendition group at start (either language) and after /switch."""
+    title, release = picks["mkv-dualaudio-ass-1080p"]
+    layouts = {1: "1.0", 2: "2.0", 6: "5.1", 8: "7.1"}
+    for device_name, device in (("safari", SAFARI), ("iphone", IPHONE_SIM), ("appletv", APPLE_TV)):
+        groups = []
+        for language in ("de", "en"):
+            status, created = start(anna, title["workId"], device, release["releaseId"], {"audioLanguage": language})
+            _, body, _ = wait(anna, created["playbackId"])
+            if not check(f"rendition codec: {device_name} {language} ready with renditions", body and body["state"] == "ready" and body.get("audioRenditions"),
+                         str(body and body.get("state"))):
+                continue
+            groups.append(sorted((r["streamIndex"], r["codec"], r["channels"], r["label"]) for r in body["audioRenditions"]))
+            check(f"rendition codec: {device_name} {language} labels name the delivered channels",
+                  all(r["label"].endswith(layouts.get(r["channels"], "?")) for r in body["audioRenditions"]), json.dumps(body["audioRenditions"]))
+            other = next(a for a in body["mediaInfo"]["audioTracks"] if not a["selected"])
+            status, _ = http("POST", f"/api/v1/viewer/playback/{created['playbackId']}/switch", {"audioStreamIndex": other["index"]}, anna)
+            _, body, _ = wait(anna, created["playbackId"])
+            for _ in range(20):
+                if not body or body.get("revision", 0) >= 1:
+                    break
+                time.sleep(0.25)
+                _, body, _ = wait(anna, created["playbackId"])
+            if body and body["state"] == "ready" and body.get("revision") == 1:
+                groups.append(sorted((r["streamIndex"], r["codec"], r["channels"], r["label"]) for r in body.get("audioRenditions") or []))
+            stop(anna, created["playbackId"])
+        check(f"rendition codec: {device_name} delivers one group at start (de, en) and after /switch", len(groups) == 4 and all(g == groups[0] for g in groups),
+              json.dumps(groups))
 
 
 def switch_checks(manifest, picks, anna):
@@ -563,6 +597,7 @@ def main():
     gast_checks(manifest, picks)
     kind_checks(manifest, picks)
     rendition_checks(manifest, picks, anna)
+    rendition_codec_checks(picks, anna)
     playback_id, body, first_url = switch_checks(manifest, picks, anna)
     heartbeat_checks(manifest, picks, anna, playback_id, body, first_url)
     tone_map_checks(manifest, picks, anna)

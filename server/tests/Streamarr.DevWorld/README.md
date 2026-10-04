@@ -71,6 +71,12 @@ ids are stable (sha256 of indexer id + guid), so ids from one instance are valid
 `missingArtwork` covers Pioneer One S01, which has no season poster and no episode stills on
 TMDB (`null`, kept on purpose as a client edge case). Sherlock has both.
 
+`lighthouse-logs` ("The Lighthouse Logs", TMDB id 990001, work ids `tmdb-tv-990001-s01e01` … `s01e26`) is a
+fictional series with one long season of 26 episodes, one 480p H.264/AAC release each (variant `mp4-h264-aac-480p`,
+60 s clips), for long episode strips (TV second-position snap, scrolling). It has no artwork, so it stays out of the
+discover rows; it appears on the Series page (after the listed titles) and in search. The harness raises
+`Streamarr:MaxSessions` to 256 so every release keeps a live stream session at once.
+
 `discover` lists the work ids of the viewer home rows (`GET /api/v1/viewer/catalog/discover`)
 in order, and `scenarios.noVersions` the titles that exist only as metadata (Agent 327:
 Operation Barbershop and Wing It!: no releases, so their versions list is empty). Titles carry
@@ -108,7 +114,7 @@ names — and English where a fixture has no German text (Sprite Fright, Wing It
 - `degraded`: small parts (> 80 articles); STAT of the last article drops the connection, so
   the health check counts one indeterminate probe -> `degraded`, still playable.
 - Indexer sizes are nominal (`nominalMbps` x TMDB runtime) so the size-sanity/sample rules
-  accept them; the real clips are short (movies 180 s, episodes 120 s, the 2160p sample 60 s).
+  accept them; the real clips are short (movies 180 s, episodes 120 s, the 2160p and 480p samples 60 s).
 - Media: testsrc2 background, a coloured title bar on the right edge, and a bottom panel with
   title, variant label and a running `HH:MM:SS` timecode (built-in 5x7 bitmap font; the Homebrew
   ffmpeg has no `drawtext`). testsrc2 also shows a frame-accurate counter top-left. Audio is

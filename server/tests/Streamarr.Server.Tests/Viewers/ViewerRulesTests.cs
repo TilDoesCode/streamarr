@@ -77,6 +77,39 @@ public sealed class ViewerRulesTests
     }
 
     [Fact]
+    public void Replay_Of_The_Completing_Playback_Leaves_A_Resume_Point()
+    {
+        var state = State();
+        WatchProgressRules.Apply(state, Report("progress", Hour * 95 / 100, Hour, "p1"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("start", 0, Hour, "p1"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("progress", Hour / 100, Hour, "p1"), Settings, Now);
+        Assert.True(state.Played);
+        Assert.Equal(0, state.PositionTicks);
+        WatchProgressRules.Apply(state, Report("stop", Hour * 30 / 100, Hour, "p1"), Settings, Now);
+        Assert.True(state.Played);
+        Assert.Equal(Hour * 30 / 100, state.PositionTicks);
+        Assert.Equal(1, state.PlayCount);
+
+        WatchProgressRules.Apply(state, Report("progress", Hour * 96 / 100, Hour, "p1"), Settings, Now);
+        Assert.Equal(0, state.PositionTicks);
+        Assert.Equal(2, state.PlayCount);
+    }
+
+    [Fact]
+    public void Post_Credits_Reports_After_Completion_Stay_Ignored()
+    {
+        var state = State();
+        WatchProgressRules.Apply(state, Report("progress", Hour * 92 / 100, Hour, "p1"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("progress", Hour * 99 / 100, Hour, "p1"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("stop", Hour * 89 / 100, Hour, "p1"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("stop", Hour * 6 / 100, Hour, "p1"), Settings, Now);
+        Assert.True(state.Played);
+        Assert.Equal(0, state.PositionTicks);
+        Assert.Equal(1, state.PlayCount);
+        Assert.Equal("p1", state.CountedPlaybackId);
+    }
+
+    [Fact]
     public void Completion_Without_Playback_Id_Counts_Only_Transitions()
     {
         var state = State();

@@ -123,7 +123,9 @@ Clients report playback with `POST /api/v1/viewer/watch/progress`
   seeking back during the credits) leave the work played without a resume point, so it leaves
   continue watching and next up moves on to the next episode. Watching a played work again
   (a new `playbackId`) keeps it played and gives it a resume point that playback starts offer
-  (`resumePositionTicks`).
+  (`resumePositionTicks`). A replay inside the same playback counts the same way: once a report of
+  the completing playback goes back below the minimum resume percentage, it starts a new viewing
+  (later reports set a resume point again, the work stays played, reaching the end counts another play).
 - **Next up** takes the furthest played episode of each recently watched series and
   suggests the first unplayed, already aired episode after it, crossing into the next
   season when needed. Episode lists come from TMDB (cached; no indexer searches). If

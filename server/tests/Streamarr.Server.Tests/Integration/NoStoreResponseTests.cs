@@ -19,6 +19,8 @@ internal static class NoStoreAssert
         Assert.True(cacheControl is { NoStore: true, Private: true },
             $"{what} -> {(int)response.StatusCode}: Cache-Control '{cacheControl}' lacks private, no-store");
         Assert.True(response.Headers.Pragma.Any(p => p.Name == "no-cache"), $"{what}: Pragma no-cache missing");
+        Assert.True(response.Content.Headers.NonValidated.TryGetValues("Expires", out var expires) && expires.ToString() == "0",
+            $"{what}: Expires 0 missing");
     }
 }
 
@@ -37,6 +39,7 @@ public sealed partial class NoStoreRouteWalkTests(ViewerApiFactory factory) : IC
             .SelectMany(p => p.Value.EnumerateObject().Select(o => (Path: p.Name, Method: o.Name.ToUpperInvariant())))
             .ToList();
         Assert.True(operations.Count > 100, $"only {operations.Count} operations in the spec");
+        operations.AddRange(operations.Select(op => op.Path).Distinct().SelectMany(path => new[] { (path, "HEAD"), (path, "OPTIONS") }).ToList());
         Assert.All(operations, op => Assert.StartsWith("/api/", op.Path));
 
         using var admin = await factory.AdminAsync();
@@ -44,7 +47,7 @@ public sealed partial class NoStoreRouteWalkTests(ViewerApiFactory factory) : IC
         foreach (var client in new[] { anon, admin })
         {
             // Mutating calls run last so a sign-out or logout cannot hide the reads behind 401s.
-            foreach (var (path, method) in operations.OrderBy(op => op.Method is "GET" or "HEAD" ? 0 : 1))
+            foreach (var (path, method) in operations.OrderBy(op => op.Method is "GET" or "HEAD" or "OPTIONS" ? 0 : 1))
             {
                 using var request = new HttpRequestMessage(new HttpMethod(method), RouteParameter().Replace(path, "1"));
                 if (method is "POST" or "PUT" or "PATCH")

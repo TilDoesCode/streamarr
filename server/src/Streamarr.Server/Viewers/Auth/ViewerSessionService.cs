@@ -5,7 +5,7 @@ using Streamarr.Server.Persistence.Entities;
 
 namespace Streamarr.Server.Viewers.Auth;
 
-public sealed record ViewerSessionRequest(string DeviceName, string ClientName, string AuthMethod, bool CookieMode, string? IpAddress);
+public sealed record ViewerSessionRequest(string? DeviceName, string ClientName, string AuthMethod, bool CookieMode, string? IpAddress);
 
 public sealed record ViewerTokens(
     string SessionId,
@@ -59,8 +59,8 @@ public sealed class ViewerSessionService(
                 AccessExpiresAt = now.AddMinutes(current.AccessTokenMinutes),
                 RefreshTokenHash = ViewerAuth.Hash(refresh),
                 RefreshExpiresAt = now.AddDays(current.RefreshTokenDays),
-                DeviceName = Bounded(request.DeviceName, "Unknown device"),
-                ClientName = Bounded(request.ClientName, "Unknown client"),
+                DeviceName = Bounded(request.DeviceName),
+                ClientName = Bounded(request.ClientName) ?? "Unknown client",
                 AuthMethod = request.AuthMethod,
                 CookieMode = request.CookieMode,
                 IpAddress = request.IpAddress,
@@ -241,11 +241,11 @@ public sealed class ViewerSessionService(
         => db.ViewerSessions.Where(predicate).Where(s => s.RevokedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now).SetProperty(x => x.RevokedReason, reason), ct);
 
-    private static string Bounded(string? value, string fallback)
+    private static string? Bounded(string? value)
     {
         var trimmed = value?.Trim();
         if (string.IsNullOrEmpty(trimmed) || trimmed.Any(char.IsControl))
-            return fallback;
+            return null;
         return trimmed.Length <= 100 ? trimmed : trimmed[..100];
     }
 }

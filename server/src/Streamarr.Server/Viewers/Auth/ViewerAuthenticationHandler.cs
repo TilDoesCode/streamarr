@@ -41,7 +41,7 @@ public sealed class ViewerAuthenticationHandler(
             new(ClaimTypes.Role, ViewerAuth.Role),
             new(ViewerAuth.AccountTypeClaim, ViewerAuth.AccountType),
             new(ViewerAuth.SessionIdClaim, identity.Session.Id),
-            new(ViewerAuth.DeviceClaim, identity.Session.DeviceName),
+            new(ViewerAuth.DeviceClaim, identity.Session.DeviceName ?? string.Empty),
         };
         if (identity.Viewer.MustChangePassword)
             claims.Add(new Claim(ViewerAuth.PasswordChangeClaim, "true"));

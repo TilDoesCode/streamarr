@@ -319,6 +319,14 @@ public static class TranscodePlanner
             var audio = SelectAudio(media, limits.AudioStreamIndex);
             PlanReason? audioReason = null;
             var audioTarget = audio is null ? null : PlanRemuxAudio(audio, client, settings, capabilities, out audioReason);
+            var groupTargets = audio is null ? null : PlanRemuxGroup(media, limits, audio, client, settings, capabilities);
+            if (audio is not null && groupTargets?[audio.Index] is { } grouped && grouped != audioTarget)
+            {
+                audioReason = PlanReason.Of("audio_converted",
+                    $"Audio '{audio.Codec}' {audio.Channels} ch is converted to '{grouped.Codec}' {grouped.Channels} ch so every audio rendition shares one codec.",
+                    ("from", audio.Codec), ("to", grouped.Codec), ("channels", grouped.Channels));
+                audioTarget = grouped;
+            }
             var reasons = new List<PlanReason>(transcode.DirectPlayReasons);
             if (reasons.Count == 0)
                 reasons.Add(PlanReason.Of("hls_requested", "The player asked for HLS; the original video is copied without re-encoding."));
@@ -340,8 +348,7 @@ public static class TranscodePlanner
                 VideoRange = videoRange,
                 Subtitles = subtitles,
                 Audio = audioTarget,
-                AudioRenditions = PlanRenditions(media, limits, audioTarget,
-                    a => OneCodecPerGroup(PlanRemuxAudio(a, client, settings, capabilities, out _), audioTarget, a, client, settings, capabilities)),
+                AudioRenditions = PlanRenditions(media, limits, audioTarget, a => groupTargets![a.Index]),
                 Encoder = "copy",
             };
         }
@@ -379,13 +386,9 @@ public static class TranscodePlanner
     internal static IReadOnlyList<AudioRendition> PlanRenditions(
         SourceMediaInfo media, TranscodeLimits limits, AudioTarget? selected, Func<SourceAudioStream, AudioTarget> plan)
     {
-        if (selected is null || limits.AudioRenditions is not { Count: > 0 } requested)
+        if (selected is null)
             return [];
-        var streams = requested.Prepend(selected.SourceIndex).Distinct()
-            .Select(i => media.Audio.FirstOrDefault(a => a.Index == i)
-                ?? throw new TranscodePlanningException("unknown_audio_stream", $"Audio stream {i} does not exist in the source."))
-            .Take(MaxAudioRenditions)
-            .ToList();
+        var streams = RenditionStreams(media, limits, selected.SourceIndex);
         if (streams.Count < 2)
             return [];
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -406,6 +409,36 @@ public static class TranscodePlanner
                 a.SampleRate);
         }).ToList();
     }
+
+    private static List<SourceAudioStream> RenditionStreams(SourceMediaInfo media, TranscodeLimits limits, int selectedIndex)
+        => limits.AudioRenditions is not { Count: > 0 } requested ? [] : requested.Prepend(selectedIndex).Distinct()
+            .Select(i => media.Audio.FirstOrDefault(a => a.Index == i)
+                ?? throw new TranscodePlanningException("unknown_audio_stream", $"Audio stream {i} does not exist in the source."))
+            .Take(MaxAudioRenditions)
+            .ToList();
+
+    /// <summary>Remux targets of every rendition, converted to one group codec that does not depend on which rendition is selected; null without renditions.</summary>
+    internal static Dictionary<int, AudioTarget>? PlanRemuxGroup(
+        SourceMediaInfo media, TranscodeLimits limits, SourceAudioStream selected, ClientProfile client, TranscodingSettings settings, FfmpegCapabilities capabilities)
+    {
+        var streams = RenditionStreams(media, limits, selected.Index);
+        if (streams.Count < 2)
+            return null;
+        var planned = streams.OrderBy(a => a.Index).Select(a => (Stream: a, Target: PlanRemuxAudio(a, client, settings, capabilities, out _))).ToList();
+        var groupCodec = GroupCodec(planned.Select(p => p.Target).ToList(), capabilities);
+        return planned.ToDictionary(p => p.Stream.Index, p => OneCodecPerGroup(p.Target, groupCodec, p.Stream, client, settings));
+    }
+
+    /// <summary>The encodable codec most renditions already copy (fewest conversions), ties to the lowest source index.</summary>
+    internal static string? GroupCodec(IReadOnlyList<AudioTarget> planned, FfmpegCapabilities capabilities)
+        => planned
+            .Select((t, order) => (t.Codec, t.Copy, Order: order))
+            .Where(t => t.Codec is "aac" or "ac3" or "eac3" && capabilities.Encoders.Contains(t.Codec))
+            .GroupBy(t => t.Codec)
+            .OrderByDescending(g => g.Count(t => t.Copy))
+            .ThenBy(g => g.Min(t => t.Order))
+            .Select(g => g.Key)
+            .FirstOrDefault();
 
     /// <summary>The language in its own name ("Deutsch", "English"), as players show it next to their own UI language.</summary>
     internal static string? NativeLanguageName(string? language)
@@ -440,13 +473,13 @@ public static class TranscodePlanner
         return $"{codec} {layout}";
     }
 
-    /// <summary>Apple's HLS authoring spec wants one codec per audio group: a remux rendition whose codec differs from the default one is converted to it when ffmpeg can encode that codec.</summary>
+    /// <summary>Apple's HLS authoring spec wants one codec per audio group: a remux rendition in another codec is converted to the group codec.</summary>
     internal static AudioTarget OneCodecPerGroup(
-        AudioTarget planned, AudioTarget? selected, SourceAudioStream audio, ClientProfile client, TranscodingSettings settings, FfmpegCapabilities capabilities)
+        AudioTarget planned, string? groupCodec, SourceAudioStream audio, ClientProfile client, TranscodingSettings settings)
     {
-        if (selected is null || planned.Codec == selected.Codec || selected.Codec is not ("aac" or "ac3" or "eac3") || !capabilities.Encoders.Contains(selected.Codec))
+        if (groupCodec is null || planned.Codec == groupCodec)
             return planned;
-        var codec = selected.Codec;
+        var codec = groupCodec;
         var channels = codec == "aac" ? Math.Clamp(audio.Channels, 1, 2) : Math.Clamp(audio.Channels, 1, Math.Min(6, client.MaxAudioChannels));
         var bitrate = codec == "aac" ? channels == 1 ? Math.Min(128, settings.AudioBitrateKbps) : settings.AudioBitrateKbps : channels > 2 ? 640 : 256;
         int? sampleRate = codec == "aac"

@@ -6,7 +6,8 @@
     "Release names must parse to the attributes of their variant; the harness fails fast on a mismatch.",
     "Indexer-reported sizes are nominal (variant/release nominalMbps x TMDB runtime); the generated clips are short.",
     "health: ready (default) | dead (missing articles) | degraded (STAT probes drop the connection).",
-    "discover: title keys of the canned TMDB trending/popular lists (viewer home rows). Titles without releases (agent-327, wing-it: metadata only) exercise the empty-versions state; at most two are allowed."
+    "discover: title keys of the canned TMDB trending/popular lists (viewer home rows). Titles without releases (agent-327, wing-it: metadata only) exercise the empty-versions state; at most two are allowed.",
+    "lighthouse-logs (tmdbId 990001) is fictional: one long season (26 short episodes) for long episode strips; no artwork, so it stays out of the discover rows (find it by search)."
   ],
   "defaults": {
     "movieDurationSeconds": 180,
@@ -296,6 +297,29 @@
           "language": "eng",
           "title": "English",
           "kbps": 192
+        }
+      ],
+      "subtitles": []
+    },
+    "mp4-h264-aac-480p": {
+      "label": "MP4 H264 480P AAC 2.0",
+      "container": "mp4",
+      "nominalMbps": 1.5,
+      "durationSeconds": 60,
+      "video": {
+        "codec": "h264",
+        "width": 854,
+        "height": 480,
+        "bitDepth": 8,
+        "kbps": 150
+      },
+      "audio": [
+        {
+          "codec": "aac",
+          "channels": 2,
+          "language": "eng",
+          "title": "English",
+          "kbps": 96
         }
       ],
       "subtitles": []
@@ -1205,6 +1229,515 @@
               "overviewDe": "Ein Fall gestohlener Briefe veranlasst Sherlock dazu in einem Konflikt mit Charles Augustus Magnussen zu landen, dem Meister der Erpressungen - der Mann, den er aus tiefsten Herzen hasst. Aber wie packt man ein Problem an wenn diese Person über jegliche Schwächen aller wichtiger Personen in der westlichen Welt Bescheid weiß?",
               "stillUrl": "https://image.tmdb.org/t/p/w1280/5phdYWQXMwn9cBUPzUt1Z3oie4K.jpg",
               "releases": []
+            }
+          ]
+        }
+      ],
+      "seasonPacks": []
+    },
+    {
+      "key": "lighthouse-logs",
+      "tmdbId": 990001,
+      "imdbId": null,
+      "title": "The Lighthouse Logs",
+      "titleDe": "Die Leuchtturm-Chroniken",
+      "originalTitle": "The Lighthouse Logs",
+      "year": 2024,
+      "overview": "A fictional Dev World series: one long season of short weekly episodes about the keepers of a remote lighthouse. It exists to exercise long episode strips.",
+      "overviewDe": "Eine fiktive Dev-World-Serie: eine lange Staffel kurzer Wochenfolgen über die Wärter eines abgelegenen Leuchtturms. Sie dient langen Episodenleisten.",
+      "tagline": null,
+      "taglineDe": null,
+      "genres": [
+        "Drama"
+      ],
+      "genresDe": [
+        "Drama"
+      ],
+      "communityRating": 7.0,
+      "posterUrl": null,
+      "backdropUrl": null,
+      "logoUrl": null,
+      "license": "Dev World fixture (generated clips, fictional metadata)",
+      "accentColor": "#4a90b8",
+      "fps": "25",
+      "runtimeMinutes": 24,
+      "certifications": {
+        "DE": "6"
+      },
+      "officialRating": "6",
+      "seasons": [
+        {
+          "seasonNumber": 1,
+          "title": "Season 1",
+          "posterUrl": null,
+          "episodes": [
+            {
+              "episodeNumber": 1,
+              "title": "First Light",
+              "titleDe": "Erstes Licht",
+              "airDate": "2024-01-08",
+              "runtimeMinutes": 24,
+              "overview": "Week 1 on the island: first light keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 1 auf der Insel: Erstes Licht hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E01.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 41,
+                  "ageDays": 293
+                }
+              ]
+            },
+            {
+              "episodeNumber": 2,
+              "title": "The Keeper's Ledger",
+              "titleDe": "Das Logbuch des Wärters",
+              "airDate": "2024-01-15",
+              "runtimeMinutes": 24,
+              "overview": "Week 2 on the island: the keeper's ledger keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 2 auf der Insel: Das Logbuch des Wärters hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E02.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 42,
+                  "ageDays": 286
+                }
+              ]
+            },
+            {
+              "episodeNumber": 3,
+              "title": "Fog Bank",
+              "titleDe": "Nebelbank",
+              "airDate": "2024-01-22",
+              "runtimeMinutes": 24,
+              "overview": "Week 3 on the island: fog bank keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 3 auf der Insel: Nebelbank hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E03.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 43,
+                  "ageDays": 279
+                }
+              ]
+            },
+            {
+              "episodeNumber": 4,
+              "title": "Supply Boat",
+              "titleDe": "Das Versorgungsboot",
+              "airDate": "2024-01-29",
+              "runtimeMinutes": 24,
+              "overview": "Week 4 on the island: supply boat keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 4 auf der Insel: Das Versorgungsboot hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E04.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 44,
+                  "ageDays": 272
+                }
+              ]
+            },
+            {
+              "episodeNumber": 5,
+              "title": "Gull Season",
+              "titleDe": "Möwenzeit",
+              "airDate": "2024-02-05",
+              "runtimeMinutes": 24,
+              "overview": "Week 5 on the island: gull season keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 5 auf der Insel: Möwenzeit hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E05.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 45,
+                  "ageDays": 265
+                }
+              ]
+            },
+            {
+              "episodeNumber": 6,
+              "title": "The Broken Lens",
+              "titleDe": "Die gesprungene Linse",
+              "airDate": "2024-02-12",
+              "runtimeMinutes": 24,
+              "overview": "Week 6 on the island: the broken lens keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 6 auf der Insel: Die gesprungene Linse hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E06.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 46,
+                  "ageDays": 258
+                }
+              ]
+            },
+            {
+              "episodeNumber": 7,
+              "title": "Storm Warning",
+              "titleDe": "Sturmwarnung",
+              "airDate": "2024-02-19",
+              "runtimeMinutes": 24,
+              "overview": "Week 7 on the island: storm warning keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 7 auf der Insel: Sturmwarnung hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E07.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 47,
+                  "ageDays": 251
+                }
+              ]
+            },
+            {
+              "episodeNumber": 8,
+              "title": "Night Watch",
+              "titleDe": "Nachtwache",
+              "airDate": "2024-02-26",
+              "runtimeMinutes": 24,
+              "overview": "Week 8 on the island: night watch keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 8 auf der Insel: Nachtwache hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E08.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 48,
+                  "ageDays": 244
+                }
+              ]
+            },
+            {
+              "episodeNumber": 9,
+              "title": "The Wreck",
+              "titleDe": "Das Wrack",
+              "airDate": "2024-03-04",
+              "runtimeMinutes": 24,
+              "overview": "Week 9 on the island: the wreck keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 9 auf der Insel: Das Wrack hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E09.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 49,
+                  "ageDays": 237
+                }
+              ]
+            },
+            {
+              "episodeNumber": 10,
+              "title": "Signal Flags",
+              "titleDe": "Signalflaggen",
+              "airDate": "2024-03-11",
+              "runtimeMinutes": 24,
+              "overview": "Week 10 on the island: signal flags keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 10 auf der Insel: Signalflaggen hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E10.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 50,
+                  "ageDays": 230
+                }
+              ]
+            },
+            {
+              "episodeNumber": 11,
+              "title": "Low Tide",
+              "titleDe": "Ebbe",
+              "airDate": "2024-03-18",
+              "runtimeMinutes": 24,
+              "overview": "Week 11 on the island: low tide keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 11 auf der Insel: Ebbe hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E11.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 51,
+                  "ageDays": 223
+                }
+              ]
+            },
+            {
+              "episodeNumber": 12,
+              "title": "The Visitor",
+              "titleDe": "Der Besucher",
+              "airDate": "2024-03-25",
+              "runtimeMinutes": 24,
+              "overview": "Week 12 on the island: the visitor keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 12 auf der Insel: Der Besucher hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E12.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 52,
+                  "ageDays": 216
+                }
+              ]
+            },
+            {
+              "episodeNumber": 13,
+              "title": "Spring Tide",
+              "titleDe": "Springflut",
+              "airDate": "2024-04-01",
+              "runtimeMinutes": 24,
+              "overview": "Week 13 on the island: spring tide keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 13 auf der Insel: Springflut hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E13.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 53,
+                  "ageDays": 209
+                }
+              ]
+            },
+            {
+              "episodeNumber": 14,
+              "title": "Radio Silence",
+              "titleDe": "Funkstille",
+              "airDate": "2024-04-08",
+              "runtimeMinutes": 24,
+              "overview": "Week 14 on the island: radio silence keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 14 auf der Insel: Funkstille hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E14.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 54,
+                  "ageDays": 202
+                }
+              ]
+            },
+            {
+              "episodeNumber": 15,
+              "title": "The Lamp Room",
+              "titleDe": "Der Lampenraum",
+              "airDate": "2024-04-15",
+              "runtimeMinutes": 24,
+              "overview": "Week 15 on the island: the lamp room keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 15 auf der Insel: Der Lampenraum hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E15.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 55,
+                  "ageDays": 195
+                }
+              ]
+            },
+            {
+              "episodeNumber": 16,
+              "title": "Salt and Rust",
+              "titleDe": "Salz und Rost",
+              "airDate": "2024-04-22",
+              "runtimeMinutes": 24,
+              "overview": "Week 16 on the island: salt and rust keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 16 auf der Insel: Salz und Rost hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E16.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 56,
+                  "ageDays": 188
+                }
+              ]
+            },
+            {
+              "episodeNumber": 17,
+              "title": "Midsummer",
+              "titleDe": "Mittsommer",
+              "airDate": "2024-04-29",
+              "runtimeMinutes": 24,
+              "overview": "Week 17 on the island: midsummer keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 17 auf der Insel: Mittsommer hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E17.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 57,
+                  "ageDays": 181
+                }
+              ]
+            },
+            {
+              "episodeNumber": 18,
+              "title": "The Inspector",
+              "titleDe": "Der Inspektor",
+              "airDate": "2024-05-06",
+              "runtimeMinutes": 24,
+              "overview": "Week 18 on the island: the inspector keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 18 auf der Insel: Der Inspektor hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E18.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 58,
+                  "ageDays": 174
+                }
+              ]
+            },
+            {
+              "episodeNumber": 19,
+              "title": "Lost at Sea",
+              "titleDe": "Auf See verschollen",
+              "airDate": "2024-05-13",
+              "runtimeMinutes": 24,
+              "overview": "Week 19 on the island: lost at sea keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 19 auf der Insel: Auf See verschollen hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E19.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 59,
+                  "ageDays": 167
+                }
+              ]
+            },
+            {
+              "episodeNumber": 20,
+              "title": "Foghorn",
+              "titleDe": "Nebelhorn",
+              "airDate": "2024-05-20",
+              "runtimeMinutes": 24,
+              "overview": "Week 20 on the island: foghorn keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 20 auf der Insel: Nebelhorn hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E20.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 60,
+                  "ageDays": 160
+                }
+              ]
+            },
+            {
+              "episodeNumber": 21,
+              "title": "The Long Night",
+              "titleDe": "Die lange Nacht",
+              "airDate": "2024-05-27",
+              "runtimeMinutes": 24,
+              "overview": "Week 21 on the island: the long night keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 21 auf der Insel: Die lange Nacht hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E21.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 61,
+                  "ageDays": 153
+                }
+              ]
+            },
+            {
+              "episodeNumber": 22,
+              "title": "Ice on the Rocks",
+              "titleDe": "Eis auf den Klippen",
+              "airDate": "2024-06-03",
+              "runtimeMinutes": 24,
+              "overview": "Week 22 on the island: ice on the rocks keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 22 auf der Insel: Eis auf den Klippen hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E22.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 62,
+                  "ageDays": 146
+                }
+              ]
+            },
+            {
+              "episodeNumber": 23,
+              "title": "Relief Keeper",
+              "titleDe": "Der Ablöser",
+              "airDate": "2024-06-10",
+              "runtimeMinutes": 24,
+              "overview": "Week 23 on the island: relief keeper keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 23 auf der Insel: Der Ablöser hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E23.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 63,
+                  "ageDays": 139
+                }
+              ]
+            },
+            {
+              "episodeNumber": 24,
+              "title": "Old Charts",
+              "titleDe": "Alte Seekarten",
+              "airDate": "2024-06-17",
+              "runtimeMinutes": 24,
+              "overview": "Week 24 on the island: old charts keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 24 auf der Insel: Alte Seekarten hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E24.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 64,
+                  "ageDays": 132
+                }
+              ]
+            },
+            {
+              "episodeNumber": 25,
+              "title": "Last Ferry",
+              "titleDe": "Die letzte Fähre",
+              "airDate": "2024-06-24",
+              "runtimeMinutes": 24,
+              "overview": "Week 25 on the island: last ferry keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 25 auf der Insel: Die letzte Fähre hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E25.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 65,
+                  "ageDays": 125
+                }
+              ]
+            },
+            {
+              "episodeNumber": 26,
+              "title": "Dark Water",
+              "titleDe": "Dunkles Wasser",
+              "airDate": "2024-07-01",
+              "runtimeMinutes": 24,
+              "overview": "Week 26 on the island: dark water keeps the keepers of Skerry Point busy.",
+              "overviewDe": "Woche 26 auf der Insel: Dunkles Wasser hält die Wärter von Skerry Point auf Trab.",
+              "stillUrl": null,
+              "releases": [
+                {
+                  "name": "The.Lighthouse.Logs.S01E26.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
+                  "variant": "mp4-h264-aac-480p",
+                  "grabs": 66,
+                  "ageDays": 118
+                }
+              ]
             }
           ]
         }

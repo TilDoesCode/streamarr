@@ -116,9 +116,57 @@ public sealed class AudioRenditionTests
         var flac = DualAudio(
             new SourceAudioStream { Index = 1, Codec = "ac3", Channels = 6, Language = "ger", SampleRate = 48_000, IsDefault = true },
             new SourceAudioStream { Index = 2, Codec = "flac", Channels = 2, Language = "eng", SampleRate = 48_000 });
-        var mixed = Decide(flac, AppleTv with { AudioCodecs = ["aac", "ac3", "flac"] }, ModePreference.Remux, false,
-            new TranscodeLimits(AudioStreamIndex: 2, AudioRenditions: [2, 1]));
-        Assert.Equal(["ac3", "flac"], mixed.AudioRenditions.Select(r => r.Target.Codec));
+        var flacClient = AppleTv with { AudioCodecs = ["aac", "ac3", "flac"] };
+        var flacSelected = Decide(flac, flacClient, ModePreference.Remux, false, new TranscodeLimits(AudioStreamIndex: 2, AudioRenditions: [2, 1]));
+        Assert.Equal([("ac3", 6, true), ("ac3", 2, false)], flacSelected.AudioRenditions.Select(r => (r.Target.Codec, r.Target.Channels, r.Target.Copy)));
+        Assert.Equal("avc1.640028,ac-3", flacSelected.CodecsAttribute);
+
+        var opus = DualAudio(
+            new SourceAudioStream { Index = 1, Codec = "opus", Channels = 2, Language = "ger", SampleRate = 48_000, IsDefault = true },
+            new SourceAudioStream { Index = 2, Codec = "flac", Channels = 2, Language = "eng", SampleRate = 48_000 });
+        var mixed = Decide(opus, flacClient with { AudioCodecs = ["opus", "flac"] }, ModePreference.Remux, false, new TranscodeLimits(AudioRenditions: [1, 2]));
+        Assert.Equal(["opus", "flac"], mixed.AudioRenditions.Select(r => r.Target.Codec));
+    }
+
+    public static TheoryData<string, int> GroupClients() => new()
+    {
+        { "browser", 2 },
+        { "apple-stereo", 2 },
+        { "apple-surround", 6 },
+    };
+
+    [Theory]
+    [MemberData(nameof(GroupClients))]
+    public void Remux_GroupCodec_DoesNotDependOnTheSelectedTrack(string device, int maxChannels)
+    {
+        var client = device == "browser" ? Browser : AppleTv with { MaxAudioChannels = maxChannels };
+        var plans = new[] { 1, 2, (int?)null }
+            .Select(selected => Decide(DualAudio(), client, ModePreference.Remux, false, new TranscodeLimits(AudioStreamIndex: selected, AudioRenditions: [1, 2])))
+            .ToList();
+
+        var groups = plans.Select(p => string.Join('|', p.AudioRenditions.Select(r => $"{r.Name}:{r.Target.Codec}:{r.Target.Channels}:{r.Target.Copy}"))).Distinct().ToList();
+        Assert.Single(groups);
+        Assert.Single(plans.Select(p => p.CodecsAttribute).Distinct());
+        Assert.All(plans, p => Assert.Equal(p.Audio, p.AudioRenditions.Single(r => r.IsDefault).Target));
+        Assert.All(plans.SelectMany(p => p.AudioRenditions), r => Assert.Equal(TranscodePlanner.AudioLabel(r.Target), r.Name.Split(" · ")[1]));
+    }
+
+    [Fact]
+    public void Remux_GroupCodec_KeepsTheMostCopies_AndDownmixesWhatTheDeviceCannotPlay()
+    {
+        var stereoApple = AppleTv with { MaxAudioChannels = 2 };
+        var plan = Decide(DualAudio(), stereoApple, ModePreference.Remux, false, new TranscodeLimits(AudioStreamIndex: 1, AudioRenditions: [1, 2]));
+
+        Assert.Equal([("ac3", 2, false), ("ac3", 2, true)], plan.AudioRenditions.Select(r => (r.Target.Codec, r.Target.Channels, r.Target.Copy)));
+        Assert.Equal(["Deutsch · AC3 2.0", "English · AC3 2.0"], plan.AudioRenditions.Select(r => r.Name));
+        Assert.Contains(plan.Reasons, r => r.Code == "audio_converted" && r.Message.Contains("'ac3' 2 ch", StringComparison.Ordinal));
+        var args = string.Join(' ', FfmpegArgumentBuilder.Build(Spec(plan)));
+        Assert.Contains("-c:a:0 ac3 -ac:a:0 2", args);
+        Assert.Contains("-c:a:1 copy", args);
+
+        var surround = Decide(DualAudio(), AppleTv, ModePreference.Remux, false, new TranscodeLimits(AudioStreamIndex: 1, AudioRenditions: [1, 2]));
+        Assert.Equal(["Deutsch · AC3 5.1", "English · AC3 2.0"], surround.AudioRenditions.Select(r => r.Name));
+        Assert.All(surround.AudioRenditions, r => Assert.True(r.Target.Copy));
     }
 
     [Fact]
