@@ -1,3 +1,4 @@
+using Streamarr.Server.Viewers.Artwork;
 using Streamarr.Server.Viewers.Catalog;
 
 namespace Streamarr.Server.Viewers;
@@ -275,11 +276,13 @@ public sealed record NextUpItemResponse
     public required string SeriesWorkId { get; init; }
     public required string SeriesTitle { get; init; }
     public string? SeriesPosterUrl { get; init; }
+    public ArtworkSizesDto? SeriesPosterSizes => ArtworkSizes.Poster(SeriesPosterUrl);
     public required int SeasonNumber { get; init; }
     public required int EpisodeNumber { get; init; }
     public required string EpisodeTitle { get; init; }
     public string? AirDate { get; init; }
     public string? StillUrl { get; init; }
+    public ArtworkSizesDto? StillSizes => ArtworkSizes.Still(StillUrl);
     public int? RuntimeMinutes { get; init; }
     public long PositionTicks { get; init; }
     public long? DurationTicks { get; init; }

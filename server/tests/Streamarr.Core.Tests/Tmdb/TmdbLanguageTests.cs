@@ -52,7 +52,7 @@ public class TmdbLanguageTests
     public void PrimaryTag(string? value, string? expected) => Assert.Equal(expected, TmdbLanguage.Primary(value));
 
     [Fact]
-    public async Task LocalizedMovieFallsBackToEnglishTextsAndSendsTheLanguage()
+    public async Task LocalizedMovieFallsBackToEnglishOverviewButKeepsTheTaglineInItsLanguage()
     {
         var languages = new List<string?>();
         var handler = new StubHttpMessageHandler(req =>
@@ -74,8 +74,51 @@ public class TmdbLanguageTests
         Assert.Equal("Der Film", movie!.Title);
         Assert.Equal(["Komödie"], movie.Genres);
         Assert.Equal("English overview.", movie.Overview);
-        Assert.Equal("English tagline.", movie.Tagline);
+        Assert.Null(movie.Tagline);
         Assert.Equal(["de", "en-US", null], languages);
         Assert.Equal("The Movie", english!.Title);
+        Assert.Equal("English tagline.", english.Tagline);
+    }
+
+    [Fact]
+    public async Task LocalizedMovieWithOverviewButNoTaglineMakesNoEnglishCall()
+    {
+        var languages = new List<string?>();
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            languages.Add(System.Web.HttpUtility.ParseQueryString(req.RequestUri!.Query)["language"]);
+            const string body = """{"id":5,"title":"Der Film","overview":"Deutsch.","tagline":"","genres":[]}""";
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        });
+        var client = new TmdbClient(new HttpClient(handler), new TmdbOptions { ApiKey = "k" }, retryDelay: static (_, _) => Task.CompletedTask);
+
+        TmdbMatch? movie;
+        using (TmdbLanguage.Use("de"))
+            movie = await client.GetMovieAsync(5, default);
+
+        Assert.Null(movie!.Tagline);
+        Assert.Equal(["de"], languages);
+    }
+
+    [Fact]
+    public async Task LocalizedSeriesFallsBackToEnglishOverviewButNotTagline()
+    {
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            var language = System.Web.HttpUtility.ParseQueryString(req.RequestUri!.Query)["language"];
+            var body = language == "de"
+                ? """{"id":7,"name":"Die Serie","overview":"","tagline":"","seasons":[]}"""
+                : """{"id":7,"name":"The Series","overview":"English overview.","tagline":"English tagline.","seasons":[]}""";
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        });
+        var client = new TmdbClient(new HttpClient(handler), new TmdbOptions { ApiKey = "k" }, retryDelay: static (_, _) => Task.CompletedTask);
+
+        TmdbMatch? series;
+        using (TmdbLanguage.Use("de"))
+            series = await client.GetTvAsync(7, default);
+
+        Assert.Equal("Die Serie", series!.Title);
+        Assert.Equal("English overview.", series.Overview);
+        Assert.Null(series.Tagline);
     }
 }

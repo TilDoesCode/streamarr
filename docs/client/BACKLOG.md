@@ -185,6 +185,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Server tests (B9): ReleaseContainerStoreTests.Store_EvictsTheLeastRecentlyUsed_AndSurvivesARestart and
   RepairConcurrencyTests flake under load (timing of background writers); green on reruns.
 
+- B10 verify: sign-in code responses still differ by well under a millisecond on loopback (known first send ~1.0 ms,
+  linked alias ~0.6 ms, unknown ~0.4 ms; status/body/headers identical, 5 tries per hour per login; the known/unknown
+  gap predates B10); `logoUrl` and cast `profileUrl` have no size classes; generated `ArtworkSizesDto` fields are
+  `string | null` although always set (repo-wide nullability convention).
+- Server tests (B10 verify): HealthCheckerTests.Concurrency_UsesConfiguredProviderBudget flakes under full-suite load.
+
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.

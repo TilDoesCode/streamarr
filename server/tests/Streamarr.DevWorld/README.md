@@ -58,6 +58,13 @@ Helper endpoints (anonymous, harness only): `GET /devworld/ready`, `GET /devworl
 rejects a reused 30 s step), `GET /devworld/outbox` (email codes). CORS allows any origin for
 `/api/v1/viewer`, `/api/v1/stream`, `/api/v1/transcode`, `/api/v1/health`, `/openapi`, `/devworld/*` and `/devworld.json`.
 
+Generated artwork: a catalog URL `devworld:/t/p/{size}/{file}.jpg` is drawn once (SkiaSharp, `DevWorldArtwork`) into
+`cache/art/v<version>/{size}/` in the TMDB size classes the server hands out (posters `w185`/`w342`/`w780`, backdrops
+and stills `w300`/`w780`/`w1280`) and served anonymously at `GET /devworld/art/t/p/{size}/{file}.jpg`. JSON answers
+under `/api` name these images by the origin the caller used (`http://10.0.2.2:<port>` on the Android emulator,
+`localhost` in a browser), so the URLs work from every client; palettes (`tint`) are only computed for TMDB images, so
+these titles have none.
+
 ## devworld.json
 
 Written to `cache/devworld-<port>.json` (and `cache/devworld.json` for port 39300 or
@@ -73,8 +80,9 @@ TMDB (`null`, kept on purpose as a client edge case). Sherlock has both.
 
 `lighthouse-logs` ("The Lighthouse Logs", TMDB id 990001, work ids `tmdb-tv-990001-s01e01` … `s01e26`) is a
 fictional series with one long season of 26 episodes, one 480p H.264/AAC release each (variant `mp4-h264-aac-480p`,
-60 s clips), for long episode strips (TV second-position snap, scrolling). It has no artwork, so it stays out of the
-discover rows; it appears on the Series page (after the listed titles) and in search. The harness raises
+60 s clips), for long episode strips (TV second-position snap, scrolling). Its artwork is generated (a lighthouse at
+sea: poster with the English or German title, a backdrop, one still per episode in a changing mood); it is the last
+title of the `popular-series` row. Its tagline exists in English only, so German viewers get `tagline: null`. The harness raises
 `Streamarr:MaxSessions` to 256 so every release keeps a live stream session at once.
 
 `discover` lists the work ids of the viewer home rows (`GET /api/v1/viewer/catalog/discover`)

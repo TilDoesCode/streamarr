@@ -282,6 +282,8 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
         Assert.Equal(7.8, before.GetProperty("voteAverage").GetDouble(), 3);
         Assert.Equal("https://img.example/501-logo.png", before.GetProperty("logoUrl").GetString());
         Assert.Equal("https://img.example/501-backdrop.jpg", before.GetProperty("backdropUrl").GetString());
+        // not in TMDB's size layout: every size class is the original URL
+        Assert.All(["small", "medium", "large"], c => Assert.Equal("https://img.example/501-backdrop.jpg", before.GetProperty("backdropSizes").GetProperty(c).GetString()));
         Assert.Equal("Ada Actor", before.GetProperty("people")[0].GetProperty("name").GetString());
         Assert.Equal(0, before.GetProperty("watch").GetProperty("positionTicks").GetInt64());
         Assert.True(before.GetProperty("access").GetProperty("allowed").GetBoolean());

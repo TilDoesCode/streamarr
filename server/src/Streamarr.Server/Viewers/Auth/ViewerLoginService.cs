@@ -95,8 +95,8 @@ public sealed class ViewerLoginService(
             throw ViewerProblem.Forbidden("email_login_unavailable", "Sign-in by email code is not available on this server.");
         var typed = RequireLogin(login);
         ThrottleLoginCode(typed);
-        if (await SendCodeAsync(typed, ViewerCodePurpose.Login, current, ct) is { Issued: false } issue)
-            throw ViewerProblem.EmailCodeCooldown(issue.RetryAfter);
+        // Another alias of an account inside its mail cooldown answers like a first send, without a mail.
+        await SendCodeAsync(typed, ViewerCodePurpose.Login, current, ct);
     }
 
     public async Task<ViewerLoginResult> LoginCodeAsync(string? login, string? code, CancellationToken ct)

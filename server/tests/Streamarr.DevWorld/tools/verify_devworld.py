@@ -330,6 +330,16 @@ def verify_catalog(manifest, sessions, admin_token, probe=None):
             listed = [e.get("workId") for e in (season or {}).get("episodes", [])]
             check(f"catalog season {long_title['title']} S{long_season['seasonNumber']:02d} lists all {len(long_season['episodes'])} episodes",
                   status == 200 and listed == [e["workId"] for e in long_season["episodes"]], f"{status} {len(listed)}")
+            stills = [e.get("stillSizes") or {} for e in (season or {}).get("episodes", [])]
+            small = stills[0].get("small", "") if stills else ""
+            check("long-season stills carry size classes (B10)", bool(stills) and all(s.get("small") and s.get("medium") and s.get("large") for s in stills), small)
+            if small:
+                status, hdrs, _ = http("GET", "/" + small.split("/", 3)[3])
+                check("a small still is served in its size class", status == 200 and hdrs.get("Content-Type") == "image/jpeg", f"{status} {small}")
+        status, _, card = http("GET", f"{cat}/search?q=sintel", token=anna)
+        sizes = ((card or {}).get("items") or [{}])[0].get("posterSizes") or {}
+        check("TMDB card posters map to w185/w342/w780 (B10)", "/t/p/w185/" in sizes.get("small", "") and "/t/p/w342/" in sizes.get("medium", "")
+              and "/t/p/w780/" in sizes.get("large", ""), str(sizes))
 
         first = movies[0]
         status, _, details = http("GET", f"{cat}/movies/{first['tmdbId']}", token=anna)

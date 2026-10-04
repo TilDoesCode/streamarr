@@ -77,12 +77,14 @@ public static class DevWorldHost
         builder.Services.RemoveAll<INewznabClient>();
         builder.Services.AddSingleton<INewznabClient>(new CannedNewznabClient(store.Releases, DateTimeOffset.UtcNow));
         builder.Services.RemoveAll<ITmdbClient>();
-        builder.Services.AddSingleton<ITmdbClient>(new CannedTmdbClient(plan.Catalog));
+        builder.Services.AddSingleton<ITmdbClient>(new CannedTmdbClient(plan.Catalog, options.LocalUrl));
 
         var app = builder.Build();
         app.UseDevWorldCors();
+        app.UseDevWorldArtworkOrigin(options);
         app.UseStreamarrServer();
         app.MapDevWorld(state);
+        app.MapDevWorldArtwork(options);
         return app;
     }
 }

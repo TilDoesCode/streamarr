@@ -1,4 +1,5 @@
 using Streamarr.Core.Tmdb;
+using Streamarr.Server.Viewers.Artwork;
 
 namespace Streamarr.Server.Viewers.Catalog;
 
@@ -17,7 +18,9 @@ public sealed record CatalogItemDto
     public int? Year { get; init; }
     public string? Overview { get; init; }
     public string? PosterUrl { get; init; }
+    public ArtworkSizesDto? PosterSizes => ArtworkSizes.Poster(PosterUrl);
     public string? BackdropUrl { get; init; }
+    public ArtworkSizesDto? BackdropSizes => ArtworkSizes.Backdrop(BackdropUrl);
 
     /// <summary>TMDB vote average (0–10).</summary>
     public float? VoteAverage { get; init; }
@@ -122,7 +125,9 @@ public sealed record CatalogMovieResponse
 
     public float? VoteAverage { get; init; }
     public string? PosterUrl { get; init; }
+    public ArtworkSizesDto? PosterSizes => ArtworkSizes.Poster(PosterUrl);
     public string? BackdropUrl { get; init; }
+    public ArtworkSizesDto? BackdropSizes => ArtworkSizes.Backdrop(BackdropUrl);
     public string? LogoUrl { get; init; }
     public string? TrailerUrl { get; init; }
     /// <summary>Vivid accent from the artwork (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
@@ -156,7 +161,9 @@ public sealed record CatalogSeriesResponse
     public string? Certification { get; init; }
     public float? VoteAverage { get; init; }
     public string? PosterUrl { get; init; }
+    public ArtworkSizesDto? PosterSizes => ArtworkSizes.Poster(PosterUrl);
     public string? BackdropUrl { get; init; }
+    public ArtworkSizesDto? BackdropSizes => ArtworkSizes.Backdrop(BackdropUrl);
     public string? LogoUrl { get; init; }
     public string? TrailerUrl { get; init; }
     /// <summary>Vivid accent from the artwork (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
@@ -192,6 +199,7 @@ public sealed record CatalogSeasonSummaryDto
     public string? Overview { get; init; }
     public string? AirDate { get; init; }
     public string? PosterUrl { get; init; }
+    public ArtworkSizesDto? PosterSizes => ArtworkSizes.Poster(PosterUrl);
     public int EpisodeCount { get; init; }
     public int PlayedCount { get; init; }
     public int InProgressCount { get; init; }
@@ -221,6 +229,7 @@ public sealed record CatalogNextEpisodeDto
     public string? Title { get; init; }
     public string? AirDate { get; init; }
     public string? StillUrl { get; init; }
+    public ArtworkSizesDto? StillSizes => ArtworkSizes.Still(StillUrl);
     public int? RuntimeMinutes { get; init; }
     public long PositionTicks { get; init; }
     public long? DurationTicks { get; init; }
@@ -246,6 +255,7 @@ public sealed record CatalogSeasonResponse
     public string? Overview { get; init; }
     public string? AirDate { get; init; }
     public string? PosterUrl { get; init; }
+    public ArtworkSizesDto? PosterSizes => ArtworkSizes.Poster(PosterUrl);
     /// <summary>Vivid accent of the series (<c>#RRGGBB</c>, at least 3:1 against <c>#0A0C12</c>); null until computed.</summary>
     public string? Tint { get; init; }
 
@@ -275,6 +285,7 @@ public sealed record CatalogEpisodeDto
 
     public int? RuntimeMinutes { get; init; }
     public string? StillUrl { get; init; }
+    public ArtworkSizesDto? StillSizes => ArtworkSizes.Still(StillUrl);
     public float? VoteAverage { get; init; }
     public required WatchStateResponse Watch { get; init; }
 
