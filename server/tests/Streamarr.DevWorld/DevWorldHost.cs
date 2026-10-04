@@ -35,6 +35,7 @@ public static class DevWorldHost
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Serilog:MinimumLevel:Default"] = options.LogLevel,
+            ["Serilog:MinimumLevel:Override:Streamarr.Server.Viewers.Auth.ViewerSessionService"] = "Information",
             ["Streamarr:ApiKey"] = WorldSeeder.ApiKey,
             ["Streamarr:Admin:Username"] = WorldSeeder.AdminUsername,
             ["Streamarr:Admin:Password"] = WorldSeeder.AdminPassword,

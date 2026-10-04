@@ -216,6 +216,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   `string | null` although always set (repo-wide nullability convention).
 - Server tests (B10 verify): HealthCheckerTests.Concurrency_UsesConfiguredProviderBudget flakes under full-suite load.
 
+- B11 verify: `POST /viewer/auth/refresh` has no rate limit (predates B11) and every refusal now logs a line, so an
+  anonymous caller can flood the in-memory log feed; an unknown token runs a LIKE scan over retired hashes before the
+  tombstone lookup (B9 code); account deletion writes tombstones outside the session lock (a racing refresh can answer
+  `unknown`); the hourly ViewerSessionCleanup job has no unit test of its own (verified live).
+
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.

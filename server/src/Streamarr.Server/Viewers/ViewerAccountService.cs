@@ -191,6 +191,8 @@ public sealed class ViewerAccountService(
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var ended = await db.ViewerSessions.AsNoTracking().Where(x => x.ViewerId == id).ToListAsync(ct);
+        await ViewerSessionService.AddTombstonesAsync(db, ended, "account_deleted", time.GetUtcNow(), ct);
         await db.ViewerSessions.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         await db.ViewerOneTimeCodes.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         await db.ViewerRecoveryCodes.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);

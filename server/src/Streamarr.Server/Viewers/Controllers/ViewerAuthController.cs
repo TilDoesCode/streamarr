@@ -125,18 +125,30 @@ public sealed class ViewerAuthController(
     {
         var cookieMode = string.IsNullOrEmpty(request?.RefreshToken);
         var presented = cookieMode ? Request.Cookies[ViewerAuth.RefreshCookieName] : request!.RefreshToken;
-        var (tokens, failure) = await sessions.RefreshAsync(presented, HttpContext.Connection.RemoteIpAddress?.ToString(), ct);
+        var (tokens, failure, reason) = await sessions.RefreshAsync(presented, HttpContext.Connection.RemoteIpAddress?.ToString(), ct);
         if (tokens is null)
         {
             DeleteCookies();
-            return Unauthorized(ErrorResponse.Of(
-                failure == RefreshFailure.Reused ? "refresh_token_reused" : "refresh_session_expired",
-                failure == RefreshFailure.Reused
-                    ? "This refresh token was already used; the session was ended for safety."
-                    : "The viewer session is missing or expired. Sign in again."));
+            return Unauthorized(RefreshError(failure, reason));
         }
         return Ok(Tokens(tokens, cookieMode));
     }
+
+    private static ErrorResponse RefreshError(RefreshFailure failure, string? reason) => failure switch
+    {
+        RefreshFailure.Reused => ErrorResponse.Of("refresh_token_reused", "This refresh token was already used; the session was ended for safety."),
+        RefreshFailure.Expired => ErrorResponse.Of("refresh_session_expired", "The viewer session has expired. Sign in again."),
+        RefreshFailure.Revoked => new ErrorResponse
+        {
+            Error = new ErrorDetail
+            {
+                Code = "refresh_session_revoked",
+                Message = "The viewer session was ended. Sign in again.",
+                Params = new Dictionary<string, string> { ["reason"] = reason ?? "other" },
+            },
+        },
+        _ => ErrorResponse.Of("refresh_token_unknown", "This refresh token is not known. Sign in again."),
+    };
 
     /// <summary>End the current viewer session (access token, refresh token, or cookies).</summary>
     [AllowAnonymous]

@@ -888,7 +888,7 @@ never unlock viewer endpoints.
 | `POST …/login/second-factor` | `{ mfaToken, code }` with a 6-digit authenticator code or a recovery code. |
 | `POST …/email-code` · `POST …/email-code/verify` | Request (always `202`) and redeem an emailed sign-in code. |
 | `POST …/password/forgot` · `POST …/password/reset` | Request (always `202`) and redeem a reset code with a new password (`204`, ends all sessions). |
-| `POST …/refresh` | `{ refreshToken }` or the refresh cookie → rotated tokens. The previous refresh token is answered with the same rotated pair within 30 s and later while that pair is unused (a fresh access token if its own expired); after the pair was used, the previous or any older token gets `401 refresh_token_reused` and ends the session (see viewers.md). |
+| `POST …/refresh` | `{ refreshToken }` or the refresh cookie → rotated tokens. The previous refresh token is answered with the same rotated pair within 30 s and later while that pair is unused (a fresh access token if its own expired); after the pair was used, the previous or any older token gets `401 refresh_token_reused` and ends the session (see viewers.md). Other refusals say which case they are (below). |
 | `POST …/logout` | Ends the current session (bearer, refresh token, or cookies). |
 
 ```json
@@ -905,6 +905,35 @@ never unlock viewer endpoints.
 Errors: `401 invalid_credentials`, `401 invalid_code`, `401 mfa_expired`,
 `403 account_disabled`, `423 account_locked`, `403 email_login_unavailable` /
 `password_reset_unavailable`, `429 rate_limited`, `429 email_code_cooldown`.
+
+**Refresh failures.** `POST …/refresh` answers every refusal with `401` and one of these codes (cookies are cleared):
+
+| Code | When |
+|---|---|
+| `refresh_token_reused` | A previous or older token of a live session was presented after the rotated pair was used; this request ended the session (theft detection). |
+| `refresh_session_expired` | The session exists (or existed) and its refresh window is over. Nothing was revoked. |
+| `refresh_session_revoked` | The session was ended on purpose; `params.reason` says why (below). |
+| `refresh_token_unknown` | No session and no tombstone matches: malformed, never issued by this server, deleted more than 30 days ago, or a device restored from an old backup/snapshot. No `params`. |
+
+`params.reason` of `refresh_session_revoked` (clients treat an unlisted value like `other`):
+`signed_out` (this device signed out), `revoked_by_viewer` (removed or "sign out other devices" on another device),
+`session_limit` (the least recently used device was signed out by a new sign-in beyond the per-viewer limit, default 20),
+`admin` (an admin revoked the session, reset the password or the second factor, or deleted the account),
+`password_changed` (password changed on another device or reset by e-mail code), `account_disabled`,
+`token_reused` (the session had been ended by refresh-token reuse), `other`.
+
+```json
+// 401
+{ "error": { "code": "refresh_session_revoked", "message": "The viewer session was ended. Sign in again.",
+             "params": { "reason": "session_limit" } } }
+```
+
+Revoked sessions stay in the session table for a day, expired ones until the next cleanup; when they are deleted every refresh-token hash they knew (current, previous, the last 8 retired) is kept as a
+tombstone with the session id, viewer id, reason and time for 30 days after the session ended, so an old token still
+maps to its reason. A cleanup job runs hourly (and on every sign-in) and drops older tombstones. Lookups go by the
+SHA-256 hash of the presented token only; a caller without a token that was once valid learns nothing about any
+account. Every refusal is logged at Information as `Viewer refresh refused: <case> (<detail>), reason …, session …,
+viewer …` (ids only when a session or tombstone matched; never the token or its hash).
 
 **E-mail code cooldown.** A new code for the same purpose is sent at most every 30 seconds and at most
 5 times per hour. Inside that window `POST …/auth/email-code` and `POST …/me/email` send **no** mail and answer

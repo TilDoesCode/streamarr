@@ -19,10 +19,13 @@ public sealed record ViewerIdentity(ViewerEntity Viewer, ViewerSessionEntity Ses
 public enum RefreshFailure
 {
     None,
-    Invalid,
+    Unknown,
+    Expired,
+    Revoked,
     Reused,
-    Disabled,
 }
+
+public sealed record RefreshResult(ViewerTokens? Tokens, RefreshFailure Failure, string? Reason = null);
 
 /// <summary>Opaque, hashed viewer session tokens: short access token, rotating refresh token, reuse detection with replay of an unused rotation.</summary>
 public sealed class ViewerSessionService(
@@ -35,6 +38,8 @@ public sealed class ViewerSessionService(
     private static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SeenResolution = TimeSpan.FromMinutes(1);
     private const int MaxRetiredTokens = 8;
+    public static readonly TimeSpan TombstoneLifetime = TimeSpan.FromDays(30);
+    private static readonly TimeSpan RevokedRetention = TimeSpan.FromDays(1);
     private readonly IDataProtector _rotated = dataProtection.CreateProtector("Streamarr.Viewers.RotatedTokens.v1");
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -46,9 +51,7 @@ public sealed class ViewerSessionService(
         try
         {
             await using var db = await dbFactory.CreateDbContextAsync(ct);
-            await db.ViewerSessions
-                .Where(s => s.RefreshExpiresAt < now || (s.RevokedAt != null && s.RevokedAt < now.AddDays(-1)))
-                .ExecuteDeleteAsync(ct);
+            await PruneAsync(db, now, ct);
 
             var access = ViewerAuth.NewToken(ViewerAuth.AccessTokenPrefix);
             var refresh = ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix);
@@ -115,10 +118,10 @@ public sealed class ViewerSessionService(
         return new ViewerIdentity(viewer, session);
     }
 
-    public async Task<(ViewerTokens? Tokens, RefreshFailure Failure)> RefreshAsync(string? refreshToken, string? ipAddress, CancellationToken ct)
+    public async Task<RefreshResult> RefreshAsync(string? refreshToken, string? ipAddress, CancellationToken ct)
     {
         if (!ViewerAuth.HasShape(refreshToken, ViewerAuth.RefreshTokenPrefix))
-            return (null, RefreshFailure.Invalid);
+            return Refused(RefreshFailure.Unknown, null, "malformed", null);
         var current = await settings.GetAsync(ct);
         var now = time.GetUtcNow();
         var hash = ViewerAuth.Hash(refreshToken!);
@@ -136,34 +139,46 @@ public sealed class ViewerSessionService(
                 if (session is not null && !session.RetiredRefreshTokenHashes!.Split(' ').Contains(hash))
                     session = null;
             }
-            if (session is null || session.RevokedAt is not null || session.RefreshExpiresAt <= now)
-                return (null, RefreshFailure.Invalid);
+            if (session is null)
+            {
+                var tombstone = await db.ViewerSessionTombstones.AsNoTracking()
+                    .SingleOrDefaultAsync(t => t.RefreshTokenHash == hash && t.ExpiresAt > now, ct);
+                if (tombstone is null)
+                    return Refused(RefreshFailure.Unknown, null, "no_match", null);
+                return tombstone.Reason == ExpiredReason
+                    ? Refused(RefreshFailure.Expired, null, "tombstone", tombstone.SessionId, tombstone.ViewerId)
+                    : Refused(RefreshFailure.Revoked, PublicReason(tombstone.Reason), "tombstone", tombstone.SessionId, tombstone.ViewerId);
+            }
+            if (session.RevokedAt is not null)
+                return Refused(RefreshFailure.Revoked, PublicReason(session.RevokedReason), "revoked", session.Id, session.ViewerId);
+            if (session.RefreshExpiresAt <= now)
+                return Refused(RefreshFailure.Expired, null, "expired", session.Id, session.ViewerId);
 
             if (session.RefreshTokenHash != hash)
             {
                 if (!retired && CanReplay(session, now) && ReplayRotation(session) is { } replay)
                 {
                     if (replay.AccessExpiresAt > now)
-                        return (replay, RefreshFailure.None);
+                        return new RefreshResult(replay, RefreshFailure.None);
                     var renewed = ViewerAuth.NewToken(ViewerAuth.AccessTokenPrefix);
                     session.AccessTokenHash = ViewerAuth.Hash(renewed);
                     session.AccessExpiresAt = now.AddMinutes(current.AccessTokenMinutes);
                     session.RotatedTokensEncrypted = _rotated.Protect($"{renewed}|{replay.RefreshToken}");
                     await db.SaveChangesAsync(ct);
-                    return (replay with { AccessToken = renewed, AccessExpiresAt = session.AccessExpiresAt }, RefreshFailure.None);
+                    return new RefreshResult(replay with { AccessToken = renewed, AccessExpiresAt = session.AccessExpiresAt }, RefreshFailure.None);
                 }
 
                 session.RevokedAt = now;
-                session.RevokedReason = "refresh_token_reuse";
+                session.RevokedReason = ReuseReason;
                 session.RotatedTokensEncrypted = null;
                 await db.SaveChangesAsync(ct);
                 logger.LogWarning("Viewer refresh token reuse detected; session {SessionId} revoked", session.Id);
-                return (null, RefreshFailure.Reused);
+                return Refused(RefreshFailure.Reused, null, retired ? "retired_token" : "previous_token_after_use", session.Id, session.ViewerId);
             }
 
             var viewer = await db.Viewers.AsNoTracking().SingleOrDefaultAsync(v => v.Id == session.ViewerId, ct);
             if (viewer is null || viewer.IsDisabled)
-                return (null, RefreshFailure.Disabled);
+                return Refused(RefreshFailure.Revoked, "account_disabled", "account_disabled", session.Id, session.ViewerId);
 
             var access = ViewerAuth.NewToken(ViewerAuth.AccessTokenPrefix);
             var refresh = ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix);
@@ -180,12 +195,102 @@ public sealed class ViewerSessionService(
             session.LastSeenAt = now;
             session.IpAddress = ipAddress ?? session.IpAddress;
             await db.SaveChangesAsync(ct);
-            return (new ViewerTokens(session.Id, access, session.AccessExpiresAt, refresh, session.RefreshExpiresAt), RefreshFailure.None);
+            return new RefreshResult(new ViewerTokens(session.Id, access, session.AccessExpiresAt, refresh, session.RefreshExpiresAt), RefreshFailure.None);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private const string ExpiredReason = "expired";
+    private const string ReuseReason = "refresh_token_reuse";
+
+    private RefreshResult Refused(RefreshFailure failure, string? reason, string detail, string? sessionId, string? viewerId = null)
+    {
+        logger.LogInformation(
+            "Viewer refresh refused: {RefreshFailure} ({RefreshDetail}), reason {RefreshReason}, session {SessionId}, viewer {ViewerId}",
+            failure, detail, reason ?? "-", sessionId ?? "-", viewerId ?? "-");
+        return new RefreshResult(null, failure, reason);
+    }
+
+    /// <summary>The stable <c>params.reason</c> of <c>refresh_session_revoked</c> for a stored revoke reason.</summary>
+    public static string PublicReason(string? stored) => stored switch
+    {
+        "logout" => "signed_out",
+        "revoked_by_viewer" or "signed_out_by_viewer" => "revoked_by_viewer",
+        "session_limit" => "session_limit",
+        "revoked_by_admin" or "password_set_by_admin" or "two_factor_reset" or "account_deleted" => "admin",
+        "password_changed" or "password_reset" => "password_changed",
+        "account_disabled" => "account_disabled",
+        ReuseReason => "token_reused",
+        _ => "other",
+    };
+
+    /// <summary>Deletes expired sessions and those revoked over a day ago (each refresh hash becomes a tombstone) and drops tombstones older than 30 days.</summary>
+    public async Task<int> PruneAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct);
+            return await PruneAsync(db, time.GetUtcNow(), ct);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private static async Task<int> PruneAsync(StreamarrDbContext db, DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = now - RevokedRetention;
+        var ended = await db.ViewerSessions.AsNoTracking()
+            .Where(s => s.RefreshExpiresAt < now || (s.RevokedAt != null && s.RevokedAt < cutoff))
+            .ToListAsync(ct);
+        if (ended.Count > 0)
+        {
+            await AddTombstonesAsync(db, ended, null, now, ct);
+            var ids = ended.Select(s => s.Id).ToList();
+            await db.ViewerSessions.Where(s => ids.Contains(s.Id)).ExecuteDeleteAsync(ct);
+        }
+        await db.ViewerSessionTombstones.Where(t => t.ExpiresAt <= now).ExecuteDeleteAsync(ct);
+        return ended.Count;
+    }
+
+    /// <summary>Records every refresh hash of sessions about to be deleted; <paramref name="reason"/> overrides the session's own.</summary>
+    public static async Task AddTombstonesAsync(
+        StreamarrDbContext db, IReadOnlyList<ViewerSessionEntity> sessions, string? reason, DateTimeOffset now, CancellationToken ct)
+    {
+        var rows = new Dictionary<string, ViewerSessionTombstoneEntity>();
+        foreach (var session in sessions)
+        {
+            var endedAt = session.RevokedAt ?? (session.RefreshExpiresAt < now ? session.RefreshExpiresAt : now);
+            var expiresAt = endedAt + TombstoneLifetime;
+            if (expiresAt <= now)
+                continue;
+            var why = session.RevokedAt is not null ? session.RevokedReason ?? "revoked" : reason ?? ExpiredReason;
+            var hashes = new[] { session.RefreshTokenHash, session.PreviousRefreshTokenHash }
+                .Concat(session.RetiredRefreshTokenHashes?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            foreach (var hash in hashes.Where(h => !string.IsNullOrEmpty(h)))
+            {
+                rows[hash!] = new ViewerSessionTombstoneEntity
+                {
+                    RefreshTokenHash = hash!,
+                    SessionId = session.Id,
+                    ViewerId = session.ViewerId,
+                    Reason = why,
+                    EndedAt = endedAt,
+                    ExpiresAt = expiresAt,
+                };
+            }
+        }
+        if (rows.Count == 0)
+            return;
+        var keys = rows.Keys.ToList();
+        var existing = await db.ViewerSessionTombstones.Where(t => keys.Contains(t.RefreshTokenHash)).Select(t => t.RefreshTokenHash).ToListAsync(ct);
+        db.ViewerSessionTombstones.AddRange(rows.Where(r => !existing.Contains(r.Key)).Select(r => r.Value));
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>The previous token gets the same rotated pair inside the concurrency grace, or later while that pair is unused (an app killed before it stored the pair) and the old token has not expired.</summary>

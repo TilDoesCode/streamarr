@@ -97,6 +97,12 @@ details, seasons and versions of such a title answer `403 age_restricted` with t
   stored the new pair; if the replayed access token has expired meanwhile, a fresh one comes with
   the same refresh token. Once the new pair has been used, presenting the previous token — or
   any older one of the session — ends the session (`refresh_token_reused`, theft detection).
+  A refused refresh says why: `refresh_session_expired` (refresh window over), `refresh_session_revoked` with
+  `params.reason` (`signed_out`, `revoked_by_viewer`, `session_limit`, `admin`, `password_changed`,
+  `account_disabled`, `token_reused`), or `refresh_token_unknown` (no session matches — e.g. a device restored
+  from an old backup or emulator snapshot). Deleted sessions leave 30-day tombstones (refresh-token hashes,
+  session/viewer id, reason) so old tokens keep their reason; lookups are by token hash only, and refusals are
+  logged with case and ids, never with token material (see api.md → Refresh failures).
   Viewers see and revoke their devices; admins can revoke all of them.
 - **Lockout** after repeated failures (default 10 attempts → 15 minutes). A locked
   account only says so when the correct password is supplied.

@@ -923,7 +923,7 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
         using var anon = factory.CreateClient();
         var refresh = await anon.PostAsync("/api/v1/viewer/auth/refresh", null);
         Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);
-        Assert.Equal("refresh_session_expired", await ViewerApi.ErrorCodeAsync(refresh));
+        Assert.Equal("refresh_token_unknown", await ViewerApi.ErrorCodeAsync(refresh));
         Assert.Equal(HttpStatusCode.NoContent, (await anon.PostAsync("/api/v1/viewer/auth/logout", null)).StatusCode);
     }
 

@@ -29,6 +29,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<ViewerConfigEntity> ViewerConfig => Set<ViewerConfigEntity>();
     public DbSet<ViewerEntity> Viewers => Set<ViewerEntity>();
     public DbSet<ViewerSessionEntity> ViewerSessions => Set<ViewerSessionEntity>();
+    public DbSet<ViewerSessionTombstoneEntity> ViewerSessionTombstones => Set<ViewerSessionTombstoneEntity>();
     public DbSet<ViewerOneTimeCodeEntity> ViewerOneTimeCodes => Set<ViewerOneTimeCodeEntity>();
     public DbSet<ViewerRecoveryCodeEntity> ViewerRecoveryCodes => Set<ViewerRecoveryCodeEntity>();
     public DbSet<ViewerWatchStateEntity> ViewerWatchStates => Set<ViewerWatchStateEntity>();
@@ -159,6 +160,12 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        model.Entity<ViewerSessionTombstoneEntity>(e =>
+        {
+            e.HasKey(x => x.RefreshTokenHash);
+            e.HasIndex(x => x.ExpiresAt);
+        });
+
         model.Entity<ViewerOneTimeCodeEntity>(e =>
         {
             e.HasKey(x => x.Id);
@@ -197,7 +204,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             value => DateTimeOffset.FromUnixTimeMilliseconds(value));
         Type[] viewerTables =
         [
-            typeof(ViewerConfigEntity), typeof(ViewerEntity), typeof(ViewerSessionEntity),
+            typeof(ViewerConfigEntity), typeof(ViewerEntity), typeof(ViewerSessionEntity), typeof(ViewerSessionTombstoneEntity),
             typeof(ViewerOneTimeCodeEntity), typeof(ViewerRecoveryCodeEntity), typeof(ViewerWatchStateEntity),
             typeof(ArtworkPaletteEntity), typeof(CatalogSpecSummaryEntity), typeof(ReleaseContainerEntity),
         ];

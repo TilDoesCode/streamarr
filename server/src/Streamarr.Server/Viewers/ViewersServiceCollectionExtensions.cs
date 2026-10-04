@@ -29,6 +29,7 @@ public static class ViewersServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<ViewerMailer>());
         services.AddSingleton<ViewerCodeService>();
         services.AddSingleton<ViewerSessionService>();
+        services.AddHostedService<ViewerSessionCleanup>();
         services.AddSingleton<ViewerAccountService>();
         services.AddSingleton<ViewerTwoFactorService>();
         services.AddSingleton<ViewerLoginService>();
