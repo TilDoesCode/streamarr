@@ -124,3 +124,16 @@ it('a seek while paused still moves the clock without time events', () => {
   expect(engine.getSnapshot().position).toBe(120);
   engine.release();
 });
+
+it('a seek while playing moves the clock at once instead of after the next time event (review S1)', () => {
+  const engine = engineWith(0);
+  mockPlayer.ready();
+  mockPlayer.playing = true;
+  const times: number[] = [];
+  engine.subscribe((event) => {
+    if (event.type === 'time') times.push(event.position);
+  });
+  engine.seek(720);
+  expect(times).toEqual([720]);
+  engine.release();
+});

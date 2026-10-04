@@ -1,6 +1,7 @@
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountSession } from '@/accounts/session';
 import { createMemoryVault, type SessionTokens, type TokenVault } from '@/accounts/types';
+import { AppError } from '@/api/errors';
 import type { FetchLike } from '@/api/http';
 
 const BASE = 'http://server.test';
@@ -30,6 +31,10 @@ function rotatingServer(clock: { now: number }, options: { replayUnconfirmed?: b
     generation: 1,
     revoked: undefined as string | undefined,
     loseNextResponses: 0,
+    /** How a lost answer looks to the client: the timeout fetch gives up, or a 200 arrives without a JSON body. */
+    lossKind: 'timeout' as 'timeout' | 'garbled',
+    /** Connection refused before anything reaches the server (offline). */
+    unreachable: false,
     usedAccess: [] as string[],
   };
   const pair = () => ({
@@ -44,9 +49,11 @@ function rotatingServer(clock: { now: number }, options: { replayUnconfirmed?: b
   const answer = (response: Response) => {
     if (state.loseNextResponses === 0) return response;
     state.loseNextResponses -= 1;
-    throw new TypeError('Network request failed');
+    if (state.lossKind === 'garbled') return new Response('{"accessTok', { status: 200 });
+    throw new AppError('timeout');
   };
   const fetch = jest.fn(async (input: Request): Promise<Response> => {
+    if (state.unreachable) throw new AppError('network_unreachable');
     const path = new URL(input.url).pathname;
     if (path !== '/api/v1/viewer/auth/refresh') {
       const auth = input.headers.get('Authorization');
@@ -132,9 +139,32 @@ describe('refresh rotation interrupted (Google TV sign-outs)', () => {
     const { server, vault, restart } = await signedInDevice();
     const { store, session } = await restart();
     server.state.loseNextResponses = 10;
-    await expect(session.accessToken()).rejects.toMatchObject({ code: 'network_unreachable' });
+    await expect(session.accessToken()).rejects.toMatchObject({ code: 'timeout' });
     expect(vault.entries.get('acc1')).toMatchObject({ refreshToken: 'svr_1' });
     expect(store.get('acc1')).toMatchObject({ signedIn: true });
+  });
+
+  it('a 200 answer without a readable body counts as lost and is re-sent (review S1)', async () => {
+    const { server, vault, restart } = await signedInDevice();
+    const { store, session } = await restart();
+    server.state.lossKind = 'garbled';
+    server.state.loseNextResponses = 1;
+    await expect(session.accessToken()).resolves.toBe('sva_2');
+    expect(vault.entries.get('acc1')).toMatchObject({ refreshToken: 'svr_2' });
+    expect(store.get('acc1')).toMatchObject({ signedIn: true });
+  });
+
+  it('offline (nothing reached the server) fails at once instead of waiting for the retries (review S1)', async () => {
+    const { clock, server, restart } = await signedInDevice();
+    const { store, session } = await restart();
+    server.state.unreachable = true;
+    const before = clock.now;
+    await expect(session.accessToken()).rejects.toMatchObject({ code: 'network_unreachable' });
+    expect(clock.now - before).toBe(0);
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+    expect(store.get('acc1')).toMatchObject({ signedIn: true });
+    server.state.unreachable = false;
+    await expect(session.accessToken()).resolves.toBe('sva_2');
   });
 
   it('persists the rotated pair before any request uses the new access token', async () => {
@@ -153,6 +183,25 @@ describe('refresh rotation interrupted (Google TV sign-outs)', () => {
     await refreshing;
     expect(writes).toEqual(['sva_2']);
     expect(server.state.usedAccess).toEqual([]);
+  });
+
+  it('a failing vault write keeps the rotated pair for this run and stores it later (review S1)', async () => {
+    const { clock, server, vault, restart } = await signedInDevice();
+    const set = vault.set.bind(vault);
+    let failing = true;
+    vault.set = async (id, tokens) => {
+      if (failing) throw new Error('Keystore unavailable');
+      await set(id, tokens);
+    };
+    const { store, session } = await restart();
+    await expect(session.accessToken()).resolves.toBe('sva_2');
+    expect(vault.entries.get('acc1')).toMatchObject({ refreshToken: 'svr_1' });
+    clock.now += 2 * HOUR;
+    failing = false;
+    await expect(session.accessToken()).resolves.toBe('sva_3');
+    expect(server.state.revoked).toBeUndefined();
+    expect(vault.entries.get('acc1')).toMatchObject({ refreshToken: 'svr_3' });
+    expect(store.get('acc1')).toMatchObject({ signedIn: true });
   });
 
   it('an app kill after the server rotated ends the session with the current 30 s grace', async () => {

@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Info, Play } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, StyleSheet, useTVEventHandler, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTVEvents } from '@/components/focus/use-tv-events';
 import { resumeSeconds, watchProgress } from '@/browse/title-actions';
 import { useClearAmbient, useSetAmbient } from '@/components/ambient';
 import { GlassButton } from '@/components/glass';
@@ -33,8 +34,6 @@ import { featuredInfoHref, useFeaturedDetail, useMeta, usePlayFeatured } from '.
 
 const LOGO_HEIGHT =
   Platform.OS === 'ios' && Platform.isTV ? SHELL.logo.tvosHeight : SHELL.logo.height;
-
-const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
 const TITLE_LINE = 1.05;
 

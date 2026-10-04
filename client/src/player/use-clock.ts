@@ -47,3 +47,13 @@ export function useClock(engine: PlayerEngine | null | undefined, hidden = false
   }, [engine, hidden]);
   return clock;
 }
+
+/** The player's clock: coarse while the overlay is hidden and no panel is open (Q1-25); `onVisibleChange` from the overlay. */
+export function usePlayerClock(
+  engine: PlayerEngine | null | undefined,
+  panelOpen: boolean
+): { clock: Clock; onVisibleChange: (visible: boolean) => void } {
+  const [overlayShown, setOverlayShown] = useState(true);
+  const clock = useClock(engine, !overlayShown && !panelOpen);
+  return { clock, onVisibleChange: setOverlayShown };
+}

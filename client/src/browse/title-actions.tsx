@@ -276,7 +276,6 @@ export function TitleActions({
       <>
         {workId && noVersions ? (
           <GlassButton
-            key="main"
             testID={`${testIDPrefix}-no-versions`}
             icon={Film}
             label={t('common.noVersions')}
@@ -287,7 +286,6 @@ export function TitleActions({
           />
         ) : workId ? (
           <GlassButton
-            key="main"
             testID={`${testIDPrefix}-play`}
             tone="solid"
             icon={played && !resume ? RotateCcw : Play}

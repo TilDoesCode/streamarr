@@ -61,6 +61,8 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private audioSwitched: number | null = null;
   /** hls.js subtitle track the app picked (-1 = off); hls.js's own text-track polling must not override it. */
   private wantedSubtitle: number | undefined;
+  /** What the app asked for last; a pause/play the element reports against it came from the system controls. */
+  private wantPaused = false;
   private subtitleReasserts = 0;
   readonly mode: 'hls.js' | 'native' = prefersNativeHls() ? 'native' : 'hls.js';
 
@@ -91,8 +93,15 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.setState('playing');
       }),
       on('pause', () => {
-        if (!element.ended) this.setState('paused');
+        if (element.ended) return;
+        this.setState('paused');
+        this.syncUserPlayback(element);
       }),
+      on('play', () => this.syncUserPlayback(element)),
+      // iPhone: leaving the system full-screen player may pause the video without a pause from the app.
+      on('webkitendfullscreen' as keyof HTMLMediaElementEventMap, () =>
+        this.syncUserPlayback(element)
+      ),
       on('ended', () => {
         this.setState('ended');
         this.emit({ type: 'ended' });
@@ -189,11 +198,13 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       }
       for (let index = 0; index < video.textTracks.length; index++) {
         const track = video.textTracks[index]!;
-        if (track.kind !== 'subtitles' && track.kind !== 'captions') continue;
+        const kind = track.kind as string;
+        if (kind !== 'subtitles' && kind !== 'captions' && kind !== 'forced') continue;
         subtitles.push({
           id: String(index),
           label: track.label || track.language || `#${index + 1}`,
           language: track.language,
+          ...(kind === 'forced' ? { forced: true } : null),
           selected: track.mode === 'showing',
         });
       }
@@ -306,10 +317,12 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   load(source: EngineSource): void {
     this.resetForLoad(source);
     this.started = false;
+    this.wantPaused = false;
     this.start(source);
   }
 
   play(): void {
+    this.wantPaused = false;
     if (this.video) void this.autoplay(this.video);
   }
 
@@ -318,12 +331,22 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   }
 
   pause(): void {
+    this.wantPaused = true;
     this.video?.pause();
+  }
+
+  private syncUserPlayback(video: HTMLVideoElement): void {
+    if (!this.started || video.paused === this.wantPaused) return;
+    this.wantPaused = video.paused;
+    this.emit({ type: 'userPlayback', paused: video.paused });
   }
 
   seek(position: number): void {
     this.startSeek.cancel();
-    if (this.video) this.video.currentTime = Math.max(0, position);
+    if (!this.video) return;
+    this.video.currentTime = Math.max(0, position);
+    // `seeked` may take a while on a stream: the clock shows the target at once.
+    this.emitTime();
   }
 
   setAudioTrack(id: string): void {

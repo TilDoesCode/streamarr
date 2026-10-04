@@ -345,6 +345,23 @@ describe('PlaybackController', () => {
     await c.stop();
   });
 
+  it('adopts a pause and a resume from the system controls (iPhone Safari full screen)', async () => {
+    mockApi.startPlayback.mockResolvedValue(ready());
+    const c = controller(0);
+    const report = jest.spyOn(c.progress, 'report').mockResolvedValue(undefined as never);
+    await c.start();
+    report.mockClear();
+    mockEngine.emit({ type: 'userPlayback', paused: true });
+    expect(c.paused).toBe(true);
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ event: 'progress' }));
+    mockEngine.pause.mockClear();
+    mockEngine.emit({ type: 'userPlayback', paused: false });
+    mockEngine.emit({ type: 'state', state: 'playing' });
+    expect(c.paused).toBe(false);
+    expect(mockEngine.pause).not.toHaveBeenCalled();
+    await c.stop();
+  });
+
   it('restores the previous playback when a user switch is refused', async () => {
     mockApi.startPlayback.mockResolvedValue(ready());
     const c = controller(0);

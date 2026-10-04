@@ -2,7 +2,7 @@ import { addKeyListener, playerKeysAvailable, setKeyCapture } from '@modules/pla
 import { useEffect, useEffectEvent } from 'react';
 import { Platform } from 'react-native';
 
-import { useTVEvents } from './use-tv-events';
+import { useTVEvents } from '@/components/focus/use-tv-events';
 
 export type RemoteAction =
   | 'toggle'

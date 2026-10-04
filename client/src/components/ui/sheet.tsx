@@ -150,6 +150,8 @@ export type SheetProps = {
   glass?: { width: number } | false;
   /** Right of the title (e.g. the playback method pill). */
   accessory?: ReactNode;
+  /** Android/TV Back while the exit animation still holds the Modal: the next Back step of the screen. */
+  onBackWhileClosing?: () => void;
   testID?: string;
 };
 
@@ -163,6 +165,7 @@ export function Sheet({
   subtitle,
   glass = false,
   accessory,
+  onBackWhileClosing,
   testID,
 }: SheetProps) {
   const { t } = useTranslation();
@@ -245,7 +248,14 @@ export function Sheet({
       visible={mounted}
       transparent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (open) return onClose();
+        // The closing Modal still owns the Back key: finish the exit and hand the press on instead of losing it.
+        drag.set(0);
+        setActive(null);
+        setMounted(false);
+        onBackWhileClosing?.();
+      }}
       statusBarTranslucent
       navigationBarTranslucent
       supportedOrientations={['portrait', 'landscape']}>

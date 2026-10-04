@@ -3,8 +3,9 @@ import { ThemeProvider } from 'expo-router/react-navigation';
 import { TabSlot, useTabsWithTriggers } from 'expo-router/ui';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BackHandler, Platform, useTVEventHandler, View } from 'react-native';
+import { BackHandler, Platform, View } from 'react-native';
 
+import { useTVEvents } from '@/components/focus/use-tv-events';
 import { AmbientBackdrop, AmbientProvider } from '@/components/ambient';
 import { useBackHandler } from '@/components/focus';
 import { Dialog } from '@/components/ui/dialog';
@@ -17,8 +18,6 @@ import { SHELL_NAV_THEME } from '@/theme/navigation';
 import { ScreenFocusProvider, useScreenFocusHost } from './screen-focus';
 import { HOME_TAB, TAB_TRIGGERS, TABS, type TabSpec } from './tabs';
 import { exitDialogReducer, tvBackAction } from './tv-back';
-
-const useTVEvents: typeof useTVEventHandler = useTVEventHandler ?? (() => undefined);
 
 /** One large-screen shell for TV, web desktop and tablet: ambient backdrop, glass rail, tab content. */
 export function LargeShell() {
