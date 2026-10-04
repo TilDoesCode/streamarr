@@ -5,8 +5,6 @@ import { BackHandler, Platform, View } from 'react-native';
 const mockNative = {
   setMenuMode: jest.fn(),
   focusView: jest.fn((_tag: number) => Promise.resolve(true) as Promise<boolean> | null),
-  attachTabBarScroll: jest.fn(),
-  detachTabBarScroll: jest.fn(),
 };
 
 jest.mock('@modules/tv-native', () => {
@@ -16,8 +14,6 @@ jest.mock('@modules/tv-native', () => {
     TVFocusHost: MockView,
     setMenuMode: (mode: string | null) => mockNative.setMenuMode(mode),
     focusView: (tag: number) => mockNative.focusView(tag),
-    attachTabBarScroll: (tag: number) => mockNative.attachTabBarScroll(tag),
-    detachTabBarScroll: (tag: number) => mockNative.detachTabBarScroll(tag),
   };
 });
 
@@ -200,32 +196,5 @@ describe('Apple TV focus requests (I4 primitive B)', () => {
     await render(<Main />);
     attach({ requestTVFocus: jest.fn() } as unknown as View);
     expect(mockNative.focusView).not.toHaveBeenCalled();
-  });
-});
-
-describe('Apple TV tab bar scroll view (I4 primitive C)', () => {
-  function renderPage() {
-    let useTabBarScroll!: typeof import('../focus/use-tab-bar-scroll').useTabBarScroll;
-    isolate(() => {
-      ({ useTabBarScroll } = jest.requireActual('../focus/use-tab-bar-scroll'));
-    });
-    function Page() {
-      return <View ref={useTabBarScroll() as never} />;
-    }
-    return render(<Page />);
-  }
-
-  it('attaches the tab root scroll view on Apple TV and detaches on unmount', async () => {
-    platform('appleTV');
-    const screen = await renderPage();
-    expect(mockNative.attachTabBarScroll).toHaveBeenCalledWith(42);
-    await screen.unmount();
-    expect(mockNative.detachTabBarScroll).toHaveBeenCalledWith(42);
-  });
-
-  it.each(['androidTV', 'iPhone'] as const)('does nothing on %s', async (kind) => {
-    platform(kind);
-    await renderPage();
-    expect(mockNative.attachTabBarScroll).not.toHaveBeenCalled();
   });
 });

@@ -26,7 +26,7 @@ const ARTWORK_HEADER = (shown: boolean) => ({
 });
 
 /** One page per title: a link to an open title returns to it, another title is pushed (Back returns). */
-export function titleId({ params }: { params?: Record<string, unknown> }): string | undefined {
+export function titleId(_name: string, params: Record<string, unknown>): string | undefined {
   return typeof params?.id === 'string' ? params.id : undefined;
 }
 
@@ -72,9 +72,15 @@ export function TabStack({ tab }: { tab: TabId }) {
         }}
       />
       {/* Stack children must be screens: no fragments. */}
-      {browse ? <Stack.Screen name="movie/[id]" options={detailOptions} getId={titleId} /> : null}
       {browse ? (
-        <Stack.Screen name="series/[id]/index" options={detailOptions} getId={titleId} />
+        <Stack.Screen name="movie/[id]" options={detailOptions} dangerouslySingular={titleId} />
+      ) : null}
+      {browse ? (
+        <Stack.Screen
+          name="series/[id]/index"
+          options={detailOptions}
+          dangerouslySingular={titleId}
+        />
       ) : null}
       {browse ? (
         <Stack.Screen

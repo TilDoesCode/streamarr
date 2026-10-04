@@ -10,10 +10,13 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Needs Xcode (pending-ios)
 
-- Apple TV (I3 follow-up, native): Menu inside the Versions panel pops the whole detail and the library grid -> chip
-  Menu step never reaches JS (the native tab bar consumes it); react-native-tvos tag-based focus APIs (`destinations`,
-  `nextFocusUp`, `requestTVFocus`) do not act under RNSTabsHost. Needs native focus/Menu support and a rebuild.
-- Apple TV: VLCKit playback on tvOS unverified, so tvOS versions stay native-only (no VLC hints) (I3).
+- Apple TV (I4): VLCKit works on tvOS (H.264 MKV direct over VLC, AC3 5.1 + forced ASS tracks, remote keys, release;
+  sim), but tvOS versions stay native-only (no VLC hints): HEVC/AV1/MPEG-2 software decoding through VLC on a real
+  Apple TV is unchecked. Check on hardware, then add `tvos` to `VLC_HINT_PLATFORMS` (player/device-profile.ts).
+- Apple TV (I4): a JS-initiated pop inside a tab stack (`navigation.goBack()`/`POP`/`POP_TO`) leaves the native stack
+  at its root when a page below was pushed by a deep link (react-native-screens skips its controller as removed); Menu
+  (a native pop) is fine. Deep links now pop natively (tv-native `popToScreen`); any future JS back in a tvOS tab stack
+  must use the same path or be checked live.
 - HeroFade has no fallback when the masked-view native module is missing (check after the first iOS pod install).
 
 ## Needs real hardware (Android TV, ideally a 2 GB device; a real phone)
@@ -57,13 +60,6 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Google TV (F7 verify): the stage pill once showed "Season 3 · Episode" without the number after an in-place update
   (Android text clipping on a width change?); seen once on the 1080p AVD.
 
-- Apple TV (F7): the Versions sheet (transparentModal) gets no initial focus; the first arrow press focuses the top card.
-  react-native-tvos sends hasTVPreferredFocus/requestTVFocus through the app root view, which does not reach a view in a
-  presented modal; needs a native preferredFocusEnvironments hook on the modal VC. Lead (S5): the About sheet, same
-  route presentation and `SheetPanel`, does get initial focus on its single GlassButton (hasTVPreferredFocus +
-  useInitialFocus) — compare with the sheet cards (cards render after the versions query; maybe the timing).
-  F7 verify 2: not reproduced — on Apple TV 4K the About sheet also opens without focus (first Down lands on
-  "Schließen"); Google TV focuses Close at once. So both sheets need the native hook, the lead does not hold.
 - Google TV dev client (F7 verify 2): crashed once on the first deep link after a snapshot boot ("App react context
   shouldn't be created before"); fine after restart-app. Dev client only; check whether a release build is affected.
 - Android TV emulator (F7): a detail page pop takes ~5 s and deep links land seconds late on the 2 GB Google TV AVD
@@ -91,18 +87,6 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Brand PNGs are large (icon 554 KB, top shelf 2.2–2.6 MB) because of dithered gradients; pngquant bands them. Revisit
   with a noise-free render if bundle size matters.
 
-- tvOS (I3): the native top tab bar stays visible while Settings scrolls (first device row slides under it); "Zurück zu
-  den Details" from a player started on Home focuses the Start tab; the last Versions card's glow is cut at the panel
-  bottom; Menu from a non-Start tab exits the app (Android TV goes Home first).
-- tvOS player (I3 verify 2, re-checked in F4 slice 4): after Menu hides the overlay, focus stays on the hidden button
-  (forward30/Audio/Play-Pause), so Right moves hidden focus and Select presses the hidden button (Audio opens its
-  panel). The auto-hide path parks on the seek bar correctly. Tried without success: a deferred second
-  `requestTVFocus` (150/500 ms), `focusable={false}` on the hidden button row (focus left, but Up could not re-enter),
-  switching to the progress zone before hiding, and a press guard (the remote-key handler shows the overlay before the
-  button's onPress arrives). Needs a native look at react-native-tvos Menu handling / focus updates after Menu.
-- Deep link to /movie/<id> over an open movie detail replaces it instead of pushing; once closing the player then
-  landed on the older detail (I3 verify).
-
 - iPhone (F4 verify): the first player close after a fresh simulator boot + sign-in stayed landscape (1 of 3 closes;
   later closes and the first close after an app restart restored portrait); cause not isolated, the orientation test
   cannot catch it.
@@ -114,6 +98,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Accounts
 
+- DONE in I4 (Apple TV, native module client/modules/tv-native, tvOS-only): Versions/About sheets open with focus on
+  their first card / Schließen; Menu goes one level (sheet, library grid/sort -> chip -> tab bar, non-Start tab -> Start,
+  player overlay -> seek bar); "Zurück zu den Details" and player close return focus to the page; Settings starts below
+  the floating tab bar (tvOS 27's bar ignores observed scroll views, so a layout clip instead); last Versions card glow
+  clear of the panel edge; deep link to a title pushes it, a link to an open title returns to it (all platforms).
 - DONE in F4 slice 3 (iPhone): API responses no longer reach NSURLCache. Native module client/modules/url-cache gives RN
   networking and expo/fetch a session without URLCache, purges the old shared cache and replaces it with a 0-byte cache
   (the dev client's network inspector re-sends requests through a default session). Cache.db before 96 rows / 63 /api/

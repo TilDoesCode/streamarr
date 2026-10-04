@@ -8,9 +8,8 @@ export type MenuMode = 'always' | 'tabBar' | 'observe';
 type TVNativeModule = {
   setMenuMode(mode: MenuMode | null): void;
   focus(tag: number): Promise<boolean>;
-  attachTabBarScroll(tag: number): Promise<boolean>;
-  detachTabBarScroll(tag: number): Promise<void>;
   debugFocus(tag?: number | null): Promise<Record<string, unknown>>;
+  popToScreen(identifier: string): Promise<boolean>;
 };
 
 // Apple TV only; phones, Android, web and older tvOS builds without the module keep React Native's behaviour.
@@ -30,12 +29,9 @@ export function focusView(tag: number): Promise<boolean> | null {
   return native ? native.focus(tag).catch(() => false) : null;
 }
 
-export function attachTabBarScroll(tag: number): void {
-  native?.attachTabBarScroll(tag).catch(() => undefined);
-}
-
-export function detachTabBarScroll(tag: number): void {
-  native?.detachTabBarScroll(tag).catch(() => undefined);
+/** Pops the native stack to the page that holds `testID` (null without the module). */
+export function popToScreen(testID: string): Promise<boolean> | null {
+  return native ? native.popToScreen(testID).catch(() => false) : null;
 }
 
 export function debugFocus(tag?: number | null): Promise<Record<string, unknown>> | null {
@@ -47,7 +43,7 @@ export const TVFocusHost: ComponentType<ViewProps> = native
   ? requireNativeView<ViewProps>('TVNative')
   : View;
 
-// Probe hooks for debugger-evaluate (I4 S2).
-if (__DEV__ && native) {
+// Probe hooks for debugger-evaluate (Apple TV only).
+if (native) {
   (globalThis as { __tvNative?: object }).__tvNative = { debugFocus, setMenuMode, focusView };
 }

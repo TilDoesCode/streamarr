@@ -18,6 +18,7 @@ import { Glass, GlassButton } from '@/components/glass';
 import { ErrorState, type ErrorAction } from '@/components/states/error-state';
 import { Text } from '@/components/ui/text';
 import { detailHref, isDetailOf, openerLeaf, playHref } from '@/navigation/routes';
+import { requestReturnFocus } from '@/navigation/screen-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { rememberedAudioLanguage } from '@/player/audio-preference';
 import { PlaybackController } from '@/player/controller';
@@ -81,6 +82,7 @@ export function PlayScreen() {
   const leaving = useRef(false);
   const close = () => {
     leaving.current = true;
+    requestReturnFocus();
     if (router.canGoBack()) router.back();
     else router.replace('/');
   };

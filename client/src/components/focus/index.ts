@@ -21,4 +21,3 @@ export { useBackHandler } from './use-back-handler';
 export { useInitialFocus } from './use-initial-focus';
 export { tvFocus, useTvPreferredFocus } from './tv-focus';
 export { claimMenu, currentMenuMode, useMenuClaim, type MenuClaim } from './tv-menu';
-export { useTabBarScroll } from './use-tab-bar-scroll';

@@ -8,6 +8,7 @@ import '@/i18n';
 import {
   RESTORE_ATTEMPTS,
   RESTORE_INTERVAL_MS,
+  requestReturnFocus,
   ScreenFocusProvider,
   ScreenFocusScope,
   useScreenFocusHost,
@@ -210,5 +211,19 @@ describe('ScreenFocusScope on TV', () => {
     await act(async () => rerender(<Shell showScreen />));
     await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
     expect(guideRequests()).toBe(0);
+  });
+  it('takes focus back on Apple TV after the player closed with a JS pop (I4)', async () => {
+    Platform.OS = 'ios';
+    await renderWithProviders(<Shell showScreen />);
+    await emit('blur');
+    await emit('focus');
+    expect(guideRequests()).toBe(0);
+    await emit('blur');
+    requestReturnFocus();
+    await emit('focus');
+    expect(guideRequests()).toBe(1);
+    await emit('blur');
+    await emit('focus');
+    expect(guideRequests()).toBe(1);
   });
 });

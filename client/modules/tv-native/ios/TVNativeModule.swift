@@ -1,7 +1,7 @@
 import ExpoModulesCore
 import UIKit
 
-// Apple TV: Menu gate, focus requests outside the React Native root view, the tab bar's content scroll view.
+// Apple TV: Menu gate, focus requests outside the React Native root view, native stack pops for links.
 public class TVNativeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("TVNative")
@@ -19,14 +19,8 @@ public class TVNativeModule: Module {
       FocusRequest.run(target) { promise.resolve($0) }
     }.runOnQueue(.main)
 
-    AsyncFunction("attachTabBarScroll") { (tag: Int) -> Bool in
-      guard let view = self.appContext?.findView(withTag: tag, ofType: UIView.self) else { return false }
-      return TabBarScroll.attach(view)
-    }.runOnQueue(.main)
-
-    AsyncFunction("detachTabBarScroll") { (tag: Int) in
-      guard let view = self.appContext?.findView(withTag: tag, ofType: UIView.self) else { return }
-      TabBarScroll.detach(view)
+    AsyncFunction("popToScreen") { (identifier: String) -> Bool in
+      return StackPop.popTo(identifier: identifier)
     }.runOnQueue(.main)
 
     AsyncFunction("debugFocus") { (tag: Int?) -> [String: Any] in
@@ -126,14 +120,40 @@ final class MenuGate: NSObject, UIGestureRecognizerDelegate {
 
 /// Focus request that resolves through the focus system instead of the React Native root view.
 enum FocusRequest {
+  // A sheet's content mounts before react-native-screens presents it: wait for a window, then for the transition.
+  // The newest request wins: retries of an older one stop (Up shows Play, Menu then parks on the seek bar).
+  private static var generation = 0
+
   static func run(_ target: UIView, completion: @escaping (Bool) -> Void) {
+    generation += 1
+    run(target, attempt: 0, generation: generation, completion: completion)
+  }
+
+  private static func run(
+    _ target: UIView, attempt: Int, generation token: Int, completion: @escaping (Bool) -> Void
+  ) {
+    guard token == generation else { return completion(false) }
+    if target.window == nil {
+      guard attempt < 20 else { return completion(false) }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        run(target, attempt: attempt + 1, generation: token, completion: completion)
+      }
+      return
+    }
     let request = {
       guard target.window != nil, let system = UIFocusSystem.focusSystem(for: target) else {
         completion(false)
         return
       }
-      system.requestFocusUpdate(to: target)
-      system.updateFocusIfNeeded()
+      // Inside React Native's root view its own preferred-focus path wins; presented sheets live outside it.
+      if let root = target.ancestorNamed("RCTSurfaceHostingProxyRootView") {
+        root.setValue(target, forKey: "reactPreferredFocusedView")
+        root.setNeedsFocusUpdate()
+        root.updateFocusIfNeeded()
+      } else {
+        system.requestFocusUpdate(to: target)
+        system.updateFocusIfNeeded()
+      }
       if !isFocused(target, in: system), let host = target.ancestor(of: TVFocusHostView.self) {
         host.pending = target
         if contains(host, system.focusedItem) {
@@ -144,7 +164,14 @@ enum FocusRequest {
           system.updateFocusIfNeeded()
         }
       }
-      DispatchQueue.main.async { completion(isFocused(target, in: system)) }
+      // A presentation that completes after the request resets focus: ask again until it holds.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        if isFocused(target, in: system) { return completion(true) }
+        let host = target.ancestor(of: TVFocusHostView.self)
+        let movedInside = host.map { contains($0, system.focusedItem) } ?? false
+        guard attempt < 20, !movedInside, token == generation else { return completion(false) }
+        run(target, attempt: attempt + 1, generation: token, completion: completion)
+      }
     }
     if let coordinator = transitionCoordinator(for: target) {
       coordinator.animate(alongsideTransition: nil) { _ in DispatchQueue.main.async(execute: request) }
@@ -172,26 +199,35 @@ enum FocusRequest {
   }
 }
 
-/// The tab bar slides away while this scroll view scrolls (tvOS reads the selected tab's content scroll view).
-enum TabBarScroll {
-  static func attach(_ view: UIView) -> Bool {
-    guard let scrollView = view as? UIScrollView ?? view.firstDescendant(of: UIScrollView.self),
-      let tab = tabChild(of: view)
-    else { return false }
-    tab.setContentScrollView(scrollView, for: .top)
-    return true
+/// Pops a native stack to the page holding `identifier`, like Menu does (a JS pop drops pages linked in on tvOS).
+enum StackPop {
+  static func popTo(identifier: String) -> Bool {
+    for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+      for window in scene.windows {
+        guard let root = window.rootViewController, let match = find(identifier, from: root) else { continue }
+        match.stack.popToViewController(match.page, animated: true)
+        return true
+      }
+    }
+    return false
   }
 
-  static func detach(_ view: UIView) {
-    guard let tab = tabChild(of: view) else { return }
-    let scrollView = view as? UIScrollView ?? view.firstDescendant(of: UIScrollView.self)
-    if tab.contentScrollView(for: .top) === scrollView { tab.setContentScrollView(nil, for: .top) }
-  }
-
-  private static func tabChild(of view: UIView) -> UIViewController? {
-    var controller = view.owningViewController
-    while let current = controller, !(current.parent is UITabBarController) { controller = current.parent }
-    return controller
+  private static func find(_ identifier: String, from controller: UIViewController)
+    -> (stack: UINavigationController, page: UIViewController)?
+  {
+    if let stack = controller as? UINavigationController {
+      for page in stack.viewControllers.dropLast() where page.view.descendant(identifier: identifier) != nil {
+        return (stack, page)
+      }
+    }
+    for child in controller.children + [controller.presentedViewController].compactMap({ $0 }) {
+      if child.presentingViewController === controller || controller.children.contains(child),
+        let match = find(identifier, from: child)
+      {
+        return match
+      }
+    }
+    return nil
   }
 }
 
@@ -258,10 +294,6 @@ enum FocusProbe {
       result["targetFocused"] = FocusRequest.contains(target, focused)
       result["targetInRootView"] = target.ancestorNamed("RCTSurfaceHostingProxyRootView") != nil
       result["focusability"] = String(describing: UIFocusDebugger.checkFocusability(for: target))
-      result["simulateFromTarget"] = String(describing: UIFocusDebugger.simulateFocusUpdateRequest(from: target))
-      if let root = target.window?.rootViewController?.view {
-        result["simulateFromRoot"] = String(describing: UIFocusDebugger.simulateFocusUpdateRequest(from: root))
-      }
     }
     return result
   }
@@ -316,6 +348,14 @@ extension UIView {
     while let view = current {
       if String(describing: type(of: view)) == name { return view }
       current = view.superview
+    }
+    return nil
+  }
+
+  func descendant(identifier: String) -> UIView? {
+    if accessibilityIdentifier == identifier { return self }
+    for subview in subviews {
+      if let match = subview.descendant(identifier: identifier) { return match }
     }
     return nil
   }

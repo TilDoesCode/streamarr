@@ -6,6 +6,11 @@ const mockSetMenuMode = jest.fn();
 const mockNavigate = jest.fn();
 let mockPath = '/';
 
+let mockMode: string | null = 'tabBar';
+jest.mock('@/components/focus/tv-menu', () => ({
+  ...jest.requireActual('@/components/focus/tv-menu'),
+  currentMenuMode: () => mockMode,
+}));
 jest.mock('@modules/tv-native', () => ({
   tvNativeAvailable: true,
   setMenuMode: (mode: string | null) => mockSetMenuMode(mode),
@@ -71,6 +76,16 @@ describe('NativeTabsShell on Apple TV (I4 item 3: Menu goes to Start first)', ()
       await view.unmount();
     }
   );
+
+  it('leaves Menu to a page step that claims it more strongly (library grid)', async () => {
+    mockPath = '/movies';
+    mockMode = 'always';
+    const view = await renderShell();
+    expect(pressMenu()).toBe(false);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    mockMode = 'tabBar';
+    await view.unmount();
+  });
 
   it('leaves Menu on Start and inside a tab stack to tvOS', async () => {
     for (const path of ['/', '/movie/123']) {
