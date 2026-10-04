@@ -1,8 +1,9 @@
-import { AppError, errorFromResponse, toAppError } from '@/api/errors';
+import { AppError, errorFromResponse, toAppError, type ErrorParams } from '@/api/errors';
 import type { FetchLike } from '@/api/http';
 import type { components } from '@/api/schema';
 
 import type { AccountStore } from './account-store';
+import { endedReasonOf } from './ended-reason';
 import type { SessionTokens } from './types';
 
 type TokensResponse = components['schemas']['ViewerSessionTokensResponse'];
@@ -11,6 +12,14 @@ const REFRESH_PATH = '/api/v1/viewer/auth/refresh';
 
 /** Refresh this long before the access token expires, so requests do not race the expiry. */
 export const EXPIRY_SKEW_MS = 30_000;
+
+/** B11 refresh refusals (docs/api.md): each says why the session ended. */
+const REFRESH_REFUSALS = new Set([
+  'refresh_token_reused',
+  'refresh_session_expired',
+  'refresh_session_revoked',
+  'refresh_token_unknown',
+]);
 
 /** A refresh that timed out or got a broken/5xx answer may have rotated on the server; a refused connection did not. */
 function mayHaveReachedServer(error: unknown): boolean {
@@ -141,9 +150,11 @@ export class AccountSession implements AuthSession {
 
   private rejected(response: Response, body: unknown): Promise<never> {
     const error = errorFromResponse(response, body);
-    // A rejected refresh (reused, expired, revoked, disabled account) ends the session on this device.
+    // A refused refresh ends the session here; an older server's plain 401 gets the neutral "signed out".
     if (response.status === 401)
-      return this.end(error.code === 'unauthorized' ? 'refresh_session_expired' : error.code);
+      return REFRESH_REFUSALS.has(error.code)
+        ? this.end(error.code, error.params)
+        : this.end('session_ended');
     throw error;
   }
 
@@ -153,8 +164,8 @@ export class AccountSession implements AuthSession {
       : new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private async end(code: string): Promise<never> {
-    await this.store.signOut(this.accountId, code);
-    throw new AppError(code, { status: 401 });
+  private async end(code: string, params?: ErrorParams): Promise<never> {
+    await this.store.signOut(this.accountId, endedReasonOf({ code, params }));
+    throw new AppError(code, { status: 401, params });
   }
 }

@@ -12,11 +12,13 @@ import { Platform } from 'react-native';
 import { createMMKV } from 'react-native-mmkv';
 
 import type { ApiClient } from '@/api/client';
+import { describeError } from '@/api/error-text';
 import { createTimeoutFetch, type FetchLike } from '@/api/http';
 import { useToast } from '@/components/ui/toast';
 import { createQueryClient, setupQueryManagers } from '@/query/query-client';
 
 import { createAccountsApi, type AccountsActions } from './accounts-api';
+import { parseEndedReason } from './ended-reason';
 import { ACCOUNTS_STORAGE_ID, AccountStore, type AccountsSnapshot } from './account-store';
 import { followOtherTabs, tabSessionStorage } from './browser-tabs';
 import { signInFlow } from './sign-in-flow';
@@ -95,12 +97,15 @@ export function AccountsProvider({
 
   useEffect(
     () =>
-      api.store.onSessionEnded((account) => {
+      api.store.onSessionEnded((account, endedReason) => {
         signInFlow.forgetPassword(account.id);
         api.queryClient.removeQueries({ queryKey: ['account', account.id] });
         toast.show({
           tone: 'error',
-          message: t('accounts.sessionEnded', { name: account.displayName }),
+          message: t('accounts.sessionEnded', {
+            name: account.displayName,
+            reason: describeError(t, parseEndedReason(endedReason)).message,
+          }),
         });
       }),
     [api, toast, t]

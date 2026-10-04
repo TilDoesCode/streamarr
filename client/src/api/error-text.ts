@@ -13,6 +13,19 @@ export type ErrorText = { title: string; message: string };
 export const errorTone = (error: ErrorLike): 'info' | 'danger' =>
   error.code === 'email_code_cooldown' ? 'info' : 'danger';
 
+/** `refresh_session_revoked` reasons with their own text; `token_reused` and `account_disabled` reuse those codes. */
+const REVOKE_REASONS = [
+  'signed_out',
+  'revoked_by_viewer',
+  'session_limit',
+  'admin',
+  'password_changed',
+] as const;
+type RevokeReason = (typeof REVOKE_REASONS)[number];
+
+const isRevokeReason = (reason: string | undefined): reason is RevokeReason =>
+  (REVOKE_REASONS as readonly (string | undefined)[]).includes(reason);
+
 /** Localized title + message for any error code; unknown codes get their category's text (never the generic one). */
 export function describeError(t: TFunction, error: ErrorLike): ErrorText {
   const { code } = error;
@@ -24,6 +37,16 @@ export function describeError(t: TFunction, error: ErrorLike): ErrorText {
     };
   }
   const params = error.params ?? {};
+  if (code === 'refresh_session_revoked') {
+    // Unlisted reasons (newer servers) read like `other`, as docs/api.md asks.
+    if (params.reason === 'token_reused') return describeError(t, { code: 'refresh_token_reused' });
+    if (params.reason === 'account_disabled') return describeError(t, { code: 'account_disabled' });
+    if (isRevokeReason(params.reason))
+      return {
+        title: t(`errors.sessionRevoked.${params.reason}.title`),
+        message: t(`errors.sessionRevoked.${params.reason}.message`),
+      };
+  }
   const title = t(`errors.codes.${code}.title`);
   if (code === 'age_restricted')
     return { title, message: t('errors.ageRestricted', { reason: params.reason ?? 'other' }) };

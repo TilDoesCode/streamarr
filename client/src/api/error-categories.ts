@@ -54,6 +54,8 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   email_code_cooldown: 'T4',
   refresh_token_reused: 'T3',
   refresh_session_expired: 'T3',
+  refresh_session_revoked: 'T3',
+  refresh_token_unknown: 'T3',
   password_change_required: 'T3',
   invalid_password: 'T11',
   invalid_display_name: 'T11',

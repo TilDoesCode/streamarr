@@ -327,7 +327,7 @@
     "edit": "{name} bearbeiten"
   },
   "accounts": {
-    "sessionEnded": "{name} wurde abgemeldet. Melde dich erneut an, um weiterzumachen."
+    "sessionEnded": "{name}: {reason}"
   },
   "notFound": {
     "title": "Seite nicht gefunden"
@@ -541,8 +541,16 @@
         "message": "Diese Anmeldung wurde anderswo verwendet, deshalb hat der Server sie beendet. Melde dich erneut an."
       },
       "refresh_session_expired": {
-        "title": "Deine Sitzung ist beendet",
-        "message": "Die Sitzung ist abgelaufen, wurde auf einem anderen Gerät beendet oder das Konto wurde deaktiviert. Melde dich erneut an."
+        "title": "Anmeldung abgelaufen",
+        "message": "Deine Anmeldung ist abgelaufen. Bitte melde dich neu an."
+      },
+      "refresh_session_revoked": {
+        "title": "Abgemeldet",
+        "message": "Diese Anmeldung wurde beendet. Bitte melde dich neu an."
+      },
+      "refresh_token_unknown": {
+        "title": "Anmeldung veraltet",
+        "message": "Diese Anmeldung auf dem Gerät ist veraltet. Bitte melde dich neu an."
       },
       "password_change_required": {
         "title": "Neues Passwort wählen",
@@ -851,6 +859,28 @@
       "decoder_reclaimed": {
         "title": "Der Video-Decoder wurde entzogen",
         "message": "Eine andere App oder das System hat den Video-Decoder übernommen. Versuche es erneut."
+      }
+    },
+    "sessionRevoked": {
+      "signed_out": {
+        "title": "Abgemeldet",
+        "message": "Dieses Gerät wurde abgemeldet. Bitte melde dich neu an."
+      },
+      "revoked_by_viewer": {
+        "title": "Auf einem anderen Gerät abgemeldet",
+        "message": "Diese Anmeldung wurde auf einem anderen Gerät beendet. Bitte melde dich neu an."
+      },
+      "session_limit": {
+        "title": "Zu viele Geräte angemeldet",
+        "message": "Abgemeldet, weil zu viele Geräte angemeldet waren. Bitte melde dich neu an."
+      },
+      "admin": {
+        "title": "Vom Server-Admin abgemeldet",
+        "message": "Der Server-Admin hat diese Anmeldung beendet. Bitte melde dich neu an."
+      },
+      "password_changed": {
+        "title": "Passwort geändert",
+        "message": "Abgemeldet, weil das Passwort geändert wurde. Melde dich mit dem neuen Passwort an."
       }
     },
     "actions": {
