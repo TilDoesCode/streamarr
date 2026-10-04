@@ -13,7 +13,7 @@ import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import { invalidateWatchQueries } from '@/browse/queries';
 import { VersionPicker } from '@/browse/version-picker';
-import { CENTRED_ROW, FocusGuide, useBackHandler } from '@/components/focus';
+import { CENTRED_ROW, FocusGuide, useBackHandler, useMenuClaim } from '@/components/focus';
 import { Glass, GlassButton } from '@/components/glass';
 import { ErrorState, type ErrorAction } from '@/components/states/error-state';
 import { Text } from '@/components/ui/text';
@@ -178,6 +178,8 @@ export function PlayScreen() {
     return true;
   };
   useBackHandler(onBack);
+  // Apple TV: Menu goes straight to onBack, so no native pop (and its focus restore) starts.
+  useMenuClaim('always');
   // tvOS pops the native stack on Menu before JS sees it; preventing that routes Menu through onBack.
   usePreventRemove(APPLE_TV, ({ data }) => {
     const back = data.action.type === 'POP' || data.action.type === 'GO_BACK';

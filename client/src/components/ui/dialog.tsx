@@ -2,7 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import { Modal, Platform, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 
-import { FocusGuide, FocusLayer, useInitialFocus } from '@/components/focus';
+import { FocusGuide, FocusLayer, useInitialFocus, useMenuClaim } from '@/components/focus';
 import { selectGlassMode, tvGlassBase } from '@/components/glass';
 import { Button, type ButtonVariant } from '@/components/ui/button';
 import { OverlayScrim } from '@/components/ui/overlay-scrim';
@@ -48,6 +48,8 @@ export function Dialog({ open, onClose, title, message, actions, children, testI
     0,
     actions.findIndex((action) => action.preferred)
   );
+  // Apple TV: the Modal's own Menu recogniser closes it.
+  useMenuClaim(open ? 'native' : null);
   return (
     <Modal
       visible={open}

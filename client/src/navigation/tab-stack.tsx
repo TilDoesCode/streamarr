@@ -25,6 +25,11 @@ const ARTWORK_HEADER = (shown: boolean) => ({
   title: '',
 });
 
+/** One page per title: a link to an open title returns to it, another title is pushed (Back returns). */
+export function titleId({ params }: { params?: Record<string, unknown> }): string | undefined {
+  return typeof params?.id === 'string' ? params.id : undefined;
+}
+
 /** The stack inside one tab; every tab but Settings also pushes the title screens. */
 export function TabStack({ tab }: { tab: TabId }) {
   const { t } = useTranslation();
@@ -67,8 +72,10 @@ export function TabStack({ tab }: { tab: TabId }) {
         }}
       />
       {/* Stack children must be screens: no fragments. */}
-      {browse ? <Stack.Screen name="movie/[id]" options={detailOptions} /> : null}
-      {browse ? <Stack.Screen name="series/[id]/index" options={detailOptions} /> : null}
+      {browse ? <Stack.Screen name="movie/[id]" options={detailOptions} getId={titleId} /> : null}
+      {browse ? (
+        <Stack.Screen name="series/[id]/index" options={detailOptions} getId={titleId} />
+      ) : null}
       {browse ? (
         <Stack.Screen
           name="series/[id]/season/[n]"

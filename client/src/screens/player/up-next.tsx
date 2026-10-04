@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { useSeasonDetail } from '@/browse/queries';
-import { FocusGuide } from '@/components/focus';
+import { FocusGuide, tvFocus } from '@/components/focus';
 import { Glass, GlassButton } from '@/components/glass';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
@@ -159,7 +159,7 @@ export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps)
   const hasNext = !!next;
   // The overlay behind may still hold native focus (e.g. up-next dismissed with Back).
   useEffect(() => {
-    if (Platform.isTV) preferred.current?.requestTVFocus?.();
+    if (Platform.isTV) tvFocus(preferred.current);
   }, [hasNext]);
   const radius = large ? s(44) : design.radius.xl;
   return (

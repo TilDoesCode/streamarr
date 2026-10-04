@@ -3,6 +3,7 @@ import { createContext, use, useEffect, useMemo, useRef, type ReactNode } from '
 import { Platform, type View } from 'react-native';
 
 import { FocusGuide, FocusMemoryContext, type FocusMemory } from '@/components/focus';
+import { TVFocusHost, tvNativeAvailable } from '@modules/tv-native';
 
 // A request can land before the screen's views are attached (first visit of a lazily mounted tab): retry until one reports focus.
 export const RESTORE_ATTEMPTS = 10;
@@ -155,11 +156,15 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
   }, [navigation, host]);
 
   if (!Platform.isTV) return children;
+  const guide = (
+    <FocusGuide ref={ref} remember collapsable={false} style={{ flex: 1 }}>
+      {children}
+    </FocusGuide>
+  );
   return (
     <FocusMemoryContext value={memory}>
-      <FocusGuide ref={ref} remember collapsable={false} style={{ flex: 1 }}>
-        {children}
-      </FocusGuide>
+      {/* Apple TV: focus requests for this screen resolve inside its own host (after transitions too). */}
+      {tvNativeAvailable ? <TVFocusHost style={{ flex: 1 }}>{guide}</TVFocusHost> : guide}
     </FocusMemoryContext>
   );
 }

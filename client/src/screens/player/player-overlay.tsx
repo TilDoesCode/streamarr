@@ -38,7 +38,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { languageName } from '@/browse/version-format';
 import { Glass, GlassButton, GlassGroup } from '@/components/glass';
 import { Scrim } from '@/components/media/scrim';
-import { CENTRED_ROW, FocusGuide, Focusable, FocusLift } from '@/components/focus';
+import { CENTRED_ROW, FocusGuide, Focusable, FocusLift, tvFocus } from '@/components/focus';
 import { Text } from '@/components/ui/text';
 import type { PlaybackController } from '@/player/controller';
 import { clock as formatClock, scrubStep } from '@/player/format';
@@ -196,13 +196,13 @@ export function PlayerOverlay({
   useEffect(() => {
     if (!tv || !visible || suspended) return;
     // Native focus already on the row (kept while hidden) must not be pulled back: a quick ▶ would be lost.
-    if (zone === 'progress') seekRef.current?.requestTVFocus?.();
-    else if (!rowFocused.current) playRef.current?.requestTVFocus?.();
+    if (zone === 'progress') tvFocus(seekRef.current);
+    else if (!rowFocused.current) tvFocus(playRef.current);
   }, [tv, visible, zone, suspended, Surface]);
 
   // tvOS cannot hold the arrows while hidden: park focus where ◀/▶ have no native neighbour.
   useEffect(() => {
-    if (APPLE_TV && !visible && !suspended) seekRef.current?.requestTVFocus?.();
+    if (APPLE_TV && !visible && !suspended) tvFocus(seekRef.current);
   }, [visible, suspended]);
 
   // Keys keep the overlay up; ▼ on the button row moves to the seek bar (nothing focusable below).
@@ -292,7 +292,7 @@ export function PlayerOverlay({
         return;
       case 'up':
         handOver.current = tv;
-        if (tv && !rowFocused.current) playRef.current?.requestTVFocus?.();
+        if (tv && !rowFocused.current) tvFocus(playRef.current);
         show('buttons');
         return 'release';
       case 'down':

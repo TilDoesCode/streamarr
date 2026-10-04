@@ -1,4 +1,4 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { Film, Tv } from 'lucide-react-native';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +25,7 @@ import {
   FocusLift,
   useBackHandler,
   useFocusGlowRoom,
+  useMenuClaim,
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { PosterCard } from '@/components/media/poster-card';
@@ -40,7 +41,7 @@ import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
 import { GenreRow } from './genre-row';
-import { backToChip, libraryBackStep, type LibraryZone } from './library-back';
+import { backToChip, libraryBackStep, libraryMenuClaim, type LibraryZone } from './library-back';
 
 // Request the next page while the last loaded rows are this close to the viewport.
 const PAGING_ROWS = 2;
@@ -120,11 +121,19 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
 
   // TV Back chain: grid or sort -> the selected genre chip -> the rail's active tab.
   const zone = useRef<LibraryZone>(null);
+  const [menuZone, setMenuZone] = useState<LibraryZone>(null);
+  const setZone = (value: LibraryZone) => {
+    zone.current = value;
+    setMenuZone(value);
+  };
   const list = useRef<FlatList<CatalogItem[]>>(null);
+  // Apple TV: grid and sort hand Menu to the chain below (one level); at the chips tvOS moves to the tab bar.
+  const isFocused = useIsFocused();
+  useMenuClaim(libraryMenuClaim(menuZone, isFocused));
   useBackHandler(() => {
     if (!screenFocused.current) return false;
     const back = libraryBackStep(zone.current);
-    zone.current = back.zone;
+    setZone(back.zone);
     if (back.step === 'rail') focusRail();
     if (back.step === 'chip') backToChip(list.current, () => selectedGenre.current);
     return back.step !== null;
@@ -149,7 +158,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
     list.current?.scrollToOffset({ offset: 0, animated: false });
     // A sort change keeps focus in the sort control (it refocuses its new segment).
     const fromSort = zone.current === 'sort';
-    zone.current = fromSort ? 'sort' : null;
+    setZone(fromSort ? 'sort' : null);
     ambient.current = null;
     memory?.reset?.();
     focusChip.current = design.isTV && !fromSort;
@@ -214,7 +223,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
       label={t('library.sortLabel')}
       labelOf={(value) => t(`library.sort.${value}`)}
       onChange={(value) => setFilter({ sort: value })}
-      onFocus={() => (zone.current = 'sort')}
+      onFocus={() => setZone('sort')}
       downTarget={APPLE_TV ? null : selectedGenreNode}
     />
   );
@@ -246,7 +255,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
         selectedNode={selectedGenreNode}
         label={t('library.genres')}
         onSelect={(id) => setFilter({ genre: id })}
-        onChipFocus={() => (zone.current = 'genres')}
+        onChipFocus={() => setZone('genres')}
         trailing={APPLE_TV ? sortControl : undefined}
       />
     </View>
@@ -333,7 +342,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
               spec={item.spec}
               tint={item.tint}
               onFocus={() => {
-                zone.current = 'grid';
+                setZone('grid');
                 showAmbient(item);
                 liftRow(rowIndex);
                 // TV focus walks the grid without scrolling events reaching the end first.

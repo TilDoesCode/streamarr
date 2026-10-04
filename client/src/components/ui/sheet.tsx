@@ -43,6 +43,7 @@ import {
   ItemSnapContext,
   useFocusState,
   useInitialFocus,
+  useMenuClaim,
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { IconButton } from '@/components/ui/icon-button';
@@ -167,6 +168,8 @@ export function Sheet({
   const glassInset = s(64);
   const phoneSheetInset = Math.max(0, (design.window.width - 600) / 2);
   const [mounted, setMounted] = useState(open);
+  // Apple TV: the Modal's own Menu recogniser closes it, so no screen claim may take Menu meanwhile.
+  useMenuClaim(mounted ? 'native' : null);
   const [extent, setExtent] = useState(design.window.height * 0.6);
   const [viewport, setViewport] = useState(0);
   const [content, setContent] = useState(0);

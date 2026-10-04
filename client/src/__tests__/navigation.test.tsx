@@ -12,8 +12,15 @@ import { ToastProvider } from '@/components/ui/toast';
 import { setLanguagePreference } from '@/i18n';
 import { readLanguagePreference } from '@/i18n/languages';
 import { exitDialogReducer, tvBackAction } from '@/navigation/tv-back';
-import { backToChip, libraryBackStep, type LibraryZone } from '@/screens/library/library-back';
+import {
+  backToChip,
+  libraryBackStep,
+  libraryMenuClaim,
+  type LibraryZone,
+} from '@/screens/library/library-back';
 import { DesignProvider } from '@/theme';
+import { store as store_ } from 'expo-router/build/global-state/router-store';
+import { getActionFromState } from 'expo-router/build/react-navigation/core';
 
 import { appRoutes } from '../../jest/app-routes';
 
@@ -382,5 +389,57 @@ describe('TV exit dialog across route changes', () => {
     const openAt = exitDialogReducer(null, { type: 'open', path: '/' });
     expect(exitDialogReducer(openAt, { type: 'route', path: '/' })).toBe('/');
     expect(exitDialogReducer(openAt, { type: 'close' })).toBeNull();
+  });
+});
+
+/** What expo-router does with an incoming URL (fork/useLinking.native.js): state from the path, then its action. */
+function deepLink(path: string) {
+  const linking = store_.linking!;
+  const state = linking.getStateFromPath!(path, linking.config);
+  const action = getActionFromState(state!, linking.config);
+  store_.navigationRef.dispatch(action!);
+}
+
+describe('deep link over an open detail (I4 item 8: push by title id, de-duplicated)', () => {
+  it('pushes another title, so Back returns to the open one', async () => {
+    await signIn();
+    const router = renderRouter(routes, { initialUrl: '/movie/123' });
+    await router;
+    await act(async () => deepLink('/movie/124'));
+    expect(router.getPathname()).toBe('/movie/124');
+    await act(async () => navigate.back());
+    expect(router.getPathname()).toBe('/movie/123');
+    expect(await screen.findByTestId('movie-screen-123')).toBeOnTheScreen();
+  });
+
+  it('returns to a title that is already open instead of stacking a second copy', async () => {
+    await signIn();
+    const router = renderRouter(routes, { initialUrl: '/movie/123' });
+    await router;
+    await act(async () => deepLink('/movie/124'));
+    await act(async () => deepLink('/movie/123'));
+    expect(router.getPathname()).toBe('/movie/123');
+    // Back to the open copy: the later title above it is closed, Back then leaves to Home.
+    await act(async () => navigate.back());
+    expect(router.getPathname()).toBe('/');
+  });
+
+  it('keeps a link to the open title on that page', async () => {
+    await signIn();
+    const router = renderRouter(routes, { initialUrl: '/movie/123' });
+    await router;
+    await act(async () => deepLink('/movie/123'));
+    await act(async () => navigate.back());
+    expect(router.getPathname()).toBe('/');
+  });
+});
+
+describe('Apple TV library Menu claim (I4 item 2)', () => {
+  it('takes Menu in the grid and the sort control, not at the chips or while hidden', () => {
+    expect(libraryMenuClaim('grid', true)).toBe('always');
+    expect(libraryMenuClaim('sort', true)).toBe('always');
+    expect(libraryMenuClaim('genres', true)).toBeNull();
+    expect(libraryMenuClaim(null, true)).toBeNull();
+    expect(libraryMenuClaim('grid', false)).toBeNull();
   });
 });

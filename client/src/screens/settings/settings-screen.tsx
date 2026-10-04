@@ -11,7 +11,7 @@ import { GlassChip } from '@/components/glass';
 import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import { displayServerUrl } from '@/api/server-url';
-import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
+import { END_OF_ROW, FocusGuide, FocusSection, useTabBarScroll } from '@/components/focus';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -67,8 +67,10 @@ export function SettingsScreen() {
   const shell = useShell();
   // The large shell (TV, web, tablet) has no native header: the page draws its own heading.
   const pageHeading = design.isTV || Platform.OS === 'web' || shell.large;
+  const tabBarScroll = useTabBarScroll();
   return (
     <ScrollView
+      ref={tabBarScroll}
       testID="settings-screen"
       showsVerticalScrollIndicator={!shell.large && Platform.OS !== 'web'}
       style={{ flex: 1 }}

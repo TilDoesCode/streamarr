@@ -1,4 +1,5 @@
 import '@/global.css';
+import '@/components/focus/tv-menu';
 
 import { Stack } from 'expo-router';
 import { ThemeProvider } from 'expo-router/react-navigation';

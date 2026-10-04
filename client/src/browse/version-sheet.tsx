@@ -10,7 +10,13 @@ import { toAppError } from '@/api/errors';
 import { useVersions, type Version } from '@/browse/queries';
 import { sheetSpecs } from '@/browse/version-format';
 import { entryIndex, VersionPanelCard } from '@/browse/version-panel';
-import { FocusGuide, useFocusGlowRoom, useInitialFocus } from '@/components/focus';
+import {
+  FocusGuide,
+  ItemSnapContext,
+  useFocusGlowRoom,
+  useInitialFocus,
+  useMenuClaim,
+} from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -23,6 +29,7 @@ import { versionsHref, type VersionsRequest } from '@/navigation/routes';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, fonts, useDesign, useFocusGap } from '@/theme';
+import { TVFocusHost } from '@modules/tv-native';
 
 export type VersionSheetProps = {
   workId: string | null | undefined;
@@ -280,8 +287,10 @@ export function SheetPanel({
   const inset = tv ? s(24) : 0;
   const pad = s(36);
   const width = Math.min(s(tv ? 780 : 740), design.window.width - 2 * inset);
+  // Apple TV: Menu closes the sheet (one level) instead of reaching the page under it.
+  useMenuClaim(tv ? 'always' : null);
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <TVFocusHost style={StyleSheet.absoluteFill}>
       <Animated.View entering={FadeIn} exiting={FadeOut} style={StyleSheet.absoluteFill}>
         <OverlayScrim onPress={onClose} />
       </Animated.View>
@@ -324,18 +333,20 @@ export function SheetPanel({
             <ScrollView
               testID={`${testID}-list`}
               showsVerticalScrollIndicator={!tv}
+              // TV: the focused card is centred, so the last card's ring and glow clear the panel edge.
+              snapToAlignment={tv ? 'item' : undefined}
               style={{ flex: 1 }}
               contentContainerStyle={{
                 paddingHorizontal: Math.max(pad, glowRoom),
                 paddingVertical: Math.max(s(24), glowRoom),
                 paddingBottom: Math.max(s(24), glowRoom) + insets.bottom,
               }}>
-              {children}
+              <ItemSnapContext value={tv ? 'center' : undefined}>{children}</ItemSnapContext>
             </ScrollView>
           </FocusGuide>
         </View>
       </Animated.View>
-    </View>
+    </TVFocusHost>
   );
 }
 

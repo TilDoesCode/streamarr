@@ -1,6 +1,8 @@
 import { useEffect, useEffectEvent, type RefObject } from 'react';
 import { Platform, type View } from 'react-native';
 
+import { tvFocus } from './tv-focus';
+
 // Web: an entering overlay stays `visibility: hidden` for a frame or two, which rejects focus().
 const WEB_ATTEMPTS = 10;
 
@@ -22,7 +24,7 @@ export function useInitialFocus(ref: RefObject<View | null>, enabled: boolean): 
   const focus = useEffectEvent((): boolean => {
     if (Platform.OS !== 'web') {
       // hasTVPreferredFocus fires before layout and misses items below a scroll view's viewport.
-      ref.current?.requestTVFocus?.();
+      tvFocus(ref.current);
       return true;
     }
     const element = ref.current as unknown as HTMLElement | null;
