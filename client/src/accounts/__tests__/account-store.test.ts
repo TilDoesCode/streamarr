@@ -3,6 +3,7 @@ import {
   AVATAR_COLORS,
   AVATAR_KEYS,
   profileColor,
+  VAULT_RETRY_MS,
   type KeyValueStorage,
 } from '@/accounts/account-store';
 import {
@@ -411,5 +412,42 @@ describe('AccountStore in several browser tabs (one shared storage)', () => {
 
     stop();
     expect(handlers.size).toBe(0);
+  });
+});
+
+describe('AccountStore with a failing vault (verify V1)', () => {
+  it('keeps the rotated pair in memory and retries the write at most once per interval', async () => {
+    let clock = 1_000;
+    const vault = createMemoryVault();
+    const set = vault.set.bind(vault);
+    let failing = false;
+    let attempts = 0;
+    vault.set = async (id, value) => {
+      attempts += 1;
+      if (failing) throw new Error('Keystore unavailable');
+      await set(id, value);
+    };
+    const store = new AccountStore({
+      storage: memoryStorage(),
+      vault,
+      now: () => clock,
+      newId: () => 'acc1',
+    });
+    await store.addSignedIn(DEV_WORLD, viewer('v-anna', 'anna'), tokens(1));
+    failing = true;
+    attempts = 0;
+    await store.writeTokens('acc1', tokens(2));
+    expect(attempts).toBe(1);
+    for (let i = 0; i < 20; i += 1) {
+      expect((await store.readTokens('acc1', i % 2 === 0))?.refreshToken).toBe('svr_2');
+    }
+    expect(attempts).toBe(1);
+    clock += VAULT_RETRY_MS;
+    failing = false;
+    expect((await store.readTokens('acc1'))?.refreshToken).toBe('svr_2');
+    expect(attempts).toBe(2);
+    expect(vault.entries.get('acc1')).toMatchObject({ refreshToken: 'svr_2' });
+    await store.readTokens('acc1');
+    expect(attempts).toBe(2);
   });
 });

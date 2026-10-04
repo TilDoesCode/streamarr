@@ -27,6 +27,18 @@ export function isFullscreen(): boolean {
 
 /** The player put the page/video into full screen (a full screen the viewer entered elsewhere is left alone). */
 let enteredByPlayer = false;
+let watchingLeave = false;
+
+/** Any way out of full screen (player toggle, Esc, system UI) ends the player's claim on it. */
+function watchLeave(): void {
+  if (watchingLeave || typeof document === 'undefined') return;
+  watchingLeave = true;
+  const leave = () => {
+    if (!isFullscreen()) enteredByPlayer = false;
+  };
+  document.addEventListener('fullscreenchange', leave);
+  document.addEventListener('webkitendfullscreen', leave, true);
+}
 
 export function toggleFullscreen(): void {
   if (videoFullscreen) {
@@ -34,6 +46,7 @@ export function toggleFullscreen(): void {
     if (video?.webkitDisplayingFullscreen) video.webkitExitFullscreen?.();
     else {
       enteredByPlayer = true;
+      watchLeave();
       video?.webkitEnterFullscreen?.();
     }
     return;
@@ -41,6 +54,7 @@ export function toggleFullscreen(): void {
   if (document.fullscreenElement) void document.exitFullscreen();
   else {
     enteredByPlayer = true;
+    watchLeave();
     void document.documentElement.requestFullscreen().catch(() => undefined);
   }
 }
