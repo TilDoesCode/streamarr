@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr – Runde I: tip top</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: var(--cc-bg, #ffffff); --fg: var(--cc-fg, #15171c);
+    --muted: var(--cc-muted, #f2f3f6); --muted-fg: var(--cc-muted-fg, #5d6370);
+    --border: var(--cc-border, #dfe2e8); --primary: var(--cc-primary, #2f6fe4);
+    --radius: var(--cc-radius, 10px);
+    --srv: #7a4fd6; --srv-bg: #efe8fc; --cli: #1d8a6b; --cli-bg: #e2f4ee;
+    --qa: #a86a00; --qa-bg: #fdf1dc; --p1: #b3261e; --p1-bg: #fbe5e3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f1116); --fg: var(--cc-fg, #e8eaf0);
+      --muted: var(--cc-muted, #1a1d25); --muted-fg: var(--cc-muted-fg, #9aa1b0);
+      --border: var(--cc-border, #2a2e39); --primary: var(--cc-primary, #6c9cff);
+      --srv: #b597ff; --srv-bg: #241b3a; --cli: #5fd0ad; --cli-bg: #12302a;
+      --qa: #f0b34a; --qa-bg: #33270f; --p1: #ff8a80; --p1-bg: #3a1714;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--cc-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 22px 56px; }
+  h1 { font-size: 26px; margin: 0 0 4px; } h2 { font-size: 19px; margin: 34px 0 12px; } h3 { font-size: 16px; margin: 0 0 6px; }
+  p { margin: 6px 0; } .sub { color: var(--muted-fg); }
+  code { font-family: var(--cc-font-mono, ui-monospace, Menlo, monospace); font-size: 13px; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--bg); }
+  .card ul { margin: 6px 0 0; padding-left: 18px; } .card li { margin: 3px 0; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; vertical-align: 1px; }
+  .srv { color: var(--srv); background: var(--srv-bg); } .cli { color: var(--cli); background: var(--cli-bg); }
+  .qa { color: var(--qa); background: var(--qa-bg); } .p1 { color: var(--p1); background: var(--p1-bg); }
+  .phases { display: grid; gap: 10px; grid-template-columns: 1fr; }
+  .phase { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: start; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .phase b.n { font-size: 13px; color: var(--muted-fg); }
+  .lanes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill { border-radius: 8px; padding: 6px 10px; font-weight: 600; font-size: 14px; }
+  .pill small { display: block; font-weight: 400; font-size: 12px; opacity: .85; }
+  .par { font-size: 12px; color: var(--muted-fg); padding: 0 2px; }
+  .arrow { color: var(--muted-fg); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted-fg); font-weight: 600; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  @media (max-width: 640px) { .phase { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body><main>
+<h1>Runde I – „tip top“</h1>
+<p class="sub">Dein Auftrag vom 4. Oktober, 16:10: weitermachen, bis die App tip top ist. Ziel: Auf jedem Gerät wirkt die App fertig. In den Hauptabläufen bleibt kein bekannter Fehler, nirgends eine optische Unsauberkeit. Die nativen Lücken auf Apple TV sind geschlossen, Release-Builds sind geprüft. Was übrig bleibt, geht nur auf echter Hardware, und dafür steht der Grund dabei. Gestartet um 16:17.</p>
+
+<h2>Ablauf</h2>
+<div class="phases">
+  <div class="phase"><b class="n">Phase 1<br>jetzt, parallel</b>
+    <div class="lanes">
+      <span class="pill qa">Q1<small>Rundgang auf allen Geräten</small></span><span class="par">‖</span>
+      <span class="pill srv">B8<small>Server-Nacharbeiten</small></span><span class="par">‖</span>
+      <span class="pill cli">T1<small>Tests &amp; Code-Pflege (eigene Arbeitskopie)</small></span>
+    </div></div>
+  <div class="phase"><b class="n">Phase 2<br>nacheinander</b>
+    <div class="lanes">
+      <span class="pill cli">F8<small>TV-Feinschliff</small></span><span class="arrow">→</span>
+      <span class="pill cli">I4<small>Apple TV nativ (Fokus, Menü)</small></span><span class="arrow">→</span>
+      <span class="pill cli">F9<small>Handy, Tablet, Web</small></span>
+    </div></div>
+  <div class="phase"><b class="n">Phase 3</b>
+    <div class="lanes">
+      <span class="pill cli">R1<small>Release-Builds messen</small></span><span class="arrow">→</span>
+      <span class="pill qa">Q2<small>Abschluss-Rundgang + Bericht</small></span>
+    </div></div>
+</div>
+<p class="sub">Jede Bau-Aufgabe: bauen → unabhängige Prüfung → bei Bedarf Korrektur → Commit. Gleichzeitig läuft immer nur ein Simulator oder Emulator (8 GB RAM). Es sind nur noch rund 14 GB Platte frei, deshalb wird vor nativen Builds der Platz geprüft.</p>
+
+<h2>Die Aufgaben</h2>
+<div class="grid">
+  <div class="card"><h3>Q1 · Rundgang <span class="tag qa">Prüfung</span></h3>
+    <p class="sub">Keine Code-Änderungen. Ergebnis ist eine Befundliste mit Schweregrad, Schritten zum Nachstellen und Bild.</p>
+    <ul>
+      <li>Teil 1: Web (1280, 1920, 390 px, Deutsch und Englisch), Google TV, Android-Handy</li>
+      <li>Teil 2: iPhone, iPad (hoch und quer), Apple TV, kurz Mobile Safari</li>
+      <li>Abläufe: Anmelden (auch falsches Passwort, Server nicht erreichbar), Profile (anna, ben mit 2FA, Kind), Start, Stöbern, Suche, Detail/Bühne, Blätter, Player (Ton, Untertitel, nächste Folge, Ende, Wiederholen), Einstellungen, Sprachwechsel, Fehler- und Leerzustände, Zurück-Ketten, Fokus</li>
+    </ul></div>
+  <div class="card"><h3>B8 · Server <span class="tag srv">Server</span></h3>
+    <ul>
+      <li><b>Wiederholen behält den Fortsetzungspunkt</b> (Ursache liegt im Server)</li>
+      <li>Gleicher Ton-Codec beim Start und nach einem Wechsel; ehrliche Kanal-Angaben (Sintel 5.1 hieß „2.0“)</li>
+      <li>Kein englisches „Unknown device“ mehr in deutschen Gerätelisten</li>
+      <li>Ein Anzeigename nur aus Leerzeichen wird abgelehnt</li>
+      <li>Kleinkram aus B7</li>
+      <li>Dev World bekommt eine Staffel mit 24+ Folgen, damit die lange Folgenleiste live prüfbar ist</li>
+    </ul></div>
+  <div class="card"><h3>T1 · Tests &amp; Code-Pflege <span class="tag cli">Client</span></h3>
+    <ul>
+      <li>Fehlende Tests aus F5 (Rückfall bei Fehlern, Spur-Zuordnung), mit Gegenprobe: Ein Test muss rot werden, wenn der Code kaputt ist</li>
+      <li>Toter Code, doppelte Werte, mehrzeilige Kommentare</li>
+      <li>Ein Test prüft, dass Deutsch und Englisch dieselben Schlüssel haben und keine Texte fest im Code stehen</li>
+      <li>Web: Zwei offene Tabs überschreiben sich nicht mehr gegenseitig das Profil</li>
+      <li>App-Icon und Top-Shelf-Bilder werden kleiner, ohne dass sich das Aussehen ändert</li>
+    </ul></div>
+  <div class="card"><h3>F8 · TV-Feinschliff <span class="tag cli">Client</span></h3>
+    <ul>
+      <li><span class="tag p1">wichtig</span> Warum fliegt anna auf Google TV zwischen zwei Läufen raus? Möglicher Grund: Wird die App mitten in einer Token-Erneuerung beendet, meldet der Server das als Missbrauch und meldet ab. Das würde echte Nutzer treffen.</li>
+      <li>Der Hauptknopf bleibt stehen, solange die Versionen laden, damit der Fokus nicht springt</li>
+      <li>Fokus pro Seite merken, Lücke Genre ↔ Sortierung, abgeschnittene „Folge“-Nummer</li>
+      <li>Lange Staffel live prüfen</li>
+      <li>Die TV-Befunde aus Q1</li>
+    </ul></div>
+  <div class="card"><h3>I4 · Apple TV nativ <span class="tag cli">Client</span></h3>
+    <ul>
+      <li>Die Blätter öffnen mit Fokus im Blatt</li>
+      <li>Menü geht genau eine Ebene zurück (Blatt, Raster-Chips, andere Tabs zuerst zu „Start“)</li>
+      <li>Player: Nach Menü behält kein versteckter Knopf den Fokus</li>
+      <li>Einstellungen rutschen nicht unter die Tab-Leiste; kein abgeschnittenes Leuchten</li>
+      <li>tvOS-Build neu; VLC auf tvOS einmal prüfen</li>
+    </ul></div>
+  <div class="card"><h3>F9 · Handy, Tablet, Web <span class="tag cli">Client</span></h3>
+    <ul>
+      <li>Web: Esc und Alt+← für Zurück</li>
+      <li>Safari: Vollbild nach dem Schließen, Pause-Anzeige, erzwungene Untertitel</li>
+      <li>iOS: Tab-Namen nach dem Sprachwechsel, große Titel, Querformat nach dem Player</li>
+      <li>Android-Handy: „Anmelden“ halb unter der Tastatur</li>
+      <li>Die Befunde aus Q1</li>
+    </ul></div>
+  <div class="card"><h3>R1 · Release-Builds <span class="tag cli">Client</span></h3>
+    <ul>
+      <li>Android TV und Handy, iOS, tvOS, Web jeweils als Release bauen</li>
+      <li>Messen: Startzeit, Speicher, Seitenwechsel auf Google TV (im Dev-Build ~5 s), erstes Bild, Bundle-Größe</li>
+      <li>Klären, ob die Abstürze und Hänger nur im Dev-Build auftreten</li>
+    </ul></div>
+  <div class="card"><h3>Q2 · Abschluss <span class="tag qa">Prüfung</span></h3>
+    <ul>
+      <li>Dieselbe Liste wie in Q1 auf allen Geräten, jeder Q1-Befund wird nachgeprüft</li>
+      <li>Fertig ist die Runde, wenn auf keinem Gerät ein P1 oder P2 offen ist</li>
+      <li>Danach kommt der Bericht für Runde I</li>
+    </ul></div>
+</div>
+
+<h2>Schweregrade</h2>
+<div class="table-wrap"><table>
+  <tr><th style="width:70px">Stufe</th><th>Bedeutung</th><th>Umgang</th></tr>
+  <tr><td><span class="tag p1">P1</span></td><td>Ablauf kaputt, Absturz, Datenverlust, Sicherheit, Abmeldung ohne Grund</td><td>wird behoben</td></tr>
+  <tr><td><span class="tag qa">P2</span></td><td>Sichtbarer Fehler: Layout bricht, Text abgeschnitten oder falsche Sprache, Fokus verloren, falscher Zustand, Fokusring berührt einen Nachbarn</td><td>wird behoben</td></tr>
+  <tr><td><span class="tag cli">P3</span></td><td>Feinschliff: Abstände, Ausrichtung, Bewegung, Tonfall der Texte</td><td>wird behoben, wenn es billig ist, sonst Backlog</td></tr>
+</table></div>
+
+<h2>Was ich selbst entschieden habe</h2>
+<ul>
+  <li><b>Wiederholen am Ende:</b> Der Server zählt einen Bericht derselben Wiedergabe, die nach dem Ende wieder am Anfang steht, als neues Ansehen. Der Fortsetzungspunkt bleibt, und „gesehen“ bleibt gesetzt.</li>
+  <li><b>Echte Hardware</b> bleibt außen vor (Bild-im-Bild, AirPlay, HDR-Ausgabe, Passthrough, Siri-Remote-Touchfläche). Das testest du danach selbst.</li>
+  <li><b>Für dich gibt es nichts zu entscheiden.</b> Wenn eine Frage auftaucht, die nur du beantworten kannst, melde ich mich.</li>
+</ul>
+</main></body></html>
