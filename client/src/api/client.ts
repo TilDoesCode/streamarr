@@ -39,7 +39,7 @@ function parseJson(text: string): unknown {
 }
 
 /** Bearer auth for one account; a 401 waits for the account's single shared refresh and replays once. */
-export function createAuthMiddleware(session: AuthSession): Middleware {
+function createAuthMiddleware(session: AuthSession): Middleware {
   // onResponse gets the Request that fetch already consumed; keep an unread copy for the replay.
   const replays = new Map<string, Request>();
   return {
@@ -70,7 +70,7 @@ export function createAuthMiddleware(session: AuthSession): Middleware {
 }
 
 /** Metadata in the viewer's app language: the primary tag on every request (the server falls back to its default). */
-export function createLanguageMiddleware(language: () => string): Middleware {
+function createLanguageMiddleware(language: () => string): Middleware {
   return {
     onRequest({ request }) {
       request.headers.set('Accept-Language', language());

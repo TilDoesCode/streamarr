@@ -166,7 +166,7 @@ function useKeyboardShown(enabled: boolean): boolean {
   return enabled && shown;
 }
 
-export function ServerChip({ name, url }: { name: string; url: string }) {
+function ServerChip({ name, url }: { name: string; url: string }) {
   const design = useDesign();
   const { t } = useTranslation();
   return (

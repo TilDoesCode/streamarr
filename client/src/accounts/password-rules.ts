@@ -6,7 +6,7 @@ export type PasswordProblem =
   | { kind: 'repetitive' }
   | { kind: 'mismatch' };
 
-export const PASSWORD_MAX_LENGTH = 256;
+const PASSWORD_MAX_LENGTH = 256;
 
 export function passwordProblem(
   password: string,

@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 const APP = 'Streamarr';
 
-export function documentTitle(title: string | null | undefined): string {
+function documentTitle(title: string | null | undefined): string {
   return title ? `${title} · ${APP}` : APP;
 }
 

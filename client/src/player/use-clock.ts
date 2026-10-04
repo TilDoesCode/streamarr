@@ -5,7 +5,7 @@ import type { PlayerEngine } from '@/player/engines';
 export type Clock = { position: number; duration: number; buffered: number };
 
 /** Smallest clock movement that re-renders the player; engines report time every 100 ms. */
-export const CLOCK_STEP_SECONDS = 0.25;
+const CLOCK_STEP_SECONDS = 0.25;
 
 /** Whether `next` differs enough from `shown` to re-render (seeks, a new duration, a visible step). */
 export function clockMoved(shown: Clock, next: Clock): boolean {

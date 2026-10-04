@@ -20,10 +20,7 @@ export function renditionFor(
   return (playback.audioRenditions ?? []).find((item) => item.id === track.renditionId);
 }
 
-/**
- * Engine track that plays `rendition`: the same NAME, else the only track in its language, else the same
- * position in the master when the engine lists exactly the master's renditions.
- */
+/** Engine track for `rendition`: same NAME, else the only one in its language, else its master position. */
 export function engineTrackFor(
   rendition: AudioRendition,
   renditions: readonly AudioRendition[],

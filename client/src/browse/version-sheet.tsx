@@ -320,7 +320,7 @@ export function SheetPanel({
 }
 
 /** Web detail pages: the drawer as an in-page overlay (no route, so no browser history entry). */
-export function VersionDrawer({ open, ...props }: VersionSheetProps & { open: boolean }) {
+function VersionDrawer({ open, ...props }: VersionSheetProps & { open: boolean }) {
   return (
     <Modal visible={open} transparent animationType="none" onRequestClose={props.onClose}>
       {open ? <VersionSheetPanel {...props} frame="drawer" /> : null}

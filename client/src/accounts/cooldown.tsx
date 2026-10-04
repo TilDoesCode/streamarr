@@ -8,7 +8,7 @@ import { Button, type ButtonProps } from '@/components/ui/button';
 const secondsUntil = (until: number) => Math.max(0, Math.ceil((until - Date.now()) / 1000));
 
 /** End (epoch ms) of an `email_code_cooldown` answer's wait; 0 for any other error. */
-export function cooldownUntil(error: unknown, now = Date.now()): number {
+function cooldownUntil(error: unknown, now = Date.now()): number {
   const appError = toAppError(error);
   if (appError.code !== 'email_code_cooldown') return 0;
   return now + Math.max(1, appError.retryAfter ?? 30) * 1000;
@@ -30,7 +30,7 @@ export function useCooldown() {
 }
 
 /** Button label while a code request waits: "Wait 27 s", minutes once the wait is longer. */
-export function cooldownLabel(t: TFunction, seconds: number): string {
+function cooldownLabel(t: TFunction, seconds: number): string {
   return seconds > 90
     ? t('onboarding.emailCode.waitMinutes', { minutes: Math.ceil(seconds / 60) })
     : t('onboarding.emailCode.wait', { seconds });

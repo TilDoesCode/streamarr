@@ -3,7 +3,7 @@ import type { EngineEvent, EngineSnapshot, PlayerEngine } from '@/player/engines
 import type { Playback } from '@/player/playback-api';
 
 import { rememberedAudioLanguage } from '../audio-preference';
-import { AUDIO_SWITCH_TIMEOUT_MS, PlaybackController } from '../controller';
+import { AUDIO_SWITCH_SAMPLES, AUDIO_SWITCH_TIMEOUT_MS, PlaybackController } from '../controller';
 
 class FakeEngine implements PlayerEngine {
   readonly kind = 'expo-video' as const;
@@ -96,6 +96,62 @@ beforeEach(() => {
 });
 
 describe('PlaybackController', () => {
+  describe('remembered audio language', () => {
+    const start = (releaseId: string) =>
+      new PlaybackController({
+        client,
+        accountId: 'lang',
+        serverUrl: 'http://server',
+        profile: {} as never,
+        nativeEngine: 'expo-video',
+        workId: 'w1',
+        releaseId,
+        preferences: { audioLanguage: 'de' },
+      });
+    const withAudio = (releaseId: string, count: number) =>
+      ready({
+        version: { releaseId },
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: Array.from({ length: count }, (_, index) => ({ index, language: 'ger' })),
+          subtitleTracks: [],
+        },
+      } as never);
+    const sent = (mock: jest.Mock) =>
+      mock.mock.calls.at(-1)!.find((arg: { preferences?: object }) => arg?.preferences)
+        ?.preferences;
+
+    it('is not sent for a single-audio release once its tracks are known', async () => {
+      mockApi.startPlayback.mockResolvedValue(withAudio('single', 1));
+      const first = start('single');
+      await first.start();
+      expect(sent(mockApi.startPlayback).audioLanguage).toBe('de');
+      mockApi.switchPlayback.mockResolvedValue(withAudio('single', 1));
+      await first.setQuality(720);
+      expect(sent(mockApi.switchPlayback)).toMatchObject({ maxHeight: 720 });
+      expect(sent(mockApi.switchPlayback).audioLanguage).toBeUndefined();
+      await first.stop();
+      const again = start('single');
+      await again.start();
+      expect(sent(mockApi.startPlayback).audioLanguage).toBeUndefined();
+      await again.stop();
+    });
+
+    it('is sent for a release with several audio tracks', async () => {
+      mockApi.startPlayback.mockResolvedValue(withAudio('multi', 2));
+      const c = start('multi');
+      await c.start();
+      mockApi.switchPlayback.mockResolvedValue(withAudio('multi', 2));
+      await c.setQuality(720);
+      expect(sent(mockApi.switchPlayback).audioLanguage).toBe('de');
+      await c.stop();
+      const again = start('multi');
+      await again.start();
+      expect(sent(mockApi.startPlayback).audioLanguage).toBe('de');
+      await again.stop();
+    });
+  });
+
   it('asks resume vs start over when the server has a saved position', async () => {
     mockApi.startPlayback.mockResolvedValue(ready({ resumePositionTicks: 120 * TICKS }));
     const c = controller();
@@ -563,6 +619,46 @@ describe('PlaybackController', () => {
         }),
       ]);
       expect(c.notice).toBeNull();
+      await c.stop();
+    });
+
+    it('keeps only the latest audio switch samples', async () => {
+      const c = await playing(sintel());
+      const german = { index: 1, language: 'ger' } as never;
+      for (let i = 0; i < AUDIO_SWITCH_SAMPLES + 5; i++) {
+        const toEnglish = i % 2 === 0;
+        const switching = c.selectAudio(toEnglish ? english() : german);
+        mockEngine.snapshot.tracks = engineTracks(toEnglish ? 'e0' : 'e1') as never;
+        mockEngine.emit({ type: 'tracks', tracks: mockEngine.snapshot.tracks });
+        mockEngine.emit({ type: 'time', position: 43 + i, duration: 600 });
+        await switching;
+      }
+      expect(c.audioSwitches).toHaveLength(AUDIO_SWITCH_SAMPLES);
+      expect(c.audioSwitches.at(-1)).toMatchObject({
+        positionAfter: 43 + AUDIO_SWITCH_SAMPLES + 4,
+      });
+      await c.stop();
+    });
+
+    it('falls back to /switch when the engine errors during an in-session switch', async () => {
+      const c = await playing(sintel());
+      mockApi.switchPlayback.mockResolvedValue(sintel({ revision: 1, url: '/stream/p1/r1.m3u8' }));
+      const switching = c.selectAudio(english());
+      mockEngine.emit({ type: 'error', reason: 'media_error' });
+      await flush();
+      await flush();
+      expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
+      expect(mockApi.switchPlayback).toHaveBeenCalledTimes(1);
+      expect(mockApi.switchPlayback.mock.calls[0][2]).toMatchObject({ audioStreamIndex: 2 });
+      expect(mockApi.switchPlayback.mock.calls[0][2]).not.toHaveProperty('preferences');
+      mockEngine.emit({ type: 'time', position: 42.3, duration: 600 });
+      await switching;
+      expect(c.audioSwitches).toEqual([
+        expect.objectContaining({ via: 'session', error: 'media_error' }),
+        expect.objectContaining({ via: 'server', to: 2, fallback: 'media_error' }),
+      ]);
+      expect(c.notice).toBeNull();
+      expect(rememberedAudioLanguage(c.options.accountId)).toBe('en');
       await c.stop();
     });
 

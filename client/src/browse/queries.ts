@@ -77,7 +77,7 @@ export function useGenres(kind: LibraryKind) {
 }
 
 // Server maximum (ViewerCatalogService.MaxSearchResults); more is rejected as invalid_query.
-export const SEARCH_LIMIT = 20;
+const SEARCH_LIMIT = 20;
 const HOME_LIST_LIMIT = 20;
 
 /** Discover rows of the active account; persisted per account in MMKV so they show instantly. */

@@ -4,7 +4,7 @@ export type LibraryKind = 'movie' | 'series';
 export type LibrarySort = 'popular' | 'top_rated' | 'newest';
 export const LIBRARY_SORTS: readonly LibrarySort[] = ['popular', 'top_rated', 'newest'];
 // The age gate filters after paging: skip at most this many empty pages in one fetch.
-export const EMPTY_PAGE_SKIP = 3;
+const EMPTY_PAGE_SKIP = 3;
 
 export type LibraryPage = { items: CatalogItem[]; nextPage: number | null };
 

@@ -20,7 +20,7 @@ import { queryKeys } from '@/query/keys';
 import { accountErrorText } from '@/screens/settings/account-security';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
-export const DISPLAY_NAME_MAX = 64;
+const DISPLAY_NAME_MAX = 64;
 
 /** Display name and avatar colour (PATCH /viewer/me); an empty name or "Automatic" resets to the default. */
 export function ProfileEditor({ onDone }: { onDone: () => void }) {

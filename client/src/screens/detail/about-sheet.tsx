@@ -221,7 +221,7 @@ function TvClose({ onClose }: { onClose: () => void }) {
 }
 
 /** The About sheet as the glass side panel (TV) or drawer (web, Android tablets). */
-export function AboutPanel(props: AboutProps & { frame: 'tv' | 'drawer' }) {
+function AboutPanel(props: AboutProps & { frame: 'tv' | 'drawer' }) {
   const { header, content } = useAboutParts(props, props.frame);
   return (
     <SheetPanel

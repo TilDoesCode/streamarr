@@ -7,7 +7,7 @@ import type { SessionTokens } from './types';
 
 type TokensResponse = components['schemas']['ViewerSessionTokensResponse'];
 
-export const REFRESH_PATH = '/api/v1/viewer/auth/refresh';
+const REFRESH_PATH = '/api/v1/viewer/auth/refresh';
 
 /** Refresh this long before the access token expires, so requests do not race the expiry. */
 export const EXPIRY_SKEW_MS = 30_000;

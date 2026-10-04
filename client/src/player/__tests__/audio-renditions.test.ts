@@ -50,6 +50,21 @@ describe('engineTrackFor', () => {
     expect(engineTrackFor(en, renditions, tracks)?.id).toBe('a');
   });
 
+  it('prefers the NAME over language and master order among same-language renditions', () => {
+    const commentary = { ...en, id: '3', streamIndex: 3, label: 'English · AC3 5.1 (Commentary)' };
+    const all = [de, en, commentary];
+    const tracks = [
+      track('0', 'Deutsch · AAC 2.0', 'de'),
+      track('1', 'English · AC3 5.1 (Commentary)', 'en'),
+      track('2', 'English · AAC 2.0', 'en'),
+    ];
+    expect(engineTrackFor(en, all, tracks)?.id).toBe('2');
+    expect(engineTrackFor(commentary, all, tracks)?.id).toBe('1');
+    expect(renditionOfTrack(tracks[1]!, all, tracks)).toBe(commentary);
+    const unlabelled = [track('a', 'English · AAC 2.0'), track('b', 'Deutsch · AAC 2.0')];
+    expect(engineTrackFor(de, renditions, unlabelled)?.id).toBe('b');
+  });
+
   it('falls back to the language when the engine renames tracks (AVPlayer, ExoPlayer)', () => {
     const tracks = [track('x', 'English', 'en-US'), track('y', 'German', 'de')];
     expect(engineTrackFor(de, renditions, tracks)?.id).toBe('y');

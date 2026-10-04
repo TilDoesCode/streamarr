@@ -1,7 +1,6 @@
 {
   "app": {
-    "name": "Streamarr",
-    "tagline": "Your library, ready when you are."
+    "name": "Streamarr"
   },
   "platform": {
     "androidtv": "Android TV",
@@ -18,8 +17,6 @@
     "desktop-web": "Desktop web"
   },
   "home": {
-    "greeting": "Hi, {name}",
-    "server": "Watching on {server}",
     "rows": {
       "trending-movies": "Trending movies",
       "trending-series": "Trending series",
@@ -27,7 +24,6 @@
       "popular-series": "Popular series",
       "other": "Recommended"
     },
-    "updating": "Updating…",
     "continueWatching": "Continue watching",
     "nextUp": "Next up"
   },
@@ -110,19 +106,6 @@
     "originalTitle": "Original title",
     "moreDetails": "All details",
     "moreAboutSeries": "More about the series"
-  },
-  "player": {
-    "title": "Player",
-    "play": "Play",
-    "pause": "Pause",
-    "states": {
-      "queued": "Getting ready…",
-      "resolving": "Checking the version…",
-      "fallback": "Switching to another version…",
-      "repairing": "Repairing the download…",
-      "planning": "Choosing the best way to play…",
-      "starting": "Starting playback…"
-    }
   },
   "settings": {
     "account": {
@@ -337,22 +320,18 @@
     "removeTitle": "Remove {name}?",
     "removeMessage": "The profile is signed out and removed from this device. Its watch history stays on the server.",
     "removeConfirm": "Remove",
-    "edit": "Edit {name}",
-    "current": "Current profile"
+    "edit": "Edit {name}"
   },
   "accounts": {
-    "sessionEnded": "{name} was signed out. Sign in again to continue.",
-    "signedOut": "{name} is signed out."
+    "sessionEnded": "{name} was signed out. Sign in again to continue."
   },
   "notFound": {
-    "title": "Page not found",
-    "home": "Go to start"
+    "title": "Page not found"
   },
   "common": {
     "retry": "Try again",
     "cancel": "Cancel",
     "close": "Close",
-    "confirm": "Confirm",
     "done": "Done",
     "back": "Back",
     "seeAll": "See all",
@@ -364,7 +343,6 @@
     "startOver": "Start over",
     "moreInfo": "More info",
     "versions": "Versions",
-    "episodes": "Episodes",
     "settings": "Settings",
     "search": "Search",
     "versionsCount": "Versions · {count}"
@@ -391,7 +369,6 @@
     "unavailable": "Unavailable",
     "recommended": "Recommended",
     "ready": "Ready",
-    "airDate": "Aired {date}",
     "upNext": "Up next",
     "specials": "Specials"
   },
@@ -791,7 +768,6 @@
       "badges": "Badges and tags",
       "progress": "Progress",
       "loading": "Loading",
-      "cards": "Cards",
       "episodes": "Episodes",
       "states": "Empty and error states",
       "overlays": "Dialogs, sheets and toasts",
@@ -805,8 +781,7 @@
       "focused": "Focused",
       "pressed": "Pressed",
       "disabled": "Disabled",
-      "loading": "Loading",
-      "error": "Error"
+      "loading": "Loading"
     },
     "variants": {
       "primary": "Primary",
@@ -913,7 +888,6 @@
     "showProfile": "Show device profile",
     "hideProfile": "Hide device profile",
     "engineTitle": "Native engine under test",
-    "preferenceTitle": "Engine preference",
     "preference": {
       "auto": "Auto",
       "vlc": "Always VLC"
@@ -990,7 +964,6 @@
     },
     "bitrate": "≈ {mbps, number, ::.#} Mbit/s",
     "age": "{days, plural, =0 {Today} one {# day old} other {# days old}}",
-    "predicted": "Expected on this device",
     "method": {
       "direct": "Direct play",
       "remux": "Direct stream",
@@ -1064,9 +1037,6 @@
       "vlc": "Plays with the built-in VLC player, no conversion needed.",
       "unknown": "We can’t tell in advance how it will play."
     },
-    "showDetails": "Show technical details",
-    "hideDetails": "Hide technical details",
-    "panelSubtitle": "{count, plural, one {# version} other {# versions}} · playback method expected on this device",
     "card": "Version",
     "bestPicture": "Best picture",
     "onDevice": "On this device",
@@ -1124,7 +1094,6 @@
       "top_rated": "Top rated",
       "newest": "Newest"
     },
-    "loadingMore": "Loading more titles",
     "empty": {
       "title": "Nothing here yet",
       "movie": "No movies match this genre.",

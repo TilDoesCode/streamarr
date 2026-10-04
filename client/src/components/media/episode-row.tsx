@@ -9,7 +9,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { Focusable, FocusLift, useScrollReveal, type FocusableProps } from '@/components/focus';
+import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
 import { PlayedMark } from '@/components/media/card-parts';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
@@ -235,16 +235,13 @@ function EpisodeRowBox({
   const offset = design.focus.ringOffset;
   const width = design.focus.ringWidth;
   const [sources] = useState(() => new Set<string>());
-  const [box, setBox] = useState<View | null>(null);
-  const reveal = useScrollReveal();
   const light = useCallback<Light>(
     (key, on) => {
-      if (on && key.endsWith(':focus')) reveal(box);
       if (on) sources.add(key);
       else sources.delete(key);
       lit.set(withTiming(sources.size ? 1 : 0, { duration: 150 }));
     },
-    [lit, sources, reveal, box]
+    [lit, sources]
   );
   const surfaceStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(lit.get(), [0, 1], [colors.scrim.clear, colors.glass.strong]),
@@ -252,7 +249,6 @@ function EpisodeRowBox({
   }));
   return (
     <Animated.View
-      ref={setBox}
       style={[
         {
           flexDirection: 'row',

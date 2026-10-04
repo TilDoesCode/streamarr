@@ -77,7 +77,7 @@ const sameUser = (account: Account, serverUrl: string, viewerId: string, usernam
   (account.viewerId === viewerId || account.username.toLowerCase() === username.toLowerCase());
 
 /** One profile per (server, user): a server reset changes viewer ids, so the username also identifies it. */
-export function dedupeAccounts(accounts: readonly Account[]): {
+function dedupeAccounts(accounts: readonly Account[]): {
   accounts: Account[];
   dropped: Map<string, string>;
 } {

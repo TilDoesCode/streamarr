@@ -178,7 +178,7 @@ export function shortReasons(version: Version, method: PredictedMethod, t: TFunc
 }
 
 /** "1080p WEB-DL": how the reason line names another version. */
-export function versionName(version: Version): string {
+function versionName(version: Version): string {
   const hdr = version.hdrFormats?.[0] ?? version.hdr;
   return [
     version.resolution ? resolutionLabel(version.resolution) : null,

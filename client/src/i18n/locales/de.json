@@ -1,7 +1,6 @@
 {
   "app": {
-    "name": "Streamarr",
-    "tagline": "Deine Bibliothek, bereit, wenn du es bist."
+    "name": "Streamarr"
   },
   "platform": {
     "androidtv": "Android TV",
@@ -18,8 +17,6 @@
     "desktop-web": "Desktop-Web"
   },
   "home": {
-    "greeting": "Hallo, {name}",
-    "server": "Du schaust auf {server}",
     "rows": {
       "trending-movies": "Filme im Trend",
       "trending-series": "Serien im Trend",
@@ -27,7 +24,6 @@
       "popular-series": "Beliebte Serien",
       "other": "Empfohlen"
     },
-    "updating": "Wird aktualisiert …",
     "continueWatching": "Weiterschauen",
     "nextUp": "Als Nächstes"
   },
@@ -110,19 +106,6 @@
     "originalTitle": "Originaltitel",
     "moreDetails": "Alle Details",
     "moreAboutSeries": "Mehr zur Serie"
-  },
-  "player": {
-    "title": "Player",
-    "play": "Abspielen",
-    "pause": "Pause",
-    "states": {
-      "queued": "Wird vorbereitet…",
-      "resolving": "Version wird geprüft…",
-      "fallback": "Wechsel zu einer anderen Version…",
-      "repairing": "Download wird repariert…",
-      "planning": "Beste Wiedergabe wird gewählt…",
-      "starting": "Wiedergabe startet…"
-    }
   },
   "settings": {
     "account": {
@@ -337,22 +320,18 @@
     "removeTitle": "{name} entfernen?",
     "removeMessage": "Das Profil wird abgemeldet und von diesem Gerät entfernt. Der Verlauf bleibt auf dem Server.",
     "removeConfirm": "Entfernen",
-    "edit": "{name} bearbeiten",
-    "current": "Aktuelles Profil"
+    "edit": "{name} bearbeiten"
   },
   "accounts": {
-    "sessionEnded": "{name} wurde abgemeldet. Melde dich erneut an, um weiterzumachen.",
-    "signedOut": "{name} ist abgemeldet."
+    "sessionEnded": "{name} wurde abgemeldet. Melde dich erneut an, um weiterzumachen."
   },
   "notFound": {
-    "title": "Seite nicht gefunden",
-    "home": "Zum Start"
+    "title": "Seite nicht gefunden"
   },
   "common": {
     "retry": "Erneut versuchen",
     "cancel": "Abbrechen",
     "close": "Schließen",
-    "confirm": "Bestätigen",
     "done": "Fertig",
     "back": "Zurück",
     "seeAll": "Alle anzeigen",
@@ -364,7 +343,6 @@
     "startOver": "Von vorne",
     "moreInfo": "Mehr Infos",
     "versions": "Versionen",
-    "episodes": "Folgen",
     "settings": "Einstellungen",
     "search": "Suche",
     "versionsCount": "Versionen · {count}"
@@ -391,7 +369,6 @@
     "unavailable": "Nicht verfügbar",
     "recommended": "Empfohlen",
     "ready": "Bereit",
-    "airDate": "Ausgestrahlt am {date}",
     "upNext": "Als Nächstes",
     "specials": "Specials"
   },
@@ -791,7 +768,6 @@
       "badges": "Badges und Tags",
       "progress": "Fortschritt",
       "loading": "Laden",
-      "cards": "Karten",
       "episodes": "Folgen",
       "states": "Leer- und Fehlerzustände",
       "overlays": "Dialoge, Sheets und Toasts",
@@ -805,8 +781,7 @@
       "focused": "Fokussiert",
       "pressed": "Gedrückt",
       "disabled": "Deaktiviert",
-      "loading": "Lädt",
-      "error": "Fehler"
+      "loading": "Lädt"
     },
     "variants": {
       "primary": "Primär",
@@ -913,7 +888,6 @@
     "showProfile": "Geräteprofil anzeigen",
     "hideProfile": "Geräteprofil ausblenden",
     "engineTitle": "Getestete native Engine",
-    "preferenceTitle": "Engine-Vorgabe",
     "preference": {
       "auto": "Automatisch",
       "vlc": "Immer VLC"
@@ -990,7 +964,6 @@
     },
     "bitrate": "≈ {mbps, number, ::.#} Mbit/s",
     "age": "{days, plural, =0 {Heute} one {# Tag alt} other {# Tage alt}}",
-    "predicted": "Voraussichtlich auf diesem Gerät",
     "method": {
       "direct": "Direkte Wiedergabe",
       "remux": "Direkt-Stream",
@@ -1064,9 +1037,6 @@
       "vlc": "Läuft mit dem eingebauten VLC-Player, ohne Umwandlung.",
       "unknown": "Wie es läuft, lässt sich vorab nicht sagen."
     },
-    "showDetails": "Technische Details anzeigen",
-    "hideDetails": "Technische Details ausblenden",
-    "panelSubtitle": "{count, plural, one {# Version} other {# Versionen}} · erwartete Wiedergabe auf diesem Gerät",
     "card": "Version",
     "bestPicture": "Bestes Bild",
     "onDevice": "Auf diesem Gerät",
@@ -1124,7 +1094,6 @@
       "top_rated": "Bestbewertet",
       "newest": "Neu"
     },
-    "loadingMore": "Weitere Titel werden geladen",
     "empty": {
       "title": "Hier gibt es noch nichts",
       "movie": "Keine Filme in diesem Genre.",

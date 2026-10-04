@@ -251,7 +251,7 @@ export function EpisodeStrip({
 const EMPTY: View[] = [];
 
 /** TV: a focused card snaps one card in from the gutter, so from the second card on one episode stays left of it. */
-export function stripSnapPadding(gutterStart: number, stride: number): number {
+function stripSnapPadding(gutterStart: number, stride: number): number {
   return gutterStart + stride;
 }
 

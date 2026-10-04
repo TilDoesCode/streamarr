@@ -17,7 +17,7 @@ export type RemoteAction =
   | 'mute';
 
 /** Remote / media keys (Android `player-keys` names = react-native-tvos event types) mapped to player actions. */
-export const REMOTE_KEYS: Readonly<Record<string, RemoteAction>> = {
+const REMOTE_KEYS: Readonly<Record<string, RemoteAction>> = {
   select: 'toggle',
   playPause: 'toggle',
   play: 'play',
@@ -38,10 +38,7 @@ const TVOS_LONG: Readonly<Record<string, string>> = { longLeft: 'left', longRigh
 /** A held ◀/▶ on the Siri Remote jumps like a held key on Android (60 s steps). */
 export const TVOS_LONG_REPEAT = 20;
 
-/**
- * Player keys while `dpad` is true (D-pad + media keys) or only media keys otherwise (a panel owns focus).
- * Android and the iPad keyboard capture them natively; tvOS uses react-native-tvos key events.
- */
+/** Player keys: D-pad + media keys while `dpad`, else media keys only (native on Android/iPad, tvOS key events). */
 export function useRemoteKeys(
   dpad: boolean,
   handler: (action: RemoteAction, key: string, repeat: number) => void | 'release'

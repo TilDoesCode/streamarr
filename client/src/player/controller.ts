@@ -3,7 +3,7 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import { toAppError, type ErrorParams } from '@/api/errors';
-import { rememberAudioLanguage } from '@/player/audio-preference';
+import { isSingleAudio, noteAudioTracks, rememberAudioLanguage } from '@/player/audio-preference';
 import {
   engineTrackFor,
   renditionFor,
@@ -78,6 +78,8 @@ const MIN_RESUME_SECONDS = 30;
 const HEARTBEAT_MS = 10_000;
 /** An in-session audio switch that has not played on by then falls back to `/switch`. */
 export const AUDIO_SWITCH_TIMEOUT_MS = 8_000;
+/** Audio switch measurements kept for diagnostics (newest last). */
+export const AUDIO_SWITCH_SAMPLES = 20;
 const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
 /** How often a new source re-applies the server's track picks over the engine's own choice. */
 const MAX_SERVER_TRACK_APPLIES = 3;
@@ -171,7 +173,7 @@ export class PlaybackController {
             ? Math.round(startSeconds * TICKS_PER_SECOND)
             : undefined,
           device: profile,
-          preferences: this.preferences,
+          preferences: this.requestPreferences(isSingleAudio(releaseId)),
         },
         this.abort.signal
       );
@@ -304,6 +306,7 @@ export class PlaybackController {
       });
     }
     this.playback = playback;
+    noteAudioTracks(playback.version?.releaseId, playback.mediaInfo?.audioTracks?.length ?? 2);
     this.phase = 'playing';
     this.ended = false;
     this.lastGoodPosition = position;
@@ -443,9 +446,11 @@ export class PlaybackController {
               ...(audio === null ? {} : { audioStreamIndex: audio }),
               subtitleStreamIndex: this.currentSubtitle() ?? -1,
             };
+      const single = !body.releaseId && (playback.mediaInfo?.audioTracks?.length ?? 2) <= 1;
       const switched = await switchPlayback(this.options.client, playback.playbackId, {
         ...tracks,
         ...body,
+        ...(body.preferences ? { preferences: this.requestPreferences(single) } : {}),
         positionTicks: Math.round(position * TICKS_PER_SECOND),
       });
       const ready = await this.wait(switched, !notifyFailure);
@@ -490,7 +495,7 @@ export class PlaybackController {
             previous.mediaInfo?.subtitleTracks?.find((track) => track.selected)?.index ?? -1,
           startPositionTicks: Math.round(position * TICKS_PER_SECOND),
           device: this.options.profile,
-          preferences,
+          preferences: this.requestPreferences((previous.mediaInfo?.audioTracks?.length ?? 2) <= 1),
         },
         this.abort.signal
       );
@@ -618,6 +623,11 @@ export class PlaybackController {
     await switched;
   }
 
+  /** No remembered audio language for a single-audio release: there is nothing to choose. */
+  private requestPreferences(singleAudio: boolean): PlaybackPreferences {
+    return singleAudio ? { ...this.preferences, audioLanguage: undefined } : this.preferences;
+  }
+
   /** Server subtitle after switching to `track`: a forced one follows the audio language (PLAN § 5, 18:40). */
   private subtitleFor(track: AudioTrack): {
     index: number | null;
@@ -661,6 +671,7 @@ export class PlaybackController {
       ...(fallback ? { fallback } : {}),
     };
     this.audioSwitches.push(sample);
+    this.audioSwitches.splice(0, this.audioSwitches.length - AUDIO_SWITCH_SAMPLES);
     this.lastAudioError = null;
     return new Promise((resolve) => {
       // A server switch runs its own start flow; this guard only frees the switch lock.

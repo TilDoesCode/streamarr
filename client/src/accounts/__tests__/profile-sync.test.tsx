@@ -65,3 +65,44 @@ it('re-syncs the profile every 5 minutes while the app stays in the foreground',
   await waitFor(() => expect(store.get(anna.id)).toMatchObject({ displayName: 'Anna B.' }));
   await view.unmount();
 });
+
+it("does not write a tab's older /viewer/me answer over another tab's edit (web tabs)", async () => {
+  const shared = memoryStorage();
+  const tabA = new AccountStore({ storage: shared, vault: createMemoryVault() });
+  const anna = await tabA.addSignedIn(
+    { url: 'http://dev.test', name: 'Dev World' },
+    { id: 'v-anna', username: 'anna', displayName: 'Anna', mustChangePassword: false },
+    {
+      sessionId: 's1',
+      accessToken: 'sva_1',
+      accessExpiresAt: Date.now() + 3_600_000,
+      refreshToken: 'svr_1',
+      refreshExpiresAt: Date.now() + 3_600_000,
+    }
+  );
+  tabA.setActive(anna.id);
+  const tabB = new AccountStore({ storage: shared, vault: createMemoryVault() });
+  await tabB.writeTokens(anna.id, (await tabA.readTokens(anna.id))!);
+  let displayName = 'Anna';
+  const fetch = jest.fn(async () =>
+    json(200, { id: 'v-anna', username: 'anna', displayName, mustChangePassword: false })
+  );
+  const view = await renderWithProviders(
+    <AccountsProvider store={tabB} queryClient={new QueryClient()} fetch={fetch}>
+      <Harness />
+    </AccountsProvider>
+  );
+  await act(() => jest.advanceTimersByTimeAsync(0));
+  expect(fetch).toHaveBeenCalledTimes(1);
+
+  // Tab A renames the profile (PATCH /viewer/me + syncProfile); tab B hears the storage event.
+  displayName = 'Anna B.';
+  tabA.update(anna.id, { displayName: 'Anna B.' });
+  await act(async () => tabB.reload());
+  await act(() => jest.advanceTimersByTimeAsync(0));
+  expect(tabB.get(anna.id)).toMatchObject({ displayName: 'Anna B.' });
+  tabA.reload();
+  expect(tabA.get(anna.id)).toMatchObject({ displayName: 'Anna B.' });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await view.unmount();
+});
