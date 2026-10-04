@@ -569,3 +569,22 @@ release builds on the simulators never start playback (the user sits next to the
 release on Android (AVDs without audio output) and web (`--mute-audio`) only; Apple targets keep their dev numbers.
 R8 and resource shrinking are tried in S2 with a smoke test and adopted in app.config only if the release build
 still plays, signs in and browses; the APK ships arm64 + x86_64 only if the AVDs need it, else arm64-v8a.
+**User requirement 2026-10-05 00:50 (binding, top priority of round I — before R1 S2 and Q2):** the player must catch
+and show **every theoretically possible state**. The viewer never sees a generic error, a black screen or a frozen
+picture: every state is either **compensated** automatically (retry, reconnect, resume at the position, step down,
+other engine, `/switch`, server-side fallback) or **explained** with a specific hint (what happened, what the app is
+doing about it, what the viewer can do). Work items:
+- **F10a — state matrix (research, no devices):** every state and failure per layer (app/auth, playback API, server
+  delivery: direct/remux/transcode/VLC, HLS playlists, segments, renditions, subtitles, engine/decoder: hls.js, Safari
+  native, ExoPlayer, AVPlayer/expo-video, VLC; device/OS: background, sleep, audio focus, PiP/AirPlay, memory,
+  network change) with today's detection, compensation and message, the gaps, and the design: one stall/black/freeze
+  watchdog per engine (progress + rendered frames), one error taxonomy (every code -> compensation ladder -> specific
+  de/en hint with an action), budgets (when a spinner becomes a hint, when a retry becomes a step-down). HTML matrix
+  for the user.
+- **B12 — Dev World fault injection (backend):** arm faults per playback or globally (Dev World only, never in the
+  product build): slow/stalled/reset segments, segment/playlist 4xx/5xx, truncated or corrupt segments, missing
+  renditions/subtitles, transcode process killed or never starting, session revoked or token expired mid-play,
+  server restart, wrong content type, endless playlist without new segments.
+- **F10 — the player handles every state (client):** implements the matrix with jest tests per state (fake engines)
+  and live fault-injection runs on every engine/device, one at a time; independent verification with the matrix as
+  the checklist.
