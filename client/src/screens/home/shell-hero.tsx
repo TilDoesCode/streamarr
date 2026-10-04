@@ -250,17 +250,20 @@ function HeroCopy({
   };
   const openInfo = () => router.push(featuredInfoHref(featured, detail));
 
+  const copyTop = heroCopyTop(s, copyHeight, insets.top + controls, heroFrame.rowsTop);
+  // From the computed top: web's onLayout misses moves without a resize, so its y can be stale (Q1-22).
+  useEffect(() => {
+    if (copyHeight) onCopyBottom?.(copyTop + copyHeight);
+  }, [copyTop, copyHeight, onCopyBottom]);
+
   return (
     <View
-      onLayout={(event) => {
-        const { y, height } = event.nativeEvent.layout;
-        setCopyHeight(height);
-        onCopyBottom?.(y + height);
-      }}
+      testID="home-tv-hero-copy"
+      onLayout={(event) => setCopyHeight(event.nativeEvent.layout.height)}
       style={{
         position: 'absolute',
         left: s(SHELL.hero.copyLeft),
-        top: heroCopyTop(s, copyHeight, insets.top + controls, heroFrame.rowsTop),
+        top: copyTop,
         width: s(SHELL.hero.copyWidth),
         gap: s(14),
       }}>

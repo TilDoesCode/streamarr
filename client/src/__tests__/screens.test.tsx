@@ -216,6 +216,25 @@ describe('Home', () => {
   });
 });
 
+describe('Home on a short web window (Q1-22)', () => {
+  it('puts the rows under the copy where it is drawn, not where it was first laid out', async () => {
+    mockWindow = { width: 1280, height: 657, scale: 1, fontScale: 1 };
+    await open('/');
+    const copy = await screen.findByTestId('home-tv-hero-copy', {}, WAIT);
+    // Web reports y only on a resize: a stale y of the first layout (top 64) must not push the rows down.
+    await act(async () =>
+      fireEvent(copy, 'layout', {
+        nativeEvent: { layout: { x: 0, y: 64, width: 506, height: 366 } },
+      })
+    );
+    const top = StyleSheet.flatten(copy.props.style).top as number;
+    const rows = StyleSheet.flatten(screen.getByTestId('home-rows').props.style);
+    // Rows 32 px (two row gaps at scale 2/3) under the copy, which sits at its raised top.
+    expect(rows.top).toBe(Math.max(394, top + 366 + 32));
+    expect(rows.top).toBeLessThan(64 + 366 + 32);
+  });
+});
+
 describe('Search', () => {
   it('shows results, loading, empty and error states', async () => {
     let mode: 'ok' | 'empty' | 'error' | 'slow' = 'slow';

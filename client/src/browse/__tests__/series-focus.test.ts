@@ -62,11 +62,9 @@ describe('series focus follows the server (B9 CurrentEpisodeRule)', () => {
 });
 
 describe('episode card (Q1-03, Q1-26)', () => {
-  it('puts "Up next" and "No version" side by side in one badge row', () => {
-    expect(cardBadges({ next: true, noVersion: true })).toEqual([
-      'media.upNext',
-      'detail.noVersionShort',
-    ]);
+  it('draws one badge only: "No version" wins over "Up next" (two wrap on a web card)', () => {
+    expect(cardBadges({ next: true, noVersion: true })).toEqual(['detail.noVersionShort']);
+    expect(cardBadges({ next: true, noVersion: false })).toEqual(['media.upNext']);
     expect(cardBadges({ next: false, noVersion: false })).toEqual([]);
   });
 

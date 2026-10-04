@@ -28,12 +28,10 @@ import { useShell } from '@/shell/use-shell';
 import { colors, fonts, useDesign } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
-/** The card's corner badges, side by side in one row (never stacked on top of each other). */
+/** One corner badge: two wrap on a 233 px web card (Q1-03); "No version" wins, the stage pill already says next. */
 export function cardBadges({ next, noVersion }: { next: boolean; noVersion: boolean }) {
-  return [
-    ...(next ? (['media.upNext'] as const) : []),
-    ...(noVersion ? (['detail.noVersionShort'] as const) : []),
-  ];
+  if (noVersion) return ['detail.noVersionShort'] as const;
+  return next ? (['media.upNext'] as const) : [];
 }
 
 /** A card without a still: its number moves to the bottom-left corner when a badge or the ▶ may cover the middle. */
