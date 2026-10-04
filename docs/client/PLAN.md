@@ -541,3 +541,16 @@ Decisions taken by the orchestrator (technical, no user decision needed):
 - **Severity scale for Q1/Q2:** P1 broken flow, crash, data loss, security, sign-out without reason; P2 visible defect
   (layout break, clipped/wrong text or language, lost focus, wrong state, focus ring touching a neighbour); P3 polish
   (spacing, alignment, motion, copy tone). Round I is done when Q2 finds no P1/P2 on any target.
+**Re-plan after Q1 S1 (orchestrator, 2026-10-04 18:10):** Q1 S2 (Apple targets) runs on the devices while F8 and F9
+start with a code-only slice each in their own git worktree (jest only, no devices), so both lists of S1 findings are
+fixed at the root before the live slices. After Q1 S2 the worktrees are merged; F8 S2 (Google TV + Apple TV) and F9 S2
+(web, Android phone, iPhone, iPad, Safari) check every fix live, one device at a time, then each is verified.
+Assignment of the Q1 S1 findings (P1/P2 must be fixed, P3 fixed when cheap, else BACKLOG with a reason):
+- **F8 — player, playback and TV:** Q1-01, 02, 13, 15 (subtitle names, codec label), 25 (TV JS thread busy during
+  playback: profile what runs per tick), 28, 39, 40, 41; the replay report at position 0 (B8 follow-up); the F8
+  BACKLOG items (Google TV sign-out cause first: refresh rotation interrupted by an app kill; versions-loading state
+  that keeps focus; stage pill without the episode number).
+- **F9 — browse, detail, Home, Settings, sign-in, search (every size):** Q1-03, 04/26/36 + 27 (series initial
+  selection = the episode with an active resume point first, then next up; watched + resume point shown together),
+  05, 06, 07, 08, 09-12, 14, 15 (genre and certification names), 17-24, 34, 37, 38, 43, 44, 45.
+- Dev-client-only and emulator-load items (Q1-29, 32, 33, 35, 30) go to R1 (release builds).
