@@ -96,6 +96,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Focus spacing (F6 verify): `useFocusGap` also raises some web/tablet gaps (genre chips 8 -> 12 px, side-panel options
   4 -> 9 px); looks fine, record it as a decision or limit the rule to focus platforms.
 
+- iPhone simulator (F9 S2b, Q1-48): first launch after a simulator boot drew the picker sideways once (1 of 3 cold starts;
+  splash already rotated, so native/UIKit before JS; orientation module reported portrait + unlocked). Not reproducible on
+  demand; re-check on hardware. The cold-start `releaseLaunchOrientation` (S1b) does not affect it.
+- Onboarding (F9 S2a, P3): the server step reached while a profile is signed in has no "Zurück zur App" (the sign-in step
+  has one).
+
 ## Accounts
 
 - DONE in I4 (Apple TV, native module client/modules/tv-native, tvOS-only): Versions/About sheets open with focus on
@@ -144,9 +150,9 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   the whole-image value too strict.
 - B8 verify: a replay is only detected when a report of the completing playback lands below 5 %; the client must send
   a report at position 0 when it replays (check `controller.replay()` in F8/F9). The group conversion reuses the
-  `audio_converted` reason code. The long-season series (The Lighthouse Logs) has no artwork.
-- Username and e-mail of one account share the sign-in code cooldown, so someone who knows both can link them (429 on
-  the second alias within 30 s); documented, low impact (B4 verify).
+  `audio_converted` reason code. ~~The long-season series (The Lighthouse Logs) has no artwork.~~ → B10: generated artwork.
+- ~~Username and e-mail of one account share the sign-in code cooldown, so someone who knows both can link them (429 on
+  the second alias within 30 s); documented, low impact (B4 verify).~~ → B10: the other alias answers 202 without a mail.
 - Dev World artwork uses fixed per-language URLs; the real selection rule is covered by `TmdbDiscoverTests` only. No
   German logos in the Dev World (TMDB has none for the fixture titles).
 

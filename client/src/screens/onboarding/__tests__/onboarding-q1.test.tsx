@@ -13,7 +13,7 @@ import { setLanguagePreference } from '@/i18n';
 import { DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../../../jest/app-routes';
-import { keyboardEvents, revealScrollY } from '../auth-scaffold';
+import { keyboardEvents, revealScrollY, scrollContent } from '../auth-scaffold';
 import { leftOnboarding, openedAtOnboarding } from '../use-onboarding';
 
 // expo-router/testing-library installs its own Reanimated mock, which lacks useReducedMotion and makeMutable.
@@ -196,5 +196,12 @@ describe('keyboard on handheld sign-in (Q1-34)', () => {
     expect(
       revealScrollY({ fieldTop: 420, margin: 32, viewport: 380, content: 700, current: 320 })
     ).toBeNull();
+  });
+
+  it('measures against the scroll content ref, not its node handle (Fabric measureLayout)', () => {
+    const content = { measure: jest.fn() };
+    const scroll = { getInnerViewRef: () => content, getInnerViewNode: () => 42 };
+    expect(scrollContent(scroll as never)).toBe(content);
+    expect(scrollContent(null)).toBeNull();
   });
 });
