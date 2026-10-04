@@ -1,4 +1,4 @@
-type Doc = {
+type Doc = EventTarget & {
   fullscreenElement: object | null;
   documentElement: { requestFullscreen: jest.Mock };
   exitFullscreen: jest.Mock;
@@ -15,8 +15,8 @@ function loadWith(doc: Doc) {
 }
 
 function fakeDocument(): Doc {
-  const doc: Doc = {
-    fullscreenElement: null,
+  const doc: Doc = Object.assign(new EventTarget(), {
+    fullscreenElement: null as object | null,
     documentElement: {
       requestFullscreen: jest.fn(async () => {
         doc.fullscreenElement = doc.documentElement;
@@ -26,7 +26,7 @@ function fakeDocument(): Doc {
       doc.fullscreenElement = null;
     }),
     querySelector: () => null,
-  };
+  });
   return doc;
 }
 
@@ -52,4 +52,26 @@ describe('player full screen on close (iPad Safari stayed in element full screen
     exitPlayerFullscreen();
     expect(doc.exitFullscreen).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['Esc / system UI', (doc: Doc) => void (doc.fullscreenElement = null)],
+    ['the player toggle', (doc: Doc) => void doc.exitFullscreen()],
+  ])(
+    'after leaving via %s, a full screen the viewer enters later stays on close (verify V1)',
+    async (_how, leave) => {
+      const doc = fakeDocument();
+      const { toggleFullscreen, exitPlayerFullscreen } = loadWith(doc);
+      toggleFullscreen();
+      await Promise.resolve();
+      leave(doc);
+      await Promise.resolve();
+      doc.dispatchEvent(new Event('fullscreenchange'));
+      // The viewer enters full screen through Safari's own menu during the same player session.
+      doc.fullscreenElement = doc.documentElement;
+      doc.dispatchEvent(new Event('fullscreenchange'));
+      doc.exitFullscreen.mockClear();
+      exitPlayerFullscreen();
+      expect(doc.exitFullscreen).not.toHaveBeenCalled();
+    }
+  );
 });

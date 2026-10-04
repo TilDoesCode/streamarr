@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react-native';
 import { createRef } from 'react';
+import { Platform, StyleSheet } from 'react-native';
 
 import i18n from '@/i18n';
 import type { PlaybackController } from '@/player/controller';
@@ -87,5 +88,43 @@ describe('player overlay reads the live engine position (review S1)', () => {
     await act(async () => undefined);
     await act(async () => mockKeys.listener?.({ key: 'down', repeat: 0 }));
     expect(backRef.current?.()).toBe(true);
+  });
+});
+
+describe('hidden player controls leave the screen on touch shells (Q1-46, verify V1)', () => {
+  const display = () =>
+    StyleSheet.flatten(
+      screen.getByTestId(/^player-overlay/, { includeHiddenElements: true }).props.style
+    ).display ?? 'flex';
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('phone/tablet: the hidden overlay is removed after the fade and comes back when shown', async () => {
+    const backRef = createRef<(() => boolean) | null>();
+    await overlay(backRef);
+    await act(async () => void backRef.current?.());
+    expect(screen.getByTestId('player-overlay-hidden')).toBeTruthy();
+    await act(async () => jest.advanceTimersByTime(300));
+    expect(display()).not.toBe('none');
+    await act(async () => jest.advanceTimersByTime(300));
+    expect(display()).toBe('none');
+    expect(screen.queryByTestId('player-close')).toBeNull();
+    await act(async () => mockKeys.listener?.({ key: 'down', repeat: 0 }));
+    expect(screen.getByTestId('player-overlay')).toBeTruthy();
+    expect(display()).not.toBe('none');
+  });
+
+  it('TV keeps the faded overlay in the tree (hidden focus)', async () => {
+    jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+    const backRef = createRef<(() => boolean) | null>();
+    await overlay(backRef);
+    await act(async () => void backRef.current?.());
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(screen.getByTestId('player-overlay-hidden')).toBeTruthy();
+    expect(display()).not.toBe('none');
   });
 });

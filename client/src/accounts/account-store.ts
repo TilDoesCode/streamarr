@@ -120,6 +120,9 @@ const hasId = (accounts: readonly Account[], id: string | null | undefined): id 
 
 type EndedListener = (account: Account, code: string) => void;
 
+/** Earliest retry of a vault write that failed (the pair stays usable in memory meanwhile). */
+export const VAULT_RETRY_MS = 5_000;
+
 /** Remembered accounts (list in MMKV/localStorage, tokens in the vault); changes re-read the stored list first. */
 export class AccountStore {
   private snapshot: AccountsSnapshot;
@@ -128,8 +131,8 @@ export class AccountStore {
   private readonly listeners = new Set<() => void>();
   private readonly endedListeners = new Set<EndedListener>();
   private readonly tokenCache = new Map<string, SessionTokens>();
-  /** Rotated pairs the vault refused to store: still the valid ones for this run, written again on the next read. */
-  private readonly unsaved = new Map<string, SessionTokens>();
+  /** Rotated pairs the vault refused to store: still the valid ones for this run; the write is retried on a later read. */
+  private readonly unsaved = new Map<string, { tokens: SessionTokens; retryAt: number }>();
   private readonly storage: KeyValueStorage;
   private readonly tabStorage: KeyValueStorage | undefined;
   private readonly vault: TokenVault;
@@ -288,8 +291,9 @@ export class AccountStore {
   async readTokens(id: string, fresh = false): Promise<SessionTokens | null> {
     const pending = this.unsaved.get(id);
     if (pending) {
-      await this.persist(id, pending);
-      return pending;
+      // A failing Keystore is not hammered on every request: one write attempt per interval.
+      if (this.now() >= pending.retryAt) await this.persist(id, pending.tokens);
+      return pending.tokens;
     }
     if (!fresh) {
       const cached = this.tokenCache.get(id);
@@ -314,7 +318,7 @@ export class AccountStore {
       await this.vault.set(id, tokens);
       this.unsaved.delete(id);
     } catch {
-      this.unsaved.set(id, tokens);
+      this.unsaved.set(id, { tokens, retryAt: this.now() + VAULT_RETRY_MS });
     }
   }
 
