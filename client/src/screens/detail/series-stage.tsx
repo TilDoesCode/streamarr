@@ -96,16 +96,13 @@ export function SeriesStage() {
   );
   const data = series.data;
   const [picked, setPicked] = useState<Selection | null>(null);
-  const { focus: next, settled } = useSeriesFocus(data);
+  const next = useSeriesFocus(data);
   const deepLink = {
     season: routeNumber(params.season ?? params.n),
     episode: routeNumber(params.episode),
   };
-  const selection =
-    picked ??
-    (data && (settled || deepLink.season !== undefined)
-      ? initialSelection(data, deepLink, next)
-      : undefined);
+  // Derived from the series alone (no wait for continue watching), so the stage never jumps.
+  const selection = picked ?? (data ? initialSelection(data, deepLink, next) : undefined);
   const season = useSeasonWithVersions(data ? tmdbId : undefined, selection?.season);
   const episodes =
     selection && season.data?.seasonNumber === selection.season

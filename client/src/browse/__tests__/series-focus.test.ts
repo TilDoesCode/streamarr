@@ -24,42 +24,40 @@ const s2e2: WatchState = {
   played: true,
   lastReleaseId: 'webdl',
 };
-const other: WatchState = { ...s2e2, workId: 'tmdb-tv-1-s01e01', seriesWorkId: 'tmdb-tv-1' };
+const other: WatchState = {
+  ...s2e2,
+  workId: 'tmdb-tv-1-s01e01',
+  seriesWorkId: 'tmdb-tv-1',
+  lastReleaseId: 'x',
+};
 
-describe('series focus (Q1-04/26/36/27)', () => {
-  it('prefers the episode with an active resume point over the next episode', () => {
-    const focus = seriesFocus(series(), [other, s2e2]);
+describe('series focus follows the server (B9 CurrentEpisodeRule)', () => {
+  it('takes the server episode and adds the version last played on it', () => {
+    const replay = { ...s2e2, reason: 'resume', available: true };
+    const focus = seriesFocus(series(replay), [other, s2e2]);
     expect(focus).toMatchObject({
       workId: s2e2.workId,
       seasonNumber: 2,
       episodeNumber: 2,
-      reason: 'resume',
       positionTicks: s2e2.positionTicks,
+      available: true,
       lastReleaseId: 'webdl',
     });
-    expect(initialSelection(series(), {}, focus)).toEqual({ season: 2, episode: 2 });
+    expect(initialSelection(series(replay), {}, focus)).toEqual({ season: 2, episode: 2 });
   });
 
-  it('falls back to the next episode without a resume point of this series', () => {
-    expect(seriesFocus(series(), [other])?.workId).toBe(s3e1.workId);
+  it('never lets a continue entry override the server episode (stale resume, review risk 1)', () => {
+    // An abandoned S2E2 resume point while the server says S3E1: the server wins.
+    const focus = seriesFocus(series(), [s2e2]);
+    expect(focus).toMatchObject({ workId: s3e1.workId, lastReleaseId: undefined });
     expect(seriesFocus(series(), undefined)?.workId).toBe(s3e1.workId);
-    expect(seriesFocus(series(null), [])).toBeNull();
-    expect(seriesFocus(series(), [{ ...s2e2, positionTicks: 0 }])?.workId).toBe(s3e1.workId);
-  });
-
-  it('keeps the server episode and adds the last played version when both agree', () => {
-    const resume = { ...s3e1, positionTicks: 10, reason: 'resume' };
-    const focus = seriesFocus(series(resume), [{ ...s2e2, workId: s3e1.workId }]);
-    expect(focus).toMatchObject({ workId: s3e1.workId, lastReleaseId: 'webdl' });
+    expect(seriesFocus(series(null), [s2e2])).toBeNull();
   });
 
   it('still honours a deep link first', () => {
     expect(
       initialSelection(series(), { season: 1, episode: 3 }, seriesFocus(series(), [s2e2]))
-    ).toEqual({
-      season: 1,
-      episode: 3,
-    });
+    ).toEqual({ season: 1, episode: 3 });
   });
 });
 
@@ -120,18 +118,15 @@ describe('Home cards play by the playTarget rule (Q1-05)', () => {
     });
   });
 
-  it('checks a next-up episode first and reports one without versions (Q1-08)', async () => {
-    const none = jest.fn(async (): Promise<Version[]> => []);
-    const next = { positionTicks: 0, durationTicks: null };
+  it('does not fetch versions just to start the server pick (no per-card probe)', async () => {
+    const fetchVersions = jest.fn(async () => versions);
     await expect(
-      resolvePlay(none, { workId: 's3e1', title: 't', watch: next }, true)
-    ).resolves.toBeNull();
-    await expect(
-      resolvePlay(
-        jest.fn(async () => versions),
-        { workId: 's2e3', title: 't', watch: next },
-        true
-      )
-    ).resolves.toEqual({ workId: 's2e3', title: 't', startSeconds: 0 });
+      resolvePlay(fetchVersions, {
+        workId: 's3e1',
+        title: 't',
+        watch: { positionTicks: 0, durationTicks: null },
+      })
+    ).resolves.toEqual({ workId: 's3e1', title: 't', startSeconds: 0 });
+    expect(fetchVersions).not.toHaveBeenCalled();
   });
 });

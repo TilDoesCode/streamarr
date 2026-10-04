@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { Check, EyeOff, Film, Layers, Play, RotateCcw } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
-import type { Ref } from 'react';
+import { useSyncExternalStore, type Ref } from 'react';
 
 import { playTarget, type PlayAction } from '@/browse/play-target';
 import {
@@ -53,21 +53,17 @@ export function usePlay() {
   return (request: PlayRequest) => router.push(playHref(request));
 }
 
-/** Play request by the playTarget rule (Resume = last played version); null = no version (`checkVersions`). */
+/** Play request by the playTarget rule: Resume starts the version last played, like the detail's button. */
 export async function resolvePlay(
   fetchVersions: (workId: string) => Promise<readonly Version[]>,
-  { workId, title, watch }: { workId: string; title: string; watch: PlayWatchState },
-  checkVersions = false
-): Promise<PlayRequest | null> {
+  { workId, title, watch }: { workId: string; title: string; watch: PlayWatchState }
+): Promise<PlayRequest> {
   const startSeconds = resumeSeconds(watch);
   const request = { workId, title, startSeconds };
-  const resume = !!startSeconds && !!watch?.lastReleaseId;
   // Without a last played version the server's recommendation starts anyway.
-  if (!resume && !checkVersions) return request;
+  if (!startSeconds || !watch?.lastReleaseId) return request;
   try {
-    const versions = await fetchVersions(workId);
-    if (!versions.length) return null;
-    const target = playTarget(versions, watch, resume ? 'resume' : 'play');
+    const target = playTarget(await fetchVersions(workId), watch, 'resume');
     return target.state === 'ready' && target.releaseId
       ? { ...request, releaseId: target.releaseId }
       : request;
@@ -76,18 +72,37 @@ export async function resolvePlay(
   }
 }
 
-/** Plays a work from a card or the Home hero with the same version the detail would start. */
+/** Single flight for every card and hero: the work whose play request is resolving (null = none). */
+export const playPending = {
+  workId: null as string | null,
+  listeners: new Set<() => void>(),
+  set(workId: string | null) {
+    this.workId = workId;
+    for (const listener of this.listeners) listener();
+  },
+  subscribe: (listener: () => void) => {
+    playPending.listeners.add(listener);
+    return () => void playPending.listeners.delete(listener);
+  },
+  get: () => playPending.workId,
+};
+
+/** True while this work's play request resolves (the card stays focusable, presses are ignored). */
+export function usePlayPending(workId: string | null | undefined): boolean {
+  return useSyncExternalStore(playPending.subscribe, playPending.get) === (workId ?? undefined);
+}
+
+/** Plays a work from a card or the Home hero with the same version the detail would start; one press at a time. */
 export function usePlayWork() {
   const play = usePlay();
   const fetchVersions = useFetchVersions();
-  return (
-    work: { workId: string; title: string; watch: PlayWatchState },
-    /** Checks the versions first and calls this instead of opening a player that cannot start. */
-    onNoVersions?: () => void
-  ) =>
-    void resolvePlay(fetchVersions, work, !!onNoVersions).then((request) =>
-      request ? play(request) : onNoVersions?.()
-    );
+  return (work: { workId: string; title: string; watch: PlayWatchState }) => {
+    if (playPending.workId) return;
+    playPending.set(work.workId);
+    void resolvePlay(fetchVersions, work)
+      .then(play)
+      .finally(() => playPending.set(null));
+  };
 }
 
 /** Resume progress under a title: bar plus the time left. */

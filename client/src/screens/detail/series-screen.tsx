@@ -63,7 +63,7 @@ function SeriesPhone() {
   useWatchRefreshOnFocus();
   const data = series.data;
   const seasons = data?.seasons ?? [];
-  const { focus: next } = useSeriesFocus(data);
+  const next = useSeriesFocus(data);
   const seasonNumber =
     picked ??
     next?.seasonNumber ??
@@ -149,6 +149,11 @@ function SeriesPhone() {
               })}
             </Text>
             <ResumeProgress testID="series-next-progress" watch={nextWatch} />
+            {next.available === false ? (
+              <Text testID="series-next-unavailable" variant="caption" tone="warning">
+                {t('media.notAvailableYet')}
+              </Text>
+            ) : null}
           </View>
         ) : total ? (
           <Text testID="series-all-watched" variant="callout" tone="muted">

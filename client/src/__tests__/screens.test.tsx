@@ -109,15 +109,13 @@ function memoryStorage(): KeyValueStorage {
 }
 
 let store: AccountStore;
+let testQueryClient: QueryClient;
 
 function Providers({ children }: { children: ReactNode }) {
   return (
     <DesignProvider>
       <ToastProvider>
-        <AccountsProvider
-          store={store}
-          queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-          fetch={fakeServer}>
+        <AccountsProvider store={store} queryClient={testQueryClient} fetch={fakeServer}>
           {children}
         </AccountsProvider>
       </ToastProvider>
@@ -148,6 +146,8 @@ async function open(initialUrl: string) {
     }
   );
   store.setActive(anna.id);
+  // A fresh cache per render, like a fresh app start.
+  testQueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = renderRouter(routes, { initialUrl });
   await router;
   // Wrapped: returning the thenable result from an async function would unwrap it.
@@ -1523,7 +1523,7 @@ describe('F9: one play target and one series focus (Q1)', () => {
     watch: { played: true },
     ...extra,
   });
-  // S2E1 was watched and is being replayed (B8): played AND a resume point; the server's next is S3E1 without versions.
+  // S2E1 was watched and is being replayed (B8): played AND a resume point; after it comes S3E1 without versions.
   const replay = {
     workId: 'tmdb-tv-7-s02e01',
     kind: 'episode',
@@ -1553,14 +1553,26 @@ describe('F9: one play target and one series focus (Q1)', () => {
     watch: {
       totalEpisodes: 4,
       playedEpisodes: 3,
+      // B9: the server's current episode is the active replay.
       nextEpisode: {
-        workId: 'tmdb-tv-7-s03e01',
-        seasonNumber: 3,
+        workId: 'tmdb-tv-7-s02e01',
+        seasonNumber: 2,
         episodeNumber: 1,
-        title: 'S3 Episode 1',
-        reason: 'next',
+        title: 'S2 Episode 1',
+        positionTicks: ticks(600),
+        durationTicks: ticks(5400),
+        reason: 'resume',
+        available: true,
       },
     },
+  };
+  const s3e1Next = {
+    workId: 'tmdb-tv-7-s03e01',
+    seasonNumber: 3,
+    episodeNumber: 1,
+    title: 'S3 Episode 1',
+    reason: 'next',
+    available: false,
   };
   const episodeVersions = (workId: string) => () =>
     json(200, {
@@ -1612,13 +1624,30 @@ describe('F9: one play target and one series focus (Q1)', () => {
     });
   });
 
-  it('a series without any versions names the episode, not the title (Q1-06)', async () => {
+  it('phone detail: an episode without versions says so and names the episode (Q1-06, B9 available)', async () => {
+    handlers['/api/v1/viewer/catalog/series/7'] = () =>
+      json(200, { ...series, watch: { ...series.watch, nextEpisode: s3e1Next } });
     handlers['/api/v1/viewer/watch/resume'] = () => json(200, []);
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
     await open('/series/7');
+    expect(await screen.findByTestId('series-next-unavailable', {}, WAIT)).toHaveTextContent(
+      'Not available yet'
+    );
     expect(await screen.findByTestId('versions-summary-empty', {}, WAIT)).toHaveTextContent(
       'There is no playable version of this episode yet.'
     );
+    expect(screen.queryByTestId('series-play')).toBeNull();
+  });
+
+  it('stage opens on the server episode without waiting for continue watching (no jump)', async () => {
+    handlers['/api/v1/viewer/watch/resume'] = never;
+    mockWindow = { width: 1366, height: 1024, scale: 2, fontScale: 1 };
+    await open('/series/7');
+    await waitFor(
+      () => expect(screen.getByTestId('stage-heading')).toHaveTextContent('S2 Episode 1'),
+      WAIT
+    );
+    expect(await screen.findByText('Resume', {}, WAIT)).toBeOnTheScreen();
   });
 
   it('translates TMDB genre names and hides "NR" (Q1-15)', async () => {
@@ -1651,27 +1680,83 @@ describe('F9: one play target and one series focus (Q1)', () => {
     });
   });
 
-  it('a next-up episode without versions opens its series instead of the player (Q1-08)', async () => {
+  const nextUpS3e1 = {
+    workId: 'tmdb-tv-7-s03e01',
+    seriesWorkId: 'tmdb-tv-7',
+    seriesTitle: 'Sherlock',
+    seasonNumber: 3,
+    episodeNumber: 1,
+    episodeTitle: 'S3 Episode 1',
+    lastWatchedWorkId: 'tmdb-tv-7-s02e02',
+    lastActivityAt: '2026-10-04T16:00:00Z',
+    available: false,
+  };
+
+  it('a next-up episode without versions says so and opens its series, no probe (Q1-08, B9)', async () => {
+    let probed = 0;
     handlers['/api/v1/viewer/watch/resume'] = () => json(200, []);
-    handlers['/api/v1/viewer/watch/next-up'] = () =>
-      json(200, {
-        items: [
-          {
-            workId: 'tmdb-tv-7-s03e01',
-            seriesWorkId: 'tmdb-tv-7',
-            seriesTitle: 'Sherlock',
-            seasonNumber: 3,
-            episodeNumber: 1,
-            episodeTitle: 'S3 Episode 1',
-            lastWatchedWorkId: 'tmdb-tv-7-s02e02',
-            lastActivityAt: '2026-10-04T16:00:00Z',
-          },
-        ],
-      });
+    handlers['/api/v1/viewer/watch/next-up'] = () => json(200, { items: [nextUpS3e1] });
+    handlers['/api/v1/viewer/catalog/works/tmdb-tv-7-s03e01/versions'] = () => {
+      probed += 1;
+      return json(200, { workId: 'tmdb-tv-7-s03e01', versions: [] });
+    };
     const { router } = await open('/');
-    await userEvent.setup().press(await screen.findByTestId('home-card-next-up-0', {}, WAIT));
+    const card = await screen.findByTestId('home-card-next-up-0', {}, WAIT);
+    expect(within(card).getByText('Not available yet')).toBeOnTheScreen();
+    await userEvent.setup().press(card);
     await waitFor(() => expect(router.getPathname()).toBe('/series/7'));
     expect(router.getSearchParams()).toMatchObject({ season: '3', episode: '1' });
+    expect(probed).toBe(0);
+  });
+
+  it('phone hero offers no Play for an episode without versions (B9)', async () => {
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, []);
+    handlers['/api/v1/viewer/watch/next-up'] = () => json(200, { items: [nextUpS3e1] });
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    await open('/');
+    const hero = await screen.findByTestId('home-hero', {}, WAIT);
+    expect(await within(hero).findByText(/Not available yet/, {}, WAIT)).toBeOnTheScreen();
+    expect(within(hero).getByTestId('home-hero-info')).toBeOnTheScreen();
+    expect(screen.queryByTestId('home-hero-play')).toBeNull();
+  });
+
+  it('a second press while the first one resolves opens one player only (single flight)', async () => {
+    let release: () => void = () => undefined;
+    let fetched = 0;
+    handlers['/api/v1/viewer/watch/resume'] = () =>
+      json(200, [
+        {
+          ...movie.watch,
+          positionTicks: ticks(88),
+          durationTicks: ticks(180),
+          lastReleaseId: 'r1',
+        },
+      ]);
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = () => {
+      fetched += 1;
+      return new Promise<Response>((resolve) => {
+        release = () =>
+          resolve(
+            json(200, {
+              workId: 'tmdb-movie-123',
+              versions: [version(1, false, 'direct'), version(2, true, 'direct')],
+            })
+          );
+      });
+    };
+    const { router } = await open('/');
+    const card = await screen.findByTestId('home-card-continue-0', {}, WAIT);
+    const user = userEvent.setup();
+    await user.press(card);
+    await waitFor(() => expect(fetched).toBe(1));
+    expect(card).toBeBusy();
+    await user.press(card);
+    await act(async () => undefined);
+    expect(fetched).toBe(1);
+    await act(async () => release());
+    await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
+    await act(async () => appRouter.back());
+    await waitFor(() => expect(router.getPathname()).toBe('/'));
   });
 
   it('phone hero names the episode and "More info" opens on it (Q1-04/18/37)', async () => {
@@ -1707,5 +1792,32 @@ describe('F9: one play target and one series focus (Q1)', () => {
     expect(await within(picker).findByTestId('version-sheet-specs', {}, WAIT)).toHaveTextContent(
       /Best picture.*On this device/
     );
+  });
+
+  it('Back from the player: the continue card stays (same element) and the hero follows S2E2 -> S2E3 (Q1-40)', async () => {
+    const entry = (n: number) => ({
+      ...replay,
+      workId: `tmdb-tv-7-s02e0${n}`,
+      episodeNumber: n,
+      title: `S2 Episode ${n}`,
+      played: false,
+    });
+    let current = entry(2);
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, [current]);
+    mockWindow = { width: 1366, height: 1024, scale: 2, fontScale: 1 };
+    await open('/');
+    const before = await screen.findByTestId('home-card-continue-0', {}, WAIT);
+    expect(
+      await screen.findByTestId('home-tv-hero-continue-tmdb-tv-7-s02e02', {}, WAIT)
+    ).toBeOnTheScreen();
+    current = entry(3);
+    // What the player's close does: the watch queries refetch.
+    await act(async () => {
+      void testQueryClient.invalidateQueries();
+    });
+    expect(
+      await screen.findByTestId('home-tv-hero-continue-tmdb-tv-7-s02e03', {}, WAIT)
+    ).toBeOnTheScreen();
+    expect(screen.getByTestId('home-card-continue-0')).toBe(before);
   });
 });

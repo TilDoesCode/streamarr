@@ -14,7 +14,8 @@ import { useTranslation } from 'react-i18next';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import type { components } from '@/api/schema';
-import { useDeviceProfile, versionHints } from '@/player/device-profile';
+import { loadDeviceCaps, useDeviceProfile, versionHints } from '@/player/device-profile';
+import type { DeviceProfile } from '@modules/media-caps';
 
 import { genreName, localizeDetail } from './catalog-labels';
 import { fetchLibraryPage, type LibraryKind, type LibrarySort } from './library';
@@ -118,13 +119,10 @@ export function useContinueWatching() {
   });
 }
 
-/** The episode the series is at (resume point first); `settled` once the continue list is known, so nothing jumps. */
+/** The series' current episode; continue watching (when loaded) adds its last played version, never another episode. */
 export function useSeriesFocus(series: SeriesDetail | undefined) {
   const resume = useContinueWatching();
-  return {
-    focus: series ? seriesFocus(series, resume.data) : null,
-    settled: !!series && (resume.data !== undefined || resume.isError),
-  };
+  return series ? seriesFocus(series, resume.data) : null;
 }
 
 export function useNextUp() {
@@ -239,34 +237,47 @@ function useVersionsOptions() {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
   const profile = useDeviceProfile();
-  const hints = profile.data ? versionHints(profile.data) : undefined;
   // A failed capability probe still lists the versions, just without predictions.
   const ready = profile.data !== undefined || profile.isError;
-  const options = (workId: string | null | undefined) => ({
-    queryKey: accountKey(account.id, 'catalog', 'versions', workId, hints ?? null, language),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/works/{workId}/versions', {
-          params: { path: { workId: workId ?? '' }, query: hints },
-          signal,
-        })
-      ),
-    staleTime: 5 * 60_000,
-  });
-  return { options, ready };
+  const options = (workId: string | null | undefined, device: DeviceProfile | undefined) => {
+    const hints = device ? versionHints(device) : undefined;
+    return {
+      queryKey: accountKey(account.id, 'catalog', 'versions', workId, hints ?? null, language),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        unwrap(
+          client.GET('/api/v1/viewer/catalog/works/{workId}/versions', {
+            params: { path: { workId: workId ?? '' }, query: hints },
+            signal,
+          })
+        ),
+      staleTime: 5 * 60_000,
+    };
+  };
+  return { options, ready, device: profile.data };
 }
 
 export function useVersions(workId: string | null | undefined, enabled = true) {
-  const { options, ready } = useVersionsOptions();
-  return useQuery({ ...options(workId), enabled: enabled && !!workId && ready });
+  const { options, ready, device } = useVersionsOptions();
+  return useQuery({ ...options(workId, device), enabled: enabled && !!workId && ready });
 }
 
-/** Loads a work's versions on demand (same cache as useVersions), e.g. when a Home card is pressed. */
+/** Loads a work's versions on demand (same cache key as useVersions: it waits for the device profile first). */
 export function useFetchVersions() {
   const queryClient = useQueryClient();
   const { options } = useVersionsOptions();
-  return (workId: string) =>
-    queryClient.fetchQuery(options(workId)).then((response) => response.versions ?? []);
+  return async (workId: string) => {
+    const device = await queryClient
+      .ensureQueryData({
+        // Same query as useDeviceProfile.
+        queryKey: ['device', 'profile'],
+        queryFn: () => loadDeviceCaps().then((caps) => caps.profile),
+        staleTime: Infinity,
+        gcTime: Infinity,
+      })
+      .catch(() => undefined);
+    const response = await queryClient.fetchQuery(options(workId, device));
+    return response.versions ?? [];
+  };
 }
 
 /** Marks works played or unplayed and refreshes every watch-dependent query of the account. */
