@@ -54,6 +54,8 @@ export type EngineEvent =
   | { type: 'userPlayback'; paused: boolean }
   /** An audio rendition failed to load; `code` is the server's error code when known. */
   | { type: 'audioError'; code: string }
+  /** The browser refused to start with sound (`muted`) or at all (`blocked`). */
+  | { type: 'autoplay'; result: 'muted' | 'blocked' }
   | { type: 'stats'; stats: EngineStats };
 
 export type EngineSource = {

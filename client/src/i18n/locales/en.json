@@ -859,6 +859,18 @@
       "decoder_reclaimed": {
         "title": "The video decoder was taken away",
         "message": "Another app or the system took over the video decoder. Try again."
+      },
+      "playback_stalled": {
+        "title": "Playback keeps stopping",
+        "message": "The video loads slower than it plays. Try a lower quality or another version."
+      },
+      "start_timeout": {
+        "title": "The picture didn’t appear",
+        "message": "The player loaded the video but showed no picture. Try another version or play with VLC."
+      },
+      "seek_stalled": {
+        "title": "Seeking got stuck",
+        "message": "The video didn’t continue after the jump. Try again or choose a lower quality."
       }
     },
     "sessionRevoked": {

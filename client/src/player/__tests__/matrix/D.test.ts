@@ -1,9 +1,15 @@
+import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
+import { classify } from '@/player/recovery/classify';
 import { harness, newController, reply } from '@/../jest/player/harness';
+import { FakeHls, FakeVideoElement } from '@/../jest/player/library-fakes';
 import { pending, row } from '@/../jest/player/matrix';
+import { playing, settle, TICKS } from '@/../jest/player/play';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
+jest.mock('hls.js', () => jest.requireActual('@/../jest/player/library-fakes').hlsJsModule());
 
 beforeEach(() => harness.reset());
+afterEach(() => jest.useRealTimers());
 
 // State matrix layer D (docs/client/player/state-matrix.md § 1): one test per row id.
 
@@ -13,17 +19,85 @@ describe('matrix D — Engine and decoder', () => {
     'hls.js fatal NETWORK_ERROR (manifestLoadError/TimeOut, levelLoadError, fragLoadError/Ti…',
     'S5'
   );
-  pending(
+  row(
     'D02',
-    'hls.js fatal MEDIA_ERROR (bufferAppendError, fragParsingError, bufferStalledError fatal…',
-    'S5'
+    'hls.js media errors: recover, swap the audio codec and recover, then hand on to the ladder',
+    async () => {
+      const engine = new WebEngine();
+      (engine as unknown as { attach(video: unknown): void }).attach(new FakeVideoElement());
+      await loadHls();
+      const reasons: string[] = [];
+      engine.subscribe((event) => void (event.type === 'error' && reasons.push(event.reason)));
+      engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+      const hls = FakeHls.last;
+      hls.error('mediaError', 'bufferAppendError');
+      expect(hls.recoverMediaError).toHaveBeenCalledTimes(1);
+      expect(hls.swapAudioCodec).not.toHaveBeenCalled();
+      hls.error('mediaError', 'bufferAppendError');
+      expect(hls.swapAudioCodec).toHaveBeenCalledTimes(1);
+      expect(hls.recoverMediaError).toHaveBeenCalledTimes(2);
+      hls.error('mediaError', 'bufferAppendError');
+      expect(hls.recoverMediaError).toHaveBeenCalledTimes(2);
+      expect(reasons).toEqual(['mediaError:bufferAppendError']);
+      expect(classify({ kind: 'engine', engine: 'web', reason: reasons[0]! }).category).toBe('T7');
+      engine.release();
+    }
   );
+  pending('D02', 'bufferStalledError and bufferAddCodecError refinement, hls.js live run', 'S5');
   pending('D03', 'hls.js fatal MUX_ERROR / OTHER_ERROR / KEY_SYSTEM_ERROR', 'S5');
   pending('D04', 'hls.js non-fatal bufferStalledError / bufferNudgeOnStall', 'S5');
   pending('D05', 'MSE QuotaExceededError (bufferFullError)', 'regression test, S3+');
   pending('D06', 'hls.js chunk fails to load (hlsjs:load, stale deploy, offline)', 'S5');
-  pending('D07', 'Autoplay blocked (no user gesture)', 'S3');
-  pending('D08', 'Muted autoplay also blocked (Safari Low Power, strict policies)', 'S3');
+  row('D07', 'muted autoplay shows "Sound off — tap to unmute" until unmuted', async () => {
+    const video = new FakeVideoElement();
+    video.autoplay = 'mutedOnly';
+    const engine = new WebEngine();
+    Object.defineProperty(engine, 'mode', { value: 'native' });
+    (engine as unknown as { attach(video: unknown): void }).attach(video);
+    const results: string[] = [];
+    engine.subscribe((event) => void (event.type === 'autoplay' && results.push(event.result)));
+    engine.load({ uri: 'http://server.test/a.mp4', kind: 'progressive' });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(results).toEqual(['muted']);
+    engine.release();
+    const c = await playing({}, {}, 5);
+    harness.engine.emit({ type: 'autoplay', result: 'muted' });
+    expect(c.status).toEqual({
+      spinner: false,
+      hint: { key: 'mutedAutoplay' },
+      actions: ['unmute'],
+    });
+    c.unmute();
+    expect(harness.engine.setMuted).toHaveBeenLastCalledWith(false);
+    expect(c.status.hint).toBeNull();
+    await c.stop();
+  });
+  row('D08', 'blocked autoplay pauses with a big Play action', async () => {
+    const video = new FakeVideoElement();
+    video.autoplay = 'blocked';
+    const engine = new WebEngine();
+    Object.defineProperty(engine, 'mode', { value: 'native' });
+    (engine as unknown as { attach(video: unknown): void }).attach(video);
+    const results: string[] = [];
+    engine.subscribe((event) => void (event.type === 'autoplay' && results.push(event.result)));
+    engine.load({ uri: 'http://server.test/a.mp4', kind: 'progressive' });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(results).toEqual(['blocked']);
+    engine.release();
+    const c = await playing();
+    harness.engine.emit({ type: 'autoplay', result: 'blocked' });
+    expect(c.paused).toBe(true);
+    expect(c.status).toEqual({
+      spinner: false,
+      hint: { key: 'autoplayBlocked' },
+      actions: ['play'],
+    });
+    harness.engine.play.mockClear();
+    c.setPaused(false);
+    expect(harness.engine.play).toHaveBeenCalled();
+    expect(c.status.hint).toBeNull();
+    await c.stop();
+  });
   pending(
     'D09',
     'Safari/<video> MediaError 1–4 (ABORTED, NETWORK, DECODE, SRC_NOT_SUPPORTED)',
@@ -69,7 +143,32 @@ describe('matrix D — Engine and decoder', () => {
   pending('D23', 'VLC never shows a picture (MediaCodec direct rendering, A1 of M3.1)', 'S7');
   pending('D24', 'VLC frozen picture with a running clock (after seek/load)', 'S7');
   pending('D25', 'VLC no audio (audio output failed, passthrough)', 'S7');
-  pending('D26', 'VLC end reached early (Stopped before the duration)', 'S4');
+  row(
+    'D26',
+    'VLC stopping before the duration reloads once at the position, then explains',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { engine: 'vlc' } as never, 0);
+      expect(harness.engine.kind).toBe('vlc');
+      harness.engine.time(1200, 3600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(harness.engine.source?.startPosition).toBe(1200);
+      expect(c.status.hint?.key).toBe('reloading');
+      harness.engine.started(3600);
+      harness.engine.time(1205, 3600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({
+        code: 'end_of_stream',
+        category: 'T8',
+        hint: { key: 'endedEarly', params: { time: '20:05', missing: '39:55' } },
+        actions: ['otherVersion'],
+      });
+      await c.stop();
+    }
+  );
   pending('D27', 'VLC dialog request (onDialogDisplay: certificate, login, codec question)', 'S7');
   pending('D28', 'VLC stop hangs (ANR risk on release)', 'regression test, S3+');
   pending(
@@ -103,21 +202,32 @@ describe('matrix D — Engine and decoder', () => {
     'S5'
   );
   pending('D40', 'replaceAsync rejects', 'S6');
-  row('D41', 'a second engine error while a step-down runs does not start another', async () => {
-    const server = harness.server;
-    const controller = newController();
-    await controller.start();
-    harness.engine.started();
-    server.answer('switch', (request) =>
-      reply.ok(server.playback({ playbackId: request.playbackId, method: 'remux', revision: 1 }))
-    );
-    harness.engine.fail('first');
-    expect(controller.phase).toBe('switching');
-    harness.engine.fail('again');
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(server.sent('switch')).toHaveLength(1);
-    expect(controller.phase).toBe('playing');
-    expect(controller.notice?.kind).toBe('stepDown');
-    await controller.stop();
-  });
+  row(
+    'D41',
+    'engine errors reload once, then step down once; an error during the switch starts nothing more',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const controller = await playing({}, {}, 42);
+      server.answer('switch', (request) =>
+        reply.ok(server.playback({ playbackId: request.playbackId, method: 'remux', revision: 1 }))
+      );
+      harness.engine.fail('first');
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(42);
+      harness.engine.fail('again');
+      expect(controller.phase).toBe('switching');
+      harness.engine.fail('during the switch');
+      await settle();
+      expect(server.sent('switch')).toHaveLength(1);
+      expect(server.sent('switch')[0]?.body).toMatchObject({
+        stepDown: true,
+        positionTicks: 42 * TICKS,
+      });
+      expect(controller.phase).toBe('playing');
+      expect(controller.notice?.kind).toBe('stepDown');
+      await controller.stop();
+    }
+  );
 });

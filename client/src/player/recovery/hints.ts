@@ -26,6 +26,9 @@ export const HINT_KEYS = [
   'signedOut',
   'serverBusy',
   'waitingForStream',
+  'buffering',
+  'serverError',
+  'reloading',
 ] as const;
 export type HintKey = (typeof HINT_KEYS)[number];
 
@@ -66,6 +69,9 @@ export const HINT_ACTIONS: Record<HintKey, readonly HintAction[]> = {
   signedOut: ['signIn'],
   serverBusy: ['tryNow'],
   waitingForStream: ['back'],
+  buffering: ['lowerQuality'],
+  serverError: ['tryNow'],
+  reloading: [],
 };
 
 /** `{cause}` of `startSlow` and `pausedBySystem`. */
@@ -73,7 +79,8 @@ export type HintCause =
   | Exclude<SystemCause, 'airplay' | 'autoplayMuted' | 'autoplayBlocked'>
   | 'converting'
   | 'slowConnection'
-  | 'preparing';
+  | 'preparing'
+  | 'outside';
 
 export type HintParams = Record<string, string | number>;
 

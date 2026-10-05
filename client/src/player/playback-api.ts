@@ -1,6 +1,7 @@
 import type { DeviceProfile } from '@modules/media-caps';
 
 import { unwrap, type ApiClient } from '@/api/client';
+import { isAppError } from '@/api/errors';
 import type { components } from '@/api/schema';
 
 export type Playback = components['schemas']['PlaybackResponse'];
@@ -33,6 +34,18 @@ export function startPlayback(client: ApiClient, request: StartRequest, signal?:
   return unwrap(client.POST('/api/v1/viewer/playback', { body: request, signal }));
 }
 
+/** A failed poll is retried this long (network, 429, 5xx) before the start fails. */
+export const POLL_RETRY_MS = 30_000;
+
+export function getPlayback(client: ApiClient, playbackId: string, signal?: AbortSignal) {
+  return unwrap(
+    client.GET('/api/v1/viewer/playback/{playbackId}', {
+      params: { path: { playbackId } },
+      signal,
+    })
+  );
+}
+
 /** Polls until `ready` or `failed` (the server suggests the delay), reporting every state change. */
 export async function waitForPlayback(
   client: ApiClient,
@@ -41,15 +54,20 @@ export async function waitForPlayback(
   signal?: AbortSignal
 ): Promise<Playback> {
   let current = playback;
+  let failingSince = 0;
   onUpdate(current);
   while (current.state !== 'ready' && current.state !== 'failed') {
     await sleep(Math.max(100, current.pollAfterMs ?? 500), signal);
-    current = await unwrap(
-      client.GET('/api/v1/viewer/playback/{playbackId}', {
-        params: { path: { playbackId: playback.playbackId ?? '' } },
-        signal,
-      })
-    );
+    try {
+      current = await getPlayback(client, playback.playbackId ?? '', signal);
+      failingSince = 0;
+    } catch (error) {
+      const transient = !isAppError(error) || error.isTransient;
+      failingSince ||= Date.now();
+      if (signal?.aborted || !transient || Date.now() - failingSince >= POLL_RETRY_MS) throw error;
+      await sleep(2_000, signal);
+      continue;
+    }
     onUpdate(current);
   }
   return current;

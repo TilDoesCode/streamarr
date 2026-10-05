@@ -47,6 +47,8 @@ const MEDIA_STATUS_CODES: Record<number, string> = {
 
 /** A failed media request: 404/410 mean the session is gone, 503 a transient server failure (not "busy"). */
 function mediaStatus(status: number, detail: string): Classified {
+  // A range past the end of a direct-play file: the file is shorter than announced (C02).
+  if (status === 416) return { category: 'T8', code: 'end_of_stream', detail };
   const code = MEDIA_STATUS_CODES[status] ?? (status >= 500 ? 'server_error' : `http_${status}`);
   const category: ErrorCategory =
     status === 503 ? 'T6' : status === 0 ? 'T1' : (categoryOfStatus(status) ?? 'T11');

@@ -11,10 +11,13 @@ const storage = createMMKV({ id: 'streamarr.progress-queue' });
 const KEY = 'pending';
 const MAX_ENTRIES = 50;
 const RETRY_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
+/** Reports of a signed-out account wait this long for its next sign-in (B23). */
+const MAX_AGE_MS = 24 * 3_600_000;
 
 function load(): Entry[] {
   try {
-    return JSON.parse(storage.getString(KEY) ?? '[]') as Entry[];
+    const entries = JSON.parse(storage.getString(KEY) ?? '[]') as Entry[];
+    return entries.filter((entry) => Date.now() - entry.at < MAX_AGE_MS);
   } catch {
     return [];
   }
@@ -24,9 +27,10 @@ function save(entries: Entry[]): void {
   storage.set(KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
 }
 
-/** Server rejections (4xx) are final; transport failures, 429 and 5xx are retried later. */
-function retriable(error: unknown): boolean {
-  return !isAppError(error) || error.isTransient;
+/** Transport failures, 429 and 5xx are retried later; 401/403 wait for the next sign-in; other 4xx are final. */
+function outcome(error: unknown): 'retry' | 'keep' | 'drop' {
+  if (!isAppError(error) || error.isTransient) return 'retry';
+  return error.status === 401 || error.status === 403 ? 'keep' : 'drop';
 }
 
 async function send(client: ApiClient, report: ProgressReport): Promise<void> {
@@ -57,11 +61,12 @@ export class ProgressQueue {
     try {
       await send(this.client, report);
     } catch (error) {
-      if (retriable(error)) this.enqueue(report);
+      const next = outcome(error);
+      if (next !== 'drop') this.enqueue(report, next === 'retry');
     }
   }
 
-  private enqueue(report: ProgressReport): void {
+  private enqueue(report: ProgressReport, retry = true): void {
     const entries = load();
     const last = entries.at(-1);
     // A newer heartbeat of the same playback replaces the queued one; start/stop events stay.
@@ -74,7 +79,7 @@ export class ProgressQueue {
       entries.pop();
     entries.push({ accountId: this.accountId, report, at: Date.now() });
     save(entries);
-    this.schedule();
+    if (retry) this.schedule();
   }
 
   private schedule(): void {
@@ -103,7 +108,9 @@ export class ProgressQueue {
       try {
         await send(this.client, next.report);
       } catch (error) {
-        if (retriable(error)) {
+        const next = outcome(error);
+        if (next === 'keep') return;
+        if (next === 'retry') {
           this.attempt += 1;
           this.schedule();
           return;

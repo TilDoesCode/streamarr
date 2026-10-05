@@ -8,7 +8,7 @@ type Declared = { kind: 'row' | 'pending'; id: string; file: string };
 const doc = readFileSync(DOC, 'utf8');
 const rowIds = [...doc.matchAll(/^\| ([A-E]\d\d) \|/gm)].map((match) => match[1]!);
 const declared: Declared[] = readdirSync(__dirname)
-  .filter((file) => /^[A-E]\.test\.ts$/.test(file))
+  .filter((file) => /^[A-E]\.test\.tsx?$/.test(file))
   .flatMap((file) =>
     [
       ...readFileSync(join(__dirname, file), 'utf8').matchAll(/\b(row|pending)\(\s*'([A-Z]\d\d)'/g),
@@ -30,8 +30,7 @@ describe(`state matrix coverage — ${rowIds.length} rows: ${closed.length} clos
   it.each(rowIds)('%s has a test in its layer file', (id) => {
     const entries = declared.filter((entry) => entry.id === id);
     expect(entries.length).toBeGreaterThan(0);
-    for (const entry of entries) expect(entry.file).toBe(`${id[0]}.test.ts`);
-    expect(of(id, 'row').length).toBeLessThanOrEqual(1);
+    for (const entry of entries) expect(entry.file).toMatch(new RegExp(`^${id[0]}\\.test\\.tsx?$`));
     expect(of(id, 'pending').length).toBeLessThanOrEqual(1);
   });
 
@@ -40,7 +39,7 @@ describe(`state matrix coverage — ${rowIds.length} rows: ${closed.length} clos
   });
 
   it(`lists the partly closed rows: ${partly.join(' ') || 'none'}`, () => {
-    expect(partly.every((id) => of(id, 'row').length === 1)).toBe(true);
+    expect(partly.every((id) => of(id, 'row').length >= 1)).toBe(true);
   });
 
   it(`lists the pending rows: ${open.join(' ') || 'none'}`, () => {

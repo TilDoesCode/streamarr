@@ -97,7 +97,13 @@
     "stepDownDirect": "Switched to direct play to keep playing.",
     "stepDownRemux": "Switched to direct stream to keep playing.",
     "stepDownTranscode": "Switched to transcoding to keep playing.",
-    "switchFailed": "Couldn’t switch. {reason} Playback continues as before."
+    "switchFailed": "Couldn’t switch. {reason} Playback continues as before.",
+    "because": {
+      "start_timeout": "The picture stayed black.",
+      "T7": "This device couldn’t decode the video.",
+      "T5": "The video loaded too slowly.",
+      "T6": "The server had a problem."
+    }
   },
   "upNext": {
     "title": "Up next",
@@ -135,6 +141,9 @@
     "signedOut": "Signed out: {reason}. Your position {time} is saved.",
     "serverBusy": "The server is busy. Retrying in {seconds} s…",
     "waitingForStream": "Starts as soon as playback on {device} stops.",
+    "buffering": "Loading takes longer than usual. Buffering…",
+    "serverError": "The server had a problem. Retrying in {seconds} s…",
+    "reloading": "Playback stopped. Resuming at {time}…",
     "causes": {
       "call": "call",
       "otherAudio": "another app plays audio",
@@ -144,7 +153,8 @@
       "airplayLost": "AirPlay disconnected",
       "converting": "The server is converting the video.",
       "slowConnection": "The connection is slow.",
-      "preparing": "The server is still preparing the video."
+      "preparing": "The server is still preparing the video.",
+      "outside": "outside the app"
     },
     "actions": {
       "lowerQuality": "Lower quality",
@@ -159,5 +169,15 @@
       "play": "Play",
       "signIn": "Sign in again"
     }
+  },
+  "tried": {
+    "title": "What was tried",
+    "W": "Waited",
+    "R": "Reloaded at {time}",
+    "N": "Restarted at {time}",
+    "Q": "Lower quality",
+    "S": "Another way to play",
+    "V": "Another version",
+    "G": "Gave up"
   }
 }

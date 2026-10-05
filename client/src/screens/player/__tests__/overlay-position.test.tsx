@@ -128,3 +128,29 @@ describe('hidden player controls leave the screen on touch shells (Q1-46, verify
     expect(display()).not.toBe('none');
   });
 });
+
+describe('a pause from outside the controls shows them (F8 V2: leaving the system full screen paused)', () => {
+  it('shows the hidden overlay once the controller is paused', async () => {
+    const controller = fakeController();
+    const backRef = createRef<(() => boolean) | null>();
+    const ui = () => (
+      <PlayerOverlay
+        controller={controller}
+        clock={{ position: 46, duration: 600, buffered: 60 }}
+        title="Sherlock"
+        suspended={false}
+        onPanel={jest.fn()}
+        onClose={jest.fn()}
+        backRef={backRef}
+      />
+    );
+    const view = await renderWithProviders(ui());
+    await act(async () => void backRef.current?.());
+    expect(
+      screen.getByTestId('player-overlay-hidden', { includeHiddenElements: true })
+    ).toBeTruthy();
+    (controller as { paused: boolean }).paused = true;
+    await view.rerender(ui());
+    expect(screen.getByTestId('player-overlay')).toBeTruthy();
+  });
+});

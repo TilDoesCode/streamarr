@@ -859,6 +859,18 @@
       "decoder_reclaimed": {
         "title": "Der Video-Decoder wurde entzogen",
         "message": "Eine andere App oder das System hat den Video-Decoder übernommen. Versuche es erneut."
+      },
+      "playback_stalled": {
+        "title": "Wiedergabe stockt immer wieder",
+        "message": "Das Video lädt langsamer, als es abgespielt wird. Versuche eine niedrigere Qualität oder eine andere Version."
+      },
+      "start_timeout": {
+        "title": "Kein Bild erschienen",
+        "message": "Der Player hat das Video geladen, aber kein Bild gezeigt. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "seek_stalled": {
+        "title": "Springen hängt",
+        "message": "Das Video ging nach dem Sprung nicht weiter. Versuche es erneut oder wähle eine niedrigere Qualität."
       }
     },
     "sessionRevoked": {

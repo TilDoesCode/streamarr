@@ -1,5 +1,6 @@
 import { predictedMethod, type PredictedMethod } from '@/browse/version-format';
 import type { Version } from '@/browse/queries';
+import { categoryOf } from '@/api/error-categories';
 import type { ErrorLike } from '@/api/error-text';
 import { audioCodecLabel, hdrLabel, videoCodecLabel } from '@/lib/media-labels';
 
@@ -196,4 +197,20 @@ export function noticeError(params?: Readonly<Record<string, string>>): ErrorLik
     code: params?.code ?? 'unknown',
     status: status === undefined ? undefined : Number(status),
   };
+}
+
+/** How long a notice stays: TV viewers sit further away and read slower (E11). */
+export const noticeMs = (tv: boolean): number => (tv ? 8_000 : 6_000);
+
+/** Why a step-down happened, appended to its notice (E14); undefined when the reason says nothing useful. */
+export function stepDownReasonKey(
+  params?: Readonly<Record<string, string>>
+): PlayerKey | undefined {
+  const reason = params?.reason;
+  if (!reason) return undefined;
+  if (reason === 'start_timeout') return 'notice.because.start_timeout';
+  const category = categoryOf(reason);
+  return category === 'T5' || category === 'T6' || category === 'T7'
+    ? `notice.because.${category}`
+    : undefined;
 }

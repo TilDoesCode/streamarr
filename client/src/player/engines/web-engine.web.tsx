@@ -17,6 +17,8 @@ type NativeAudioTrack = { id: string; label: string; language: string; enabled: 
 type VideoWithTracks = HTMLVideoElement & { audioTracks?: NativeTrackList<NativeAudioTrack> };
 
 const MAX_SUBTITLE_REASSERTS = 5;
+/** Media errors further apart than this start a new recovery round. */
+const MEDIA_RECOVERY_WINDOW_MS = 30_000;
 
 type HlsModule = typeof import('hls.js');
 let hlsModule: HlsModule | null = null;
@@ -72,6 +74,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private hls: HlsPlayer | null = null;
   private pending: EngineSource | null = null;
   private started = false;
+  private mediaRecovery = { count: 0, at: 0 };
   private startSeek = new StartSeek(0, () => undefined);
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private detach: (() => void) | null = null;
@@ -272,6 +275,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       return;
     }
     this.audioSwitched = null;
+    this.mediaRecovery = { count: 0, at: 0 };
     this.wantedSubtitle = undefined;
     this.startSeek.cancel();
     this.watchFirstFrame(video);
@@ -298,10 +302,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         const audioCode = audioErrorCode(data);
         if (audioCode) this.emit({ type: 'audioError', code: audioCode });
         if (!data.fatal) return;
-        if (data.type === ErrorTypes.MEDIA_ERROR) {
-          hls.recoverMediaError();
-          return;
-        }
+        if (data.type === ErrorTypes.MEDIA_ERROR && this.recoverMedia(hls)) return;
         this.emit({ type: 'error', reason: `${data.type}:${data.details}` });
         this.setState('error');
       });
@@ -318,6 +319,19 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     this.statsTimer = setInterval(() => this.pollStats(), 1000);
   }
 
+  /** hls.js media errors: recover, then swap the audio codec and recover, then hand the error on (no loop). */
+  private recoverMedia(hls: HlsPlayer): boolean {
+    const now = Date.now();
+    const recent = now - this.mediaRecovery.at < MEDIA_RECOVERY_WINDOW_MS;
+    this.mediaRecovery = { count: recent ? this.mediaRecovery.count + 1 : 1, at: now };
+    if (this.mediaRecovery.count === 1) hls.recoverMediaError();
+    else if (this.mediaRecovery.count === 2) {
+      hls.swapAudioCodec();
+      hls.recoverMediaError();
+    } else return false;
+    return true;
+  }
+
   private async autoplay(video: HTMLVideoElement): Promise<void> {
     try {
       await video.play();
@@ -325,7 +339,12 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       // Browsers without a prior user gesture only allow muted autoplay.
       if ((error as Error).name !== 'NotAllowedError') return;
       video.muted = true;
-      await video.play().catch(() => undefined);
+      try {
+        await video.play();
+        this.emit({ type: 'autoplay', result: 'muted' });
+      } catch {
+        this.emit({ type: 'autoplay', result: 'blocked' });
+      }
     }
   }
 

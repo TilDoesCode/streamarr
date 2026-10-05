@@ -21,6 +21,9 @@ export const CLIENT_ERROR_CODES = [
   'engine_error',
   'unexpected_format',
   'decoder_reclaimed',
+  'playback_stalled',
+  'start_timeout',
+  'seek_stalled',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */

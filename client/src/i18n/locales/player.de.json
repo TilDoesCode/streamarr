@@ -97,7 +97,13 @@
     "stepDownDirect": "Wechsel zu direkter Wiedergabe, damit es weiterläuft.",
     "stepDownRemux": "Wechsel zu Direkt-Stream, damit es weiterläuft.",
     "stepDownTranscode": "Wechsel zu Transkodierung, damit es weiterläuft.",
-    "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter."
+    "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter.",
+    "because": {
+      "start_timeout": "Das Bild blieb schwarz.",
+      "T7": "Dieses Gerät konnte das Video nicht dekodieren.",
+      "T5": "Das Video lud zu langsam.",
+      "T6": "Der Server hatte ein Problem."
+    }
   },
   "upNext": {
     "title": "Als Nächstes",
@@ -135,6 +141,9 @@
     "signedOut": "Abgemeldet: {reason}. Deine Position {time} ist gespeichert.",
     "serverBusy": "Der Server ist ausgelastet. Neuer Versuch in {seconds} s …",
     "waitingForStream": "Startet, sobald die Wiedergabe auf {device} endet.",
+    "buffering": "Laden dauert länger als üblich. Wird gepuffert …",
+    "serverError": "Problem auf dem Server. Neuer Versuch in {seconds} s …",
+    "reloading": "Wiedergabe unterbrochen. Geht weiter bei {time} …",
     "causes": {
       "call": "Anruf",
       "otherAudio": "andere App spielt Ton",
@@ -144,7 +153,8 @@
       "airplayLost": "AirPlay getrennt",
       "converting": "Der Server wandelt das Video um.",
       "slowConnection": "Die Verbindung ist langsam.",
-      "preparing": "Der Server bereitet das Video noch vor."
+      "preparing": "Der Server bereitet das Video noch vor.",
+      "outside": "außerhalb der App"
     },
     "actions": {
       "lowerQuality": "Niedrigere Qualität",
@@ -159,5 +169,15 @@
       "play": "Abspielen",
       "signIn": "Erneut anmelden"
     }
+  },
+  "tried": {
+    "title": "Was versucht wurde",
+    "W": "Gewartet",
+    "R": "Neu geladen bei {time}",
+    "N": "Neu gestartet bei {time}",
+    "Q": "Niedrigere Qualität",
+    "S": "Andere Wiedergabeart",
+    "V": "Andere Version",
+    "G": "Aufgegeben"
   }
 }

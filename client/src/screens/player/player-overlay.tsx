@@ -50,6 +50,7 @@ import {
   toggleFullscreen,
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
+import { webSurfaceTap } from '@/player/surface-tap';
 import { useFadedOut } from '@/player/use-faded-out';
 import { useTVEvents } from '@/components/focus/use-tv-events';
 import type { Clock } from '@/player/use-clock';
@@ -132,6 +133,12 @@ export function PlayerOverlay({
   const windowInset = useWindowControlsInset();
   const window = useWindowDimensions();
   const [visible, setVisible] = useState(true);
+  const [pausedSeen, setPausedSeen] = useState(controller.paused);
+  // A pause from outside the controls (system full screen, lock screen, the OS) shows them, so Play is in reach.
+  if (controller.paused !== pausedSeen) {
+    setPausedSeen(controller.paused);
+    if (controller.paused) setVisible(true);
+  }
   const hiddenByBack = useRef(false);
   const [zone, setZone] = useState<Zone>('buttons');
   const [scrub, setScrub] = useState<number | null>(null);
@@ -155,6 +162,7 @@ export function PlayerOverlay({
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerType = useRef<string | null>(null);
   const playRef = useRef<View>(null);
   const seekRef = useRef<View>(null);
   const paused = controller.paused;
@@ -335,9 +343,9 @@ export function PlayerOverlay({
     .runOnJS(true)
     .maxDuration(250)
     .onEnd((event) => {
-      // Web: a click follows a mouse move that already showed the overlay, so it toggles playback.
+      // Web: a click follows a mouse move that already showed the overlay; a touch on hidden controls shows them.
       if (Platform.OS === 'web') {
-        controller.togglePlay();
+        if (webSurfaceTap(visible, pointerType.current) === 'toggle') controller.togglePlay();
         show();
         return;
       }
@@ -425,7 +433,22 @@ export function PlayerOverlay({
   return (
     <View
       style={StyleSheet.absoluteFill}
-      onPointerMove={Platform.OS === 'web' ? () => show() : undefined}>
+      onPointerDown={
+        Platform.OS === 'web'
+          ? (event) => {
+              pointerType.current =
+                (event.nativeEvent as { pointerType?: string }).pointerType ?? null;
+            }
+          : undefined
+      }
+      onPointerMove={
+        Platform.OS === 'web'
+          ? (event) => {
+              // Mobile Safari sends pointer moves for touches too; only a mouse hover shows the controls.
+              if ((event.nativeEvent as { pointerType?: string }).pointerType === 'mouse') show();
+            }
+          : undefined
+      }>
       {Surface ? <Surface style={StyleSheet.absoluteFill} fit={fit} /> : null}
       {controller.pictureInPicture || ended ? null : (
         <>

@@ -28,15 +28,18 @@ import { nativeCandidates } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
-import { noticeError, stepDownKey } from '@/player/overlay-labels';
+import { noticeError, noticeMs, stepDownKey, stepDownReasonKey } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
 import { usePlayerClock } from '@/player/use-clock';
+import { useCloseOnFailure } from './use-close-on-failure';
+import { hintText, type HintAction } from '@/player/recovery/hints';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
+import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
 
@@ -50,7 +53,6 @@ type Params = {
 
 const SERVER_ACTIONS = new Set<ErrorAction>(['retry', 'otherVersion', 'lowerQuality', 'useVlc']);
 const UP_NEXT_SECONDS = 15;
-const NOTICE_MS = 6000;
 
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 
@@ -148,12 +150,17 @@ export function PlayScreen() {
   const notice = controller?.notice;
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => controller?.dismissNotice(), NOTICE_MS);
+    const timer = setTimeout(() => controller?.dismissNotice(), noticeMs(design.isTV));
     return () => clearTimeout(timer);
-  }, [notice, controller]);
+  }, [notice, controller, design.isTV]);
 
   const phase = controller?.phase ?? 'starting';
   const failed = phase === 'failed' || !!capsError || !workId;
+  useCloseOnFailure(failed, () => {
+    setPanel(null);
+    setPicker(false);
+  });
+  const [overlayShown, setOverlayShownState] = useState(true);
   const playing = phase === 'playing' || phase === 'switching';
   const remaining = (clockState.duration || 0) - clockState.position;
   const endState = endOverlay({
@@ -193,12 +200,27 @@ export function PlayScreen() {
 
   const onFailureAction = (action: ErrorAction) => {
     setCapsError(null);
+    // A playback that ran resumes at its last good position in place; a failed start starts over.
+    if (action === 'retry' && controller?.retry()) return;
     if (action === 'retry') setAttempt((value) => value + 1);
     else if (action === 'otherVersion') setPicker(true);
     else if (action === 'lowerQuality') setPreferences((value) => ({ ...value, maxHeight: 720 }));
     else if (action === 'useVlc') setPreferences((value) => ({ ...value, engine: 'vlc' }));
     else close();
   };
+
+  const onStatusAction = (action: HintAction) => {
+    if (!controller) return;
+    if (action === 'resume' || action === 'play') controller.setPaused(false);
+    else if (action === 'unmute') controller.unmute();
+    else if (action === 'tryNow') controller.recoverNow();
+    else if (action === 'lowerQuality') void controller.lowerQuality();
+    else if (action === 'otherVersion') setPicker(true);
+    else if (action === 'otherAudio') setPanel('audio');
+    else if (action === 'otherSubtitles') setPanel('subtitles');
+    else close();
+  };
+  const status = controller?.status;
 
   const failure = controller?.failure;
   const code = capsError ?? failure?.code ?? (workId ? 'unknown' : 'not_found');
@@ -225,7 +247,17 @@ export function PlayScreen() {
           panel={panel}
           onClose={close}
           backRef={overlayBack}
-          onVisibleChange={setOverlayShown}
+          onVisibleChange={(visible) => {
+            setOverlayShown(visible);
+            setOverlayShownState(visible);
+          }}
+        />
+      ) : null}
+      {controller && playing && status && !pip && !showEndCard ? (
+        <PlayerStatusView
+          status={status}
+          onAction={onStatusAction}
+          controlsVisible={overlayShown}
         />
       ) : null}
       {failed ? (
@@ -254,6 +286,12 @@ export function PlayScreen() {
               autoFocus={!picker}
               onAction={onFailureAction}
             />
+            {failure?.hint ? (
+              <Text testID="play-error-hint" variant="callout" style={{ textAlign: 'center' }}>
+                {hintText(pt, failure.hint.key, failure.hint.params)}
+              </Text>
+            ) : null}
+            {failure?.tried?.length ? <RecoveryLog tried={failure.tried} /> : null}
           </PlayerCard>
         </ScrollView>
       ) : phase === 'resume' && controller ? (
@@ -294,6 +332,11 @@ export function PlayScreen() {
               playback={controller?.playback ?? null}
               states={controller?.states ?? []}
             />
+            {status?.hint ? (
+              <Text testID={`play-starting-${status.hint.key}`} variant="callout" tone="muted">
+                {hintText(pt, status.hint.key, status.hint.params)}
+              </Text>
+            ) : null}
           </PlayerCard>
         </View>
       ) : null}
@@ -337,7 +380,9 @@ export function PlayScreen() {
           radius={design.radius.md}>
           <Text variant="callout">
             {notice.kind === 'stepDown'
-              ? pt(stepDownKey(notice.params))
+              ? [stepDownKey(notice.params), stepDownReasonKey(notice.params)]
+                  .flatMap((key) => (key ? [pt(key)] : []))
+                  .join(' ')
               : pt('notice.switchFailed', {
                   reason: describeError(t, noticeError(notice.params)).message,
                 })}
@@ -345,7 +390,12 @@ export function PlayScreen() {
         </Glass>
       ) : null}
       {showUpNext && next ? (
-        <UpNextCard next={next} onPlay={playNext} onCancel={() => setUpNextDismissedFor(workId)} />
+        <UpNextCard
+          next={next}
+          paused={!!controller?.paused}
+          onPlay={playNext}
+          onCancel={() => setUpNextDismissedFor(workId)}
+        />
       ) : null}
       {showEndCard && controller ? (
         <EndCard
