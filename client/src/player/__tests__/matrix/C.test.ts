@@ -1767,3 +1767,52 @@ describe('matrix C — subtitles after a healthy stretch (S4g)', () => {
     }
   );
 });
+
+describe('matrix C — live re-audit S9a2 (S4i)', () => {
+  row(
+    'C12',
+    'a playlist without ENDLIST that the engine reads as 1:00 of a 3:00 title: the length is 3:00 and a stall at 0:59 is a stall, never the end card (S9a2)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] },
+        } as never,
+        40
+      );
+      harness.engine.time(59, 60);
+      expect(c.duration).toBe(180);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.ended).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C15',
+    'the server closed the playback and leaves its restart in "starting": the old buffer runs dry, nothing is tried on the closed playback; the restart\'s own budget decides (S9a2 R13)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, hls, 10);
+      harness.server.answer('start', reply.hang());
+      harness.server.answer('switch', reply.error(404, 'playback_not_found'));
+      harness.engine.emit({ type: 'error', reason: 'networkError:fragLoadError', status: 410 });
+      await settle();
+      expect(c.status.hint).toMatchObject({ key: 'restarting' });
+      // The old source plays on from its buffer, then runs dry.
+      harness.engine.time(24);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.failure).toBeNull();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await jest.advanceTimersByTimeAsync(40_000);
+      expect(c.failure?.code).not.toBe('playback_not_found');
+      expect(c.failure).toMatchObject({ code: 'step_timeout' });
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+});

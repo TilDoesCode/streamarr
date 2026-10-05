@@ -1,3 +1,4 @@
+import { cardActions } from '@/player/recovery/ladder';
 import { STEP_BUDGET_MS } from '@/player/recovery/budgets';
 import { categoryOf } from '@/api/error-categories';
 import { describeError } from '@/api/error-text';
@@ -14,7 +15,7 @@ import {
   TICKS,
 } from '@/../jest/player/play';
 import { ProgressQueue } from '@/player/progress-queue';
-import { failureReason } from '@/screens/player/card-actions';
+import { cardButtons, failureReason } from '@/screens/player/card-actions';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
 
@@ -994,7 +995,7 @@ describe('matrix B — failed playbacks, stuck starts, switches, heartbeats (S4f
 
   row(
     'B07',
-    'transcoding_unavailable with params.reason: the card says why in words (ffmpeg not installed)',
+    'transcoding_unavailable with params.reason: the card says why in words (the server’s converter is missing)',
     async () => {
       jest.useFakeTimers();
       await i18n.changeLanguage('en');
@@ -1015,7 +1016,7 @@ describe('matrix B — failed playbacks, stuck starts, switches, heartbeats (S4f
         params: { reason: 'ffmpeg_unavailable' },
       });
       expect(failureReason(tr, c.failure!.params, known)).toBe(
-        'ffmpeg is not installed on the server.'
+        'The server’s video converter isn’t installed.'
       );
     }
   );
@@ -1401,6 +1402,79 @@ describe('matrix B — the sticky audio conversion inside a new start has the st
       expect(c.playback?.audioFallback).toBe(true);
       expect(harness.engine.sources.at(-1)?.startPosition).toBe(120);
       await c.stop();
+    }
+  );
+});
+
+describe('matrix B — live re-audit S9a2: a viewer switch on a slow server (S4i)', () => {
+  row(
+    'B19',
+    'a switch the server reports ready but whose new source shows no picture goes back to the previous choice with a notice, never through the ladder (S9a2 B13b)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux' } as never, 50);
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'switch',
+        reply.ok(harness.server.playback({ playbackId: id, revision: 2 } as never))
+      );
+      harness.server.answer('start', reply.ok(harness.server.playback({ playbackId: 'back1' })));
+      await c.setQuality(720);
+      expect(harness.engine.sources).toHaveLength(2);
+      expect(harness.engine.source?.keepLastFrame).toBe(true);
+      // The new source never shows a picture: the server converts too slowly.
+      await jest.advanceTimersByTimeAsync(40_000);
+      expect(harness.server.sent('switch')).toHaveLength(1);
+      expect(starts().at(-1)?.position).toBe(50);
+      expect(starts().at(-1)?.body.preferences).not.toMatchObject({ maxHeight: 720 });
+      harness.engine.started();
+      expect(c.failure).toBeNull();
+      expect(c.notice).toMatchObject({ kind: 'switchFailed' });
+      expect(c.preferences.maxHeight).toBeUndefined();
+      await c.stop();
+    }
+  );
+
+  row(
+    'B19',
+    'a switch that showed its picture is done: a later reload without a picture goes through the ladder, never back to the old choice',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux' } as never, 50);
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'switch',
+        reply.ok(harness.server.playback({ playbackId: id, revision: 2 } as never))
+      );
+      await c.setQuality(720);
+      harness.engine.started();
+      harness.engine.time(80);
+      // Much later the picture breaks and the reload's source never shows one.
+      harness.engine.fail('mediaError:bufferAppendError');
+      await settle();
+      expect(harness.engine.sources).toHaveLength(3);
+      await jest.advanceTimersByTimeAsync(40_000);
+      expect(starts()).toHaveLength(1);
+      expect(c.notice?.kind).not.toBe('switchFailed');
+      expect(c.preferences.maxHeight).toBe(720);
+      await c.stop();
+    }
+  );
+
+  row(
+    'B19',
+    'the card never offers VLC where there is no VLC; "no picture" can be retried (S9a2 B13b)',
+    () => {
+      expect(cardButtons(['otherVersion', 'useVlc'], { vlc: false })).toEqual([
+        'otherVersion',
+        'back',
+      ]);
+      expect(cardButtons(['otherVersion', 'useVlc'], { vlc: true })).toEqual([
+        'otherVersion',
+        'useVlc',
+        'back',
+      ]);
+      expect(cardActions('T7', 'picture_timeout')).toContain('retry');
     }
   );
 });

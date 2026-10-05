@@ -654,7 +654,7 @@
       },
       "playback_not_found": {
         "title": "Playback ended",
-        "message": "This playback has ended or expired. Start it again."
+        "message": "This playback has ended or expired. Start it again to continue where you left off."
       },
       "too_many_playbacks": {
         "title": "Too many playbacks",
@@ -662,7 +662,7 @@
       },
       "release_dead": {
         "title": "Version unavailable",
-        "message": "This version (and every fallback) is missing data. Choose another version."
+        "message": "This version and the versions tried in its place are missing data. Choose another version."
       },
       "repair_failed": {
         "title": "Repair failed",
@@ -690,7 +690,7 @@
       },
       "no_more_methods": {
         "title": "No more options",
-        "message": "Every playback method was tried. Try another version."
+        "message": "Every way to play was tried. Try another version."
       },
       "unknown_audio_stream": {
         "title": "Audio track not found",
@@ -713,8 +713,8 @@
         "message": "The server couldn’t read this version. Try another version."
       },
       "stream_expired": {
-        "title": "Stream expired",
-        "message": "The stream expired. Start playback again."
+        "title": "Access expired",
+        "message": "The access to this video expired. Start playback again to continue where you left off."
       },
       "no_playable_file": {
         "title": "No video file",
@@ -806,7 +806,7 @@
       },
       "ffmpeg_unavailable": {
         "title": "Conversion not available",
-        "message": "The server can’t convert videos right now (ffmpeg is missing). Try another version."
+        "message": "The server can’t convert videos right now (its converter is missing). Try another version."
       },
       "transcoding_disabled": {
         "title": "Conversion turned off",
@@ -857,8 +857,8 @@
         "message": "The server sent something that isn’t video, for example from a proxy or a sign-in page. Check the network and try again."
       },
       "decoder_reclaimed": {
-        "title": "The video decoder was taken away",
-        "message": "Another app or the system took over the video decoder. Try again."
+        "title": "Another app took over the video",
+        "message": "Another app or the system took over video playback on this device. Try again."
       },
       "cleartext_not_permitted": {
         "title": "Unencrypted connection blocked",
@@ -870,7 +870,7 @@
       },
       "vlc_dialog": {
         "title": "VLC asked a question",
-        "message": "VLC wanted an answer (certificate, login or codec) and was stopped. Another way to play is tried; otherwise choose another version."
+        "message": "VLC stopped to ask for a certificate, a login or a missing component. The app tries another way to play; if that fails, choose another version."
       },
       "playback_stalled": {
         "title": "Playback keeps stopping",
@@ -1030,7 +1030,7 @@
     },
     "reasons": {
       "transcoding_disabled": "Converting videos is turned off on this server.",
-      "ffmpeg_unavailable": "ffmpeg is not installed on the server.",
+      "ffmpeg_unavailable": "The server’s video converter isn’t installed.",
       "no_local_listener": "The server has no local converter running.",
       "too_many_sessions": "The server converts as many videos as it can at once.",
       "insufficient_disk": "The server's disk is full."

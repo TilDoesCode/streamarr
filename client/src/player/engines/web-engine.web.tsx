@@ -51,6 +51,8 @@ const MEDIA_RECOVERY_TOTAL = 6;
 export const FRAG_FAIL_BUDGET = 3;
 /** Main fragments loaded this recently mean the network is fine while the audio fails. */
 const AUDIO_ALONE_MS = 15_000;
+/** hls.js `ErrorDetails.INTERNAL_ABORTED`. */
+const SELF_ABORTED = 'aborted';
 
 type HlsModule = typeof import('hls.js');
 let hlsModule: HlsModule | null = null;
@@ -447,6 +449,8 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.emit({ type: 'stats', stats: { bandwidth: Math.round(hls.bandwidthEstimate) } });
       });
       hls.on(Events.ERROR, (_event, data: ErrorData) => {
+        // hls.js cancels its own requests on a seek or a track switch: never a failure (S9a2 SEEK-SUB, D29).
+        if (!data.fatal && data.details === SELF_ABORTED) return;
         const audioCode = audioErrorCode(data);
         if (audioCode) this.emit({ type: 'audioError', code: audioCode });
         // hls.js nudges over a stall without a `waiting` from the element: the status layer shows it (D04).

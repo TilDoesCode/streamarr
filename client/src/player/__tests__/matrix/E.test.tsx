@@ -266,7 +266,7 @@ describe('matrix E — Player UI states', () => {
     await renderWithProviders(<PlayerStatusView status={status} onAction={jest.fn()} />);
     expect(screen.getByTestId('player-status')).toHaveProp('pointerEvents', 'none');
     expect(screen.queryByTestId('player-status-action-resume')).toBeNull();
-    expect(screen.getByText('Paused: call.')).toBeOnTheScreen();
+    expect(screen.getByText('Paused: incoming call.')).toBeOnTheScreen();
     jest.restoreAllMocks();
   });
   row('E12', 'on touch the actions are buttons without preferred focus', async () => {
@@ -473,7 +473,7 @@ describe('matrix E — code review S1-S4 (S4b)', () => {
 
   row(
     'E11',
-    'with visible controls the hint moves under the top bar (below a notice) and the spinner leaves the centre (review 20)',
+    'with visible controls the hint and the spinner move under the top bar (below a notice); the spinner is never hidden (review 20, S9a2 START)',
     () => {
       const base = { tv: false, spinner: true, top: 80, noticeShown: false, noticeHeight: 64 };
       expect(statusLayout({ ...base, controlsVisible: false })).toEqual({
@@ -483,12 +483,12 @@ describe('matrix E — code review S1-S4 (S4b)', () => {
       });
       expect(statusLayout({ ...base, controlsVisible: true })).toEqual({
         anchor: 'top',
-        spinner: false,
+        spinner: true,
         offset: 80,
       });
       expect(statusLayout({ ...base, controlsVisible: true, noticeShown: true })).toEqual({
         anchor: 'top',
-        spinner: false,
+        spinner: true,
         offset: 144,
       });
       expect(statusLayout({ ...base, controlsVisible: true, tv: true })).toEqual({
@@ -871,4 +871,23 @@ describe('matrix E — the poster is asked for only under the switching card (S4
     expect(harness.engine.source?.keepLastFrame).toBe(false);
     await c.stop();
   });
+});
+
+describe('matrix E — live re-audit S9a2: the start at a saved position (S4i)', () => {
+  row(
+    'E02',
+    'while a source loads at 1:30 the clock says 1:30, not 0:00; once it plays the engine clock counts (S9a2 START)',
+    async () => {
+      harness.server.answer('start', reply.ok(harness.server.playback()));
+      const c = newController({ startSeconds: 90 });
+      await c.start();
+      // A loading engine reports 0 until its seek to the start position lands.
+      harness.engine.time(0, 180);
+      expect(c.position).toBe(90);
+      harness.engine.started();
+      harness.engine.time(91, 600);
+      expect(c.position).toBe(91);
+      await c.stop();
+    }
+  );
 });

@@ -25,7 +25,7 @@ import { rememberedAudioLanguage } from '@/player/audio-preference';
 import { PlaybackController } from '@/player/controller';
 import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
-import { nativeCandidates } from '@/player/engines';
+import { nativeCandidates, vlcAvailable } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { createPlayer } from '@/player/caps-fallback';
 import { lockPlayerLandscape } from '@/player/orientation';
@@ -230,7 +230,7 @@ export function PlayScreen() {
 
   const failure = controller?.failure;
   const code = capsError ?? failure?.code ?? (workId ? 'unknown' : 'not_found');
-  const actions = cardButtons(failure?.actions);
+  const actions = cardButtons(failure?.actions, { vlc: vlcAvailable() });
   const reason = failureReason(untypedT, failure?.params, (key) =>
     i18n.exists(`errors.reasons.${key}`)
   );
