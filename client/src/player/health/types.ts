@@ -12,6 +12,8 @@ export type EngineHealth = {
   bandwidthBps?: number;
   /** The last video segment: server wait until the first byte, transfer after it, and its size (C08 vs C03). */
   fetch?: { waitMs: number; transferMs: number; bytes: number };
+  /** Media seconds a transcode delivered per second the client waited, over the last segments (< 1 = slower than real time). */
+  conversionRate?: number;
   /** AirPlay / Remote Playback: picture checks off. */
   external?: boolean;
   /** Engine clock read directly, not from time events (D35). */

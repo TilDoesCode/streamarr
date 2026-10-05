@@ -39,9 +39,9 @@ describe('hls.js retries (B13b: Retry-After is not readable for hls.js requests)
     const onError = jest.fn();
     const onSuccess = jest.fn();
     new Loader().load({}, {}, { onError, onSuccess });
-    FakeHlsLoader.last!.fail(404, '10');
+    FakeHlsLoader.last!.fail(404);
     expect(last.status).toBe(404);
-    expect(onError).toHaveBeenCalledWith({ code: 404, text: '' }, {}, expect.anything(), {});
+    expect(onError).toHaveBeenCalledWith({ code: 404, text: '' }, {}, null, {});
     FakeHlsLoader.last!.succeed();
     expect(last.status).toBeUndefined();
     expect(onSuccess).toHaveBeenCalled();

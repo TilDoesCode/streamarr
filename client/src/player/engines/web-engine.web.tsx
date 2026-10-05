@@ -28,6 +28,21 @@ type WebMediaCounters = {
 };
 
 const MAX_SUBTITLE_REASSERTS = 5;
+/** hls.js errors that mean the segment's data is broken (B13b); quota/append-progress errors are excluded (review B2). */
+const CORRUPT_FRAGMENT = new Set(['fragParsingError', 'fragDecryptError', 'bufferAppendError']);
+/** Video segments the conversion speed is measured over (one slow first byte says nothing, review B3). */
+const CONVERSION_SEGMENTS = 3;
+
+/** Media seconds the server delivered per second of waiting, over the last segments; undefined until known. */
+export function conversionRate(
+  waits: readonly { waitMs: number; mediaMs: number }[]
+): number | undefined {
+  if (waits.length < CONVERSION_SEGMENTS) return undefined;
+  const waited = waits.reduce((sum, item) => sum + item.waitMs, 0);
+  const media = waits.reduce((sum, item) => sum + item.mediaMs, 0);
+  return waited > 0 ? media / waited : undefined;
+}
+
 /** Media errors further apart than this start a new recovery round. */
 const MEDIA_RECOVERY_WINDOW_MS = 30_000;
 /** In-engine media recoveries per source, whatever their spacing: then the ladder takes over (review 18). */
@@ -139,6 +154,8 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   /** When the last main (video) fragment arrived, and how long its server wait and transfer took. */
   private lastMainLoad = 0;
   private lastFetch: EngineHealth['fetch'];
+  /** The server waits of the last video segments and their media length (conversion speed, C08). */
+  private recentWaits: { waitMs: number; mediaMs: number }[] = [];
   /** Parse/decode failures per fragment of this source, and the pending delayed retry. */
   private readonly fragFailures = new Map<string, number>();
   private fragRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -348,7 +365,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     }
     this.pending = null;
     // The picture of the old source stays until the new one shows its first frame (E18).
-    const poster = this.hls ? lastFrame(video) : undefined;
+    const poster = this.hls && source.keepLastFrame ? lastFrame(video) : undefined;
     this.teardown();
     video.poster = poster ?? '';
     if (source.kind === 'hls' && this.mode === 'hls.js' && !hlsModule) {
@@ -386,6 +403,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       const lastStatus: LoadStatus = {};
       this.lastMainLoad = 0;
       this.lastFetch = undefined;
+      this.recentWaits = [];
       const BaseLoader = (Hls as { DefaultConfig?: { loader?: unknown } }).DefaultConfig?.loader;
       const hls = new Hls({
         startPosition: source.startPosition ?? -1,
@@ -417,12 +435,14 @@ export class WebEngine extends EngineBase implements PlayerEngine {
           this.lastMainLoad = Date.now();
           // Waiting for the first byte is the server; the transfer after it is the network (C08 vs C03).
           const { loading, loaded } = data.frag.stats;
-          if (loading.first > 0 && loading.end >= loading.first)
-            this.lastFetch = {
-              waitMs: loading.first - loading.start,
-              transferMs: loading.end - loading.first,
-              bytes: loaded,
-            };
+          if (loading.first > 0 && loading.end >= loading.first) {
+            const waitMs = loading.first - loading.start;
+            this.lastFetch = { waitMs, transferMs: loading.end - loading.first, bytes: loaded };
+            this.recentWaits = [
+              ...this.recentWaits,
+              { waitMs, mediaMs: data.frag.duration * 1000 },
+            ].slice(-CONVERSION_SEGMENTS);
+          }
         }
         this.emit({ type: 'stats', stats: { bandwidth: Math.round(hls.bandwidthEstimate) } });
       });
@@ -470,14 +490,15 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     this.statsTimer = setInterval(() => this.pollStats(), 1000);
   }
 
-  /**
-   * One fragment that keeps failing to parse or decode (a corrupt segment): hls.js would fetch it again at once,
-   * thousands of times a minute (B13b). Retries wait 1 s, then 2 s; the third failure stops loading and goes to the
-   * ladder. True when the error was handled here.
-   */
+  /** A segment that keeps failing to parse or decode gets 1 s, 2 s, then the ladder, never a hot loop (B13b). */
   private fragmentFails(hls: HlsPlayer, data: ErrorData): boolean {
     const frag = data.frag;
-    if (!frag || data.type === 'networkError' || (frag.type !== 'main' && frag.type !== 'audio'))
+    // Quota and append pressure is hls.js's own business (it shrinks the buffer, D05); only bad segment data counts.
+    if (
+      !frag ||
+      !CORRUPT_FRAGMENT.has(data.details) ||
+      (frag.type !== 'main' && frag.type !== 'audio')
+    )
       return false;
     const key = `${frag.type}:${frag.level}:${String(frag.sn)}`;
     const count = (this.fragFailures.get(key) ?? 0) + 1;
@@ -589,6 +610,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       readyForDisplay: this.started ? video.readyState >= 2 : undefined,
       bandwidthBps: this.hls ? Math.round(this.hls.bandwidthEstimate) || undefined : undefined,
       fetch: this.lastFetch,
+      conversionRate: conversionRate(this.recentWaits),
       external: video.remote?.state === 'connected' ? true : undefined,
       nativePosition: video.currentTime,
       // Only MSE data passed CORS (a plain cross-origin `src` would taint the canvas); only while the rule can fire.

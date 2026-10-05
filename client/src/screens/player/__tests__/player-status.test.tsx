@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 
 import i18n from '@/i18n';
@@ -31,6 +31,17 @@ describe('status hint buttons and focus (E12, review M15, S9a D10)', () => {
     expect(label).toHaveTextContent('Try now');
     expect(label.props.numberOfLines).toBeUndefined();
     expect(StyleSheet.flatten(label.props.style).color).toBe(colors.primary.foreground);
+  });
+
+  it('keyboard focus on web shows the focus ring on the pill (review R6)', async () => {
+    await renderWithProviders(<PlayerStatusView status={status} onAction={jest.fn()} />);
+    const pill = () =>
+      StyleSheet.flatten(screen.getByTestId('player-status-action-tryNow-pill').props.style);
+    expect(pill().borderColor).toBe('transparent');
+    await act(async () => fireEvent(screen.getByTestId('player-status-action-tryNow'), 'focus'));
+    expect(pill().borderColor).toBe(colors.focus.DEFAULT);
+    await act(async () => fireEvent(screen.getByTestId('player-status-action-tryNow'), 'blur'));
+    expect(pill().borderColor).toBe('transparent');
   });
 
   it('TV: no buttons at all, so nothing can take the focus', async () => {

@@ -10,7 +10,6 @@ import {
   RECURRING_INCIDENTS,
   RECURRING_WINDOW_MS,
   STEP_BUDGET_MS,
-  STEP_MAX_MS,
 } from './budgets';
 import {
   Incident,
@@ -21,8 +20,9 @@ import {
   type LadderStep,
 } from './ladder';
 
-/** Aborts a step that ran out of its budget; `stepError` receives it. */
-export const STEP_TIMEOUT = new Error('step_timeout');
+import { StepBudget, STEP_TIMEOUT } from './step-budget';
+
+export { STEP_TIMEOUT } from './step-budget';
 
 /** The viewer's audio and subtitle (server indexes) at the moment of the failure; every step keeps them. */
 export type StepTracks = { audio: number | null; subtitle: number | null };
@@ -82,9 +82,7 @@ export class RecoveryRunner {
   private sourceDead = false;
   /** A step is replacing the source: errors of the old one are noise. */
   replacing = false;
-  private stepAbort: AbortController | null = null;
-  private stepTimer: ReturnType<typeof setTimeout> | null = null;
-  private stepStarted = 0;
+  private budget: StepBudget | null = null;
   /** Since when the viewer looks at a spinner instead of the picture in this incident. */
   private stuckSince = 0;
   /** Last time a running step's server reported progress (a state change). */
@@ -172,9 +170,9 @@ export class RecoveryRunner {
 
   /** The server reports progress for the running step (a new start state): its budget starts over. */
   progress(): void {
-    if (!this.current?.running || !this.stepAbort) return;
+    if (!this.current?.running || !this.budget) return;
     this.progressAt = Date.now();
-    this.armStepTimer(this.stepAbort);
+    this.budget.extend();
   }
 
   /** The other version a V step is starting (kept for the retries of that start). */
@@ -189,12 +187,6 @@ export class RecoveryRunner {
     this.clear();
     this.stuckSince = 0;
     this.host.giveUp(current.failure, current.extra, this.attempts);
-  }
-
-  private armStepTimer(abort: AbortController): void {
-    if (this.stepTimer) clearTimeout(this.stepTimer);
-    const left = Math.min(STEP_BUDGET_MS, this.stepStarted + STEP_MAX_MS - Date.now());
-    this.stepTimer = setTimeout(() => abort.abort(STEP_TIMEOUT), Math.max(0, left));
   }
 
   /** A step that waits (backoff, offline) runs now. */
@@ -249,10 +241,8 @@ export class RecoveryRunner {
   private clear(): void {
     const current = this.current;
     if (current?.timer) clearTimeout(current.timer);
-    if (this.stepTimer) clearTimeout(this.stepTimer);
-    this.stepTimer = null;
-    this.stepAbort?.abort();
-    this.stepAbort = null;
+    this.budget?.cancel();
+    this.budget = null;
     this.replacing = false;
     this.current = null;
   }
@@ -287,24 +277,21 @@ export class RecoveryRunner {
     const replaces = step === 'N' || step === 'V';
     if (replaces) this.sourceDead = true;
     this.replacing = replaces;
-    const abort = new AbortController();
-    this.stepAbort = abort;
-    this.stepStarted = Date.now();
-    this.progressAt = 0;
     // The step's own budget: a server that never gets the new source ready fails the step.
-    this.armStepTimer(abort);
+    const budget = new StepBudget();
+    this.budget = budget;
+    this.progressAt = 0;
     let ran = true;
     let thrown: unknown = undefined;
     try {
-      ran = await this.host.run(step, recovery, abort.signal);
+      ran = await this.host.run(step, recovery, budget.signal);
     } catch (error) {
       thrown =
-        abort.signal.reason === STEP_TIMEOUT && this.current === recovery ? STEP_TIMEOUT : error;
+        budget.signal.reason === STEP_TIMEOUT && this.current === recovery ? STEP_TIMEOUT : error;
     }
-    if (this.stepAbort === abort) {
-      if (this.stepTimer) clearTimeout(this.stepTimer);
-      this.stepTimer = null;
-      this.stepAbort = null;
+    if (this.budget === budget) {
+      budget.end();
+      this.budget = null;
       this.replacing = false;
     }
     // Replaced meanwhile (cancelled, a newer failure, or given up).

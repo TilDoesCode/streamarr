@@ -1,8 +1,4 @@
-/**
- * hls.js's own retries. hls.js does not hand fragment and playlist response headers to the app, so the server's
- * `Retry-After` is unknown here (B13b): a fixed short backoff, few retries, then the ladder (whose countdown shows
- * the wait it really uses). The playback API requests the app sends itself do read `Retry-After`.
- */
+// hls.js hides response headers, so its retries use a fixed backoff and the ladder shows its own wait (B13b).
 
 /** The HTTP status of the last failed hls.js request; undefined after the next success. */
 export type LoadStatus = { status?: number };

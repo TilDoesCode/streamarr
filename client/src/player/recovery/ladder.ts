@@ -112,10 +112,10 @@ export function nextStep(
 ): Decision {
   const { category, code } = failure;
   const after = (wait: number | undefined, fallback: number) => seconds(wait ?? fallback);
-  // A device or method failure that keeps coming back is not fixed by reloading again (review R5).
-  const methodFailure = category === 'T5' || category === 'T6' || category === 'T7';
-  if (context.recurring && context.attached && methodFailure && incident.attempts.length === 0)
-    return stepDown(incident, category === 'T5' ? 'buffering' : 'noPicture');
+  // A device failure that keeps coming back is not fixed by reloading again (R5); server and network faults never step down.
+  const deviceFailure = category === 'T7' || code === 'playback_slideshow';
+  if (context.recurring && context.attached && deviceFailure && incident.attempts.length === 0)
+    return stepDown(incident, category === 'T5' ? 'deviceSlow' : 'noPicture');
   switch (category) {
     case 'T1': {
       // Retrying cannot get past a certificate problem or a network that answers with its own sign-in page (A26).

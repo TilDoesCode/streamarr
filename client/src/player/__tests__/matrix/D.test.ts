@@ -1190,9 +1190,15 @@ describe('matrix D — buffer full, live window, audio switch, drift (S4f)', () 
       const events: EngineEvent[] = [];
       engine.subscribe((event) => void events.push(event));
       engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
-      FakeHls.last.error('mediaError', 'bufferFullError', { fatal: false });
+      // hls.js 1.7.3 sends the fragment with it; three quota errors of one segment are still hls.js's own business (review B2).
+      for (let round = 0; round < 3; round += 1)
+        FakeHls.last.error('mediaError', 'bufferFullError', {
+          fatal: false,
+          frag: { type: 'main', sn: 6, level: 0 },
+        });
       expect(events.filter((event) => event.type === 'error')).toEqual([]);
       expect(FakeHls.last.recoverMediaError).not.toHaveBeenCalled();
+      expect(FakeHls.last.stopLoad).not.toHaveBeenCalled();
       engine.release();
     }
   );
@@ -1314,6 +1320,63 @@ describe('matrix D — buffer full, live window, audio switch, drift (S4f)', () 
       engine.release();
       await i18n.changeLanguage('en');
       expect(i18n.t('info.dropped', { ns: 'player', count: 12 } as never)).toMatch(/12/);
+    }
+  );
+});
+
+describe('matrix D — code review S4c-S4f (S4g)', () => {
+  row(
+    'D34',
+    'a frozen clock in the last seconds ends the title, never a stall ladder or a reload (review M04)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, {}, 0);
+      await playFor(5, (second) => ({
+        position: 590 + second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000 },
+      }));
+      // The clock stands at 9:55 while the engine says it plays: the stall verdict itself ends it, no hint first.
+      await jest.advanceTimersByTimeAsync(6_000);
+      expect(c.ended).toBe(true);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D35',
+    'a clock that jumps far (more than 3 s) is a seek, not a running picture: still loading (review M05)',
+    async () => {
+      jest.useFakeTimers();
+      const c = newController({ startSeconds: 90 });
+      await c.start();
+      harness.engine.state('playing');
+      harness.engine.time(0, 600);
+      harness.engine.time(90, 600);
+      expect(c.status.spinner).toBe(true);
+      harness.engine.time(90.6, 600);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D33',
+    "web: the frame counter of a new source starts at 0, not at the old source's count (review M08)",
+    async () => {
+      const engine = new WebEngine();
+      const video = new FakeVideoElement();
+      (engine as unknown as { attach(video: unknown): void }).attach(video);
+      await loadHls();
+      engine.load({ uri: 'http://server.test/a/master.m3u8', kind: 'hls' });
+      video.present(500);
+      engine.load({ uri: 'http://server.test/b/master.m3u8', kind: 'hls' });
+      expect((await engine.readHealth()).framesPresented).toBe(0);
+      video.present(24);
+      expect((await engine.readHealth()).framesPresented).toBe(24);
+      engine.release();
     }
   );
 });

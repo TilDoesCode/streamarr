@@ -1241,13 +1241,12 @@ describe('matrix C — the countdown is the wait the player really uses (S9a P8,
 describe('matrix C — a remux whose segments wait for the server (S9a C08)', () => {
   row(
     'C08',
-    'remux: a segment that waited for its first byte far longer than it took to arrive is the server, not "buffering"',
+    'remux (no conversion) or a quick first byte: never "the server converts", the network or plain buffering (review B3)',
     async () => {
       harness.features.probe = true;
-      const c = await playing(
-        {},
-        {
-          method: 'remux',
+      const media = (method: string) =>
+        ({
+          method,
           mediaInfo: {
             durationTicks: 600 * TICKS,
             audioTracks: [],
@@ -1255,15 +1254,28 @@ describe('matrix C — a remux whose segments wait for the server (S9a C08)', ()
             bitrateKbps: 2_200,
             video: { height: 1080 },
           },
-        } as never,
-        10
-      );
-      harness.engine.setHealth({ fetch: { waitMs: 5_400, transferMs: 300, bytes: 1_000_000 } });
+        }) as never;
+      const c = await playing({}, media('remux'), 10);
+      // A LAN segment: 30 ms to the first byte, 10 ms to arrive; and one long wait without a measured rate.
+      harness.engine.setHealth({ fetch: { waitMs: 30, transferMs: 10, bytes: 4_000_000 } });
       await jest.advanceTimersByTimeAsync(1_000);
       harness.engine.emit({ type: 'buffering', buffering: true });
       await jest.advanceTimersByTimeAsync(4_000);
-      expect(c.status.hint).toEqual({ key: 'serverSlow' });
+      expect(c.status.hint).toEqual({ key: 'buffering' });
+      harness.engine.setHealth({ fetch: { waitMs: 5_400, transferMs: 300, bytes: 1_000_000 } });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.hint?.key).not.toBe('serverSlow');
       await c.stop();
+      harness.reset();
+      harness.features.probe = true;
+      // A transcode that delivers 6 s of media per 9 s of waiting over three segments converts slower than real time.
+      const t = await playing({}, media('transcode'), 10);
+      harness.engine.setHealth({ conversionRate: 0.66, bandwidthBps: 1_000_000 });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(t.status.hint).toEqual({ key: 'serverSlow' });
+      await t.stop();
     }
   );
 });
@@ -1464,6 +1476,132 @@ describe('matrix C — repair, conversion start, renditions, durations, image su
       harness.engine.started();
       await c.selectSubtitle(null);
       expect(harness.server.sent('switch')[1]?.body).toMatchObject({ subtitleStreamIndex: -1 });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — code review S4c-S4f (S4g)', () => {
+  row(
+    'C14',
+    'three 503 incidents a few minutes apart: each one reloads, the method is never stepped down (review R2)',
+    async () => {
+      const c = await playing({}, { method: 'direct' } as never, 100);
+      for (let incident = 0; incident < 3; incident += 1) {
+        harness.engine.fail(exo(503));
+        await jest.advanceTimersByTimeAsync(6_000);
+        harness.engine.started();
+        await playOn(180);
+      }
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(4);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C14',
+    'a stall while hls.js retries a 504 is the server waiting its own budget: lower quality, not the server-error reload (review M20)',
+    async () => {
+      const c = await playing(
+        {},
+        {
+          method: 'transcode',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        100
+      );
+      harness.engine.emit({ type: 'loadRetry', status: 504 });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(15_000);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({
+        preferences: expect.objectContaining({ maxHeight: 720 }),
+      });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C10',
+    'a media request answered 401/403 (the capability is gone) starts anew, like a 404 (review M22)',
+    async () => {
+      for (const status of [401, 403]) {
+        harness.reset();
+        const c = await playing({}, { method: 'remux' } as never, 60);
+        harness.engine.emit({ type: 'error', reason: 'networkError:fragLoadError', status });
+        await settle();
+        expect(starts()).toHaveLength(2);
+        expect(starts().at(-1)?.position).toBe(60);
+        await c.stop();
+      }
+    }
+  );
+
+  row(
+    'C04',
+    'a repair answer that arrives after the playback was replaced is dropped (review M19)',
+    async () => {
+      const c = await playing({}, { method: 'direct' } as never, 300);
+      const old = c.playback!.playbackId!;
+      let release: (value: unknown) => void = () => undefined;
+      const gate = new Promise((resolve) => (release = resolve));
+      // The repair status of the old playback answers only after the new start attached.
+      harness.server.answer('poll', async () => {
+        await gate;
+        return reply.ok(
+          harness.server.playback({
+            playbackId: old,
+            repair: { state: 'downloadingRecovery' },
+          } as never)
+        );
+      });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.fail(exo(404));
+      await settle();
+      release(undefined);
+      await settle();
+      expect(c.playback!.playbackId).not.toBe(old);
+      expect(c.playback?.repair ?? null).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — subtitles after a healthy stretch (S4g)', () => {
+  row(
+    'C22',
+    'a subtitle failure long after a successful retry is a first failure again: retried, never off for good (review B5)',
+    async () => {
+      const subtitleTracks = [
+        { index: 3, language: 'de', title: 'German', deliveredAs: 'webvtt', selected: true },
+      ];
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: { durationTicks: 6e10, audioTracks: [], subtitleTracks },
+        } as never,
+        100
+      );
+      const shown = {
+        audio: [],
+        subtitles: [{ id: 's0', label: 'German', language: 'de', selected: true }],
+      };
+      harness.engine.emit({ type: 'tracks', tracks: shown });
+      await settle();
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      expect(c.notice?.params?.retry).toBe('later');
+      await playOn(61);
+      harness.engine.emit({ type: 'tracks', tracks: shown });
+      await playOn(1800);
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      expect(c.notice?.params?.retry).toBe('later');
       await c.stop();
     }
   );

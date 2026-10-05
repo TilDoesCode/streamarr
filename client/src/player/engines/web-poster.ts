@@ -1,15 +1,15 @@
-/**
- * The last frame as a poster: `<video>` turns black the moment its source changes, while expo-video keeps the old
- * picture until the new one renders (E18). Only a CORS-clean picture (MSE, hls.js) can be read; else none.
- */
+const POSTER_WIDTH = 640;
+
+/** The last frame as a poster under the switching card (E18); none when the picture cannot be read. */
 export function lastFrame(video: HTMLVideoElement): string | undefined {
   if (typeof document === 'undefined' || video.readyState < 2 || !video.videoWidth)
     return undefined;
   try {
     const canvas = document.createElement('canvas');
-    // Half size is enough for a picture that shows for a few seconds under the switching card.
-    canvas.width = Math.round(video.videoWidth / 2);
-    canvas.height = Math.round(video.videoHeight / 2);
+    // A small picture is enough for a few seconds under the card and keeps the encode cheap (review R5).
+    const scale = Math.min(1, POSTER_WIDTH / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
     const context = canvas.getContext('2d');
     if (!context) return undefined;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);

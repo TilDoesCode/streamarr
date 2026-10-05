@@ -133,15 +133,8 @@ export class FakeHlsLoader {
     this.callbacks = callbacks;
   }
 
-  fail(code: number, retryAfter?: string): void {
-    this.callbacks?.onError(
-      { code, text: '' },
-      {},
-      {
-        getResponseHeader: (name: string) => (name === 'Retry-After' ? (retryAfter ?? null) : null),
-      },
-      {}
-    );
+  fail(code: number): void {
+    this.callbacks?.onError({ code, text: '' }, {}, null, {});
   }
 
   succeed(): void {

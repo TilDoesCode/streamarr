@@ -29,12 +29,22 @@ function platformNow(): MediaPlatform {
 /** The measured profile, or the conservative one when measuring fails (E16): the player still starts. */
 export async function profileOrFallback(
   load: () => Promise<{ profile: DeviceProfile }>
-): Promise<{ profile: DeviceProfile; measured: boolean }> {
+): Promise<DeviceProfile> {
   try {
-    return { profile: (await load()).profile, measured: true };
+    return (await load()).profile;
   } catch (error) {
     if (__DEV__)
       console.warn('[player] device caps failed, playing with the fallback profile', error);
-    return { profile: fallbackProfile(platformNow()), measured: false };
+    return fallbackProfile(platformNow());
   }
+}
+
+/** Creates the player with the device's profile (or the fallback) and starts it; `make` returns null once the screen left. */
+export async function createPlayer<T extends { start(): Promise<void> }>(
+  load: () => Promise<{ profile: DeviceProfile }>,
+  make: (profile: DeviceProfile) => T | null
+): Promise<T | null> {
+  const player = make(await profileOrFallback(load));
+  void player?.start();
+  return player;
 }

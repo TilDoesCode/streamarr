@@ -27,7 +27,7 @@ import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
-import { profileOrFallback } from '@/player/caps-fallback';
+import { createPlayer } from '@/player/caps-fallback';
 import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
 import { noticeMs, noticeText, subtitleLabel } from '@/player/overlay-labels';
@@ -111,29 +111,27 @@ export function PlayScreen() {
     if (!workId) return;
     let cancelled = false;
     let current: PlaybackController | null = null;
-    profileOrFallback(loadDeviceCaps)
-      .then((caps) => {
-        if (cancelled) return;
-        current = new PlaybackController({
-          client,
-          accountId: account.id,
-          serverUrl: account.serverUrl,
-          profile: caps.profile,
-          nativeEngine: nativeCandidates()[0] ?? 'web',
-          workId,
-          releaseId,
-          startSeconds,
-          preferences: { audioLanguage: rememberedAudioLanguage(account.id), ...preferences },
-        });
-        setController(current);
-        if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
-        void current.start();
-      })
-      .catch((error: unknown) => {
-        // Anything else that breaks before the start is the app's own fault: its own text, never the generic one (E16).
-        if (__DEV__) console.warn('[player] start failed', error);
-        if (!cancelled) setCapsError('player_internal_error');
+    createPlayer(loadDeviceCaps, (profile) => {
+      if (cancelled) return null;
+      current = new PlaybackController({
+        client,
+        accountId: account.id,
+        serverUrl: account.serverUrl,
+        profile,
+        nativeEngine: nativeCandidates()[0] ?? 'web',
+        workId,
+        releaseId,
+        startSeconds,
+        preferences: { audioLanguage: rememberedAudioLanguage(account.id), ...preferences },
       });
+      setController(current);
+      if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
+      return current;
+    }).catch((error: unknown) => {
+      // Anything else that breaks before the start is the app's own fault: its own text, never the generic one (E16).
+      if (__DEV__) console.warn('[player] start failed', error);
+      if (!cancelled) setCapsError('player_internal_error');
+    });
     return () => {
       cancelled = true;
       void current?.stop().finally(() => void invalidateWatchQueries(queryClient, account.id));

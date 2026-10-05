@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
@@ -10,13 +11,12 @@ export type StatusActionProps = {
   onPress: () => void;
 };
 
-/**
- * A hint's action (touch and web only; TV hints have none). A plain pill: no glass backdrop, no lift transform and no
- * single-line clamp, which WebKit paints as an empty pill inside the glass card (S9a D10, iPhone Safari).
- */
+/** A hint's action on touch and web: a plain pill, because WebKit paints a glass one empty (S9a D10). */
 export function StatusAction({ testID, label, primary, onPress }: StatusActionProps) {
   const design = useDesign();
   const height = design.layout.controlHeight.md;
+  // Keyboard focus on web gets the app's focus ring (RN Web hides the browser outline, review R6).
+  const [focused, setFocused] = useState(false);
   return (
     <Pressable
       testID={testID}
@@ -24,14 +24,19 @@ export function StatusAction({ testID, label, primary, onPress }: StatusActionPr
       accessibilityLabel={label}
       hasTVPreferredFocus={false}
       onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexShrink: 0 })}>
       <View
+        testID={testID ? `${testID}-pill` : undefined}
         style={{
           minHeight: height,
           borderRadius: height / 2,
           paddingHorizontal: design.space.lg,
           justifyContent: 'center',
           backgroundColor: primary ? colors.primary.DEFAULT : colors.secondary.DEFAULT,
+          borderWidth: 2,
+          borderColor: focused ? colors.focus.DEFAULT : 'transparent',
         }}>
         <Text
           testID={testID ? `${testID}-label` : undefined}

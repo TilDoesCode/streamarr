@@ -38,6 +38,8 @@ export type StatusInput = {
   bandwidthBps: number | undefined;
   /** The last video segment's server wait and transfer (web, C08). */
   fetch?: { waitMs: number; transferMs: number; bytes: number };
+  /** Media seconds delivered per second waited over the last segments (web). */
+  conversionRate?: number;
   /** The server is repairing missing data of a direct-play release (C04). */
   repairing?: boolean;
   /** The engine is retrying a failed media request right now: its HTTP status, and whether only the audio fails. */
@@ -58,8 +60,13 @@ export function statusOf(input: StatusInput): PlayerStatus {
   if (phase === 'failed' || phase === 'stopped' || phase === 'resume') return NONE;
   const loading = !!input.loadingSince;
   if (input.offline) return show({ key: 'offline' }, loading || !!input.stallSince || !!recovery);
-  // A silent restart behind a picture that still plays: only the loading spinner of the new source.
-  if (recovery?.extra.quiet) return loading ? show(null, true) : NONE;
+  // A silent restart behind a picture that still plays; once the old picture stalls, the restart is said (review B1).
+  if (recovery?.extra.quiet) {
+    if (loading) return show(null, true);
+    if (!input.stallSince || input.paused) return NONE;
+    const hint = now - input.stallSince >= HINT_MS ? runningHint(recovery) : null;
+    return { spinner: true, hint, actions: [] };
+  }
   if (recovery?.running)
     // A step runs: say what it does; the viewer's own actions wait until it is done.
     return { spinner: true, hint: runningHint(recovery), actions: [] };
@@ -142,8 +149,12 @@ export function runningHint(recovery: Recovery): StatusHint {
 function stallHint(input: StatusInput): StatusHint {
   const { bandwidthBps, bitrateKbps: bitrate, fetch } = input;
   if (input.repairing) return { key: 'serverRepairing' };
-  // A segment that waited longer for its first byte than it took to arrive: the server converts slowly (S9a C08).
-  if (fetch && input.method !== 'direct' && fetch.waitMs > fetch.transferMs)
+  // Only a transcode converts; it is slow when it delivers less media than real time over several segments (C08, review B3).
+  if (
+    input.method === 'transcode' &&
+    input.conversionRate !== undefined &&
+    input.conversionRate < 1
+  )
     return { key: 'serverSlow' };
   const bandwidth =
     fetch && fetch.transferMs > 0 ? (fetch.bytes * 8 * 1000) / fetch.transferMs : bandwidthBps;

@@ -25,7 +25,7 @@ export const reply = {
 
 export type Route = 'start' | 'poll' | 'switch' | 'stop' | 'progress' | 'versions';
 export type ServerRequest = { route: Route; playbackId?: string; body?: Record<string, unknown> };
-type Scripted = Reply | ((request: ServerRequest) => Reply);
+type Scripted = Reply | ((request: ServerRequest) => Reply | Promise<Reply>);
 
 const TICKS = 10_000_000;
 
@@ -114,7 +114,7 @@ export class FakeServer {
     };
     this.requests.push(request);
     const next = this.queues[request.route].shift() ?? this.fallback(request);
-    const answer = typeof next === 'function' ? next(request) : next;
+    const answer = await (typeof next === 'function' ? next(request) : next);
     if ('network' in answer) throw new TypeError(answer.network);
     if ('hang' in answer)
       return new Promise<never>((_, reject) =>

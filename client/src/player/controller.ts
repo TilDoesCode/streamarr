@@ -18,7 +18,6 @@ import {
   type PlayerEngine,
 } from '@/player/engines';
 import { START_TOLERANCE } from '@/player/engines/start-seek';
-import { clock } from '@/player/format';
 import {
   getPlayback,
   mediaUrl,
@@ -37,27 +36,21 @@ import { HealthMonitor, HEALTH_TICK_MS } from '@/player/health/monitor';
 import type { EngineHealth } from '@/player/health/types';
 import { CLOCK_FROZEN_MS } from '@/player/health/watchdog';
 import { ProgressQueue, type ProgressAnswer } from '@/player/progress-queue';
+import { followServerTracks } from '@/player/server-tracks';
+import { SubtitleRetry } from '@/player/subtitle-retry';
 import { classify, type Classified, type ErrorCategory } from '@/player/recovery/classify';
 import {
-  AUTO_RETRIES,
-  AUTO_RETRY_WINDOW_MS,
   EMPTY_END_MS,
   END_MARGIN_SECONDS,
   HINT_MS,
   INCIDENT_RESET_MS,
   LOAD_RETRY_RECENT_MS,
-  ONLINE_SETTLE_MS,
   RESUME_REVALIDATE_MS,
   SEEK_DEBOUNCE_MS,
   SETTLE_MS,
   SPINNER_MS,
   STALL_LADDER_MS,
   START_BUDGET_MS,
-  STATE_BUDGET_MS,
-  STEP_BUDGET_MS,
-  STEP_MAX_MS,
-  SUBTITLE_RETRIES,
-  SUBTITLE_RETRY_MS,
   SYSTEM_PAUSE_MS,
 } from '@/player/recovery/budgets';
 import { cardActions, type Attempt, type LadderStep } from '@/player/recovery/ladder';
@@ -70,7 +63,11 @@ import {
   type StatusHint,
   type StepTracks,
 } from '@/player/recovery/runner';
+import { AutoRetry } from '@/player/recovery/auto-retry';
+import { shortFile, transportEnd } from '@/player/recovery/early-end';
 import { isRepairing } from '@/player/recovery/repair';
+import { startStuck, stallFailure, type LoadRetry } from '@/player/recovery/stall';
+import { StepBudget } from '@/player/recovery/step-budget';
 import { statusOf, type PlayerStatus } from '@/player/recovery/status';
 import { effectiveMuted } from '@/player/test-muted';
 
@@ -87,7 +84,6 @@ export type NoticeKind =
   | 'otherVersion'
   | 'audioFallback'
   | 'subtitleFailed'
-  | 'subtitleBack'
   | 'subtitleNotDeliverable'
   | 'audioRestarted';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
@@ -168,9 +164,8 @@ export const AUDIO_SWITCH_TIMEOUT_MS = 8_000;
 /** Audio switch measurements kept for diagnostics (newest last). */
 export const AUDIO_SWITCH_SAMPLES = 20;
 const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
-/** How often a new source re-applies the server's track picks over the engine's own choice. */
-const MAX_SERVER_TRACK_APPLIES = 3;
 const STEADY_STATES = new Set<EngineState>(['playing', 'paused', 'buffering', 'ended']);
+const BROKEN_PICTURE = new Set(['picture_black', 'picture_frozen', 'video_stalled']);
 const QUALITY_STEPS = [2160, 1080, 720, 480];
 /** A step's own source work: where it resumes, the viewer's tracks, and its budget's abort signal. */
 type StepContext = { position: number; tracks: StepTracks | null; signal: AbortSignal };
@@ -224,29 +219,26 @@ export class PlaybackController {
   /** Where and when the source ended early: another end there is the repeat (C32), elsewhere a cut stream. */
   private earlyEndAt: { position: number; at: number } | null = null;
   /** The engine is retrying a failed media request on its own (status of the last one). */
-  private loadRetry: { status: number; audio: boolean; at: number } | null = null;
+  private loadRetry: LoadRetry | null = null;
   /** The budget of a viewer's switch (or its restore): no server progress for a minute ends it (S9a P8). */
-  private switchBudget: {
-    abort: AbortController;
-    timer: ReturnType<typeof setTimeout> | null;
-    started: number;
-  } | null = null;
+  private switchBudget: StepBudget | null = null;
   private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
-  private subtitleRetry: {
-    index: number;
-    release: string | null;
-    failures: number;
-    state: 'off' | 'retrying';
-    timer: ReturnType<typeof setTimeout> | null;
-  } | null = null;
+  private readonly subtitleRetry = new SubtitleRetry({
+    current: () => this.currentSubtitle(),
+    release: () => this.playback?.version?.releaseId ?? null,
+    show: (index) => {
+      const id = this.localTrackId('subtitle', index);
+      if (id !== null) this.engine?.setSubtitleTrack(id);
+      return id !== null;
+    },
+  });
   private readonly undeliverableNoted = new Set<number>();
   private readonly runner: RecoveryRunner;
   /** Where the viewer chose to start (resume prompt): a restart before the first picture keeps it. */
   private chosenStart: number | null = null;
   /** Releases the ladder's "other version" step already played or tried. */
   private readonly triedReleases = new Set<string>();
-  private autoRetries: number[] = [];
-  private onlineTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly autoRetry = new AutoRetry();
   /** The current source showed a picture (first frame or a moving clock). */
   private pictured = false;
   private loadingSince = 0;
@@ -459,28 +451,18 @@ export class PlaybackController {
     this.offlineSince = online ? 0 : Date.now();
     // An outage never counts against a stall or start budget: back online, the clocks start over (no step-down).
     this.restartClocks();
-    if (this.onlineTimer) clearTimeout(this.onlineTimer);
-    this.onlineTimer = null;
+    this.autoRetry.cancel();
     if (online) {
       this.runner.online();
-      if (this.phase === 'failed' && this.failure?.category === 'T1') this.autoRetry();
+      if (this.phase === 'failed' && this.failure?.category === 'T1')
+        this.autoRetry.schedule(
+          () => !this.offline && this.phase === 'failed' && this.failure?.category === 'T1',
+          () => this.retry(true)
+        );
       void this.revalidate();
     }
     this.tickStatus();
     this.changed();
-  }
-
-  /** A "connection lost" card retries once the network stayed back for a moment, a few times per 10 minutes. */
-  private autoRetry(): void {
-    this.onlineTimer = setTimeout(() => {
-      this.onlineTimer = null;
-      const now = Date.now();
-      this.autoRetries = this.autoRetries.filter((at) => now - at < AUTO_RETRY_WINDOW_MS);
-      if (this.offline || this.autoRetries.length >= AUTO_RETRIES) return;
-      if (this.phase !== 'failed' || this.failure?.category !== 'T1') return;
-      this.autoRetries.push(now);
-      this.retry(true);
-    }, ONLINE_SETTLE_MS);
   }
 
   private restartClocks(): void {
@@ -488,6 +470,8 @@ export class PlaybackController {
     if (this.stallSince) this.stallSince = now;
     if (this.loadingSince) this.loadingSince = now;
     if (this.seekTarget !== null) this.seekAt = now;
+    // A start state's budget starts over too: an outage while the server starts is not the server stuck (review B4).
+    if (this.stateSince) this.stateSince = now;
   }
 
   /** After a long background or an outage: a playback the server ended starts again at the position (A09, B24). */
@@ -683,42 +667,16 @@ export class PlaybackController {
   /** Subtitles failed to load or parse (C22, C23): off with a notice, one retry later; never a reason to stop. */
   private onSubtitleError(code: string): void {
     if (this.closed || this.phase !== 'playing') return;
-    const retry = this.subtitleRetry;
-    // While they are off, more failures of the same subtitles find nothing shown and change nothing.
-    const index = retry?.state === 'retrying' ? retry.index : this.currentSubtitle();
-    if (index === null) return;
-    const failures = (retry?.index === index ? retry.failures : 0) + 1;
-    this.clearSubtitleRetry();
+    const failed = this.subtitleRetry.fail();
+    if (!failed) return;
     // The server's pick must not be re-applied over the failed track right after a load.
     this.serverTracksOff?.();
     this.engine?.setSubtitleTrack(null);
-    const timer =
-      failures < SUBTITLE_RETRIES + 1
-        ? setTimeout(() => this.retrySubtitle(), SUBTITLE_RETRY_MS)
-        : null;
-    const release = this.playback?.version?.releaseId ?? null;
-    this.subtitleRetry = { index, release, failures, state: 'off', timer };
-    this.showNotice('subtitleFailed', { index: `${index}`, code, retry: timer ? 'later' : '' });
-  }
-
-  private retrySubtitle(): void {
-    const retry = this.subtitleRetry;
-    if (!retry || this.closed) return;
-    retry.timer = null;
-    // The viewer chose other subtitles meanwhile: theirs win.
-    if (this.currentSubtitle() !== null) return this.clearSubtitleRetry();
-    // Subtitle indexes belong to a release: a failed one is not retried in another.
-    if ((this.playback?.version?.releaseId ?? null) !== retry.release)
-      return this.clearSubtitleRetry();
-    const id = this.localTrackId('subtitle', retry.index);
-    if (id === null) return this.clearSubtitleRetry();
-    retry.state = 'retrying';
-    this.engine?.setSubtitleTrack(id);
-  }
-
-  private clearSubtitleRetry(): void {
-    if (this.subtitleRetry?.timer) clearTimeout(this.subtitleRetry.timer);
-    this.subtitleRetry = null;
+    this.showNotice('subtitleFailed', {
+      index: `${failed.index}`,
+      code,
+      retry: failed.retryLater ? 'later' : '',
+    });
   }
 
   /** A selected subtitle the server cannot deliver to this device is said at once, with VLC when it could (C24). */
@@ -776,25 +734,24 @@ export class PlaybackController {
     );
     // The old picture stays while the new playback prepares (no stepper); each new server state extends the step's budget.
     let state = created.state;
-    let ready = await waitForPlayback(
-      this.options.client,
-      created,
-      (update) => {
-        if (update.state === state) return;
-        state = update.state;
-        this.runner.progress();
-      },
-      signal
-    );
+    const progress = (update: Playback) => {
+      if (update.state === state) return;
+      state = update.state;
+      this.runner.progress();
+    };
+    let ready = await waitForPlayback(this.options.client, created, progress, signal);
     if (this.closed || signal.aborted) return;
     if (ready.state === 'failed') return this.onFailedPlayback(ready);
     // The audio conversion is part of the viewing, not of one server playback: the new one converts too.
     if (previous?.audioFallback && !ready.audioFallback && ready.playbackId) {
-      const converted = await switchPlayback(this.options.client, ready.playbackId, {
-        audioFallback: true,
-        positionTicks: Math.round(position * TICKS_PER_SECOND),
-      });
-      ready = await waitForPlayback(this.options.client, converted, () => undefined, signal);
+      const converted = await switchPlayback(
+        this.options.client,
+        ready.playbackId,
+        { audioFallback: true, positionTicks: Math.round(position * TICKS_PER_SECOND) },
+        signal
+      );
+      this.runner.progress();
+      ready = await waitForPlayback(this.options.client, converted, progress, signal);
       if (this.closed || signal.aborted) return;
       if (ready.state === 'failed') return this.onFailedPlayback(ready);
     }
@@ -828,7 +785,7 @@ export class PlaybackController {
   private onPlayback(update: Playback): void {
     this.playback = update;
     if (update.state && this.states.at(-1) !== update.state) {
-      this.extendSwitch();
+      if (this.phase === 'switching') this.switchBudget?.extend();
       this.states = [...this.states, update.state];
       this.stateSince = Date.now();
       this.tickStatus();
@@ -846,6 +803,9 @@ export class PlaybackController {
     position: number,
     tracks: StepTracks | null = null
   ): Promise<void> {
+    // The old picture stays under the switching card, unless it is the broken picture being replaced (review R5).
+    const failed = this.runner.current?.failure.code ?? '';
+    const keepLastFrame = this.phase === 'switching' && !BROKEN_PICTURE.has(failed);
     const kind = this.engineFor(playback);
     let engine = this.engine;
     if (!engine || engine.kind !== kind) {
@@ -941,6 +901,7 @@ export class PlaybackController {
         uri: mediaUrl(this.options.serverUrl, playback.url ?? ''),
         kind: playback.method === 'direct' ? 'progressive' : 'hls',
         startPosition: position || undefined,
+        keepLastFrame,
       });
     } catch (error) {
       // An engine that cannot take the source must not play the old one on (S9a E09): it stops, the card follows.
@@ -959,57 +920,14 @@ export class PlaybackController {
     viewer: StepTracks | null = null
   ): void {
     this.keptSubtitle = null;
-    const info = playback.mediaInfo;
-    const local = (info?.subtitleTracks ?? []).filter((track) =>
-      LOCAL_SUBTITLES.has(track.deliveredAs ?? '')
-    );
-    // A reload keeps what the viewer picked in the engine (audio, subtitles, a forced track that followed the audio).
-    const audio = info?.audioTracks?.find((track) =>
-      viewer?.audio != null ? track.index === viewer.audio : track.selected
-    );
-    const subtitle = local.find((track) =>
-      viewer ? track.index === viewer.subtitle : track.selected
-    );
-    const rendition = audio ? renditionFor(playback, audio.index) : undefined;
-    const expectAudio = audio?.deliveredAs === 'original' || !!rendition;
-    const audioCount = rendition
-      ? (playback.audioRenditions?.length ?? 0)
-      : (info?.audioTracks?.length ?? 0);
-    let subtitleId: string | null | undefined;
-    let subtitleApplied = 0;
-    let audioApplied = 0;
-    // Safari, AVPlayer and ExoPlayer may still pick by system or audio language: re-apply until the viewer picks.
-    const unsubscribe = engine.subscribe((event) => {
-      if (event.type !== 'tracks' || this.playback !== playback) return;
-      const { tracks } = event;
-      if (subtitleId === undefined && tracks.subtitles.length >= local.length)
-        subtitleId = subtitle ? this.localTrackId('subtitle', subtitle.index, tracks) : null;
-      const shown = tracks.subtitles.find((track) => track.selected)?.id ?? null;
-      if (
-        subtitleId !== undefined &&
-        subtitleId !== shown &&
-        (subtitleId !== null || local.length) &&
-        subtitleApplied < MAX_SERVER_TRACK_APPLIES
-      ) {
-        subtitleApplied += 1;
-        engine.setSubtitleTrack(subtitleId);
-      }
-      if (expectAudio && tracks.audio.length < audioCount) return;
-      const audioId = expectAudio && audio ? this.localTrackId('audio', audio.index, tracks) : null;
-      if (audioId === null) return subtitleId !== undefined && !local.length ? done() : undefined;
-      if (audioApplied >= MAX_SERVER_TRACK_APPLIES) return done();
-      if (!tracks.audio.find((track) => track.id === audioId)?.selected) {
-        audioApplied += 1;
-        engine.setAudioTrack(audioId);
-      }
-    });
     this.serverTracksOff?.();
-    const timer = setTimeout(() => done(), 15_000);
-    const done = () => {
-      unsubscribe();
-      clearTimeout(timer);
-      if (this.serverTracksOff === done) this.serverTracksOff = null;
-    };
+    const done = followServerTracks(engine, playback, viewer, {
+      localTrackId: (kind, index, tracks) => this.localTrackId(kind, index, tracks),
+      current: () => this.playback === playback,
+      ended: () => {
+        if (this.serverTracksOff === done) this.serverTracksOff = null;
+      },
+    });
     this.serverTracksOff = done;
   }
 
@@ -1050,17 +968,8 @@ export class PlaybackController {
 
   /** An end before the duration: offline or cut elsewhere is transport, a gone playback restarts, else the file is short. */
   private async earlyEnd(endAt: number, firstEnd?: number): Promise<void> {
-    if (this.offline)
-      return this.runner.handle(
-        { category: 'T1', code: 'network_unreachable' },
-        { position: endAt }
-      );
-    // Ends at different places are a connection that keeps breaking (VLC reports a drop as the end), not a short file.
-    if (firstEnd !== undefined && Math.abs(endAt - firstEnd) > 3)
-      return this.runner.handle(
-        { category: 'T1', code: 'stream_interrupted' },
-        { position: endAt }
-      );
+    const transport = transportEnd(this.offline, endAt, firstEnd);
+    if (transport) return this.runner.handle(transport, { position: endAt });
     let confirmed = this.playback;
     const id = confirmed?.playbackId;
     if (id) {
@@ -1078,15 +987,10 @@ export class PlaybackController {
     }
     if (this.closed || this.ended) return;
     const length = (confirmed?.mediaInfo?.durationTicks ?? 0) / TICKS_PER_SECOND || this.duration;
-    if (endAt >= length - 3) return this.finish();
+    const short = shortFile(endAt, length);
+    if (!short) return this.finish();
     this.earlyEndAt = { position: endAt, at: Date.now() };
-    this.runner.handle(
-      { category: 'T8', code: 'end_of_stream' },
-      {
-        position: endAt,
-        hint: { key: 'endedEarly', params: { time: clock(endAt), missing: clock(length - endAt) } },
-      }
-    );
+    this.runner.handle(short.failure, short.extra);
   }
 
   /** The last seconds of the title: a stall, a frozen clock or a picture/sound verdict there ends it (review B3). */
@@ -1245,26 +1149,6 @@ export class PlaybackController {
     };
   }
 
-  /** Why a long stall happened: a server error the engine is retrying (5xx, R7), else a slow source (T5). */
-  private stallFailure(now: number): Classified {
-    const retry = this.loadRetry;
-    if (retry?.audio && now - retry.at < LOAD_RETRY_RECENT_MS)
-      return { category: 'T7', code: 'audio_rendition_failed' };
-    if (
-      retry &&
-      now - retry.at < LOAD_RETRY_RECENT_MS &&
-      retry.status >= 500 &&
-      retry.status !== 504
-    )
-      return classify({
-        kind: 'engine',
-        engine: this.engine?.kind ?? 'web',
-        reason: 'networkError:fragLoadError',
-        status: retry.status,
-      });
-    return { category: 'T5', code: this.stallAfterSeek ? 'seek_stalled' : 'playback_stalled' };
-  }
-
   private startBudget(): number {
     return this.playback?.method === 'direct' ? START_BUDGET_MS.progressive : START_BUDGET_MS.hls;
   }
@@ -1290,15 +1174,8 @@ export class PlaybackController {
 
   private statusTick(): void {
     const now = Date.now();
-    // A start state twice past its budget: the card with Retry and Other version instead of waiting on (B16, E02).
     const state = this.states.at(-1) ?? '';
-    const budget = STATE_BUDGET_MS[state];
-    if (
-      this.phase === 'starting' &&
-      budget &&
-      this.stateSince &&
-      now - this.stateSince >= 2 * budget
-    ) {
+    if (this.phase === 'starting' && startStuck(state, this.stateSince, now, this.offline)) {
       this.startAbort?.abort();
       return this.giveUp(
         { category: 'T6', code: 'start_stuck' },
@@ -1310,7 +1187,8 @@ export class PlaybackController {
     // A step that already ran (the source reloaded) does not hold the budgets: a reload without a picture fails again.
     const pending = !!recovery && !recovery.running;
     const ready = !pending && !this.offline && this.phase === 'playing';
-    const calm = ready && !this.paused;
+    // A running step has its own budget: the stall and seek rules must not cancel it (review B1).
+    const calm = ready && !this.paused && !recovery?.running;
     // A seek whose clock never arrives, without a stall from the engine, is a stall too (D29).
     if (
       calm &&
@@ -1334,7 +1212,9 @@ export class PlaybackController {
       this.finish();
     } else if (calm && this.stallSince && now - this.stallSince >= STALL_LADDER_MS) {
       this.stallSince = 0;
-      this.runner.handle(this.stallFailure(now));
+      this.runner.handle(
+        stallFailure(this.loadRetry, now, this.stallAfterSeek, this.engine?.kind ?? 'web')
+      );
     } else if (this.offline) this.runner.expireOffline(now - this.offlineSince);
     this.tickStatus();
     this.changed();
@@ -1362,6 +1242,7 @@ export class PlaybackController {
       bitrateKbps: this.playback?.mediaInfo?.bitrateKbps,
       bandwidthBps: this.monitor.last.bandwidthBps,
       fetch: this.monitor.last.fetch,
+      conversionRate: this.monitor.last.conversionRate,
       repairing: isRepairing(this.playback?.repair?.state),
       serverRetry:
         this.loadRetry && Date.now() - this.loadRetry.at < LOAD_RETRY_RECENT_MS
@@ -1450,7 +1331,7 @@ export class PlaybackController {
     this.phase = 'switching';
     this.states = [];
     this.changed();
-    const signal = step?.signal ?? this.beginSwitch();
+    const signal = step?.signal ?? this.beginSwitch().signal;
     try {
       // Same release: keep the tracks, a client-side subtitle pick is unknown to the server.
       const viewer = step ? step.tracks : this.viewerTracks();
@@ -1515,7 +1396,7 @@ export class PlaybackController {
         });
         return false;
       }
-      await this.restore(playback, position, previousPreferences);
+      await this.restore(playback, position, previousPreferences, signal);
       return false;
     }
   }
@@ -1558,7 +1439,8 @@ export class PlaybackController {
       );
     } catch (error) {
       if (this.closed) return;
-      const { failure, extra } = this.failureOf(error);
+      // A switch budget that ran out aborted the restore: its own card, never "aborted" (review R4).
+      const { failure, extra } = this.failureOf(signal.aborted ? signal.reason : error);
       this.giveUp(failure, extra, this.runner.attempts);
     }
   }
@@ -1579,26 +1461,15 @@ export class PlaybackController {
     this.showNotice('switchFailed', { code: this.lastError || 'start_timeout' });
   }
 
-  /** A viewer's switch gets the step budget: a minute without server progress, five at most. */
-  private beginSwitch(): AbortSignal {
+  /** A viewer's switch gets a step's budget (recovery/step-budget). */
+  private beginSwitch(): StepBudget {
     this.endSwitch();
-    const abort = new AbortController();
-    this.switchBudget = { abort, timer: null, started: Date.now() };
-    this.extendSwitch();
-    return abort.signal;
-  }
-
-  /** A new server state of the switch: its minute starts over (never past the five). */
-  private extendSwitch(): void {
-    const budget = this.switchBudget;
-    if (!budget || budget.abort.signal.aborted || this.phase !== 'switching') return;
-    if (budget.timer) clearTimeout(budget.timer);
-    const left = Math.min(STEP_BUDGET_MS, budget.started + STEP_MAX_MS - Date.now());
-    budget.timer = setTimeout(() => budget.abort.abort(STEP_TIMEOUT), Math.max(0, left));
+    this.switchBudget = new StepBudget();
+    return this.switchBudget;
   }
 
   private endSwitch(): void {
-    if (this.switchBudget?.timer) clearTimeout(this.switchBudget.timer);
+    this.switchBudget?.end();
     this.switchBudget = null;
   }
 
@@ -1854,7 +1725,7 @@ export class PlaybackController {
 
   private async pickSubtitle(track: SubtitleTrack | null): Promise<void> {
     this.settle();
-    this.clearSubtitleRetry();
+    this.subtitleRetry.clear();
     this.keptSubtitle = null;
     this.serverTracksOff?.();
     const burnedIn = this.playback?.mediaInfo?.subtitleTracks?.some(
@@ -1955,10 +1826,12 @@ export class PlaybackController {
     const position = this.ended ? this.duration : this.resumePosition;
     this.abort.abort();
     this.runner.cancel();
-    this.endSwitch();
-    this.clearSubtitleRetry();
+    // A viewer's switch in flight stops with the player (its requests use the switch budget's signal).
+    this.switchBudget?.cancel();
+    this.switchBudget = null;
+    this.subtitleRetry.clear();
     if (this.pendingSeek) clearTimeout(this.pendingSeek.timer);
-    if (this.onlineTimer) clearTimeout(this.onlineTimer);
+    this.autoRetry.cancel();
     this.stopStatusTicker();
     this.networkOff?.();
     this.monitor.stop();

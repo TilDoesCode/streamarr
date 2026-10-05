@@ -72,6 +72,8 @@ export type EngineSource = {
   /** Seconds. */
   startPosition?: number;
   title?: string;
+  /** Keep the old picture until the new source shows one (a server switch under the switching card, E18). */
+  keepLastFrame?: boolean;
 };
 
 export type EngineSnapshot = {
