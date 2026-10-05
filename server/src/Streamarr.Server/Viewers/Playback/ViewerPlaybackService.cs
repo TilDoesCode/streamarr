@@ -204,6 +204,7 @@ public sealed class ViewerPlaybackService(
                 playback.Excluded.Add(playing);
             playback.Preferences = preferences;
             playback.AudioIndex = request.AudioStreamIndex ?? playback.AudioIndex;
+            playback.AudioFallback = request.AudioFallback ?? playback.AudioFallback;
             playback.SubtitleIndex = request.SubtitleStreamIndex ?? playback.SubtitleIndex;
             playback.StartTicks = position ?? playback.PositionTicks ?? playback.StartTicks;
             playback.Viewer = viewer;
@@ -495,7 +496,7 @@ public sealed class ViewerPlaybackService(
         PlaybackPreferences preferences;
         int? audioIndex, subtitleIndex;
         long startTicks;
-        bool allowTranscoding;
+        bool allowTranscoding, audioFallback;
         IReadOnlySet<string> excluded;
         lock (playback.Gate)
         {
@@ -503,6 +504,7 @@ public sealed class ViewerPlaybackService(
             device = playback.Device;
             preferences = playback.Preferences;
             audioIndex = playback.AudioIndex;
+            audioFallback = playback.AudioFallback;
             subtitleIndex = playback.SubtitleIndex;
             startTicks = playback.StartTicks;
             allowTranscoding = playback.Viewer.AllowTranscoding;
@@ -536,7 +538,7 @@ public sealed class ViewerPlaybackService(
         catalog.RecordContainer(resolvedRelease, probe.Container);
 
         var server = await media.ServerAsync(ct);
-        var decision = PlaybackDecider.Decide(probe, device, preferences, allowTranscoding, server, audioIndex, subtitleIndex, excluded);
+        var decision = PlaybackDecider.Decide(probe, device, preferences, allowTranscoding, server, audioIndex, subtitleIndex, excluded, audioFallback);
         if (decision.Failure is { } impossible)
         {
             Update(playback, revision, p =>
@@ -694,6 +696,7 @@ public sealed class ViewerPlaybackService(
                 Decision = p.State is States.Ready or States.Failed ? p.Decision : null,
                 Error = failed is null ? null : new PlaybackErrorDto { Code = failed.Code, Message = failed.Message, Params = failed.Parameters },
                 SuggestedActions = failed?.SuggestedActions,
+                AudioFallback = p.AudioFallback,
             };
         }
     }
@@ -980,6 +983,7 @@ public sealed class ViewerPlaybackService(
         public required DeviceCaps Device { get; init; }
         public required PlaybackPreferences Preferences { get; set; }
         public int? AudioIndex { get; set; }
+        public bool AudioFallback { get; set; }
         public int? SubtitleIndex { get; set; }
         public long StartTicks { get; set; }
         public long? ResumeTicks { get; init; }

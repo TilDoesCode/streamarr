@@ -241,10 +241,13 @@ public static class PlaybackDecider
         ServerHls server,
         int? audioIndex,
         int? subtitleIndex,
-        IReadOnlySet<string> excluded)
+        IReadOnlySet<string> excluded,
+        bool audioFallback = false)
     {
         var tracks = TrackSelector.Select(media, audioIndex, subtitleIndex, preferences);
         var notes = new List<PlanReason>(tracks.Notes);
+        if (audioFallback && tracks.Audio is { } converted)
+            notes.Add(PlanReason.Of("audio_fallback", $"The audio ({converted.Codec}) is converted to AAC stereo because the device could not output it.", ("codec", converted.Codec)));
         var maxBitrate = Min(preferences.MaxBitrateKbps, device.MaxBitrateKbps);
         if (device.MaxBitrateKbps is { } cap && (preferences.MaxBitrateKbps is null || cap < preferences.MaxBitrateKbps))
             notes.Add(PlanReason.Of("bandwidth_limit", $"The device's connection allows {cap} kbps.", ("max", cap)));
@@ -272,7 +275,7 @@ public static class PlaybackDecider
                 skipped.Add(new SkippedCandidate(step.Method, step.Engine.Name, reasons));
                 continue;
             }
-            var client = step.Engine.ClientFor(media.Video);
+            var client = step.Engine.ClientFor(media.Video) with { AudioFallback = audioFallback };
             var limits = new TranscodeLimits(
                 step.Method == DeliveryMode.Transcode
                     ? Min(preferences.MaxHeight ?? DefaultTranscodeMaxHeight, OutputMaxHeight(step.Engine, server.Settings))
@@ -281,7 +284,7 @@ public static class PlaybackDecider
                 tracks.Audio?.Index,
                 step.WithSubtitle ? tracks.Subtitle?.Index : null,
                 step.BurnIn,
-                step.Method == DeliveryMode.Direct ? null : TrackSelector.OfferedAudio(media, tracks.Audio, preferences));
+                step.Method == DeliveryMode.Direct || audioFallback ? null : TrackSelector.OfferedAudio(media, tracks.Audio, preferences));
             TranscodePlan plan;
             try
             {

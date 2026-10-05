@@ -198,7 +198,11 @@ no longer waits for detection: capability detection starts immediately at startu
   (Linux and macOS).
 - **Cleanup.** ffmpeg is stopped after *job idle timeout* without segment requests, the
   whole session after *session idle timeout*; segments older than *segment retention*
-  behind the playhead are deleted. Sessions never survive a restart.
+  behind the playhead are deleted. A seek back to a deleted segment that the running ffmpeg already passed restarts
+  ffmpeg at that segment (the run would never write it again). Sessions never survive a restart.
+- **Waiting.** A segment, init or WebVTT request waits for ffmpeg at most *SegmentWaitTimeoutSeconds* (25 s) in
+  total, across restarts, then answers `504 segment_timeout` with `Retry-After: 1`: the player gets a clear answer
+  it can retry instead of a request that outlives its own fragment timeout.
 - **Capacity.** At most *concurrent transcodes* ffmpeg processes run; a new session beyond
   that gets `503 transcode_capacity` instead of starving the running ones.
 
@@ -264,7 +268,9 @@ along E-AC-3 5.1 (640 kbps) → AC-3 5.1 (640 kbps) → AAC stereo (the audio bi
 client lists and its channel limit. The run from 0 trims the encoder's priming delay from the input so
 no timestamp is negative; a restarted run starts its converted audio on the next encoder frame boundary
 of that run (AAC 1024, AC-3/E-AC-3 1536 samples), so audio decode times are identical in every run and
-segments of different runs meet sample-exactly. **Switching audio** means a new session (`audioStreamIndex`); one ffmpeg per
+segments of different runs meet sample-exactly. **Audio fallback** (a viewer playback switched with
+`audioFallback: true`, see api.md § 13): the selected track is always converted to AAC stereo, whatever the client
+lists, and no other audio renditions are offered; transcodes do the same and direct play is skipped. **Switching audio** means a new session (`audioStreamIndex`); one ffmpeg per
 session is simpler and more robust than parallel audio renditions.
 
 **Subtitles.** Every text stream (SRT, ASS/SSA, WebVTT, MOV text) becomes a WebVTT rendition
@@ -386,7 +392,7 @@ Host-level options (appsettings or environment only):
 | `Streamarr:Transcoding:SamplesPath` | `cache/transcoding-samples` (`/app/data/transcoding-samples`) | Generated test media (about 100 MB for all samples). |
 | `Streamarr:Transcoding:LocalSourceBaseUrl` | derived from the listen address | Loopback origin ffmpeg uses to read `/api/v1/stream`. Set it if the server only listens on a non-loopback address. |
 | `Streamarr:Transcoding:MaxSessions` | 16 | Sessions (running or idle) kept at once. |
-| `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` | 90 | Longest a segment request waits before `504 segment_timeout`. |
+| `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` | 25 | Longest one segment/init/WebVTT request waits in total (across ffmpeg restarts) before `504 segment_timeout` with `Retry-After: 1`. |
 | `Streamarr:Transcoding:KeyframeIndexTimeoutSeconds` | 30 | Budget for reading Matroska Cues or the MP4 sample table for a remux. |
 | `Streamarr:Transcoding:KeyframeScanTimeoutSeconds` | 20 | Budget for the ffprobe packet scan when the container has no usable index. |
 

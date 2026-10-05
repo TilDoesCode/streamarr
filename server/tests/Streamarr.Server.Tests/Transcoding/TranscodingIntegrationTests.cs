@@ -23,6 +23,7 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
         throttleBufferSeconds = 120,
         maxConcurrentTranscodes = 2,
         jobIdleTimeoutSeconds = 60,
+        segmentRetentionSeconds = 900,
         threads = 0,
     };
 
@@ -114,6 +115,35 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(restartsBefore, (await AdminSessionAsync(created)).GetProperty("restarts").GetInt32());
+    }
+
+    [Fact]
+    public async Task BackwardSeek_BehindTheRetainedWindow_RestartsTheRunAtTheTarget()
+    {
+        await ConfigureAsync(new { throttleBufferSeconds = 30, segmentRetentionSeconds = 60 });
+        var created = await CreateStreamSessionAsync(_machine, new { maxHeight = 240 });
+        using var raw = RawClient();
+        var basePath = BasePath(created);
+        await raw.GetByteArrayAsync($"{basePath}/init.mp4");
+        for (var i = 0; i <= 24; i++)
+            Assert.Equal(HttpStatusCode.OK, (await raw.GetAsync($"{basePath}/{i}.m4s")).StatusCode);
+        var directory = Directory.GetDirectories(fixture.WorkspaceRoot, "*", SearchOption.AllDirectories)
+            .Single(d => File.Exists(Path.Combine(d, "24.m4s")));
+        await PollAsync(async () => { await Task.Yield(); return JsonSerializer.SerializeToElement(File.Exists(Path.Combine(directory, "2.m4s"))); },
+            gone => !gone.GetBoolean(), TimeSpan.FromSeconds(20));
+        var job = (await AdminSessionAsync(created)).GetProperty("job");
+        Assert.True(job.GetProperty("running").GetBoolean());
+        Assert.True(job.GetProperty("front").GetInt32() > 2);
+        var restartsBefore = (await AdminSessionAsync(created)).GetProperty("restarts").GetInt32();
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var response = await raw.GetAsync($"{basePath}/2.m4s");
+        clock.Stop();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(15), $"took {clock.Elapsed}");
+        Assert.Equal(restartsBefore + 1, (await AdminSessionAsync(created)).GetProperty("restarts").GetInt32());
+        Assert.Equal(2, (await AdminSessionAsync(created)).GetProperty("job").GetProperty("startSegment").GetInt32());
     }
 
     [Fact]

@@ -28,7 +28,7 @@ public sealed class ViewerWatchController(
 {
     private static readonly HashSet<string> Events = new(StringComparer.Ordinal) { "start", "progress", "stop" };
 
-    /// <summary>Report playback of a movie or episode (start, periodic progress, stop); a server <c>playbackId</c> fills in release and stream token, keeps that playback alive, and <c>stop</c> ends it.</summary>
+    /// <summary>Report playback of a movie or episode (start, periodic progress, stop); a server <c>playbackId</c> fills in release and stream token, keeps that playback alive (<c>playbackAlive</c> says whether it still exists), and <c>stop</c> ends it.</summary>
     [HttpPost("progress")]
     [ProducesResponseType(typeof(WatchStateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -63,7 +63,7 @@ public sealed class ViewerWatchController(
             ct);
         if (link is not null && kind == "stop")
             await playbacks.StopAsync(caller, playbackId!, "progress stop");
-        return Ok(ViewerMappings.State(state));
+        return Ok(ViewerMappings.State(state) with { PlaybackAlive = playbackId is null ? null : link is not null });
     }
 
     /// <summary>Mark works played; season and series ids expand to all aired episodes via TMDB.</summary>

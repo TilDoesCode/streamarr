@@ -11850,7 +11850,7 @@
         "tags": [
           "ViewerWatch"
         ],
-        "summary": "Report playback of a movie or episode (start, periodic progress, stop); a server `playbackId` fills in release and stream token, keeps that playback alive, and `stop` ends it.",
+        "summary": "Report playback of a movie or episode (start, periodic progress, stop); a server `playbackId` fills in release and stream token, keeps that playback alive (`playbackAlive` says whether it still exists), and `stop` ends it.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -17667,6 +17667,10 @@
             },
             "description": "`retry`, `otherVersion`, `lowerQuality`, `useVlc` (failed only).",
             "nullable": true
+          },
+          "audioFallback": {
+            "type": "boolean",
+            "description": "True after a `/switch` with `audioFallback`: every rendition carries the selected audio as AAC stereo."
           }
         },
         "additionalProperties": false,
@@ -17828,6 +17832,11 @@
           "stepDown": {
             "type": "boolean",
             "description": "The current method failed on the device: continue with the next one in the ranking."
+          },
+          "audioFallback": {
+            "type": "boolean",
+            "description": "True: the server converts the selected audio track to AAC stereo (no direct play, no audio group) for the rest of this playback; false turns it off; null keeps it.",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -23205,6 +23214,11 @@
           "available": {
             "type": "boolean",
             "description": "Continue watching only (null elsewhere): false when the last version lookup found no playable version; true when one exists or no lookup ran yet.",
+            "nullable": true
+          },
+          "playbackAlive": {
+            "type": "boolean",
+            "description": "Progress answers that named a `playbackId` only (null elsewhere): true while it is a live server playback of this device for this work, false once it ended (idle expiry, stop, server restart) — start a new playback.",
             "nullable": true
           }
         },

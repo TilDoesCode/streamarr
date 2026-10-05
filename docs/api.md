@@ -851,13 +851,16 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 | `main.m3u8` | Complete VOD playlist (fMP4, `#EXT-X-MAP`, `#EXT-X-ENDLIST`): a fixed grid for transcodes, keyframe-aligned real durations for remuxes. |
 | `subtitles/{streamIndex}/main.m3u8` · `…/{n}.vtt` | WebVTT rendition of a remux or transcode, aligned with the video segments (`text/vtt`, `X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000`, cue times on the media timeline). A segment no live run covers starts ffmpeg there and waits for its cues, like a video segment; a transcode is never restarted backwards for subtitles (a segment behind its encoder returns the cues known so far). `404` for streams that are not delivered. |
 | `init.mp4` | Initialization segment; identical across ffmpeg restarts. Video only when the master has audio renditions. |
-| `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek. Video only when the master has audio renditions. |
+| `{n}.m4s` | Segment `n`; waits while ffmpeg produces it, restarts ffmpeg for a far seek and for a seek back to a segment the run already wrote but segment retention deleted (it would never be written again). Video only when the master has audio renditions. |
 | `audio/{id}/main.m3u8` · `…/init.mp4` · `…/{n}.m4s` | Audio rendition `id` (the source stream index): the same timeline, segment count and `EXTINF` durations as `main.m3u8`; segment `n` covers the same time range as video segment `n` (both are cut from the same fragment, so they are aligned by construction). One audio track per init. Fetching an audio segment drives ffmpeg exactly like the video segment of the same index (same errors). `404 unknown_audio_rendition` for an id the session does not offer; `500 rendition_split_failed` when the muxed fragment cannot be split (a malformed or truncated fragment; logged; never happens with ffmpeg's own output). Each audio track carries its ISO 639-2 language in the fMP4. |
 
 `init.mp4`, `{n}.m4s` and `{n}.vtt` can start ffmpeg, so they share these errors: `404 unknown_transcode` /
 `unknown_segment` / `end_of_stream`, `410 session_closed`, `500 transcode_failed`,
 `503 transcode_capacity` / `remux_capacity` / `init_unavailable` / `segment_unavailable`,
-`504 segment_timeout`. `503` and `504` carry `Retry-After: 1`. Every fetch of a playlist or segment counts
+`504 segment_timeout`. One request waits at most `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` (default 25 s,
+below the players' fragment timeouts) in total, across ffmpeg restarts, then answers `504 segment_timeout`. A
+segment deleted between the wait and the read answers `503 segment_evicted`. Every `503` and `504` carries
+`Retry-After: 1` (retry the same URL). Every fetch of a playlist or segment counts
 as activity of the session (and of the viewer playback that owns it, § 13).
 | `DELETE` on the capability root | Ends the session and its ffmpeg process (`204`). |
 
@@ -989,7 +992,7 @@ number of sessions ended (`0` when there were none). Replaces looping over `DELE
 
 | Endpoint | Purpose |
 |---|---|
-| `POST …/progress` | `{ event: start\|progress\|stop, workId, positionTicks, durationTicks, playbackId, releaseId?, streamToken?, title? }` → the updated `WatchStateResponse`. A `playbackId` from `/viewer/playback` (same device, same work) fills `releaseId` and `streamToken`, counts as that playback's heartbeat and `stop` ends it (§ 13); any other id is just the client's play id. |
+| `POST …/progress` | `{ event: start\|progress\|stop, workId, positionTicks, durationTicks, playbackId, releaseId?, streamToken?, title? }` → the updated `WatchStateResponse`. A `playbackId` from `/viewer/playback` (same device, same work) fills `releaseId` and `streamToken`, counts as that playback's heartbeat and `stop` ends it (§ 13); any other id is just the client's play id. With a `playbackId` the answer adds `playbackAlive` (`false`: no such live server playback). |
 | `GET …/resume` · `DELETE …/resume/{workId}` | Continue watching, and hiding an entry from it. Items carry `title` in the viewer's language (the movie title, the series title for episodes; the last reported `title` when TMDB has none, else `null`), plus `tint`, `tint2`, `highlight`, `spec` and `available`. A series appears with its current episode only (see *Current episode* below): a resume point older than the latest completion in its series is left out. |
 | `GET …/next-up?seriesWorkId=` | `{ items, incomplete }` — the current episode per recently watched series (see below); items carry `available`. |
 | `GET …/history?limit&offset` | `{ items, total }`, most recent first. |
@@ -1463,11 +1466,16 @@ HTTP errors (standard envelope): `400 invalid_work_id` (movie and episode ids on
 `503 catalog_unavailable` (restricted viewer while TMDB cannot be reached, start and switch).
 
 **Switch.** `{ positionTicks?, releaseId?, audioStreamIndex?, subtitleStreamIndex? (-1 = off),
-preferences?, stepDown? }` re-plans the same `playbackId` at `positionTicks` (default: the last
+preferences?, stepDown?, audioFallback? }` re-plans the same `playbackId` at `positionTicks` (default: the last
 reported position). Set preference fields replace the current ones. Another `releaseId` resolves
 again (with fallback); otherwise the live stream is re-planned without a new health check.
 `stepDown: true` excludes the method + engine the device is playing (the last `ready` one, even
 when a later switch failed) and continues with the next one; `no_more_methods` when none is left.
+`audioFallback: true` is for a device that plays the picture but cannot output the audio (codec error, no sound):
+from then on every rendition converts the selected audio track to AAC stereo (direct play is skipped with
+`audio_fallback`, a remux converts instead of copying, no audio group, so `inSessionAudioSwitch` is false; the
+decision lists `audio_fallback`). It stays on for the playback (also across track and version switches) until a
+switch sends `audioFallback: false`; the playback answer carries `audioFallback`.
 A track index the playing version does not have is rejected right away with
 `400 unknown_audio_stream` / `unknown_subtitle_stream`; the playback keeps its state and tracks.
 The state restarts at `resolving` or `planning`; the previous URL keeps working until 30 s after
@@ -1489,7 +1497,10 @@ the new one is `ready`.
 other viewers and the same viewer's other devices get `404 playback_not_found`. Report progress
 with `POST /viewer/watch/progress` and the `playbackId` (every ~10 s while playing): it fills
 `releaseId`/`streamToken` of the watch event (pre-download and the shared event stream), keeps the
-playback and its HLS session alive, and `event: stop` ends the playback like `…/stop`. A playback
+playback and its HLS session alive, and `event: stop` ends the playback like `…/stop`. The answer's `playbackAlive` (only when a `playbackId` was
+sent) is `true` while that id is a live playback of this device for this work and `false` once it is gone (idle
+expiry, stop, server restart, another work): the report is still saved, but the player should start a new playback
+at its position instead of waiting for its HLS requests to fail. A playback
 without polls, heartbeats, switches or HLS fetches for `Streamarr:ViewerPlaybackIdleSeconds`
 (default 600) is stopped. Playbacks live in memory and end with a server restart. Stop closes the
 remux/transcode sessions, so their HLS URLs stop working; a `direct` URL (`/api/v1/stream/{token}`)

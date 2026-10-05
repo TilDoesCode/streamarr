@@ -227,6 +227,17 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   signing out or signing the same account in again throws (S6, P3); the iPhone video full-screen leave path
   (`webkitEnterFullscreen`) is untested; after leaving the system full screen paused, the overlay stays hidden (P3).
 
+- B12 verify (Dev World only): `POST /devworld/faults` answers 500 instead of 400 for a numeric `params.mode` or a
+  fractional `ttlSeconds`; the `transcode_kill` smoke only checks the kill, not the next-segment 500 and restart; spent
+  once/count faults stay listed until TTL or clear; with nothing armed playlists and API answers now carry
+  `Content-Length` (bodies identical); the contract check runs 65-71 checks depending on server state.
+
+- B13 verify: no automated test for `Retry-After` on `segment_evicted`, the WebVTT wait cap or the 25 s budget across
+  restarts (verified live); two requests competing on one transcode session keep restarting the run and the loser
+  gets `503 segment_unavailable` at ~9 s (bounded, Retry-After, pre-existing); a progress `stop` with a live id answers
+  `playbackAlive: true` although that call ends the playback (document it); the B12 `transcode_slow` fault does not
+  slow remux runs.
+
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.

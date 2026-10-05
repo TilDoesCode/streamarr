@@ -130,6 +130,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
             }
             catch (FileNotFoundException)
             {
+                Response.Headers.RetryAfter = "1";
                 return StatusCode(StatusCodes.Status503ServiceUnavailable,
                     ErrorResponse.Of("segment_evicted", "The segment was replaced while opening; retry."));
             }

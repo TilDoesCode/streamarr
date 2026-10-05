@@ -18,6 +18,9 @@ public sealed record ClientProfile
     /// <summary>Subtitle formats the player renders from the original file (srt, ass, webvtt, pgs, …); null means "not declared".</summary>
     public IReadOnlyList<string>? SubtitleFormats { get; init; }
 
+    /// <summary>The player could not output its declared audio: the selected track is converted to AAC stereo and direct play is ruled out.</summary>
+    public bool AudioFallback { get; init; }
+
     public static ClientProfile Default { get; } = new();
 
     public bool SupportsHdrFormat(HdrFormat format)
@@ -552,7 +555,7 @@ public static class TranscodePlanner
     internal static AudioTarget PlanRemuxAudio(
         SourceAudioStream audio, ClientProfile client, TranscodingSettings settings, FfmpegCapabilities capabilities, out PlanReason reason)
     {
-        var copyable = CopyableAudioCodecs.Contains(audio.Codec) && (audio.Codec != "aac" || audio.Profile is null or "LC" or "HE-AAC" or "HE-AACv2");
+        var copyable = !client.AudioFallback && CopyableAudioCodecs.Contains(audio.Codec) && (audio.Codec != "aac" || audio.Profile is null or "LC" or "HE-AAC" or "HE-AACv2");
         if (copyable && Contains(client.AudioCodecs, audio.Codec) && audio.Channels <= client.MaxAudioChannels)
         {
             reason = PlanReason.Of("audio_copied", $"Audio '{audio.Codec}' {audio.Channels} ch is copied.", ("codec", audio.Codec), ("channels", audio.Channels));
@@ -560,7 +563,7 @@ public static class TranscodePlanner
                 CodecStrings.Audio(audio.Codec, audio.Profile));
         }
 
-        var surround = audio.Channels > 2 && client.MaxAudioChannels >= 6;
+        var surround = !client.AudioFallback && audio.Channels > 2 && client.MaxAudioChannels >= 6;
         string codec;
         int channels, bitrate;
         if (surround && Contains(client.AudioCodecs, "eac3") && capabilities.Encoders.Contains("eac3"))
@@ -570,7 +573,8 @@ public static class TranscodePlanner
         else
             (codec, channels, bitrate) = ("aac", Math.Clamp(audio.Channels, 1, 2), audio.Channels == 1 ? Math.Min(128, settings.AudioBitrateKbps) : settings.AudioBitrateKbps);
 
-        var why = !CopyableAudioCodecs.Contains(audio.Codec) ? $"'{audio.Codec}' cannot be carried in HLS"
+        var why = client.AudioFallback ? "the player could not output it (audio fallback)"
+            : !CopyableAudioCodecs.Contains(audio.Codec) ? $"'{audio.Codec}' cannot be carried in HLS"
             : !Contains(client.AudioCodecs, audio.Codec) ? $"the player does not decode '{audio.Codec}'"
             : $"{audio.Channels} channels exceed the player's {client.MaxAudioChannels}";
         reason = PlanReason.Of("audio_converted", $"Audio '{audio.Codec}' {audio.Channels} ch is converted to '{codec}' {channels} ch because {why}.",
@@ -721,7 +725,9 @@ public static class TranscodePlanner
             blockers.Add(PlanReason.Of("hdr_unsupported", $"{video.Hdr} HDR output is not supported by the player.", ("hdr", video.Hdr.ToApi())));
         if (video.Interlaced)
             blockers.Add(PlanReason.Of("interlaced", "Interlaced video needs deinterlacing."));
-        if (audio is not null && !Contains(client.AudioCodecs, audio.Codec))
+        if (audio is not null && client.AudioFallback)
+            blockers.Add(PlanReason.Of("audio_fallback", "The audio is converted to AAC stereo because the player could not output it.", ("codec", audio.Codec)));
+        else if (audio is not null && !Contains(client.AudioCodecs, audio.Codec))
             blockers.Add(PlanReason.Of("audio_codec_unsupported", $"Audio codec '{audio.Codec}' is not supported by the player.", ("codec", audio.Codec)));
         if (SelectSubtitle(media, limits.SubtitleStreamIndex) is { } subtitle && client.SubtitleFormats is { } formats
             && !SubtitleFormatNames(subtitle.Codec).Any(name => Contains(formats, name)))
@@ -847,9 +853,9 @@ public static class TranscodePlanner
 
     private static AudioTarget PlanAudio(SourceAudioStream audio, ClientProfile client, TranscodingSettings settings)
     {
-        var surround = settings.AllowSurroundAudio && client.MaxAudioChannels >= 6 && audio.Channels >= 6;
+        var surround = !client.AudioFallback && settings.AllowSurroundAudio && client.MaxAudioChannels >= 6 && audio.Channels >= 6;
         var channels = surround ? 6 : Math.Clamp(audio.Channels, 1, 2);
-        var copy = audio.Codec == "aac" && audio.Profile is null or "LC" && audio.Channels == channels && Contains(client.AudioCodecs, "aac");
+        var copy = !client.AudioFallback && audio.Codec == "aac" && audio.Profile is null or "LC" && audio.Channels == channels && Contains(client.AudioCodecs, "aac");
         var bitrate = channels switch
         {
             1 => Math.Min(128, settings.AudioBitrateKbps),
