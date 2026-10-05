@@ -860,6 +860,22 @@
         "title": "The video decoder was taken away",
         "message": "Another app or the system took over the video decoder. Try again."
       },
+      "audio_decode_error": {
+        "title": "This device can’t play the sound",
+        "message": "The picture plays, but this device couldn’t output the audio format. Try another audio track or another version."
+      },
+      "cleartext_not_permitted": {
+        "title": "Unencrypted connection blocked",
+        "message": "This device refuses to play over an unencrypted http:// connection. Use the server’s https:// address."
+      },
+      "vlc_error": {
+        "title": "VLC could not play this file",
+        "message": "VLC stopped with an error. Another way to play is tried; otherwise choose another version."
+      },
+      "vlc_dialog": {
+        "title": "VLC asked a question",
+        "message": "VLC wanted an answer (certificate, login or codec) and was stopped. Another way to play is tried; otherwise choose another version."
+      },
       "playback_stalled": {
         "title": "Playback keeps stopping",
         "message": "The video loads slower than it plays. Try a lower quality or another version."

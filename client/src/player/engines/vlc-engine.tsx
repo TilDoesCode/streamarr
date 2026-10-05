@@ -2,6 +2,7 @@ import { createRef } from 'react';
 import { LibVlcPlayerView, type LibVlcPlayerViewRef, type MediaTracks } from 'expo-libvlc-player';
 import { Platform } from 'react-native';
 
+import type { EngineHealth } from '../health/types';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase, PropsStore } from './base';
 import { createPropsSurface } from './props-surface';
@@ -21,13 +22,19 @@ function decodingOptions({ directRendering = false }: VlcOptions): string[] {
   ];
 }
 
-type VlcStats = { displayedPictures?: number; lostPictures?: number };
-// getStats is added by patches/expo-libvlc-player (Android); elsewhere it is missing.
-type VlcViewRef = LibVlcPlayerViewRef & { getStats?: () => Promise<VlcStats> };
+type VlcStats = {
+  displayedPictures?: number;
+  lostPictures?: number;
+  decodedVideo?: number;
+  decodedAudio?: number;
+  playedAbuffers?: number;
+  lostAbuffers?: number;
+};
+// getStats is added by patches/expo-libvlc-player (libVLC on Android, VLCKit statistics on Apple).
+type VlcViewRef = LibVlcPlayerViewRef & { getStats?: () => Promise<VlcStats | null> };
 
-/** Clock seconds without a new picture before libVLC's video output counts as stalled. */
-const STALL_SECONDS = 3;
-const MAX_RECOVERIES = 4;
+/** Clock seconds of decoded but never displayed video before direct rendering is turned off (D23). */
+const NO_PICTURE_SECONDS = 4;
 
 type Props = {
   source: string | null;
@@ -59,11 +66,12 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   private onStopped: (() => void) | null = null;
   private seekGuard: { target: number; until: number } | null = null;
   private timeAt = 0;
-  private watchdog: ReturnType<typeof setInterval> | null = null;
-  private stall = { pictures: -1, position: 0, recoveries: 0 };
+  /** MediaCodec direct rendering; turned off for good when it decodes without showing a picture. */
+  private directRendering: boolean;
 
-  constructor(private readonly options: VlcOptions = {}) {
+  constructor(options: VlcOptions = {}) {
     super();
+    this.directRendering = !!options.directRendering;
   }
 
   readonly Surface = createPropsSurface(this.props, (props, style, fit) =>
@@ -103,6 +111,15 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
         }}
         onEncounteredError={(error) => {
           this.emit({ type: 'error', reason: error.message });
+          this.setState('error');
+        }}
+        onDialogDisplay={(dialog) => {
+          // libVLC waits for an answer (certificate, login, codec question): nobody answers on a TV.
+          void this.view.current?.dismiss().catch(() => undefined);
+          this.emit({
+            type: 'error',
+            reason: `vlc_dialog ${dialog.type}: ${dialog.title} ${dialog.text}`.trim(),
+          });
           this.setState('error');
         }}
         onTimeChanged={(time) => this.onTime(time.value / 1000)}
@@ -149,45 +166,40 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     this.emitTime(this.started ? reported : Math.max(reported, start));
   }
 
-  /** libVLC can keep its clock running while the picture freezes (seen after seeks and fresh loads). */
-  private async checkStall(): Promise<void> {
+  /** libVLC/VLCKit statistics in the one health shape; the controller's watchdog judges them (D23–D25). */
+  async readHealth(): Promise<EngineHealth> {
     const view = this.view.current;
-    const { state, position } = this.getSnapshot();
-    if (!view?.getStats || !this.started || state !== 'playing') {
-      this.stall.pictures = -1;
-      return;
-    }
+    if (!view?.getStats || this.released) return {};
     const stats = await view.getStats().catch(() => null);
-    const pictures = stats?.displayedPictures;
-    if (!pictures || this.released) return;
+    if (!stats || this.released || stats.displayedPictures === undefined) return {};
+    const { displayedPictures: pictures = 0, decodedVideo = 0, decodedAudio = 0 } = stats;
     this.emit({
       type: 'stats',
       stats: { droppedFrames: stats.lostPictures, totalFrames: pictures },
     });
-    const stall = this.stall;
-    if (pictures !== stall.pictures || position < stall.position) {
-      if (stall.pictures >= 0 && pictures !== stall.pictures) stall.recoveries = 0;
-      stall.pictures = pictures;
-      stall.position = position;
-      return;
-    }
-    if (position - stall.position < STALL_SECONDS) return;
-    this.recoverStall(position);
+    this.checkDirectRendering(pictures, decodedVideo);
+    return {
+      framesPresented: pictures,
+      framesDropped: stats.lostPictures,
+      framesDecoded: decodedVideo,
+      // Audio counts only once libVLC decodes audio: decoded but never played is silence.
+      audioProgress: decodedAudio > 0 ? (stats.playedAbuffers ?? 0) : undefined,
+      readyForDisplay: this.started ? pictures > 0 : undefined,
+      hasVideoTrack: decodedVideo > 0 ? true : undefined,
+      hasAudioTrack: decodedAudio > 0 ? true : undefined,
+    };
   }
 
-  private recoverStall(position: number): void {
-    const stall = this.stall;
-    stall.recoveries += 1;
-    stall.pictures = -1;
-    if (stall.recoveries > MAX_RECOVERIES) {
-      this.emit({ type: 'error', reason: 'vlc_video_stalled' });
-      this.setState('error');
-    } else if (stall.recoveries % 2 === 1 || !this.source) this.seek(position);
-    else {
-      const { recoveries } = stall;
-      this.load({ ...this.source, startPosition: position });
-      this.stall.recoveries = recoveries;
-    }
+  /** MediaCodec direct rendering can decode into a texture nobody shows (M3.1 A1): reload without it once. */
+  private checkDirectRendering(pictures: number, decoded: number): void {
+    const source = this.source;
+    const { state, position } = this.getSnapshot();
+    if (!this.directRendering || Platform.OS !== 'android' || !source || state !== 'playing')
+      return;
+    if (pictures > 0 || decoded === 0) return;
+    if (position - (source.startPosition ?? 0) < NO_PICTURE_SECONDS) return;
+    this.directRendering = false;
+    this.load({ ...source, startPosition: position });
   }
 
   private emitTime(position: number): void {
@@ -221,12 +233,11 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     this.started = false;
     this.pendingPause = false;
     this.seekGuard = null;
-    this.stall = { pictures: -1, position: 0, recoveries: 0 };
-    if (!this.watchdog) this.watchdog = setInterval(() => void this.checkStall(), 1000);
+    this.setState('loading');
     this.raw = { audio: [], video: [], subtitle: [] };
     this.props.set({
       source: source.uri,
-      options: decodingOptions(this.options),
+      options: decodingOptions({ directRendering: this.directRendering }),
       tracks: { subtitle: -1 },
       time: source.startPosition ? Math.round(source.startPosition * 1000) : undefined,
       nonce: this.props.get().nonce + 1,
@@ -255,7 +266,6 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     void this.view.current?.seek(target * 1000, 'time');
     // No time event follows a seek while paused, so publish the target right away.
     this.seekGuard = { target, until: Date.now() + 2000 };
-    this.stall.pictures = -1;
     this.emitTime(target);
   }
 
@@ -291,8 +301,6 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   }
 
   release(): void {
-    if (this.watchdog) clearInterval(this.watchdog);
-    this.watchdog = null;
     super.release();
     this.props.set({ source: null });
   }

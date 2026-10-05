@@ -34,7 +34,7 @@ describe('classify (state-matrix § 2 b.1)', () => {
     ['Source error: ERROR_CODE_IO_NETWORK_CONNECTION_FAILED', 'T1', 'network_unreachable'],
     ['Source error: ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT', 'T1', 'timeout'],
     ['Decoder init failed: OMX.qcom.video.decoder.hevc', 'T7', 'decode_error'],
-    ['AudioSink.InitializationException: AudioTrack init failed', 'T7', 'decode_error'],
+    ['AudioSink.InitializationException: AudioTrack init failed', 'T7', 'audio_decode_error'],
     ['ParserException: Input does not start with the #EXTM3U header.', 'T6', 'unexpected_format'],
     ['MediaCodec reclaimed by the system', 'T6', 'decoder_reclaimed'],
     ['DrmSessionException: no key', 'T8', 'encrypted_media'],

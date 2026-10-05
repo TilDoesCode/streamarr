@@ -137,3 +137,9 @@ it('a seek while playing moves the clock at once instead of after the next time 
   expect(times).toEqual([720]);
   engine.release();
 });
+
+it('an expo-video build without the S6 patch reports no health, so no watchdog rule runs', async () => {
+  const engine = engineWith(0);
+  await expect(engine.readHealth()).resolves.toEqual({});
+  engine.release();
+});

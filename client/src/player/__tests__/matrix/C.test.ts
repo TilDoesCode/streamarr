@@ -1,8 +1,14 @@
 import { harness, reply } from '@/../jest/player/harness';
 import { pending, row } from '@/../jest/player/matrix';
+import { expoPlaying } from '@/../jest/player/native';
 import { playFor, playing, settle, starts, TICKS } from '@/../jest/player/play';
+import type { EngineHealth } from '@/player/health/types';
+import { classify } from '@/player/recovery/classify';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
+jest.mock('expo-video', () =>
+  jest.requireActual('@/../jest/player/library-fakes').expoVideoModule()
+);
 
 beforeEach(() => {
   harness.reset();
@@ -30,6 +36,37 @@ const blackFrom = (second: number) => ({
 const silentFrom = (second: number) => ({
   position: second,
   health: { framesPresented: second * 24, audioProgress: Math.min(second, 3) * 1000 },
+});
+
+/** What the real expo-video engine makes of the patched native probe (Exo counters / AVPlayer readings). */
+async function nativeHealth(
+  raw: Record<string, number | boolean | string | null>
+): Promise<EngineHealth> {
+  const expo = await expoPlaying();
+  expo.player.health = raw;
+  const health = await expo.engine.readHealth();
+  expo.engine.release();
+  return health;
+}
+
+/** The real expo-video engine's error event for a failed item, replayed into the controller. */
+async function nativeFailure(error: Parameters<FakeExpoPlayerType['failWith']>[0]) {
+  const expo = await expoPlaying();
+  expo.player.failWith(error);
+  const [event] = expo.of('error');
+  expo.engine.release();
+  harness.engine.emit(event!);
+  return event!;
+}
+type FakeExpoPlayerType = import('@/../jest/player/library-fakes').FakeExpoPlayer;
+
+const hd = () => ({
+  mediaInfo: {
+    durationTicks: 600 * TICKS,
+    audioTracks: [],
+    subtitleTracks: [],
+    video: { height: 1080 },
+  },
 });
 
 // State matrix layer C (docs/client/player/state-matrix.md § 1): one test per row id.
@@ -98,10 +135,27 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending(
+  row(
     'C03',
-    'direct play on native engines: throughput probe (Exo bandwidthMeter, AVP access log)',
-    'S6'
+    'native engines: the Exo bandwidth meter / AVPlayer access log feed the same "Slow connection" hint',
+    async () => {
+      const health = await nativeHealth({ bandwidthBps: 2_000_000, framesPresented: 10 });
+      expect(health).toMatchObject({ bandwidthBps: 2_000_000 });
+      const c = await probed({
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [],
+          bitrateKbps: 8_000,
+          video: { height: 1080 },
+        },
+      });
+      harness.engine.setHealth(health);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'slowNet', params: { measured: 2, needed: 8 } });
+      await c.stop();
+    }
   );
   pending(
     'C04',
@@ -364,8 +418,8 @@ describe('matrix C — Delivery (server → engine)', () => {
   );
   pending(
     'C20',
-    'AVPlayer has no audio counter (heuristic D21); /switch same audio when the server flag exists',
-    'S6'
+    "/switch same audio with the server's audioFallback flag (ladder step A; AVPlayer heuristic is D21)",
+    'S4d ladder'
   );
   row(
     'C21',
@@ -388,12 +442,67 @@ describe('matrix C — Delivery (server → engine)', () => {
     'Forced/selected subtitle not deliverable (subtitle_not_deliverable, deliveredAs: none)',
     'S8'
   );
-  pending(
+  row(
     'C25',
-    'Wrong content type (playlist not application/vnd.apple.mpegurl, segment not video/mp4)',
-    'S6'
+    'AVPlayer rejects a playlist/segment of the wrong type (-12642/-11850): server problem, reload — no step-down',
+    async () => {
+      const c = await playing({}, hls, 0);
+      harness.engine.time(30);
+      const event = await nativeFailure({
+        message: 'The operation couldn’t be completed.',
+        domain: 'AVFoundationErrorDomain',
+        code: -11800,
+        underlyingDomain: 'CoreMediaErrorDomain',
+        underlyingCode: -12642,
+      });
+      expect(classify({ kind: 'engine', engine: 'expo-video', ...event })).toMatchObject({
+        category: 'T6',
+        code: 'unexpected_format',
+      });
+      expect(
+        classify({
+          kind: 'engine',
+          engine: 'expo-video',
+          reason: 'AVFoundationErrorDomain -11850: Operation Stopped',
+        })
+      ).toMatchObject({ category: 'T6' });
+      expect(c.status.hint?.key).toBe('serverError');
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(30);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
   );
-  pending('C26', 'HDR → SDR tag mismatch (AVPlayer -12927)', 'S6');
+  row(
+    'C26',
+    'AVPlayer -12927 (HDR tag mismatch): kept in the log, reload, then "This device can\'t play HDR. Converting…"',
+    async () => {
+      const c = await playing({}, hls, 0);
+      harness.engine.time(30);
+      await nativeFailure({
+        message: 'Cannot Decode',
+        domain: 'AVFoundationErrorDomain',
+        code: -11821,
+        underlyingDomain: 'CoreMediaErrorDomain',
+        underlyingCode: -12927,
+      });
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      await nativeFailure({
+        message: 'Cannot Decode',
+        domain: 'AVFoundationErrorDomain',
+        code: -11821,
+        underlyingDomain: 'CoreMediaErrorDomain',
+        underlyingCode: -12927,
+      });
+      expect(c.status.hint).toMatchObject({ key: 'decoder', params: { format: 'HDR' } });
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      await c.stop();
+    }
+  );
   row(
     'C27',
     'web: an audio codec the browser cannot decode (counter stands): "No sound", then another way to play',
@@ -407,11 +516,23 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending(
+  row(
     'C27',
-    'native: Exo audio counters / AVP heuristic; server audio fallback flag (A)',
-    'S6'
+    'native: an Exo audio renderer that renders nothing (counter stands) is "No sound" like the web',
+    async () => {
+      const at = (second: number) =>
+        nativeHealth({ framesPresented: second * 24, audioProgress: Math.min(second, 3) * 40 });
+      const c = await probed();
+      for (let second = 1; second <= 7; second++) {
+        harness.engine.setHealth(await at(second));
+        harness.engine.time(second);
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+      expect(c.status.hint?.key).toBe('noAudio');
+      await c.stop();
+    }
   );
+  pending('C27', 'server audio fallback flag (ladder step A) before the step-down', 'S4d ladder');
   row(
     'C28',
     'web: a video codec without decoder (black, clock runs): "No picture", reload, then another way',
@@ -427,7 +548,37 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending('C28', 'native: Exo rendered-buffer counter, AVP isReadyForDisplay / video output', 'S6');
+  row(
+    'C28',
+    'native: no rendered video buffer (Exo) / not ready for display (AVPlayer) is "No picture"',
+    async () => {
+      // Exo deselected the video track: no video decoder, zero frames although the server has video.
+      await expect(
+        nativeHealth({
+          hasVideoTrack: false,
+          hasAudioTrack: true,
+          framesPresented: 0,
+          audioProgress: 5,
+        })
+      ).resolves.toMatchObject({ framesPresented: 0, hasVideoTrack: false });
+      await expect(nativeHealth({ readyForDisplay: false, framesPresented: 0 })).resolves.toEqual({
+        readyForDisplay: false,
+        framesPresented: 0,
+      });
+      const c = await probed({ ...hd() });
+      for (let second = 1; second <= 6; second++) {
+        harness.engine.setHealth({
+          framesPresented: 0,
+          hasVideoTrack: false,
+          audioProgress: second,
+        });
+        harness.engine.time(second);
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+      expect(c.status.hint?.key).toBe('noPicture');
+      await c.stop();
+    }
+  );
   row(
     'C29',
     'a resolution beyond the decoder (most frames dropped): the quality goes down',

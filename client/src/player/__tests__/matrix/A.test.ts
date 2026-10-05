@@ -1,3 +1,5 @@
+import { render } from '@testing-library/react-native';
+import { createElement } from 'react';
 import { AppState } from 'react-native';
 
 import { categoryOf } from '@/api/error-categories';
@@ -6,9 +8,14 @@ import i18n from '@/i18n';
 import { cardButtons } from '@/screens/player/card-actions';
 import { harness, newController, reply } from '@/../jest/player/harness';
 import { pending, row } from '@/../jest/player/matrix';
+import { expoVideoView } from '@/../jest/player/library-fakes';
+import { expoPlaying } from '@/../jest/player/native';
 import { fakeNetwork, playing, settle, starts } from '@/../jest/player/play';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
+jest.mock('expo-video', () =>
+  jest.requireActual('@/../jest/player/library-fakes').expoVideoModule()
+);
 
 beforeEach(() => harness.reset());
 afterEach(() => {
@@ -19,6 +26,19 @@ afterEach(() => {
 const offline = 'Source error: ERROR_CODE_IO_NETWORK_CONNECTION_FAILED';
 
 const generic = () => describeError(i18n.t, { code: 'unknown' });
+
+/** The real expo-video engine reports a native system pause; the controller adopts it with the cause (S6). */
+async function systemPause(cause: string) {
+  jest.useFakeTimers();
+  const c = await playing({}, {}, 0);
+  harness.engine.time(42);
+  const expo = await expoPlaying();
+  expo.player.system(true, cause);
+  expect(expo.of('userPlayback')).toEqual([expect.objectContaining({ paused: true })]);
+  expo.replay();
+  await jest.advanceTimersByTimeAsync(3_000);
+  return { c, expo };
+}
 
 // State matrix layer A (docs/client/player/state-matrix.md § 1): one test per row id.
 
@@ -101,14 +121,122 @@ describe('matrix A — App, auth, device and OS', () => {
   );
   pending('A10', 'Backgrounded with PiP (phones, expo-video)', 'regression test, S3+');
   pending('A11', 'OS kills the app (background or memory)', 'regression test, S3+');
-  pending('A12', 'Device lock / sleep while playing (phone, no PiP)', 'S6');
-  pending('A13', 'Audio focus lost (phone call, Siri, alarm, other app plays audio)', 'S6');
-  pending('A14', 'Headphones / Bluetooth disconnected ("becoming noisy")', 'S6');
+  row(
+    'A12',
+    'a pause by the lock screen is adopted: "Paused: screen locked" + Resume',
+    async () => {
+      const { c, expo } = await systemPause('locked');
+      expect(c.paused).toBe(true);
+      expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'locked' } });
+      expect(c.status.actions).toEqual(['resume']);
+      expect(harness.server.sent('progress').length).toBeGreaterThan(0);
+      c.setPaused(false);
+      expect(c.status.hint).toBeNull();
+      expect(harness.engine.play).toHaveBeenCalled();
+      expo.engine.release();
+      await c.stop();
+    }
+  );
+  row(
+    'A13',
+    'audio focus / interruption: the cause is named, the OS resume plays on, an app pause is not a system pause',
+    async () => {
+      const { c, expo } = await systemPause('call');
+      expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'call' } });
+      // The OS ends the interruption with "should resume" (iOS): the engine plays and the controller follows.
+      expo.player.system(false, 'resume');
+      expect(expo.player.calls.at(-1)).toBe('play');
+      expect(expo.of('userPlayback').at(-1)).toEqual({ type: 'userPlayback', paused: false });
+      expo.replay();
+      harness.engine.state('playing');
+      expect(c.paused).toBe(false);
+      expect(c.systemPaused).toBe(false);
+      expect(c.status.hint).toBeNull();
+      // Another app takes the audio focus (Android): named as such.
+      expo.player.system(true, 'otherAudio');
+      expect(expo.of('userPlayback').at(-1)).toMatchObject({ cause: 'otherAudio' });
+      // The viewer paused in the app first: a later focus loss is no system pause.
+      const own = await expoPlaying();
+      own.engine.pause();
+      own.player.system(true, 'otherAudio');
+      expect(own.of('userPlayback')).toEqual([]);
+      // Media keys / notification (Android `remote`): adopted as the viewer's pause, no system hint.
+      const remote = await expoPlaying();
+      remote.player.system(true, 'remote');
+      expect(remote.of('userPlayback')).toEqual([{ type: 'userPlayback', paused: true }]);
+      for (const engine of [expo.engine, own.engine, remote.engine]) engine.release();
+      await c.stop();
+    }
+  );
+  row(
+    'A14',
+    'headphones / Bluetooth gone ("becoming noisy"): "Paused: headphones disconnected"',
+    async () => {
+      const { c, expo } = await systemPause('headphones');
+      expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'headphones' } });
+      expect(c.status.actions).toEqual(['resume']);
+      expo.engine.release();
+      await c.stop();
+    }
+  );
   pending('A15', 'PiP start / stop via button or leaving the app', 'regression test, S3+');
-  pending('A16', 'PiP window closed by the viewer (✕)', 'S6');
+  row(
+    'A16',
+    'the PiP window closed with ✕ pauses: adopted as "Paused: picture-in-picture closed"',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(42);
+      const expo = await expoPlaying();
+      await render(createElement(expo.engine.Surface));
+      const onPip = expoVideoView.props?.onPictureInPictureStop as () => void;
+      onPip();
+      expo.player.setPlaying(false);
+      expect(expo.of('userPlayback')).toEqual([
+        { type: 'userPlayback', paused: true, cause: 'pipClosed' },
+      ]);
+      expo.replay();
+      expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'pipClosed' } });
+      // Long after the window closed, a pause is not blamed on it.
+      await jest.advanceTimersByTimeAsync(5_000);
+      const later = await expoPlaying();
+      later.player.setPlaying(false);
+      expect(later.of('userPlayback')).toEqual([]);
+      expo.engine.release();
+      later.engine.release();
+      await c.stop();
+    }
+  );
   pending('A17', 'Failure while in PiP', 'S4');
-  pending('A18', 'AirPlay start (iPhone/iPad)', 'S6');
-  pending('A19', 'AirPlay receiver lost / turned off', 'S6');
+  row('A18', 'AirPlay: "Playing on {device}", picture checks off while external', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, {}, 0);
+    harness.engine.time(42);
+    const expo = await expoPlaying();
+    expo.player.health = { external: true, externalDevice: 'Wohnzimmer' };
+    expo.player.setExternal(true);
+    await settle();
+    expect(expo.of('external').at(-1)).toEqual({
+      type: 'external',
+      active: true,
+      device: 'Wohnzimmer',
+    });
+    await expect(expo.engine.readHealth()).resolves.toMatchObject({ external: true });
+    expo.replay();
+    expect(c.status.hint).toEqual({ key: 'airplay', params: { device: 'Wohnzimmer' } });
+    expect(c.status.actions).toEqual([]);
+    expo.player.setExternal(false);
+    expo.replay();
+    expect(c.status.hint).toBeNull();
+    expo.engine.release();
+    await c.stop();
+  });
+  row('A19', 'the AirPlay receiver goes away: "Paused: AirPlay disconnected"', async () => {
+    const { c, expo } = await systemPause('airplayLost');
+    expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'airplayLost' } });
+    expo.engine.release();
+    await c.stop();
+  });
   pending('A20', 'Chromecast / Remote Playback API', 'regression test, S3+');
   row(
     'A21',

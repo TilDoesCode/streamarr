@@ -192,6 +192,8 @@ export class FakeExpoPlayer {
   audioTrack: unknown = null;
   subtitleTrack: unknown = null;
   videoTrack: unknown = null;
+  /** What the patched `readHealthAsync` answers (null = an unpatched build without the method). */
+  health: Record<string, number | boolean | string | null> | null = {};
   readonly calls: string[] = [];
   private listeners = new Map<string, ExpoListener[]>();
   private replace: { resolve: () => void; reject: (error: Error) => void } | null = null;
@@ -266,8 +268,33 @@ export class FakeExpoPlayer {
   }
 
   /** A failed item: `message` is what expo-video passes today; the rest is the S6 patch. */
-  failWith(error: { message: string; domain?: string; code?: number; httpStatus?: number }): void {
+  failWith(error: {
+    message: string;
+    errorCodeName?: string;
+    mimeType?: string;
+    domain?: string;
+    code?: number;
+    underlyingDomain?: string;
+    underlyingCode?: number;
+    errorLog?: string;
+    httpStatus?: number;
+  }): void {
     this.setStatus('error', error);
+  }
+
+  readHealthAsync?: (withFrames?: boolean) => Promise<FakeExpoPlayer['health']> = async () =>
+    this.health;
+
+  /** The S6 patch's system pause/resume (`call`, `otherAudio`, `headphones`, `locked`, `airplayLost`, `remote`, `resume`). */
+  system(paused: boolean, cause: string): void {
+    this.fire('systemPlayback', { paused, cause });
+    if (paused && cause !== 'resume') this.setPlaying(false);
+  }
+
+  /** AirPlay took over (or gave back) the picture. */
+  setExternal(active: boolean): void {
+    this.isExternalPlaybackActive = active;
+    this.fire('isExternalPlaybackActiveChange', { isExternalPlaybackActive: active });
   }
 
   /** The OS or the viewer outside the app paused or resumed. */
@@ -286,11 +313,19 @@ export class FakeExpoPlayer {
   }
 }
 
+/** The props of the last rendered `VideoView` (PiP and first-frame callbacks). */
+export const expoVideoView: { props: Record<string, unknown> | null } = { props: null };
+
+const VideoView = forwardRef<unknown, Record<string, unknown>>(function VideoView(props, _ref) {
+  expoVideoView.props = props;
+  return null;
+});
+
 /** `jest.mock('expo-video', () => jest.requireActual('@/../jest/player/library-fakes').expoVideoModule())` */
 export function expoVideoModule() {
   return {
     createVideoPlayer: () => new FakeExpoPlayer(),
-    VideoView: () => null,
+    VideoView,
     isPictureInPictureSupported: () => false,
   };
 }
@@ -301,7 +336,7 @@ type FakeVlc = {
   props: VlcProps | null;
   mounts: number;
   stats: Record<string, number> | null;
-  ref: Record<'getStats' | 'seek' | 'play' | 'pause' | 'stop', jest.Mock>;
+  ref: Record<'getStats' | 'seek' | 'play' | 'pause' | 'stop' | 'dismiss', jest.Mock>;
   reset(): void;
   call(name: string, payload?: unknown): void;
 };
@@ -317,6 +352,7 @@ export const FakeVlcView: FakeVlc = {
     play: jest.fn(async () => undefined),
     pause: jest.fn(async () => undefined),
     stop: jest.fn(async () => undefined),
+    dismiss: jest.fn(async () => undefined),
   },
   reset(): void {
     this.props = null;

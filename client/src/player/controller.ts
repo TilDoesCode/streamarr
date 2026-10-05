@@ -37,7 +37,12 @@ import { HealthMonitor, HEALTH_TICK_MS } from '@/player/health/monitor';
 import type { EngineHealth } from '@/player/health/types';
 import { CLOCK_FROZEN_MS } from '@/player/health/watchdog';
 import { ProgressQueue } from '@/player/progress-queue';
-import { classify, type Classified, type ErrorCategory } from '@/player/recovery/classify';
+import {
+  classify,
+  type Classified,
+  type ErrorCategory,
+  type SystemCause,
+} from '@/player/recovery/classify';
 import {
   cardActions,
   INCIDENT_RESET_MS,
@@ -194,6 +199,10 @@ export class PlaybackController {
   private offlineSince = 0;
   /** The engine paused without the app asking (call, other audio, headphones, lock …). */
   systemPaused = false;
+  /** Why, when the engine knows (null = somewhere outside the app). */
+  systemCause: SystemCause | null = null;
+  /** AirPlay / external playback shows the picture elsewhere. */
+  external: { device?: string } | null = null;
   /** The browser started muted or refused to start. */
   autoplay: 'muted' | 'blocked' | null = null;
   /** Sound is off (the viewer, or the browser's muted autoplay). */
@@ -716,9 +725,15 @@ export class PlaybackController {
         } else if (event.type === 'pip') {
           this.pictureInPicture = event.active;
           this.changed();
+        } else if (event.type === 'external') {
+          this.external = event.active ? { device: event.device } : null;
+          this.changed();
         } else if (event.type === 'userPlayback') {
           // Paused/resumed from the system controls: adopt it, so the next start of a source does not undo it.
           this.paused = event.paused;
+          if (event.paused && event.cause) this.systemPaused = true;
+          if (!event.paused) this.systemPaused = false;
+          this.systemCause = event.paused ? (event.cause ?? null) : null;
           if (event.paused) this.report('progress');
           this.changed();
         } else if (
@@ -931,6 +946,7 @@ export class PlaybackController {
       if (this.systemPaused) {
         // The system resumed on its own (end of a call).
         this.systemPaused = false;
+        this.systemCause = null;
         this.paused = false;
       } else if (this.paused) this.engine?.pause();
     } else if (state === 'paused') {
@@ -953,6 +969,7 @@ export class PlaybackController {
       if (this.paused || this.ended || this.runner.current || this.phase !== 'playing') return;
       this.paused = true;
       this.systemPaused = true;
+      this.systemCause = null;
       this.report('progress');
       this.changed();
     }, SYSTEM_PAUSE_MS);
@@ -1093,6 +1110,8 @@ export class PlaybackController {
       seeking: this.seekTarget !== null,
       paused: this.paused,
       systemPaused: this.systemPaused,
+      systemCause: this.systemCause,
+      external: this.external,
       autoplay: this.autoplay,
       health: this.monitor.finding,
       frozenAt: this.monitor.watchdog.lastGoodPosition ?? 0,
@@ -1566,6 +1585,7 @@ export class PlaybackController {
   setPaused(paused: boolean): void {
     if (!paused) {
       this.systemPaused = false;
+      this.systemCause = null;
       if (this.autoplay === 'blocked') this.autoplay = null;
     }
     if (this.paused === paused) return;

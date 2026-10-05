@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import type { EngineHealth } from '../health/types';
+import type { SystemCause } from '../recovery/classify';
 
 /** Engine implementations behind the one player interface. */
 export type EngineKind = 'expo-video' | 'vlc' | 'web';
@@ -53,8 +54,10 @@ export type EngineEvent =
   | { type: 'error'; reason: string; status?: number }
   | { type: 'ended' }
   | { type: 'pip'; active: boolean }
-  /** The viewer paused or resumed outside the app's controls (system full-screen player, lock screen). */
-  | { type: 'userPlayback'; paused: boolean }
+  /** Paused or resumed outside the app's controls; `cause` when the OS did it (call, headphones, lock …). */
+  | { type: 'userPlayback'; paused: boolean; cause?: SystemCause }
+  /** AirPlay / external playback took over the picture (`device`: the receiver's name when known). */
+  | { type: 'external'; active: boolean; device?: string }
   /** An audio rendition failed to load; `code` is the server's error code when known. */
   | { type: 'audioError'; code: string }
   /** The browser refused to start with sound (`muted`) or at all (`blocked`). */

@@ -1,14 +1,31 @@
+import { render } from '@testing-library/react-native';
+import { createElement } from 'react';
+
 import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 import { classify } from '@/player/recovery/classify';
 import { harness, newController, reply } from '@/../jest/player/harness';
-import { FakeHls, FakeVideoElement } from '@/../jest/player/library-fakes';
+import {
+  FakeExpoPlayer,
+  FakeHls,
+  FakeVideoElement,
+  FakeVlcView,
+} from '@/../jest/player/library-fakes';
 import { pending, row } from '@/../jest/player/matrix';
 import type { ControllerOptions, PlaybackController } from '@/player/controller';
 import type { Playback } from '@/player/playback-api';
 import { fakeNetwork, playFor, playing, settle, TICKS } from '@/../jest/player/play';
+import { expoPlaying } from '@/../jest/player/native';
+import { vlcPlaying } from '@/../jest/player/native-vlc';
+import type { EngineHealth } from '@/player/health/types';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
 jest.mock('hls.js', () => jest.requireActual('@/../jest/player/library-fakes').hlsJsModule());
+jest.mock('expo-video', () =>
+  jest.requireActual('@/../jest/player/library-fakes').expoVideoModule()
+);
+jest.mock('expo-libvlc-player', () =>
+  jest.requireActual('@/../jest/player/library-fakes').vlcModule()
+);
 
 beforeEach(() => harness.reset());
 afterEach(() => jest.useRealTimers());
@@ -25,14 +42,56 @@ const seen = (c: PlaybackController, keys: string[]) => () => {
 };
 const engineError = (reason: string, status?: number) =>
   harness.engine.emit({ type: 'error', reason, ...(status === undefined ? null : { status }) });
-const hd = {
-  mediaInfo: {
-    durationTicks: 600 * TICKS,
-    audioTracks: [],
-    subtitleTracks: [],
-    video: { height: 1080 },
-  },
-} as never;
+const hdInfo = {
+  durationTicks: 600 * TICKS,
+  audioTracks: [] as unknown[],
+  subtitleTracks: [],
+  video: { height: 1080 },
+};
+const hd = { mediaInfo: hdInfo } as never;
+
+/** The real expo-video engine's error for a failed item (patched fields), replayed into the controller. */
+async function nativeFailure(error: Parameters<FakeExpoPlayer['failWith']>[0]) {
+  const expo = await expoPlaying();
+  expo.player.failWith(error);
+  const [event] = expo.of('error');
+  expo.engine.release();
+  harness.engine.emit(event!);
+  return event!;
+}
+const classified = (event: { reason: string; status?: number }) =>
+  classify({ kind: 'engine', engine: 'expo-video', ...event });
+
+/** What the real expo-video engine reports for a native probe answer. */
+async function nativeHealth(raw: FakeExpoPlayer['health']): Promise<EngineHealth> {
+  const expo = await expoPlaying();
+  expo.player.health = raw;
+  const health = await expo.engine.readHealth();
+  expo.engine.release();
+  return health;
+}
+
+/** VLC statistics through the real VlcEngine probe. */
+async function vlcHealth(stats: Record<string, number>): Promise<EngineHealth> {
+  FakeVlcView.stats = stats;
+  const vlc = vlcPlaying();
+  const health = await vlc.engine.readHealth();
+  vlc.engine.release();
+  return health;
+}
+
+/** Plays `seconds` with a probe whose answer comes from `health(second)` (real engine mapping). */
+async function playWith(
+  seconds: number,
+  health: (second: number) => Promise<EngineHealth> | EngineHealth,
+  from = 0
+) {
+  for (let second = from + 1; second <= from + seconds; second++) {
+    harness.engine.setHealth(await health(second));
+    harness.engine.time(second);
+    await jest.advanceTimersByTimeAsync(1_000);
+  }
+}
 
 // State matrix layer D (docs/client/player/state-matrix.md § 1): one test per row id.
 
@@ -246,45 +305,391 @@ describe('matrix D — Engine and decoder', () => {
       await c.stop();
     }
   );
-  pending(
+  row(
     'D11',
-    'Exo source errors (ERROR_CODE_IO_NETWORK_CONNECTION_FAILED/TIMEOUT, IO_BAD_HTTP_STATUS,…',
-    'S6'
+    'Exo source errors carry the code name and HTTP status: 404 new start, network → reconnect, cleartext → client card',
+    async () => {
+      jest.useFakeTimers();
+      let c = await playing({}, {}, 0);
+      harness.engine.time(40);
+      const gone = await nativeFailure({
+        message: 'A playback exception has occurred: Source error',
+        errorCodeName: 'ERROR_CODE_IO_BAD_HTTP_STATUS',
+        httpStatus: 404,
+      });
+      expect(gone).toMatchObject({
+        status: 404,
+        reason: expect.stringMatching(/^ERROR_CODE_IO_BAD_HTTP_STATUS: /),
+      });
+      expect(classified(gone)).toMatchObject({ category: 'T2', code: 'unknown_transcode' });
+      await settle();
+      expect(harness.server.sent('start')).toHaveLength(2);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+      harness.reset();
+      c = await playing({}, {}, 0);
+      harness.engine.time(40);
+      const offline = await nativeFailure({
+        message: 'A playback exception has occurred: Source error',
+        errorCodeName: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED',
+      });
+      expect(classified(offline)).toMatchObject({ category: 'T1', code: 'network_unreachable' });
+      expect(c.status.hint?.key).toBe('reconnecting');
+      expect(
+        classified({ reason: 'ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT: Source error' })
+      ).toMatchObject({ category: 'T1', code: 'timeout' });
+      expect(
+        classified({
+          reason: 'ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED: Cleartext HTTP traffic not permitted',
+        })
+      ).toMatchObject({ category: 'T11', code: 'cleartext_not_permitted' });
+      await c.stop();
+    }
   );
-  pending(
+  row(
     'D12',
-    'Exo decoder errors (DECODER_INIT_FAILED, DECODER_QUERY_FAILED, DECODING_FAILED, DECODIN…',
-    'S6'
+    'Exo decoder errors: reload once, then the step-down says which format ("This device can\'t play HEVC")',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(40);
+      const failure = {
+        message: 'A playback exception has occurred: Decoder init failed',
+        errorCodeName: 'ERROR_CODE_DECODER_INIT_FAILED',
+        mimeType: 'video/hevc',
+      };
+      expect(classified(await nativeFailure(failure))).toMatchObject({
+        category: 'T7',
+        code: 'decode_error',
+      });
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      await nativeFailure(failure);
+      expect(c.status.hint).toMatchObject({ key: 'decoder', params: { format: 'HEVC' } });
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      for (const name of [
+        'ERROR_CODE_DECODING_FAILED',
+        'ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES',
+        'ERROR_CODE_DECODING_FORMAT_UNSUPPORTED',
+        'ERROR_CODE_DECODER_QUERY_FAILED',
+      ])
+        expect(classified({ reason: `${name} [video/av01]: x` })).toMatchObject({
+          category: 'T7',
+          code: 'decode_error',
+        });
+      await c.stop();
+    }
+  );
+  row(
+    'D13',
+    'Exo audio sink errors are their own code ("can\'t play the sound"), with the audio format',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(40);
+      const event = await nativeFailure({
+        message: 'A playback exception has occurred: AudioTrack init failed',
+        errorCodeName: 'ERROR_CODE_AUDIO_TRACK_INIT_FAILED',
+        mimeType: 'audio/eac3',
+      });
+      expect(classified(event)).toMatchObject({ category: 'T7', code: 'audio_decode_error' });
+      expect(classified({ reason: 'ERROR_CODE_DECODING_FAILED [audio/true-hd]: x' })).toMatchObject(
+        {
+          code: 'audio_decode_error',
+        }
+      );
+      expect(classified({ reason: 'ERROR_CODE_AUDIO_TRACK_WRITE_FAILED: x' }).code).toBe(
+        'audio_decode_error'
+      );
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
   );
   pending(
     'D13',
-    'Exo audio sink errors (AUDIO_TRACK_INIT_FAILED, AUDIO_TRACK_WRITE_FAILED, passthrough r…',
-    'S6'
+    'audio fallback /switch (ladder step A, server flag audioFallback) before the step-down',
+    'S4d ladder'
   );
   pending('D14', 'Exo BEHIND_LIVE_WINDOW', 'regression test, S3+');
-  pending('D15', 'Exo stuck in STATE_BUFFERING (loader waits on a 90 s segment)', 'S6');
-  pending('D16', 'Exo renders audio, video renderer has no track (unsupported → deselected)', 'S6');
-  pending('D17', 'Exo MediaCodec reclaimed / released (other app, return from background)', 'S6');
-  pending(
+  row(
+    'D15',
+    'Exo stuck buffering: the engine reports the stall, spinner after 1 s, hint after 4 s, ladder at 15 s',
+    async () => {
+      jest.useFakeTimers();
+      const expo = await expoPlaying();
+      expo.player.setStatus('loading');
+      expect(expo.of('buffering')).toEqual([{ type: 'buffering', buffering: true }]);
+      expect(expo.engine.getSnapshot().state).toBe('buffering');
+      expo.engine.release();
+      const c = await playing({}, hd, 0);
+      harness.engine.time(40);
+      expo.replay();
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(c.status.hint).not.toBeNull();
+      await jest.advanceTimersByTimeAsync(11_000);
+      await settle();
+      expect(harness.server.sent('switch').length).toBeGreaterThan(0);
+      await c.stop();
+    }
+  );
+  row(
+    'D16',
+    'Exo plays audio with the video renderer off (track deselected): zero frames → "No picture", reload',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, hd, 0);
+      await playWith(6, (second) =>
+        nativeHealth({
+          framesPresented: 0,
+          hasVideoTrack: false,
+          hasAudioTrack: true,
+          audioProgress: second * 40,
+        })
+      );
+      expect(c.status.hint?.key).toBe('noPicture');
+      await playWith(
+        4,
+        (second) => ({ framesPresented: 0, hasVideoTrack: false, audioProgress: second * 40 }),
+        6
+      );
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+  row(
+    'D17',
+    'Exo decoder reclaimed (code name): reload at the position, no step-down',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(33);
+      const event = await nativeFailure({
+        message: 'A playback exception has occurred: MediaCodec released',
+        errorCodeName: 'ERROR_CODE_DECODING_RESOURCES_RECLAIMED',
+      });
+      expect(classified(event)).toMatchObject({ category: 'T6', code: 'decoder_reclaimed' });
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(33);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+  row(
     'D18',
-    'AVPlayer item failed (-11800, -11828, -11850, -12642 playlist parse, -12660/-12938 HTTP…',
-    'S6'
+    'AVPlayer failures keep domain, code, underlying error and error log: offline T1, HTTP 404 T2, 5xx T6, -12927 T7',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(40);
+      const offline = await nativeFailure({
+        message: 'The Internet connection appears to be offline.',
+        domain: 'NSURLErrorDomain',
+        code: -1009,
+      });
+      expect(offline.reason).toBe(
+        'NSURLErrorDomain -1009: The Internet connection appears to be offline.'
+      );
+      expect(classified(offline)).toMatchObject({ category: 'T1', code: 'network_unreachable' });
+      await c.stop();
+      const http = (status: number, log: string) =>
+        classified({
+          reason: `AVFoundationErrorDomain -11800 (CoreMediaErrorDomain -12938) {${log}}: The operation could not be completed`,
+          status,
+        });
+      expect(http(404, 'CoreMediaErrorDomain -12938 HTTP 404: File Not Found')).toMatchObject({
+        category: 'T2',
+      });
+      expect(http(503, 'CoreMediaErrorDomain -12938 HTTP 503: Service Unavailable')).toMatchObject({
+        category: 'T6',
+      });
+      expect(
+        classified({
+          reason: 'AVFoundationErrorDomain -11800 (CoreMediaErrorDomain -12927): Cannot Decode',
+        })
+      ).toMatchObject({ category: 'T7', code: 'decode_error' });
+      expect(
+        classified({ reason: 'NSURLErrorDomain -1001: The request timed out.' }).category
+      ).toBe('T1');
+      // Seen live (iPhone simulator, a direct-play URL answering 404): no error log, only the codes.
+      expect(
+        classified({
+          reason:
+            'NSURLErrorDomain -1100 (NSOSStatusErrorDomain -12938): Failed to load the player item',
+        })
+      ).toMatchObject({ category: 'T2', code: 'unknown_transcode' });
+      expect(classified({ reason: 'NSURLErrorDomain -1202: x' })).toMatchObject({
+        code: 'tls_error',
+      });
+      expect(
+        classified({ reason: 'AVFoundationErrorDomain -11819: Cannot Complete Action' })
+      ).toMatchObject({
+        code: 'decoder_reclaimed',
+      });
+    }
   );
-  pending(
+  row(
     'D19',
-    'AVPlayer stalled (playbackStalled, timeControlStatus = waitingToPlayAtSpecifiedRate, is…',
-    'S6'
+    'AVPlayer waiting to play: stall timeline; the access-log bitrate names a slow connection',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const expo = await expoPlaying();
+      expo.player.setStatus('loading');
+      expo.player.health = { bandwidthBps: 1_500_000, readyForDisplay: true };
+      const health = await expo.engine.readHealth();
+      expo.engine.release();
+      const c = await playing({}, { mediaInfo: { ...hdInfo, bitrateKbps: 6_000 } } as never, 0);
+      harness.engine.time(40);
+      harness.engine.setHealth(health);
+      expo.replay();
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'slowNet', params: { measured: 1.5, needed: 6 } });
+      await c.stop();
+    }
   );
-  pending('D20', 'AVPlayer black picture while the clock runs (I1: frame 0 for ~45 s)', 'S6');
-  pending(
+  row(
+    'D20',
+    'AVPlayer black while the clock runs (not ready for display, no new pixel buffer): "No picture", reload',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, hd, 0);
+      await playWith(6, () =>
+        nativeHealth({ readyForDisplay: false, framesPresented: 0, hasVideoTrack: true })
+      );
+      expect(c.status.hint?.key).toBe('noPicture');
+      await playWith(4, () => ({ readyForDisplay: false, framesPresented: 0 }), 6);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+  row(
     'D21',
-    'AVPlayer picture without sound (unsupported/absent audio, passthrough route)',
-    'S6'
+    'AVPlayer picture without any enabled audio track (heuristic): "No sound", reload',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const withAudio = {
+        mediaInfo: { ...hdInfo, audioTracks: [{ index: 1 }] },
+      } as never;
+      const c = await playing({}, withAudio, 0);
+      await playWith(6, (second) =>
+        nativeHealth({
+          framesPresented: second,
+          hasVideoTrack: true,
+          hasAudioTrack: false,
+          audioProgress: 0,
+        })
+      );
+      expect(c.status.hint?.key).toBe('noAudio');
+      await playWith(4, (second) => ({ framesPresented: second, audioProgress: 0 }), 6);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      // With an audio track the probe has no audio counter: never guessed.
+      await expect(
+        nativeHealth({ framesPresented: 3, hasAudioTrack: true })
+      ).resolves.not.toHaveProperty('audioProgress');
+      await c.stop();
+    }
   );
-  pending('D22', 'VLC EncounteredError', 'S7');
-  pending('D23', 'VLC never shows a picture (MediaCodec direct rendering, A1 of M3.1)', 'S7');
-  pending('D24', 'VLC frozen picture with a running clock (after seek/load)', 'S7');
-  pending('D25', 'VLC no audio (audio output failed, passthrough)', 'S7');
+  row(
+    'D22',
+    'VLC EncounteredError: "VLC could not play this file" (vlc_error), reload, then another way',
+    async () => {
+      jest.useFakeTimers();
+      const vlc = vlcPlaying();
+      vlc.internals.view.current = FakeVlcView.ref;
+      await render(createElement(vlc.engine.Surface));
+      FakeVlcView.call('onEncounteredError', { message: "Your input can't be opened" });
+      const [event] = vlc.of('error');
+      expect(classify({ kind: 'engine', engine: 'vlc', ...event! })).toMatchObject({
+        category: 'T7',
+        code: 'vlc_error',
+      });
+      vlc.engine.release();
+      const c = await playing({}, { engine: 'vlc' } as never, 0);
+      harness.engine.time(20);
+      harness.engine.emit(event!);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      harness.engine.emit(event!);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      await c.stop();
+    }
+  );
+  row(
+    'D23',
+    'VLC decodes but never displays (no displayedPictures > 0 gate): "No picture", reload, then another way',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, { mediaInfo: hdInfo, engine: 'vlc' } as never, 0);
+      await playWith(6, (second) =>
+        vlcHealth({
+          displayedPictures: 0,
+          decodedVideo: second * 24,
+          decodedAudio: 10,
+          playedAbuffers: second * 10,
+        })
+      );
+      expect(c.status.hint?.key).toBe('noPicture');
+      await playWith(4, (second) => ({ framesPresented: 0, audioProgress: 100 + second }), 6);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+  row(
+    'D24',
+    'VLC frozen picture with a running clock (Android and Apple stats): "The picture is stuck. Reloading at …"',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, { mediaInfo: hdInfo, engine: 'vlc' } as never, 0);
+      const pictures = (second: number) => Math.min(second, 4) * 24;
+      await playWith(9, (second) =>
+        vlcHealth({
+          displayedPictures: pictures(second),
+          decodedVideo: second * 24,
+          decodedAudio: 10,
+          playedAbuffers: second * 10,
+        })
+      );
+      expect(c.status.hint).toMatchObject({ key: 'recovering', params: { time: '0:04' } });
+      await playWith(3, (second) => ({ framesPresented: 96, audioProgress: 200 + second }), 9);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(4);
+      await c.stop();
+    }
+  );
+  row('D25', 'VLC no audio (audio decoded, no buffer played): "No sound", reload', async () => {
+    jest.useFakeTimers();
+    harness.features.probe = true;
+    const withAudio = {
+      engine: 'vlc',
+      mediaInfo: { ...hdInfo, audioTracks: [{ index: 1 }] },
+    } as never;
+    const c = await playing({}, withAudio, 0);
+    await playWith(6, (second) =>
+      vlcHealth({
+        displayedPictures: second * 24,
+        decodedVideo: second * 24,
+        decodedAudio: second * 40,
+        playedAbuffers: 0,
+      })
+    );
+    expect(c.status.hint?.key).toBe('noAudio');
+    await playWith(4, (second) => ({ framesPresented: (6 + second) * 24, audioProgress: 0 }), 6);
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    await c.stop();
+  });
   row(
     'D26',
     'VLC stopping before the duration reloads once at the position, then explains',
@@ -319,7 +724,44 @@ describe('matrix D — Engine and decoder', () => {
       await c.stop();
     }
   );
-  pending('D27', 'VLC dialog request (onDialogDisplay: certificate, login, codec question)', 'S7');
+  row(
+    'D27',
+    'VLC dialogs are dismissed and classified: certificate → TLS card path, other questions → another way to play',
+    async () => {
+      const vlc = vlcPlaying();
+      await render(createElement(vlc.engine.Surface));
+      vlc.internals.view.current = FakeVlcView.ref;
+      FakeVlcView.ref.dismiss.mockClear();
+      FakeVlcView.call('onDialogDisplay', {
+        title: 'Insecure site',
+        text: 'This website certificate cannot be verified',
+        type: 'question',
+        cancelText: 'Cancel',
+        action1Text: 'View certificate',
+        action2Text: null,
+      });
+      expect(FakeVlcView.ref.dismiss).toHaveBeenCalledTimes(1);
+      const [tls] = vlc.of('error');
+      expect(classify({ kind: 'engine', engine: 'vlc', ...tls! })).toMatchObject({
+        category: 'T1',
+        code: 'tls_error',
+      });
+      FakeVlcView.call('onDialogDisplay', {
+        title: 'Codec not supported',
+        text: 'VLC could not decode the format "dts "',
+        type: 'error',
+        cancelText: null,
+        action1Text: null,
+        action2Text: null,
+      });
+      expect(classify({ kind: 'engine', engine: 'vlc', ...vlc.of('error')[1]! })).toMatchObject({
+        category: 'T7',
+        code: 'vlc_dialog',
+      });
+      expect(vlc.engine.getSnapshot().state).toBe('error');
+      vlc.engine.release();
+    }
+  );
   pending('D28', 'VLC stop hangs (ANR risk on release)', 'regression test, S3+');
   row(
     'D29',
@@ -478,7 +920,21 @@ describe('matrix D — Engine and decoder', () => {
       await c.stop();
     }
   );
-  pending('D40', 'replaceAsync rejects', 'S6');
+  row(
+    'D40',
+    'a rejected replaceAsync puts the engine in error and classifies like any engine error',
+    async () => {
+      const expo = await expoPlaying();
+      expo.engine.load({ uri: 'http://server/b.m3u8', kind: 'hls' });
+      FakeExpoPlayer.last.loaded(new Error('Source error: Response code: 410'));
+      await Promise.resolve();
+      await Promise.resolve();
+      const [event] = expo.of('error');
+      expect(expo.engine.getSnapshot().state).toBe('error');
+      expect(classified(event!)).toMatchObject({ category: 'T2', code: 'session_closed' });
+      expo.engine.release();
+    }
+  );
   row(
     'D41',
     'engine errors reload once, then step down once; an error during the switch starts nothing more',

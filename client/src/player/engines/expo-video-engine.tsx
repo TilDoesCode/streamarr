@@ -8,10 +8,19 @@ import {
   type VideoPlayer,
 } from 'expo-video';
 
+import type { EngineHealth } from '../health/types';
+import type { SystemCause } from '../recovery/classify';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
 import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
+import {
+  errorReason,
+  systemCause,
+  toHealth,
+  type NativeError,
+  type NativeProbe,
+} from './native-probe';
 
 type Subscription = { remove(): void };
 
@@ -57,6 +66,10 @@ function createExpoVideoSurface(
 
 /** Time events while playing; the clock shows whole seconds. */
 const TIME_UPDATE_SECONDS = 0.5;
+/** AVPlayer: count frames with an AVPlayerItemVideoOutput (S6 measures its cost on Apple TV). */
+const FRAME_COUNTER = true;
+/** A pause this soon after picture-in-picture closed was the window's ✕ (A16). */
+const PIP_CLOSE_MS = 2_000;
 
 /** expo-video (ExoPlayer on Android, AVPlayer on Apple). */
 export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
@@ -67,6 +80,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   private loaded = false;
   private wantPlay = false;
   private start = new StartSeek(0, () => undefined);
+  /** Paused by the OS (call, other audio, headphones, lock); a resume the OS allows plays again. */
+  private systemPause: SystemCause | null = null;
+  private pipClosedAt = 0;
+  private externalDevice: string | undefined;
 
   constructor() {
     super();
@@ -78,7 +95,12 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     this.subscriptions.push(
       player.addListener('statusChange', ({ status, error }) => {
         if (status === 'error') {
-          this.emit({ type: 'error', reason: error?.message ?? 'expo_video_error' });
+          const native = error as NativeError | undefined;
+          this.emit({
+            type: 'error',
+            reason: errorReason(native),
+            status: native?.httpStatus ?? undefined,
+          });
           this.setState('error');
         } else if (status === 'loading') {
           if (this.ready) this.emit({ type: 'buffering', buffering: true });
@@ -94,8 +116,16 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         // Android keeps posting time updates while paused; each one wakes the JS thread.
         player.timeUpdateEventInterval = isPlaying ? TIME_UPDATE_SECONDS : 0;
         if (this.getSnapshot().state === 'ended' && !isPlaying) return;
+        if (!isPlaying && Date.now() - this.pipClosedAt < PIP_CLOSE_MS)
+          this.onSystem(true, 'pipClosed');
         if (player.status === 'readyToPlay') this.setState(isPlaying ? 'playing' : 'paused');
       }),
+      (player as unknown as NativeProbe).addListener('systemPlayback', ({ paused, cause }) =>
+        this.onSystem(paused, cause)
+      ),
+      player.addListener('isExternalPlaybackActiveChange', ({ isExternalPlaybackActive }) =>
+        this.onExternal(isExternalPlaybackActive)
+      ),
       player.addListener('timeUpdate', ({ currentTime, bufferedPosition }) => {
         // Before the start seek the clock still reads 0; the snapshot keeps the start position.
         if (this.start.pending && !this.start.applied) return;
@@ -125,12 +155,47 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   private readonly view = createRef<VideoView>();
   readonly Surface = createExpoVideoSurface(this.player, {
     onFirstFrame: () => this.emit({ type: 'firstFrame' }),
-    onPip: (active) => this.emit({ type: 'pip', active }),
+    onPip: (active) => {
+      if (!active) this.pipClosedAt = Date.now();
+      this.emit({ type: 'pip', active });
+    },
     view: this.view,
   });
 
   startPictureInPicture(): void {
     if (PIP) void this.view.current?.startPictureInPicture().catch(() => undefined);
+  }
+
+  /** A pause or resume the app did not ask for; the controller adopts it with its cause (A12–A14, A16, A19). */
+  private onSystem(paused: boolean, cause: string): void {
+    if (paused) {
+      if (!this.wantPlay) return;
+      this.wantPlay = false;
+      this.systemPause = systemCause(cause);
+      this.emit({ type: 'userPlayback', paused: true, cause: this.systemPause ?? undefined });
+    } else if (cause === 'resume' && this.systemPause) {
+      // The OS ended the interruption and allows the playback to continue (end of a call).
+      this.play();
+      this.emit({ type: 'userPlayback', paused: false });
+    }
+  }
+
+  private onExternal(active: boolean): void {
+    this.emit({ type: 'external', active, device: active ? this.externalDevice : undefined });
+    if (active)
+      void this.readHealth().then(() => {
+        if (this.player.isExternalPlaybackActive && this.externalDevice)
+          this.emit({ type: 'external', active: true, device: this.externalDevice });
+      });
+  }
+
+  /** The patched expo-video's probe (state-matrix § 2 a); an unpatched build reports nothing (no rule runs). */
+  async readHealth(): Promise<EngineHealth> {
+    const probe = this.player as unknown as NativeProbe;
+    if (this.released || typeof probe.readHealthAsync !== 'function') return {};
+    const raw = await probe.readHealthAsync(FRAME_COUNTER);
+    if (typeof raw?.externalDevice === 'string') this.externalDevice = raw.externalDevice;
+    return toHealth(raw);
   }
 
   private emitTracks(): void {
@@ -196,7 +261,11 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
           if (this.wantPlay) player.play();
         } else if (player.status === 'readyToPlay') this.applyStart();
       })
-      .catch((error: Error) => this.emit({ type: 'error', reason: error.message }));
+      .catch((error: Error) => {
+        if (this.released || this.source !== source) return;
+        this.emit({ type: 'error', reason: error.message });
+        this.setState('error');
+      });
   }
 
   /** AVPlayer can drop a seek issued before the item is ready, so the start waits for readyToPlay. */
@@ -208,6 +277,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
 
   play(): void {
     this.wantPlay = true;
+    this.systemPause = null;
     if (this.start.pending && !this.start.applied) return;
     if (this.getSnapshot().state === 'ended') this.player.currentTime = 0;
     this.player.play();

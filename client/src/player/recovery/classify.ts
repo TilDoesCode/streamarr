@@ -55,15 +55,26 @@ function mediaStatus(status: number, detail: string): Classified {
   return { category, code: status === 0 ? 'network_unreachable' : code, detail };
 }
 
-const TLS = /ssl|tls|certificate|certpath|trust anchor|handshake|x509|pkix|secure connection/i;
-const TIMEOUT = /timed? ?out|NSURLErrorDomain error -1001\b|\(-1001\)/i;
+const TLS =
+  /ssl|tls|certificate|certpath|trust anchor|handshake|x509|pkix|secure connection|NSURLErrorDomain -12\d\d\b/i;
+const TIMEOUT = /timed? ?out|NSURLErrorDomain (?:error )?-1001\b|\(-1001\)/i;
 const OFFLINE =
   /offline|not connected to the internet|network connection was lost|unable to connect|could not connect|failed to connect|unknownhost|unable to resolve host|connectexception|ERROR_CODE_IO_NETWORK|NSURLErrorDomain|error -10(0[0-9])\b|net::ERR_|network ?error|networkError|MEDIA_ERR_NETWORK|media_error_2\b/i;
 const DECODER =
   /decod|codec|AUDIO_TRACK|AudioSink|audio track init|-12927|-11821|-12909|-11828|unsupported|not supported|SRC_NOT_SUPPORTED|media_error_[34]\b|FORMAT_|PIPELINE_ERROR|DEMUXER_ERROR|format error/i;
 const PARSER = /ParserException|PARSING_|-12642|-11850|unexpected format|content type/i;
 const ENCRYPTED = /keySystem|KEY_SYSTEM|DrmSession|DRM|-42\d{3}|encrypted|keyLoad/i;
-const RECLAIMED = /reclaim/i;
+const RECLAIMED = /reclaim|-11819\b/i;
+/** ExoPlayer's audio sink, or a decoder failure on an audio format (patched code name + `[audio/…]`). */
+const AUDIO = /AUDIO_TRACK|AudioSink|audio track init|DECOD\w*(?: \(.*\))? \[audio\//i;
+const CLEARTEXT = /CLEARTEXT/i;
+
+/** AVFoundation's codes for an HTTP refusal: -12938 / NSURL -1100 = 404, -12660 / NSURL -1102 = 403. */
+function avFoundationStatus(reason: string): number | undefined {
+  if (/-12938\b|NSURLErrorDomain -1100\b/.test(reason)) return 404;
+  if (/-12660\b|NSURLErrorDomain -1102\b/.test(reason)) return 403;
+  return undefined;
+}
 
 /** hls.js reasons are `<ErrorType>:<ErrorDetails>` (web engine), e.g. `networkError:fragLoadError`. */
 function hlsReason(reason: string, status?: number): Classified | undefined {
@@ -90,21 +101,54 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
   if (hls) return hls;
   if (reason === 'vlc_video_stalled')
     return { category: 'T7', code: 'video_stalled', detail: reason };
+  // libVLC asked a question nobody answers: a certificate one is TLS, the rest "VLC cannot play this" (D27).
+  if (reason.startsWith('vlc_dialog'))
+    return TLS.test(reason)
+      ? { category: 'T1', code: 'tls_error', detail: reason }
+      : { category: 'T7', code: 'vlc_dialog', detail: reason };
   const responseCode = /Response code: (\d{3})|HTTP (?:status )?(\d{3})|status code (\d{3})/i.exec(
     reason
   );
   const httpStatus =
-    status ?? (responseCode ? Number(responseCode.slice(1).find(Boolean)) : undefined);
+    status ??
+    (responseCode ? Number(responseCode.slice(1).find(Boolean)) : undefined) ??
+    avFoundationStatus(reason);
   if (httpStatus !== undefined && httpStatus >= 400) return mediaStatus(httpStatus, reason);
   if (TLS.test(reason)) return { category: 'T1', code: 'tls_error', detail: reason };
   if (ENCRYPTED.test(reason)) return { category: 'T8', code: 'encrypted_media', detail: reason };
   if (RECLAIMED.test(reason)) return { category: 'T6', code: 'decoder_reclaimed', detail: reason };
+  if (CLEARTEXT.test(reason))
+    return { category: 'T11', code: 'cleartext_not_permitted', detail: reason };
+  if (AUDIO.test(reason)) return { category: 'T7', code: 'audio_decode_error', detail: reason };
   if (DECODER.test(reason)) return { category: 'T7', code: 'decode_error', detail: reason };
   if (PARSER.test(reason)) return { category: 'T6', code: 'unexpected_format', detail: reason };
   if (TIMEOUT.test(reason)) return { category: 'T1', code: 'timeout', detail: reason };
   if (OFFLINE.test(reason)) return { category: 'T1', code: 'network_unreachable', detail: reason };
   // An engine failure nothing else explains stays "this method does not play here".
-  return { category: 'T7', code: 'engine_error', detail: reason };
+  return {
+    category: 'T7',
+    code: source.engine === 'vlc' ? 'vlc_error' : 'engine_error',
+    detail: reason,
+  };
+}
+
+const FORMATS: [RegExp, string][] = [
+  [/-12927\b/, 'HDR'],
+  [/video\/(?:hevc|hev1|hvc1)/i, 'HEVC'],
+  [/video\/dolby-vision/i, 'Dolby Vision'],
+  [/video\/av01/i, 'AV1'],
+  [/video\/avc/i, 'H.264'],
+  [/video\/x-vnd\.on2\.vp9/i, 'VP9'],
+  [/audio\/eac3/i, 'E-AC-3'],
+  [/audio\/ac3/i, 'AC-3'],
+  [/audio\/(?:vnd\.dts|dts)/i, 'DTS'],
+  [/audio\/true-?hd/i, 'TrueHD'],
+];
+
+/** The format a decoder refused, named for the `decoder` hint ("This device can't play HEVC"); null = unknown. */
+export function decoderFormat(detail: string | undefined): string | null {
+  if (!detail) return null;
+  return FORMATS.find(([pattern]) => pattern.test(detail))?.[1] ?? null;
 }
 
 const VERDICT_CATEGORY: Record<WatchdogVerdict, ErrorCategory> = {

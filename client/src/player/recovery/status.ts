@@ -1,6 +1,8 @@
 import { clock } from '@/player/format';
 import type { HealthFinding } from '@/player/health/types';
 
+import { decoderFormat, type SystemCause } from './classify';
+
 import { HINT_ACTIONS, type HintAction, type HintParams } from './hints';
 import type { Recovery, StatusHint } from './runner';
 
@@ -36,6 +38,10 @@ export type StatusInput = {
   seeking: boolean;
   paused: boolean;
   systemPaused: boolean;
+  /** Why the OS paused (null/undefined = somewhere outside the app). */
+  systemCause?: SystemCause | null;
+  /** AirPlay / external playback with the receiver's name when known. */
+  external?: { device?: string } | null;
   autoplay: 'muted' | 'blocked' | null;
   health: HealthFinding | null;
   /** Where frames last moved (the frozen-picture hint says where it resumes). */
@@ -84,7 +90,10 @@ export function statusOf(input: StatusInput): PlayerStatus {
   }
   if (phase !== 'playing') return NONE;
   if (input.systemPaused)
-    return show({ key: 'pausedBySystem', params: { cause: 'outside' } }, false);
+    return show(
+      { key: 'pausedBySystem', params: { cause: input.systemCause ?? 'outside' } },
+      false
+    );
   if (input.autoplay === 'blocked') return show({ key: 'autoplayBlocked' }, false);
   if (loading) {
     const slow = now - input.loadingSince >= HINT_MS;
@@ -114,6 +123,8 @@ export function statusOf(input: StatusInput): PlayerStatus {
     return show({ key: 'noPicture' }, true);
   }
   if (input.autoplay === 'muted') return show({ key: 'mutedAutoplay' }, false);
+  if (input.external)
+    return show({ key: 'airplay', params: { device: input.external.device ?? 'AirPlay' } }, false);
   return NONE;
 }
 
@@ -123,6 +134,8 @@ export function runningHint(recovery: Recovery): StatusHint {
   const { category, code } = recovery.failure;
   const params = { time: clock(recovery.position) };
   if (step === 'Q') return { key: 'lowering', params };
+  const format = /decode_error$/.test(code) ? decoderFormat(recovery.failure.detail) : null;
+  if (step === 'S' && format) return { key: 'decoder', params: { ...params, format } };
   if (step === 'S') return { key: code === 'picture_black' ? 'noPicture' : 'steppingDown', params };
   if (step === 'V') return { key: 'switchingVersion', params };
   if (step === 'N' && category === 'T2') return { key: 'restarting', params };

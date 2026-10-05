@@ -121,6 +121,6 @@ describe('scriptable library fakes drive the real engines (state-matrix § 2 d.1
     expect(errors(events)).toEqual(['VLC is unable to open the MRL']);
     expect(
       classify({ kind: 'engine', engine: 'vlc', reason: 'VLC is unable to open the MRL' })
-    ).toMatchObject({ category: 'T7', code: 'engine_error' });
+    ).toMatchObject({ category: 'T7', code: 'vlc_error' });
   });
 });

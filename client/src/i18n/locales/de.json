@@ -860,6 +860,22 @@
         "title": "Der Video-Decoder wurde entzogen",
         "message": "Eine andere App oder das System hat den Video-Decoder übernommen. Versuche es erneut."
       },
+      "audio_decode_error": {
+        "title": "Dieses Gerät kann den Ton nicht abspielen",
+        "message": "Das Bild läuft, aber dieses Gerät kann das Tonformat nicht ausgeben. Wähle eine andere Tonspur oder eine andere Version."
+      },
+      "cleartext_not_permitted": {
+        "title": "Unverschlüsselte Verbindung blockiert",
+        "message": "Dieses Gerät spielt nicht über eine unverschlüsselte http://-Verbindung. Verwende die https://-Adresse des Servers."
+      },
+      "vlc_error": {
+        "title": "VLC konnte diese Datei nicht abspielen",
+        "message": "VLC hat mit einem Fehler abgebrochen. Eine andere Wiedergabeart wird versucht; sonst wähle eine andere Version."
+      },
+      "vlc_dialog": {
+        "title": "VLC hat eine Rückfrage gestellt",
+        "message": "VLC wollte eine Antwort (Zertifikat, Anmeldung oder Codec) und wurde abgebrochen. Eine andere Wiedergabeart wird versucht; sonst wähle eine andere Version."
+      },
       "playback_stalled": {
         "title": "Wiedergabe stockt immer wieder",
         "message": "Das Video lädt langsamer, als es abgespielt wird. Versuche eine niedrigere Qualität oder eine andere Version."
