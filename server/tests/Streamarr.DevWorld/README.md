@@ -228,6 +228,11 @@ Two scenarios need their own Dev World (never the shared 39300):
 movies (viewers anna, kind, gast) on a fresh Dev World, checks the wire behaviour with plain HTTP and prints one line per
 fault. Its helpers (`arm`, `clear`, `start_playback`, `raw`) are meant for reuse by client test scripts.
 
+`tools/playback_robustness_check.py [base-url] [--only a,b]` uses those helpers for the playback robustness checks:
+a slowed transcode answers `504 segment_timeout` + `Retry-After` within the 25 s wait budget, a seek back behind the
+retained window restarts the run (retention set to 60 s for the check, then restored), `playbackAlive` in progress
+answers, and `/switch {audioFallback}` delivering AAC stereo (ffprobe). About 90 s on a fresh instance.
+
 ## Tests
 
 `dotnet test tests/Streamarr.DevWorld.Tests` (part of the solution) checks the harness without

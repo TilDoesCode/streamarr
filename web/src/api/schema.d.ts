@@ -8467,7 +8467,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Report playback of a movie or episode (start, periodic progress, stop); a server `playbackId` fills in release and stream token, keeps that playback alive, and `stop` ends it. */
+        /** Report playback of a movie or episode (start, periodic progress, stop); a server `playbackId` fills in release and stream token, keeps that playback alive (`playbackAlive` says whether it still exists), and `stop` ends it. */
         post: {
             parameters: {
                 query?: never;
@@ -10804,6 +10804,8 @@ export interface components {
             error?: components["schemas"]["PlaybackErrorDto"] | null;
             /** @description `retry`, `otherVersion`, `lowerQuality`, `useVlc` (failed only). */
             suggestedActions?: string[] | null;
+            /** @description True after a `/switch` with `audioFallback`: every rendition carries the selected audio as AAC stereo. */
+            audioFallback?: boolean;
         };
         PlaybackSkippedDto: {
             method: string | null;
@@ -10864,6 +10866,8 @@ export interface components {
             preferences?: components["schemas"]["PlaybackPreferencesDto"] | null;
             /** @description The current method failed on the device: continue with the next one in the ranking. */
             stepDown?: boolean;
+            /** @description True: the server converts the selected audio track to AAC stereo (no direct play, no audio group) for the rest of this playback; false turns it off; null keeps it. */
+            audioFallback?: boolean | null;
         };
         PlaybackVideoDto: {
             /** Format: int32 */
@@ -12678,6 +12682,8 @@ export interface components {
             spec?: components["schemas"]["CatalogSpecDto"] | null;
             /** @description Continue watching only (null elsewhere): false when the last version lookup found no playable version; true when one exists or no lookup ran yet. */
             available?: boolean | null;
+            /** @description Progress answers that named a `playbackId` only (null elsewhere): true while it is a live server playback of this device for this work, false once it ended (idle expiry, stop, server restart) — start a new playback. */
+            playbackAlive?: boolean | null;
         };
         WatchWorkIdsRequest: {
             /** @description Movie/episode ids; for played/unplayed also season (`tmdb-tv-1-s02`) or series (`tmdb-tv-1`) ids. */

@@ -876,6 +876,73 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task WatchProgress_SaysWhetherTheServerPlaybackIsStillAlive()
+    {
+        var (viewer, _) = await ViewerAsync("alive");
+        var ready = await ReadyAsync(viewer, Play(Release(Mkv()), AppleTv));
+        async Task<JsonElement> ReportAsync(string? playbackId, long position)
+        {
+            var response = await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+                new { @event = "progress", workId = Movie, positionTicks = position, durationTicks = 6_000_000_000L, playbackId });
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return await response.Content.ReadFromJsonAsync<JsonElement>();
+        }
+
+        Assert.True((await ReportAsync(Id(ready), 100_000_000L)).GetProperty("playbackAlive").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, (await ReportAsync(null, 110_000_000L)).GetProperty("playbackAlive").ValueKind);
+        Assert.False((await ReportAsync("pb-unknown", 120_000_000L)).GetProperty("playbackAlive").GetBoolean());
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(601));
+        await factory.Playbacks.SweepAsync();
+        var dead = await ReportAsync(Id(ready), 1_300_000_000L);
+
+        Assert.False(dead.GetProperty("playbackAlive").GetBoolean());
+        Assert.Equal(1_300_000_000L, dead.GetProperty("positionTicks").GetInt64());
+        var other = await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress", new { @event = "progress", workId = "tmdb-movie-504", positionTicks = 5L, playbackId = Id(ready) });
+        Assert.False((await other.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("playbackAlive").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Switch_AudioFallback_ConvertsTheSelectedTrackToAacStereo_UntilTurnedOff()
+    {
+        var (viewer, _) = await ViewerAsync("audiofallback");
+        var direct = await ReadyAsync(viewer, Play(Release(Mp4()), AppleTv));
+        Assert.Equal("direct", direct.GetProperty("method").GetString());
+        Assert.False(direct.GetProperty("audioFallback").GetBoolean());
+
+        var response = await viewer.PostAsJsonAsync($"{Base}/{Id(direct)}/switch", new { positionTicks = 300_000_000L, audioFallback = true });
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var remux = await WaitAsync(viewer, Id(direct), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready" or "failed");
+        Assert.Equal("remux", remux.GetProperty("method").GetString());
+        Assert.True(remux.GetProperty("audioFallback").GetBoolean());
+        var track = remux.GetProperty("mediaInfo").GetProperty("audioTracks")[0];
+        Assert.Equal(("converted", "aac", 2), (track.GetProperty("deliveredAs").GetString(), track.GetProperty("deliveredCodec").GetString(), track.GetProperty("deliveredChannels").GetInt32()));
+        Assert.Contains("audio_fallback", Codes(remux.GetProperty("decision").GetProperty("reasons")));
+        Assert.Contains("audio_fallback", remux.GetProperty("decision").GetProperty("skipped").EnumerateArray().SelectMany(s => Codes(s.GetProperty("reasons"))));
+        Assert.True(factory.Media.Starts.Last().Client.AudioFallback);
+
+        var dual = await ReadyAsync(viewer, Play(Release(DualAudio()), AppleTv, audio: 2));
+        Assert.True(dual.GetProperty("inSessionAudioSwitch").GetBoolean());
+        await viewer.PostAsJsonAsync($"{Base}/{Id(dual)}/switch", new { audioFallback = true });
+        var converted = await WaitAsync(viewer, Id(dual), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready" or "failed");
+        Assert.Equal("remux", converted.GetProperty("method").GetString());
+        Assert.False(converted.GetProperty("inSessionAudioSwitch").GetBoolean());
+        Assert.Null(factory.Media.Starts.Last().Limits.AudioRenditions);
+        var audio = converted.GetProperty("mediaInfo").GetProperty("audioTracks");
+        Assert.Equal(("none", "converted"), (audio[0].GetProperty("deliveredAs").GetString(), audio[1].GetProperty("deliveredAs").GetString()));
+
+        await viewer.PostAsJsonAsync($"{Base}/{Id(dual)}/switch", new { audioStreamIndex = 1 });
+        var sticky = await WaitAsync(viewer, Id(dual), b => b.GetProperty("revision").GetInt32() == 2 && State(b) is "ready" or "failed");
+        Assert.True(sticky.GetProperty("audioFallback").GetBoolean());
+        Assert.Equal("converted", sticky.GetProperty("mediaInfo").GetProperty("audioTracks")[0].GetProperty("deliveredAs").GetString());
+
+        await viewer.PostAsJsonAsync($"{Base}/{Id(dual)}/switch", new { audioFallback = false });
+        var off = await WaitAsync(viewer, Id(dual), b => b.GetProperty("revision").GetInt32() == 3 && State(b) is "ready" or "failed");
+        Assert.False(off.GetProperty("audioFallback").GetBoolean());
+        Assert.Equal("copy", off.GetProperty("mediaInfo").GetProperty("audioTracks")[0].GetProperty("deliveredAs").GetString());
+    }
+
+    [Fact]
     public async Task ResumePosition_ComesFromTheWatchState()
     {
         var (viewer, _) = await ViewerAsync("resume");

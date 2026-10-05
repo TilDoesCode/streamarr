@@ -256,6 +256,9 @@ public sealed record WatchStateResponse
 
     /// <summary>Continue watching only (null elsewhere): false when the last version lookup found no playable version; true when one exists or no lookup ran yet.</summary>
     public bool? Available { get; init; }
+
+    /// <summary>Progress answers that named a <c>playbackId</c> only (null elsewhere): true while it is a live server playback of this device for this work, false once it ended (idle expiry, stop, server restart) — start a new playback.</summary>
+    public bool? PlaybackAlive { get; init; }
 }
 
 public sealed record WatchHistoryResponse

@@ -193,8 +193,9 @@ public sealed class TranscodeSessionManager(
             throw new TranscodeException("unknown_segment", "The segment is outside this rendition.", 404);
         session.NoteRequested(index);
         var path = session.SegmentPath(index);
+        var deadline = WaitDeadline();
 
-        for (var attempt = 0; attempt < 4; attempt++)
+        for (var attempt = 0; attempt < 4 && DateTimeOffset.UtcNow < deadline; attempt++)
         {
             if (File.Exists(path))
             {
@@ -218,15 +219,18 @@ public sealed class TranscodeSessionManager(
                 session.Gate.Release();
             }
 
-            if (await WaitForAsync(session, job, () => File.Exists(path), ct))
+            if (await WaitForAsync(session, job, () => File.Exists(path), deadline, ct))
                 return path;
         }
+        if (DateTimeOffset.UtcNow >= deadline)
+            throw SegmentTimeout();
         throw new TranscodeException("segment_unavailable", "The segment could not be produced.", 503);
     }
 
     public async Task<byte[]> GetInitAsync(TranscodeSession session, CancellationToken ct)
     {
-        for (var attempt = 0; attempt < 4 && session.InitSegment is null; attempt++)
+        var deadline = WaitDeadline();
+        for (var attempt = 0; attempt < 4 && session.InitSegment is null && DateTimeOffset.UtcNow < deadline; attempt++)
         {
             TranscodeJob job;
             await session.Gate.WaitAsync(ct);
@@ -245,7 +249,7 @@ public sealed class TranscodeSessionManager(
                 session.Gate.Release();
             }
 
-            if (await WaitForAsync(session, job, job.InitReady, ct))
+            if (await WaitForAsync(session, job, job.InitReady, deadline, ct))
             {
                 NoteFirstSegment(session);
                 var bytes = await File.ReadAllBytesAsync(Path.Combine(session.Directory, job.InitFileName), ct);
@@ -254,6 +258,8 @@ public sealed class TranscodeSessionManager(
             }
         }
         session.Touch();
+        if (session.InitSegment is null && DateTimeOffset.UtcNow >= deadline)
+            throw SegmentTimeout();
         return session.InitSegment ?? throw new TranscodeException("init_unavailable", "The initialization segment could not be produced.", 503);
     }
 
@@ -359,7 +365,9 @@ public sealed class TranscodeSessionManager(
         {
             var front = job.Front();
             var gap = Math.Max(2, (int)Math.Ceiling(SeekGapSeconds / session.Timeline.SegmentLength));
-            if (index <= front + gap)
+            // A segment behind the front that is gone was evicted by retention: this run will never write it again.
+            var evicted = index < front && !File.Exists(session.SegmentPath(index));
+            if (!evicted && index <= front + gap)
             {
                 ResumeIfNeeded(session);
                 return job;
@@ -453,7 +461,8 @@ public sealed class TranscodeSessionManager(
             return session.SubtitlesCovered(index);
         }
 
-        for (var attempt = 0; attempt < 4 && !Covered(); attempt++)
+        var deadline = WaitDeadline();
+        for (var attempt = 0; attempt < 4 && !Covered() && DateTimeOffset.UtcNow < deadline; attempt++)
         {
             TranscodeJob job;
             await session.Gate.WaitAsync(ct);
@@ -474,7 +483,7 @@ public sealed class TranscodeSessionManager(
 
             try
             {
-                if (await WaitForAsync(session, job, Covered, ct))
+                if (await WaitForAsync(session, job, Covered, deadline, ct))
                     break;
             }
             catch (TranscodeException e) when (e.Code == "end_of_stream")
@@ -495,9 +504,14 @@ public sealed class TranscodeSessionManager(
         session.CoverSubtitles(job.StartSegment, last);
     }
 
-    private async Task<bool> WaitForAsync(TranscodeSession session, TranscodeJob job, Func<bool> ready, CancellationToken ct)
+    /// <summary>One wait budget per request across restarts, so the answer comes before the player's own timeout.</summary>
+    private DateTimeOffset WaitDeadline() => DateTimeOffset.UtcNow.AddSeconds(Math.Max(5, options.Value.SegmentWaitTimeoutSeconds));
+
+    private static TranscodeException SegmentTimeout()
+        => new("segment_timeout", "The transcoder did not produce the segment in time.", 504);
+
+    private async Task<bool> WaitForAsync(TranscodeSession session, TranscodeJob job, Func<bool> ready, DateTimeOffset deadline, CancellationToken ct)
     {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(Math.Max(5, options.Value.SegmentWaitTimeoutSeconds));
         while (DateTimeOffset.UtcNow < deadline)
         {
             if (ready())
@@ -521,7 +535,7 @@ public sealed class TranscodeSessionManager(
                 job.Resume();
             await Task.Delay(10, ct);
         }
-        throw new TranscodeException("segment_timeout", "The transcoder did not produce the segment in time.", 504);
+        throw SegmentTimeout();
     }
 
     private void ResumeIfNeeded(TranscodeSession session)

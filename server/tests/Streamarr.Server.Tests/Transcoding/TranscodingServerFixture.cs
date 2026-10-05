@@ -36,6 +36,10 @@ public class TranscodingServerFixture : IAsyncLifetime
     protected virtual string SourceSize => "640x360";
     protected virtual string SourceVideoBitrate => "600k";
     protected virtual int ArticleBytes => 256_000;
+    protected virtual int SegmentWaitTimeoutSeconds => 60;
+
+    /// <summary>Extra host settings (e.g. an ffmpeg wrapper), written into the fixture's temp directory.</summary>
+    protected virtual IReadOnlyDictionary<string, string?> ExtraSettings(string directory) => new Dictionary<string, string?>();
 
     /// <summary>Independent copies of the release; each starts cold (own articles, empty caches).</summary>
     protected virtual int ReleaseCopies => 1;
@@ -141,8 +145,9 @@ public class TranscodingServerFixture : IAsyncLifetime
             ["Streamarr:Transcoding:WorkspacePath"] = WorkspaceRoot,
             ["Streamarr:Transcoding:SamplesPath"] = SharedSamplesPath(),
             ["Streamarr:Transcoding:MaintenanceIntervalMilliseconds"] = "200",
-            ["Streamarr:Transcoding:SegmentWaitTimeoutSeconds"] = "60",
+            ["Streamarr:Transcoding:SegmentWaitTimeoutSeconds"] = SegmentWaitTimeoutSeconds.ToString(),
         });
+        builder.Configuration.AddInMemoryCollection(ExtraSettings(_tempDir));
         builder.AddStreamarrServer();
 
         _app = builder.Build();

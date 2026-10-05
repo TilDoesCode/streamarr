@@ -14,7 +14,8 @@ public sealed class TranscodingOptions
     public string LocalSourceBaseUrl { get; set; } = string.Empty;
 
     public int MaxSessions { get; set; } = 16;
-    public int SegmentWaitTimeoutSeconds { get; set; } = 90;
+    /// <summary>Longest a segment, init or WebVTT request waits for ffmpeg before <c>504 segment_timeout</c> (with <c>Retry-After</c>).</summary>
+    public int SegmentWaitTimeoutSeconds { get; set; } = 25;
     public int ProbeTimeoutSeconds { get; set; } = 45;
     public int CapabilityProbeTimeoutSeconds { get; set; } = 30;
     public int MaintenanceIntervalMilliseconds { get; set; } = 1_000;

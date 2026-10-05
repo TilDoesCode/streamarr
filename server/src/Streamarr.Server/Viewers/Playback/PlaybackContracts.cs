@@ -132,6 +132,9 @@ public sealed record PlaybackSwitchRequest
 
     /// <summary>The current method failed on the device: continue with the next one in the ranking.</summary>
     public bool StepDown { get; init; }
+
+    /// <summary>True: the server converts the selected audio track to AAC stereo (no direct play, no audio group) for the rest of this playback; false turns it off; null keeps it.</summary>
+    public bool? AudioFallback { get; init; }
 }
 
 /// <summary>One viewer playback: its preparation state and, once <c>ready</c>, what to play and why.</summary>
@@ -197,6 +200,9 @@ public sealed record PlaybackResponse
 
     /// <summary><c>retry</c>, <c>otherVersion</c>, <c>lowerQuality</c>, <c>useVlc</c> (failed only).</summary>
     public IReadOnlyList<string>? SuggestedActions { get; init; }
+
+    /// <summary>True after a <c>/switch</c> with <c>audioFallback</c>: every rendition carries the selected audio as AAC stereo.</summary>
+    public bool AudioFallback { get; init; }
 }
 
 /// <summary>One <c>EXT-X-MEDIA:TYPE=AUDIO</c> entry; <see cref="Label"/> equals its NAME and <see cref="Language"/> its LANGUAGE.</summary>
