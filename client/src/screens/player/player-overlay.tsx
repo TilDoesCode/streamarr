@@ -167,7 +167,7 @@ export function PlayerOverlay({
   const playRef = useRef<View>(null);
   const seekRef = useRef<View>(null);
   const paused = controller.paused;
-  const duration = clock.duration || controller.duration;
+  const duration = controller.duration || clock.duration;
   // Live engine position: the clock steps coarsely while the overlay is hidden, so its first visible frame may lag.
   const position = scrub ?? controller.position;
   const tv = design.isTV;

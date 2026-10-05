@@ -228,7 +228,8 @@ export function noticeText(
   const label = () => subtitleName(Number(params?.index));
   switch (notice.kind) {
     case 'stepDown':
-      return [stepDownKey(params), stepDownReasonKey(params)]
+      // What happened first, then what the app did about it.
+      return [stepDownReasonKey(params), stepDownKey(params)]
         .flatMap((key) => (key ? [pt(key)] : []))
         .join(' ');
     case 'otherVersion':

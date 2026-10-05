@@ -650,19 +650,19 @@
       },
       "invalid_playback_request": {
         "title": "Wiedergabe abgelehnt",
-        "message": "Der Server hat diese Wiedergabe-Anfrage abgelehnt. Aktualisiere die App oder versuche es noch einmal."
+        "message": "Der Server hat diese Wiedergabe-Anfrage abgelehnt. Aktualisiere die App oder versuche es erneut."
       },
       "playback_not_found": {
         "title": "Wiedergabe beendet",
-        "message": "Diese Wiedergabe ist beendet oder abgelaufen. Starte sie noch einmal."
+        "message": "Diese Wiedergabe ist beendet oder abgelaufen. Starte sie neu, um an derselben Stelle weiterzuschauen."
       },
       "too_many_playbacks": {
         "title": "Zu viele Wiedergaben",
-        "message": "Es werden zu viele Wiedergaben vorbereitet. Beende eine und versuche es noch einmal."
+        "message": "Es werden zu viele Wiedergaben vorbereitet. Beende eine und versuche es erneut."
       },
       "release_dead": {
         "title": "Version nicht verfügbar",
-        "message": "Dieser Version (und jeder Ausweichversion) fehlen Daten. Wähle eine andere Version."
+        "message": "Dieser Version und den an ihrer Stelle versuchten Versionen fehlen Daten. Wähle eine andere Version."
       },
       "repair_failed": {
         "title": "Reparatur fehlgeschlagen",
@@ -713,8 +713,8 @@
         "message": "Der Server konnte diese Version nicht lesen. Versuche eine andere Version."
       },
       "stream_expired": {
-        "title": "Stream abgelaufen",
-        "message": "Der Stream ist abgelaufen. Starte die Wiedergabe noch einmal."
+        "title": "Zugang abgelaufen",
+        "message": "Der Zugang zu diesem Video ist abgelaufen. Starte die Wiedergabe neu, um an derselben Stelle weiterzuschauen."
       },
       "no_playable_file": {
         "title": "Keine Videodatei",
@@ -726,7 +726,7 @@
       },
       "nzb_fetch_failed": {
         "title": "Quelle nicht verfügbar",
-        "message": "Der Server konnte diese Version nicht abrufen. Versuche es noch einmal oder wähle eine andere Version."
+        "message": "Der Server konnte diese Version nicht abrufen. Versuche es erneut oder wähle eine andere Version."
       },
       "nzb_host_not_allowed": {
         "title": "Quelle blockiert",
@@ -734,11 +734,11 @@
       },
       "usenet_unreachable": {
         "title": "Quelle nicht erreichbar",
-        "message": "Der Server erreicht seine Quelle gerade nicht. Versuche es später noch einmal."
+        "message": "Der Server erreicht seine Quelle gerade nicht. Versuche es später erneut."
       },
       "resolve_failed": {
         "title": "Version nicht vorbereitet",
-        "message": "Der Server konnte diese Version nicht vorbereiten. Versuche es noch einmal oder wähle eine andere Version."
+        "message": "Der Server konnte diese Version nicht vorbereiten. Versuche es erneut oder wähle eine andere Version."
       },
       "segment_timeout": {
         "title": "Umwandlung zu langsam",
@@ -806,7 +806,7 @@
       },
       "ffmpeg_unavailable": {
         "title": "Umwandlung nicht verfügbar",
-        "message": "Der Server kann gerade keine Videos umwandeln (ffmpeg fehlt). Versuche eine andere Version."
+        "message": "Der Server kann gerade keine Videos umwandeln (der Umwandler fehlt). Versuche eine andere Version."
       },
       "transcoding_disabled": {
         "title": "Umwandlung ausgeschaltet",
@@ -817,7 +817,7 @@
         "message": "Der Server hat die Umwandlungsanfrage dieser App nicht angenommen. Aktualisiere die App oder melde den Code."
       },
       "remux_not_possible": {
-        "title": "Direktstream nicht möglich",
+        "title": "Direkt-Stream nicht möglich",
         "message": "Dieses Video lässt sich für dieses Gerät nicht umpacken. Versuche eine andere Version."
       },
       "no_video_stream": {
@@ -833,7 +833,7 @@
         "message": "Dieses Konto gibt es auf dem Server nicht mehr. Melde dich erneut an."
       },
       "decode_error": {
-        "title": "Video lässt sich nicht dekodieren",
+        "title": "Dieses Gerät kann das Video nicht dekodieren",
         "message": "Der Player dieses Geräts konnte das Video nicht dekodieren. Versuche eine andere Version oder spiele mit VLC ab."
       },
       "encrypted_media": {
@@ -857,8 +857,8 @@
         "message": "Der Server hat etwas geschickt, das kein Video ist, zum Beispiel von einem Proxy oder einer Anmeldeseite. Prüfe das Netzwerk und versuche es erneut."
       },
       "decoder_reclaimed": {
-        "title": "Der Video-Decoder wurde entzogen",
-        "message": "Eine andere App oder das System hat den Video-Decoder übernommen. Versuche es erneut."
+        "title": "Eine andere App hat das Video übernommen",
+        "message": "Eine andere App oder das System hat die Videowiedergabe dieses Geräts übernommen. Versuche es erneut."
       },
       "playback_stalled": {
         "title": "Wiedergabe stockt immer wieder",
@@ -1018,7 +1018,7 @@
     },
     "reasons": {
       "transcoding_disabled": "Das Umwandeln von Videos ist auf diesem Server ausgeschaltet.",
-      "ffmpeg_unavailable": "ffmpeg ist auf dem Server nicht installiert.",
+      "ffmpeg_unavailable": "Der Videoumwandler des Servers ist nicht installiert.",
       "no_local_listener": "Auf dem Server läuft kein lokaler Umwandler.",
       "too_many_sessions": "Der Server wandelt bereits so viele Videos um, wie er gleichzeitig kann.",
       "insufficient_disk": "Der Speicher des Servers ist voll."

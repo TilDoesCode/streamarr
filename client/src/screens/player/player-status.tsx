@@ -37,7 +37,7 @@ export function statusLayout(options: {
 }): StatusLayout {
   const { controlsVisible, tv, spinner, top, noticeShown, noticeHeight } = options;
   if (!controlsVisible || tv) return { anchor: 'centre', spinner, offset: 0 };
-  return { anchor: 'top', spinner: false, offset: top + (noticeShown ? noticeHeight : 0) };
+  return { anchor: 'top', spinner, offset: top + (noticeShown ? noticeHeight : 0) };
 }
 
 /** Spinner and hint over the picture; never focusable on TV (no buttons there), announced once per change. */

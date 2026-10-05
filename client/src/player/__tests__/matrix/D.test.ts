@@ -1227,7 +1227,7 @@ describe('matrix D — buffer full, live window, audio switch, drift (S4f)', () 
 
   row(
     'D32',
-    'an in-session audio switch that never confirms: after its timeout the server switches, with the notice "Audio switched by restarting the stream"',
+    'an in-session audio switch that never confirms: after its timeout the server switches, with the notice "Audio track switched; playback restarted at the same spot"',
     async () => {
       jest.useFakeTimers();
       const renditions = [
@@ -1292,7 +1292,7 @@ describe('matrix D — buffer full, live window, audio switch, drift (S4f)', () 
       expect(c.notice).toMatchObject({ kind: 'audioRestarted' });
       await i18n.changeLanguage('en');
       expect(i18n.t('notice.audioRestarted', { ns: 'player' } as never)).toBe(
-        'Audio switched by restarting the stream.'
+        'Audio track switched; playback restarted at the same spot for it.'
       );
       await c.stop();
     }
@@ -1376,6 +1376,51 @@ describe('matrix D — code review S4c-S4f (S4g)', () => {
       expect((await engine.readHealth()).framesPresented).toBe(0);
       video.present(24);
       expect((await engine.readHealth()).framesPresented).toBe(24);
+      engine.release();
+    }
+  );
+});
+
+describe('matrix D — live re-audit S9a2: hls.js cancelling its own requests (S4i)', () => {
+  async function hlsEngine() {
+    const engine = new WebEngine();
+    (engine as unknown as { attach(video: unknown): void }).attach(new FakeVideoElement());
+    await loadHls();
+    const events: EngineEvent[] = [];
+    engine.subscribe((event) => void (event.type !== 'stats' && events.push(event)));
+    engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+    return { engine, events, hls: FakeHls.last };
+  }
+  const aborted = (hls: FakeHls, type: string) =>
+    hls.error('networkError', 'aborted', { fatal: false, status: 0, frag: { type } });
+
+  row(
+    'D29',
+    'a seek cancels the subtitle segment in flight (hls.js "aborted"): no subtitle failure, the subtitles stay on (S9a2 SEEK-SUB)',
+    async () => {
+      const { engine, events, hls } = await hlsEngine();
+      aborted(hls, 'subtitle');
+      expect(events.filter((event) => event.type === 'subtitleError')).toEqual([]);
+      engine.release();
+    }
+  );
+
+  row(
+    'D29',
+    'a seek cancels the audio and video segments in flight while video loaded: no audio failure, no retry, no error (S9a2 D29)',
+    async () => {
+      const { engine, events, hls } = await hlsEngine();
+      hls.trigger('hlsFragLoaded', {
+        frag: {
+          type: 'main',
+          duration: 6,
+          stats: { loading: { start: 0, first: 100, end: 600 }, loaded: 1 },
+        },
+      });
+      events.length = 0;
+      aborted(hls, 'audio');
+      aborted(hls, 'main');
+      expect(events.map((event) => event.type)).toEqual([]);
       engine.release();
     }
   );

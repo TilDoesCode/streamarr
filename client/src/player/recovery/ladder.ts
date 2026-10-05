@@ -245,7 +245,12 @@ export function cardActions(
     T4: ['retry'],
     T5: ['lowerQuality', 'otherVersion'],
     T6: ['retry', 'otherVersion'],
-    T7: code === 'audio_rendition_failed' ? ['retry', 'otherVersion'] : ['otherVersion', 'useVlc'],
+    T7:
+      code === 'audio_rendition_failed'
+        ? ['retry', 'otherVersion']
+        : code === 'picture_timeout'
+          ? ['retry', 'otherVersion', 'useVlc']
+          : ['otherVersion', 'useVlc'],
     T8: ['otherVersion'],
     T9: [],
     T10: ['retry'],

@@ -164,6 +164,8 @@ export const AUDIO_SWITCH_TIMEOUT_MS = 8_000;
 /** Audio switch measurements kept for diagnostics (newest last). */
 export const AUDIO_SWITCH_SAMPLES = 20;
 const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
+/** Failures of a new source that a viewer's switch caused: slow, broken on the server, or unplayable here. */
+const SWITCH_BACK: ReadonlySet<ErrorCategory> = new Set(['T5', 'T6', 'T7']);
 const STEADY_STATES = new Set<EngineState>(['playing', 'paused', 'buffering', 'ended']);
 const BROKEN_PICTURE = new Set(['picture_black', 'picture_frozen', 'video_stalled']);
 const QUALITY_STEPS = [2160, 1080, 720, 480];
@@ -192,6 +194,12 @@ export class PlaybackController {
   private serverTracksOff: (() => void) | null = null;
   private appState: NativeEventSubscription | null = null;
   private lastGoodPosition = 0;
+  /** The viewer's last switch until its new source shows a picture. */
+  private switchedFrom: {
+    playback: Playback;
+    position: number;
+    preferences: PlaybackPreferences;
+  } | null = null;
   /** Start position not yet reached: reports never go below it, so a failed start keeps the resume point. */
   private startFloor = 0;
   private noticeId = 0;
@@ -292,7 +300,7 @@ export class PlaybackController {
       escalate: (verdict, resumeAt) =>
         this.nearEnd()
           ? this.finish()
-          : this.runner.handle(classify({ kind: 'watchdog', verdict }), {
+          : this.mediaFailure(classify({ kind: 'watchdog', verdict }), {
               // Frames below a start position never reached (a live window) are no place to resume (S9a D10).
               position: this.startFloor ? undefined : resumeAt,
             }),
@@ -320,7 +328,10 @@ export class PlaybackController {
 
   get position(): number {
     // A debounced seek is where the viewer wants to be before the engine is told (D31).
-    return this.pendingSeek?.target ?? this.engine?.getSnapshot().position ?? 0;
+    // A source still seeking to its start position reports 0: the start position is where it is (S9a2 START).
+    return (
+      this.pendingSeek?.target ?? (this.startFloor || (this.engine?.getSnapshot().position ?? 0))
+    );
   }
 
   /** Where a switch continues: a loading or failed engine may already report 0. */
@@ -338,8 +349,11 @@ export class PlaybackController {
   get duration(): number {
     const engine = this.engine?.getSnapshot().duration ?? 0;
     const ticks = this.playback?.mediaInfo?.durationTicks ?? 0;
-    // Safari calls a playlist without ENDLIST live (duration Infinity): the server's length is the title's (S9a D10).
-    return Number.isFinite(engine) && engine > 0 ? engine : ticks / TICKS_PER_SECOND;
+    const server = ticks / TICKS_PER_SECOND;
+    // A playlist without ENDLIST reads as live (Safari) or as cut short (hls.js): the server's length is the title's (S9a D10, S9a2 C12).
+    if (server > 0 && !(Number.isFinite(engine) && engine > server - END_MARGIN_SECONDS))
+      return server;
+    return Number.isFinite(engine) && engine > 0 ? engine : server;
   }
 
   async start(): Promise<void> {
@@ -879,6 +893,7 @@ export class PlaybackController {
     if (playback.version?.releaseId) this.triedReleases.add(playback.version.releaseId);
     noteAudioTracks(playback.version?.releaseId, playback.mediaInfo?.audioTracks?.length ?? 2);
     this.endSwitch();
+    this.switchedFrom = null;
     this.phase = 'playing';
     this.ended = false;
     this.lastGoodPosition = position;
@@ -1016,7 +1031,7 @@ export class PlaybackController {
     // A missing last segment or a short tail: the end is reached, not a failure (C13).
     if (this.pictured && duration && position >= duration - END_MARGIN_SECONDS)
       return this.finish();
-    this.runner.handle(classify({ kind: 'engine', engine: engine.kind, reason, status }));
+    this.mediaFailure(classify({ kind: 'engine', engine: engine.kind, reason, status }));
   }
 
   /** An engine that plays a live window below the load position (Safari without ENDLIST): back to the position, once. */
@@ -1207,12 +1222,12 @@ export class PlaybackController {
       now - this.loadingSince >= this.startBudget()
     ) {
       this.loadingSince = 0;
-      this.runner.handle({ category: 'T7', code: 'picture_timeout' });
+      this.mediaFailure({ category: 'T7', code: 'picture_timeout' });
     } else if (calm && this.stallSince && this.nearEnd() && now - this.stallSince >= HINT_MS) {
       this.finish();
     } else if (calm && this.stallSince && now - this.stallSince >= STALL_LADDER_MS) {
       this.stallSince = 0;
-      this.runner.handle(
+      this.mediaFailure(
         stallFailure(this.loadRetry, now, this.stallAfterSeek, this.engine?.kind ?? 'web')
       );
     } else if (this.offline) this.runner.expireOffline(now - this.offlineSince);
@@ -1361,6 +1376,7 @@ export class PlaybackController {
       }
       if (signal.aborted) throw signal.reason;
       await this.attach(ready, position);
+      if (!step) this.switchedFrom = { playback, position, preferences: previousPreferences };
       return true;
     } catch (error) {
       if (this.closed) return false;
@@ -1459,6 +1475,19 @@ export class PlaybackController {
     this.states = [];
     this.phase = 'playing';
     this.showNotice('switchFailed', { code: this.lastError || 'start_timeout' });
+  }
+
+  /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
+  private mediaFailure(failure: Classified, extra?: FailureExtra): void {
+    const from = this.switchedFrom;
+    if (!from || this.pictured || !SWITCH_BACK.has(failure.category))
+      return this.runner.handle(failure, extra);
+    this.switchedFrom = null;
+    this.lastError = failure.code;
+    this.lastErrorStatus = undefined;
+    this.phase = 'switching';
+    this.changed();
+    void this.restore(from.playback, from.position, from.preferences, this.beginSwitch().signal);
   }
 
   /** A viewer's switch gets a step's budget (recovery/step-budget). */

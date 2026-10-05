@@ -9,11 +9,15 @@ const CARD_ACTIONS = new Set<ErrorAction>([
   'signIn',
 ]);
 
-/** The failure card's buttons: what the ladder and the server offer, then Back. */
-export function cardButtons(actions: readonly string[] | undefined): ErrorAction[] {
+/** The failure card's buttons: what the ladder and the server offer, then Back; VLC only where it exists. */
+export function cardButtons(
+  actions: readonly string[] | undefined,
+  { vlc = true }: { vlc?: boolean } = {}
+): ErrorAction[] {
   return [
-    ...(actions ?? ['retry']).filter((action): action is ErrorAction =>
-      CARD_ACTIONS.has(action as ErrorAction)
+    ...(actions ?? ['retry']).filter(
+      (action): action is ErrorAction =>
+        CARD_ACTIONS.has(action as ErrorAction) && (vlc || action !== 'useVlc')
     ),
     'back',
   ];
