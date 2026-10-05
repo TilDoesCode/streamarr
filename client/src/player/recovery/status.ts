@@ -38,6 +38,8 @@ export type StatusInput = {
   bandwidthBps: number | undefined;
   /** The last video segment's server wait and transfer (web, C08). */
   fetch?: { waitMs: number; transferMs: number; bytes: number };
+  /** The server is repairing missing data of a direct-play release (C04). */
+  repairing?: boolean;
   /** The engine is retrying a failed media request right now: its HTTP status, and whether only the audio fails. */
   serverRetry?: { status?: number; audio?: boolean } | null;
 };
@@ -139,6 +141,7 @@ export function runningHint(recovery: Recovery): StatusHint {
 /** Why a stall lasts: measured throughput below the bitrate, a slow conversion, or just slow loading (C03, C08). */
 function stallHint(input: StatusInput): StatusHint {
   const { bandwidthBps, bitrateKbps: bitrate, fetch } = input;
+  if (input.repairing) return { key: 'serverRepairing' };
   // A segment that waited longer for its first byte than it took to arrive: the server converts slowly (S9a C08).
   if (fetch && input.method !== 'direct' && fetch.waitMs > fetch.transferMs)
     return { key: 'serverSlow' };

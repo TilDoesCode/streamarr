@@ -3,7 +3,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { AppState, type NativeEventSubscription } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
-import { toAppError, type ErrorParams } from '@/api/errors';
+import { toAppError, type AppError, type ErrorParams } from '@/api/errors';
 import { isSingleAudio, noteAudioTracks, rememberAudioLanguage } from '@/player/audio-preference';
 import {
   engineTrackFor,
@@ -53,6 +53,7 @@ import {
   SPINNER_MS,
   STALL_LADDER_MS,
   START_BUDGET_MS,
+  STATE_BUDGET_MS,
   STEP_BUDGET_MS,
   STEP_MAX_MS,
   SUBTITLE_RETRIES,
@@ -69,6 +70,7 @@ import {
   type StatusHint,
   type StepTracks,
 } from '@/player/recovery/runner';
+import { isRepairing } from '@/player/recovery/repair';
 import { statusOf, type PlayerStatus } from '@/player/recovery/status';
 import { effectiveMuted } from '@/player/test-muted';
 
@@ -86,7 +88,8 @@ export type NoticeKind =
   | 'audioFallback'
   | 'subtitleFailed'
   | 'subtitleBack'
-  | 'subtitleNotDeliverable';
+  | 'subtitleNotDeliverable'
+  | 'audioRestarted';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
@@ -248,6 +251,8 @@ export class PlaybackController {
   private pictured = false;
   private loadingSince = 0;
   private stallSince = 0;
+  /** Stops the polls of the first start when the card takes over (B16). */
+  private startAbort: AbortController | null = null;
   private seekAt = 0;
   private loadPosition = 0;
   /** The last clock reading of this source: a picture is a clock that runs, never one jump (S9a START). */
@@ -268,6 +273,7 @@ export class PlaybackController {
     this.preferences = { engine: 'auto', ...options.preferences };
     this.progress = new ProgressQueue(options.accountId, options.client);
     this.progress.onAnswer = (answer) => this.onProgressAnswer(answer);
+    this.progress.onRefused = (error) => this.onSignedOut(error);
     this.runner = new RecoveryRunner({
       situation: () => ({
         attached: !!this.engine,
@@ -345,11 +351,19 @@ export class PlaybackController {
   }
 
   async start(): Promise<void> {
+    const startAbort = new AbortController();
+    this.startAbort = startAbort;
+    const stop = () => startAbort.abort();
+    this.abort.signal.addEventListener('abort', stop);
     try {
-      await this.begin();
+      await this.begin(undefined, undefined, startAbort.signal);
     } catch (error) {
-      if (this.closed) return;
+      // Closed, or the card already said that the start got stuck (B16).
+      if (this.closed || this.phase === 'failed') return;
       this.onApiFailure(error);
+    } finally {
+      this.abort.signal.removeEventListener('abort', stop);
+      if (this.startAbort === startAbort) this.startAbort = null;
     }
   }
 
@@ -366,7 +380,7 @@ export class PlaybackController {
       signal
     );
     let ready = await this.wait(created, true, signal);
-    if (!ready) return;
+    if (!ready || this.phase === 'failed') return;
     const asked = Date.now();
     const position = resumeAt ?? (await this.askResume(ready, startSeconds));
     if (this.closed) return;
@@ -554,6 +568,8 @@ export class PlaybackController {
     this.failure =
       failure.code === 'unknown' ? { ...failure, code: 'player_internal_error' } : failure;
     this.phase = 'failed';
+    // The card cannot show in picture-in-picture: back to the app's window, where it waits (A17).
+    if (this.pictureInPicture) this.engine?.stopPictureInPicture?.();
     this.stopStatusTicker();
     this.monitor.stop();
     void this.engine?.shutdown?.();
@@ -579,6 +595,9 @@ export class PlaybackController {
     if (error === STEP_TIMEOUT)
       return { failure: { category: 'T6', code: 'step_timeout' }, extra: {} };
     const appError = toAppError(error);
+    // A 200 that is not JSON: a sign-in page or proxy answered instead of the server (A26).
+    if (appError.code === 'server_error' && appError.cause instanceof SyntaxError)
+      return { failure: { category: 'T1', code: 'network_intercepted' }, extra: {} };
     if (appError.code === 'unknown') {
       const detail = error instanceof Error ? error.message : String(error);
       return { failure: { category: 'T11', code: 'player_internal_error', detail }, extra: {} };
@@ -648,6 +667,17 @@ export class PlaybackController {
     if (!playback?.playbackId || report.playbackId !== playback.playbackId) return;
     if (!this.engine || this.phase !== 'playing' || this.runner.current) return;
     this.runner.handle({ category: 'T2', code: 'playback_not_found' }, { quiet: true });
+  }
+
+  /** A heartbeat refused for good (session ended, password change): pause where it is and say so (A03, A05, A07). */
+  private onSignedOut(error: AppError): void {
+    if (this.closed || this.phase === 'failed') return;
+    const failure = classify({ kind: 'api', code: error.code, status: error.status || undefined });
+    if (failure.category !== 'T3') return;
+    // The refused report stays queued for this account (24 h) and is sent once it signs in again.
+    this.paused = true;
+    this.engine?.pause();
+    this.giveUp(failure, { params: error.params, status: error.status }, this.runner.attempts);
   }
 
   /** Subtitles failed to load or parse (C22, C23): off with a notice, one retry later; never a reason to stop. */
@@ -1149,8 +1179,23 @@ export class PlaybackController {
     this.stallSince = Date.now();
     this.stallPosition = this.engine?.getSnapshot().position ?? 0;
     this.stallAfterSeek = this.stallSince - this.seekAt < 2 * SPINNER_MS;
+    if (this.playback?.method === 'direct') void this.refreshRepair();
     this.tickStatus();
     this.changed();
+  }
+
+  /** A direct play that stalls may wait on a Usenet repair: the playback says so (C04). */
+  private async refreshRepair(): Promise<void> {
+    const playback = this.playback;
+    if (!playback?.playbackId) return;
+    try {
+      const fresh = await getPlayback(this.options.client, playback.playbackId, this.abort.signal);
+      if (this.playback === playback && fresh.playbackId === playback.playbackId)
+        this.playback = { ...playback, repair: fresh.repair ?? null };
+      this.changed();
+    } catch {
+      // Unknown repair state: the stall says what it can.
+    }
   }
 
   private clearStall(): void {
@@ -1245,6 +1290,22 @@ export class PlaybackController {
 
   private statusTick(): void {
     const now = Date.now();
+    // A start state twice past its budget: the card with Retry and Other version instead of waiting on (B16, E02).
+    const state = this.states.at(-1) ?? '';
+    const budget = STATE_BUDGET_MS[state];
+    if (
+      this.phase === 'starting' &&
+      budget &&
+      this.stateSince &&
+      now - this.stateSince >= 2 * budget
+    ) {
+      this.startAbort?.abort();
+      return this.giveUp(
+        { category: 'T6', code: 'start_stuck' },
+        { serverActions: ['retry', 'otherVersion'], params: { state } },
+        this.runner.attempts
+      );
+    }
     const recovery = this.runner.current;
     // A step that already ran (the source reloaded) does not hold the budgets: a reload without a picture fails again.
     const pending = !!recovery && !recovery.running;
@@ -1301,6 +1362,7 @@ export class PlaybackController {
       bitrateKbps: this.playback?.mediaInfo?.bitrateKbps,
       bandwidthBps: this.monitor.last.bandwidthBps,
       fetch: this.monitor.last.fetch,
+      repairing: isRepairing(this.playback?.repair?.state),
       serverRetry:
         this.loadRetry && Date.now() - this.loadRetry.at < LOAD_RETRY_RECENT_MS
           ? this.loadRetry
@@ -1408,8 +1470,8 @@ export class PlaybackController {
       });
       const ready = await this.wait(switched, !!step, signal);
       if (!ready) {
-        // The server gave up on the new revision in time (B13b): the old source still plays, so it simply stays.
-        if (!step && this.lastError === 'start_timeout' && this.oldSourcePlays()) {
+        // The new revision failed (start_timeout, capacity …): the old source still plays, so it simply stays (B19).
+        if (!step && this.oldSourcePlays()) {
           this.keepOldSource(playback, previousPreferences);
           return false;
         }
@@ -1656,6 +1718,8 @@ export class PlaybackController {
     });
     if (!ok) this.settleAudio(false);
     else this.rememberAudio(track);
+    // The in-session switch did not confirm: say that the stream restarted for the new audio (D32).
+    if (ok && fallback) this.showNotice('audioRestarted');
     await switched;
   }
 

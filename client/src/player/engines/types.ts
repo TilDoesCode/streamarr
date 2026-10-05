@@ -101,6 +101,8 @@ export interface PlayerEngine {
   /** Picture-in-picture (iPhone/iPad and Android phones, expo-video): entered by `startPictureInPicture` or on leaving the app. */
   readonly supportsPictureInPicture?: boolean;
   startPictureInPicture?(): void;
+  /** Leaves picture-in-picture (a terminal failure shows its card in the app's window, A17). */
+  stopPictureInPicture?(): void;
   /** AirPlay route picker (AVPlayer on iPhone/iPad). */
   readonly supportsAirPlay?: boolean;
   subscribe(listener: (event: EngineEvent) => void): () => void;

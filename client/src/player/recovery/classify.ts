@@ -88,6 +88,9 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
   if (TLS.test(reason)) return { category: 'T1', code: 'tls_error', detail: reason };
   if (ENCRYPTED.test(reason)) return { category: 'T8', code: 'encrypted_media', detail: reason };
   if (RECLAIMED.test(reason)) return { category: 'T6', code: 'decoder_reclaimed', detail: reason };
+  // A VOD source never has a live window: the engine lost its place, a reload at the position helps (D14).
+  if (/BEHIND_LIVE_WINDOW/.test(reason))
+    return { category: 'T1', code: 'stream_interrupted', detail: reason };
   if (AUDIO_DECODER.test(reason))
     return { category: 'T7', code: 'audio_decode_error', detail: reason };
   if (DECODER.test(reason) || /^(mediaError|muxError|otherError):/.test(reason))

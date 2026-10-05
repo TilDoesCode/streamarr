@@ -14,6 +14,7 @@ import { StartSeek } from './start-seek';
 import { FRAG_RETRY_DELAY_MS, fragLoadPolicy, statusLoader, type LoadStatus } from './hls-retry';
 import { LUMA_WINDOW_S } from '../health/watchdog';
 import { createLumaSampler } from './web-luma';
+import { lastFrame } from './web-poster';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
 type NativeTrackList<T> = EventTarget & { length: number; [index: number]: T };
@@ -118,6 +119,8 @@ function createWebSurface(
         {createElement('video', {
           ref,
           playsInline: true,
+          // No cast button: casting is not offered by design (A20); B2 covers a cast started outside the app.
+          disableRemotePlayback: true,
           style: { width: '100%', height: '100%', objectFit: fit ?? 'contain', display: 'block' },
         })}
       </View>
@@ -266,6 +269,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     const done = () => {
       if (this.started) return;
       this.started = true;
+      video.poster = '';
       this.emit({ type: 'firstFrame' });
     };
     if (typeof video.requestVideoFrameCallback === 'function')
@@ -343,7 +347,10 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       return;
     }
     this.pending = null;
+    // The picture of the old source stays until the new one shows its first frame (E18).
+    const poster = this.hls ? lastFrame(video) : undefined;
     this.teardown();
+    video.poster = poster ?? '';
     if (source.kind === 'hls' && this.mode === 'hls.js' && !hlsModule) {
       this.deferred = source;
       loadHls().then(

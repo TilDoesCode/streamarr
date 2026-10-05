@@ -48,6 +48,8 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   step_timeout: 'T6',
   stream_interrupted: 'T1',
   audio_rendition_failed: 'T7',
+  network_intercepted: 'T1',
+  start_stuck: 'T6',
   audio_decode_error: 'T7',
   subtitle_unavailable: 'T6',
   subtitle_timeout: 'T6',

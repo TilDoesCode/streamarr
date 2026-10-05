@@ -27,6 +27,7 @@ import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
+import { profileOrFallback } from '@/player/caps-fallback';
 import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
 import { noticeMs, noticeText, subtitleLabel } from '@/player/overlay-labels';
@@ -40,7 +41,7 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
-import { cardButtons } from './card-actions';
+import { cardButtons, failureReason } from './card-actions';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
@@ -61,6 +62,7 @@ const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 export function PlayScreen() {
   const pt = usePlayerT();
   const { t, i18n } = useTranslation();
+  const untypedT = t as unknown as (key: string, options?: Record<string, unknown>) => string;
   const design = useDesign();
   const resumeGap = useFocusGap(design.space.md);
   const { large } = useShell();
@@ -109,17 +111,9 @@ export function PlayScreen() {
     if (!workId) return;
     let cancelled = false;
     let current: PlaybackController | null = null;
-    loadDeviceCaps()
-      .then(
-        (caps) => caps,
-        (error: unknown) => {
-          if (__DEV__) console.warn('[player] device caps failed', error);
-          if (!cancelled) setCapsError('device_caps_unavailable');
-          return null;
-        }
-      )
+    profileOrFallback(loadDeviceCaps)
       .then((caps) => {
-        if (cancelled || !caps) return;
+        if (cancelled) return;
         current = new PlaybackController({
           client,
           accountId: account.id,
@@ -239,6 +233,9 @@ export function PlayScreen() {
   const failure = controller?.failure;
   const code = capsError ?? failure?.code ?? (workId ? 'unknown' : 'not_found');
   const actions = cardButtons(failure?.actions);
+  const reason = failureReason(untypedT, failure?.params, (key) =>
+    i18n.exists(`errors.reasons.${key}`)
+  );
   const top = Math.max(insets.top, design.layout.edgeVertical);
 
   return (
@@ -303,6 +300,11 @@ export function PlayScreen() {
               autoFocus={!picker}
               onAction={onFailureAction}
             />
+            {reason ? (
+              <Text testID="play-error-reason" variant="callout" tone="muted">
+                {reason}
+              </Text>
+            ) : null}
             {failure?.hint ? (
               <Text testID="play-error-hint" variant="callout" style={{ textAlign: 'center' }}>
                 {hintText(pt, failure.hint.key, failure.hint.params)}

@@ -52,6 +52,7 @@ export type Decision = {
 const CONVERSION_FAILURES: ReadonlySet<string> = new Set([
   'transcode_failed',
   'ffmpeg_unavailable',
+  'transcoding_unavailable',
   'rendition_split_failed',
   'segment_timeout',
   'step_timeout',
@@ -117,7 +118,9 @@ export function nextStep(
     return stepDown(incident, category === 'T5' ? 'buffering' : 'noPicture');
   switch (category) {
     case 'T1': {
-      if (code === 'tls_error' || code === 'mixed_content') return { step: 'G', delayMs: 0 };
+      // Retrying cannot get past a certificate problem or a network that answers with its own sign-in page (A26).
+      if (code === 'tls_error' || code === 'mixed_content' || code === 'network_intercepted')
+        return { step: 'G', delayMs: 0 };
       if (!context.online) return { step: retry(context), delayMs: Infinity, hint: 'offline' };
       const tries = incident.count(['R', 'N'], 'T1');
       if (tries < T1_BACKOFF_S.length)

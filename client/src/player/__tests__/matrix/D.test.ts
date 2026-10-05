@@ -1,6 +1,8 @@
 import type { EngineEvent } from '@/player/engines';
 import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 import { classify } from '@/player/recovery/classify';
+import { AUDIO_SWITCH_TIMEOUT_MS } from '@/player/controller';
+import i18n from '@/i18n';
 import { harness, newController, reply } from '@/../jest/player/harness';
 import { FakeHls, FakeVideoElement } from '@/../jest/player/library-fakes';
 import { pending, row } from '@/../jest/player/matrix';
@@ -140,7 +142,6 @@ describe('matrix D — Engine and decoder', () => {
       await c.stop();
     }
   );
-  pending('D05', 'MSE QuotaExceededError (bufferFullError)', 'regression test, S3+');
   row(
     'D06',
     'the hls.js chunk does not load: reload, then a new start, then the card with Retry',
@@ -257,7 +258,6 @@ describe('matrix D — Engine and decoder', () => {
     'Exo decoder errors (DECODER_INIT_FAILED, DECODER_QUERY_FAILED, DECODING_FAILED, DECODIN…',
     'S6'
   );
-  pending('D14', 'Exo BEHIND_LIVE_WINDOW', 'regression test, S3+');
   pending('D15', 'Exo stuck in STATE_BUFFERING (loader waits on a 90 s segment)', 'S6');
   pending('D16', 'Exo renders audio, video renderer has no track (unsupported → deselected)', 'S6');
   pending('D17', 'Exo MediaCodec reclaimed / released (other app, return from background)', 'S6');
@@ -342,7 +342,6 @@ describe('matrix D — Engine and decoder', () => {
     expect(harness.engine.seek).toHaveBeenLastCalledWith(599);
     await controller.stop();
   });
-  pending('D32', 'In-session audio switch never confirms', 'S4');
   row(
     'D33',
     'black picture with a running clock: "No picture", reload at the position, then another way to play',
@@ -427,7 +426,6 @@ describe('matrix D — Engine and decoder', () => {
     expect(harness.engine.load).toHaveBeenCalledTimes(2);
     await c.stop();
   });
-  pending('D37', 'Audio/video drift', 'S5');
   row(
     'D38',
     'heavy frame drops: "This device can\'t keep up" with Lower quality, above 60 % the quality goes down',
@@ -1177,6 +1175,145 @@ describe('matrix D — a picture verdict below a start position never reached (S
       expect(harness.engine.sources.length).toBeGreaterThanOrEqual(3);
       expect(harness.engine.sources.at(-1)?.startPosition).toBe(59);
       await c.stop();
+    }
+  );
+});
+
+describe('matrix D — buffer full, live window, audio switch, drift (S4f)', () => {
+  row(
+    'D05',
+    'MSE buffer full (bufferFullError, non-fatal): hls.js shrinks its buffer itself; no error, no ladder',
+    async () => {
+      const engine = new WebEngine();
+      (engine as unknown as { attach(video: unknown): void }).attach(new FakeVideoElement());
+      await loadHls();
+      const events: EngineEvent[] = [];
+      engine.subscribe((event) => void events.push(event));
+      engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+      FakeHls.last.error('mediaError', 'bufferFullError', { fatal: false });
+      expect(events.filter((event) => event.type === 'error')).toEqual([]);
+      expect(FakeHls.last.recoverMediaError).not.toHaveBeenCalled();
+      engine.release();
+    }
+  );
+
+  row(
+    'D14',
+    'ExoPlayer BEHIND_LIVE_WINDOW on a VOD source: a reload at the position, never a step-down',
+    async () => {
+      jest.useFakeTimers();
+      expect(
+        classify({
+          kind: 'engine',
+          engine: 'expo-video',
+          reason: 'Source error: ERROR_CODE_BEHIND_LIVE_WINDOW',
+        })
+      ).toMatchObject({ category: 'T1', code: 'stream_interrupted' });
+      const c = await playing({}, { method: 'remux' } as never, 200);
+      harness.engine.fail('Source error: ERROR_CODE_BEHIND_LIVE_WINDOW');
+      await jest.advanceTimersByTimeAsync(2_500);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(200);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D32',
+    'an in-session audio switch that never confirms: after its timeout the server switches, with the notice "Audio switched by restarting the stream"',
+    async () => {
+      jest.useFakeTimers();
+      const renditions = [
+        {
+          id: '1',
+          streamIndex: 1,
+          language: 'de',
+          label: 'Deutsch',
+          channels: 2,
+          codec: 'aac',
+          default: true,
+        },
+        {
+          id: '2',
+          streamIndex: 2,
+          language: 'en',
+          label: 'English',
+          channels: 2,
+          codec: 'aac',
+          default: false,
+        },
+      ];
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          inSessionAudioSwitch: true,
+          audioRenditions: renditions,
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [
+              { index: 1, language: 'ger', selected: true, deliveredAs: 'remux', renditionId: '1' },
+              {
+                index: 2,
+                language: 'eng',
+                selected: false,
+                deliveredAs: 'remux',
+                renditionId: '2',
+              },
+            ],
+            subtitleTracks: [],
+          },
+        } as never,
+        40
+      );
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [
+            { id: 'e0', label: 'English', language: 'en', selected: false },
+            { id: 'e1', label: 'Deutsch', language: 'de', selected: true },
+          ],
+          subtitles: [],
+        },
+      });
+      const switching = c.selectAudio({ index: 2, language: 'eng' } as never);
+      await jest.advanceTimersByTimeAsync(AUDIO_SWITCH_TIMEOUT_MS + 100);
+      expect(harness.server.sent('switch')[0]?.body).toMatchObject({ audioStreamIndex: 2 });
+      harness.engine.started();
+      harness.engine.time(41);
+      await switching;
+      expect(c.notice).toMatchObject({ kind: 'audioRestarted' });
+      await i18n.changeLanguage('en');
+      expect(i18n.t('notice.audioRestarted', { ns: 'player' } as never)).toBe(
+        'Audio switched by restarting the stream.'
+      );
+      await c.stop();
+    }
+  );
+
+  row(
+    'D37',
+    'drift and drops are logged, not acted on: the web engine reports dropped/total frames for the Info panel; no hint, no ladder',
+    async () => {
+      jest.useFakeTimers();
+      const engine = new WebEngine();
+      const video = new FakeVideoElement();
+      (engine as unknown as { attach(video: unknown): void }).attach(video);
+      await loadHls();
+      const stats: EngineEvent[] = [];
+      engine.subscribe((event) => void (event.type === 'stats' && stats.push(event)));
+      engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+      video.present(240);
+      video.droppedFrames = 12;
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(engine.getSnapshot().stats).toMatchObject({
+        droppedFrames: 12,
+        totalFrames: expect.any(Number),
+      });
+      engine.release();
+      await i18n.changeLanguage('en');
+      expect(i18n.t('info.dropped', { ns: 'player', count: 12 } as never)).toMatch(/12/);
     }
   );
 });

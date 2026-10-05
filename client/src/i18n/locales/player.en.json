@@ -108,7 +108,8 @@
     "audioFallback": "Sound converted to stereo to keep playing.",
     "subtitleFailed": "Subtitles “{label}” couldn’t be loaded and are off. {retry, select, later {They’ll be tried again in a minute.} other {Choose other subtitles.}}",
     "subtitleNotDeliverable": "Subtitles “{label}” can’t be shown on this device.",
-    "subtitleNotDeliverableVlc": "Subtitles “{label}” can’t be shown here — VLC can show them."
+    "subtitleNotDeliverableVlc": "Subtitles “{label}” can’t be shown here — VLC can show them.",
+    "audioRestarted": "Audio switched by restarting the stream."
   },
   "upNext": {
     "title": "Up next",
@@ -150,6 +151,7 @@
     "switchingVersion": "Trying another version at {time}…",
     "convertingAudio": "No sound. Converting the audio to keep playing at {time}…",
     "serverRetrying": "The server had a problem with this part of the video. Retrying…",
+    "serverRepairing": "The server is repairing missing data of this video. Buffering…",
     "causes": {
       "call": "call",
       "otherAudio": "another app plays audio",

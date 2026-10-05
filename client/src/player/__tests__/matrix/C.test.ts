@@ -98,16 +98,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending(
-    'C03',
-    'direct play on native engines: throughput probe (Exo bandwidthMeter, AVP access log)',
-    'S6'
-  );
-  pending(
-    'C04',
-    'Direct play stalls on a Usenet hole (repair wait up to 90 s, RepairAwareStream.cs:67-12…',
-    'S5'
-  );
   row(
     'C05',
     'a connection reset mid-transfer shows the spinner and never steps down while it recovers',
@@ -121,11 +111,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       expect(harness.server.sent('switch')).toHaveLength(0);
       await c.stop();
     }
-  );
-  pending(
-    'C06',
-    'Remux/transcode fails to start (TranscodeException at create)',
-    'regression test, S3+'
   );
   row(
     'C07',
@@ -341,11 +326,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending(
-    'C19',
-    'Audio rendition 404 unknown_audio_rendition / 500 rendition_split_failed during an in-s…',
-    'regression test, S3+'
-  );
   row(
     'C20',
     'an audio rendition that dies mid-play: "No sound", reload (re-selects the rendition), audio conversion, then another way',
@@ -370,11 +350,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       expect(harness.server.sent('switch').filter((r) => r.body?.audioFallback)).toHaveLength(1);
       await c.stop();
     }
-  );
-  pending(
-    'C20',
-    'AVPlayer has no audio counter (heuristic D21); /switch same audio when the server flag exists',
-    'S6'
   );
   row(
     'C21',
@@ -410,11 +385,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending(
-    'C27',
-    'native: Exo audio counters / AVP heuristic; server audio fallback flag (A)',
-    'S6'
-  );
   row(
     'C28',
     'web: a video codec without decoder (black, clock runs): "No picture", reload, then another way',
@@ -430,7 +400,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending('C28', 'native: Exo rendered-buffer counter, AVP isReadyForDisplay / video output', 'S6');
   row(
     'C29',
     'a resolution beyond the decoder (most frames dropped): the quality goes down',
@@ -490,12 +459,6 @@ describe('matrix C — Delivery (server → engine)', () => {
     expect(harness.engine.load).toHaveBeenCalledTimes(2);
     await c.stop();
   });
-  pending('C33', 'Announced duration shorter than the media', 'regression test, S3+');
-  pending(
-    'C34',
-    'Image subtitle needs burn-in / VLC (subtitle_burned_in, image_subtitle_vlc)',
-    'regression test, S3+'
-  );
 });
 
 describe('matrix C — code review S1-S4 (S4b)', () => {
@@ -1300,6 +1263,207 @@ describe('matrix C — a remux whose segments wait for the server (S9a C08)', ()
       harness.engine.emit({ type: 'buffering', buffering: true });
       await jest.advanceTimersByTimeAsync(4_000);
       expect(c.status.hint).toEqual({ key: 'serverSlow' });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — repair, conversion start, renditions, durations, image subtitles (S4f)', () => {
+  row(
+    'C04',
+    'a direct play that stalls while the server repairs the release: "The server is repairing missing data", never "slow connection"',
+    async () => {
+      const c = await playing(
+        {},
+        {
+          method: 'direct',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 8_000,
+          },
+        } as never,
+        300
+      );
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'poll',
+        reply.ok(
+          harness.server.playback({
+            playbackId: id,
+            repair: { state: 'downloadingRecovery', progressPercent: 40 },
+          } as never)
+        )
+      );
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      expect(harness.server.sent('poll')).toHaveLength(1);
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'serverRepairing' });
+      expect(c.status.actions).toEqual([]);
+      await c.stop();
+    }
+  );
+
+  row('C04', 'a repair that ended (ready, failed) is no reason: the usual stall hint', async () => {
+    const c = await playing({}, { method: 'direct' } as never, 300);
+    const id = c.playback!.playbackId!;
+    harness.server.answer(
+      'poll',
+      reply.ok(harness.server.playback({ playbackId: id, repair: { state: 'ready' } } as never))
+    );
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(4_000);
+    expect(c.status.hint).toEqual({ key: 'buffering' });
+    await c.stop();
+  });
+
+  row(
+    'C06',
+    'a remux or transcode that fails to start (transcode_failed at create): one more start, then another version, then the card',
+    async () => {
+      const failed = () =>
+        reply.ok(
+          harness.server.playback({ state: 'failed', error: { code: 'transcode_failed' } } as never)
+        );
+      harness.server.answer('start', failed(), failed());
+      const c = newController();
+      await c.start();
+      await settle();
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(harness.server.sent('start')).toHaveLength(2);
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.failure).toMatchObject({ code: 'transcode_failed', category: 'T6' });
+    }
+  );
+
+  row(
+    'C19',
+    'an in-session audio switch whose rendition fails (404): the switch goes to the server, the notice says the stream restarted',
+    async () => {
+      const renditions = [
+        {
+          id: '1',
+          streamIndex: 1,
+          language: 'de',
+          label: 'Deutsch',
+          channels: 2,
+          codec: 'aac',
+          default: true,
+        },
+        {
+          id: '2',
+          streamIndex: 2,
+          language: 'en',
+          label: 'English',
+          channels: 2,
+          codec: 'aac',
+          default: false,
+        },
+      ];
+      const media = {
+        method: 'remux',
+        inSessionAudioSwitch: true,
+        audioRenditions: renditions,
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [
+            { index: 1, language: 'ger', selected: true, deliveredAs: 'remux', renditionId: '1' },
+            { index: 2, language: 'eng', selected: false, deliveredAs: 'remux', renditionId: '2' },
+          ],
+          subtitleTracks: [],
+        },
+      } as never;
+      const c = await playing({}, media, 40);
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [
+            { id: 'e0', label: 'English', language: 'en', selected: false },
+            { id: 'e1', label: 'Deutsch', language: 'de', selected: true },
+          ],
+          subtitles: [],
+        },
+      });
+      const switching = c.selectAudio({ index: 2, language: 'eng' } as never);
+      harness.engine.emit({ type: 'audioError', code: 'unknown_audio_rendition' });
+      await settle();
+      await settle();
+      expect(harness.server.sent('switch')[0]?.body).toMatchObject({ audioStreamIndex: 2 });
+      harness.engine.started();
+      harness.engine.time(41);
+      await switching;
+      expect(c.notice).toMatchObject({ kind: 'audioRestarted' });
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'C33',
+    'the media runs longer than the announced duration: the engine duration wins, playing past the server length is no failure',
+    async () => {
+      const c = await playing(
+        {},
+        { mediaInfo: { durationTicks: 300 * TICKS, audioTracks: [], subtitleTracks: [] } } as never,
+        0
+      );
+      harness.engine.time(290, 330);
+      expect(c.duration).toBe(330);
+      harness.engine.time(310, 330);
+      await settle();
+      expect(c.ended).toBe(false);
+      expect(c.failure).toBeNull();
+      expect(c.status.hint).toBeNull();
+      harness.engine.time(329, 330);
+      harness.engine.emit({ type: 'ended' });
+      expect(c.ended).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C34',
+    'an image subtitle the server must burn in: the pick is a server switch at the position; turning it off switches back',
+    async () => {
+      const media = {
+        method: 'transcode',
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [
+            { index: 5, language: 'de', codec: 'pgs', deliveredAs: 'burnedIn', selected: false },
+          ],
+        },
+      } as never;
+      const c = await playing({}, media, 120);
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: id,
+            revision: 1,
+            method: 'transcode',
+            mediaInfo: {
+              durationTicks: 600 * TICKS,
+              audioTracks: [],
+              subtitleTracks: [
+                { index: 5, language: 'de', codec: 'pgs', deliveredAs: 'burnedIn', selected: true },
+              ],
+            },
+          } as never)
+        )
+      );
+      await c.selectSubtitle({ index: 5, language: 'de', deliveredAs: 'burnedIn' } as never);
+      expect(harness.server.sent('switch')[0]?.body).toMatchObject({
+        subtitleStreamIndex: 5,
+        positionTicks: 120 * TICKS,
+      });
+      harness.engine.started();
+      await c.selectSubtitle(null);
+      expect(harness.server.sent('switch')[1]?.body).toMatchObject({ subtitleStreamIndex: -1 });
       await c.stop();
     }
   );

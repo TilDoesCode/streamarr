@@ -235,6 +235,8 @@ export function noticeText(
       return pt('notice.otherVersion');
     case 'audioFallback':
       return pt('notice.audioFallback');
+    case 'audioRestarted':
+      return pt('notice.audioRestarted');
     case 'subtitleFailed':
       return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
     case 'subtitleNotDeliverable':

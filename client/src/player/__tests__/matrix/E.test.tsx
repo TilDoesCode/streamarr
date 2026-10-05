@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
+import { profileOrFallback } from '@/player/caps-fallback';
 import { noticeError, noticeMs, stepDownReasonKey } from '@/player/overlay-labels';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform } from 'react-native';
@@ -20,11 +21,14 @@ import { PlayerStatusView, statusLayout } from '@/screens/player/player-status';
 import { UpNextCard } from '@/screens/player/up-next';
 import { useCloseOnFailure } from '@/screens/player/use-close-on-failure';
 import { harness, newController, reply } from '@/../jest/player/harness';
-import { pending, row } from '@/../jest/player/matrix';
+import { row } from '@/../jest/player/matrix';
 import { fakeNetwork, playing, settle, starts, TICKS } from '@/../jest/player/play';
 import { renderWithProviders } from '@/../jest/render';
+import { FakeVideoElement } from '@/../jest/player/library-fakes';
+import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
+jest.mock('hls.js', () => jest.requireActual('@/../jest/player/library-fakes').hlsJsModule());
 
 const generic = () => describeError(i18n.t, { code: 'unknown' });
 
@@ -71,7 +75,6 @@ describe('matrix E — Player UI states', () => {
       await c.stop();
     }
   );
-  pending('E02', 'give up after twice the budget with Retry / Other version (B16)', 'S4b');
   row(
     'E03',
     'a spinner from ready until the first frame, a cause hint by 4 s, a reload after 20 s',
@@ -339,17 +342,41 @@ describe('matrix E — Player UI states', () => {
       await controller.stop();
     }
   );
-  row('E16', 'device capabilities that fail to load get their own code and text', async () => {
-    const screen = readFileSync(join(__dirname, '../../../screens/player/play-screen.tsx'), 'utf8');
-    expect(screen).toContain("setCapsError('device_caps_unavailable')");
-    for (const lng of ['en', 'de']) {
-      await i18n.changeLanguage(lng);
-      const text = describeError(i18n.t, { code: 'device_caps_unavailable' });
-      expect(text).not.toEqual(generic());
+  row(
+    'E16',
+    'device capabilities that fail to load: a conservative profile and the player starts; never a card for it',
+    async () => {
+      const result = await profileOrFallback(() => Promise.reject(new Error('media-caps missing')));
+      expect(result.measured).toBe(false);
+      expect(result.profile.engines[0]).toMatchObject({
+        videoCodecs: [expect.objectContaining({ codec: 'h264', maxHeight: 1080 })],
+        audioCodecs: [expect.objectContaining({ codec: 'aac', maxChannels: 2 })],
+        hls: true,
+      });
+      const measured = { platform: 'web', engines: [], vlcAvailable: true } as never;
+      expect(await profileOrFallback(async () => ({ profile: measured }))).toEqual({
+        profile: measured,
+        measured: true,
+      });
+      const screen = readFileSync(
+        join(__dirname, '../../../screens/player/play-screen.tsx'),
+        'utf8'
+      );
+      expect(screen).toContain('profileOrFallback(loadDeviceCaps)');
+      expect(screen).not.toContain("setCapsError('device_caps_unavailable')");
+      // A start with the fallback profile plays like any other.
+      jest.useFakeTimers();
+      const c = newController({ profile: result.profile });
+      await c.start();
+      expect(harness.server.sent('start')[0]?.body).toMatchObject({ device: result.profile });
+      await c.stop();
+      for (const lng of ['en', 'de']) {
+        await i18n.changeLanguage(lng);
+        expect(describeError(i18n.t, { code: 'player_internal_error' })).not.toEqual(generic());
+      }
+      await i18n.changeLanguage('en');
     }
-    await i18n.changeLanguage('en');
-  });
-  pending('E16', 'fall back to a conservative static profile and play', 'S3');
+  );
   row(
     'E17',
     "a resume prompt left open past the server's idle end starts anew at the choice",
@@ -378,7 +405,6 @@ describe('matrix E — Player UI states', () => {
       await c.stop();
     }
   );
-  pending('E18', '"Switching…" card (phase === \'switching\')', 'S4');
 });
 
 describe('matrix E — code review S1-S4 (S4b)', () => {
@@ -666,6 +692,76 @@ describe('matrix E — the engine throws on a new source (S9a E09)', () => {
       expect(describeError(i18n.t, c.failure!).title).toBe('The player hit an internal error');
       expect(harness.engine.pause).toHaveBeenCalled();
       expect(harness.server.sent('switch')).toHaveLength(0);
+    }
+  );
+});
+
+describe('matrix E — stuck start states, the switching picture (S4f)', () => {
+  row(
+    'E02',
+    'a start state past its budget explains itself in the start card, and past twice the budget the card offers Retry and Other version',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const resolving = server.playback({ state: 'resolving', pollAfterMs: 1_000 } as never);
+      server.answer('start', reply.ok(resolving));
+      server.answer('poll', ...Array.from({ length: 200 }, () => reply.ok({ ...resolving })));
+      const c = newController();
+      void c.start();
+      await jest.advanceTimersByTimeAsync(59_000);
+      expect(c.status.hint).toBeNull();
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'preparing' } });
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'start_stuck', params: { state: 'resolving' } });
+      await i18n.changeLanguage('en');
+      expect(describeError(i18n.t, c.failure!).title).toBe(
+        'The server got stuck preparing the video'
+      );
+    }
+  );
+
+  row(
+    'E18',
+    'web: the last frame stays as the poster while the next source loads, and goes with its first frame',
+    async () => {
+      const draw = jest.fn();
+      (globalThis as { document?: unknown }).document = {
+        createElement: () => ({
+          canPlayType: () => '',
+          getContext: () => ({
+            drawImage: draw,
+            getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+          }),
+          toDataURL: () => 'data:image/jpeg;base64,LAST',
+        }),
+      };
+      try {
+        const engine = new WebEngine();
+        const video = new FakeVideoElement() as FakeVideoElement & { poster?: string };
+        (engine as unknown as { attach(video: unknown): void }).attach(video);
+        await loadHls();
+        engine.load({ uri: 'http://server.test/a/master.m3u8', kind: 'hls' });
+        video.present(24);
+        engine.load({ uri: 'http://server.test/b/master.m3u8', kind: 'hls' });
+        expect(video.poster).toBe('data:image/jpeg;base64,LAST');
+        video.present(1);
+        expect(video.poster).toBe('');
+        engine.release();
+        // A plain cross-origin src cannot be read: no poster rather than a tainted canvas.
+        const plain = new WebEngine();
+        const element = new FakeVideoElement() as FakeVideoElement & { poster?: string };
+        Object.defineProperty(plain, 'mode', { value: 'native' });
+        (plain as unknown as { attach(video: unknown): void }).attach(element);
+        plain.load({ uri: 'http://server.test/a.mkv', kind: 'progressive' });
+        element.present(24);
+        plain.load({ uri: 'http://server.test/b.mkv', kind: 'progressive' });
+        expect(element.poster).toBe('');
+        plain.release();
+      } finally {
+        delete (globalThis as { document?: unknown }).document;
+      }
     }
   );
 });

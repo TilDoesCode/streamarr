@@ -927,6 +927,14 @@
       "start_timeout": {
         "title": "The server took too long to start",
         "message": "The server couldn’t get this video ready in time. Try again or choose a lower quality."
+      },
+      "network_intercepted": {
+        "title": "The network intercepts the connection",
+        "message": "Something between this device and the server answered instead of the server — often a Wi-Fi sign-in page. Sign in to the network, then try again."
+      },
+      "start_stuck": {
+        "title": "The server got stuck preparing the video",
+        "message": "Preparing this video took far longer than usual. Try again or choose another version."
       }
     },
     "sessionRevoked": {
@@ -1007,7 +1015,15 @@
         "title": "The app hit an unexpected problem",
         "message": "Try again. If it keeps happening, report the code below."
       }
-    }
+    },
+    "reasons": {
+      "transcoding_disabled": "Converting videos is turned off on this server.",
+      "ffmpeg_unavailable": "ffmpeg is not installed on the server.",
+      "no_local_listener": "The server has no local converter running.",
+      "too_many_sessions": "The server converts as many videos as it can at once.",
+      "insufficient_disk": "The server's disk is full."
+    },
+    "reasonLabel": "Reason: {reason}"
   },
   "gallery": {
     "title": "Component gallery",

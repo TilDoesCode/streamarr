@@ -1,7 +1,7 @@
 import { createMMKV } from 'react-native-mmkv';
 
 import { unwrap, type ApiClient } from '@/api/client';
-import { isAppError } from '@/api/errors';
+import { isAppError, type AppError } from '@/api/errors';
 import type { components } from '@/api/schema';
 
 export type ProgressReport = components['schemas']['WatchProgressRequest'];
@@ -48,6 +48,8 @@ export class ProgressQueue {
 
   /** Every answer the server gave, also for queued reports sent later. */
   onAnswer: ((answer: ProgressAnswer) => void) | null = null;
+  /** A report refused until the account signs in again (401/403): the player stops and says so. */
+  onRefused: ((error: AppError) => void) | null = null;
 
   constructor(
     private readonly accountId: string,
@@ -70,6 +72,7 @@ export class ProgressQueue {
     } catch (error) {
       const next = outcome(error);
       if (next !== 'drop') this.enqueue(report, next === 'retry');
+      if (next === 'keep' && isAppError(error)) this.onRefused?.(error);
     }
   }
 

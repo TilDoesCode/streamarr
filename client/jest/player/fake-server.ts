@@ -122,6 +122,11 @@ export class FakeServer {
           reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
         )
       );
+    // Like openapi-fetch: a 2xx body that is not JSON (a sign-in page) fails to parse (A26).
+    if (answer.status >= 200 && answer.status < 300 && typeof answer.body === 'string')
+      throw new SyntaxError(
+        `Unexpected token '<', "${answer.body.slice(0, 10)}" is not valid JSON`
+      );
     const ok = answer.status >= 200 && answer.status < 300;
     const body = answer.body as Playback | undefined;
     if (ok && body?.playbackId) this.current.set(body.playbackId, body);

@@ -32,6 +32,8 @@ export const CLIENT_ERROR_CODES = [
   'step_timeout',
   'stream_interrupted',
   'audio_rendition_failed',
+  'network_intercepted',
+  'start_stuck',
   'audio_decode_error',
   'subtitle_unavailable',
   'subtitle_timeout',
