@@ -8,6 +8,7 @@ import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reani
 
 import { useAccounts, useAccountsApi } from '@/accounts/accounts-provider';
 import type { Account } from '@/accounts/types';
+import { parseEndedReason } from '@/accounts/ended-reason';
 import { describeError } from '@/api/error-text';
 import { CENTRED_ROW, FocusGuide, Focusable, FocusLift, useFocusState } from '@/components/focus';
 import { displayServerUrl } from '@/api/server-url';
@@ -115,7 +116,7 @@ function ProfilesContent() {
               caption={
                 !account.signedIn
                   ? account.endedReason
-                    ? describeError(t, { code: account.endedReason }).title
+                    ? describeError(t, parseEndedReason(account.endedReason)).title
                     : t('profiles.signedOut')
                   : servers.size > 1
                     ? t('profiles.onServer', { server: serverLabel(account) })

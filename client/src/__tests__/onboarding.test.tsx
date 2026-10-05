@@ -257,6 +257,39 @@ it('sends signed-out profiles to the picker', async () => {
   expect(screen.getByText('Signed out for your security')).toBeOnTheScreen();
 });
 
+it('says why the server ended a session: picker caption, sign-in notice and toast (B11, F8 S7)', async () => {
+  const user = userEvent.setup();
+  const anna = await store.addSignedIn(
+    { url: 'http://dev.test', name: 'Dev World' },
+    { id: 'v-anna', username: 'anna', displayName: 'Anna', mustChangePassword: false },
+    {
+      sessionId: 's1',
+      accessToken: 'sva_1',
+      accessExpiresAt: Date.now() + 3_600_000,
+      refreshToken: 'svr_1',
+      refreshExpiresAt: Date.now() + 3_600_000,
+    }
+  );
+  store.setActive(anna.id);
+  const router = renderRouter(routes, { initialUrl: '/' });
+  await router;
+  await act(async () => {
+    await store.signOut(anna.id, 'refresh_session_revoked:session_limit');
+  });
+  expect(
+    await screen.findByText(
+      'Anna: Signed out because too many devices were signed in. Please sign in again.'
+    )
+  ).toBeOnTheScreen();
+  await waitFor(() => expect(router.getPathname()).toBe('/profiles'));
+  expect(screen.getByText('Too many devices signed in')).toBeOnTheScreen();
+  await user.press(screen.getByTestId('profile-anna'));
+  await waitFor(() => expect(router.getPathname()).toBe('/sign-in'));
+  expect(
+    screen.getByText('Signed out because too many devices were signed in. Please sign in again.')
+  ).toBeOnTheScreen();
+});
+
 it('clears a password error while retyping; sign-out there forgets the kept password', async () => {
   const user = userEvent.setup();
   const mia = await store.addSignedIn(

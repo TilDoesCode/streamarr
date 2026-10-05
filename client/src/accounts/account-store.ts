@@ -224,7 +224,7 @@ export class AccountStore {
     for (const staleId of stale) {
       this.tokenCache.delete(staleId);
       this.unsaved.delete(staleId);
-      await this.vault.remove(staleId);
+      await this.forget(staleId);
     }
     await this.writeTokens(id, tokens);
     const now = this.now();
@@ -320,6 +320,11 @@ export class AccountStore {
     this.tokenCache.set(id, tokens);
   }
 
+  /** Best effort: a secure storage that fails must never keep an account signed in or block a sign-in. */
+  private async forget(id: string): Promise<void> {
+    await this.vault.remove(id).catch(() => undefined);
+  }
+
   /** A failed vault write keeps the pair for this run: the old refresh token is spent once the server rotated. */
   private async persist(id: string, tokens: SessionTokens): Promise<void> {
     try {
@@ -344,7 +349,7 @@ export class AccountStore {
     );
     this.tokenCache.delete(id);
     this.unsaved.delete(id);
-    await this.vault.remove(id);
+    await this.forget(id);
     const account = this.get(id);
     if (changed && endedReason && account)
       this.endedListeners.forEach((listener) => listener(account, endedReason));
@@ -354,7 +359,7 @@ export class AccountStore {
   async remove(id: string): Promise<void> {
     this.tokenCache.delete(id);
     this.unsaved.delete(id);
-    await this.vault.remove(id);
+    await this.forget(id);
     this.mutate(({ accounts, activeId }) =>
       hasId(accounts, id)
         ? { accounts: accounts.filter((account) => account.id !== id), activeId }
