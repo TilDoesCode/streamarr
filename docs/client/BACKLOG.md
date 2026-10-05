@@ -149,6 +149,18 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Tests and tooling
 
+- **R1 release builds (2026-10-05):**
+  - Android release startup abort, 1 of 13 phone cold starts (not reproduced in 10 more): SIGABRT on mqt_v_js,
+    `[runtime not ready]: Exception in HostFunction: The current activity is no longer available` at the first native call
+    (`expo-modules-core NativeModulesProxy` ← `expo/src/Expo.fx`). Library-level startup race → watch on real hardware;
+    upstream issue if it repeats. Stack in journal/R1.md.
+  - Reanimated `synchronouslyUpdateUIProps failed for tag …` (`Unable to find SurfaceMountingManager`) with a ~120-line
+    stack each on the UI thread: 90× at player close (Google TV release), 640× for one tag on the phone R8 build — an
+    animated view outlives its surface (player overlay / ambient candidates).
+  - R8 + resource shrinking: APK 105.1 → 94.3 MB, dex 49.6 → 18.3 MB, smoke (start, session, Home, detail, play) passes, but
+    detail push measured 25 s vs 3.4 s → re-measure with a non-polling timer before enabling it in app.config.
+  - Release APK is 105 MB for arm64 alone (libvlc.so 52.5 MB): consider VLC as a separate download or ABI splits.
+
 - Dev only: after a JS reload nothing is focused on TV until the first D-pad press; the dev client can start with a
   cached bundle.
 
