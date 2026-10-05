@@ -227,6 +227,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   signing out or signing the same account in again throws (S6, P3); the iPhone video full-screen leave path
   (`webkitEnterFullscreen`) is untested; after leaving the system full screen paused, the overlay stays hidden (P3).
 
+- B12 verify (Dev World only): `POST /devworld/faults` answers 500 instead of 400 for a numeric `params.mode` or a
+  fractional `ttlSeconds`; the `transcode_kill` smoke only checks the kill, not the next-segment 500 and restart; spent
+  once/count faults stay listed until TTL or clear; with nothing armed playlists and API answers now carry
+  `Content-Length` (bodies identical); the contract check runs 65-71 checks depending on server state.
+
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.

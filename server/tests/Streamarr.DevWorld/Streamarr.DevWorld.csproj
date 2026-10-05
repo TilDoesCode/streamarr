@@ -24,6 +24,7 @@
     <None Remove="cache\**" />
     <Compile Remove="cache\**" />
     <None Remove="tools\**" />
+    <None Include="tools\ffmpeg-fault.sh" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -20,6 +20,12 @@ public sealed record DevWorldOptions
     /// <summary>Keep the state directory (database, keys, viewer accounts, watch state) of the previous run on this port.</summary>
     public bool KeepData { get; init; }
 
+    /// <summary>Fault injection for the player (/devworld/faults); DEVWORLD_FAULTS=0 registers nothing.</summary>
+    public bool Faults { get; init; } = true;
+
+    /// <summary>Overrides the viewer playback idle expiry (seconds, min 60) for short idle-expiry runs.</summary>
+    public int? PlaybackIdleSeconds { get; init; }
+
     public string MediaDir => Path.Combine(CacheDir, "media");
     public string BindUrl => $"http://{UrlHost(Host)}:{Port}";
     public string LocalUrl => $"http://{(BindsAllInterfaces || Host == "localhost" ? "127.0.0.1" : UrlHost(Host))}:{Port}";
@@ -50,6 +56,8 @@ public sealed record DevWorldOptions
             GenerateOnly = args.Contains("--generate-only"),
             CheckReleases = Env("DEVWORLD_CHECK_RELEASES") == "1",
             KeepData = Env("DEVWORLD_KEEP_DATA") == "1",
+            Faults = Env("DEVWORLD_FAULTS") != "0",
+            PlaybackIdleSeconds = int.TryParse(Env("DEVWORLD_PLAYBACK_IDLE_SECONDS"), out var idle) ? idle : null,
         };
     }
 
