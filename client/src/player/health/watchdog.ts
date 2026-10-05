@@ -10,12 +10,15 @@ export const SLIDESHOW_WINDOW_MS = 10_000;
 export const SLIDESHOW_HINT = 0.3;
 export const SLIDESHOW_LADDER = 0.6;
 /** Fewer frames than this in the window say nothing about drops (very low fps, short window). */
-const SLIDESHOW_MIN_FRAMES = 50;
+export const SLIDESHOW_MIN_FRAMES = 50;
 /** A brightest pixel at or below this is pure black. */
 export const LUMA_BLACK = 2;
-/** Pure black from the load on for this much clock (and only in the first minute) counts as no picture. */
+/** Pure black from the source load on for this much clock, with frames and sound standing, is no picture. */
 export const LUMA_BLACK_CLOCK_S = 20;
-const LUMA_WINDOW_S = 60;
+/** The luma rule only judges the first minute of clock after a source load (later black is content). */
+export const LUMA_WINDOW_S = 60;
+/** Frames of this source were shown, but no interval is known yet: wait this long before calling it frozen. */
+export const UNKNOWN_FPS_S = 10;
 
 export type WatchdogSample = {
   at: number;
@@ -41,6 +44,18 @@ export type WatchdogContext = {
   hasAudio: boolean | undefined;
 };
 
+/** What the watchdog knows about the current source; a seek, pause or guard keeps it, a new load starts over. */
+type Source = {
+  /** Clock at the load. */
+  position: number;
+  /** Frames of this source were seen (moving, or a counter above zero at the first look). */
+  framesSeen: boolean;
+  /** Seconds of clock per frame, last measured. */
+  interval?: number;
+  /** Clock where pure black started, with the frame and audio counters at that moment. */
+  dark?: { position: number; frames?: number; audio?: number };
+};
+
 type Baseline = {
   at: number;
   position: number;
@@ -48,13 +63,14 @@ type Baseline = {
   startFrames?: number;
   /** Clock where the frame counter last moved. */
   framePosition: number;
+  /** The first move after the baseline: intervals are measured from here (the baseline falls mid-interval). */
+  firstMove?: { position: number; frames: number };
   frameSeen: boolean;
   audio?: number;
   audioPosition: number;
   clockAt: number;
   clockPosition: number;
   native?: number;
-  darkSince?: number;
 };
 
 const OK: HealthFinding = { verdict: 'ok', since: 0, level: 'hint', evidence: {} };
@@ -62,12 +78,19 @@ const OK: HealthFinding = { verdict: 'ok', since: 0, level: 'hint', evidence: {}
 /** One health watchdog for every engine: pure, fed once a second with the engine's probe and the clock. */
 export class Watchdog {
   private base: Baseline | null = null;
+  private source: Source | null = null;
   private candidate: { verdict: HealthVerdict; since: number; ticks: number } | null = null;
   private drops: { at: number; presented: number; dropped: number }[] = [];
   /** Clock where frames last moved: where a black/frozen recovery should resume. */
   lastGoodPosition: number | null = null;
 
-  /** Starts over: after a load, seek, track switch, pause or any guard. */
+  /** A new source was loaded: everything starts over, including what is known about this source. */
+  newSource(): void {
+    this.source = null;
+    this.reset();
+  }
+
+  /** Starts over: after a seek, track switch, pause or any guard (the source's facts stay). */
   reset(): void {
     this.base = null;
     this.candidate = null;
@@ -85,14 +108,19 @@ export class Watchdog {
       this.reset();
       return OK;
     }
+    const source = (this.source ??= {
+      position: sample.position,
+      framesSeen: (health.framesPresented ?? 0) > 0,
+    });
     const base = (this.base ??= this.baseline(sample));
-    this.track(base, sample);
-    const pictureChecks =
-      !context.pictureInPicture && health.external !== true && context.hasVideo !== false;
+    this.track(source, base, sample);
+    // Casting (AirPlay, Remote Playback): the local element neither decodes nor plays, only the clock counts.
+    const local = health.external !== true;
+    const pictureChecks = local && !context.pictureInPicture && context.hasVideo !== false;
     const found =
       this.clockFrozen(base, sample) ??
-      (pictureChecks ? this.picture(base, sample) : null) ??
-      (context.hasAudio !== false ? this.audio(base, sample) : null) ??
+      (pictureChecks ? this.picture(source, base, sample) : null) ??
+      (local && context.hasAudio !== false ? this.audio(base, sample) : null) ??
       (pictureChecks ? this.slideshow(sample) : null);
     return this.confirm(found, sample.at);
   }
@@ -115,7 +143,7 @@ export class Watchdog {
     };
   }
 
-  private track(base: Baseline, sample: WatchdogSample): void {
+  private track(source: Source, base: Baseline, sample: WatchdogSample): void {
     const { health, position, at } = sample;
     if (position !== base.clockPosition || (health.nativePosition ?? base.native) !== base.native) {
       base.clockAt = at;
@@ -123,18 +151,24 @@ export class Watchdog {
       base.native = health.nativePosition;
     }
     if (health.framesPresented !== undefined && health.framesPresented !== base.frames) {
-      if (base.frames !== undefined) base.frameSeen = true;
+      if (base.frames !== undefined) {
+        base.frameSeen = true;
+        source.framesSeen = true;
+      }
       base.startFrames ??= health.framesPresented;
       base.frames = health.framesPresented;
       base.framePosition = position;
       this.lastGoodPosition = position;
+      if (base.frameSeen) base.firstMove ??= { position, frames: health.framesPresented };
+      const interval = frameInterval(base);
+      if (interval > 0) source.interval = Math.max(source.interval ?? 0, interval);
     }
     if (health.audioProgress !== undefined && health.audioProgress !== base.audio) {
       base.audio = health.audioProgress;
       base.audioPosition = position;
     }
-    if (health.luma === undefined || health.luma > LUMA_BLACK) base.darkSince = undefined;
-    else base.darkSince ??= position;
+    if (health.luma === undefined || health.luma > LUMA_BLACK) source.dark = undefined;
+    else source.dark ??= { position, frames: health.framesPresented, audio: health.audioProgress };
   }
 
   /** The engine says it plays, nothing announced a stall, yet neither clock moves (D35, C12, C18). */
@@ -147,29 +181,37 @@ export class Watchdog {
     };
   }
 
-  private picture(base: Baseline, sample: WatchdogSample): Found | null {
+  private picture(source: Source, base: Baseline, sample: WatchdogSample): Found | null {
     const { health, position } = sample;
-    const sinceLoad = position - base.position;
-    // Low-fps content (stills, slideshows): wait for at least three of its own frame intervals.
-    const needed =
-      base.frameSeen && base.frames !== undefined
-        ? Math.max(PICTURE_CLOCK_S, 3 * frameInterval(base))
-        : PICTURE_CLOCK_S;
+    // Low-fps content (stills, slideshows): at least three of its own frame intervals, kept across seeks.
+    const interval = Math.max(frameInterval(base), source.interval ?? 0);
+    const needed = !source.framesSeen
+      ? PICTURE_CLOCK_S
+      : interval > 0
+        ? Math.max(PICTURE_CLOCK_S, 3 * interval)
+        : UNKNOWN_FPS_S;
     if (health.framesPresented !== undefined && position - base.framePosition >= needed) {
       const evidence = { frames: health.framesPresented, clock: position - base.framePosition };
-      if (base.frameSeen) return { verdict: 'picture-frozen', level: 'ladder', evidence };
+      if (source.framesSeen) return { verdict: 'picture-frozen', level: 'ladder', evidence };
       return { verdict: 'picture-black', level: 'ladder', evidence };
     }
-    if (health.readyForDisplay === false && sinceLoad >= PICTURE_CLOCK_S)
+    if (health.readyForDisplay === false && position - base.position >= PICTURE_CLOCK_S)
       return { verdict: 'picture-black', level: 'ladder', evidence: { readyForDisplay: false } };
-    if (
-      base.darkSince !== undefined &&
-      base.darkSince - base.position < 1 &&
-      sinceLoad < LUMA_WINDOW_S &&
-      position - base.darkSince >= LUMA_BLACK_CLOCK_S
-    )
-      return { verdict: 'picture-black', level: 'ladder', evidence: { luma: health.luma } };
-    return null;
+    return this.black(source, sample);
+  }
+
+  /** Pure black since the load, inside the first minute, while neither frames nor sound move (moving = black content). */
+  private black(source: Source, sample: WatchdogSample): Found | null {
+    const { dark } = source;
+    const { health, position } = sample;
+    if (!dark || dark.position - source.position >= 1) return null;
+    if (position - source.position >= LUMA_WINDOW_S) return null;
+    if (position - dark.position < LUMA_BLACK_CLOCK_S) return null;
+    const moving = (now: number | undefined, then: number | undefined) =>
+      now !== undefined && then !== undefined && now !== then;
+    if (moving(health.framesPresented, dark.frames) || moving(health.audioProgress, dark.audio))
+      return null;
+    return { verdict: 'picture-black', level: 'ladder', evidence: { luma: health.luma } };
   }
 
   /** Audio is expected, its counter exists and stood still while the clock ran (C20, C27, D36). */
@@ -232,8 +274,10 @@ export class Watchdog {
 
 type Found = Omit<HealthFinding, 'since'>;
 
-/** Seconds of clock per presented frame since the baseline (0 = unknown). */
+/** Seconds of clock per presented frame between whole moves after the baseline (0 = not measured yet). */
 function frameInterval(base: Baseline): number {
-  const frames = (base.frames ?? 0) - (base.startFrames ?? 0);
-  return frames > 0 ? (base.framePosition - base.position) / frames : 0;
+  const first = base.firstMove;
+  if (!first || base.frames === undefined) return 0;
+  const frames = base.frames - first.frames;
+  return frames > 0 ? (base.framePosition - first.position) / frames : 0;
 }

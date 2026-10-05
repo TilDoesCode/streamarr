@@ -1,3 +1,4 @@
+import type { EngineEvent } from '@/player/engines';
 import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 import { classify } from '@/player/recovery/classify';
 import { harness, newController, reply } from '@/../jest/player/harness';
@@ -5,7 +6,7 @@ import { FakeHls, FakeVideoElement } from '@/../jest/player/library-fakes';
 import { pending, row } from '@/../jest/player/matrix';
 import type { ControllerOptions, PlaybackController } from '@/player/controller';
 import type { Playback } from '@/player/playback-api';
-import { fakeNetwork, playFor, playing, settle, TICKS } from '@/../jest/player/play';
+import { fakeNetwork, playFor, playing, playOn, settle, TICKS } from '@/../jest/player/play';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
 jest.mock('hls.js', () => jest.requireActual('@/../jest/player/library-fakes').hlsJsModule());
@@ -256,11 +257,6 @@ describe('matrix D — Engine and decoder', () => {
     'Exo decoder errors (DECODER_INIT_FAILED, DECODER_QUERY_FAILED, DECODING_FAILED, DECODIN…',
     'S6'
   );
-  pending(
-    'D13',
-    'Exo audio sink errors (AUDIO_TRACK_INIT_FAILED, AUDIO_TRACK_WRITE_FAILED, passthrough r…',
-    'S6'
-  );
   pending('D14', 'Exo BEHIND_LIVE_WINDOW', 'regression test, S3+');
   pending('D15', 'Exo stuck in STATE_BUFFERING (loader waits on a 90 s segment)', 'S6');
   pending('D16', 'Exo renders audio, video renderer has no track (unsupported → deselected)', 'S6');
@@ -346,7 +342,6 @@ describe('matrix D — Engine and decoder', () => {
     expect(harness.engine.seek).toHaveBeenLastCalledWith(599);
     await controller.stop();
   });
-  pending('D31', 'Rapid seeks / scrubbing on HLS transcode (each far seek restarts ffmpeg)', 'S8');
   pending('D32', 'In-session audio switch never confirms', 'S4');
   row(
     'D33',
@@ -707,6 +702,380 @@ describe('matrix D — hls.js media errors far apart (review 18)', () => {
       hls.error('mediaError', 'bufferAppendError');
       expect(reasons).toEqual(['mediaError:bufferAppendError']);
       engine.release();
+    }
+  );
+});
+
+describe('matrix D — audio conversion, Retry-After, seek debounce (S4c, S8)', () => {
+  const audioSink = 'Source error: AudioSink$InitializationException: AudioTrack init failed 0';
+
+  row(
+    'D13',
+    'an audio output/decoder failure: the server converts the audio (no reload first), with a notice',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux' } as never, 200);
+      harness.server.answer('switch', () => {
+        expect(c.status.hint?.key).toBe('convertingAudio');
+        return reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            method: 'remux',
+            audioFallback: true,
+            revision: 1,
+          } as never)
+        );
+      });
+      harness.engine.fail(audioSink);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.server.sent('switch')[0]?.body).toMatchObject({
+        audioFallback: true,
+        positionTicks: 200 * TICKS,
+      });
+      expect(harness.server.sent('switch')[0]?.body).not.toHaveProperty('stepDown');
+      expect(c.notice?.kind).toBe('audioFallback');
+      expect(c.playback?.audioFallback).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D13',
+    'still failing with converted audio: one reload, then another way to play; the conversion is asked once',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux' } as never, 200);
+      for (let round = 0; round < 3; round += 1) {
+        harness.engine.fail(audioSink);
+        await settle();
+        harness.engine.started();
+      }
+      const bodies = harness.server.sent('switch').map((request) => request.body);
+      expect(bodies.filter((body) => body?.audioFallback)).toHaveLength(1);
+      expect(bodies.at(-1)).toMatchObject({ stepDown: true });
+      expect(harness.engine.load).toHaveBeenCalledTimes(4);
+      await c.stop();
+    }
+  );
+
+  row('D13', 'a playback that already converts its audio skips step A', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, { method: 'remux', audioFallback: true } as never, 10);
+    harness.engine.fail(audioSink);
+    await settle();
+    expect(harness.server.sent('switch')).toHaveLength(0);
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    await c.stop();
+  });
+
+  row(
+    'D13',
+    'the conversion is part of the viewing: a new start after it converts again',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux' } as never, 200);
+      harness.engine.fail(audioSink);
+      await settle();
+      harness.engine.started();
+      const before = c.playback!.playbackId;
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      expect(c.playback!.playbackId).not.toBe(before);
+      const last = harness.server.sent('switch').at(-1);
+      expect(last).toMatchObject({
+        playbackId: c.playback!.playbackId,
+        body: { audioFallback: true },
+      });
+      expect(c.playback?.audioFallback).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D02',
+    'hls.js: a codec error of the audio buffer reaches the ladder as an audio failure',
+    async () => {
+      const engine = new WebEngine();
+      (engine as unknown as { attach(video: unknown): void }).attach(new FakeVideoElement());
+      await loadHls();
+      const reasons: string[] = [];
+      engine.subscribe((event) => void (event.type === 'error' && reasons.push(event.reason)));
+      engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+      const hls = FakeHls.last;
+      for (let glitch = 0; glitch < 3; glitch += 1)
+        hls.error('mediaError', 'bufferAddCodecError', { sourceBufferName: 'audio' });
+      expect(reasons).toEqual(['mediaError:bufferAddCodecError:audio']);
+      expect(classify({ kind: 'engine', engine: 'web', reason: reasons[0]! })).toMatchObject({
+        category: 'T7',
+        code: 'audio_decode_error',
+      });
+      hls.error('mediaError', 'bufferAddCodecError', { sourceBufferName: 'video' });
+      engine.release();
+    }
+  );
+
+  row(
+    'D01',
+    'hls.js: a fatal 503 with Retry-After hands the wait to the ladder, which reloads after exactly that',
+    async () => {
+      jest.useFakeTimers();
+      const engine = new WebEngine();
+      (engine as unknown as { attach(video: unknown): void }).attach(new FakeVideoElement());
+      await loadHls();
+      const events: unknown[] = [];
+      engine.subscribe((event) => void (event.type === 'error' && events.push(event)));
+      engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+      FakeHls.last.error('networkError', 'fragLoadError', { status: 503, retryAfter: 7 });
+      expect(events).toEqual([
+        { type: 'error', reason: 'networkError:fragLoadError', status: 503, retryAfter: 7 },
+      ]);
+      engine.release();
+      const c = await playing({}, { method: 'remux' } as never, 60);
+      harness.engine.emit({
+        type: 'error',
+        reason: 'networkError:fragLoadError',
+        status: 503,
+        retryAfter: 7,
+      });
+      expect(c.status.hint).toMatchObject({ key: 'serverError', params: { seconds: 7 } });
+      await jest.advanceTimersByTimeAsync(6_900);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(100);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D31',
+    'quick seeks on a transcode become one seek after 300 ms; the target shows at once',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'transcode' } as never, 100);
+      c.seekBy(30);
+      c.seekBy(30);
+      await jest.advanceTimersByTimeAsync(200);
+      c.seekBy(30);
+      expect(c.position).toBe(190);
+      expect(harness.engine.seek).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(299);
+      expect(harness.engine.seek).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(harness.engine.seek.mock.calls).toEqual([[190]]);
+      await c.stop();
+    }
+  );
+
+  row('D31', 'a remux or direct play seeks at once', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, { method: 'remux' } as never, 100);
+    c.seekBy(30);
+    c.seekBy(30);
+    expect(harness.engine.seek.mock.calls).toEqual([[130], [160]]);
+    await c.stop();
+  });
+});
+
+describe('matrix D — code review S5 + S4b (S4d)', () => {
+  const decode = 'MediaCodecVideoRenderer error: decoder init failed';
+  const keysOf = (c: PlaybackController, keys: string[]) => () => {
+    const key = c.status.hint?.key;
+    if (key && keys.at(-1) !== key) keys.push(key);
+  };
+
+  row(
+    'D33',
+    'a pure-black stretch reached by a seek, with frames and sound running, is content: no hint, no reload (review B1)',
+    async () => {
+      const c = await probed();
+      await playFor(20, (second) => ({
+        position: second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000, luma: 90 },
+      }));
+      c.seekTo(1000);
+      const keys: string[] = [];
+      await playFor(
+        35,
+        (second) => ({
+          position: 1000 + second,
+          health: {
+            framesPresented: 480 + second * 24,
+            audioProgress: 20_000 + second * 1000,
+            luma: 0,
+          },
+        }),
+        0,
+        keysOf(c, keys)
+      );
+      expect(keys).toEqual([]);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D33',
+    'an audio-only file (the server says no video) never gets "No picture" (review R3)',
+    async () => {
+      const info = {
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [{ index: 1, selected: true, deliveredAs: 'original' }],
+          subtitleTracks: [],
+          video: null,
+        },
+      } as never;
+      const c = await probed(info);
+      const keys: string[] = [];
+      await playFor(
+        12,
+        (second) => ({
+          position: second,
+          health: { framesPresented: 0, audioProgress: second * 1000 },
+        }),
+        0,
+        keysOf(c, keys)
+      );
+      expect(keys).toEqual([]);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D34',
+    'the video track ending a few seconds before the audio ends the title, no reload at the end (review X1)',
+    async () => {
+      const c = await probed();
+      await playFor(12, (second) => ({
+        position: 580 + second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000 },
+      }));
+      await playFor(
+        8,
+        (second) => ({
+          position: 580 + second,
+          health: { framesPresented: 12 * 24, audioProgress: second * 1000 },
+        }),
+        12
+      );
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.ended).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D35',
+    'an engine without a probe (native until S6) still gets the clock rule: a frozen clock shows the stall timeline (review R6)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      await jest.advanceTimersByTimeAsync(6_000);
+      expect(c.status.spinner).toBe(false);
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(c.status.hint).toMatchObject({ key: 'buffering' });
+      await c.stop();
+    }
+  );
+
+  row(
+    'D12',
+    'the same decoder failure every 2.5 minutes: the third time goes straight to another way to play (review R5)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      for (let round = 0; round < 3; round += 1) {
+        harness.engine.fail(decode);
+        await settle();
+        harness.engine.started();
+        harness.engine.time(100 + round * 150 + 1);
+        await playOn(150);
+      }
+      const switches = harness.server.sent('switch');
+      expect(switches).toHaveLength(1);
+      expect(switches[0]?.body).toMatchObject({ stepDown: true });
+      expect(harness.engine.load.mock.calls.length).toBe(4);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix D — web probe, code review S5 + S4b (S4d)', () => {
+  const engines: WebEngine[] = [];
+  afterEach(() => engines.splice(0).forEach((engine) => engine.release()));
+  function nativeEngine() {
+    const engine = new WebEngine();
+    engines.push(engine);
+    Object.defineProperty(engine, 'mode', { value: 'native' });
+    const video = new FakeVideoElement();
+    (engine as unknown as { attach(video: unknown): void }).attach(video);
+    const events: EngineEvent[] = [];
+    engine.subscribe((event) => events.push(event));
+    return { engine, video, events };
+  }
+
+  row(
+    'D09',
+    'Safari native HLS is never probed with HEAD (its routes answer 405): a format error stays a format error (review B6)',
+    async () => {
+      const fetchMock = jest.fn(async () => ({ status: 405 }));
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      const { engine, video, events } = nativeEngine();
+      engine.load({ uri: 'http://server.test/api/v1/transcode/t/master.m3u8', kind: 'hls' });
+      video.present();
+      video.tick(1);
+      video.fail(4);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(fetchMock).not.toHaveBeenCalled();
+      const failure = events.find((event) => event.type === 'error') as Extract<
+        EngineEvent,
+        { type: 'error' }
+      >;
+      expect(classify({ kind: 'engine', engine: 'web', ...failure }).category).toBe('T7');
+    }
+  );
+
+  row(
+    'D09',
+    'a direct-play HEAD answered 405 adds no status; the media error is judged by itself',
+    async () => {
+      globalThis.fetch = jest.fn(async () => ({ status: 405 })) as unknown as typeof fetch;
+      const { engine, video, events } = nativeEngine();
+      engine.load({ uri: 'http://server.test/api/v1/stream/p1', kind: 'progressive' });
+      video.present();
+      video.tick(1);
+      video.fail(4);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const failure = events.find((event) => event.type === 'error') as Extract<
+        EngineEvent,
+        { type: 'error' }
+      >;
+      expect(failure).not.toHaveProperty('status');
+      expect(classify({ kind: 'engine', engine: 'web', ...failure }).code).not.toMatch(/^http_/);
+    }
+  );
+
+  row(
+    'D09',
+    'a HEAD that never answers gives up after 5 s and the media error goes on (review R1)',
+    async () => {
+      jest.useFakeTimers();
+      globalThis.fetch = jest.fn(() => new Promise(() => undefined)) as unknown as typeof fetch;
+      const { engine, video, events } = nativeEngine();
+      engine.load({ uri: 'http://server.test/api/v1/stream/p1', kind: 'progressive' });
+      video.present();
+      video.tick(1);
+      video.fail(2);
+      await jest.advanceTimersByTimeAsync(4_900);
+      expect(events.some((event) => event.type === 'error')).toBe(false);
+      await jest.advanceTimersByTimeAsync(200);
+      expect(events.filter((event) => event.type === 'error')).toEqual([
+        { type: 'error', reason: 'media_error_2', status: 0 },
+      ]);
     }
   );
 });

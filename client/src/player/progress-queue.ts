@@ -5,6 +5,8 @@ import { isAppError } from '@/api/errors';
 import type { components } from '@/api/schema';
 
 export type ProgressReport = components['schemas']['WatchProgressRequest'];
+/** What the server says about the reported playback (B13): false = it no longer exists. */
+export type ProgressAnswer = { report: ProgressReport; playbackAlive: boolean | null };
 type Entry = { accountId: string; report: ProgressReport; at: number };
 
 const storage = createMMKV({ id: 'streamarr.progress-queue' });
@@ -33,8 +35,9 @@ function outcome(error: unknown): 'retry' | 'keep' | 'drop' {
   return error.status === 401 || error.status === 403 ? 'keep' : 'drop';
 }
 
-async function send(client: ApiClient, report: ProgressReport): Promise<void> {
-  await unwrap(client.POST('/api/v1/viewer/watch/progress', { body: report }));
+async function send(client: ApiClient, report: ProgressReport): Promise<ProgressAnswer> {
+  const answer = await unwrap(client.POST('/api/v1/viewer/watch/progress', { body: report }));
+  return { report, playbackAlive: answer?.playbackAlive ?? null };
 }
 
 /** Progress reports with an offline queue: failed sends are kept (per account, persisted) and retried with backoff. */
@@ -42,6 +45,9 @@ export class ProgressQueue {
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private flushing: Promise<void> | null = null;
+
+  /** Every answer the server gave, also for queued reports sent later. */
+  onAnswer: ((answer: ProgressAnswer) => void) | null = null;
 
   constructor(
     private readonly accountId: string,
@@ -59,7 +65,8 @@ export class ProgressQueue {
       return;
     }
     try {
-      await send(this.client, report);
+      const answer = await send(this.client, report);
+      this.onAnswer?.(answer);
     } catch (error) {
       const next = outcome(error);
       if (next !== 'drop') this.enqueue(report, next === 'retry');
@@ -106,7 +113,8 @@ export class ProgressQueue {
         return;
       }
       try {
-        await send(this.client, next.report);
+        const answer = await send(this.client, next.report);
+        this.onAnswer?.(answer);
       } catch (error) {
         const next = outcome(error);
         if (next === 'keep') return;

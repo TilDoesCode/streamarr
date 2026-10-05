@@ -52,6 +52,47 @@ const healthy = (second: number): EngineHealth => ({
 const verdicts = (findings: { verdict: string }[]) => findings.map((finding) => finding.verdict);
 
 describe('Watchdog (state-matrix § 2 a)', () => {
+  it('casting (external playback): only the clock counts, no picture and no sound rule (review B2)', () => {
+    const findings = run(new Watchdog(), 20, (second) => ({
+      health: { external: true, framesPresented: 0, audioProgress: 0, framesDropped: second * 50 },
+    }));
+    expect(new Set(verdicts(findings))).toEqual(new Set(['ok']));
+    const frozen = run(new Watchdog(), 8, () => ({ position: 5, health: { external: true } }));
+    expect(verdicts(frozen)).toContain('clock-frozen');
+  });
+
+  it('low-fps content: the frame interval of the source survives a seek (review R4)', () => {
+    const watchdog = new Watchdog();
+    const still = (from: number) => (second: number) => ({
+      position: from + second,
+      health: { framesPresented: 1 + Math.floor(second / 12), audioProgress: second * 1000 },
+    });
+    // The first minute learns the interval (before that, the 10 s fallback may flicker a hint, never the ladder).
+    const learning = run(watchdog, 40, still(0));
+    expect(
+      learning.filter((finding) => finding.level === 'ladder' && finding.verdict !== 'ok')
+    ).toEqual([]);
+    watchdog.reset();
+    // One frame per 12 s: without the source's interval the 10 s fallback would call it frozen.
+    expect(verdicts(run(watchdog, 30, still(500), {}, 40))).not.toContain('picture-frozen');
+  });
+
+  it('frames shown before the first look but no interval known: frozen only after 10 s (review N10)', () => {
+    const findings = run(new Watchdog(), 10, (second) => ({
+      health: { framesPresented: 100 + Math.floor(second / 8) },
+    }));
+    expect(verdicts(findings).filter((verdict) => verdict !== 'ok')).toEqual([]);
+    const stuck = run(new Watchdog(), 16, () => ({ health: { framesPresented: 100 } }));
+    expect(verdicts(stuck)).toContain('picture-frozen');
+  });
+
+  it('slideshow needs 50 frames in the window: very low fps content with drops is no slideshow (K07)', () => {
+    const findings = run(new Watchdog(), 25, (second) => ({
+      health: { framesPresented: second, framesDropped: second * 3, audioProgress: second * 1000 },
+    }));
+    expect(verdicts(findings)).not.toContain('slideshow');
+  });
+
   it('stays quiet on healthy playback', () => {
     const findings = run(new Watchdog(), 60, (second) => ({ health: healthy(second) }));
     expect(new Set(verdicts(findings))).toEqual(new Set(['ok']));
@@ -194,10 +235,88 @@ describe('Watchdog (state-matrix § 2 a)', () => {
     });
   });
 
-  it('pure black pixels from the load on for 20 s of clock count as no picture (where readable)', () => {
-    const dark = (luma: number) =>
-      run(new Watchdog(), 26, (second) => ({ health: { ...healthy(second), luma } }));
-    expect(verdicts(dark(0))).toContain('picture-black');
-    expect(verdicts(dark(40))).not.toContain('picture-black');
+  describe('pure black pixels (luma, where readable)', () => {
+    // Counters the platform cannot read: only the picture's brightness tells.
+    const blind = (luma: number) => (second: number) => ({ position: second, health: { luma } });
+
+    it('from the source load on for 20 s of clock, with nothing moving, is no picture', () => {
+      expect(verdicts(run(new Watchdog(), 26, blind(0)))).toContain('picture-black');
+      expect(verdicts(run(new Watchdog(), 26, blind(40)))).not.toContain('picture-black');
+    });
+
+    it('black with frames or sound moving is black content (overture, black opening), never a verdict (review B1)', () => {
+      const frames = run(new Watchdog(), 40, (second) => ({
+        health: { ...healthy(second), luma: 0 },
+      }));
+      expect(verdicts(frames)).not.toContain('picture-black');
+      const sound = run(new Watchdog(), 40, (second) => ({
+        health: { audioProgress: second * 1000, luma: 0 },
+      }));
+      expect(verdicts(sound)).not.toContain('picture-black');
+    });
+
+    it('black reached by a seek is content: the rule is anchored to the source load, not to the last reset (review B1)', () => {
+      const watchdog = new Watchdog();
+      run(watchdog, 10, (second) => ({ position: second, health: { luma: 90 } }));
+      run(
+        watchdog,
+        1,
+        (second) => ({ position: second, health: { luma: 0 } }),
+        { settling: true },
+        10
+      );
+      const after = run(
+        watchdog,
+        30,
+        (second) => ({ position: 1000 + second, health: { luma: 0 } }),
+        {},
+        11
+      );
+      expect(verdicts(after)).not.toContain('picture-black');
+    });
+
+    it('black that starts after the load is content, even with nothing moving (review B1)', () => {
+      const watchdog = new Watchdog();
+      run(watchdog, 10, (second) => ({ position: second, health: { luma: 90 } }));
+      const later = run(
+        watchdog,
+        30,
+        (second) => ({ position: second, health: { luma: 0 } }),
+        {},
+        10
+      );
+      expect(verdicts(later)).not.toContain('picture-black');
+    });
+
+    it('only the first minute after the load is judged: a seek past it into the same black says nothing (K08)', () => {
+      const watchdog = new Watchdog();
+      run(watchdog, 5, blind(0));
+      run(
+        watchdog,
+        1,
+        (second) => ({ position: second, health: { luma: 0 } }),
+        { settling: true },
+        5
+      );
+      const after = run(
+        watchdog,
+        6,
+        (second) => ({ position: 300 + second, health: { luma: 0 } }),
+        {},
+        6
+      );
+      expect(verdicts(after)).not.toContain('picture-black');
+    });
+
+    it('a new source starts the minute over', () => {
+      const watchdog = new Watchdog();
+      run(watchdog, 70, (second) => ({ position: second, health: { luma: 90 } }));
+      watchdog.newSource();
+      expect(
+        verdicts(
+          run(watchdog, 26, (second) => ({ position: 70 + second, health: { luma: 0 } }), {}, 70)
+        )
+      ).toContain('picture-black');
+    });
   });
 });

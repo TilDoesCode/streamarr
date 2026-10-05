@@ -22,7 +22,7 @@ export type MonitorHost = {
   changed(): void;
 };
 
-/** Runs the watchdog on the engine's probe once a second; engines without a probe get clock rules only. */
+/** Runs the watchdog once a second on every engine; without a probe (native until S6/S7) only the clock rules can fire. */
 export class HealthMonitor {
   readonly watchdog = new Watchdog();
   /** The current finding below the ladder threshold (shown as a hint). */
@@ -35,9 +35,18 @@ export class HealthMonitor {
 
   constructor(private readonly host: MonitorHost) {}
 
-  start(engine: PlayerEngine): void {
-    if (!engine.readHealth) return this.stop();
+  start(): void {
     this.timer ??= setInterval(() => void this.tick(), HEALTH_TICK_MS);
+  }
+
+  /** A new source: the watchdog forgets what it learnt about the last one (luma window, frame interval). */
+  newSource(): void {
+    this.watchdog.newSource();
+    this.nativeClock = null;
+    if (this.finding) {
+      this.finding = null;
+      this.host.changed();
+    }
   }
 
   stop(): void {
@@ -56,11 +65,11 @@ export class HealthMonitor {
 
   private async tick(): Promise<void> {
     const engine = this.host.engine();
-    if (!engine?.readHealth || this.busy || this.host.closed()) return;
+    if (!engine || this.busy || this.host.closed()) return;
     this.busy = true;
     let health: EngineHealth = {};
     try {
-      health = await engine.readHealth();
+      health = engine.readHealth ? await engine.readHealth() : {};
     } catch {
       health = {};
     } finally {

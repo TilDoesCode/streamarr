@@ -214,3 +214,35 @@ export function stepDownReasonKey(
     ? `notice.because.${category}`
     : undefined;
 }
+
+type NoticeLike = { kind: string; params?: Readonly<Record<string, string>> };
+
+/** The notice line: what changed so playback goes on, in the viewer's words (never a raw code). */
+export function noticeText(
+  notice: NoticeLike,
+  pt: (key: PlayerKey, options?: Record<string, unknown>) => string,
+  reasonOf: (error: ErrorLike) => string,
+  subtitleName: (index: number) => string
+): string {
+  const { params } = notice;
+  const label = () => subtitleName(Number(params?.index));
+  switch (notice.kind) {
+    case 'stepDown':
+      return [stepDownKey(params), stepDownReasonKey(params)]
+        .flatMap((key) => (key ? [pt(key)] : []))
+        .join(' ');
+    case 'otherVersion':
+      return pt('notice.otherVersion');
+    case 'audioFallback':
+      return pt('notice.audioFallback');
+    case 'subtitleFailed':
+      return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
+    case 'subtitleNotDeliverable':
+      return pt(
+        params?.vlc ? 'notice.subtitleNotDeliverableVlc' : 'notice.subtitleNotDeliverable',
+        { label: label() }
+      );
+    default:
+      return pt('notice.switchFailed', { reason: reasonOf(noticeError(params)) });
+  }
+}

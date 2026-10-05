@@ -497,3 +497,97 @@ describe('matrix E — code review S1-S4 (S4b)', () => {
     }
   );
 });
+
+describe('matrix E — code review S5 + S4b (S4d)', () => {
+  row(
+    'E18',
+    'a step whose switch ends in a failed playback never leaves the phase on "switching" (review R9)',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, {}, 90);
+      server.answer(
+        'switch',
+        reply.ok(
+          server.playback({
+            playbackId: c.playback!.playbackId!,
+            state: 'failed',
+            revision: 1,
+            error: { code: 'transcode_capacity' },
+          } as never)
+        )
+      );
+      const decode = 'MediaCodecVideoRenderer error: decoder init failed';
+      harness.engine.fail(decode);
+      await settle();
+      harness.engine.fail(decode);
+      await settle();
+      expect(c.phase).not.toBe('switching');
+      await c.stop();
+    }
+  );
+
+  row(
+    'E11',
+    'the screen reader label follows the live hint, while the announcement stays one per hint (review R10)',
+    async () => {
+      const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+      const status = (seconds: number) => ({
+        spinner: true,
+        hint: { key: 'serverBusy' as const, params: { seconds } },
+        actions: [],
+      });
+      const view = await renderWithProviders(
+        <PlayerStatusView status={status(9)} onAction={jest.fn()} />
+      );
+      await view.rerender(<PlayerStatusView status={status(4)} onAction={jest.fn()} />);
+      expect(screen.getByLabelText('The server is busy. Retrying in 4 s…')).toBeTruthy();
+      expect(
+        announce.mock.calls.filter(([text]) => String(text).startsWith('The server is busy'))
+      ).toHaveLength(1);
+      announce.mockRestore();
+    }
+  );
+});
+
+describe('matrix E — live web audit S9a (S4d)', () => {
+  row(
+    'E03',
+    'hls.js reports 0:00 before it applies the start position: still loading, the spinner stays and the budget runs (S9a START, C21)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer(
+        'start',
+        reply.ok(harness.server.playback({ method: 'remux' } as never))
+      );
+      const c = newController({ startSeconds: 90 });
+      await c.start();
+      harness.engine.state('playing');
+      harness.engine.time(0, 180);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint?.key).toBe('startSlow');
+      await jest.advanceTimersByTimeAsync(27_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(90);
+      await c.stop();
+    }
+  );
+
+  row(
+    'E03',
+    'a clock that runs on from the start position counts as a picture (engines without a first-frame event)',
+    async () => {
+      jest.useFakeTimers();
+      const c = newController({ startSeconds: 90 });
+      await c.start();
+      harness.engine.state('playing');
+      harness.engine.time(90, 180);
+      expect(c.status.spinner).toBe(true);
+      harness.engine.time(90.5, 180);
+      harness.engine.time(91.2, 180);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+});

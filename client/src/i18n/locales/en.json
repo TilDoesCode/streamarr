@@ -899,6 +899,30 @@
       "stream_interrupted": {
         "title": "The stream was cut off",
         "message": "The connection to the server broke before the end of the video. Retry continues where it stopped."
+      },
+      "audio_decode_error": {
+        "title": "This device can’t play the sound",
+        "message": "The player couldn’t decode the audio of this video. Try another audio track or another version."
+      },
+      "subtitle_unavailable": {
+        "title": "Subtitles couldn’t be loaded",
+        "message": "The server couldn’t deliver these subtitles. Choose other subtitles or try again later."
+      },
+      "subtitle_timeout": {
+        "title": "Subtitles took too long",
+        "message": "The subtitles didn’t arrive in time. They’ll be tried again in a moment."
+      },
+      "subtitle_unreadable": {
+        "title": "Subtitles are damaged",
+        "message": "This subtitle file can’t be read. Choose other subtitles."
+      },
+      "empty_media": {
+        "title": "This version has nothing to play",
+        "message": "The file of this version is empty or shorter than a second. Choose another version."
+      },
+      "audio_rendition_failed": {
+        "title": "The sound couldn’t be loaded",
+        "message": "The server couldn’t deliver the sound of this version, not even converted. Try again or choose another version."
       }
     },
     "sessionRevoked": {

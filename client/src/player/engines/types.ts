@@ -50,13 +50,17 @@ export type EngineEvent =
   | { type: 'tracks'; tracks: EngineTracks }
   | { type: 'firstFrame' }
   /** `status`: HTTP status of the failed media request when the engine knows it (0 = no answer). */
-  | { type: 'error'; reason: string; status?: number }
+  | { type: 'error'; reason: string; status?: number; retryAfter?: number }
   | { type: 'ended' }
   | { type: 'pip'; active: boolean }
   /** The viewer paused or resumed outside the app's controls (system full-screen player, lock screen). */
   | { type: 'userPlayback'; paused: boolean }
   /** An audio rendition failed to load; `code` is the server's error code when known. */
   | { type: 'audioError'; code: string }
+  /** A media request failed and the engine retries it on its own (hls.js non-fatal load errors, R7). */
+  | { type: 'loadRetry'; status?: number; audio?: boolean }
+  /** The subtitles failed to load or parse; the playback itself goes on (C22, C23). */
+  | { type: 'subtitleError'; code: string }
   /** The browser refused to start with sound (`muted`) or at all (`blocked`). */
   | { type: 'autoplay'; result: 'muted' | 'blocked' }
   | { type: 'stats'; stats: EngineStats };

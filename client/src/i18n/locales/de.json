@@ -899,6 +899,30 @@
       "stream_interrupted": {
         "title": "Der Stream wurde abgebrochen",
         "message": "Die Verbindung zum Server brach vor dem Ende des Videos ab. Erneut versuchen macht dort weiter, wo es aufgehört hat."
+      },
+      "audio_decode_error": {
+        "title": "Ton lässt sich nicht abspielen",
+        "message": "Der Player konnte den Ton dieses Videos nicht dekodieren. Versuche eine andere Tonspur oder eine andere Version."
+      },
+      "subtitle_unavailable": {
+        "title": "Untertitel nicht geladen",
+        "message": "Der Server konnte diese Untertitel nicht liefern. Wähle andere Untertitel oder versuche es später erneut."
+      },
+      "subtitle_timeout": {
+        "title": "Untertitel kamen zu spät",
+        "message": "Die Untertitel kamen nicht rechtzeitig an. Sie werden gleich noch einmal versucht."
+      },
+      "subtitle_unreadable": {
+        "title": "Untertitel sind beschädigt",
+        "message": "Diese Untertiteldatei lässt sich nicht lesen. Wähle andere Untertitel."
+      },
+      "empty_media": {
+        "title": "Diese Version enthält nichts zum Abspielen",
+        "message": "Die Datei dieser Version ist leer oder kürzer als eine Sekunde. Wähle eine andere Version."
+      },
+      "audio_rendition_failed": {
+        "title": "Der Ton konnte nicht geladen werden",
+        "message": "Der Server konnte den Ton dieser Version nicht liefern, auch nicht umgewandelt. Versuche es erneut oder wähle eine andere Version."
       }
     },
     "sessionRevoked": {

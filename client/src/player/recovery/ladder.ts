@@ -1,8 +1,17 @@
+import {
+  MAX_QUALITY_STEPS,
+  MAX_STEP_DOWNS,
+  STREAM_POLL_S,
+  STREAM_POLLS,
+  T1_BACKOFF_S,
+  T4_BACKOFF_S,
+  T6_BACKOFF_S,
+} from './budgets';
 import type { Classified, ErrorCategory } from './classify';
 import type { HintKey } from './hints';
 
-/** Ladder steps (state-matrix § 2 b.2): wait, reload, new start, lower quality, step-down, other version, give up. */
-export type LadderStep = 'W' | 'R' | 'N' | 'Q' | 'S' | 'V' | 'G';
+/** Ladder steps (state-matrix § 2 b.2): wait, reload, new start, lower quality, step-down, audio fallback, other version, give up. */
+export type LadderStep = 'W' | 'R' | 'N' | 'Q' | 'S' | 'A' | 'V' | 'G';
 
 export type Attempt = {
   step: LadderStep;
@@ -25,6 +34,10 @@ export type LadderContext = {
   canLowerQuality: boolean;
   params?: Readonly<Record<string, string>>;
   revision: number;
+  /** The server already converts the audio to AAC stereo for this playback (B13 `audioFallback`). */
+  audioFallback: boolean;
+  /** The same failure keeps coming back (incidents within 15 min): skip the reload, another way to play. */
+  recurring?: boolean;
 };
 
 export type Decision = {
@@ -35,20 +48,12 @@ export type Decision = {
   hint?: HintKey;
 };
 
-/** Healthy playback after which an incident and its budgets end. */
-export const INCIDENT_RESET_MS = 120_000;
-/** Offline longer than this gives up (the card retries on its own once online). */
-export const OFFLINE_BUDGET_MS = 120_000;
-const T1_BACKOFF_S = [2, 4, 8, 16];
-const T4_BACKOFF_S = [5, 10, 20];
-const T6_BACKOFF_S = [5, 15];
-/** Every incident ends on a card after this many steps, whatever the categories say. */
-export const MAX_ATTEMPTS = 12;
-/** Step-downs per incident: direct → remux → transcode → VLC at most. */
-export const MAX_STEP_DOWNS = 3;
-const STREAM_POLL_S = 10;
-const STREAM_POLLS = 12;
-const MAX_QUALITY_STEPS = 2;
+/** Audio failures the server's audio conversion can fix (ladder step A, B13). */
+export const AUDIO_CODES: ReadonlySet<string> = new Set([
+  'audio_decode_error',
+  'audio_silent',
+  'audio_rendition_failed',
+]);
 
 /** One failure episode: every new failure continues its ladder until playback is healthy for 2 minutes. */
 export class Incident {
@@ -97,6 +102,10 @@ export function nextStep(
 ): Decision {
   const { category, code } = failure;
   const after = (wait: number | undefined, fallback: number) => seconds(wait ?? fallback);
+  // A device or method failure that keeps coming back is not fixed by reloading again (review R5).
+  const methodFailure = category === 'T5' || category === 'T6' || category === 'T7';
+  if (context.recurring && context.attached && methodFailure && incident.attempts.length === 0)
+    return stepDown(incident, category === 'T5' ? 'buffering' : 'noPicture');
   switch (category) {
     case 'T1': {
       if (code === 'tls_error' || code === 'mixed_content') return { step: 'G', delayMs: 0 };
@@ -154,14 +163,29 @@ export function nextStep(
         ? stepDown(incident)
         : { step: 'G', delayMs: 0 };
     }
-    case 'T7':
+    case 'T7': {
+      const audio = AUDIO_CODES.has(code) && context.attached;
+      // An audio codec the device refuses: reloading cannot help, converting the audio can (D13, C27).
+      if (
+        audio &&
+        code === 'audio_decode_error' &&
+        !context.audioFallback &&
+        incident.count(['A']) < 1
+      )
+        return { step: 'A', delayMs: 0, hint: 'noAudio' };
       if (context.attached && incident.count(['R'], 'T7', context.revision) < 1)
-        return { step: 'R', delayMs: 0, hint: 'reloading' };
+        return { step: 'R', delayMs: 0, hint: audio ? 'noAudio' : 'reloading' };
+      // Silence after a reload: the server converts the audio before another method is tried (C20, D36).
+      if (audio && !context.audioFallback && incident.count(['A']) < 1)
+        return { step: 'A', delayMs: 0, hint: 'noAudio' };
+      // The audio rendition keeps failing with converted audio too: another method cannot fix the server's audio.
+      if (code === 'audio_rendition_failed') return { step: 'G', delayMs: 0 };
       if (context.attached) return stepDown(incident, 'noPicture');
       // No method of this version plays here: another version may.
       return code === 'no_more_methods' && incident.count(['V']) < 1
         ? { step: 'V', delayMs: 0 }
         : { step: 'G', delayMs: 0 };
+    }
     case 'T8':
       if (context.attached && incident.count(['R'], 'T8') < 1)
         return { step: 'R', delayMs: 0, hint: 'reloading' };
@@ -196,7 +220,7 @@ export function cardActions(
     T4: ['retry'],
     T5: ['lowerQuality', 'otherVersion'],
     T6: ['retry', 'otherVersion'],
-    T7: ['otherVersion', 'useVlc'],
+    T7: code === 'audio_rendition_failed' ? ['retry', 'otherVersion'] : ['otherVersion', 'useVlc'],
     T8: ['otherVersion'],
     T9: [],
     T10: ['retry'],

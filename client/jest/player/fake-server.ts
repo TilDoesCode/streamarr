@@ -2,7 +2,11 @@ import type { ApiClient } from '@/api/client';
 import type { Playback } from '@/player/playback-api';
 
 /** One scripted answer: an HTTP status with a body, or a transport failure (fetch rejects). */
-export type Reply = { status: number; body?: unknown; retryAfter?: number } | { network: string };
+export type Reply =
+  | { status: number; body?: unknown; retryAfter?: number }
+  | { network: string }
+  /** No answer until the request is aborted; then it rejects like React Native's fetch (AbortError, not the reason). */
+  | { hang: true };
 
 export const reply = {
   ok: (body?: unknown, status = 200): Reply => ({ status, body }),
@@ -16,6 +20,7 @@ export const reply = {
   /** A proxy or captive portal answering HTML. */
   html: (status = 200): Reply => ({ status, body: '<html>Sign in to the Wi-Fi</html>' }),
   offline: (message = 'Network request failed'): Reply => ({ network: message }),
+  hang: (): Reply => ({ hang: true }),
 };
 
 export type Route = 'start' | 'poll' | 'switch' | 'stop' | 'progress' | 'versions';
@@ -32,7 +37,11 @@ function routeOf(method: string, path: string): Route {
   return method === 'GET' ? 'poll' : 'start';
 }
 
-type Init = { params?: { path?: { playbackId?: string } }; body?: Record<string, unknown> };
+type Init = {
+  params?: { path?: { playbackId?: string } };
+  body?: Record<string, unknown>;
+  signal?: AbortSignal;
+};
 
 /** The viewer playback API behind an ApiClient: every route answers from a script, else like a healthy server. */
 export class FakeServer {
@@ -84,7 +93,14 @@ export class FakeServer {
     if (request.route === 'poll') return reply.ok(this.current.get(id) ?? this.playback());
     if (request.route === 'switch') {
       const before = this.current.get(id) ?? this.playback({ playbackId: id });
-      return reply.ok({ ...before, state: 'ready', revision: (before.revision ?? 0) + 1 });
+      // Like the server: the audio conversion is sticky for the playback (B13).
+      const fallback = request.body?.audioFallback;
+      return reply.ok({
+        ...before,
+        ...(typeof fallback === 'boolean' ? { audioFallback: fallback } : null),
+        state: 'ready',
+        revision: (before.revision ?? 0) + 1,
+      });
     }
     if (request.route === 'versions') return reply.ok({ versions: [] });
     return { status: 204 };
@@ -100,6 +116,12 @@ export class FakeServer {
     const next = this.queues[request.route].shift() ?? this.fallback(request);
     const answer = typeof next === 'function' ? next(request) : next;
     if ('network' in answer) throw new TypeError(answer.network);
+    if ('hang' in answer)
+      return new Promise<never>((_, reject) =>
+        init.signal?.addEventListener('abort', () =>
+          reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
+        )
+      );
     const ok = answer.status >= 200 && answer.status < 300;
     const body = answer.body as Playback | undefined;
     if (ok && body?.playbackId) this.current.set(body.playbackId, body);

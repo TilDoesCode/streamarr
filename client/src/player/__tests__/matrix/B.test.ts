@@ -3,7 +3,15 @@ import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
 import { harness, newController, reply } from '@/../jest/player/harness';
 import { pending, row } from '@/../jest/player/matrix';
-import { fakeNetwork, playing, settle, starts, TICKS } from '@/../jest/player/play';
+import {
+  fakeNetwork,
+  playFor,
+  playing,
+  playOn,
+  settle,
+  starts,
+  TICKS,
+} from '@/../jest/player/play';
 import { ProgressQueue } from '@/player/progress-queue';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
@@ -511,13 +519,13 @@ describe('matrix B — code review S1-S4 (S4b)', () => {
       harness.engine.fail(exo(404));
       await settle();
       harness.engine.started();
-      await jest.advanceTimersByTimeAsync(130_000);
+      await playOn(130);
       harness.engine.fail(exo(404));
       await settle();
       harness.engine.started();
       expect(c.phase).toBe('playing');
       expect(starts()).toHaveLength(3);
-      await jest.advanceTimersByTimeAsync(30_000);
+      await playOn(30);
       harness.engine.fail(exo(404));
       await settle();
       // Within 2 minutes it is the same incident, and session loss gets one new start per incident.
@@ -613,6 +621,246 @@ describe('matrix B — code review S1-S4 (S4b)', () => {
       expect(server.sent('versions')).toHaveLength(1);
       expect(c.failure?.code).toBe('no_more_methods');
       expect(c.failure?.tried?.map((attempt) => attempt.step)).toEqual(['R', 'S']);
+    }
+  );
+});
+
+describe('matrix B — playbackAlive from the progress answer (S4c, B13)', () => {
+  const audioTracks = [
+    { index: 1, language: 'en', deliveredAs: 'original', selected: true },
+    { index: 2, language: 'de', deliveredAs: 'original', selected: false },
+  ];
+  const engineAudio = (selected: number) => ({
+    audio: [
+      { id: 'a0', label: 'en', language: 'en', selected: selected === 0 },
+      { id: 'a1', label: 'de', language: 'de', selected: selected === 1 },
+    ],
+    subtitles: [],
+  });
+
+  row(
+    'B25',
+    'a heartbeat answered playbackAlive false: a silent new start at the position with the viewer audio; no hint, no notice',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { mediaInfo: { durationTicks: 6e9, audioTracks, subtitleTracks: [] } } as never,
+        100
+      );
+      harness.engine.emit({ type: 'tracks', tracks: engineAudio(0) });
+      await c.selectAudio(audioTracks[1] as never);
+      harness.engine.emit({ type: 'tracks', tracks: engineAudio(1) });
+      harness.engine.time(120);
+      const old = c.playback!.playbackId;
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)).toMatchObject({ position: 120, body: { audioStreamIndex: 2 } });
+      expect(c.playback!.playbackId).not.toBe(old);
+      expect(c.status).toEqual({ spinner: true, hint: null, actions: [] });
+      harness.engine.started();
+      expect(c.status.hint).toBeNull();
+      expect(c.notice).toBeNull();
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'B25',
+    'playbackAlive true or null, or false for an older playback, changes nothing',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('progress', reply.ok({ playbackAlive: true }), reply.ok({}));
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(starts()).toHaveLength(1);
+      const engine = harness.engine;
+      c.progress.onAnswer?.({
+        report: {
+          event: 'progress',
+          workId: 'w1',
+          playbackId: 'p-old',
+          positionTicks: 0,
+          durationTicks: null,
+        },
+        playbackAlive: false,
+      });
+      await settle();
+      expect(starts()).toHaveLength(1);
+      expect(engine.load).toHaveBeenCalledTimes(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'B25',
+    'the silent restart that fails is no longer silent: the busy hint, then playback',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      harness.server.answer('start', reply.error(503, 'capacity_reached'));
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(c.status.hint).toMatchObject({ key: 'serverBusy' });
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(starts()).toHaveLength(3);
+      harness.engine.started();
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — code review S5 + S4b (S4d)', () => {
+  const exo = (status: number) =>
+    `Source error: InvalidResponseCodeException: Response code: ${status}`;
+  const starting = (id = 'slow') =>
+    reply.ok(
+      harness.server.playback({ playbackId: id, state: 'starting', pollAfterMs: 1000 } as never)
+    );
+
+  row(
+    'B25',
+    'a new start that never gets ready ends on the card after a minute with its own code (review X2, K10, K36)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('start', starting(), starting(), starting());
+      harness.server.answer('poll', ...Array.from({ length: 400 }, () => starting()));
+      harness.engine.fail(exo(404));
+      await settle();
+      await jest.advanceTimersByTimeAsync(59_000);
+      expect(c.phase).toBe('playing');
+      expect(c.status.hint?.key).toBe('restarting');
+      await jest.advanceTimersByTimeAsync(2_000);
+      await settle();
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'step_timeout', category: 'T6' });
+    }
+  );
+
+  row(
+    'B25',
+    'a new start whose server keeps reporting progress gets the time it needs (budget extended per state)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      const state = (s: string) =>
+        reply.ok(
+          harness.server.playback({ playbackId: 'p9', state: s, pollAfterMs: 1000 } as never)
+        );
+      const polls = [
+        ...Array.from({ length: 50 }, () => state('resolving')),
+        ...Array.from({ length: 50 }, () => state('repairing')),
+        state('ready'),
+      ];
+      harness.server.answer('start', state('queued'));
+      harness.server.answer('poll', ...polls);
+      harness.engine.fail(exo(404));
+      await settle();
+      await jest.advanceTimersByTimeAsync(110_000);
+      expect(c.failure).toBeNull();
+      expect(harness.engine.source?.uri).toContain('p9');
+      harness.engine.started();
+      expect(c.phase).toBe('playing');
+      await c.stop();
+    }
+  );
+
+  row(
+    'B06',
+    'other version: one 503 on its start retries that version, never the stopped old playback (review B5)',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, { version: { releaseId: 'r1' } } as never, 0);
+      const p1 = c.playback!.playbackId!;
+      server.answer(
+        'versions',
+        reply.ok({ versions: [{ releaseId: 'r2', rank: 1, predictedMethod: 'direct' }] })
+      );
+      harness.engine.time(300, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      server.answer('start', reply.error(503, 'server_busy'));
+      harness.engine.emit({ type: 'firstFrame' });
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      await jest.advanceTimersByTimeAsync(6_000);
+      await settle();
+      expect(harness.engine.sources.map((source) => source.uri).at(-1)).not.toContain(`/${p1}`);
+      expect(starts().map((start) => start.releaseId)).toEqual([undefined, 'r2', 'r2']);
+      await c.stop();
+    }
+  );
+
+  row('B06', 'while the other version starts the hint says so (review K35)', async () => {
+    jest.useFakeTimers();
+    const server = harness.server;
+    const c = await playing({}, { version: { releaseId: 'r1' } } as never, 0);
+    server.answer(
+      'versions',
+      reply.ok({ versions: [{ releaseId: 'r2', rank: 1, predictedMethod: 'direct' }] })
+    );
+    server.answer('start', starting('p2'));
+    server.answer('poll', ...Array.from({ length: 20 }, () => starting('p2')));
+    harness.engine.time(300, 600);
+    harness.engine.emit({ type: 'ended' });
+    await settle();
+    harness.engine.emit({ type: 'firstFrame' });
+    harness.engine.emit({ type: 'ended' });
+    await settle();
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(c.status.hint).toMatchObject({ key: 'switchingVersion' });
+    await c.stop();
+  });
+
+  row(
+    'B25',
+    'the watchdog does not judge the old picture while a silent new start runs (review K31)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, {}, 0);
+      await playFor(5, (second) => ({
+        position: second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000 },
+      }));
+      harness.server.answer('start', starting('p2'));
+      harness.server.answer('poll', ...Array.from({ length: 30 }, () => starting('p2')));
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      await playFor(
+        10,
+        (second) => ({
+          position: second,
+          health: { framesPresented: 120, audioProgress: second * 1000 },
+        }),
+        5
+      );
+      expect(starts()).toHaveLength(2);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.failure).toBeNull();
+      expect(c.status.hint).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — step budget against a request that never answers (S4d)', () => {
+  row(
+    'B25',
+    'a new start whose request never answers ends with step_timeout, not "aborted" (review D24)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('start', reply.hang(), reply.hang(), reply.hang());
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      await jest.advanceTimersByTimeAsync(61_000);
+      await settle();
+      expect(c.failure).toMatchObject({ code: 'step_timeout' });
     }
   );
 });

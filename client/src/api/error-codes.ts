@@ -31,6 +31,12 @@ export const CLIENT_ERROR_CODES = [
   'player_internal_error',
   'step_timeout',
   'stream_interrupted',
+  'audio_rendition_failed',
+  'audio_decode_error',
+  'subtitle_unavailable',
+  'subtitle_timeout',
+  'subtitle_unreadable',
+  'empty_media',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */

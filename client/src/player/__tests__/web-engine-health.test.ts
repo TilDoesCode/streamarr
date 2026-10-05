@@ -1,5 +1,5 @@
 import type { EngineEvent } from '@/player/engines';
-import { FRAG_LOAD_POLICY, loadHls, WebEngine } from '@/player/engines/web-engine.web';
+import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 import { FakeHls, FakeVideoElement } from '@/../jest/player/library-fakes';
 
 jest.mock('hls.js', () => jest.requireActual('@/../jest/player/library-fakes').hlsJsModule());
@@ -64,8 +64,12 @@ describe('web health probe (state-matrix § 2 a, S5)', () => {
 
   it('hls.js uses a 30 s time to first byte with two timeout retries (C08)', async () => {
     await engineOn('hls');
-    expect(FakeHls.last.config).toMatchObject({ fragLoadPolicy: FRAG_LOAD_POLICY });
-    expect(FRAG_LOAD_POLICY.default.maxTimeToFirstByteMs).toBe(30_000);
+    const policy = (FakeHls.last.config as { fragLoadPolicy: { default: Record<string, unknown> } })
+      .fragLoadPolicy.default;
+    expect(policy).toMatchObject({
+      maxTimeToFirstByteMs: 30_000,
+      timeoutRetry: { maxNumRetry: 2 },
+    });
   });
 
   it('samples the brightest pixel only for MSE data (CORS-checked), never a plain cross-origin src', async () => {
@@ -75,6 +79,34 @@ describe('web health probe (state-matrix § 2 a, S5)', () => {
     const progressive = await engineOn('progressive');
     expect((await progressive.engine.readHealth()).luma).toBeUndefined();
     expect(draw).toHaveBeenCalledTimes(1);
+  });
+
+  it('samples the picture only while frames stand and only in the first minute after the load (review R11)', async () => {
+    const { engine, video } = await engineOn('hls');
+    const draw = fakeCanvas(0);
+    await engine.readHealth();
+    video.present(24);
+    expect((await engine.readHealth()).luma).toBeUndefined();
+    expect((await engine.readHealth()).luma).toBe(0);
+    video.currentTime = 61;
+    expect((await engine.readHealth()).luma).toBeUndefined();
+    expect(draw).toHaveBeenCalledTimes(2);
+  });
+
+  it('counter proof belongs to the source: a new load trusts nothing until it moves again (review R2)', async () => {
+    const { engine, video } = await engineOn('progressive', 'native');
+    video.present(10);
+    await engine.readHealth();
+    video.present(10);
+    expect((await engine.readHealth()).framesPresented).toBeDefined();
+    video.webkitAudioDecodedByteCount = 100;
+    await engine.readHealth();
+    video.webkitAudioDecodedByteCount = 200;
+    expect((await engine.readHealth()).audioProgress).toBe(200);
+    engine.load({ uri: 'http://server.test/t/master.m3u8', kind: 'hls' });
+    const fresh = await engine.readHealth();
+    expect(fresh.framesPresented).toBeUndefined();
+    expect(fresh.audioProgress).toBeUndefined();
   });
 
   it('a tainted canvas stops luminance sampling for good', async () => {

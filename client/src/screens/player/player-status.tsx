@@ -50,7 +50,7 @@ export function PlayerStatusView({
   const design = useDesign();
   const { hint } = status;
   const text = hint ? hintText(pt, hint.key, hint.params) : null;
-  // The label is taken when the hint changes, so a countdown is not re-read every second.
+  // Announced once per hint (a countdown is not re-read every second); the label follows the live text.
   const [spoken, setSpoken] = useState<{ key: string | null; label: string | null }>({
     key: null,
     label: null,
@@ -104,7 +104,7 @@ export function PlayerStatusView({
             gap: design.space.md,
             alignItems: 'center',
           }}>
-          <View accessible accessibilityLabel={spoken.label ?? text ?? undefined}>
+          <View accessible accessibilityLabel={text ?? undefined}>
             <Text variant="callout" style={{ textAlign: 'center' }}>
               {text}
             </Text>

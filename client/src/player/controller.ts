@@ -36,15 +36,28 @@ import { subtitleAfterAudio } from '@/player/forced-subtitle';
 import { HealthMonitor, HEALTH_TICK_MS } from '@/player/health/monitor';
 import type { EngineHealth } from '@/player/health/types';
 import { CLOCK_FROZEN_MS } from '@/player/health/watchdog';
-import { ProgressQueue } from '@/player/progress-queue';
+import { ProgressQueue, type ProgressAnswer } from '@/player/progress-queue';
 import { classify, type Classified, type ErrorCategory } from '@/player/recovery/classify';
 import {
-  cardActions,
+  AUTO_RETRIES,
+  AUTO_RETRY_WINDOW_MS,
+  EMPTY_END_MS,
+  END_MARGIN_SECONDS,
+  HINT_MS,
   INCIDENT_RESET_MS,
-  OFFLINE_BUDGET_MS,
-  type Attempt,
-  type LadderStep,
-} from '@/player/recovery/ladder';
+  LOAD_RETRY_RECENT_MS,
+  ONLINE_SETTLE_MS,
+  RESUME_REVALIDATE_MS,
+  SEEK_DEBOUNCE_MS,
+  SETTLE_MS,
+  SPINNER_MS,
+  STALL_LADDER_MS,
+  START_BUDGET_MS,
+  SUBTITLE_RETRIES,
+  SUBTITLE_RETRY_MS,
+  SYSTEM_PAUSE_MS,
+} from '@/player/recovery/budgets';
+import { cardActions, type Attempt, type LadderStep } from '@/player/recovery/ladder';
 import { nextVersion } from '@/player/recovery/other-version';
 import {
   RecoveryRunner,
@@ -54,7 +67,7 @@ import {
   type StatusHint,
   type StepTracks,
 } from '@/player/recovery/runner';
-import { SPINNER_MS, statusOf, type PlayerStatus } from '@/player/recovery/status';
+import { statusOf, type PlayerStatus } from '@/player/recovery/status';
 import { effectiveMuted } from '@/player/test-muted';
 
 export type ControllerPhase =
@@ -63,7 +76,15 @@ export type AudioTrack = NonNullable<NonNullable<Playback['mediaInfo']>['audioTr
 export type SubtitleTrack = NonNullable<
   NonNullable<Playback['mediaInfo']>['subtitleTracks']
 >[number];
-export type NoticeKind = 'stepDown' | 'switchFailed' | 'offline' | 'otherVersion';
+export type NoticeKind =
+  | 'stepDown'
+  | 'switchFailed'
+  | 'offline'
+  | 'otherVersion'
+  | 'audioFallback'
+  | 'subtitleFailed'
+  | 'subtitleBack'
+  | 'subtitleNotDeliverable';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
@@ -79,7 +100,20 @@ export type FailedState = {
 };
 export type { StatusHint } from '@/player/recovery/runner';
 export type { PlayerStatus } from '@/player/recovery/status';
-export { HINT_MS, SPINNER_MS, STATE_BUDGET_MS } from '@/player/recovery/status';
+export {
+  EMPTY_END_MS,
+  HINT_MS,
+  ONLINE_SETTLE_MS,
+  RESUME_REVALIDATE_MS,
+  SEEK_DEBOUNCE_MS,
+  SETTLE_MS,
+  SPINNER_MS,
+  STALL_LADDER_MS,
+  START_BUDGET_MS,
+  STATE_BUDGET_MS,
+  SUBTITLE_RETRY_MS,
+  SYSTEM_PAUSE_MS,
+} from '@/player/recovery/budgets';
 /** Connectivity source (NetInfo unless a test passes its own). */
 export type NetworkSource = { subscribe(listener: (online: boolean) => void): () => void };
 /** One audio switch: in the session (rendition) or via `/switch`; `ms` until the new track plays on. */
@@ -122,8 +156,6 @@ const NETINFO: NetworkSource = {
 };
 
 const MIN_RESUME_SECONDS = 30;
-/** A resume prompt open this long checks that the server still has the playback. */
-export const RESUME_REVALIDATE_MS = 60_000;
 
 const HEARTBEAT_MS = 10_000;
 /** An in-session audio switch that has not played on by then falls back to `/switch`. */
@@ -134,24 +166,9 @@ const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
 /** How often a new source re-applies the server's track picks over the engine's own choice. */
 const MAX_SERVER_TRACK_APPLIES = 3;
 const STEADY_STATES = new Set<EngineState>(['playing', 'paused', 'buffering', 'ended']);
-/** A stall this long enters the ladder (state-matrix § 2 c). */
-export const STALL_LADDER_MS = 15_000;
-/** No picture after `ready` this long: reload once, then the T7 ladder. */
-export const START_BUDGET_MS = { progressive: 20_000, hls: 30_000 };
-/** An engine `paused` the app did not ask for, held this long, is a pause by the system. */
-export const SYSTEM_PAUSE_MS = 1_000;
-/** After a load, a seek or a track switch the watchdog waits this long before judging. */
-export const SETTLE_MS = 2_000;
-/** An error this close to the end (two HLS segments) ends playback instead of recovering. */
-const END_MARGIN_SECONDS = 12;
 const QUALITY_STEPS = [2160, 1080, 720, 480];
 /** A step's own source work: where it resumes, the viewer's tracks, and its budget's abort signal. */
 type StepContext = { position: number; tracks: StepTracks | null; signal: AbortSignal };
-
-/** Automatic retries of a "connection lost" card when the network comes back, and how long it must stay back. */
-const AUTO_RETRIES = 3;
-const AUTO_RETRY_WINDOW_MS = 10 * 60_000;
-export const ONLINE_SETTLE_MS = 2_000;
 
 /** One playback on this device: server start flow, engine, switches, step-down and progress reporting. */
 export class PlaybackController {
@@ -201,6 +218,17 @@ export class PlaybackController {
   private blockedAt: number | null = null;
   /** Where and when the source ended early: another end there is the repeat (C32), elsewhere a cut stream. */
   private earlyEndAt: { position: number; at: number } | null = null;
+  /** The engine is retrying a failed media request on its own (status of the last one). */
+  private loadRetry: { status: number; at: number } | null = null;
+  private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  private subtitleRetry: {
+    index: number;
+    release: string | null;
+    failures: number;
+    state: 'off' | 'retrying';
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null = null;
+  private readonly undeliverableNoted = new Set<number>();
   private readonly runner: RecoveryRunner;
   /** Where the viewer chose to start (resume prompt): a restart before the first picture keeps it. */
   private chosenStart: number | null = null;
@@ -214,6 +242,8 @@ export class PlaybackController {
   private stallSince = 0;
   private seekAt = 0;
   private loadPosition = 0;
+  /** The last clock reading of this source: a picture is a clock that runs, never one jump (S9a START). */
+  private lastClock: number | null = null;
   private stallAfterSeek = false;
   private stallPosition = 0;
   private readonly monitor: HealthMonitor;
@@ -228,12 +258,14 @@ export class PlaybackController {
   constructor(readonly options: ControllerOptions) {
     this.preferences = { engine: 'auto', ...options.preferences };
     this.progress = new ProgressQueue(options.accountId, options.client);
+    this.progress.onAnswer = (answer) => this.onProgressAnswer(answer);
     this.runner = new RecoveryRunner({
       situation: () => ({
         attached: !!this.engine,
         online: !this.offline,
         canLowerQuality: this.lowerHeight() !== null,
         revision: this.playback?.revision ?? 0,
+        audioFallback: !!this.playback?.audioFallback,
       }),
       resumePosition: () => this.resumePosition,
       tracks: () => this.viewerTracks(),
@@ -249,11 +281,11 @@ export class PlaybackController {
       engine: () => this.engine,
       closed: () => this.closed,
       context: (health) => this.healthContext(health),
-      stall: () => this.startStall(),
+      stall: () => (this.nearEnd() ? this.finish() : this.startStall()),
       escalate: (verdict, resumeAt) =>
-        this.runner.handle(classify({ kind: 'watchdog', verdict }), {
-          position: resumeAt,
-        }),
+        this.nearEnd()
+          ? this.finish()
+          : this.runner.handle(classify({ kind: 'watchdog', verdict }), { position: resumeAt }),
       changed: () => this.changed(),
     });
     // Known from the first moment: an offline start waits for the network instead of failing (A24).
@@ -277,7 +309,8 @@ export class PlaybackController {
   }
 
   get position(): number {
-    return this.engine?.getSnapshot().position ?? 0;
+    // A debounced seek is where the viewer wants to be before the engine is told (D31).
+    return this.pendingSeek?.target ?? this.engine?.getSnapshot().position ?? 0;
   }
 
   /** Where a switch continues: a loading or failed engine may already report 0. */
@@ -486,6 +519,8 @@ export class PlaybackController {
       this.lastErrorStatus = undefined;
       return null;
     }
+    // A step's switch that failed must not leave the phase on "switching" (the viewer's own picks would be refused).
+    if (this.phase === 'switching') this.phase = this.engine ? 'playing' : 'starting';
     this.onFailedPlayback(ready);
     return null;
   }
@@ -569,7 +604,8 @@ export class PlaybackController {
       return true;
     }
     if (step === 'N') {
-      await this.newStart(context);
+      // After a failed other-version start, its release is the one to start (review B5).
+      await this.newStart(context, recovery.releaseId);
       return true;
     }
     if (step === 'Q') {
@@ -579,8 +615,80 @@ export class PlaybackController {
       return true;
     }
     if (step === 'S') return this.stepDown(recovery.failure.code, context);
+    if (step === 'A') return this.audioFallback(context);
     if (step === 'V') return this.otherVersion(context);
     return false;
+  }
+
+  /** Ladder step A: the server converts the audio to AAC stereo for the rest of the playback (B13). */
+  private async audioFallback(context: StepContext): Promise<boolean> {
+    if (!this.playback?.playbackId || this.playback.audioFallback) return false;
+    const ok = await this.serverSwitch({ audioFallback: true }, context);
+    if (ok) this.showNotice('audioFallback');
+    return true;
+  }
+
+  /** The server lost the playback (idle expiry, restart, B13 `playbackAlive`): a silent new start at the position. */
+  private onProgressAnswer({ report, playbackAlive }: ProgressAnswer): void {
+    if (playbackAlive !== false || report.event === 'stop' || this.closed) return;
+    const playback = this.playback;
+    if (!playback?.playbackId || report.playbackId !== playback.playbackId) return;
+    if (!this.engine || this.phase !== 'playing' || this.runner.current) return;
+    this.runner.handle({ category: 'T2', code: 'playback_not_found' }, { quiet: true });
+  }
+
+  /** Subtitles failed to load or parse (C22, C23): off with a notice, one retry later; never a reason to stop. */
+  private onSubtitleError(code: string): void {
+    if (this.closed || this.phase !== 'playing') return;
+    const retry = this.subtitleRetry;
+    // While they are off, more failures of the same subtitles find nothing shown and change nothing.
+    const index = retry?.state === 'retrying' ? retry.index : this.currentSubtitle();
+    if (index === null) return;
+    const failures = (retry?.index === index ? retry.failures : 0) + 1;
+    this.clearSubtitleRetry();
+    // The server's pick must not be re-applied over the failed track right after a load.
+    this.serverTracksOff?.();
+    this.engine?.setSubtitleTrack(null);
+    const timer =
+      failures < SUBTITLE_RETRIES + 1
+        ? setTimeout(() => this.retrySubtitle(), SUBTITLE_RETRY_MS)
+        : null;
+    const release = this.playback?.version?.releaseId ?? null;
+    this.subtitleRetry = { index, release, failures, state: 'off', timer };
+    this.showNotice('subtitleFailed', { index: `${index}`, code, retry: timer ? 'later' : '' });
+  }
+
+  private retrySubtitle(): void {
+    const retry = this.subtitleRetry;
+    if (!retry || this.closed) return;
+    retry.timer = null;
+    // The viewer chose other subtitles meanwhile: theirs win.
+    if (this.currentSubtitle() !== null) return this.clearSubtitleRetry();
+    // Subtitle indexes belong to a release: a failed one is not retried in another.
+    if ((this.playback?.version?.releaseId ?? null) !== retry.release)
+      return this.clearSubtitleRetry();
+    const id = this.localTrackId('subtitle', retry.index);
+    if (id === null) return this.clearSubtitleRetry();
+    retry.state = 'retrying';
+    this.engine?.setSubtitleTrack(id);
+  }
+
+  private clearSubtitleRetry(): void {
+    if (this.subtitleRetry?.timer) clearTimeout(this.subtitleRetry.timer);
+    this.subtitleRetry = null;
+  }
+
+  /** A selected subtitle the server cannot deliver to this device is said at once, with VLC when it could (C24). */
+  private noteUndeliverable(playback: Playback): void {
+    const track = playback.mediaInfo?.subtitleTracks?.find(
+      (item) => item.selected && item.deliveredAs === 'none'
+    );
+    if (!track || this.undeliverableNoted.has(track.index)) return;
+    this.undeliverableNoted.add(track.index);
+    const vlc =
+      playback.engine !== 'vlc' &&
+      (this.options.profile.engines ?? []).some((engine) => engine.engine === 'vlc');
+    this.showNotice('subtitleNotDeliverable', { index: `${track.index}`, vlc: vlc ? 'vlc' : '' });
   }
 
   /** Ladder step V: the best other version this device plays, at the same position. */
@@ -595,6 +703,7 @@ export class PlaybackController {
     );
     if (!releaseId || this.closed) return false;
     this.triedReleases.add(releaseId);
+    this.runner.choose(releaseId);
     // Track indexes belong to a release: the new one picks by the viewer's language preferences.
     await this.newStart({ ...context, tracks: null }, releaseId);
     if (this.playback?.version?.releaseId === releaseId) this.showNotice('otherVersion');
@@ -622,10 +731,30 @@ export class PlaybackController {
       ),
       signal
     );
-    // The old picture stays while the new playback prepares (no stepper).
-    const ready = await waitForPlayback(this.options.client, created, () => undefined, signal);
+    // The old picture stays while the new playback prepares (no stepper); each new server state extends the step's budget.
+    let state = created.state;
+    let ready = await waitForPlayback(
+      this.options.client,
+      created,
+      (update) => {
+        if (update.state === state) return;
+        state = update.state;
+        this.runner.progress();
+      },
+      signal
+    );
     if (this.closed || signal.aborted) return;
     if (ready.state === 'failed') return this.onFailedPlayback(ready);
+    // The audio conversion is part of the viewing, not of one server playback: the new one converts too.
+    if (previous?.audioFallback && !ready.audioFallback && ready.playbackId) {
+      const converted = await switchPlayback(this.options.client, ready.playbackId, {
+        audioFallback: true,
+        positionTicks: Math.round(position * TICKS_PER_SECOND),
+      });
+      ready = await waitForPlayback(this.options.client, converted, () => undefined, signal);
+      if (this.closed || signal.aborted) return;
+      if (ready.state === 'failed') return this.onFailedPlayback(ready);
+    }
     await this.attach(ready, position);
     this.report('start');
   }
@@ -685,7 +814,11 @@ export class PlaybackController {
       this.engineOff = engine.subscribe((event) => {
         if (event.type === 'error' && this.pendingAudio?.engineId)
           this.settleAudio(false, event.reason);
-        else if (event.type === 'error') this.onEngineError(event.reason, event.status);
+        else if (event.type === 'error')
+          this.onEngineError(event.reason, event.status, event.retryAfter);
+        else if (event.type === 'subtitleError') this.onSubtitleError(event.code);
+        else if (event.type === 'loadRetry')
+          this.loadRetry = { status: event.status ?? 0, at: Date.now() };
         else if (event.type === 'audioError') {
           if (this.pendingAudio?.engineId) this.settleAudio(false, event.code);
         } else if (event.type === 'ended') this.onEnded();
@@ -697,8 +830,7 @@ export class PlaybackController {
             this.lastGoodPosition = event.position;
           this.autoplayResumed(event.position);
           this.audioPlaying(event.position);
-          if (!this.pictured && Math.abs(event.position - this.loadPosition) >= 0.5)
-            this.onPicture();
+          if (!this.pictured && this.clockRuns(event.position)) this.onPicture();
           this.onClock(event.position);
           if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
             this.report('progress');
@@ -737,6 +869,7 @@ export class PlaybackController {
       });
     }
     this.playback = playback;
+    this.noteUndeliverable(playback);
     // Every release that played counts as tried for the "other version" step.
     if (playback.version?.releaseId) this.triedReleases.add(playback.version.releaseId);
     noteAudioTracks(playback.version?.releaseId, playback.mediaInfo?.audioTracks?.length ?? 2);
@@ -747,12 +880,13 @@ export class PlaybackController {
     this.pictured = false;
     this.loadingSince = Date.now();
     this.loadPosition = position;
+    this.lastClock = null;
     this.stallSince = 0;
     this.seekTarget = null;
-    this.monitor.nativeClock = null;
+    this.monitor.newSource();
     this.settle();
     this.runner.attached();
-    this.monitor.start(engine);
+    this.monitor.start();
     this.tickStatus();
     this.applyServerTracks(engine, playback, tracks);
     engine.load({
@@ -841,7 +975,13 @@ export class PlaybackController {
 
   private onEnded(): void {
     const { position, duration } = this.engine?.getSnapshot() ?? { position: 0, duration: 0 };
-    if (this.ended || !duration) return;
+    if (this.ended || this.phase !== 'playing') return;
+    // A file with no or under a second of media (C31): nothing to watch, so it is explained, never "ended".
+    const blank =
+      !this.pictured && !!this.loadingSince && Date.now() - this.loadingSince >= EMPTY_END_MS;
+    if (this.loadPosition < 1 && ((duration > 0 && duration < 1) || blank))
+      return this.runner.handle({ category: 'T8', code: 'empty_media' }, { position: 0 });
+    if (!duration) return;
     if (position >= duration - 3) return this.finish();
     // A reloaded short file often ends again before any time event: its position is the one it was loaded at.
     const endAt = this.startFloor ? this.loadPosition : position;
@@ -895,6 +1035,12 @@ export class PlaybackController {
     );
   }
 
+  /** The last seconds of the title: a stall, a frozen clock or a picture/sound verdict there ends it (review B3). */
+  private nearEnd(): boolean {
+    const duration = this.duration;
+    return this.pictured && duration > 0 && this.resumePosition >= duration - END_MARGIN_SECONDS;
+  }
+
   private finish(): void {
     this.ended = true;
     this.clearStall();
@@ -902,7 +1048,7 @@ export class PlaybackController {
     this.changed();
   }
 
-  private onEngineError(reason: string, status?: number): void {
+  private onEngineError(reason: string, status?: number, retryAfter?: number): void {
     const engine = this.engine;
     if (!engine || this.closed || this.runner.replacing) return;
     if (this.phase === 'failed' || this.phase === 'switching') return;
@@ -912,7 +1058,17 @@ export class PlaybackController {
     // A missing last segment or a short tail: the end is reached, not a failure (C13).
     if (this.pictured && duration && position >= duration - END_MARGIN_SECONDS)
       return this.finish();
-    this.runner.handle(classify({ kind: 'engine', engine: engine.kind, reason, status }));
+    this.runner.handle(
+      classify({ kind: 'engine', engine: engine.kind, reason, status }),
+      retryAfter ? { retryAfter } : {}
+    );
+  }
+
+  /** Two clock readings a little apart in forward order: frames are playing (hls.js reports 0:00 before its start seek). */
+  private clockRuns(position: number): boolean {
+    const previous = this.lastClock;
+    this.lastClock = position;
+    return previous !== null && position > previous && position - previous <= 3;
   }
 
   private onPicture(): void {
@@ -1008,9 +1164,28 @@ export class PlaybackController {
       visible: AppState.currentState !== 'background',
       pictureInPicture: this.pictureInPicture,
       settling: Date.now() < this.settleUntil || this.seekTarget !== null,
-      hasVideo: info?.video ? true : health.hasVideoTrack,
+      // The server knows: `video: null` is an audio-only file (no picture rules); unknown asks the engine.
+      hasVideo: info?.video === null ? false : info?.video ? true : health.hasVideoTrack,
       hasAudio: info?.audioTracks?.length ? true : health.hasAudioTrack,
     };
+  }
+
+  /** Why a long stall happened: a server error the engine is retrying (5xx, R7), else a slow source (T5). */
+  private stallFailure(now: number): Classified {
+    const retry = this.loadRetry;
+    if (
+      retry &&
+      now - retry.at < LOAD_RETRY_RECENT_MS &&
+      retry.status >= 500 &&
+      retry.status !== 504
+    )
+      return classify({
+        kind: 'engine',
+        engine: this.engine?.kind ?? 'web',
+        reason: 'networkError:fragLoadError',
+        status: retry.status,
+      });
+    return { category: 'T5', code: this.stallAfterSeek ? 'seek_stalled' : 'playback_stalled' };
   }
 
   private startBudget(): number {
@@ -1062,20 +1237,12 @@ export class PlaybackController {
     ) {
       this.loadingSince = 0;
       this.runner.handle({ category: 'T7', code: 'start_timeout' });
+    } else if (calm && this.stallSince && this.nearEnd() && now - this.stallSince >= HINT_MS) {
+      this.finish();
     } else if (calm && this.stallSince && now - this.stallSince >= STALL_LADDER_MS) {
       this.stallSince = 0;
-      this.runner.handle({
-        category: 'T5',
-        code: this.stallAfterSeek ? 'seek_stalled' : 'playback_stalled',
-      });
-    } else if (
-      this.offline &&
-      recovery?.due === Infinity &&
-      now - this.offlineSince >= OFFLINE_BUDGET_MS
-    ) {
-      this.runner.cancel();
-      this.giveUp(recovery.failure, recovery.extra, this.runner.attempts);
-    }
+      this.runner.handle(this.stallFailure(now));
+    } else if (this.offline) this.runner.expireOffline(now - this.offlineSince);
     this.tickStatus();
     this.changed();
   }
@@ -1167,13 +1334,10 @@ export class PlaybackController {
         reason: reason ?? '',
       });
     }
-    return true;
+    return ok;
   }
 
-  /**
-   * Switch on the server (new rendition/version/method) and resume at the current position. Without `step` it is the
-   * viewer's switch: refused while another switch runs, and it replaces any planned recovery.
-   */
+  /** Server switch at the position; without `step` it is the viewer's own (refused while switching, cancels recovery). */
   async serverSwitch(body: PlaybackSwitch, step?: StepContext): Promise<boolean> {
     const playback = this.playback;
     if (!playback?.playbackId || this.closed) return false;
@@ -1209,7 +1373,7 @@ export class PlaybackController {
         if (!step) await this.restore(playback, position, previousPreferences);
         return false;
       }
-      if (step?.signal.aborted) return false;
+      if (step?.signal.aborted) throw step.signal.reason;
       await this.attach(ready, position);
       return true;
     } catch (error) {
@@ -1354,6 +1518,11 @@ export class PlaybackController {
   }
 
   async selectAudio(track: AudioTrack): Promise<void> {
+    await this.pickAudio(track);
+    this.runner.retrack(this.viewerTracks());
+  }
+
+  private async pickAudio(track: AudioTrack): Promise<void> {
     this.settle();
     if (this.pendingAudio || track.index === this.currentAudio()) return;
     this.serverTracksOff?.();
@@ -1526,7 +1695,13 @@ export class PlaybackController {
   }
 
   async selectSubtitle(track: SubtitleTrack | null): Promise<void> {
+    await this.pickSubtitle(track);
+    this.runner.retrack(this.viewerTracks());
+  }
+
+  private async pickSubtitle(track: SubtitleTrack | null): Promise<void> {
     this.settle();
+    this.clearSubtitleRetry();
     this.keptSubtitle = null;
     this.serverTracksOff?.();
     const burnedIn = this.playback?.mediaInfo?.subtitleTracks?.some(
@@ -1602,7 +1777,18 @@ export class PlaybackController {
     this.seekTarget = clamped;
     this.monitor.nativeClock = null;
     this.monitor.watchdog.reset();
-    engine.seek(clamped);
+    // A step that waits resumes where the viewer is now, not where the failure was (review B4).
+    this.runner.reposition(clamped);
+    if (this.pendingSeek) clearTimeout(this.pendingSeek.timer);
+    this.pendingSeek = null;
+    // A transcode restarts ffmpeg for every far seek: quick repeats become one seek (D31).
+    if (this.playback?.method === 'transcode') {
+      const timer = setTimeout(() => {
+        this.pendingSeek = null;
+        if (this.engine === engine && !this.closed) engine.seek(clamped);
+      }, SEEK_DEBOUNCE_MS);
+      this.pendingSeek = { target: clamped, timer };
+    } else engine.seek(clamped);
     this.tickStatus();
     this.changed();
   }
@@ -1616,6 +1802,8 @@ export class PlaybackController {
     const position = this.ended ? this.duration : this.resumePosition;
     this.abort.abort();
     this.runner.cancel();
+    this.clearSubtitleRetry();
+    if (this.pendingSeek) clearTimeout(this.pendingSeek.timer);
     if (this.onlineTimer) clearTimeout(this.onlineTimer);
     this.stopStatusTicker();
     this.networkOff?.();

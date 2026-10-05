@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
+import { languageName } from '@/browse/version-format';
 import { invalidateWatchQueries } from '@/browse/queries';
 import { VersionPicker } from '@/browse/version-picker';
 import { CENTRED_ROW, FocusGuide } from '@/components/focus';
@@ -28,7 +29,7 @@ import { nativeCandidates } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
-import { noticeError, noticeMs, stepDownKey, stepDownReasonKey } from '@/player/overlay-labels';
+import { noticeMs, noticeText, subtitleLabel } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
 import { usePlayerClock } from '@/player/use-clock';
 import { useCloseOnFailure } from './use-close-on-failure';
@@ -59,7 +60,7 @@ const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 /** Player route: start flow with the stepper, resume choice, overlay, panels, up-next and errors. */
 export function PlayScreen() {
   const pt = usePlayerT();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const design = useDesign();
   const resumeGap = useFocusGap(design.space.md);
   const { large } = useShell();
@@ -109,8 +110,16 @@ export function PlayScreen() {
     let cancelled = false;
     let current: PlaybackController | null = null;
     loadDeviceCaps()
+      .then(
+        (caps) => caps,
+        (error: unknown) => {
+          if (__DEV__) console.warn('[player] device caps failed', error);
+          if (!cancelled) setCapsError('device_caps_unavailable');
+          return null;
+        }
+      )
       .then((caps) => {
-        if (cancelled) return;
+        if (cancelled || !caps) return;
         current = new PlaybackController({
           client,
           accountId: account.id,
@@ -127,8 +136,9 @@ export function PlayScreen() {
         void current.start();
       })
       .catch((error: unknown) => {
-        if (__DEV__) console.warn('[player] device caps failed', error);
-        if (!cancelled) setCapsError('device_caps_unavailable');
+        // Anything else that breaks before the start is the app's own fault: its own text, never the generic one (E16).
+        if (__DEV__) console.warn('[player] start failed', error);
+        if (!cancelled) setCapsError('player_internal_error');
       });
     return () => {
       cancelled = true;
@@ -380,15 +390,18 @@ export function PlayScreen() {
           intensity="strong"
           radius={design.radius.md}>
           <Text variant="callout">
-            {notice.kind === 'stepDown'
-              ? [stepDownKey(notice.params), stepDownReasonKey(notice.params)]
-                  .flatMap((key) => (key ? [pt(key)] : []))
-                  .join(' ')
-              : notice.kind === 'otherVersion'
-                ? pt('notice.otherVersion')
-                : pt('notice.switchFailed', {
-                    reason: describeError(t, noticeError(notice.params)).message,
-                  })}
+            {noticeText(
+              notice,
+              pt,
+              (error) => describeError(t, error).message,
+              (index) => {
+                const tracks = controller?.playback?.mediaInfo?.subtitleTracks ?? [];
+                const track = tracks.find((item) => item.index === index);
+                return track
+                  ? subtitleLabel(track, tracks, (code) => languageName(code, i18n.language, t), '')
+                  : pt('trackFallback', { index });
+              }
+            )}
           </Text>
         </Glass>
       ) : null}

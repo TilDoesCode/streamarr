@@ -1,7 +1,5 @@
 import type { PlayerKey, PlayerT } from '@/player/use-player-t';
 
-import type { SystemCause } from './classify';
-
 /** One status hint per situation (state-matrix § 2 b.4): what happened, what the app does. */
 export const HINT_KEYS = [
   'starting',
@@ -10,20 +8,16 @@ export const HINT_KEYS = [
   'serverSlow',
   'reconnecting',
   'offline',
-  'serverDown',
   'restarting',
   'recovering',
   'noPicture',
   'noAudio',
-  'decoder',
   'deviceSlow',
   'endedEarly',
-  'subtitleFailed',
   'pausedBySystem',
   'airplay',
   'mutedAutoplay',
   'autoplayBlocked',
-  'signedOut',
   'serverBusy',
   'waitingForStream',
   'buffering',
@@ -32,6 +26,8 @@ export const HINT_KEYS = [
   'lowering',
   'steppingDown',
   'switchingVersion',
+  'convertingAudio',
+  'serverRetrying',
 ] as const;
 export type HintKey = (typeof HINT_KEYS)[number];
 
@@ -56,20 +52,16 @@ export const HINT_ACTIONS: Record<HintKey, readonly HintAction[]> = {
   serverSlow: ['lowerQuality'],
   reconnecting: ['tryNow', 'back'],
   offline: ['back'],
-  serverDown: ['tryNow', 'back'],
   restarting: [],
   recovering: [],
   noPicture: [],
   noAudio: ['otherAudio'],
-  decoder: [],
   deviceSlow: ['lowerQuality'],
   endedEarly: ['otherVersion', 'back'],
-  subtitleFailed: ['otherSubtitles'],
   pausedBySystem: ['resume'],
   airplay: [],
   mutedAutoplay: ['unmute'],
   autoplayBlocked: ['play'],
-  signedOut: ['signIn'],
   serverBusy: ['tryNow'],
   waitingForStream: ['back'],
   buffering: ['lowerQuality'],
@@ -78,11 +70,18 @@ export const HINT_ACTIONS: Record<HintKey, readonly HintAction[]> = {
   lowering: [],
   steppingDown: [],
   switchingVersion: [],
+  convertingAudio: [],
+  serverRetrying: [],
 };
 
 /** `{cause}` of `startSlow` and `pausedBySystem`. */
 export type HintCause =
-  | Exclude<SystemCause, 'airplay' | 'autoplayMuted' | 'autoplayBlocked'>
+  | 'call'
+  | 'otherAudio'
+  | 'headphones'
+  | 'locked'
+  | 'pipClosed'
+  | 'airplayLost'
   | 'converting'
   | 'slowConnection'
   | 'preparing'

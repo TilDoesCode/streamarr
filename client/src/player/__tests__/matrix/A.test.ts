@@ -6,7 +6,7 @@ import i18n from '@/i18n';
 import { cardButtons } from '@/screens/player/card-actions';
 import { harness, newController, reply } from '@/../jest/player/harness';
 import { pending, row } from '@/../jest/player/matrix';
-import { fakeNetwork, playing, settle, starts } from '@/../jest/player/play';
+import { fakeNetwork, playFor, playing, playOn, settle, starts } from '@/../jest/player/play';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
 
@@ -32,7 +32,7 @@ describe('matrix A — App, auth, device and OS', () => {
       const c = await playing({}, {}, 0);
       harness.engine.time(15);
       harness.server.answer('progress', ...Array.from({ length: 10 }, () => reply.offline()));
-      await jest.advanceTimersByTimeAsync(60_000);
+      await playOn(60);
       expect(harness.server.sent('progress').length).toBeGreaterThan(1);
       expect(harness.engine.load).toHaveBeenCalledTimes(1);
       expect(harness.server.sent('switch')).toHaveLength(0);
@@ -361,6 +361,71 @@ describe('matrix A — code review S1-S4 (S4b)', () => {
       harness.server.answer('poll', reply.error(401, 'refresh_session_expired'));
       await c.revalidate();
       expect(c.failure).toMatchObject({ code: 'refresh_session_expired', actions: ['signIn'] });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix A — idle expiry seen in the progress answer (S4c, B13)', () => {
+  row(
+    'A09',
+    'the server ended an idle playback: the next heartbeat restarts it silently at the position',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 600);
+      c.setPaused(true);
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      c.setPaused(false);
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(starts().at(-1)?.position).toBe(600);
+      expect(c.notice).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix A — code review S5 + S4b (S4d)', () => {
+  row(
+    'A20',
+    'casting (Remote Playback / AirPlay): the local engine is not judged for sound or picture, no reload (review B2)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, {}, 0);
+      await playFor(5, (second) => ({
+        position: second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000 },
+      }));
+      await playFor(
+        15,
+        (second) => ({
+          position: second,
+          health: { external: true, framesPresented: 120, audioProgress: 5000 },
+        }),
+        5
+      );
+      expect(c.status.hint).toBeNull();
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'A24',
+    'an outage while the picture loads does not count against the start budget (review K28)',
+    async () => {
+      jest.useFakeTimers();
+      const network = fakeNetwork();
+      const c = newController({ network });
+      await c.start();
+      await jest.advanceTimersByTimeAsync(10_000);
+      network.set(false);
+      await jest.advanceTimersByTimeAsync(30_000);
+      network.set(true);
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(6_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
       await c.stop();
     }
   );
