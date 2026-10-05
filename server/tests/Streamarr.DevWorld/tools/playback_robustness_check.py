@@ -8,7 +8,8 @@ moment (segment retention, throttle) and restores them, and it arms faults for i
 Checks: a stalled transcode answers 504 segment_timeout with Retry-After within the wait budget (~25 s); a seek back
 behind the retained window restarts the run at the target instead of waiting; a progress report says whether the
 playbackId is still a live server playback (playbackAlive); /switch {audioFallback} converts the selected audio to AAC
-stereo (verified with ffprobe on the delivered segment). Exits non-zero when a check fails.
+stereo (verified with ffprobe on the delivered segment); a cross-origin faulted 503 exposes Retry-After; a /switch on a
+playback with an active segment/playlist fault leaves `starting`. Exits non-zero when a check fails.
 """
 import json
 import os
@@ -143,8 +144,50 @@ def check_audio_fallback():
     return ok, "; ".join(out)
 
 
+def check_cors_retry_after():
+    anna = fs.ctx.anna["accessToken"]
+    _, p = fs.start_playback(anna, *fs.REMUX)
+    base = p["url"].rsplit("/", 1)[0]
+    fs.arm("seg_status", fs.pb(p), target="video", params={"status": 503, "code": "segment_unavailable", "retryAfter": 10}, mode="always")
+    origin = {"Origin": "http://localhost:8083"}
+    pre = fs.raw("OPTIONS", base + "/3.m4s", headers={**origin, "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "range"})
+    r = fs.raw("GET", base + "/3.m4s", headers=origin)
+    fs.stop(anna, p["playbackId"])
+    exposed = [h.strip().lower() for h in (r.header("Access-Control-Expose-Headers") or "").split(",")]
+    ok = pre.status == 204 and r.status == 503 and r.header("Retry-After") == "10" and r.header("Access-Control-Allow-Origin") \
+        and "retry-after" in exposed
+    return ok, f"preflight {pre.status}; faulted {r.status} Retry-After {r.header('Retry-After')}, allow-origin {r.header('Access-Control-Allow-Origin')}, exposed {exposed}"
+
+
+def check_switch_under_fault():
+    anna = fs.ctx.anna["accessToken"]
+    cases = [
+        ("seg_status", {"target": "video", "params": {"status": 503, "code": "segment_unavailable", "retryAfter": 10}, "mode": {"count": 9}},
+         {"positionTicks": 410_000_000, "preferences": {"maxHeight": 720}}),
+        ("seg_corrupt", {"target": "video", "params": {"how": "garbage"}, "mode": "always"}, {"positionTicks": 290_000_000, "stepDown": True}),
+        ("playlist_endless", {"params": {"segments": 10}, "mode": "always"}, {"positionTicks": 450_000_000, "stepDown": True}),
+    ]
+    out, ok = [], True
+    for fault, arm, body in cases:
+        _, p = fs.start_playback(anna, *fs.REMUX)
+        base = p["url"].rsplit("/", 1)[0]
+        fs.arm(fault, fs.pb(p), **arm)
+        for i in range(8):
+            fs.raw("GET", f"{base}/{i}.m4s")
+        started = time.time()
+        fs.api("POST", f"/api/v1/viewer/playback/{p['playbackId']}/switch", body, anna)
+        b = wait_revision(anna, p["playbackId"], 1)
+        took = time.time() - started
+        fs.stop(anna, p["playbackId"])
+        fs.clear()
+        ok &= b["state"] == "ready" and took < 65
+        out.append(f"{fault}: {b['state']} {b.get('method')} in {took:.1f}s")
+    return ok, "; ".join(out)
+
+
 CHECKS = [("segment_timeout", check_segment_timeout), ("seek_back_evicted", check_seek_back_evicted),
-          ("playback_alive", check_playback_alive), ("audio_fallback", check_audio_fallback)]
+          ("playback_alive", check_playback_alive), ("audio_fallback", check_audio_fallback),
+          ("cors_retry_after", check_cors_retry_after), ("switch_under_fault", check_switch_under_fault)]
 
 
 def main():

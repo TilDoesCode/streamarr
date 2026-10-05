@@ -9,6 +9,7 @@ namespace Streamarr.Server.Tests.Transcoding;
 public sealed class StalledTranscodeFixture : TranscodingServerFixture
 {
     public const int WaitSeconds = 5;
+    public const string Origin = "https://watch.example";
 
     protected override int SourceDurationSeconds => 20;
     protected override string SourceSize => "320x180";
@@ -19,7 +20,11 @@ public sealed class StalledTranscodeFixture : TranscodingServerFixture
         var script = Path.Combine(directory, "ffmpeg-stalled.sh");
         File.WriteAllText(script, $"#!/bin/sh\ncase \" $* \" in *\" -progress \"*) exec sleep 120;; esac\nexec ffmpeg \"$@\"\n");
         File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        return new Dictionary<string, string?> { ["Streamarr:Transcoding:FfmpegPath"] = script };
+        return new Dictionary<string, string?>
+        {
+            ["Streamarr:Transcoding:FfmpegPath"] = script,
+            ["Streamarr:ViewerCorsOrigins:0"] = Origin,
+        };
     }
 }
 
@@ -46,9 +51,26 @@ public sealed class TranscodeWaitTests(StalledTranscodeFixture fixture)
         using var raw = fixture.CreateClient(authenticated: false);
         try
         {
+            var url = $"{playlist[..playlist.LastIndexOf('/')]}/{file}";
+            using var preflight = new HttpRequestMessage(HttpMethod.Options, url);
+            preflight.Headers.Add("Origin", StalledTranscodeFixture.Origin);
+            preflight.Headers.Add("Access-Control-Request-Method", "GET");
+            preflight.Headers.Add("Access-Control-Request-Headers", "range");
+            var allowed = await raw.SendAsync(preflight);
+            Assert.Equal(HttpStatusCode.NoContent, allowed.StatusCode);
+            Assert.Equal(StalledTranscodeFixture.Origin, allowed.Headers.GetValues("Access-Control-Allow-Origin").Single());
+            Assert.Contains("Range", allowed.Headers.GetValues("Access-Control-Allow-Headers").Single());
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("Origin", StalledTranscodeFixture.Origin);
             var clock = Stopwatch.StartNew();
-            var response = await raw.GetAsync($"{playlist[..playlist.LastIndexOf('/')]}/{file}");
+            var response = await raw.SendAsync(request);
             clock.Stop();
+
+            Assert.Equal(StalledTranscodeFixture.Origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+            var exposed = response.Headers.GetValues("Access-Control-Expose-Headers").Single().Split(',', StringSplitOptions.TrimEntries);
+            Assert.Contains("Retry-After", exposed);
+            Assert.DoesNotContain(exposed, h => h.StartsWith("X-DevWorld", StringComparison.OrdinalIgnoreCase));
 
             Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
             Assert.Equal("segment_timeout", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetProperty("code").GetString());

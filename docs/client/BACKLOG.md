@@ -250,6 +250,12 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   `playbackAlive: true` although that call ends the playback (document it); the B12 `transcode_slow` fault does not
   slow remux runs.
 
+- B13b verify (pre-existing, same on the published snapshot): when a start is replaced, the old start's late remux
+  session is closed only when the playback ends (measured 47 s, holds a remux slot); the wait sits inside the
+  non-cancellable StartJobLockedAsync, so the 60 s start budget cannot cut it. Smaller: the "Maps a remux/transcode
+  start error" doc comment now sits on StartTimeout(); playback_robustness_check's switch_under_fault passes
+  params.how but the fault reads params.mode; the Dev World README still says start_hang "stays starting".
+
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.

@@ -21,10 +21,14 @@ public sealed record ViewerCaller(string ViewerId, string SessionId, string User
 public sealed record PlaybackLink(string? ReleaseId, string? StreamToken);
 
 /// <summary>Poll and retry pacing; tests shorten it.</summary>
-public sealed record PlaybackTimings(TimeSpan RepairPoll, TimeSpan CapacityRetry, TimeSpan CapacityWait, TimeSpan SwitchGrace, TimeSpan SweepInterval)
+public sealed record PlaybackTimings(
+    TimeSpan RepairPoll, TimeSpan CapacityRetry, TimeSpan CapacityWait, TimeSpan SwitchGrace, TimeSpan SweepInterval, TimeSpan? StartBudget = null)
 {
     public static PlaybackTimings Default { get; } = new(
         TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(15));
+
+    /// <summary>Longest a revision may stay in <c>starting</c> (all remux/transcode attempts together) before it fails with <c>start_timeout</c>.</summary>
+    public TimeSpan StartLimit => StartBudget ?? TimeSpan.FromSeconds(60);
 }
 
 /// <summary>Viewer playbacks: per-playback async state machine over resolve and HLS sessions, plus switch, stop, heartbeat, idle expiry and the stream limit.</summary>
@@ -557,8 +561,14 @@ public sealed class ViewerPlaybackService(
         var skipped = decision.Skipped.ToList();
         TranscodeException? lastError = null;
         DeliveryMode? lastMethod = null;
+        using var budget = new CancellationTokenSource(_timings.StartLimit);
         foreach (var candidate in decision.Viable)
         {
+            if (budget.IsCancellationRequested)
+            {
+                (lastError, lastMethod) = (StartTimeout(), candidate.Method);
+                break;
+            }
             ct.ThrowIfCancellationRequested();
             if (candidate.Method == DeliveryMode.Direct)
             {
@@ -570,7 +580,16 @@ public sealed class ViewerPlaybackService(
             try
             {
                 rendition = await media.StartHlsAsync(token, candidate.Client, candidate.Limits, Label(playback), startTicks / (double)TimeSpan.TicksPerSecond,
-                    candidate.Method == DeliveryMode.Remux ? ModePreference.Remux : ModePreference.Transcode, CancellationToken.None);
+                    candidate.Method == DeliveryMode.Remux ? ModePreference.Remux : ModePreference.Transcode, budget.Token);
+            }
+            catch (OperationCanceledException) when (budget.IsCancellationRequested)
+            {
+                logger.LogWarning("Playback {PlaybackId}: {Method} on {Engine} did not start within {Budget}",
+                    playback.Id, candidate.Method.ToApi(), candidate.Engine.Name, _timings.StartLimit);
+                var timeout = StartTimeout();
+                skipped.Add(new SkippedCandidate(candidate.Method, candidate.Engine.Name, [PlanReason.Of(timeout.Code, timeout.Message)]));
+                (lastError, lastMethod) = (timeout, candidate.Method);
+                break;
             }
             catch (TranscodeException e)
             {
@@ -588,7 +607,7 @@ public sealed class ViewerPlaybackService(
 
         var (code, parameters) = lastError is null ? ("playback_failed", null) : StartError(lastError, lastMethod);
         var suggestions = new List<string> { SuggestedActions.Retry };
-        if (code is "segment_timeout" or "transcode_failed")
+        if (code is "segment_timeout" or "transcode_failed" or "start_timeout")
             suggestions.Add(SuggestedActions.LowerQuality);
         if (device.Vlc is not null && preferences.Engine != EnginePreference.Vlc && !excluded.Contains(PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc)))
             suggestions.Add(SuggestedActions.UseVlc);
@@ -881,12 +900,15 @@ public sealed class ViewerPlaybackService(
     };
 
     /// <summary>Maps a remux/transcode start error onto the documented failed-playback codes; a mapped code keeps the original in <c>params.reason</c>.</summary>
+    private TranscodeException StartTimeout()
+        => new("start_timeout", $"The stream did not start within {_timings.StartLimit.TotalSeconds:0} s.", 504);
+
     internal static (string Code, IReadOnlyDictionary<string, string>? Parameters) StartError(TranscodeException e, DeliveryMode? method)
     {
         var reason = TrackSelector.Params(("reason", e.Code));
         return e.Code switch
         {
-            "segment_timeout" or "transcode_failed" or "transcode_capacity" or "remux_capacity" or "probe_failed" => (e.Code, null),
+            "segment_timeout" or "transcode_failed" or "transcode_capacity" or "remux_capacity" or "probe_failed" or "start_timeout" => (e.Code, null),
             "too_many_sessions" or "insufficient_disk" => (method == DeliveryMode.Remux ? "remux_capacity" : "transcode_capacity", reason),
             "init_unavailable" or "segment_unavailable" or "end_of_stream" => ("transcode_failed", reason),
             "transcoding_disabled" or "ffmpeg_unavailable" or "no_local_listener" => ("transcoding_unavailable", reason),

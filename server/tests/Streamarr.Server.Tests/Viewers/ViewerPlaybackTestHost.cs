@@ -88,7 +88,7 @@ public sealed class FakePlaybackMedia : IPlaybackMedia
         string streamToken, ClientProfile client, TranscodeLimits limits, string clientLabel, double startSeconds, ModePreference mode, CancellationToken ct)
     {
         if (StartGate is { } gate)
-            await gate.Task;
+            await gate.Task.WaitAsync(ct);
         if (FailModes.TryGetValue(mode, out var code))
             throw new TranscodeException(code, $"Injected {code}.", 422);
         var media = (await ProbeAsync(streamToken, ct))!;
@@ -127,7 +127,8 @@ public sealed class ViewerPlaybackFactory : WebApplicationFactory<Program>
     public FakePlaybackMedia Media { get; } = new();
 
     public static readonly PlaybackTimings Timings = new(
-        TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(400), TimeSpan.FromSeconds(30), TimeSpan.FromHours(1));
+        TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(400), TimeSpan.FromSeconds(30), TimeSpan.FromHours(1),
+        TimeSpan.FromSeconds(5));
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

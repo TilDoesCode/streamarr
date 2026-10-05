@@ -754,6 +754,25 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task Switch_WhoseStartNeverReturns_FailsWithStartTimeout_WithinTheBudget()
+    {
+        var (viewer, _) = await ViewerAsync("stuckswitch");
+        var ready = await ReadyAsync(viewer, Play(Release(Mkv()), AppleTv));
+        factory.Media.StartGate = new TaskCompletionSource();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { preferences = new { maxHeight = 720 } });
+        var failed = await WaitAsync(viewer, Id(ready), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready" or "failed");
+
+        Assert.Equal("failed", State(failed));
+        Assert.Equal("start_timeout", failed.GetProperty("error").GetProperty("code").GetString());
+        Assert.InRange(clock.Elapsed.TotalSeconds, 4.5, 15);
+        Assert.Equal(new[] { "retry", "lowerQuality" }, failed.GetProperty("suggestedActions").EnumerateArray().Select(a => a.GetString()).Take(2));
+        Assert.Contains(failed.GetProperty("decision").GetProperty("skipped").EnumerateArray(),
+            s => s.GetProperty("reasons").EnumerateArray().Any(r => r.GetProperty("code").GetString() == "start_timeout"));
+    }
+
+    [Fact]
     public async Task RapidSwitches_OnlyTheLastRevisionPlays_AndEveryLateSessionIsClosed()
     {
         var (viewer, _) = await ViewerAsync("rapid");

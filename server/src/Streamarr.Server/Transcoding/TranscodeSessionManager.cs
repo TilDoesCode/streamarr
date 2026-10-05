@@ -168,7 +168,7 @@ public sealed class TranscodeSessionManager(
         var start = plan.Mode == DeliveryMode.Remux
             ? timeline.IndexAt(Math.Max(0, startPositionSeconds))
             : Math.Clamp((int)Math.Floor(Math.Max(0, startPositionSeconds) / timeline.SegmentLength), 0, timeline.Count - 1);
-        await session.Gate.WaitAsync(ct);
+        await session.Gate.WaitAsync(CancellationToken.None);
         var spawnClock = System.Diagnostics.Stopwatch.StartNew();
         try
         {

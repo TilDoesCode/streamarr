@@ -109,6 +109,12 @@ A `429` that knows how long the caller must wait (e.g. `email_code_cooldown`) al
 `retryAfterSeconds` integer next to `code`, the same value in `params.retryAfterSeconds` and in the
 `Retry-After` header. The key is omitted otherwise.
 
+Cross-origin viewer apps (`Streamarr:ViewerCorsOrigins`) can read `Retry-After`, `Content-Type`,
+`Content-Length`, `Content-Range`, `Accept-Ranges`, `Location` and `ETag` on every answer of the viewer API and of the
+`/stream` and `/transcode` URLs (`Access-Control-Expose-Headers`, also on errors such as `503`/`504` segments).
+Players that load segments themselves (hls.js) do not pass response headers on; such a client can only honour the
+`Retry-After` of requests it makes with `fetch`/XHR directly.
+
 ### Caching
 
 Every response under `/api` (any status, method or caller) carries `Cache-Control: private, no-store, max-age=0`,
@@ -1325,7 +1331,7 @@ VLC (PLAN § 2) and uses only the first `native` or `web` entry.
 | `fallback` | The requested version is dead; the next healthy version is being checked. `fallbackFrom` names the requested one, `attempts[]` lists every hop with `resolving`, `ready`, `degraded` or `dead`. |
 | `repairing` | No healthy version is left and a PAR2 repair job is running: `repair` has `state`, `phase`, `progressPercent`, `etaSeconds`; `pollAfterMs` follows the job's `retryAfterSeconds`. When the job is ready the repaired copy plays. |
 | `planning` | Probing the file and deciding method and engine; `version` (a `VersionDto`, `rank: 0` when not in the cached ranking) is known. |
-| `starting` | Starting the remux or transcode. |
+| `starting` | Starting the remux or transcode; bounded at 60 s per revision, then `failed` with `start_timeout`. |
 | `ready` | Play `url` with `engine`. |
 | `failed` | `error` + `suggestedActions`; `decision.skipped` explains a decision failure. |
 
@@ -1446,6 +1452,7 @@ directly.
 | `no_playable_method` · `no_more_methods` | No method of the device fits / every method was stepped down. |
 | `unknown_audio_stream` · `unknown_subtitle_stream` | The requested index is not in this version. |
 | `capacity_reached` · `transcode_capacity` · `remux_capacity` | Server busy; `retry`. A remux/transcode start that hit the session limit or a full disk says so in `params.reason` (`too_many_sessions`, `insufficient_disk`). |
+| `start_timeout` | The remux/transcode start of this revision (all attempts together) took longer than 60 s, e.g. a stalled source or a starved server (`retry`, `lowerQuality`); a revision never stays in `starting` longer. |
 | `transcode_failed` · `segment_timeout` | ffmpeg failed or did not produce the first segment in time (`lowerQuality`); `params.reason` carries the start code when it was more specific (`init_unavailable`, `segment_unavailable`, `end_of_stream`). |
 | `probe_failed`, `stream_expired`, `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable` | As named. |
 | `playback_failed` | Anything else; `params.reason` names the internal start code when there is one. |
