@@ -1,4 +1,6 @@
 {
-  "CFBundleDisplayName": "Streamarr",
-  "NSLocalNetworkUsageDescription": "Streamarr connects to your media server on the local network."
+  "ios": {
+    "CFBundleDisplayName": "Streamarr",
+    "NSLocalNetworkUsageDescription": "Streamarr connects to your media server on the local network."
+  }
 }
