@@ -5,28 +5,63 @@ import { View } from 'react-native';
 
 import { colors } from '@/theme';
 
+import type { EngineHealth } from '../health/types';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
 import { audioErrorCode } from './hls-audio-error';
 import { importHls } from './hls-import';
 import { StartSeek } from './start-seek';
+import { createLumaSampler } from './web-luma';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
 type NativeTrackList<T> = EventTarget & { length: number; [index: number]: T };
 type NativeAudioTrack = { id: string; label: string; language: string; enabled: boolean };
 type VideoWithTracks = HTMLVideoElement & { audioTracks?: NativeTrackList<NativeAudioTrack> };
+/** Vendor counters: decoded audio bytes (Chrome, Safari), audio presence (Firefox), Remote Playback. */
+type WebMediaCounters = {
+  webkitAudioDecodedByteCount?: number;
+  mozHasAudio?: boolean;
+  remote?: { state?: string };
+};
 
 const MAX_SUBTITLE_REASSERTS = 5;
 /** Media errors further apart than this start a new recovery round. */
 const MEDIA_RECOVERY_WINDOW_MS = 30_000;
+/** In-engine media recoveries per source, whatever their spacing: then the ladder takes over (review 18). */
+const MEDIA_RECOVERY_TOTAL = 6;
 
 type HlsModule = typeof import('hls.js');
 let hlsModule: HlsModule | null = null;
 let hlsLoading: Promise<HlsModule> | null = null;
 
+/** A transcode slower than real time answers a segment late: wait 30 s for the first byte, retry twice (C08). */
+export const FRAG_LOAD_POLICY = {
+  default: {
+    maxTimeToFirstByteMs: 30_000,
+    maxLoadTimeMs: 120_000,
+    timeoutRetry: { maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0 },
+    errorRetry: { maxNumRetry: 6, retryDelayMs: 1_000, maxRetryDelayMs: 8_000 },
+  },
+};
+
+/** Pauses between the retries of a failed hls.js chunk (stale deploy, flaky network: D06). */
+export const HLS_IMPORT_RETRY_MS = [1_000, 3_000];
+
+async function importWithRetry(): Promise<HlsModule> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await importHls();
+    } catch (error) {
+      const wait = HLS_IMPORT_RETRY_MS[attempt];
+      if (wait === undefined) throw error;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+}
+
 /** hls.js is a separate web chunk: only the MSE player needs it (Safari plays HLS natively). */
 export function loadHls(): Promise<HlsModule> {
-  hlsLoading ??= importHls().then(
+  hlsLoading ??= importWithRetry().then(
     (loaded) => (hlsModule = loaded),
     (error: unknown) => {
       hlsLoading = null;
@@ -34,6 +69,15 @@ export function loadHls(): Promise<HlsModule> {
     }
   );
   return hlsLoading;
+}
+
+/** HTTP status of a media URL (HEAD); 0 when nothing answers. */
+async function probeStatus(uri: string): Promise<number> {
+  try {
+    return (await fetch(uri, { method: 'HEAD' })).status;
+  } catch {
+    return 0;
+  }
 }
 
 function mseAvailable(): boolean {
@@ -74,7 +118,14 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private hls: HlsPlayer | null = null;
   private pending: EngineSource | null = null;
   private started = false;
-  private mediaRecovery = { count: 0, at: 0 };
+  private mediaRecovery = { count: 0, at: 0, total: 0 };
+  /** Safari's native HLS: frame counters count only once they were seen moving on this element. */
+  private framesProven = false;
+  private framesAtLoad: number | undefined;
+  /** Decoded audio bytes count only once they were seen moving on this element (no silence verdict from a dead counter). */
+  private audioProven = false;
+  private audioFirst: number | undefined;
+  private readonly luma = createLumaSampler();
   private startSeek = new StartSeek(0, () => undefined);
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private detach: (() => void) | null = null;
@@ -134,10 +185,17 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.emitTracks();
       }),
       on('error', () => {
-        this.emit({
-          type: 'error',
-          reason: element.error?.message || `media_error_${element.error?.code ?? 0}`,
-        });
+        const reason = element.error?.message || `media_error_${element.error?.code ?? 0}`;
+        const code = element.error?.code;
+        const uri = this.source?.uri;
+        // A network or "not supported" error of a plain URL: its HTTP status tells session loss from transport (D09).
+        if (!this.hls && uri && (code === 2 || code === 4))
+          return void probeStatus(uri).then((status) => {
+            if (this.video !== element || this.source?.uri !== uri) return;
+            this.emit({ type: 'error', reason, status });
+            this.setState('error');
+          });
+        this.emit({ type: 'error', reason });
         this.setState('error');
       }),
     ];
@@ -275,13 +333,18 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       return;
     }
     this.audioSwitched = null;
-    this.mediaRecovery = { count: 0, at: 0 };
+    this.mediaRecovery = { count: 0, at: 0, total: 0 };
+    this.framesAtLoad = undefined;
     this.wantedSubtitle = undefined;
     this.startSeek.cancel();
     this.watchFirstFrame(video);
     if (source.kind === 'hls' && this.mode === 'hls.js' && hlsModule) {
       const { default: Hls, Events, ErrorTypes } = hlsModule;
-      const hls = new Hls({ startPosition: source.startPosition ?? -1, enableWebVTT: true });
+      const hls = new Hls({
+        startPosition: source.startPosition ?? -1,
+        enableWebVTT: true,
+        fragLoadPolicy: FRAG_LOAD_POLICY,
+      });
       this.hls = hls;
       hls.subtitleDisplay = false;
       hls.on(Events.MANIFEST_PARSED, () => this.emitTracks());
@@ -301,9 +364,17 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       hls.on(Events.ERROR, (_event, data: ErrorData) => {
         const audioCode = audioErrorCode(data);
         if (audioCode) this.emit({ type: 'audioError', code: audioCode });
+        // hls.js nudges over a stall without a `waiting` from the element: the status layer shows it (D04).
+        if (!data.fatal && data.details === 'bufferStalledError' && this.started)
+          this.emit({ type: 'buffering', buffering: true });
         if (!data.fatal) return;
         if (data.type === ErrorTypes.MEDIA_ERROR && this.recoverMedia(hls)) return;
-        this.emit({ type: 'error', reason: `${data.type}:${data.details}` });
+        const status = (data as { response?: { code?: number } }).response?.code;
+        this.emit({
+          type: 'error',
+          reason: `${data.type}:${data.details}`,
+          ...(typeof status === 'number' ? { status } : null),
+        });
         this.setState('error');
       });
       hls.loadSource(source.uri);
@@ -323,7 +394,9 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   private recoverMedia(hls: HlsPlayer): boolean {
     const now = Date.now();
     const recent = now - this.mediaRecovery.at < MEDIA_RECOVERY_WINDOW_MS;
-    this.mediaRecovery = { count: recent ? this.mediaRecovery.count + 1 : 1, at: now };
+    const total = this.mediaRecovery.total + 1;
+    this.mediaRecovery = { count: recent ? this.mediaRecovery.count + 1 : 1, at: now, total };
+    if (total > MEDIA_RECOVERY_TOTAL) return false;
     if (this.mediaRecovery.count === 1) hls.recoverMediaError();
     else if (this.mediaRecovery.count === 2) {
       hls.swapAudioCodec();
@@ -363,6 +436,39 @@ export class WebEngine extends EngineBase implements PlayerEngine {
             ? 'native HLS'
             : 'progressive',
       },
+    });
+  }
+
+  /** The web probe for the watchdog: frames, audio bytes, picture readiness, bandwidth (state-matrix § 2 a). */
+  readHealth(): Promise<EngineHealth> {
+    const video = this.video as (VideoWithTracks & WebMediaCounters) | null;
+    if (!video) return Promise.resolve({});
+    const quality =
+      typeof video.getVideoPlaybackQuality === 'function' ? video.getVideoPlaybackQuality() : null;
+    const presented = quality ? quality.totalVideoFrames - quality.droppedVideoFrames : undefined;
+    if (presented !== undefined && this.framesAtLoad !== undefined && presented > this.framesAtLoad)
+      this.framesProven = true;
+    this.framesAtLoad ??= presented;
+    const framesKnown = this.mode === 'hls.js' || this.framesProven;
+    const audio =
+      typeof video.webkitAudioDecodedByteCount === 'number'
+        ? video.webkitAudioDecodedByteCount
+        : undefined;
+    if (audio !== undefined && this.audioFirst !== undefined && audio !== this.audioFirst)
+      this.audioProven = true;
+    this.audioFirst ??= audio;
+    return Promise.resolve({
+      framesPresented: framesKnown ? presented : undefined,
+      framesDropped: framesKnown ? quality?.droppedVideoFrames : undefined,
+      audioProgress: this.audioProven ? audio : undefined,
+      hasAudioTrack: typeof video.mozHasAudio === 'boolean' ? video.mozHasAudio : undefined,
+      hasVideoTrack: video.videoWidth > 0 ? true : undefined,
+      readyForDisplay: this.started ? video.readyState >= 2 : undefined,
+      bandwidthBps: this.hls ? Math.round(this.hls.bandwidthEstimate) || undefined : undefined,
+      external: video.remote?.state === 'connected' ? true : undefined,
+      nativePosition: video.currentTime,
+      // Only MSE data passed CORS; a plain cross-origin `src` would taint the canvas.
+      luma: this.hls ? this.luma(video) : undefined,
     });
   }
 

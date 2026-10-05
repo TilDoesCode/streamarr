@@ -18,7 +18,7 @@ export const reply = {
   offline: (message = 'Network request failed'): Reply => ({ network: message }),
 };
 
-export type Route = 'start' | 'poll' | 'switch' | 'stop' | 'progress';
+export type Route = 'start' | 'poll' | 'switch' | 'stop' | 'progress' | 'versions';
 export type ServerRequest = { route: Route; playbackId?: string; body?: Record<string, unknown> };
 type Scripted = Reply | ((request: ServerRequest) => Reply);
 
@@ -26,6 +26,7 @@ const TICKS = 10_000_000;
 
 function routeOf(method: string, path: string): Route {
   if (path.endsWith('/watch/progress')) return 'progress';
+  if (path.endsWith('/versions')) return 'versions';
   if (path.endsWith('/switch')) return 'switch';
   if (path.endsWith('/stop')) return 'stop';
   return method === 'GET' ? 'poll' : 'start';
@@ -42,6 +43,7 @@ export class FakeServer {
     switch: [],
     stop: [],
     progress: [],
+    versions: [],
   };
   private current = new Map<string, Playback>();
   private ids = 0;
@@ -84,6 +86,7 @@ export class FakeServer {
       const before = this.current.get(id) ?? this.playback({ playbackId: id });
       return reply.ok({ ...before, state: 'ready', revision: (before.revision ?? 0) + 1 });
     }
+    if (request.route === 'versions') return reply.ok({ versions: [] });
     return { status: 204 };
   }
 

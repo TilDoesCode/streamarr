@@ -1,3 +1,4 @@
+import type { EngineHealth } from '@/player/health/types';
 import type {
   EngineEvent,
   EngineKind,
@@ -9,18 +10,7 @@ import type {
 } from '@/player/engines/types';
 
 /** Health counters a watchdog reads (state-matrix § 2 a); `undefined` = the platform cannot tell. */
-export type ScriptedHealth = {
-  framesPresented?: number;
-  framesDropped?: number;
-  framesDecoded?: number;
-  audioProgress?: number;
-  readyForDisplay?: boolean;
-  hasVideoTrack?: boolean;
-  hasAudioTrack?: boolean;
-  bandwidthBps?: number;
-  external?: boolean;
-  nativePosition?: number;
-};
+export type ScriptedHealth = EngineHealth;
 
 /** One scripted step: an engine event, a health change or a pause in fake time. */
 export type ScriptStep =
@@ -65,8 +55,15 @@ export class ScriptedEngine implements PlayerEngine {
     this.commands.push(`seek:${position}`);
     this.snapshot = { ...this.snapshot, position };
   });
-  setAudioTrack = jest.fn((id: string) => void this.commands.push(`audio:${id}`));
-  setSubtitleTrack = jest.fn((id: string | null) => void this.commands.push(`subtitle:${id}`));
+  // Like the real engines: a pick changes the selection and is echoed as a tracks event.
+  setAudioTrack = jest.fn((id: string) => {
+    this.commands.push(`audio:${id}`);
+    this.select('audio', id);
+  });
+  setSubtitleTrack = jest.fn((id: string | null) => {
+    this.commands.push(`subtitle:${id}`);
+    this.select('subtitles', id);
+  });
   setMuted = jest.fn((muted: boolean) => void this.commands.push(`muted:${muted}`));
   startPictureInPicture = jest.fn(() => void this.commands.push('pip'));
   shutdown = jest.fn(() => {
@@ -74,7 +71,9 @@ export class ScriptedEngine implements PlayerEngine {
     return Promise.resolve();
   });
   release = jest.fn(() => void this.commands.push('release'));
-  readHealth = jest.fn(() => Promise.resolve({ ...this.health }));
+  readHealth: (() => Promise<ScriptedHealth>) | undefined = jest.fn(() =>
+    Promise.resolve({ ...this.health })
+  );
 
   subscribe(listener: (event: EngineEvent) => void): () => void {
     this.listeners.add(listener);
@@ -98,9 +97,21 @@ export class ScriptedEngine implements PlayerEngine {
         buffered: event.buffered ?? this.snapshot.buffered,
       };
     else if (event.type === 'tracks') this.snapshot = { ...this.snapshot, tracks: event.tracks };
-    else if (event.type === 'error') this.snapshot = { ...this.snapshot, state: 'error' };
+    // A failed engine forgets its clock, like ExoPlayer/AVPlayer/hls.js after a fatal error.
+    else if (event.type === 'error')
+      this.snapshot = { ...this.snapshot, state: 'error', position: 0 };
     else if (event.type === 'ended') this.snapshot = { ...this.snapshot, state: 'ended' };
     for (const listener of [...this.listeners]) listener(event);
+  }
+
+  private select(kind: 'audio' | 'subtitles', id: string | null): void {
+    const list = this.snapshot.tracks[kind];
+    if (!list.length) return;
+    const tracks = {
+      ...this.snapshot.tracks,
+      [kind]: list.map((track) => ({ ...track, selected: track.id === id })),
+    };
+    this.emit({ type: 'tracks', tracks });
   }
 
   state(state: EngineState): void {

@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
 import { describeError } from '@/api/error-text';
 import { Glass, GlassButton } from '@/components/glass';
@@ -15,31 +16,78 @@ import { useDesign } from '@/theme';
 export type PlayerStatusProps = {
   status: PlayerStatus;
   onAction: (action: HintAction) => void;
-  /** Lifts the hint above the visible controls. */
   controlsVisible?: boolean;
+  /** Where the top bar ends (the notice slot starts here). */
+  top?: number;
+  noticeShown?: boolean;
 };
 
-/**
- * Spinner and hint over the picture. It never takes focus: on TV it draws no buttons (the remote's Play and the
- * overlay's panels carry the same actions); on touch and web the actions are buttons without preferred focus.
- */
-export function PlayerStatusView({ status, onAction, controlsVisible = false }: PlayerStatusProps) {
+export type StatusLayout = { anchor: 'centre' | 'top'; spinner: boolean; offset: number };
+
+/** Visible touch/web controls own the centre (Play, ±10 s): the hint moves under the top bar, below a notice. */
+export function statusLayout(options: {
+  controlsVisible: boolean;
+  tv: boolean;
+  spinner: boolean;
+  top: number;
+  noticeShown: boolean;
+  noticeHeight: number;
+}): StatusLayout {
+  const { controlsVisible, tv, spinner, top, noticeShown, noticeHeight } = options;
+  if (!controlsVisible || tv) return { anchor: 'centre', spinner, offset: 0 };
+  return { anchor: 'top', spinner: false, offset: top + (noticeShown ? noticeHeight : 0) };
+}
+
+/** Spinner and hint over the picture; never focusable on TV (no buttons there), announced once per change. */
+export function PlayerStatusView({
+  status,
+  onAction,
+  controlsVisible = false,
+  top = 0,
+  noticeShown = false,
+}: PlayerStatusProps) {
   const pt = usePlayerT();
   const design = useDesign();
-  const { hint, spinner } = status;
-  if (!hint && !spinner) return null;
+  const { hint } = status;
+  const text = hint ? hintText(pt, hint.key, hint.params) : null;
+  // The label is taken when the hint changes, so a countdown is not re-read every second.
+  const [spoken, setSpoken] = useState<{ key: string | null; label: string | null }>({
+    key: null,
+    label: null,
+  });
+  if ((hint?.key ?? null) !== spoken.key) setSpoken({ key: hint?.key ?? null, label: text });
+  useEffect(() => {
+    if (spoken.label) AccessibilityInfo.announceForAccessibility(spoken.label);
+  }, [spoken]);
+  const layout = statusLayout({
+    controlsVisible,
+    tv: design.isTV,
+    spinner: status.spinner,
+    top,
+    noticeShown,
+    noticeHeight: design.px(64),
+  });
+  if (!hint && !layout.spinner) return null;
   const actions = design.isTV ? [] : status.actions;
   return (
     <View
       testID="player-status"
       pointerEvents={actions.length ? 'box-none' : 'none'}
-      style={[StyleSheet.absoluteFill, styles.centre, { gap: design.space.lg }]}>
-      {spinner ? (
-        <View pointerEvents="none" testID="player-status-spinner">
-          <Spinner
-            size="lg"
-            accessibilityLabel={hint ? hintText(pt, hint.key, hint.params) : undefined}
-          />
+      style={[
+        StyleSheet.absoluteFill,
+        layout.anchor === 'centre'
+          ? styles.centre
+          : { alignItems: 'center', justifyContent: 'flex-start', paddingTop: layout.offset },
+        { gap: design.space.lg },
+      ]}>
+      {layout.spinner ? (
+        <View
+          pointerEvents="none"
+          testID="player-status-spinner"
+          // The hint below says the same; read once.
+          accessibilityElementsHidden={!!hint}
+          importantForAccessibility={hint ? 'no-hide-descendants' : 'auto'}>
+          <Spinner size="lg" />
         </View>
       ) : null}
       {hint ? (
@@ -55,11 +103,12 @@ export function PlayerStatusView({ status, onAction, controlsVisible = false }: 
             paddingVertical: design.space.md,
             gap: design.space.md,
             alignItems: 'center',
-            marginTop: controlsVisible && !spinner ? design.px(-160) : 0,
           }}>
-          <Text variant="callout" style={{ textAlign: 'center' }} accessibilityLiveRegion="polite">
-            {hintText(pt, hint.key, hint.params)}
-          </Text>
+          <View accessible accessibilityLabel={spoken.label ?? text ?? undefined}>
+            <Text variant="callout" style={{ textAlign: 'center' }}>
+              {text}
+            </Text>
+          </View>
           {actions.length ? (
             <View style={{ flexDirection: 'row', gap: design.space.sm }}>
               {actions.map((action, index) => (

@@ -39,6 +39,7 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
+import { cardButtons } from './card-actions';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
@@ -51,7 +52,6 @@ type Params = {
   title?: string;
 };
 
-const SERVER_ACTIONS = new Set<ErrorAction>(['retry', 'otherVersion', 'lowerQuality', 'useVlc']);
 const UP_NEXT_SECONDS = 15;
 
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
@@ -160,7 +160,7 @@ export function PlayScreen() {
     setPanel(null);
     setPicker(false);
   });
-  const [overlayShown, setOverlayShownState] = useState(true);
+  const [controlsShown, setControlsShown] = useState(true);
   const playing = phase === 'playing' || phase === 'switching';
   const remaining = (clockState.duration || 0) - clockState.position;
   const endState = endOverlay({
@@ -206,7 +206,11 @@ export function PlayScreen() {
     else if (action === 'otherVersion') setPicker(true);
     else if (action === 'lowerQuality') setPreferences((value) => ({ ...value, maxHeight: 720 }));
     else if (action === 'useVlc') setPreferences((value) => ({ ...value, engine: 'vlc' }));
-    else close();
+    else if (action === 'signIn') {
+      // Signed out mid-play: the position is saved (queued reports); the account screen signs in again.
+      leaving.current = true;
+      router.replace('/profiles');
+    } else close();
   };
 
   const onStatusAction = (action: HintAction) => {
@@ -224,12 +228,7 @@ export function PlayScreen() {
 
   const failure = controller?.failure;
   const code = capsError ?? failure?.code ?? (workId ? 'unknown' : 'not_found');
-  const actions: ErrorAction[] = [
-    ...(failure?.actions ?? ['retry']).filter((action): action is ErrorAction =>
-      SERVER_ACTIONS.has(action as ErrorAction)
-    ),
-    'back',
-  ];
+  const actions = cardButtons(failure?.actions);
   const top = Math.max(insets.top, design.layout.edgeVertical);
 
   return (
@@ -249,7 +248,7 @@ export function PlayScreen() {
           backRef={overlayBack}
           onVisibleChange={(visible) => {
             setOverlayShown(visible);
-            setOverlayShownState(visible);
+            setControlsShown(visible);
           }}
         />
       ) : null}
@@ -257,7 +256,9 @@ export function PlayScreen() {
         <PlayerStatusView
           status={status}
           onAction={onStatusAction}
-          controlsVisible={overlayShown}
+          controlsVisible={controlsShown}
+          top={top + design.px(design.isTV ? 70 : 56)}
+          noticeShown={!!notice && !pip}
         />
       ) : null}
       {failed ? (
@@ -383,9 +384,11 @@ export function PlayScreen() {
               ? [stepDownKey(notice.params), stepDownReasonKey(notice.params)]
                   .flatMap((key) => (key ? [pt(key)] : []))
                   .join(' ')
-              : pt('notice.switchFailed', {
-                  reason: describeError(t, noticeError(notice.params)).message,
-                })}
+              : notice.kind === 'otherVersion'
+                ? pt('notice.otherVersion')
+                : pt('notice.switchFailed', {
+                    reason: describeError(t, noticeError(notice.params)).message,
+                  })}
           </Text>
         </Glass>
       ) : null}

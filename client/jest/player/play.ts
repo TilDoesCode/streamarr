@@ -1,4 +1,5 @@
 import type { ControllerOptions, NetworkSource, PlaybackController } from '@/player/controller';
+import type { EngineHealth } from '@/player/health/types';
 import type { Playback } from '@/player/playback-api';
 
 import { harness, newController, reply } from './harness';
@@ -47,4 +48,22 @@ export function starts(): {
     position: Number(request.body?.startPositionTicks ?? 0) / TICKS,
     body: request.body ?? {},
   }));
+}
+
+export type Tick = { position?: number; health?: EngineHealth };
+
+/** Plays `seconds` one fake second at a time: the clock (time event) and the probe counters from `step`. */
+export async function playFor(
+  seconds: number,
+  step: (second: number) => Tick,
+  from = 0,
+  each?: () => void
+): Promise<void> {
+  for (let second = from + 1; second <= from + seconds; second++) {
+    const tick = step(second);
+    if (tick.health) harness.engine.setHealth(tick.health);
+    if (tick.position !== undefined) harness.engine.time(tick.position);
+    await jest.advanceTimersByTimeAsync(1_000);
+    each?.();
+  }
 }

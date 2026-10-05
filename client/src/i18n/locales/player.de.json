@@ -103,7 +103,8 @@
       "T7": "Dieses Gerät konnte das Video nicht dekodieren.",
       "T5": "Das Video lud zu langsam.",
       "T6": "Der Server hatte ein Problem."
-    }
+    },
+    "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht."
   },
   "upNext": {
     "title": "Als Nächstes",
@@ -144,6 +145,9 @@
     "buffering": "Laden dauert länger als üblich. Wird gepuffert …",
     "serverError": "Problem auf dem Server. Neuer Versuch in {seconds} s …",
     "reloading": "Wiedergabe unterbrochen. Geht weiter bei {time} …",
+    "lowering": "Wechsel auf eine niedrigere Qualität, es geht weiter bei {time} …",
+    "steppingDown": "Eine andere Wiedergabeart wird versucht, es geht weiter bei {time} …",
+    "switchingVersion": "Eine andere Version wird versucht, es geht weiter bei {time} …",
     "causes": {
       "call": "Anruf",
       "otherAudio": "andere App spielt Ton",

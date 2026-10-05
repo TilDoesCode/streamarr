@@ -56,7 +56,9 @@ describe('scriptable library fakes drive the real engines (state-matrix § 2 d.1
     ).toMatchObject({ category: 'T2', code: 'unknown_transcode' });
   });
 
-  it('<video>: MediaError codes become error events with a category', () => {
+  it('<video>: MediaError codes become error events with a category', async () => {
+    const fetchMock = jest.fn(async () => ({ status: 404 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
     const engine = new WebEngine();
     released.push(engine);
     const video = new FakeVideoElement();
@@ -70,11 +72,17 @@ describe('scriptable library fakes drive the real engines (state-matrix § 2 d.1
     expect(events).toContainEqual({ type: 'buffering', buffering: true });
     video.fail(3, 'PIPELINE_ERROR_DECODE: video decode failed');
     video.fail(2);
-    const reasons = errors(events);
-    expect(reasons).toEqual(['PIPELINE_ERROR_DECODE: video decode failed', 'media_error_2']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledWith('http://server.test/a.mkv', { method: 'HEAD' });
+    const failures = events.flatMap((event) => (event.type === 'error' ? [event] : []));
+    expect(failures.map((event) => event.reason)).toEqual([
+      'PIPELINE_ERROR_DECODE: video decode failed',
+      'media_error_2',
+    ]);
     expect(
-      reasons.map((reason) => classify({ kind: 'engine', engine: 'web', reason }).category)
-    ).toEqual(['T7', 'T1']);
+      failures.map((event) => classify({ kind: 'engine', engine: 'web', ...event }).category)
+    ).toEqual(['T7', 'T2']);
   });
 
   it('expo-video: a failed item and a rejected replace classify by message', async () => {

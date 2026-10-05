@@ -63,7 +63,7 @@ import {
 } from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
-import { effectiveMuted, TEST_MUTED } from '@/player/test-muted';
+import { TEST_MUTED } from '@/player/test-muted';
 import { colors, fonts, useDesign, useFocusGap } from '@/theme';
 
 import { PANELS, type PanelKind } from './player-panels';
@@ -142,7 +142,8 @@ export function PlayerOverlay({
   const hiddenByBack = useRef(false);
   const [zone, setZone] = useState<Zone>('buttons');
   const [scrub, setScrub] = useState<number | null>(null);
-  const [muted, setMuted] = useState(TEST_MUTED);
+  // The controller owns the mute state: the browser's muted autoplay and the hint's Unmute change it too.
+  const muted = controller.muted ?? TEST_MUTED;
   const [fit, setFit] = useState<'contain' | 'cover'>('contain');
   const [fullscreen, setFullscreen] = useState(isFullscreen);
   const chromeInset = fullscreenChromeInset(fullscreen);
@@ -273,11 +274,7 @@ export function PlayerOverlay({
     if (!visible) setZone('progress');
   };
 
-  const toggleMute = () => {
-    const next = !muted;
-    controller.engine?.setMuted?.(next);
-    setMuted(effectiveMuted(next));
-  };
+  const toggleMute = () => controller.setMuted(!muted);
 
   // Keyboards (web, iPad) have no focus row to hand the arrows to.
   const keyboard = Platform.OS === 'web' || (Platform.OS === 'ios' && !tv);

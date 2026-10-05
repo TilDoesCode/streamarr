@@ -23,7 +23,6 @@ export type LadderContext = {
   retryAfter?: number;
   /** The quality can still go one step down (transcode above 480p, or a source above 480p). */
   canLowerQuality: boolean;
-  suggestedReleaseId?: string;
   params?: Readonly<Record<string, string>>;
   revision: number;
 };
@@ -43,6 +42,10 @@ export const OFFLINE_BUDGET_MS = 120_000;
 const T1_BACKOFF_S = [2, 4, 8, 16];
 const T4_BACKOFF_S = [5, 10, 20];
 const T6_BACKOFF_S = [5, 15];
+/** Every incident ends on a card after this many steps, whatever the categories say. */
+export const MAX_ATTEMPTS = 12;
+/** Step-downs per incident: direct → remux → transcode → VLC at most. */
+export const MAX_STEP_DOWNS = 3;
 const STREAM_POLL_S = 10;
 const STREAM_POLLS = 12;
 const MAX_QUALITY_STEPS = 2;
@@ -69,11 +72,22 @@ export class Incident {
     this.attempts.push(attempt);
     this.lastAt = attempt.at;
   }
+
+  /** A step that found nothing to do (no other version) is not part of "What was tried". */
+  forget(attempt: Attempt): void {
+    const at = this.attempts.lastIndexOf(attempt);
+    if (at >= 0) this.attempts.splice(at, 1);
+  }
 }
 
 const seconds = (value: number) => value * 1000;
 /** Mid-play the same source is reloaded; a failed start is started again. */
 const retry = (context: LadderContext): LadderStep => (context.attached ? 'R' : 'N');
+/** Another way to play while the step-down budget lasts. */
+const stepDown = (incident: Incident, hint?: HintKey): Decision =>
+  incident.count(['S']) < MAX_STEP_DOWNS
+    ? { step: 'S', delayMs: 0, hint }
+    : { step: 'G', delayMs: 0 };
 
 /** The next step for a classified failure within its incident (state-matrix § 2 b.3). */
 export function nextStep(
@@ -119,9 +133,7 @@ export function nextStep(
         return { step: 'R', delayMs: 0, hint: 'reloading' };
       if (context.canLowerQuality && incident.count(['Q']) < MAX_QUALITY_STEPS)
         return { step: 'Q', delayMs: 0, hint: 'buffering' };
-      return context.attached
-        ? { step: 'S', delayMs: 0, hint: 'buffering' }
-        : { step: 'G', delayMs: 0 };
+      return context.attached ? stepDown(incident, 'buffering') : { step: 'G', delayMs: 0 };
     }
     case 'T6': {
       const reloads = incident.count(['R'], 'T6');
@@ -139,19 +151,21 @@ export function nextStep(
           hint: 'serverError',
         };
       return context.attached && incident.count(['S'], 'T6') < 1
-        ? { step: 'S', delayMs: 0 }
+        ? stepDown(incident)
         : { step: 'G', delayMs: 0 };
     }
     case 'T7':
       if (context.attached && incident.count(['R'], 'T7', context.revision) < 1)
         return { step: 'R', delayMs: 0, hint: 'reloading' };
-      return context.attached
-        ? { step: 'S', delayMs: 0, hint: 'noPicture' }
+      if (context.attached) return stepDown(incident, 'noPicture');
+      // No method of this version plays here: another version may.
+      return code === 'no_more_methods' && incident.count(['V']) < 1
+        ? { step: 'V', delayMs: 0 }
         : { step: 'G', delayMs: 0 };
     case 'T8':
       if (context.attached && incident.count(['R'], 'T8') < 1)
         return { step: 'R', delayMs: 0, hint: 'reloading' };
-      if (context.suggestedReleaseId && incident.count(['V']) < 1) return { step: 'V', delayMs: 0 };
+      if (incident.count(['V']) < 1) return { step: 'V', delayMs: 0 };
       return { step: 'G', delayMs: 0 };
     case 'T9':
       if (code === 'too_many_streams' && incident.count(['N'], 'T9') < STREAM_POLLS)

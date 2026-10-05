@@ -453,3 +453,166 @@ describe('matrix B — Playback API', () => {
     expect(controller.phase).toBe('stopped');
   });
 });
+
+describe('matrix B — code review S1-S4 (S4b)', () => {
+  const exo = (status: number) =>
+    `Source error: InvalidResponseCodeException: Response code: ${status}`;
+
+  row(
+    'B25',
+    'a new start refused once while the server warms up is retried as a new start, never a reload of the dead playback (review P6)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      const dead = harness.engine.source?.uri;
+      harness.server.answer('start', reply.error(503, 'server_starting'));
+      harness.engine.fail(exo(404));
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(c.status.hint).toMatchObject({ key: 'serverBusy' });
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(starts()).toHaveLength(3);
+      expect(starts().at(-1)?.position).toBe(100);
+      expect(harness.engine.sources.filter((source) => source.uri === dead)).toHaveLength(1);
+      harness.engine.started();
+      expect(c.phase).toBe('playing');
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'B25',
+    'after a new start the reports carry the new playbackId, starting with "start"; the old one is stopped (review M16)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      const old = c.playback!.playbackId;
+      harness.engine.fail(exo(404));
+      await settle();
+      harness.engine.started();
+      const fresh = c.playback!.playbackId;
+      expect(fresh).not.toBe(old);
+      const reports = harness.server.sent('progress').map((request) => request.body);
+      expect(reports).toContainEqual(
+        expect.objectContaining({ event: 'start', playbackId: fresh })
+      );
+      expect(harness.server.sent('stop').map((request) => request.playbackId)).toContain(old);
+      await c.stop();
+    }
+  );
+
+  row(
+    'B25',
+    'an incident and its budgets end after 2 minutes without failures (review M18)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.engine.fail(exo(404));
+      await settle();
+      harness.engine.started();
+      await jest.advanceTimersByTimeAsync(130_000);
+      harness.engine.fail(exo(404));
+      await settle();
+      harness.engine.started();
+      expect(c.phase).toBe('playing');
+      expect(starts()).toHaveLength(3);
+      await jest.advanceTimersByTimeAsync(30_000);
+      harness.engine.fail(exo(404));
+      await settle();
+      // Within 2 minutes it is the same incident, and session loss gets one new start per incident.
+      expect(c.phase).toBe('failed');
+      expect(starts()).toHaveLength(3);
+    }
+  );
+
+  row(
+    'B25',
+    'reports never go below the start position while a restarted source has not reached it (review M17)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 300);
+      harness.engine.fail(exo(404));
+      await settle();
+      // The new source plays, but its clock still reads 0 before the start seek lands.
+      harness.engine.emit({ type: 'firstFrame' });
+      harness.engine.state('playing');
+      harness.engine.time(0);
+      await jest.advanceTimersByTimeAsync(10_000);
+      const last = harness.server.sent('progress').at(-1)?.body;
+      expect(Number(last?.positionTicks)).toBe(300 * TICKS);
+      await c.stop();
+    }
+  );
+
+  row(
+    'B06',
+    'no method of this version plays: the best other version starts at the same position (review 15)',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, { version: { releaseId: 'r1' } } as never, 120);
+      server.answer(
+        'versions',
+        reply.ok({
+          versions: [
+            { releaseId: 'r1', rank: 1, predictedMethod: 'direct' },
+            { releaseId: 'r3', rank: 3, predictedMethod: 'transcode' },
+            { releaseId: 'r2', rank: 2, predictedMethod: 'unknown' },
+            { releaseId: 'r4', rank: 2, predictedMethod: 'remux' },
+          ],
+        })
+      );
+      server.answer(
+        'switch',
+        reply.ok(
+          server.playback({
+            playbackId: c.playback!.playbackId!,
+            state: 'failed',
+            revision: 1,
+            error: { code: 'no_more_methods' },
+          } as never)
+        )
+      );
+      server.answer('start', reply.ok(server.playback({ version: { releaseId: 'r4' } } as never)));
+      harness.engine.fail('CoreMediaErrorDomain error -12927');
+      await settle();
+      harness.engine.fail('CoreMediaErrorDomain error -12927');
+      await settle();
+      expect(starts().at(-1)).toMatchObject({ releaseId: 'r4', position: 120 });
+      expect(starts().at(-1)?.body).not.toHaveProperty('audioStreamIndex');
+      expect(c.phase).toBe('playing');
+      expect(c.notice?.kind).toBe('otherVersion');
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'B06',
+    'no other playable version: the card, and the empty search is not listed as tried',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, {}, 120);
+      server.answer(
+        'switch',
+        reply.ok(
+          server.playback({
+            playbackId: c.playback!.playbackId!,
+            state: 'failed',
+            revision: 1,
+            error: { code: 'no_more_methods' },
+          } as never)
+        )
+      );
+      harness.engine.fail('CoreMediaErrorDomain error -12927');
+      await settle();
+      harness.engine.fail('CoreMediaErrorDomain error -12927');
+      await settle();
+      expect(server.sent('versions')).toHaveLength(1);
+      expect(c.failure?.code).toBe('no_more_methods');
+      expect(c.failure?.tried?.map((attempt) => attempt.step)).toEqual(['R', 'S']);
+    }
+  );
+});

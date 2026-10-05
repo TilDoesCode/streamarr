@@ -117,6 +117,17 @@ const VERDICT_CATEGORY: Record<WatchdogVerdict, ErrorCategory> = {
   slideshow: 'T5',
 };
 
+/** Codes with their own card text for each verdict. */
+const VERDICT_CODE: Record<WatchdogVerdict, string> = {
+  starting: 'start_timeout',
+  buffering: 'playback_stalled',
+  'clock-frozen': 'playback_stalled',
+  'picture-black': 'picture_black',
+  'picture-frozen': 'picture_frozen',
+  'audio-silent': 'audio_silent',
+  slideshow: 'playback_slideshow',
+};
+
 /** One category for every failure: API answers, engine errors, watchdog verdicts, OS events and exceptions. */
 export function classify(source: FailureSource): Classified {
   switch (source.kind) {
@@ -125,7 +136,7 @@ export function classify(source: FailureSource): Classified {
     case 'engine':
       return engineFailure(source);
     case 'watchdog':
-      return { category: VERDICT_CATEGORY[source.verdict], code: source.verdict };
+      return { category: VERDICT_CATEGORY[source.verdict], code: VERDICT_CODE[source.verdict] };
     case 'system':
       return { category: 'T10', code: source.cause };
     case 'exception': {

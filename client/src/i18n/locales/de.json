@@ -871,6 +871,34 @@
       "seek_stalled": {
         "title": "Springen hängt",
         "message": "Das Video ging nach dem Sprung nicht weiter. Versuche es erneut oder wähle eine niedrigere Qualität."
+      },
+      "picture_black": {
+        "title": "Kein Bild",
+        "message": "Die Wiedergabe lief, aber dieses Gerät hat kein Bild gezeigt. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "picture_frozen": {
+        "title": "Das Bild ist eingefroren",
+        "message": "Das Bild blieb stehen, obwohl die Wiedergabe weiterlief. Versuche eine andere Version oder eine niedrigere Qualität."
+      },
+      "audio_silent": {
+        "title": "Kein Ton",
+        "message": "Die Wiedergabe lief, aber es kam kein Ton. Versuche eine andere Tonspur oder eine andere Version."
+      },
+      "playback_slideshow": {
+        "title": "Das Gerät kommt nicht hinterher",
+        "message": "Es wurden zu viele Bilder ausgelassen, um flüssig zu schauen. Versuche eine niedrigere Qualität."
+      },
+      "player_internal_error": {
+        "title": "Interner Fehler im Player",
+        "message": "In der App ist beim Abspielen etwas schiefgelaufen. Erneut versuchen macht dort weiter, wo du warst; passiert es wieder, melde den Code unten."
+      },
+      "step_timeout": {
+        "title": "Der Server hat zu lange gebraucht",
+        "message": "Der Server hat das Video nicht rechtzeitig bereitgestellt. Versuche es erneut oder wähle eine andere Version."
+      },
+      "stream_interrupted": {
+        "title": "Der Stream wurde abgebrochen",
+        "message": "Die Verbindung zum Server brach vor dem Ende des Videos ab. Erneut versuchen macht dort weiter, wo es aufgehört hat."
       }
     },
     "sessionRevoked": {

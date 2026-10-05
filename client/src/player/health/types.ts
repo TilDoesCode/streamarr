@@ -1,0 +1,35 @@
+/** What an engine probe can measure (state-matrix § 2 a); `undefined` = the platform cannot tell, never guessed. */
+export type EngineHealth = {
+  /** Monotonic count of frames on screen. */
+  framesPresented?: number;
+  framesDropped?: number;
+  framesDecoded?: number;
+  /** Monotonic bytes/buffers of audio rendered or decoded. */
+  audioProgress?: number;
+  /** A picture is on screen (first frame seen, enough data for the current frame). */
+  readyForDisplay?: boolean;
+  hasVideoTrack?: boolean;
+  hasAudioTrack?: boolean;
+  bandwidthBps?: number;
+  /** AirPlay / Remote Playback: picture checks off. */
+  external?: boolean;
+  /** Engine clock read directly, not from time events (D35). */
+  nativePosition?: number;
+  /** Brightest sampled pixel (0–255) where the picture can be read (same-origin data only). */
+  luma?: number;
+};
+
+/** Every probe (web now, expo-video in S6, VLC in S7) answers in the same shape. */
+export type HealthProbe = { readHealth(): Promise<EngineHealth> };
+
+export type HealthVerdict =
+  'ok' | 'clock-frozen' | 'picture-black' | 'picture-frozen' | 'audio-silent' | 'slideshow';
+
+export type HealthFinding = {
+  verdict: HealthVerdict;
+  /** When the condition was first seen (ms). */
+  since: number;
+  /** Escalate now (ladder) or only explain (hint). */
+  level: 'hint' | 'ladder';
+  evidence: Record<string, number | boolean | undefined>;
+};

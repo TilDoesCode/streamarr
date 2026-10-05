@@ -103,7 +103,8 @@
       "T7": "This device couldn’t decode the video.",
       "T5": "The video loaded too slowly.",
       "T6": "The server had a problem."
-    }
+    },
+    "otherVersion": "Switched to another version to keep playing."
   },
   "upNext": {
     "title": "Up next",
@@ -144,6 +145,9 @@
     "buffering": "Loading takes longer than usual. Buffering…",
     "serverError": "The server had a problem. Retrying in {seconds} s…",
     "reloading": "Playback stopped. Resuming at {time}…",
+    "lowering": "Switching to a lower quality to keep playing at {time}…",
+    "steppingDown": "Trying another way to play at {time}…",
+    "switchingVersion": "Trying another version at {time}…",
     "causes": {
       "call": "call",
       "otherAudio": "another app plays audio",

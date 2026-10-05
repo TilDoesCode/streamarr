@@ -14,8 +14,10 @@ export { ScriptedEngine, type ScriptStep } from './scripted-engine';
 export const harness = {
   server: new FakeServer(),
   engines: [] as ScriptedEngine[],
-  /** Engine features for the next engines (PiP, AirPlay). */
-  features: {} as Partial<Pick<ScriptedEngine, 'supportsPictureInPicture' | 'supportsAirPlay'>>,
+  /** Engine features for the next engines (PiP, AirPlay; `probe` gives them a health probe for the watchdog). */
+  features: {} as Partial<Pick<ScriptedEngine, 'supportsPictureInPicture' | 'supportsAirPlay'>> & {
+    probe?: boolean;
+  },
   get engine(): ScriptedEngine {
     const engine = this.engines.at(-1);
     if (!engine) throw new Error('no engine created yet');
@@ -31,7 +33,9 @@ export const harness = {
 export function enginesModule() {
   return {
     createEngine: (kind: EngineKind) => {
-      const engine = Object.assign(new ScriptedEngine(kind), harness.features);
+      const { probe, ...features } = harness.features;
+      const engine = Object.assign(new ScriptedEngine(kind), features);
+      if (!probe) engine.readHealth = undefined;
       harness.engines.push(engine);
       return engine;
     },

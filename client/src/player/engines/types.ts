@@ -1,6 +1,8 @@
 import type { ComponentType } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
+import type { EngineHealth } from '../health/types';
+
 /** Engine implementations behind the one player interface. */
 export type EngineKind = 'expo-video' | 'vlc' | 'web';
 
@@ -47,7 +49,8 @@ export type EngineEvent =
   | { type: 'buffering'; buffering: boolean }
   | { type: 'tracks'; tracks: EngineTracks }
   | { type: 'firstFrame' }
-  | { type: 'error'; reason: string }
+  /** `status`: HTTP status of the failed media request when the engine knows it (0 = no answer). */
+  | { type: 'error'; reason: string; status?: number }
   | { type: 'ended' }
   | { type: 'pip'; active: boolean }
   /** The viewer paused or resumed outside the app's controls (system full-screen player, lock screen). */
@@ -98,6 +101,8 @@ export interface PlayerEngine {
   readonly supportsAirPlay?: boolean;
   subscribe(listener: (event: EngineEvent) => void): () => void;
   getSnapshot(): EngineSnapshot;
+  /** Health probe for the watchdog (state-matrix § 2 a); engines without one get clock rules only. */
+  readHealth?(): Promise<EngineHealth>;
   /** Stops decoding before the Surface unmounts (libVLC must not be released while it decodes). */
   shutdown?(): Promise<void>;
   release(): void;

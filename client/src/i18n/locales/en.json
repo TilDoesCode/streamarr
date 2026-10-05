@@ -871,6 +871,34 @@
       "seek_stalled": {
         "title": "Seeking got stuck",
         "message": "The video didn’t continue after the jump. Try again or choose a lower quality."
+      },
+      "picture_black": {
+        "title": "No picture",
+        "message": "Playback ran, but this device showed no picture. Try another version or play with VLC."
+      },
+      "picture_frozen": {
+        "title": "The picture froze",
+        "message": "The picture stopped although playback kept running. Try another version or a lower quality."
+      },
+      "audio_silent": {
+        "title": "No sound",
+        "message": "Playback ran, but no sound came through. Try another audio track or another version."
+      },
+      "playback_slideshow": {
+        "title": "This device can’t keep up",
+        "message": "Too many frames were dropped to watch smoothly. Try a lower quality."
+      },
+      "player_internal_error": {
+        "title": "The player hit an internal error",
+        "message": "Something in the app went wrong while playing. Retry continues where you were; if it happens again, report the code below."
+      },
+      "step_timeout": {
+        "title": "The server took too long",
+        "message": "The server didn’t get the video ready in time. Try again or choose another version."
+      },
+      "stream_interrupted": {
+        "title": "The stream was cut off",
+        "message": "The connection to the server broke before the end of the video. Retry continues where it stopped."
       }
     },
     "sessionRevoked": {

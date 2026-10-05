@@ -5,7 +5,7 @@ import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
 import { noticeError, noticeMs, stepDownReasonKey } from '@/player/overlay-labels';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 
 import {
   HINT_MS,
@@ -16,7 +16,7 @@ import {
   STATE_BUDGET_MS,
   SYSTEM_PAUSE_MS,
 } from '@/player/controller';
-import { PlayerStatusView } from '@/screens/player/player-status';
+import { PlayerStatusView, statusLayout } from '@/screens/player/player-status';
 import { UpNextCard } from '@/screens/player/up-next';
 import { useCloseOnFailure } from '@/screens/player/use-close-on-failure';
 import { harness, newController, reply } from '@/../jest/player/harness';
@@ -279,10 +279,7 @@ describe('matrix E — Player UI states', () => {
     await renderWithProviders(<PlayerStatusView status={status} onAction={onAction} />);
     fireEvent.press(screen.getByTestId('player-status-action-unmute'));
     expect(onAction).toHaveBeenCalledWith('unmute');
-    expect(screen.getByTestId('player-status-action-unmute')).not.toHaveProp(
-      'hasTVPreferredFocus',
-      true
-    );
+    // Preferred focus is checked on what the view passes to its buttons: player-status.test (review M15).
   });
   row('E13', 'offline shows the banner at once and keeps the engine', async () => {
     jest.useFakeTimers();
@@ -382,4 +379,121 @@ describe('matrix E — Player UI states', () => {
     }
   );
   pending('E18', '"Switching…" card (phase === \'switching\')', 'S4');
+});
+
+describe('matrix E — code review S1-S4 (S4b)', () => {
+  row(
+    'E09',
+    'a client exception never shows "Something went wrong": its own text, Retry and the code (review 11)',
+    async () => {
+      jest.useFakeTimers();
+      await i18n.changeLanguage('en');
+      const broken = () => {
+        throw new Error('vlc module missing');
+      };
+      harness.server.answer('start', broken, broken);
+      const c = newController();
+      await c.start();
+      await settle();
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({
+        code: 'player_internal_error',
+        category: 'T11',
+        actions: ['retry'],
+      });
+      const text = describeError(i18n.t, c.failure!);
+      expect(text.title).toBe('The player hit an internal error');
+      expect(text).not.toEqual(generic());
+      expect(i18n.t('errors.codeLabel', { code: c.failure!.code })).toContain(
+        'player_internal_error'
+      );
+    }
+  );
+
+  row(
+    'E04',
+    "the timeline is the design's: spinner at 1 s, hint at 4 s, ladder at 15 s (literal numbers, review M11)",
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(900);
+      expect(c.status.spinner).toBe(false);
+      await jest.advanceTimersByTimeAsync(100);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(2_900);
+      expect(c.status.hint).toBeNull();
+      await jest.advanceTimersByTimeAsync(100);
+      expect(c.status.hint).not.toBeNull();
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(harness.server.sent('switch')).toHaveLength(1);
+      expect({ SPINNER_MS, HINT_MS, STALL_LADDER_MS, START_BUDGET_MS }).toEqual({
+        SPINNER_MS: 1_000,
+        HINT_MS: 4_000,
+        STALL_LADDER_MS: 15_000,
+        START_BUDGET_MS: { progressive: 20_000, hls: 30_000 },
+      });
+      await c.stop();
+    }
+  );
+
+  row(
+    'E11',
+    'with visible controls the hint moves under the top bar (below a notice) and the spinner leaves the centre (review 20)',
+    () => {
+      const base = { tv: false, spinner: true, top: 80, noticeShown: false, noticeHeight: 64 };
+      expect(statusLayout({ ...base, controlsVisible: false })).toEqual({
+        anchor: 'centre',
+        spinner: true,
+        offset: 0,
+      });
+      expect(statusLayout({ ...base, controlsVisible: true })).toEqual({
+        anchor: 'top',
+        spinner: false,
+        offset: 80,
+      });
+      expect(statusLayout({ ...base, controlsVisible: true, noticeShown: true })).toEqual({
+        anchor: 'top',
+        spinner: false,
+        offset: 144,
+      });
+      expect(statusLayout({ ...base, controlsVisible: true, tv: true })).toEqual({
+        anchor: 'centre',
+        spinner: true,
+        offset: 0,
+      });
+    }
+  );
+
+  row(
+    'E11',
+    'screen readers hear a hint once per change, not every countdown second (review 19)',
+    async () => {
+      const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+      const said = (start: string) =>
+        announce.mock.calls.filter(([text]) => String(text).startsWith(start));
+      const status = (seconds: number) => ({
+        spinner: true,
+        hint: { key: 'serverBusy' as const, params: { seconds } },
+        actions: [],
+      });
+      const view = await renderWithProviders(
+        <PlayerStatusView status={status(9)} onAction={jest.fn()} />
+      );
+      await view.rerender(<PlayerStatusView status={status(8)} onAction={jest.fn()} />);
+      await view.rerender(<PlayerStatusView status={status(7)} onAction={jest.fn()} />);
+      expect(said('The server is busy')).toEqual([['The server is busy. Retrying in 9 s…']]);
+      await view.rerender(
+        <PlayerStatusView
+          status={{ spinner: true, hint: { key: 'offline' }, actions: [] }}
+          onAction={jest.fn()}
+        />
+      );
+      expect(said('No network')).toHaveLength(1);
+      announce.mockRestore();
+    }
+  );
 });

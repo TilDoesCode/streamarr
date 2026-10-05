@@ -29,6 +29,9 @@ export const HINT_KEYS = [
   'buffering',
   'serverError',
   'reloading',
+  'lowering',
+  'steppingDown',
+  'switchingVersion',
 ] as const;
 export type HintKey = (typeof HINT_KEYS)[number];
 
@@ -72,6 +75,9 @@ export const HINT_ACTIONS: Record<HintKey, readonly HintAction[]> = {
   buffering: ['lowerQuality'],
   serverError: ['tryNow'],
   reloading: [],
+  lowering: [],
+  steppingDown: [],
+  switchingVersion: [],
 };
 
 /** `{cause}` of `startSlow` and `pausedBySystem`. */
