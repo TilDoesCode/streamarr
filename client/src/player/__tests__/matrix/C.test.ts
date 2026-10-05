@@ -1,7 +1,7 @@
-import { harness, reply } from '@/../jest/player/harness';
-import { pending, row } from '@/../jest/player/matrix';
+import { harness, newController, reply } from '@/../jest/player/harness';
+import { row } from '@/../jest/player/matrix';
 import { expoPlaying } from '@/../jest/player/native';
-import { playFor, playing, settle, starts, TICKS } from '@/../jest/player/play';
+import { playFor, playing, playOn, settle, starts, TICKS } from '@/../jest/player/play';
 import type { EngineHealth } from '@/player/health/types';
 import { classify } from '@/player/recovery/classify';
 
@@ -157,11 +157,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending(
-    'C04',
-    'Direct play stalls on a Usenet hole (repair wait up to 90 s, RepairAwareStream.cs:67-12…',
-    'S5'
-  );
   row(
     'C05',
     'a connection reset mid-transfer shows the spinner and never steps down while it recovers',
@@ -175,11 +170,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       expect(harness.server.sent('switch')).toHaveLength(0);
       await c.stop();
     }
-  );
-  pending(
-    'C06',
-    'Remux/transcode fails to start (TranscodeException at create)',
-    'regression test, S3+'
   );
   row(
     'C07',
@@ -395,14 +385,9 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending(
-    'C19',
-    'Audio rendition 404 unknown_audio_rendition / 500 rendition_split_failed during an in-s…',
-    'regression test, S3+'
-  );
   row(
     'C20',
-    'an audio rendition that dies mid-play: "No sound", reload (re-selects the rendition), then another way',
+    'an audio rendition that dies mid-play: "No sound", reload (re-selects the rendition), audio conversion, then another way',
     async () => {
       const c = await probed(hls);
       await playFor(7, silentFrom);
@@ -412,14 +397,18 @@ describe('matrix C — Delivery (server → engine)', () => {
       harness.engine.started();
       await playFor(12, silentFrom, 0);
       await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+      expect(c.playback?.audioFallback).toBe(true);
+      // Still silent with converted audio: one reload of the new revision, then another way to play.
+      for (let round = 0; round < 2; round += 1) {
+        harness.engine.started();
+        await playFor(12, silentFrom, 0);
+        await settle();
+      }
       expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      expect(harness.server.sent('switch').filter((r) => r.body?.audioFallback)).toHaveLength(1);
       await c.stop();
     }
-  );
-  pending(
-    'C20',
-    "/switch same audio with the server's audioFallback flag (ladder step A; AVPlayer heuristic is D21)",
-    'S4d ladder'
   );
   row(
     'C21',
@@ -434,13 +423,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       expect(harness.server.sent('switch')).toHaveLength(0);
       await c.stop();
     }
-  );
-  pending('C22', 'Subtitle playlist or .vtt 404 (unknown_subtitle_stream) / 5xx', 'S8');
-  pending('C23', 'Subtitle parse error (malformed WebVTT)', 'S8');
-  pending(
-    'C24',
-    'Forced/selected subtitle not deliverable (subtitle_not_deliverable, deliveredAs: none)',
-    'S8'
   );
   row(
     'C25',
@@ -505,14 +487,15 @@ describe('matrix C — Delivery (server → engine)', () => {
   );
   row(
     'C27',
-    'web: an audio codec the browser cannot decode (counter stands): "No sound", then another way to play',
+    'web: an audio codec the browser cannot decode (counter stands): "No sound", reload, the server converts the audio',
     async () => {
       const c = await probed();
       await playFor(11, silentFrom);
       harness.engine.started();
       await playFor(12, silentFrom, 0);
       await settle();
-      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+      expect(c.notice?.kind).toBe('audioFallback');
       await c.stop();
     }
   );
@@ -532,7 +515,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending('C27', 'server audio fallback flag (ladder step A) before the step-down', 'S4d ladder');
   row(
     'C28',
     'web: a video codec without decoder (black, clock runs): "No picture", reload, then another way',
@@ -606,8 +588,6 @@ describe('matrix C — Delivery (server → engine)', () => {
       await c.stop();
     }
   );
-  pending('C30', 'Encrypted content without DRM', 'S8');
-  pending('C31', 'Zero-length or very short file (< 1 segment, duration 0)', 'S8');
   row(
     'C32',
     'a stream that ends early reloads once at the position, then says where the file ends',
@@ -640,12 +620,6 @@ describe('matrix C — Delivery (server → engine)', () => {
     expect(harness.engine.load).toHaveBeenCalledTimes(2);
     await c.stop();
   });
-  pending('C33', 'Announced duration shorter than the media', 'regression test, S3+');
-  pending(
-    'C34',
-    'Image subtitle needs burn-in / VLC (subtitle_burned_in, image_subtitle_vlc)',
-    'regression test, S3+'
-  );
 });
 
 describe('matrix C — code review S1-S4 (S4b)', () => {
@@ -880,6 +854,915 @@ describe('matrix C — code review S1-S4 (S4b)', () => {
       expect(c.phase).toBe('switching');
       expect(await c.lowerQuality()).toBe(false);
       expect(harness.server.sent('switch')).toHaveLength(1);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — subtitles and content edge cases (S8)', () => {
+  const subtitled = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [
+        { index: 3, language: 'de', deliveredAs: 'webvtt', selected: true },
+        { index: 4, language: 'en', deliveredAs: 'webvtt', selected: false },
+      ],
+    },
+  } as never;
+  const engineSubtitles = (selected: string | null) => ({
+    audio: [],
+    subtitles: [
+      { id: 's0', label: 'de', language: 'de', selected: selected === 's0' },
+      { id: 's1', label: 'en', language: 'en', selected: selected === 's1' },
+    ],
+  });
+
+  async function withSubtitles() {
+    const c = await playing({}, subtitled, 50);
+    harness.engine.emit({ type: 'tracks', tracks: engineSubtitles('s0') });
+    await playOn(16);
+    expect(c.currentSubtitle()).toBe(3);
+    return c;
+  }
+  const subtitleCommands = () =>
+    harness.engine.commands.filter((command) => command.startsWith('subtitle:'));
+
+  row(
+    'C22',
+    'a subtitle segment that fails: subtitles off with a notice, playback goes on, one retry a minute later',
+    async () => {
+      const c = await withSubtitles();
+      harness.engine.emit({ type: 'subtitleError', code: 'unknown_subtitle_stream' });
+      harness.engine.emit({ type: 'subtitleError', code: 'unknown_subtitle_stream' });
+      expect(c.currentSubtitle()).toBeNull();
+      expect(c.notice).toMatchObject({
+        kind: 'subtitleFailed',
+        params: { index: '3', retry: 'later' },
+      });
+      expect(c.phase).toBe('playing');
+      expect(c.status.hint).toBeNull();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await playOn(60);
+      expect(subtitleCommands().at(-1)).toBe('subtitle:s0');
+      expect(c.currentSubtitle()).toBe(3);
+      await c.stop();
+    }
+  );
+
+  row('C22', 'subtitles that fail again after the retry stay off for good', async () => {
+    const c = await withSubtitles();
+    harness.engine.emit({ type: 'subtitleError', code: 'subtitle_timeout' });
+    await playOn(60);
+    harness.engine.emit({ type: 'subtitleError', code: 'subtitle_timeout' });
+    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: '' } });
+    const commands = subtitleCommands().length;
+    await playOn(300);
+    expect(subtitleCommands()).toHaveLength(commands);
+    expect(c.currentSubtitle()).toBeNull();
+    expect(harness.server.sent('switch')).toHaveLength(0);
+    await c.stop();
+  });
+
+  row(
+    'C22',
+    'the viewer picking other subtitles cancels the retry; no subtitle shown means nothing to do',
+    async () => {
+      const c = await withSubtitles();
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      await c.selectSubtitle({ index: 4, language: 'en', deliveredAs: 'webvtt' } as never);
+      expect(c.currentSubtitle()).toBe(4);
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(c.currentSubtitle()).toBe(4);
+      await c.selectSubtitle(null);
+      const notice = c.notice;
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      expect(c.notice).toBe(notice);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C22',
+    'a subtitle failure right after the load is not undone by the server track pick',
+    async () => {
+      const c = await playing({}, subtitled, 50);
+      harness.engine.emit({ type: 'tracks', tracks: engineSubtitles('s0') });
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      harness.engine.emit({ type: 'tracks', tracks: engineSubtitles(null) });
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(c.currentSubtitle()).toBeNull();
+      expect(subtitleCommands().at(-1)).toBe('subtitle:null');
+      await c.stop();
+    }
+  );
+
+  row(
+    'C22',
+    'subtitles the server picked after a new start win over the retry of the failed ones',
+    async () => {
+      const c = await withSubtitles();
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      // The new playback comes with the English subtitles selected by the server.
+      harness.server.answer(
+        'start',
+        reply.ok(
+          harness.server.playback({
+            method: 'remux',
+            mediaInfo: {
+              durationTicks: 600 * TICKS,
+              audioTracks: [],
+              subtitleTracks: [
+                { index: 3, language: 'de', deliveredAs: 'webvtt', selected: false },
+                { index: 4, language: 'en', deliveredAs: 'webvtt', selected: true },
+              ],
+            },
+          } as never)
+        )
+      );
+      harness.engine.fail(exo(404));
+      await settle();
+      harness.engine.started();
+      harness.engine.emit({ type: 'tracks', tracks: engineSubtitles('s1') });
+      const commands = subtitleCommands().length;
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(subtitleCommands()).toHaveLength(commands);
+      expect(c.currentSubtitle()).toBe(4);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C22',
+    'another version drops the retry of the failed subtitles (indexes belong to a release)',
+    async () => {
+      const c = await withSubtitles();
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            revision: 1,
+            version: { releaseId: 'r2' },
+            mediaInfo: {
+              durationTicks: 600 * TICKS,
+              audioTracks: [],
+              subtitleTracks: [
+                { index: 3, language: 'fr', deliveredAs: 'webvtt', selected: false },
+              ],
+            },
+          } as never)
+        )
+      );
+      await c.selectVersion('r2');
+      harness.engine.started();
+      harness.engine.emit({ type: 'tracks', tracks: engineSubtitles(null) });
+      const commands = subtitleCommands().length;
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(subtitleCommands()).toHaveLength(commands);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C23',
+    'a WebVTT segment that does not parse is a subtitle failure, never an engine error',
+    async () => {
+      const c = await withSubtitles();
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unreadable' });
+      expect(c.notice).toMatchObject({
+        kind: 'subtitleFailed',
+        params: { code: 'subtitle_unreadable' },
+      });
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'C24',
+    'a selected subtitle the server cannot deliver is said at once, with VLC when the device has it',
+    async () => {
+      const undeliverable = {
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [{ index: 5, language: 'ja', deliveredAs: 'none', selected: true }],
+        },
+      } as never;
+      let c = await playing(
+        { profile: { engines: [{ engine: 'vlc' }] } as never },
+        undeliverable,
+        0
+      );
+      expect(c.notice).toMatchObject({
+        kind: 'subtitleNotDeliverable',
+        params: { index: '5', vlc: 'vlc' },
+      });
+      await c.stop();
+      harness.reset();
+      c = await playing({}, undeliverable, 0);
+      expect(c.notice).toMatchObject({ kind: 'subtitleNotDeliverable', params: { vlc: '' } });
+      c.dismissNotice();
+      harness.engine.fail(exo(503));
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(c.notice).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'C30',
+    'encrypted media: reload once, then another version, else the card with Other version; never a step-down',
+    async () => {
+      const c = await playing({}, {}, 30);
+      harness.engine.fail('keySystemError:keySystemNoKeys');
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      harness.engine.fail('keySystemError:keySystemNoKeys');
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.failure).toMatchObject({ code: 'encrypted_media', category: 'T8' });
+      expect(c.failure?.actions).toContain('otherVersion');
+      expect(harness.server.sent('switch')).toHaveLength(0);
+    }
+  );
+
+  row(
+    'C31',
+    'a zero-length file (ends without a picture) is explained after a reload and a version search, never "ended"',
+    async () => {
+      const c = newController();
+      await c.start();
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.ended).toBe(false);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.failure).toMatchObject({
+        code: 'empty_media',
+        category: 'T8',
+        actions: ['otherVersion'],
+      });
+      expect(c.ended).toBe(false);
+    }
+  );
+
+  row(
+    'C31',
+    'a file under a second long is not "ended" either; a playToEnd right after a load is ignored',
+    async () => {
+      let c = await playing({}, {}, 0);
+      harness.engine.started(0.5);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.ended).toBe(false);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+      harness.reset();
+      c = newController();
+      await c.start();
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — code review S5 + S4b (S4d)', () => {
+  row(
+    'C14',
+    'a seek while a reload waits moves the reload to the new position (review B4)',
+    async () => {
+      const c = await playing({}, {}, 100);
+      harness.engine.fail(exo(503));
+      await settle();
+      c.seekTo(400);
+      expect(c.status.hint?.params?.time).toBe('6:40');
+      await jest.advanceTimersByTimeAsync(6_000);
+      expect(harness.engine.source?.startPosition).toBe(400);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C14',
+    'a stall while hls.js retries a 503 is the server, not the bandwidth: reload, not lower quality (review R7)',
+    async () => {
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        100
+      );
+      harness.engine.emit({ type: 'loadRetry', status: 503 });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(15_000);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(c.status.hint).toMatchObject({ key: 'serverError' });
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C13',
+    'a stall in the last seconds ends the title instead of lowering the quality or stepping down (review B3)',
+    async () => {
+      const c = await playing({}, {}, 0);
+      harness.engine.time(596, 600);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.ended).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C07',
+    'a chained step keeps the tracks captured at the failure, even when the reloaded engine forgot them (review K15)',
+    async () => {
+      const audioTracks = [
+        { index: 1, language: 'en', deliveredAs: 'original', selected: true },
+        { index: 2, language: 'de', deliveredAs: 'original', selected: false },
+      ];
+      const c = await playing(
+        {},
+        { mediaInfo: { durationTicks: 6e9, audioTracks, subtitleTracks: [] } } as never,
+        100
+      );
+      const tracks = (selected: number) => ({
+        audio: [
+          { id: 'a0', label: 'en', language: 'en', selected: selected === 0 },
+          { id: 'a1', label: 'de', language: 'de', selected: selected === 1 },
+        ],
+        subtitles: [],
+      });
+      harness.engine.emit({ type: 'tracks', tracks: tracks(0) });
+      await c.selectAudio(audioTracks[1] as never);
+      harness.engine.emit({ type: 'tracks', tracks: tracks(1) });
+      harness.engine.time(120);
+      const decode = 'MediaCodecVideoRenderer error: decoder init failed';
+      harness.engine.fail(decode);
+      await settle();
+      harness.engine.emit({ type: 'tracks', tracks: { audio: [], subtitles: [] } });
+      harness.engine.fail(decode);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({
+        stepDown: true,
+        audioStreamIndex: 2,
+      });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — live web audit S9a (S4d)', () => {
+  const remux = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [],
+      video: { height: 1080 },
+    },
+  } as never;
+
+  row(
+    'C14',
+    'while hls.js retries a 503 the stall says "problem on the server" at once, never "buffering" with Lower quality (S9a C10)',
+    async () => {
+      const c = await playing({}, remux, 30);
+      harness.engine.emit({ type: 'loadRetry', status: 503 });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status).toEqual({ spinner: true, hint: { key: 'serverRetrying' }, actions: [] });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    'a transcode whose segments wait for the server is "the server converts slower", not a slow connection (S9a C08)',
+    async () => {
+      harness.features.probe = true;
+      const c = await playing(
+        {},
+        {
+          ...(remux as object),
+          method: 'transcode',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 2_200,
+            video: { height: 1080 },
+          },
+        } as never,
+        10
+      );
+      harness.engine.setHealth({
+        bandwidthBps: 600_000,
+        fetch: { waitMs: 5_400, transferMs: 300, bytes: 1_000_000 },
+      });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'serverSlow' });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'a remux segment that arrives slowly after a quick first byte is the network: measured from the transfer (S9a C03 kept)',
+    async () => {
+      harness.features.probe = true;
+      const c = await playing(
+        {},
+        {
+          ...(remux as object),
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 700,
+            video: { height: 1080 },
+          },
+        } as never,
+        10
+      );
+      harness.engine.setHealth({ fetch: { waitMs: 50, transferMs: 8_000, bytes: 200_000 } });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'slowNet', params: { measured: 0.2, needed: 0.7 } });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C20',
+    'an aborted audio split: "No sound", reload of the audio, the server converts the audio, then the card — never the network loop (S9a D36)',
+    async () => {
+      const c = await playing({}, remux, 40);
+      const keys: string[] = [];
+      const seen = () => {
+        const key = c.status.hint?.key;
+        if (key && keys.at(-1) !== key) keys.push(key);
+      };
+      harness.engine.emit({ type: 'loadRetry', status: 0, audio: true });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(1_000);
+      // Said at once, before hls.js gives up (no 4 s "buffering" first).
+      expect(c.status).toEqual({
+        spinner: true,
+        hint: { key: 'noAudio' },
+        actions: ['otherAudio'],
+      });
+      seen();
+      harness.engine.fail('audioRendition:fragLoadError');
+      await settle();
+      seen();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      harness.engine.fail('audioRendition:fragLoadError');
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+      harness.engine.started();
+      harness.engine.fail('audioRendition:fragLoadError');
+      await settle();
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({
+        code: 'audio_rendition_failed',
+        actions: ['retry', 'otherVersion'],
+      });
+      expect(keys[0]).toBe('noAudio');
+      expect(harness.server.sent('switch').some((r) => r.body?.stepDown)).toBe(false);
+    }
+  );
+});
+
+describe('matrix C — the countdown is the wait the player really uses (S9a P8, B13b)', () => {
+  row(
+    'C14',
+    'an hls.js fragment 503 (its Retry-After is not readable): the fixed 5 s, shown as 5 s',
+    async () => {
+      const c = await playing({}, { method: 'remux' } as never, 41);
+      harness.engine.emit({ type: 'error', reason: 'networkError:fragLoadError', status: 503 });
+      await settle();
+      expect(c.status.hint).toMatchObject({ key: 'serverError', params: { seconds: 5 } });
+      await jest.advanceTimersByTimeAsync(4_900);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(200);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C14',
+    'a request the app sends itself (a new start) answered 503 Retry-After 10: shown and waited as 10 s',
+    async () => {
+      const c = await playing({}, { method: 'remux' } as never, 41);
+      harness.server.answer('start', reply.error(503, 'transcode_capacity', undefined, 10));
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      expect(c.status.hint).toMatchObject({ params: { seconds: 10 } });
+      await jest.advanceTimersByTimeAsync(9_900);
+      expect(harness.server.sent('start')).toHaveLength(2);
+      await jest.advanceTimersByTimeAsync(200);
+      expect(harness.server.sent('start')).toHaveLength(3);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — a remux whose segments wait for the server (S9a C08)', () => {
+  row(
+    'C08',
+    'remux (no conversion) or a quick first byte: never "the server converts", the network or plain buffering (review B3)',
+    async () => {
+      harness.features.probe = true;
+      const media = (method: string) =>
+        ({
+          method,
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 2_200,
+            video: { height: 1080 },
+          },
+        }) as never;
+      const c = await playing({}, media('remux'), 10);
+      // A LAN segment: 30 ms to the first byte, 10 ms to arrive; and one long wait without a measured rate.
+      harness.engine.setHealth({ fetch: { waitMs: 30, transferMs: 10, bytes: 4_000_000 } });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'buffering' });
+      harness.engine.setHealth({ fetch: { waitMs: 5_400, transferMs: 300, bytes: 1_000_000 } });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.hint?.key).not.toBe('serverSlow');
+      await c.stop();
+      harness.reset();
+      harness.features.probe = true;
+      // A transcode that delivers 6 s of media per 9 s of waiting over three segments converts slower than real time.
+      const t = await playing({}, media('transcode'), 10);
+      harness.engine.setHealth({ conversionRate: 0.66, bandwidthBps: 1_000_000 });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(t.status.hint).toEqual({ key: 'serverSlow' });
+      await t.stop();
+    }
+  );
+});
+
+describe('matrix C — repair, conversion start, renditions, durations, image subtitles (S4f)', () => {
+  row(
+    'C04',
+    'a direct play that stalls while the server repairs the release: "The server is repairing missing data", never "slow connection"',
+    async () => {
+      const c = await playing(
+        {},
+        {
+          method: 'direct',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 8_000,
+          },
+        } as never,
+        300
+      );
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'poll',
+        reply.ok(
+          harness.server.playback({
+            playbackId: id,
+            repair: { state: 'downloadingRecovery', progressPercent: 40 },
+          } as never)
+        )
+      );
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      expect(harness.server.sent('poll')).toHaveLength(1);
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'serverRepairing' });
+      expect(c.status.actions).toEqual([]);
+      await c.stop();
+    }
+  );
+
+  row('C04', 'a repair that ended (ready, failed) is no reason: the usual stall hint', async () => {
+    const c = await playing({}, { method: 'direct' } as never, 300);
+    const id = c.playback!.playbackId!;
+    harness.server.answer(
+      'poll',
+      reply.ok(harness.server.playback({ playbackId: id, repair: { state: 'ready' } } as never))
+    );
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(4_000);
+    expect(c.status.hint).toEqual({ key: 'buffering' });
+    await c.stop();
+  });
+
+  row(
+    'C06',
+    'a remux or transcode that fails to start (transcode_failed at create): one more start, then another version, then the card',
+    async () => {
+      const failed = () =>
+        reply.ok(
+          harness.server.playback({ state: 'failed', error: { code: 'transcode_failed' } } as never)
+        );
+      harness.server.answer('start', failed(), failed());
+      const c = newController();
+      await c.start();
+      await settle();
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(harness.server.sent('start')).toHaveLength(2);
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.failure).toMatchObject({ code: 'transcode_failed', category: 'T6' });
+    }
+  );
+
+  row(
+    'C19',
+    'an in-session audio switch whose rendition fails (404): the switch goes to the server, the notice says the stream restarted',
+    async () => {
+      const renditions = [
+        {
+          id: '1',
+          streamIndex: 1,
+          language: 'de',
+          label: 'Deutsch',
+          channels: 2,
+          codec: 'aac',
+          default: true,
+        },
+        {
+          id: '2',
+          streamIndex: 2,
+          language: 'en',
+          label: 'English',
+          channels: 2,
+          codec: 'aac',
+          default: false,
+        },
+      ];
+      const media = {
+        method: 'remux',
+        inSessionAudioSwitch: true,
+        audioRenditions: renditions,
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [
+            { index: 1, language: 'ger', selected: true, deliveredAs: 'remux', renditionId: '1' },
+            { index: 2, language: 'eng', selected: false, deliveredAs: 'remux', renditionId: '2' },
+          ],
+          subtitleTracks: [],
+        },
+      } as never;
+      const c = await playing({}, media, 40);
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [
+            { id: 'e0', label: 'English', language: 'en', selected: false },
+            { id: 'e1', label: 'Deutsch', language: 'de', selected: true },
+          ],
+          subtitles: [],
+        },
+      });
+      const switching = c.selectAudio({ index: 2, language: 'eng' } as never);
+      harness.engine.emit({ type: 'audioError', code: 'unknown_audio_rendition' });
+      await settle();
+      await settle();
+      expect(harness.server.sent('switch')[0]?.body).toMatchObject({ audioStreamIndex: 2 });
+      harness.engine.started();
+      harness.engine.time(41);
+      await switching;
+      expect(c.notice).toMatchObject({ kind: 'audioRestarted' });
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'C33',
+    'the media runs longer than the announced duration: the engine duration wins, playing past the server length is no failure',
+    async () => {
+      const c = await playing(
+        {},
+        { mediaInfo: { durationTicks: 300 * TICKS, audioTracks: [], subtitleTracks: [] } } as never,
+        0
+      );
+      harness.engine.time(290, 330);
+      expect(c.duration).toBe(330);
+      harness.engine.time(310, 330);
+      await settle();
+      expect(c.ended).toBe(false);
+      expect(c.failure).toBeNull();
+      expect(c.status.hint).toBeNull();
+      harness.engine.time(329, 330);
+      harness.engine.emit({ type: 'ended' });
+      expect(c.ended).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C34',
+    'an image subtitle the server must burn in: the pick is a server switch at the position; turning it off switches back',
+    async () => {
+      const media = {
+        method: 'transcode',
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [
+            { index: 5, language: 'de', codec: 'pgs', deliveredAs: 'burnedIn', selected: false },
+          ],
+        },
+      } as never;
+      const c = await playing({}, media, 120);
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: id,
+            revision: 1,
+            method: 'transcode',
+            mediaInfo: {
+              durationTicks: 600 * TICKS,
+              audioTracks: [],
+              subtitleTracks: [
+                { index: 5, language: 'de', codec: 'pgs', deliveredAs: 'burnedIn', selected: true },
+              ],
+            },
+          } as never)
+        )
+      );
+      await c.selectSubtitle({ index: 5, language: 'de', deliveredAs: 'burnedIn' } as never);
+      expect(harness.server.sent('switch')[0]?.body).toMatchObject({
+        subtitleStreamIndex: 5,
+        positionTicks: 120 * TICKS,
+      });
+      harness.engine.started();
+      await c.selectSubtitle(null);
+      expect(harness.server.sent('switch')[1]?.body).toMatchObject({ subtitleStreamIndex: -1 });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — code review S4c-S4f (S4g)', () => {
+  row(
+    'C14',
+    'three 503 incidents a few minutes apart: each one reloads, the method is never stepped down (review R2)',
+    async () => {
+      const c = await playing({}, { method: 'direct' } as never, 100);
+      for (let incident = 0; incident < 3; incident += 1) {
+        harness.engine.fail(exo(503));
+        await jest.advanceTimersByTimeAsync(6_000);
+        harness.engine.started();
+        await playOn(180);
+      }
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(4);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C14',
+    'a stall while hls.js retries a 504 is the server waiting its own budget: lower quality, not the server-error reload (review M20)',
+    async () => {
+      const c = await playing(
+        {},
+        {
+          method: 'transcode',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        100
+      );
+      harness.engine.emit({ type: 'loadRetry', status: 504 });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(15_000);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({
+        preferences: expect.objectContaining({ maxHeight: 720 }),
+      });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C10',
+    'a media request answered 401/403 (the capability is gone) starts anew, like a 404 (review M22)',
+    async () => {
+      for (const status of [401, 403]) {
+        harness.reset();
+        const c = await playing({}, { method: 'remux' } as never, 60);
+        harness.engine.emit({ type: 'error', reason: 'networkError:fragLoadError', status });
+        await settle();
+        expect(starts()).toHaveLength(2);
+        expect(starts().at(-1)?.position).toBe(60);
+        await c.stop();
+      }
+    }
+  );
+
+  row(
+    'C04',
+    'a repair answer that arrives after the playback was replaced is dropped (review M19)',
+    async () => {
+      const c = await playing({}, { method: 'direct' } as never, 300);
+      const old = c.playback!.playbackId!;
+      let release: (value: unknown) => void = () => undefined;
+      const gate = new Promise((resolve) => (release = resolve));
+      // The repair status of the old playback answers only after the new start attached.
+      harness.server.answer('poll', async () => {
+        await gate;
+        return reply.ok(
+          harness.server.playback({
+            playbackId: old,
+            repair: { state: 'downloadingRecovery' },
+          } as never)
+        );
+      });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.fail(exo(404));
+      await settle();
+      release(undefined);
+      await settle();
+      expect(c.playback!.playbackId).not.toBe(old);
+      expect(c.playback?.repair ?? null).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — subtitles after a healthy stretch (S4g)', () => {
+  row(
+    'C22',
+    'a subtitle failure long after a successful retry is a first failure again: retried, never off for good (review B5)',
+    async () => {
+      const subtitleTracks = [
+        { index: 3, language: 'de', title: 'German', deliveredAs: 'webvtt', selected: true },
+      ];
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: { durationTicks: 6e10, audioTracks: [], subtitleTracks },
+        } as never,
+        100
+      );
+      const shown = {
+        audio: [],
+        subtitles: [{ id: 's0', label: 'German', language: 'de', selected: true }],
+      };
+      harness.engine.emit({ type: 'tracks', tracks: shown });
+      await settle();
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      expect(c.notice?.params?.retry).toBe('later');
+      await playOn(61);
+      harness.engine.emit({ type: 'tracks', tracks: shown });
+      await playOn(1800);
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+      expect(c.notice?.params?.retry).toBe('later');
       await c.stop();
     }
   );

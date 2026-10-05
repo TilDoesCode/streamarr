@@ -99,12 +99,17 @@
     "stepDownTranscode": "Switched to transcoding to keep playing.",
     "switchFailed": "Couldn’t switch. {reason} Playback continues as before.",
     "because": {
-      "start_timeout": "The picture stayed black.",
       "T7": "This device couldn’t decode the video.",
       "T5": "The video loaded too slowly.",
-      "T6": "The server had a problem."
+      "T6": "The server had a problem.",
+      "picture_timeout": "The picture stayed black."
     },
-    "otherVersion": "Switched to another version to keep playing."
+    "otherVersion": "Switched to another version to keep playing.",
+    "audioFallback": "Sound converted to stereo to keep playing.",
+    "subtitleFailed": "Subtitles “{label}” couldn’t be loaded and are off. {retry, select, later {They’ll be tried again in a minute.} other {Choose other subtitles.}}",
+    "subtitleNotDeliverable": "Subtitles “{label}” can’t be shown on this device.",
+    "subtitleNotDeliverableVlc": "Subtitles “{label}” can’t be shown here — VLC can show them.",
+    "audioRestarted": "Audio switched by restarting the stream."
   },
   "upNext": {
     "title": "Up next",
@@ -126,20 +131,17 @@
     "serverSlow": "The server converts slower than playback. Buffering…",
     "reconnecting": "Connection lost. Retrying in {seconds} s…",
     "offline": "No network connection. Playback continues once this device is back online.",
-    "serverDown": "Can’t reach the server. Retrying in {seconds} s…",
     "restarting": "The server ended this playback. Restarting at {time}…",
     "recovering": "The picture is stuck. Reloading at {time}…",
     "noPicture": "No picture. Trying another way to play…",
     "noAudio": "No sound. Reloading the audio…",
-    "decoder": "This device can’t play {format}. Converting instead…",
     "deviceSlow": "This device can’t keep up ({percent, number}% of frames dropped).",
     "endedEarly": "The file ends at {time}, {missing} before the end.",
-    "subtitleFailed": "Subtitles “{label}” couldn’t be loaded.",
     "pausedBySystem": "Paused: {cause}.",
     "airplay": "Playing on {device}.",
+    "decoder": "This device can’t play {format}. Converting instead…",
     "mutedAutoplay": "Sound off — tap to unmute.",
     "autoplayBlocked": "The browser blocked autoplay.",
-    "signedOut": "Signed out: {reason}. Your position {time} is saved.",
     "serverBusy": "The server is busy. Retrying in {seconds} s…",
     "waitingForStream": "Starts as soon as playback on {device} stops.",
     "buffering": "Loading takes longer than usual. Buffering…",
@@ -148,6 +150,9 @@
     "lowering": "Switching to a lower quality to keep playing at {time}…",
     "steppingDown": "Trying another way to play at {time}…",
     "switchingVersion": "Trying another version at {time}…",
+    "convertingAudio": "No sound. Converting the audio to keep playing at {time}…",
+    "serverRetrying": "The server had a problem with this part of the video. Retrying…",
+    "serverRepairing": "The server is repairing missing data of this video. Buffering…",
     "causes": {
       "call": "call",
       "otherAudio": "another app plays audio",
@@ -182,6 +187,7 @@
     "Q": "Lower quality",
     "S": "Another way to play",
     "V": "Another version",
-    "G": "Gave up"
+    "G": "Gave up",
+    "A": "Converted the audio"
   }
 }

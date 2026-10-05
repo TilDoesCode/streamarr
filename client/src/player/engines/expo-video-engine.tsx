@@ -9,11 +9,10 @@ import {
 } from 'expo-video';
 
 import type { EngineHealth } from '../health/types';
-import type { SystemCause } from '../recovery/classify';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase } from './base';
 import { StartSeek } from './start-seek';
-import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
+import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps, SystemCause } from './types';
 import {
   errorReason,
   systemCause,
@@ -164,6 +163,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
 
   startPictureInPicture(): void {
     if (PIP) void this.view.current?.startPictureInPicture().catch(() => undefined);
+  }
+
+  stopPictureInPicture(): void {
+    if (PIP) void this.view.current?.stopPictureInPicture().catch(() => undefined);
   }
 
   /** A pause or resume the app did not ask for; the controller adopts it with its cause (A12–A14, A16, A19). */

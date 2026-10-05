@@ -1,5 +1,4 @@
 import { CLIENT_ERROR_CODES, VIEWER_ERROR_CODES } from '@/api/error-codes';
-import { AppError } from '@/api/errors';
 import { classify, type FailureSource } from '@/player/recovery/classify';
 
 const engine = (reason: string, status?: number, kind: 'web' | 'expo-video' | 'vlc' = 'web') =>
@@ -76,24 +75,24 @@ describe('classify (state-matrix § 2 b.1)', () => {
     expect(classify({ kind: 'api', code: 'refresh_something_new' }).category).toBe('T3');
   });
 
-  it('classifies watchdog verdicts, system causes and exceptions', () => {
-    expect(classify({ kind: 'watchdog', verdict: 'picture-black' }).category).toBe('T7');
-    expect(classify({ kind: 'watchdog', verdict: 'buffering' }).category).toBe('T5');
-    expect(classify({ kind: 'system', cause: 'call' })).toEqual({ category: 'T10', code: 'call' });
-    expect(
-      classify({ kind: 'exception', error: new TypeError('Network request failed') })
-    ).toMatchObject({
-      category: 'T1',
-      code: 'network_unreachable',
+  it('classifies watchdog verdicts with their own card codes', () => {
+    expect(classify({ kind: 'watchdog', verdict: 'picture-black' })).toEqual({
+      category: 'T7',
+      code: 'picture_black',
     });
-    expect(
-      classify({ kind: 'exception', error: new AppError('brand_new', { status: 503 }) })
-    ).toMatchObject({ category: 'T4', code: 'brand_new' });
-    expect(classify({ kind: 'exception', error: new Error('boom') })).toMatchObject({
-      category: 'T11',
-      code: 'unknown',
-      detail: 'boom',
+    expect(classify({ kind: 'watchdog', verdict: 'clock-frozen' })).toEqual({
+      category: 'T5',
+      code: 'playback_stalled',
     });
+    expect(classify({ kind: 'watchdog', verdict: 'slideshow' }).category).toBe('T5');
+  });
+
+  it('a media request answered with a status that tells nothing (405) is judged by the reason (review B6)', () => {
+    expect(classify(engine('media_error_4', 405))).toMatchObject({
+      category: 'T7',
+      code: 'decode_error',
+    });
+    expect(classify(engine('media_error_2', 405))).toMatchObject({ category: 'T1' });
   });
 
   it('every known code has a category', () => {

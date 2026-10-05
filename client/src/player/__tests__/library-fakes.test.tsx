@@ -72,9 +72,11 @@ describe('scriptable library fakes drive the real engines (state-matrix § 2 d.1
     expect(events).toContainEqual({ type: 'buffering', buffering: true });
     video.fail(3, 'PIPELINE_ERROR_DECODE: video decode failed');
     video.fail(2);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(fetchMock).toHaveBeenCalledWith('http://server.test/a.mkv', { method: 'HEAD' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://server.test/a.mkv',
+      expect.objectContaining({ method: 'HEAD' })
+    );
     const failures = events.flatMap((event) => (event.type === 'error' ? [event] : []));
     expect(failures.map((event) => event.reason)).toEqual([
       'PIPELINE_ERROR_DECODE: video decode failed',

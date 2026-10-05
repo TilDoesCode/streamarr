@@ -9,6 +9,7 @@ export const HlsEvents = {
   AUDIO_TRACK_SWITCHED: 'hlsAudioTrackSwitched',
   SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
   SUBTITLE_TRACK_SWITCH: 'hlsSubtitleTrackSwitch',
+  SUBTITLE_FRAG_PROCESSED: 'hlsSubtitleFragProcessed',
   FRAG_LOADED: 'hlsFragLoaded',
   ERROR: 'hlsError',
 } as const;
@@ -34,6 +35,10 @@ export class FakeHls {
   bandwidthEstimate = 0;
   recoverMediaError = jest.fn();
   swapAudioCodec = jest.fn();
+  /** Loading runs until `stopLoad`; `startLoad` resumes it. */
+  loading = true;
+  stopLoad = jest.fn(() => void (this.loading = false));
+  startLoad = jest.fn(() => void (this.loading = true));
   destroy = jest.fn();
   private handlers = new Map<string, Handler[]>();
 
@@ -78,14 +83,31 @@ export class FakeHls {
       fatal = true,
       status,
       frag,
-    }: { fatal?: boolean; status?: number; frag?: { type: string } } = {}
+      retryAfter,
+      sourceBufferName,
+    }: {
+      fatal?: boolean;
+      status?: number;
+      frag?: { type: string; sn?: number | string; level?: number };
+      /** Seconds in the failed answer's `Retry-After` header (read from an XHR like hls.js passes it). */
+      retryAfter?: number;
+      sourceBufferName?: string;
+    } = {}
   ): void {
     this.trigger(HlsEvents.ERROR, {
       type,
       details,
       fatal,
       frag,
+      sourceBufferName,
       response: status === undefined ? undefined : { code: status },
+      networkDetails:
+        retryAfter === undefined
+          ? undefined
+          : {
+              getResponseHeader: (name: string) =>
+                name === 'Retry-After' ? `${retryAfter}` : null,
+            },
     });
   }
 }
@@ -93,6 +115,31 @@ export class FakeHls {
 /** `jest.mock('hls.js', () => jest.requireActual('@/../jest/player/library-fakes').hlsJsModule())` */
 export function hlsJsModule() {
   return { __esModule: true, default: FakeHls, Events: HlsEvents, ErrorTypes: HlsErrorTypes };
+}
+
+/** hls.js's default loader as the web engine wraps it: `fail()` answers the last request with an HTTP status. */
+export class FakeHlsLoader {
+  static last: FakeHlsLoader | null = null;
+  callbacks: {
+    onSuccess: (...args: unknown[]) => void;
+    onError: (error: unknown, context: unknown, details: unknown, stats: unknown) => void;
+  } | null = null;
+
+  constructor() {
+    FakeHlsLoader.last = this;
+  }
+
+  load(_context: unknown, _config: unknown, callbacks: FakeHlsLoader['callbacks']): void {
+    this.callbacks = callbacks;
+  }
+
+  fail(code: number): void {
+    this.callbacks?.onError({ code, text: '' }, {}, null, {});
+  }
+
+  succeed(): void {
+    this.callbacks?.onSuccess({}, {}, {}, null);
+  }
 }
 
 /** A `<video>` element: media errors 1–4, waiting/stalled, frame callbacks, playback quality, autoplay refusal. */
@@ -314,10 +361,20 @@ export class FakeExpoPlayer {
 }
 
 /** The props of the last rendered `VideoView` (PiP and first-frame callbacks). */
-export const expoVideoView: { props: Record<string, unknown> | null } = { props: null };
+export const expoVideoView: {
+  props: Record<string, unknown> | null;
+  ref: Record<'startPictureInPicture' | 'stopPictureInPicture', jest.Mock>;
+} = {
+  props: null,
+  ref: {
+    startPictureInPicture: jest.fn(async () => undefined),
+    stopPictureInPicture: jest.fn(async () => undefined),
+  },
+};
 
-const VideoView = forwardRef<unknown, Record<string, unknown>>(function VideoView(props, _ref) {
+const VideoView = forwardRef<unknown, Record<string, unknown>>(function VideoView(props, ref) {
   expoVideoView.props = props;
+  useImperativeHandle(ref, () => expoVideoView.ref);
   return null;
 });
 

@@ -21,12 +21,11 @@ export const CLIENT_ERROR_CODES = [
   'engine_error',
   'unexpected_format',
   'decoder_reclaimed',
-  'audio_decode_error',
   'cleartext_not_permitted',
   'vlc_error',
   'vlc_dialog',
   'playback_stalled',
-  'start_timeout',
+  'picture_timeout',
   'seek_stalled',
   'picture_black',
   'picture_frozen',
@@ -35,6 +34,14 @@ export const CLIENT_ERROR_CODES = [
   'player_internal_error',
   'step_timeout',
   'stream_interrupted',
+  'audio_rendition_failed',
+  'network_intercepted',
+  'start_stuck',
+  'audio_decode_error',
+  'subtitle_unavailable',
+  'subtitle_timeout',
+  'subtitle_unreadable',
+  'empty_media',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */
@@ -115,6 +122,8 @@ export const VIEWER_ERROR_CODES = [
   'playback_failed',
   'segment_timeout',
   'transcode_failed',
+  // A start or switch revision the server could not get ready within its 60 s budget (B13b).
+  'start_timeout',
   // Audio rendition requests of an HLS session (in-session audio switch).
   'unknown_audio_rendition',
   'rendition_split_failed',

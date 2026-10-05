@@ -3,15 +3,26 @@ import type { ErrorParams } from '@/api/errors';
 import type { Classified } from './classify';
 import type { HintKey, HintParams } from './hints';
 import {
-  Incident,
   INCIDENT_RESET_MS,
+  INCIDENT_STUCK_MS,
   MAX_ATTEMPTS,
+  OFFLINE_BUDGET_MS,
+  RECURRING_INCIDENTS,
+  RECURRING_WINDOW_MS,
+  STEP_BUDGET_MS,
+} from './budgets';
+import {
+  Incident,
   nextStep,
   type Attempt,
   type Decision,
   type LadderContext,
   type LadderStep,
 } from './ladder';
+
+import { StepBudget, STEP_TIMEOUT } from './step-budget';
+
+export { STEP_TIMEOUT } from './step-budget';
 
 /** The viewer's audio and subtitle (server indexes) at the moment of the failure; every step keeps them. */
 export type StepTracks = { audio: number | null; subtitle: number | null };
@@ -28,6 +39,8 @@ export type FailureExtra = {
   hint?: StatusHint;
   /** The failure says the source is gone (a failed server playback): only a new start helps. */
   detached?: boolean;
+  /** The old picture still plays: the step runs without a hint (the server lost the playback, B13). */
+  quiet?: boolean;
 };
 
 export type Recovery = {
@@ -36,14 +49,16 @@ export type Recovery = {
   extra: FailureExtra;
   position: number;
   tracks: StepTracks;
+  /** The other version a V step chose: a retry after its failure starts that release, never the old one. */
+  releaseId?: string;
   due: number;
   /** The step was started; it ends with the first picture of its source (or the next failure). */
   running: boolean;
   timer: ReturnType<typeof setTimeout> | null;
 };
 
-/** The server and source work a step may take before it counts as failed (polls of a new start included). */
-export const STEP_BUDGET_MS = 90_000;
+/** Categories that wait with their own budget and hint (offline, server countdowns, another device, the system). */
+const OWN_WAIT = new Set(['T3', 'T4', 'T9', 'T10']);
 
 /** What the runner needs from the player: the situation, the step actions and the way out. */
 export type RecoveryHost = {
@@ -67,8 +82,13 @@ export class RecoveryRunner {
   private sourceDead = false;
   /** A step is replacing the source: errors of the old one are noise. */
   replacing = false;
-  private stepAbort: AbortController | null = null;
-  private stepTimer: ReturnType<typeof setTimeout> | null = null;
+  private budget: StepBudget | null = null;
+  /** Since when the viewer looks at a spinner instead of the picture in this incident. */
+  private stuckSince = 0;
+  /** Last time a running step's server reported progress (a state change). */
+  private progressAt = 0;
+  /** Codes that started incidents (for "keeps coming back"). */
+  private history: { code: string; at: number }[] = [];
 
   constructor(private readonly host: RecoveryHost) {}
 
@@ -81,36 +101,92 @@ export class RecoveryRunner {
     const current = this.current;
     if (current && !current.running) return;
     const now = Date.now();
-    if (!this.incident || now - this.incident.lastAt > INCIDENT_RESET_MS)
+    let recurring = false;
+    if (!this.incident || now - this.incident.lastAt > INCIDENT_RESET_MS) {
       this.incident = new Incident(now);
+      this.history = this.history.filter((entry) => now - entry.at < RECURRING_WINDOW_MS);
+      this.history.push({ code: failure.code, at: now });
+      const same = this.history.filter((entry) => entry.code === failure.code).length;
+      recurring = same >= RECURRING_INCIDENTS;
+    }
     const incident = this.incident;
     const situation = this.host.situation();
     const decision =
-      incident.attempts.length >= MAX_ATTEMPTS
+      incident.attempts.length >= MAX_ATTEMPTS || this.stuckTooLong(failure, now)
         ? ({ step: 'G', delayMs: 0 } as Decision)
         : nextStep(incident, failure, {
             ...situation,
             attached: situation.attached && !this.sourceDead && !extra.detached,
             retryAfter: extra.retryAfter,
             params: extra.params,
+            recurring,
           });
     if (decision.step === 'W') return;
     const tracks = current?.tracks ?? this.host.tracks();
     const position = extra.position ?? current?.position ?? this.host.resumePosition();
+    const releaseId = current?.releaseId;
     this.cancel();
-    if (decision.step === 'G') return this.host.giveUp(failure, extra, incident.attempts.slice());
+    if (decision.step === 'G') {
+      this.stuckSince = 0;
+      return this.host.giveUp(failure, extra, incident.attempts.slice());
+    }
+    if (!extra.quiet) this.stuckSince ||= now;
     this.current = {
       decision,
       failure,
       extra,
       position,
       tracks,
+      releaseId,
       due: now + decision.delayMs,
       running: false,
       timer: null,
     };
     this.schedule(decision.delayMs);
     this.host.changed();
+  }
+
+  /** The spinner has been up for a minute in this incident and the server shows no progress: the card (§ 2 c). */
+  private stuckTooLong(failure: Classified, now: number): boolean {
+    if (!this.stuckSince || OWN_WAIT.has(failure.category)) return false;
+    if (failure.category === 'T1' && !this.host.situation().online) return false;
+    return now - this.stuckSince >= INCIDENT_STUCK_MS && now - this.progressAt >= STEP_BUDGET_MS;
+  }
+
+  /** The viewer moved: a waiting step resumes where the viewer is now, with the viewer's tracks (review B4). */
+  reposition(position: number, tracks?: StepTracks): void {
+    const current = this.current;
+    if (!current || current.running) return;
+    current.position = position;
+    if (tracks) current.tracks = tracks;
+    this.host.changed();
+  }
+
+  /** The viewer picked audio or subtitles in the engine: a waiting step keeps the new pick. */
+  retrack(tracks: StepTracks): void {
+    const current = this.current;
+    if (current && !current.running) current.tracks = tracks;
+  }
+
+  /** The server reports progress for the running step (a new start state): its budget starts over. */
+  progress(): void {
+    if (!this.current?.running || !this.budget) return;
+    this.progressAt = Date.now();
+    this.budget.extend();
+  }
+
+  /** The other version a V step is starting (kept for the retries of that start). */
+  choose(releaseId: string): void {
+    if (this.current) this.current.releaseId = releaseId;
+  }
+
+  /** Offline for longer than its budget while a step waits for the network: the card. */
+  expireOffline(offlineFor: number): void {
+    const current = this.current;
+    if (!current || current.due !== Infinity || offlineFor < OFFLINE_BUDGET_MS) return;
+    this.clear();
+    this.stuckSince = 0;
+    this.host.giveUp(current.failure, current.extra, this.attempts);
   }
 
   /** A step that waits (backoff, offline) runs now. */
@@ -123,8 +199,9 @@ export class RecoveryRunner {
     if (this.current && !this.current.running && this.current.due === Infinity) this.schedule(0);
   }
 
-  /** The source shows a picture: the step worked. */
+  /** The source shows a picture: the step worked, and the viewer is no longer stuck. */
   recovered(): void {
+    this.stuckSince = 0;
     if (this.current?.running) this.clear();
   }
 
@@ -142,6 +219,7 @@ export class RecoveryRunner {
   reset(): void {
     this.cancel();
     this.incident = null;
+    this.stuckSince = 0;
   }
 
   /** Starts a step now without a failure (the card's Retry). */
@@ -163,10 +241,8 @@ export class RecoveryRunner {
   private clear(): void {
     const current = this.current;
     if (current?.timer) clearTimeout(current.timer);
-    if (this.stepTimer) clearTimeout(this.stepTimer);
-    this.stepTimer = null;
-    this.stepAbort?.abort();
-    this.stepAbort = null;
+    this.budget?.cancel();
+    this.budget = null;
     this.replacing = false;
     this.current = null;
   }
@@ -197,23 +273,25 @@ export class RecoveryRunner {
     const incident = this.incident;
     incident?.record(attempt);
     this.host.changed();
-    if (step === 'N') this.sourceDead = true;
-    this.replacing = step === 'N';
-    const abort = new AbortController();
-    this.stepAbort = abort;
+    // A new start and another version stop the old playback: until a source attaches, retries start anew (review B5).
+    const replaces = step === 'N' || step === 'V';
+    if (replaces) this.sourceDead = true;
+    this.replacing = replaces;
     // The step's own budget: a server that never gets the new source ready fails the step.
-    this.stepTimer = setTimeout(() => abort.abort(new Error('step_timeout')), STEP_BUDGET_MS);
+    const budget = new StepBudget();
+    this.budget = budget;
+    this.progressAt = 0;
     let ran = true;
     let thrown: unknown = undefined;
     try {
-      ran = await this.host.run(step, recovery, abort.signal);
+      ran = await this.host.run(step, recovery, budget.signal);
     } catch (error) {
-      thrown = abort.signal.aborted && this.current === recovery ? STEP_TIMEOUT : error;
+      thrown =
+        budget.signal.reason === STEP_TIMEOUT && this.current === recovery ? STEP_TIMEOUT : error;
     }
-    if (this.stepAbort === abort) {
-      if (this.stepTimer) clearTimeout(this.stepTimer);
-      this.stepTimer = null;
-      this.stepAbort = null;
+    if (this.budget === budget) {
+      budget.end();
+      this.budget = null;
       this.replacing = false;
     }
     // Replaced meanwhile (cancelled, a newer failure, or given up).
@@ -231,6 +309,3 @@ export class RecoveryRunner {
     this.host.changed();
   }
 }
-
-/** Thrown into `stepError` when a step ran out of its budget. */
-export const STEP_TIMEOUT = new Error('step_timeout');

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
 import { describeError } from '@/api/error-text';
-import { Glass, GlassButton } from '@/components/glass';
+import { Glass } from '@/components/glass';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import type { PlayerStatus } from '@/player/controller';
@@ -12,6 +12,8 @@ import { hintActionKey, hintText, type HintAction } from '@/player/recovery/hint
 import type { Attempt } from '@/player/recovery/ladder';
 import { usePlayerT } from '@/player/use-player-t';
 import { useDesign } from '@/theme';
+
+import { StatusAction } from './status-action';
 
 export type PlayerStatusProps = {
   status: PlayerStatus;
@@ -50,7 +52,7 @@ export function PlayerStatusView({
   const design = useDesign();
   const { hint } = status;
   const text = hint ? hintText(pt, hint.key, hint.params) : null;
-  // The label is taken when the hint changes, so a countdown is not re-read every second.
+  // Announced once per hint (a countdown is not re-read every second); the label follows the live text.
   const [spoken, setSpoken] = useState<{ key: string | null; label: string | null }>({
     key: null,
     label: null,
@@ -104,20 +106,25 @@ export function PlayerStatusView({
             gap: design.space.md,
             alignItems: 'center',
           }}>
-          <View accessible accessibilityLabel={spoken.label ?? text ?? undefined}>
+          <View accessible accessibilityLabel={text ?? undefined}>
             <Text variant="callout" style={{ textAlign: 'center' }}>
               {text}
             </Text>
           </View>
           {actions.length ? (
-            <View style={{ flexDirection: 'row', gap: design.space.sm }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: design.space.sm,
+              }}>
               {actions.map((action, index) => (
-                <GlassButton
+                <StatusAction
                   key={action}
                   testID={`player-status-action-${action}`}
-                  tone={index === 0 ? 'solid' : 'glass'}
+                  primary={index === 0}
                   label={pt(hintActionKey(action))}
-                  hasTVPreferredFocus={false}
                   onPress={() => onAction(action)}
                 />
               ))}

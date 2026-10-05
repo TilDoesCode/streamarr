@@ -1,8 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
+import { createPlayer, profileOrFallback } from '@/player/caps-fallback';
 import { noticeError, noticeMs, stepDownReasonKey } from '@/player/overlay-labels';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform } from 'react-native';
@@ -20,11 +18,14 @@ import { PlayerStatusView, statusLayout } from '@/screens/player/player-status';
 import { UpNextCard } from '@/screens/player/up-next';
 import { useCloseOnFailure } from '@/screens/player/use-close-on-failure';
 import { harness, newController, reply } from '@/../jest/player/harness';
-import { pending, row } from '@/../jest/player/matrix';
+import { row } from '@/../jest/player/matrix';
 import { fakeNetwork, playing, settle, starts, TICKS } from '@/../jest/player/play';
 import { renderWithProviders } from '@/../jest/render';
+import { FakeVideoElement } from '@/../jest/player/library-fakes';
+import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
+jest.mock('hls.js', () => jest.requireActual('@/../jest/player/library-fakes').hlsJsModule());
 
 const generic = () => describeError(i18n.t, { code: 'unknown' });
 
@@ -71,7 +72,6 @@ describe('matrix E — Player UI states', () => {
       await c.stop();
     }
   );
-  pending('E02', 'give up after twice the budget with Retry / Other version (B16)', 'S4b');
   row(
     'E03',
     'a spinner from ready until the first frame, a cause hint by 4 s, a reload after 20 s',
@@ -312,7 +312,7 @@ describe('matrix E — Player UI states', () => {
     });
     await i18n.changeLanguage('en');
     expect(stepDownReasonKey(c.notice!.params)).toBe('notice.because.T7');
-    expect(stepDownReasonKey({ reason: 'start_timeout' })).toBe('notice.because.start_timeout');
+    expect(stepDownReasonKey({ reason: 'picture_timeout' })).toBe('notice.because.picture_timeout');
     expect(stepDownReasonKey({ reason: 'playback_stalled' })).toBe('notice.because.T5');
     expect(stepDownReasonKey({ reason: 'network_unreachable' })).toBeUndefined();
     await c.stop();
@@ -339,17 +339,49 @@ describe('matrix E — Player UI states', () => {
       await controller.stop();
     }
   );
-  row('E16', 'device capabilities that fail to load get their own code and text', async () => {
-    const screen = readFileSync(join(__dirname, '../../../screens/player/play-screen.tsx'), 'utf8');
-    expect(screen).toContain("setCapsError('device_caps_unavailable')");
-    for (const lng of ['en', 'de']) {
-      await i18n.changeLanguage(lng);
-      const text = describeError(i18n.t, { code: 'device_caps_unavailable' });
-      expect(text).not.toEqual(generic());
+  row(
+    'E16',
+    'device capabilities that fail to load: the player is created with the conservative profile and starts; no card',
+    async () => {
+      jest.useFakeTimers();
+      const made: unknown[] = [];
+      const c = await createPlayer(
+        () => Promise.reject(new Error('media-caps missing')),
+        (profile) => {
+          made.push(profile);
+          return newController({ profile });
+        }
+      );
+      await settle();
+      expect(made).toHaveLength(1);
+      expect(made[0]).toMatchObject({
+        engines: [
+          expect.objectContaining({
+            videoCodecs: [expect.objectContaining({ codec: 'h264', maxHeight: 1080 })],
+            audioCodecs: [expect.objectContaining({ codec: 'aac', maxChannels: 2 })],
+          }),
+        ],
+      });
+      expect(harness.server.sent('start')[0]?.body).toMatchObject({ device: made[0] });
+      expect(c?.failure).toBeNull();
+      await c?.stop();
+      // A screen that left before the profile came creates nothing.
+      expect(
+        await createPlayer(
+          async () => ({ profile: made[0] as never }),
+          () => null
+        )
+      ).toBeNull();
+      // A measured profile is used as it is.
+      const measured = { platform: 'web', engines: [], vlcAvailable: true } as never;
+      expect(await profileOrFallback(async () => ({ profile: measured }))).toBe(measured);
+      for (const lng of ['en', 'de']) {
+        await i18n.changeLanguage(lng);
+        expect(describeError(i18n.t, { code: 'player_internal_error' })).not.toEqual(generic());
+      }
+      await i18n.changeLanguage('en');
     }
-    await i18n.changeLanguage('en');
-  });
-  pending('E16', 'fall back to a conservative static profile and play', 'S3');
+  );
   row(
     'E17',
     "a resume prompt left open past the server's idle end starts anew at the choice",
@@ -378,7 +410,6 @@ describe('matrix E — Player UI states', () => {
       await c.stop();
     }
   );
-  pending('E18', '"Switching…" card (phase === \'switching\')', 'S4');
 });
 
 describe('matrix E — code review S1-S4 (S4b)', () => {
@@ -496,4 +527,348 @@ describe('matrix E — code review S1-S4 (S4b)', () => {
       announce.mockRestore();
     }
   );
+});
+
+describe('matrix E — code review S5 + S4b (S4d)', () => {
+  row(
+    'E18',
+    'a step whose switch ends in a failed playback never leaves the phase on "switching" (review R9)',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, {}, 90);
+      server.answer(
+        'switch',
+        reply.ok(
+          server.playback({
+            playbackId: c.playback!.playbackId!,
+            state: 'failed',
+            revision: 1,
+            error: { code: 'transcode_capacity' },
+          } as never)
+        )
+      );
+      const decode = 'MediaCodecVideoRenderer error: decoder init failed';
+      harness.engine.fail(decode);
+      await settle();
+      harness.engine.fail(decode);
+      await settle();
+      expect(c.phase).not.toBe('switching');
+      await c.stop();
+    }
+  );
+
+  row(
+    'E11',
+    'the screen reader label follows the live hint, while the announcement stays one per hint (review R10)',
+    async () => {
+      const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+      const status = (seconds: number) => ({
+        spinner: true,
+        hint: { key: 'serverBusy' as const, params: { seconds } },
+        actions: [],
+      });
+      const view = await renderWithProviders(
+        <PlayerStatusView status={status(9)} onAction={jest.fn()} />
+      );
+      await view.rerender(<PlayerStatusView status={status(4)} onAction={jest.fn()} />);
+      expect(screen.getByLabelText('The server is busy. Retrying in 4 s…')).toBeTruthy();
+      expect(
+        announce.mock.calls.filter(([text]) => String(text).startsWith('The server is busy'))
+      ).toHaveLength(1);
+      announce.mockRestore();
+    }
+  );
+});
+
+describe('matrix E — live web audit S9a (S4d)', () => {
+  row(
+    'E03',
+    'hls.js reports 0:00 before it applies the start position: still loading, the spinner stays and the budget runs (S9a START, C21)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer(
+        'start',
+        reply.ok(harness.server.playback({ method: 'remux' } as never))
+      );
+      const c = newController({ startSeconds: 90 });
+      await c.start();
+      harness.engine.state('playing');
+      harness.engine.time(0, 180);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint?.key).toBe('startSlow');
+      await jest.advanceTimersByTimeAsync(27_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(90);
+      await c.stop();
+    }
+  );
+
+  row(
+    'E03',
+    'a clock that runs on from the start position counts as a picture (engines without a first-frame event)',
+    async () => {
+      jest.useFakeTimers();
+      const c = newController({ startSeconds: 90 });
+      await c.start();
+      harness.engine.state('playing');
+      harness.engine.time(90, 180);
+      expect(c.status.spinner).toBe(true);
+      harness.engine.time(90.5, 180);
+      harness.engine.time(91.2, 180);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix E — a switch the server never finishes (S9a P8, P2, D10)', () => {
+  const starting = (id: string) =>
+    reply.ok(
+      harness.server.playback({
+        playbackId: id,
+        state: 'starting',
+        revision: 1,
+        pollAfterMs: 1000,
+      } as never)
+    );
+
+  row(
+    'E18',
+    'a viewer switch stuck in "starting": the switching card explains after 45 s and the ladder takes over after 60 s',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        41
+      );
+      const id = c.playback!.playbackId!;
+      harness.server.answer('switch', starting(id));
+      harness.server.answer('poll', ...Array.from({ length: 200 }, () => starting(id)));
+      const switching = c.setQuality(720);
+      await settle();
+      expect(c.phase).toBe('switching');
+      await jest.advanceTimersByTimeAsync(46_000);
+      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'preparing' } });
+      await jest.advanceTimersByTimeAsync(15_000);
+      await switching;
+      expect(c.phase).not.toBe('switching');
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.position).toBe(41);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix E — the engine throws on a new source (S9a E09)', () => {
+  row(
+    'E09',
+    'an engine whose load throws stops the old source and ends on the internal-error card, no further steps',
+    async () => {
+      jest.useFakeTimers();
+      await i18n.changeLanguage('en');
+      const c = await playing({}, {}, 24);
+      harness.engine.load.mockImplementationOnce(() => {
+        throw new Error('load exploded');
+      });
+      const before = harness.engine.commands.length;
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      // The engine stops the old source the moment the load throws, before anything else happens.
+      expect(harness.engine.commands.slice(before, before + 2)).toEqual(['pause', 'shutdown']);
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({
+        code: 'player_internal_error',
+        category: 'T11',
+        actions: ['retry'],
+      });
+      expect(describeError(i18n.t, c.failure!).title).toBe('The player hit an internal error');
+      expect(harness.engine.pause).toHaveBeenCalled();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+    }
+  );
+});
+
+describe('matrix E — stuck start states, the switching picture (S4f)', () => {
+  row(
+    'E02',
+    'a start state past its budget explains itself in the start card, and past twice the budget the card offers Retry and Other version',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const planning = server.playback({ state: 'planning', pollAfterMs: 1_000 } as never);
+      server.answer('start', reply.ok(planning));
+      server.answer('poll', ...Array.from({ length: 200 }, () => reply.ok({ ...planning })));
+      const c = newController();
+      void c.start();
+      await jest.advanceTimersByTimeAsync(29_000);
+      expect(c.status.hint).toBeNull();
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'preparing' } });
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'start_stuck', params: { state: 'planning' } });
+      await i18n.changeLanguage('en');
+      expect(describeError(i18n.t, c.failure!).title).toBe(
+        'The server got stuck preparing the video'
+      );
+    }
+  );
+
+  row(
+    'E18',
+    'web: the last frame stays as the poster while the next source loads, and goes with its first frame',
+    async () => {
+      const draw = jest.fn();
+      (globalThis as { document?: unknown }).document = {
+        createElement: () => ({
+          canPlayType: () => '',
+          getContext: () => ({
+            drawImage: draw,
+            getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+          }),
+          toDataURL: () => 'data:image/jpeg;base64,LAST',
+        }),
+      };
+      try {
+        const engine = new WebEngine();
+        const video = new FakeVideoElement() as FakeVideoElement & { poster?: string };
+        (engine as unknown as { attach(video: unknown): void }).attach(video);
+        await loadHls();
+        engine.load({ uri: 'http://server.test/a/master.m3u8', kind: 'hls' });
+        video.present(24);
+        engine.load({ uri: 'http://server.test/b/master.m3u8', kind: 'hls', keepLastFrame: true });
+        expect(video.poster).toBe('data:image/jpeg;base64,LAST');
+        video.present(1);
+        expect(video.poster).toBe('');
+        engine.release();
+        // A plain cross-origin src cannot be read: no poster rather than a tainted canvas.
+        const plain = new WebEngine();
+        const element = new FakeVideoElement() as FakeVideoElement & { poster?: string };
+        Object.defineProperty(plain, 'mode', { value: 'native' });
+        (plain as unknown as { attach(video: unknown): void }).attach(element);
+        plain.load({ uri: 'http://server.test/a.mkv', kind: 'progressive' });
+        element.present(24);
+        plain.load({ uri: 'http://server.test/b.mkv', kind: 'progressive', keepLastFrame: true });
+        expect(element.poster).toBe('');
+        plain.release();
+      } finally {
+        delete (globalThis as { document?: unknown }).document;
+      }
+    }
+  );
+});
+
+describe('matrix E — code review S4c-S4f (S4g)', () => {
+  row(
+    'E18',
+    'an engine "ended" while a viewer switch runs is the old source going away, not the end of the title (review M17)',
+    async () => {
+      jest.useFakeTimers();
+      // At 9:58 of 10:00 an "ended" of the old source would otherwise finish the title.
+      const c = await playing({}, { method: 'remux' } as never, 0);
+      harness.engine.time(598, 600);
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: id,
+            state: 'starting',
+            revision: 1,
+            pollAfterMs: 1000,
+          } as never)
+        )
+      );
+      const switching = c.setQuality(720);
+      await settle();
+      expect(c.phase).toBe('switching');
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.ended).toBe(false);
+      expect(c.failure).toBeNull();
+      await c.stop();
+      await switching;
+    }
+  );
+
+  row(
+    'E18',
+    'an audio pick while a reload waits is the audio the reload brings back (review M16)',
+    async () => {
+      jest.useFakeTimers();
+      const audioTracks = [
+        { index: 1, language: 'en', deliveredAs: 'original', selected: true },
+        { index: 2, language: 'de', deliveredAs: 'original', selected: false },
+      ];
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: { durationTicks: 6e9, audioTracks, subtitleTracks: [] },
+        } as never,
+        100
+      );
+      const tracks = (selected: number) => ({
+        audio: [
+          { id: 'a0', label: 'en', language: 'en', selected: selected === 0 },
+          { id: 'a1', label: 'de', language: 'de', selected: selected === 1 },
+        ],
+        subtitles: [],
+      });
+      harness.engine.emit({ type: 'tracks', tracks: tracks(0) });
+      harness.engine.emit({ type: 'error', reason: 'networkError:fragLoadError', status: 503 });
+      await settle();
+      expect(c.status.hint).toMatchObject({ key: 'serverError' });
+      // The viewer picks German while the reload waits; the engine still lists its tracks.
+      await c.selectAudio(audioTracks[1] as never);
+      harness.engine.emit({ type: 'tracks', tracks: tracks(1) });
+      await jest.advanceTimersByTimeAsync(6_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      // The reloaded engine starts on its default (English); the reload itself puts German back.
+      const before = harness.engine.commands.length;
+      harness.engine.emit({ type: 'tracks', tracks: tracks(0) });
+      expect(harness.engine.commands.slice(before)).toContain('audio:a1');
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix E — the poster is asked for only under the switching card (S4g, review R5)', () => {
+  row('E18', 'a viewer switch keeps the last frame; a reload does not', async () => {
+    jest.useFakeTimers();
+    const c = await playing(
+      {},
+      {
+        method: 'remux',
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [],
+          video: { height: 1080 },
+        },
+      } as never,
+      40
+    );
+    await c.setQuality(720);
+    expect(harness.engine.source?.keepLastFrame).toBe(true);
+    harness.engine.started();
+    harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 503');
+    await jest.advanceTimersByTimeAsync(6_000);
+    expect(harness.engine.load).toHaveBeenCalledTimes(3);
+    expect(harness.engine.source?.keepLastFrame).toBe(false);
+    await c.stop();
+  });
 });

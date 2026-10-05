@@ -860,10 +860,6 @@
         "title": "The video decoder was taken away",
         "message": "Another app or the system took over the video decoder. Try again."
       },
-      "audio_decode_error": {
-        "title": "This device can’t play the sound",
-        "message": "The picture plays, but this device couldn’t output the audio format. Try another audio track or another version."
-      },
       "cleartext_not_permitted": {
         "title": "Unencrypted connection blocked",
         "message": "This device refuses to play over an unencrypted http:// connection. Use the server’s https:// address."
@@ -879,10 +875,6 @@
       "playback_stalled": {
         "title": "Playback keeps stopping",
         "message": "The video loads slower than it plays. Try a lower quality or another version."
-      },
-      "start_timeout": {
-        "title": "The picture didn’t appear",
-        "message": "The player loaded the video but showed no picture. Try another version or play with VLC."
       },
       "seek_stalled": {
         "title": "Seeking got stuck",
@@ -915,6 +907,46 @@
       "stream_interrupted": {
         "title": "The stream was cut off",
         "message": "The connection to the server broke before the end of the video. Retry continues where it stopped."
+      },
+      "audio_decode_error": {
+        "title": "This device can’t play the sound",
+        "message": "The player couldn’t decode the audio of this video. Try another audio track or another version."
+      },
+      "subtitle_unavailable": {
+        "title": "Subtitles couldn’t be loaded",
+        "message": "The server couldn’t deliver these subtitles. Choose other subtitles or try again later."
+      },
+      "subtitle_timeout": {
+        "title": "Subtitles took too long",
+        "message": "The subtitles didn’t arrive in time. They’ll be tried again in a moment."
+      },
+      "subtitle_unreadable": {
+        "title": "Subtitles are damaged",
+        "message": "This subtitle file can’t be read. Choose other subtitles."
+      },
+      "empty_media": {
+        "title": "This version has nothing to play",
+        "message": "The file of this version is empty or shorter than a second. Choose another version."
+      },
+      "audio_rendition_failed": {
+        "title": "The sound couldn’t be loaded",
+        "message": "The server couldn’t deliver the sound of this version, not even converted. Try again or choose another version."
+      },
+      "picture_timeout": {
+        "title": "The picture didn’t appear",
+        "message": "The player loaded the video but showed no picture. Try another version or play with VLC."
+      },
+      "start_timeout": {
+        "title": "The server took too long to start",
+        "message": "The server couldn’t get this video ready in time. Try again or choose a lower quality."
+      },
+      "network_intercepted": {
+        "title": "The network intercepts the connection",
+        "message": "Something between this device and the server answered instead of the server — often a Wi-Fi sign-in page. Sign in to the network, then try again."
+      },
+      "start_stuck": {
+        "title": "The server got stuck preparing the video",
+        "message": "Preparing this video took far longer than usual. Try again or choose another version."
       }
     },
     "sessionRevoked": {
@@ -995,7 +1027,15 @@
         "title": "The app hit an unexpected problem",
         "message": "Try again. If it keeps happening, report the code below."
       }
-    }
+    },
+    "reasons": {
+      "transcoding_disabled": "Converting videos is turned off on this server.",
+      "ffmpeg_unavailable": "ffmpeg is not installed on the server.",
+      "no_local_listener": "The server has no local converter running.",
+      "too_many_sessions": "The server converts as many videos as it can at once.",
+      "insufficient_disk": "The server's disk is full."
+    },
+    "reasonLabel": "Reason: {reason}"
   },
   "gallery": {
     "title": "Component gallery",

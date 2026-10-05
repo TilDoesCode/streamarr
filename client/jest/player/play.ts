@@ -67,3 +67,11 @@ export async function playFor(
     each?.();
   }
 }
+
+/** Lets the engine play on for `seconds`: its clock runs like a real one (time events once a second). */
+export async function playOn(seconds: number): Promise<void> {
+  for (let second = 0; second < seconds; second++) {
+    harness.engine.time(harness.engine.getSnapshot().position + 1);
+    await jest.advanceTimersByTimeAsync(1_000);
+  }
+}

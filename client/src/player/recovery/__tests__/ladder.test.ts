@@ -1,17 +1,12 @@
-import {
-  cardActions,
-  Incident,
-  MAX_ATTEMPTS,
-  MAX_STEP_DOWNS,
-  nextStep,
-  type LadderContext,
-} from '@/player/recovery/ladder';
+import { MAX_ATTEMPTS, MAX_STEP_DOWNS } from '@/player/recovery/budgets';
+import { cardActions, Incident, nextStep, type LadderContext } from '@/player/recovery/ladder';
 
 const attached: LadderContext = {
   attached: true,
   online: true,
   canLowerQuality: false,
   revision: 0,
+  audioFallback: false,
 };
 
 function run(

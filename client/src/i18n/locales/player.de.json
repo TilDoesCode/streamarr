@@ -99,12 +99,17 @@
     "stepDownTranscode": "Wechsel zu Transkodierung, damit es weiterläuft.",
     "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter.",
     "because": {
-      "start_timeout": "Das Bild blieb schwarz.",
       "T7": "Dieses Gerät konnte das Video nicht dekodieren.",
       "T5": "Das Video lud zu langsam.",
-      "T6": "Der Server hatte ein Problem."
+      "T6": "Der Server hatte ein Problem.",
+      "picture_timeout": "Das Bild blieb schwarz."
     },
-    "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht."
+    "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht.",
+    "audioFallback": "Ton in Stereo umgewandelt, damit es weitergeht.",
+    "subtitleFailed": "Untertitel „{label}“ konnten nicht geladen werden und sind aus. {retry, select, later {Sie werden in einer Minute erneut versucht.} other {Wähle andere Untertitel.}}",
+    "subtitleNotDeliverable": "Untertitel „{label}“ können auf diesem Gerät nicht angezeigt werden.",
+    "subtitleNotDeliverableVlc": "Untertitel „{label}“ können hier nicht angezeigt werden — VLC kann sie zeigen.",
+    "audioRestarted": "Ton gewechselt, der Stream wurde dafür neu gestartet."
   },
   "upNext": {
     "title": "Als Nächstes",
@@ -126,20 +131,17 @@
     "serverSlow": "Der Server wandelt langsamer um, als abgespielt wird. Wird gepuffert …",
     "reconnecting": "Verbindung unterbrochen. Neuer Versuch in {seconds} s …",
     "offline": "Keine Netzwerkverbindung. Es geht weiter, sobald das Gerät wieder online ist.",
-    "serverDown": "Server nicht erreichbar. Neuer Versuch in {seconds} s …",
     "restarting": "Der Server hat die Wiedergabe beendet. Sie startet neu bei {time} …",
     "recovering": "Das Bild hängt. Wird bei {time} neu geladen …",
     "noPicture": "Kein Bild. Eine andere Wiedergabeart wird versucht …",
     "noAudio": "Kein Ton. Die Tonspur wird neu geladen …",
-    "decoder": "Dieses Gerät kann {format} nicht abspielen. Wird umgewandelt …",
     "deviceSlow": "Das Gerät kommt nicht hinterher ({percent, number} % Bilder ausgelassen).",
     "endedEarly": "Die Datei endet bei {time}, {missing} vor dem Ende.",
-    "subtitleFailed": "Untertitel „{label}“ konnten nicht geladen werden.",
     "pausedBySystem": "Pausiert: {cause}.",
     "airplay": "Läuft auf {device}.",
+    "decoder": "Dieses Gerät kann {format} nicht abspielen. Wird umgewandelt …",
     "mutedAutoplay": "Ton aus – zum Einschalten tippen.",
     "autoplayBlocked": "Der Browser hat den Start blockiert.",
-    "signedOut": "Abgemeldet: {reason}. Deine Position {time} ist gespeichert.",
     "serverBusy": "Der Server ist ausgelastet. Neuer Versuch in {seconds} s …",
     "waitingForStream": "Startet, sobald die Wiedergabe auf {device} endet.",
     "buffering": "Laden dauert länger als üblich. Wird gepuffert …",
@@ -148,6 +150,9 @@
     "lowering": "Wechsel auf eine niedrigere Qualität, es geht weiter bei {time} …",
     "steppingDown": "Eine andere Wiedergabeart wird versucht, es geht weiter bei {time} …",
     "switchingVersion": "Eine andere Version wird versucht, es geht weiter bei {time} …",
+    "convertingAudio": "Kein Ton. Der Ton wird umgewandelt, es geht weiter bei {time} …",
+    "serverRetrying": "Der Server hatte ein Problem mit diesem Teil des Videos. Neuer Versuch …",
+    "serverRepairing": "Der Server repariert fehlende Daten dieses Videos. Wird gepuffert …",
     "causes": {
       "call": "Anruf",
       "otherAudio": "andere App spielt Ton",
@@ -182,6 +187,7 @@
     "Q": "Niedrigere Qualität",
     "S": "Andere Wiedergabeart",
     "V": "Andere Version",
-    "G": "Aufgegeben"
+    "G": "Aufgegeben",
+    "A": "Ton umgewandelt"
   }
 }

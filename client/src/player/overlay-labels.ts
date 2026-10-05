@@ -208,9 +208,43 @@ export function stepDownReasonKey(
 ): PlayerKey | undefined {
   const reason = params?.reason;
   if (!reason) return undefined;
-  if (reason === 'start_timeout') return 'notice.because.start_timeout';
+  if (reason === 'picture_timeout') return 'notice.because.picture_timeout';
   const category = categoryOf(reason);
   return category === 'T5' || category === 'T6' || category === 'T7'
     ? `notice.because.${category}`
     : undefined;
+}
+
+type NoticeLike = { kind: string; params?: Readonly<Record<string, string>> };
+
+/** The notice line: what changed so playback goes on, in the viewer's words (never a raw code). */
+export function noticeText(
+  notice: NoticeLike,
+  pt: (key: PlayerKey, options?: Record<string, unknown>) => string,
+  reasonOf: (error: ErrorLike) => string,
+  subtitleName: (index: number) => string
+): string {
+  const { params } = notice;
+  const label = () => subtitleName(Number(params?.index));
+  switch (notice.kind) {
+    case 'stepDown':
+      return [stepDownKey(params), stepDownReasonKey(params)]
+        .flatMap((key) => (key ? [pt(key)] : []))
+        .join(' ');
+    case 'otherVersion':
+      return pt('notice.otherVersion');
+    case 'audioFallback':
+      return pt('notice.audioFallback');
+    case 'audioRestarted':
+      return pt('notice.audioRestarted');
+    case 'subtitleFailed':
+      return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
+    case 'subtitleNotDeliverable':
+      return pt(
+        params?.vlc ? 'notice.subtitleNotDeliverableVlc' : 'notice.subtitleNotDeliverable',
+        { label: label() }
+      );
+    default:
+      return pt('notice.switchFailed', { reason: reasonOf(noticeError(params)) });
+  }
 }

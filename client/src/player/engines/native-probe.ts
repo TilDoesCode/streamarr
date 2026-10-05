@@ -1,5 +1,5 @@
 import type { EngineHealth } from '../health/types';
-import type { SystemCause } from '../recovery/classify';
+import type { SystemCause } from './types';
 
 /** What patches/expo-video adds to a failed item: ExoPlayer's code name, AVFoundation's NSError and error log. */
 export type NativeError = {

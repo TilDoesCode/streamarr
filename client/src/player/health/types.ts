@@ -3,6 +3,7 @@ export type EngineHealth = {
   /** Monotonic count of frames on screen. */
   framesPresented?: number;
   framesDropped?: number;
+  /** Frames the decoder produced (VLC, Exo): decoded but never presented = no picture (D16, D23). */
   framesDecoded?: number;
   /** Monotonic bytes/buffers of audio rendered or decoded. */
   audioProgress?: number;
@@ -11,6 +12,10 @@ export type EngineHealth = {
   hasVideoTrack?: boolean;
   hasAudioTrack?: boolean;
   bandwidthBps?: number;
+  /** The last video segment: server wait until the first byte, transfer after it, and its size (C08 vs C03). */
+  fetch?: { waitMs: number; transferMs: number; bytes: number };
+  /** Media seconds a transcode delivered per second the client waited, over the last segments (< 1 = slower than real time). */
+  conversionRate?: number;
   /** AirPlay / Remote Playback: picture checks off. */
   external?: boolean;
   /** Engine clock read directly, not from time events (D35). */
@@ -18,9 +23,6 @@ export type EngineHealth = {
   /** Brightest sampled pixel (0–255) where the picture can be read (same-origin data only). */
   luma?: number;
 };
-
-/** Every probe (web now, expo-video in S6, VLC in S7) answers in the same shape. */
-export type HealthProbe = { readHealth(): Promise<EngineHealth> };
 
 export type HealthVerdict =
   'ok' | 'clock-frozen' | 'picture-black' | 'picture-frozen' | 'audio-silent' | 'slideshow';

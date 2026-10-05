@@ -860,10 +860,6 @@
         "title": "Der Video-Decoder wurde entzogen",
         "message": "Eine andere App oder das System hat den Video-Decoder übernommen. Versuche es erneut."
       },
-      "audio_decode_error": {
-        "title": "Dieses Gerät kann den Ton nicht abspielen",
-        "message": "Das Bild läuft, aber dieses Gerät kann das Tonformat nicht ausgeben. Wähle eine andere Tonspur oder eine andere Version."
-      },
       "cleartext_not_permitted": {
         "title": "Unverschlüsselte Verbindung blockiert",
         "message": "Dieses Gerät spielt nicht über eine unverschlüsselte http://-Verbindung. Verwende die https://-Adresse des Servers."
@@ -879,10 +875,6 @@
       "playback_stalled": {
         "title": "Wiedergabe stockt immer wieder",
         "message": "Das Video lädt langsamer, als es abgespielt wird. Versuche eine niedrigere Qualität oder eine andere Version."
-      },
-      "start_timeout": {
-        "title": "Kein Bild erschienen",
-        "message": "Der Player hat das Video geladen, aber kein Bild gezeigt. Versuche eine andere Version oder spiele mit VLC ab."
       },
       "seek_stalled": {
         "title": "Springen hängt",
@@ -915,6 +907,46 @@
       "stream_interrupted": {
         "title": "Der Stream wurde abgebrochen",
         "message": "Die Verbindung zum Server brach vor dem Ende des Videos ab. Erneut versuchen macht dort weiter, wo es aufgehört hat."
+      },
+      "audio_decode_error": {
+        "title": "Ton lässt sich nicht abspielen",
+        "message": "Der Player konnte den Ton dieses Videos nicht dekodieren. Versuche eine andere Tonspur oder eine andere Version."
+      },
+      "subtitle_unavailable": {
+        "title": "Untertitel nicht geladen",
+        "message": "Der Server konnte diese Untertitel nicht liefern. Wähle andere Untertitel oder versuche es später erneut."
+      },
+      "subtitle_timeout": {
+        "title": "Untertitel kamen zu spät",
+        "message": "Die Untertitel kamen nicht rechtzeitig an. Sie werden gleich noch einmal versucht."
+      },
+      "subtitle_unreadable": {
+        "title": "Untertitel sind beschädigt",
+        "message": "Diese Untertiteldatei lässt sich nicht lesen. Wähle andere Untertitel."
+      },
+      "empty_media": {
+        "title": "Diese Version enthält nichts zum Abspielen",
+        "message": "Die Datei dieser Version ist leer oder kürzer als eine Sekunde. Wähle eine andere Version."
+      },
+      "audio_rendition_failed": {
+        "title": "Der Ton konnte nicht geladen werden",
+        "message": "Der Server konnte den Ton dieser Version nicht liefern, auch nicht umgewandelt. Versuche es erneut oder wähle eine andere Version."
+      },
+      "picture_timeout": {
+        "title": "Kein Bild erschienen",
+        "message": "Der Player hat das Video geladen, aber kein Bild gezeigt. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "start_timeout": {
+        "title": "Der Server hat zu lange zum Starten gebraucht",
+        "message": "Der Server konnte das Video nicht rechtzeitig bereitstellen. Versuche es erneut oder wähle eine niedrigere Qualität."
+      },
+      "network_intercepted": {
+        "title": "Das Netzwerk fängt die Verbindung ab",
+        "message": "Etwas zwischen diesem Gerät und dem Server hat statt des Servers geantwortet — oft eine WLAN-Anmeldeseite. Melde dich im Netzwerk an und versuche es dann erneut."
+      },
+      "start_stuck": {
+        "title": "Der Server hängt beim Vorbereiten",
+        "message": "Das Vorbereiten des Videos dauert viel länger als üblich. Versuche es erneut oder wähle eine andere Version."
       }
     },
     "sessionRevoked": {
@@ -995,7 +1027,15 @@
         "title": "Unerwartetes Problem in der App",
         "message": "Versuche es erneut. Wenn es wieder passiert, melde den Code unten."
       }
-    }
+    },
+    "reasons": {
+      "transcoding_disabled": "Das Umwandeln von Videos ist auf diesem Server ausgeschaltet.",
+      "ffmpeg_unavailable": "ffmpeg ist auf dem Server nicht installiert.",
+      "no_local_listener": "Auf dem Server läuft kein lokaler Umwandler.",
+      "too_many_sessions": "Der Server wandelt bereits so viele Videos um, wie er gleichzeitig kann.",
+      "insufficient_disk": "Der Speicher des Servers ist voll."
+    },
+    "reasonLabel": "Grund: {reason}"
   },
   "gallery": {
     "title": "Komponenten-Galerie",

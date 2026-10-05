@@ -66,6 +66,7 @@ export class ScriptedEngine implements PlayerEngine {
   });
   setMuted = jest.fn((muted: boolean) => void this.commands.push(`muted:${muted}`));
   startPictureInPicture = jest.fn(() => void this.commands.push('pip'));
+  stopPictureInPicture = jest.fn(() => void this.commands.push('pip-off'));
   shutdown = jest.fn(() => {
     this.commands.push('shutdown');
     return Promise.resolve();

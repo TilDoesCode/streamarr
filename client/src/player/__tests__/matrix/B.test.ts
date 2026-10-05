@@ -1,10 +1,20 @@
+import { STEP_BUDGET_MS } from '@/player/recovery/budgets';
 import { categoryOf } from '@/api/error-categories';
 import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
 import { harness, newController, reply } from '@/../jest/player/harness';
-import { pending, row } from '@/../jest/player/matrix';
-import { fakeNetwork, playing, settle, starts, TICKS } from '@/../jest/player/play';
+import { row } from '@/../jest/player/matrix';
+import {
+  fakeNetwork,
+  playFor,
+  playing,
+  playOn,
+  settle,
+  starts,
+  TICKS,
+} from '@/../jest/player/play';
 import { ProgressQueue } from '@/player/progress-queue';
+import { failureReason } from '@/screens/player/card-actions';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
 
@@ -104,16 +114,6 @@ describe('matrix B — Playback API', () => {
     expect(c.phase).toBe('playing');
     await c.stop();
   });
-  pending(
-    'B06',
-    'Other version preselects suggestedReleaseId; content failures keep their card',
-    'S8'
-  );
-  pending(
-    'B07',
-    'Failed transcoding_not_allowed, transcoding_unavailable (params.reason), no_playable_me…',
-    'S4'
-  );
   row('B08', 'capacity failures retry 3× (5/10/20 s); a full disk does not', async () => {
     jest.useFakeTimers();
     harness.server.answer('start', ...[1, 2, 3, 4].map(() => failedWith('capacity_reached')));
@@ -140,12 +140,6 @@ describe('matrix B — Playback API', () => {
       params: { reason: 'insufficient_disk' },
     });
   });
-  pending(
-    'B09',
-    'Failed transcode_failed, segment_timeout at start (params.reason init_unavailable/segme…',
-    'regression test, S3+'
-  );
-  pending('B10', 'Failed playback_failed (params.reason)', 'S4');
   row(
     'B11',
     "no_more_methods: the card keeps the server's actions and every step that was tried",
@@ -262,7 +256,6 @@ describe('matrix B — Playback API', () => {
     expect(c.phase).toBe('playing');
     await c.stop();
   });
-  pending('B16', 'Playback hangs in one state (server stuck in starting/resolving)', 'S4');
   row('B17', 'playback_not_found while starting (server restarted) starts once more', async () => {
     jest.useFakeTimers();
     const server = harness.server;
@@ -294,11 +287,6 @@ describe('matrix B — Playback API', () => {
     expect(c.preferences.maxHeight).toBeUndefined();
     await c.stop();
   });
-  pending(
-    'B19',
-    '/switch → failed (user switch: quality/version/engine, e.g. transcode_capacity)',
-    'S4'
-  );
   row('B20', 'a switch without network keeps the running source', async () => {
     jest.useFakeTimers();
     const c = await playing({}, {}, 70);
@@ -332,7 +320,6 @@ describe('matrix B — Playback API', () => {
       await c.stop();
     }
   );
-  pending('B22', 'Progress heartbeat fails transiently', 'regression test, S3+');
   row(
     'B23',
     'progress refused with 401/403 is kept per account until it signs in again (24 h cap)',
@@ -438,7 +425,6 @@ describe('matrix B — Playback API', () => {
     expect(starts().at(-1)?.position).toBe(300);
     await c.stop();
   });
-  pending('B26', 'Server unreachable for a while, media still buffered', 'regression test, S3+');
   row('B27', 'a failing stop call is swallowed', async () => {
     const server = harness.server;
     server.answer('start', reply.ok(server.playback({ resumePositionTicks: 120 * 10_000_000 })));
@@ -511,13 +497,13 @@ describe('matrix B — code review S1-S4 (S4b)', () => {
       harness.engine.fail(exo(404));
       await settle();
       harness.engine.started();
-      await jest.advanceTimersByTimeAsync(130_000);
+      await playOn(130);
       harness.engine.fail(exo(404));
       await settle();
       harness.engine.started();
       expect(c.phase).toBe('playing');
       expect(starts()).toHaveLength(3);
-      await jest.advanceTimersByTimeAsync(30_000);
+      await playOn(30);
       harness.engine.fail(exo(404));
       await settle();
       // Within 2 minutes it is the same incident, and session loss gets one new start per incident.
@@ -613,6 +599,808 @@ describe('matrix B — code review S1-S4 (S4b)', () => {
       expect(server.sent('versions')).toHaveLength(1);
       expect(c.failure?.code).toBe('no_more_methods');
       expect(c.failure?.tried?.map((attempt) => attempt.step)).toEqual(['R', 'S']);
+    }
+  );
+});
+
+describe('matrix B — playbackAlive from the progress answer (S4c, B13)', () => {
+  const audioTracks = [
+    { index: 1, language: 'en', deliveredAs: 'original', selected: true },
+    { index: 2, language: 'de', deliveredAs: 'original', selected: false },
+  ];
+  const engineAudio = (selected: number) => ({
+    audio: [
+      { id: 'a0', label: 'en', language: 'en', selected: selected === 0 },
+      { id: 'a1', label: 'de', language: 'de', selected: selected === 1 },
+    ],
+    subtitles: [],
+  });
+
+  row(
+    'B25',
+    'a heartbeat answered playbackAlive false: a silent new start at the position with the viewer audio; no hint, no notice',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { mediaInfo: { durationTicks: 6e9, audioTracks, subtitleTracks: [] } } as never,
+        100
+      );
+      harness.engine.emit({ type: 'tracks', tracks: engineAudio(0) });
+      await c.selectAudio(audioTracks[1] as never);
+      harness.engine.emit({ type: 'tracks', tracks: engineAudio(1) });
+      harness.engine.time(120);
+      const old = c.playback!.playbackId;
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)).toMatchObject({ position: 120, body: { audioStreamIndex: 2 } });
+      expect(c.playback!.playbackId).not.toBe(old);
+      expect(c.status).toEqual({ spinner: true, hint: null, actions: [] });
+      harness.engine.started();
+      expect(c.status.hint).toBeNull();
+      expect(c.notice).toBeNull();
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'B25',
+    'playbackAlive true or null, or false for an older playback, changes nothing',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('progress', reply.ok({ playbackAlive: true }), reply.ok({}));
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(starts()).toHaveLength(1);
+      const engine = harness.engine;
+      c.progress.onAnswer?.({
+        report: {
+          event: 'progress',
+          workId: 'w1',
+          playbackId: 'p-old',
+          positionTicks: 0,
+          durationTicks: null,
+        },
+        playbackAlive: false,
+      });
+      await settle();
+      expect(starts()).toHaveLength(1);
+      expect(engine.load).toHaveBeenCalledTimes(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'B25',
+    'the silent restart that fails is no longer silent: the busy hint, then playback',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      harness.server.answer('start', reply.error(503, 'capacity_reached'));
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(c.status.hint).toMatchObject({ key: 'serverBusy' });
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(starts()).toHaveLength(3);
+      harness.engine.started();
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — code review S5 + S4b (S4d)', () => {
+  const exo = (status: number) =>
+    `Source error: InvalidResponseCodeException: Response code: ${status}`;
+  const starting = (id = 'slow') =>
+    reply.ok(
+      harness.server.playback({ playbackId: id, state: 'starting', pollAfterMs: 1000 } as never)
+    );
+
+  row(
+    'B25',
+    'a new start that never gets ready ends on the card after a minute with its own code (review X2, K10, K36)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('start', starting(), starting(), starting());
+      harness.server.answer('poll', ...Array.from({ length: 400 }, () => starting()));
+      harness.engine.fail(exo(404));
+      await settle();
+      await jest.advanceTimersByTimeAsync(59_000);
+      expect(c.phase).toBe('playing');
+      expect(c.status.hint?.key).toBe('restarting');
+      await jest.advanceTimersByTimeAsync(2_000);
+      await settle();
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'step_timeout', category: 'T6' });
+    }
+  );
+
+  row(
+    'B25',
+    'a new start whose server keeps reporting progress gets the time it needs (budget extended per state)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      const state = (s: string) =>
+        reply.ok(
+          harness.server.playback({ playbackId: 'p9', state: s, pollAfterMs: 1000 } as never)
+        );
+      const polls = [
+        ...Array.from({ length: 50 }, () => state('resolving')),
+        ...Array.from({ length: 50 }, () => state('repairing')),
+        state('ready'),
+      ];
+      harness.server.answer('start', state('queued'));
+      harness.server.answer('poll', ...polls);
+      harness.engine.fail(exo(404));
+      await settle();
+      await jest.advanceTimersByTimeAsync(110_000);
+      expect(c.failure).toBeNull();
+      expect(harness.engine.source?.uri).toContain('p9');
+      harness.engine.started();
+      expect(c.phase).toBe('playing');
+      await c.stop();
+    }
+  );
+
+  row(
+    'B06',
+    'other version: one 503 on its start retries that version, never the stopped old playback (review B5)',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, { version: { releaseId: 'r1' } } as never, 0);
+      const p1 = c.playback!.playbackId!;
+      server.answer(
+        'versions',
+        reply.ok({ versions: [{ releaseId: 'r2', rank: 1, predictedMethod: 'direct' }] })
+      );
+      harness.engine.time(300, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      server.answer('start', reply.error(503, 'server_busy'));
+      harness.engine.emit({ type: 'firstFrame' });
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      await jest.advanceTimersByTimeAsync(6_000);
+      await settle();
+      expect(harness.engine.sources.map((source) => source.uri).at(-1)).not.toContain(`/${p1}`);
+      expect(starts().map((start) => start.releaseId)).toEqual([undefined, 'r2', 'r2']);
+      await c.stop();
+    }
+  );
+
+  row('B06', 'while the other version starts the hint says so (review K35)', async () => {
+    jest.useFakeTimers();
+    const server = harness.server;
+    const c = await playing({}, { version: { releaseId: 'r1' } } as never, 0);
+    server.answer(
+      'versions',
+      reply.ok({ versions: [{ releaseId: 'r2', rank: 1, predictedMethod: 'direct' }] })
+    );
+    server.answer('start', starting('p2'));
+    server.answer('poll', ...Array.from({ length: 20 }, () => starting('p2')));
+    harness.engine.time(300, 600);
+    harness.engine.emit({ type: 'ended' });
+    await settle();
+    harness.engine.emit({ type: 'firstFrame' });
+    harness.engine.emit({ type: 'ended' });
+    await settle();
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(c.status.hint).toMatchObject({ key: 'switchingVersion' });
+    await c.stop();
+  });
+
+  row(
+    'B25',
+    'the watchdog does not judge the old picture while a silent new start runs (review K31)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, {}, 0);
+      await playFor(5, (second) => ({
+        position: second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000 },
+      }));
+      harness.server.answer('start', starting('p2'));
+      harness.server.answer('poll', ...Array.from({ length: 30 }, () => starting('p2')));
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      await playFor(
+        10,
+        (second) => ({
+          position: second,
+          health: { framesPresented: 120, audioProgress: second * 1000 },
+        }),
+        5
+      );
+      expect(starts()).toHaveLength(2);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.failure).toBeNull();
+      expect(c.status.hint).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — step budget against a request that never answers (S4d)', () => {
+  row(
+    'B25',
+    'a new start whose request never answers ends with step_timeout, not "aborted" (review D24)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      harness.server.answer('start', reply.hang(), reply.hang(), reply.hang());
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      await jest.advanceTimersByTimeAsync(61_000);
+      await settle();
+      expect(c.failure).toMatchObject({ code: 'step_timeout' });
+    }
+  );
+});
+
+describe('matrix B — every conversion of this version fails (S9a B06)', () => {
+  row(
+    'B06',
+    'transcode_failed on every new start: one more start, then another version at the position, never three starts and a card',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, { method: 'remux', version: { releaseId: 'r1' } } as never, 30);
+      const failed = () =>
+        reply.ok(
+          server.playback({
+            state: 'failed',
+            version: { releaseId: 'r1' },
+            error: { code: 'transcode_failed' },
+          } as never)
+        );
+      server.answer('start', failed(), failed());
+      server.answer(
+        'versions',
+        reply.ok({
+          versions: [
+            { releaseId: 'r1', rank: 1, predictedMethod: 'remux' },
+            { releaseId: 'r4', rank: 2, predictedMethod: 'direct' },
+          ],
+        })
+      );
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      for (let second = 0; second < 30; second += 1) await jest.advanceTimersByTimeAsync(1_000);
+      expect(starts().at(-1)).toMatchObject({ releaseId: 'r4', position: 30 });
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — the server bounds a start or switch at 60 s: start_timeout (B13b)', () => {
+  const timedOut = (id?: string) =>
+    reply.ok(
+      harness.server.playback({
+        ...(id ? { playbackId: id } : null),
+        state: 'failed',
+        revision: 1,
+        error: { code: 'start_timeout' },
+        suggestedActions: ['retry', 'lowerQuality'],
+      } as never)
+    );
+
+  row(
+    'B19',
+    'a viewer switch the server gave up on keeps the old source playing, with a notice why',
+    async () => {
+      jest.useFakeTimers();
+      await i18n.changeLanguage('en');
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        41
+      );
+      const before = c.playback;
+      harness.server.answer('switch', timedOut(c.playback!.playbackId!));
+      expect(await c.setQuality(720)).toBe(false);
+      expect(c.phase).toBe('playing');
+      expect(c.playback).toBe(before);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(starts()).toHaveLength(1);
+      expect(c.notice).toMatchObject({ kind: 'switchFailed', params: { code: 'start_timeout' } });
+      expect(describeError(i18n.t, { code: 'start_timeout' }).title).toBe(
+        'The server took too long to start'
+      );
+      await c.stop();
+    }
+  );
+
+  row(
+    'B16',
+    'a start the server gave up on: one fresh start, then another version, then the card with retry and lower quality',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', timedOut(), timedOut());
+      const c = newController();
+      await c.start();
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'start_timeout', category: 'T5' });
+      expect(c.failure?.actions).toEqual(expect.arrayContaining(['retry', 'lowerQuality']));
+    }
+  );
+
+  row(
+    'B16',
+    'a recovery switch the server gave up on: the next step is a fresh start at the position',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        70
+      );
+      harness.server.answer('switch', timedOut(c.playback!.playbackId!));
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(1);
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.position).toBe(70);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — failed playbacks, stuck starts, switches, heartbeats (S4f)', () => {
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (i18n.t as unknown as (key: string, options?: Record<string, unknown>) => string)(key, options);
+  const known = (reason: string) => i18n.exists(`errors.reasons.${reason}`);
+
+  row(
+    'B06',
+    'a dead release: reload is pointless, another version is tried, else the card keeps "Other version" (the API has no suggestedReleaseId)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', failedWith('release_dead'));
+      const c = newController();
+      await c.start();
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.failure).toMatchObject({ code: 'release_dead', category: 'T8' });
+      expect(c.failure?.actions).toContain('otherVersion');
+    }
+  );
+
+  row(
+    'B07',
+    'transcoding_unavailable with params.reason: the card says why in words (ffmpeg not installed)',
+    async () => {
+      jest.useFakeTimers();
+      await i18n.changeLanguage('en');
+      harness.server.answer(
+        'start',
+        ...Array.from({ length: 5 }, () =>
+          failedWith('transcoding_unavailable', { params: { reason: 'ffmpeg_unavailable' } })
+        )
+      );
+      const c = newController();
+      await c.start();
+      await settle();
+      await jest.advanceTimersByTimeAsync(60_000);
+      // The server cannot convert at all: one more start, then a version that needs no conversion, then the card.
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.failure).toMatchObject({
+        code: 'transcoding_unavailable',
+        params: { reason: 'ffmpeg_unavailable' },
+      });
+      expect(failureReason(tr, c.failure!.params, known)).toBe(
+        'ffmpeg is not installed on the server.'
+      );
+    }
+  );
+
+  row(
+    'B10',
+    'playback_failed with an unknown params.reason: the card shows the reason code',
+    async () => {
+      jest.useFakeTimers();
+      await i18n.changeLanguage('en');
+      harness.server.answer(
+        'start',
+        ...Array.from({ length: 5 }, () =>
+          failedWith('playback_failed', { params: { reason: 'start_timeout' } })
+        )
+      );
+      const c = newController();
+      await c.start();
+      await settle();
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.failure).toMatchObject({
+        code: 'playback_failed',
+        category: 'T6',
+        params: { reason: 'start_timeout' },
+      });
+      expect(failureReason(tr, c.failure!.params, known)).toBe('Reason: start_timeout');
+      expect(failureReason(tr, undefined, known)).toBeNull();
+    }
+  );
+
+  row(
+    'B09',
+    'transcode_failed at the start (reason init_unavailable): one more start, then another version, then the card',
+    async () => {
+      jest.useFakeTimers();
+      const failed = () =>
+        failedWith('transcode_failed', { params: { reason: 'init_unavailable' } });
+      harness.server.answer('start', failed(), failed());
+      const c = newController();
+      await c.start();
+      await settle();
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(harness.server.sent('start')).toHaveLength(2);
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.failure).toMatchObject({ code: 'transcode_failed', category: 'T6' });
+    }
+  );
+
+  row(
+    'B16',
+    'a server stuck in one start state: the hint after the budget, the card with Retry and Other version after twice the budget; no late attach',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const stuck = server.playback({ state: 'planning', pollAfterMs: 1_000 } as never);
+      server.answer('start', reply.ok(stuck));
+      server.answer('poll', ...Array.from({ length: 200 }, () => reply.ok({ ...stuck })));
+      const c = newController();
+      void c.start();
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'preparing' } });
+      expect(c.phase).toBe('starting');
+      await jest.advanceTimersByTimeAsync(31_000);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'start_stuck', actions: ['retry', 'otherVersion'] });
+      const polls = server.sent('poll').length;
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(server.sent('poll')).toHaveLength(polls);
+      expect(harness.engines).toHaveLength(0);
+    }
+  );
+
+  row(
+    'B19',
+    'a viewer switch that ends failed (transcode_capacity): the old source plays on, no new start, a notice',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        41
+      );
+      const before = c.playback;
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            state: 'failed',
+            revision: 1,
+            error: { code: 'transcode_capacity' },
+          } as never)
+        )
+      );
+      expect(await c.setQuality(720)).toBe(false);
+      expect(c.playback).toBe(before);
+      expect(c.phase).toBe('playing');
+      expect(starts()).toHaveLength(1);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.notice).toMatchObject({
+        kind: 'switchFailed',
+        params: { code: 'transcode_capacity' },
+      });
+      await c.stop();
+    }
+  );
+
+  row(
+    'B19',
+    'a switch that failed while the old source no longer plays: a new start at the position (restore)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 41);
+      harness.engine.state('error');
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            state: 'failed',
+            revision: 1,
+            error: { code: 'transcode_capacity' },
+          } as never)
+        )
+      );
+      await c.setQuality(720);
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.position).toBe(41);
+      await c.stop();
+    }
+  );
+
+  row(
+    'B22',
+    'a heartbeat that fails for a while is queued and sent later; the playback never notices',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 30);
+      harness.server.answer(
+        'progress',
+        reply.error(503, 'server_error'),
+        reply.error(503, 'server_error')
+      );
+      await playOn(12);
+      expect(c.progress.pending).toBeGreaterThan(0);
+      await playOn(30);
+      expect(c.progress.pending).toBe(0);
+      expect(c.status.hint).toBeNull();
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'B26',
+    'the server unreachable while the media is buffered: playback goes on, reports wait, nothing is restarted',
+    async () => {
+      jest.useFakeTimers();
+      const network = fakeNetwork();
+      const c = await playing({ network }, {}, 30);
+      harness.server.answer('progress', ...Array.from({ length: 40 }, () => reply.offline()));
+      harness.server.answer('poll', reply.offline());
+      await playOn(40);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(starts()).toHaveLength(1);
+      expect(c.status.hint).toBeNull();
+      expect(c.progress.pending).toBeGreaterThan(0);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — code review S4c-S4f (S4g)', () => {
+  const starting = (id: string) =>
+    reply.ok(
+      harness.server.playback({ playbackId: id, state: 'starting', pollAfterMs: 1000 } as never)
+    );
+
+  row(
+    'B25',
+    'a silent restart whose old buffer runs dry: spinner, then "Restarting at …"; the stall never cancels the restart (review B1)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'transcode' } as never, 100);
+      harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+      harness.server.answer('start', starting('q2'));
+      harness.server.answer(
+        'poll',
+        ...Array.from({ length: 18 }, () => starting('q2')),
+        reply.ok(harness.server.playback({ playbackId: 'q2' }))
+      );
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(starts()).toHaveLength(2);
+      // The old source plays on from its buffer, then stalls.
+      harness.engine.time(105);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status).toEqual({ spinner: true, hint: null, actions: [] });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toMatchObject({ key: 'restarting' });
+      // Well past the stall budget: no card, the restart goes on and attaches when ready.
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(c.failure).toBeNull();
+      expect(c.phase).toBe('playing');
+      expect(harness.engine.sources).toHaveLength(2);
+      await c.stop();
+    }
+  );
+
+  row('B25', 'a seek during the silent restart does not cancel it either (review B1)', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, { method: 'transcode' } as never, 100);
+    harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+    harness.server.answer('start', starting('q3'));
+    harness.server.answer('poll', ...Array.from({ length: 40 }, () => starting('q3')));
+    await jest.advanceTimersByTimeAsync(10_000);
+    c.seekTo(300);
+    await jest.advanceTimersByTimeAsync(25_000);
+    expect(c.failure).toBeNull();
+    await c.stop();
+  });
+
+  row(
+    'B25',
+    'playbackAlive false on the final stop report is no reason to restart anything (review M14)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 100);
+      c.progress.onAnswer?.({
+        report: {
+          event: 'stop',
+          workId: 'w1',
+          playbackId: c.playback!.playbackId,
+          positionTicks: 0,
+          durationTicks: null,
+        },
+        playbackAlive: false,
+      });
+      await settle();
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(starts()).toHaveLength(1);
+      expect(c.status.hint).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'B16',
+    'a start queued for minutes keeps waiting with its explanation, never the stuck card (review R1)',
+    async () => {
+      jest.useFakeTimers();
+      const queued = harness.server.playback({ state: 'queued', pollAfterMs: 1_000 } as never);
+      harness.server.answer('start', reply.ok(queued));
+      harness.server.answer('poll', ...Array.from({ length: 200 }, () => reply.ok({ ...queued })));
+      const c = newController();
+      void c.start();
+      await jest.advanceTimersByTimeAsync(150_000);
+      expect(c.phase).toBe('starting');
+      expect(c.failure).toBeNull();
+      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'preparing' } });
+      await c.stop();
+    }
+  );
+
+  row(
+    'B16',
+    'offline while the server starts: the offline state, no stuck card; back online the start continues (review B4)',
+    async () => {
+      jest.useFakeTimers();
+      const network = fakeNetwork();
+      harness.server.answer('start', starting('o1'));
+      harness.server.answer(
+        'poll',
+        ...Array.from({ length: 5 }, () => starting('o1')),
+        ...Array.from({ length: 80 }, () => reply.offline()),
+        ...Array.from({ length: 10 }, () => starting('o1')),
+        reply.ok(harness.server.playback({ playbackId: 'o1' }))
+      );
+      const c = newController({ network });
+      void c.start();
+      await jest.advanceTimersByTimeAsync(5_500);
+      network.set(false);
+      await jest.advanceTimersByTimeAsync(110_000);
+      expect(c.failure?.code).not.toBe('start_stuck');
+      network.set(true);
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.failure?.code).not.toBe('start_stuck');
+      await c.stop();
+    }
+  );
+
+  row(
+    'B16',
+    'a short outage between two polls 80 s into "starting": its 90 s budget starts over at the return (review B4)',
+    async () => {
+      jest.useFakeTimers();
+      const network = fakeNetwork();
+      const slow = () =>
+        reply.ok(
+          harness.server.playback({
+            playbackId: 'o2',
+            state: 'starting',
+            pollAfterMs: 10_000,
+          } as never)
+        );
+      harness.server.answer('start', slow());
+      harness.server.answer('poll', ...Array.from({ length: 30 }, slow));
+      const c = newController({ network });
+      void c.start();
+      await jest.advanceTimersByTimeAsync(82_000);
+      network.set(false);
+      await jest.advanceTimersByTimeAsync(6_000);
+      network.set(true);
+      // 120 s after "starting" began, 32 s after the return: no card, and the slow hint starts over too.
+      await jest.advanceTimersByTimeAsync(32_000);
+      expect(c.failure).toBeNull();
+      expect(c.status.hint).toBeNull();
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(c.status.hint).toMatchObject({ key: 'startSlow' });
+      await c.stop();
+    }
+  );
+
+  row(
+    'B19',
+    'a refused viewer switch whose restore never answers ends on the step_timeout card within the switch budget (review R4)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux' } as never, 50);
+      harness.server.answer('switch', reply.error(500, 'server_error'));
+      harness.server.answer('start', reply.hang());
+      const switching = c.setQuality(720);
+      await jest.advanceTimersByTimeAsync(STEP_BUDGET_MS + 1_000);
+      await switching;
+      expect(c.failure).toMatchObject({ code: 'step_timeout' });
+    }
+  );
+});
+
+describe('matrix B — the sticky audio conversion inside a new start has the step budget (S4g, review R3)', () => {
+  row(
+    'B25',
+    'a new start whose audio conversion takes 70 s with server progress completes; no step_timeout',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux', audioFallback: true } as never, 120);
+      const state = (s: string, id: string) =>
+        reply.ok(
+          harness.server.playback({
+            playbackId: id,
+            state: s,
+            revision: 1,
+            pollAfterMs: 1000,
+          } as never)
+        );
+      harness.server.answer(
+        'start',
+        reply.ok(harness.server.playback({ playbackId: 'n1', method: 'remux' } as never))
+      );
+      harness.server.answer('switch', state('planning', 'n1'));
+      harness.server.answer(
+        'poll',
+        ...Array.from({ length: 35 }, () => state('planning', 'n1')),
+        ...Array.from({ length: 35 }, () => state('starting', 'n1')),
+        reply.ok(
+          harness.server.playback({ playbackId: 'n1', audioFallback: true, revision: 1 } as never)
+        )
+      );
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+      await jest.advanceTimersByTimeAsync(75_000);
+      expect(c.failure).toBeNull();
+      expect(c.playback?.audioFallback).toBe(true);
+      expect(harness.engine.sources.at(-1)?.startPosition).toBe(120);
+      await c.stop();
     }
   );
 });

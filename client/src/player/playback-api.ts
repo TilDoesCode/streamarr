@@ -73,11 +73,17 @@ export async function waitForPlayback(
   return current;
 }
 
-export function switchPlayback(client: ApiClient, playbackId: string, body: PlaybackSwitch) {
+export function switchPlayback(
+  client: ApiClient,
+  playbackId: string,
+  body: PlaybackSwitch,
+  signal?: AbortSignal
+) {
   return unwrap(
     client.POST('/api/v1/viewer/playback/{playbackId}/switch', {
       params: { path: { playbackId } },
       body,
+      signal,
     })
   );
 }

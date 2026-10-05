@@ -2,9 +2,12 @@ import type { ComponentType } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import type { EngineHealth } from '../health/types';
-import type { SystemCause } from '../recovery/classify';
 
 /** Engine implementations behind the one player interface. */
+/** Why the OS paused or took over playback, as a native engine reports it (T10). */
+export type SystemCause =
+  'call' | 'otherAudio' | 'headphones' | 'locked' | 'pipClosed' | 'airplayLost';
+
 export type EngineKind = 'expo-video' | 'vlc' | 'web';
 
 export type EngineState =
@@ -60,6 +63,10 @@ export type EngineEvent =
   | { type: 'external'; active: boolean; device?: string }
   /** An audio rendition failed to load; `code` is the server's error code when known. */
   | { type: 'audioError'; code: string }
+  /** A media request failed and the engine retries it on its own (hls.js non-fatal load errors, R7). */
+  | { type: 'loadRetry'; status?: number; audio?: boolean }
+  /** The subtitles failed to load or parse; the playback itself goes on (C22, C23). */
+  | { type: 'subtitleError'; code: string }
   /** The browser refused to start with sound (`muted`) or at all (`blocked`). */
   | { type: 'autoplay'; result: 'muted' | 'blocked' }
   | { type: 'stats'; stats: EngineStats };
@@ -71,6 +78,8 @@ export type EngineSource = {
   /** Seconds. */
   startPosition?: number;
   title?: string;
+  /** Keep the old picture until the new source shows one (a server switch under the switching card, E18). */
+  keepLastFrame?: boolean;
 };
 
 export type EngineSnapshot = {
@@ -100,6 +109,8 @@ export interface PlayerEngine {
   /** Picture-in-picture (iPhone/iPad and Android phones, expo-video): entered by `startPictureInPicture` or on leaving the app. */
   readonly supportsPictureInPicture?: boolean;
   startPictureInPicture?(): void;
+  /** Leaves picture-in-picture (a terminal failure shows its card in the app's window, A17). */
+  stopPictureInPicture?(): void;
   /** AirPlay route picker (AVPlayer on iPhone/iPad). */
   readonly supportsAirPlay?: boolean;
   subscribe(listener: (event: EngineEvent) => void): () => void;

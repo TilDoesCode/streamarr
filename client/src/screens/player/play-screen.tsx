@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
+import { languageName } from '@/browse/version-format';
 import { invalidateWatchQueries } from '@/browse/queries';
 import { VersionPicker } from '@/browse/version-picker';
 import { CENTRED_ROW, FocusGuide } from '@/components/focus';
@@ -26,9 +27,10 @@ import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
+import { createPlayer } from '@/player/caps-fallback';
 import { lockPlayerLandscape } from '@/player/orientation';
 import { clock } from '@/player/format';
-import { noticeError, noticeMs, stepDownKey, stepDownReasonKey } from '@/player/overlay-labels';
+import { noticeMs, noticeText, subtitleLabel } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
 import { usePlayerClock } from '@/player/use-clock';
 import { useCloseOnFailure } from './use-close-on-failure';
@@ -39,7 +41,7 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
-import { cardButtons } from './card-actions';
+import { cardButtons, failureReason } from './card-actions';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
@@ -59,7 +61,8 @@ const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 /** Player route: start flow with the stepper, resume choice, overlay, panels, up-next and errors. */
 export function PlayScreen() {
   const pt = usePlayerT();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const untypedT = t as unknown as (key: string, options?: Record<string, unknown>) => string;
   const design = useDesign();
   const resumeGap = useFocusGap(design.space.md);
   const { large } = useShell();
@@ -108,28 +111,27 @@ export function PlayScreen() {
     if (!workId) return;
     let cancelled = false;
     let current: PlaybackController | null = null;
-    loadDeviceCaps()
-      .then((caps) => {
-        if (cancelled) return;
-        current = new PlaybackController({
-          client,
-          accountId: account.id,
-          serverUrl: account.serverUrl,
-          profile: caps.profile,
-          nativeEngine: nativeCandidates()[0] ?? 'web',
-          workId,
-          releaseId,
-          startSeconds,
-          preferences: { audioLanguage: rememberedAudioLanguage(account.id), ...preferences },
-        });
-        setController(current);
-        if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
-        void current.start();
-      })
-      .catch((error: unknown) => {
-        if (__DEV__) console.warn('[player] device caps failed', error);
-        if (!cancelled) setCapsError('device_caps_unavailable');
+    createPlayer(loadDeviceCaps, (profile) => {
+      if (cancelled) return null;
+      current = new PlaybackController({
+        client,
+        accountId: account.id,
+        serverUrl: account.serverUrl,
+        profile,
+        nativeEngine: nativeCandidates()[0] ?? 'web',
+        workId,
+        releaseId,
+        startSeconds,
+        preferences: { audioLanguage: rememberedAudioLanguage(account.id), ...preferences },
       });
+      setController(current);
+      if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
+      return current;
+    }).catch((error: unknown) => {
+      // Anything else that breaks before the start is the app's own fault: its own text, never the generic one (E16).
+      if (__DEV__) console.warn('[player] start failed', error);
+      if (!cancelled) setCapsError('player_internal_error');
+    });
     return () => {
       cancelled = true;
       void current?.stop().finally(() => void invalidateWatchQueries(queryClient, account.id));
@@ -229,6 +231,9 @@ export function PlayScreen() {
   const failure = controller?.failure;
   const code = capsError ?? failure?.code ?? (workId ? 'unknown' : 'not_found');
   const actions = cardButtons(failure?.actions);
+  const reason = failureReason(untypedT, failure?.params, (key) =>
+    i18n.exists(`errors.reasons.${key}`)
+  );
   const top = Math.max(insets.top, design.layout.edgeVertical);
 
   return (
@@ -252,7 +257,13 @@ export function PlayScreen() {
           }}
         />
       ) : null}
-      {controller && playing && status && !pip && !showEndCard ? (
+      {controller &&
+      playing &&
+      status &&
+      !pip &&
+      !showEndCard &&
+      // A viewer's switch shows its explanation in the switching card; running steps keep their spinner and hint.
+      (phase !== 'switching' || status.spinner) ? (
         <PlayerStatusView
           status={status}
           onAction={onStatusAction}
@@ -287,6 +298,11 @@ export function PlayScreen() {
               autoFocus={!picker}
               onAction={onFailureAction}
             />
+            {reason ? (
+              <Text testID="play-error-reason" variant="callout" tone="muted">
+                {reason}
+              </Text>
+            ) : null}
             {failure?.hint ? (
               <Text testID="play-error-hint" variant="callout" style={{ textAlign: 'center' }}>
                 {hintText(pt, failure.hint.key, failure.hint.params)}
@@ -362,6 +378,11 @@ export function PlayScreen() {
               playback={controller?.playback ?? null}
               states={controller?.states ?? []}
             />
+            {status?.hint && !status.spinner ? (
+              <Text testID={`play-switching-${status.hint.key}`} variant="callout" tone="muted">
+                {hintText(pt, status.hint.key, status.hint.params)}
+              </Text>
+            ) : null}
           </PlayerCard>
         </View>
       ) : null}
@@ -380,15 +401,18 @@ export function PlayScreen() {
           intensity="strong"
           radius={design.radius.md}>
           <Text variant="callout">
-            {notice.kind === 'stepDown'
-              ? [stepDownKey(notice.params), stepDownReasonKey(notice.params)]
-                  .flatMap((key) => (key ? [pt(key)] : []))
-                  .join(' ')
-              : notice.kind === 'otherVersion'
-                ? pt('notice.otherVersion')
-                : pt('notice.switchFailed', {
-                    reason: describeError(t, noticeError(notice.params)).message,
-                  })}
+            {noticeText(
+              notice,
+              pt,
+              (error) => describeError(t, error).message,
+              (index) => {
+                const tracks = controller?.playback?.mediaInfo?.subtitleTracks ?? [];
+                const track = tracks.find((item) => item.index === index);
+                return track
+                  ? subtitleLabel(track, tracks, (code) => languageName(code, i18n.language, t), '')
+                  : pt('trackFallback', { index });
+              }
+            )}
           </Text>
         </Glass>
       ) : null}
