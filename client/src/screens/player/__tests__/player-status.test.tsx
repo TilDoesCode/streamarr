@@ -1,25 +1,15 @@
-import { Platform } from 'react-native';
+import { screen } from '@testing-library/react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import i18n from '@/i18n';
 import { PlayerStatusView } from '@/screens/player/player-status';
+import { colors } from '@/theme';
 import { renderWithProviders } from '@/../jest/render';
 
-const mockButtons: Record<string, unknown>[] = [];
-jest.mock('@/components/glass', () => {
-  const actual = jest.requireActual('@/components/glass');
-  return {
-    ...actual,
-    GlassButton: (props: Record<string, unknown>) => {
-      mockButtons.push(props);
-      return actual.GlassButton(props);
-    },
-  };
-});
-
 beforeAll(() => i18n.changeLanguage('en'));
-beforeEach(() => mockButtons.splice(0));
+afterEach(() => jest.restoreAllMocks());
 
-describe('status hint buttons and focus (E12, review M15)', () => {
+describe('status hint buttons and focus (E12, review M15, S9a D10)', () => {
   const status = {
     spinner: false,
     hint: { key: 'reconnecting' as const, params: { seconds: 4 } },
@@ -28,16 +18,24 @@ describe('status hint buttons and focus (E12, review M15)', () => {
 
   it('touch: buttons, none of them asks for the preferred focus', async () => {
     await renderWithProviders(<PlayerStatusView status={status} onAction={jest.fn()} />);
-    expect(mockButtons.map((props) => props.testID)).toEqual(
-      expect.arrayContaining(['player-status-action-tryNow', 'player-status-action-back'])
-    );
-    expect(mockButtons.every((props) => props.hasTVPreferredFocus === false)).toBe(true);
+    for (const action of ['tryNow', 'back'])
+      expect(screen.getByTestId(`player-status-action-${action}`)).toHaveProp(
+        'hasTVPreferredFocus',
+        false
+      );
+  });
+
+  it('the label is plain text in its own colour, never clamped to one line (empty pill on iPhone Safari)', async () => {
+    await renderWithProviders(<PlayerStatusView status={status} onAction={jest.fn()} />);
+    const label = screen.getByTestId('player-status-action-tryNow-label');
+    expect(label).toHaveTextContent('Try now');
+    expect(label.props.numberOfLines).toBeUndefined();
+    expect(StyleSheet.flatten(label.props.style).color).toBe(colors.primary.foreground);
   });
 
   it('TV: no buttons at all, so nothing can take the focus', async () => {
     jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
     await renderWithProviders(<PlayerStatusView status={status} onAction={jest.fn()} />);
-    expect(mockButtons).toHaveLength(0);
-    jest.restoreAllMocks();
+    expect(screen.queryByTestId('player-status-action-tryNow')).toBeNull();
   });
 });

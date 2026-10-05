@@ -312,7 +312,7 @@ describe('matrix E — Player UI states', () => {
     });
     await i18n.changeLanguage('en');
     expect(stepDownReasonKey(c.notice!.params)).toBe('notice.because.T7');
-    expect(stepDownReasonKey({ reason: 'start_timeout' })).toBe('notice.because.start_timeout');
+    expect(stepDownReasonKey({ reason: 'picture_timeout' })).toBe('notice.because.picture_timeout');
     expect(stepDownReasonKey({ reason: 'playback_stalled' })).toBe('notice.because.T5');
     expect(stepDownReasonKey({ reason: 'network_unreachable' })).toBeUndefined();
     await c.stop();
@@ -588,6 +588,84 @@ describe('matrix E — live web audit S9a (S4d)', () => {
       harness.engine.time(91.2, 180);
       expect(c.status.spinner).toBe(false);
       await c.stop();
+    }
+  );
+});
+
+describe('matrix E — a switch the server never finishes (S9a P8, P2, D10)', () => {
+  const starting = (id: string) =>
+    reply.ok(
+      harness.server.playback({
+        playbackId: id,
+        state: 'starting',
+        revision: 1,
+        pollAfterMs: 1000,
+      } as never)
+    );
+
+  row(
+    'E18',
+    'a viewer switch stuck in "starting": the switching card explains after 45 s and the ladder takes over after 60 s',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        41
+      );
+      const id = c.playback!.playbackId!;
+      harness.server.answer('switch', starting(id));
+      harness.server.answer('poll', ...Array.from({ length: 200 }, () => starting(id)));
+      const switching = c.setQuality(720);
+      await settle();
+      expect(c.phase).toBe('switching');
+      await jest.advanceTimersByTimeAsync(46_000);
+      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'preparing' } });
+      await jest.advanceTimersByTimeAsync(15_000);
+      await switching;
+      expect(c.phase).not.toBe('switching');
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.position).toBe(41);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix E — the engine throws on a new source (S9a E09)', () => {
+  row(
+    'E09',
+    'an engine whose load throws stops the old source and ends on the internal-error card, no further steps',
+    async () => {
+      jest.useFakeTimers();
+      await i18n.changeLanguage('en');
+      const c = await playing({}, {}, 24);
+      harness.engine.load.mockImplementationOnce(() => {
+        throw new Error('load exploded');
+      });
+      const before = harness.engine.commands.length;
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      // The engine stops the old source the moment the load throws, before anything else happens.
+      expect(harness.engine.commands.slice(before, before + 2)).toEqual(['pause', 'shutdown']);
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({
+        code: 'player_internal_error',
+        category: 'T11',
+        actions: ['retry'],
+      });
+      expect(describeError(i18n.t, c.failure!).title).toBe('The player hit an internal error');
+      expect(harness.engine.pause).toHaveBeenCalled();
+      expect(harness.server.sent('switch')).toHaveLength(0);
     }
   );
 });

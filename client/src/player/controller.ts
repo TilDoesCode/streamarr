@@ -53,6 +53,8 @@ import {
   SPINNER_MS,
   STALL_LADDER_MS,
   START_BUDGET_MS,
+  STEP_BUDGET_MS,
+  STEP_MAX_MS,
   SUBTITLE_RETRIES,
   SUBTITLE_RETRY_MS,
   SYSTEM_PAUSE_MS,
@@ -219,7 +221,13 @@ export class PlaybackController {
   /** Where and when the source ended early: another end there is the repeat (C32), elsewhere a cut stream. */
   private earlyEndAt: { position: number; at: number } | null = null;
   /** The engine is retrying a failed media request on its own (status of the last one). */
-  private loadRetry: { status: number; at: number } | null = null;
+  private loadRetry: { status: number; audio: boolean; at: number } | null = null;
+  /** The budget of a viewer's switch (or its restore): no server progress for a minute ends it (S9a P8). */
+  private switchBudget: {
+    abort: AbortController;
+    timer: ReturnType<typeof setTimeout> | null;
+    started: number;
+  } | null = null;
   private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
   private subtitleRetry: {
     index: number;
@@ -244,6 +252,7 @@ export class PlaybackController {
   private loadPosition = 0;
   /** The last clock reading of this source: a picture is a clock that runs, never one jump (S9a START). */
   private lastClock: number | null = null;
+  private liveSeekTried = false;
   private stallAfterSeek = false;
   private stallPosition = 0;
   private readonly monitor: HealthMonitor;
@@ -285,7 +294,10 @@ export class PlaybackController {
       escalate: (verdict, resumeAt) =>
         this.nearEnd()
           ? this.finish()
-          : this.runner.handle(classify({ kind: 'watchdog', verdict }), { position: resumeAt }),
+          : this.runner.handle(classify({ kind: 'watchdog', verdict }), {
+              // Frames below a start position never reached (a live window) are no place to resume (S9a D10).
+              position: this.startFloor ? undefined : resumeAt,
+            }),
       changed: () => this.changed(),
     });
     // Known from the first moment: an offline start waits for the network instead of failing (A24).
@@ -328,7 +340,8 @@ export class PlaybackController {
   get duration(): number {
     const engine = this.engine?.getSnapshot().duration ?? 0;
     const ticks = this.playback?.mediaInfo?.durationTicks ?? 0;
-    return engine || ticks / TICKS_PER_SECOND;
+    // Safari calls a playlist without ENDLIST live (duration Infinity): the server's length is the title's (S9a D10).
+    return Number.isFinite(engine) && engine > 0 ? engine : ticks / TICKS_PER_SECOND;
   }
 
   async start(): Promise<void> {
@@ -785,6 +798,7 @@ export class PlaybackController {
   private onPlayback(update: Playback): void {
     this.playback = update;
     if (update.state && this.states.at(-1) !== update.state) {
+      this.extendSwitch();
       this.states = [...this.states, update.state];
       this.stateSince = Date.now();
       this.tickStatus();
@@ -814,12 +828,12 @@ export class PlaybackController {
       this.engineOff = engine.subscribe((event) => {
         if (event.type === 'error' && this.pendingAudio?.engineId)
           this.settleAudio(false, event.reason);
-        else if (event.type === 'error')
-          this.onEngineError(event.reason, event.status, event.retryAfter);
+        else if (event.type === 'error') this.onEngineError(event.reason, event.status);
         else if (event.type === 'subtitleError') this.onSubtitleError(event.code);
-        else if (event.type === 'loadRetry')
-          this.loadRetry = { status: event.status ?? 0, at: Date.now() };
-        else if (event.type === 'audioError') {
+        else if (event.type === 'loadRetry') {
+          this.loadRetry = { status: event.status ?? 0, audio: !!event.audio, at: Date.now() };
+          this.changed();
+        } else if (event.type === 'audioError') {
           if (this.pendingAudio?.engineId) this.settleAudio(false, event.code);
         } else if (event.type === 'ended') this.onEnded();
         // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
@@ -831,6 +845,7 @@ export class PlaybackController {
           this.autoplayResumed(event.position);
           this.audioPlaying(event.position);
           if (!this.pictured && this.clockRuns(event.position)) this.onPicture();
+          this.keepLivePosition(event.position, event.duration);
           this.onClock(event.position);
           if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
             this.report('progress');
@@ -873,6 +888,7 @@ export class PlaybackController {
     // Every release that played counts as tried for the "other version" step.
     if (playback.version?.releaseId) this.triedReleases.add(playback.version.releaseId);
     noteAudioTracks(playback.version?.releaseId, playback.mediaInfo?.audioTracks?.length ?? 2);
+    this.endSwitch();
     this.phase = 'playing';
     this.ended = false;
     this.lastGoodPosition = position;
@@ -881,6 +897,7 @@ export class PlaybackController {
     this.loadingSince = Date.now();
     this.loadPosition = position;
     this.lastClock = null;
+    this.liveSeekTried = false;
     this.stallSince = 0;
     this.seekTarget = null;
     this.monitor.newSource();
@@ -889,11 +906,18 @@ export class PlaybackController {
     this.monitor.start();
     this.tickStatus();
     this.applyServerTracks(engine, playback, tracks);
-    engine.load({
-      uri: mediaUrl(this.options.serverUrl, playback.url ?? ''),
-      kind: playback.method === 'direct' ? 'progressive' : 'hls',
-      startPosition: position || undefined,
-    });
+    try {
+      engine.load({
+        uri: mediaUrl(this.options.serverUrl, playback.url ?? ''),
+        kind: playback.method === 'direct' ? 'progressive' : 'hls',
+        startPosition: position || undefined,
+      });
+    } catch (error) {
+      // An engine that cannot take the source must not play the old one on (S9a E09): it stops, the card follows.
+      engine.pause();
+      void engine.shutdown?.();
+      throw error;
+    }
     if (this.paused) engine.pause();
     else engine.play();
     this.changed();
@@ -1048,7 +1072,7 @@ export class PlaybackController {
     this.changed();
   }
 
-  private onEngineError(reason: string, status?: number, retryAfter?: number): void {
+  private onEngineError(reason: string, status?: number): void {
     const engine = this.engine;
     if (!engine || this.closed || this.runner.replacing) return;
     if (this.phase === 'failed' || this.phase === 'switching') return;
@@ -1058,10 +1082,16 @@ export class PlaybackController {
     // A missing last segment or a short tail: the end is reached, not a failure (C13).
     if (this.pictured && duration && position >= duration - END_MARGIN_SECONDS)
       return this.finish();
-    this.runner.handle(
-      classify({ kind: 'engine', engine: engine.kind, reason, status }),
-      retryAfter ? { retryAfter } : {}
-    );
+    this.runner.handle(classify({ kind: 'engine', engine: engine.kind, reason, status }));
+  }
+
+  /** An engine that plays a live window below the load position (Safari without ENDLIST): back to the position, once. */
+  private keepLivePosition(position: number, duration: number): void {
+    const floor = this.startFloor;
+    if (!floor || !this.pictured || this.liveSeekTried || Number.isFinite(duration)) return;
+    if (position >= floor - 3) return;
+    this.liveSeekTried = true;
+    this.engine?.seek(floor);
   }
 
   /** Two clock readings a little apart in forward order: frames are playing (hls.js reports 0:00 before its start seek). */
@@ -1173,6 +1203,8 @@ export class PlaybackController {
   /** Why a long stall happened: a server error the engine is retrying (5xx, R7), else a slow source (T5). */
   private stallFailure(now: number): Classified {
     const retry = this.loadRetry;
+    if (retry?.audio && now - retry.at < LOAD_RETRY_RECENT_MS)
+      return { category: 'T7', code: 'audio_rendition_failed' };
     if (
       retry &&
       now - retry.at < LOAD_RETRY_RECENT_MS &&
@@ -1236,7 +1268,7 @@ export class PlaybackController {
       now - this.loadingSince >= this.startBudget()
     ) {
       this.loadingSince = 0;
-      this.runner.handle({ category: 'T7', code: 'start_timeout' });
+      this.runner.handle({ category: 'T7', code: 'picture_timeout' });
     } else if (calm && this.stallSince && this.nearEnd() && now - this.stallSince >= HINT_MS) {
       this.finish();
     } else if (calm && this.stallSince && now - this.stallSince >= STALL_LADDER_MS) {
@@ -1268,6 +1300,11 @@ export class PlaybackController {
       method: this.playback?.method,
       bitrateKbps: this.playback?.mediaInfo?.bitrateKbps,
       bandwidthBps: this.monitor.last.bandwidthBps,
+      fetch: this.monitor.last.fetch,
+      serverRetry:
+        this.loadRetry && Date.now() - this.loadRetry.at < LOAD_RETRY_RECENT_MS
+          ? this.loadRetry
+          : null,
     });
   }
 
@@ -1351,6 +1388,7 @@ export class PlaybackController {
     this.phase = 'switching';
     this.states = [];
     this.changed();
+    const signal = step?.signal ?? this.beginSwitch();
     try {
       // Same release: keep the tracks, a client-side subtitle pick is unknown to the server.
       const viewer = step ? step.tracks : this.viewerTracks();
@@ -1368,18 +1406,29 @@ export class PlaybackController {
         ...(body.preferences ? { preferences: this.requestPreferences(single) } : {}),
         positionTicks: Math.round(position * TICKS_PER_SECOND),
       });
-      const ready = await this.wait(switched, !!step, step?.signal);
+      const ready = await this.wait(switched, !!step, signal);
       if (!ready) {
-        if (!step) await this.restore(playback, position, previousPreferences);
+        // The server gave up on the new revision in time (B13b): the old source still plays, so it simply stays.
+        if (!step && this.lastError === 'start_timeout' && this.oldSourcePlays()) {
+          this.keepOldSource(playback, previousPreferences);
+          return false;
+        }
+        if (!step) await this.restore(playback, position, previousPreferences, signal);
         return false;
       }
-      if (step?.signal.aborted) throw step.signal.reason;
+      if (signal.aborted) throw signal.reason;
       await this.attach(ready, position);
       return true;
     } catch (error) {
       if (this.closed) return false;
       // A step that ran out of its budget: the runner turns it into the next failure.
       if (step?.signal.aborted) throw error;
+      // The viewer's switch never got ready: the old playback is switched away, so the ladder starts anew there.
+      if (!step && signal.aborted) {
+        this.phase = 'playing';
+        this.runner.handle({ category: 'T6', code: 'step_timeout' }, { detached: true, position });
+        return false;
+      }
       const appError = toAppError(error);
       if (step) {
         // A recovery step that could not switch: the old source is broken, so the ladder goes on.
@@ -1413,7 +1462,8 @@ export class PlaybackController {
   private async restore(
     previous: Playback,
     position: number,
-    preferences: PlaybackPreferences
+    preferences: PlaybackPreferences,
+    signal: AbortSignal = this.abort.signal
   ): Promise<void> {
     this.preferences = preferences;
     const code = this.lastError || 'playback_failed';
@@ -1434,9 +1484,9 @@ export class PlaybackController {
           previous.version?.releaseId,
           previous
         ),
-        this.abort.signal
+        signal
       );
-      const ready = await this.wait(switched);
+      const ready = await this.wait(switched, true, signal);
       if (!ready) return;
       await this.attach(ready, position);
       const status = this.lastErrorStatus;
@@ -1449,6 +1499,45 @@ export class PlaybackController {
       const { failure, extra } = this.failureOf(error);
       this.giveUp(failure, extra, this.runner.attempts);
     }
+  }
+
+  /** The engine still shows the source from before a switch (it was never told to load another one). */
+  private oldSourcePlays(): boolean {
+    const state = this.engine?.getSnapshot().state;
+    return this.pictured && (state === 'playing' || state === 'paused' || state === 'buffering');
+  }
+
+  /** A failed switch whose old source still plays: back to it with the previous choices, and say why. */
+  private keepOldSource(previous: Playback, preferences: PlaybackPreferences): void {
+    this.endSwitch();
+    this.playback = previous;
+    this.preferences = preferences;
+    this.states = [];
+    this.phase = 'playing';
+    this.showNotice('switchFailed', { code: this.lastError || 'start_timeout' });
+  }
+
+  /** A viewer's switch gets the step budget: a minute without server progress, five at most. */
+  private beginSwitch(): AbortSignal {
+    this.endSwitch();
+    const abort = new AbortController();
+    this.switchBudget = { abort, timer: null, started: Date.now() };
+    this.extendSwitch();
+    return abort.signal;
+  }
+
+  /** A new server state of the switch: its minute starts over (never past the five). */
+  private extendSwitch(): void {
+    const budget = this.switchBudget;
+    if (!budget || budget.abort.signal.aborted || this.phase !== 'switching') return;
+    if (budget.timer) clearTimeout(budget.timer);
+    const left = Math.min(STEP_BUDGET_MS, budget.started + STEP_MAX_MS - Date.now());
+    budget.timer = setTimeout(() => budget.abort.abort(STEP_TIMEOUT), Math.max(0, left));
+  }
+
+  private endSwitch(): void {
+    if (this.switchBudget?.timer) clearTimeout(this.switchBudget.timer);
+    this.switchBudget = null;
   }
 
   /** Engine track that renders server track `index` locally, if the delivery allows it. */
@@ -1802,6 +1891,7 @@ export class PlaybackController {
     const position = this.ended ? this.duration : this.resumePosition;
     this.abort.abort();
     this.runner.cancel();
+    this.endSwitch();
     this.clearSubtitleRetry();
     if (this.pendingSeek) clearTimeout(this.pendingSeek.timer);
     if (this.onlineTimer) clearTimeout(this.onlineTimer);

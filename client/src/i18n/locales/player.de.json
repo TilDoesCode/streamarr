@@ -99,10 +99,10 @@
     "stepDownTranscode": "Wechsel zu Transkodierung, damit es weiterläuft.",
     "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter.",
     "because": {
-      "start_timeout": "Das Bild blieb schwarz.",
       "T7": "Dieses Gerät konnte das Video nicht dekodieren.",
       "T5": "Das Video lud zu langsam.",
-      "T6": "Der Server hatte ein Problem."
+      "T6": "Der Server hatte ein Problem.",
+      "picture_timeout": "Das Bild blieb schwarz."
     },
     "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht.",
     "audioFallback": "Ton in Stereo umgewandelt, damit es weitergeht.",

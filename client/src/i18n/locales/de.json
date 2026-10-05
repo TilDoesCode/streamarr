@@ -864,10 +864,6 @@
         "title": "Wiedergabe stockt immer wieder",
         "message": "Das Video lädt langsamer, als es abgespielt wird. Versuche eine niedrigere Qualität oder eine andere Version."
       },
-      "start_timeout": {
-        "title": "Kein Bild erschienen",
-        "message": "Der Player hat das Video geladen, aber kein Bild gezeigt. Versuche eine andere Version oder spiele mit VLC ab."
-      },
       "seek_stalled": {
         "title": "Springen hängt",
         "message": "Das Video ging nach dem Sprung nicht weiter. Versuche es erneut oder wähle eine niedrigere Qualität."
@@ -923,6 +919,14 @@
       "audio_rendition_failed": {
         "title": "Der Ton konnte nicht geladen werden",
         "message": "Der Server konnte den Ton dieser Version nicht liefern, auch nicht umgewandelt. Versuche es erneut oder wähle eine andere Version."
+      },
+      "picture_timeout": {
+        "title": "Kein Bild erschienen",
+        "message": "Der Player hat das Video geladen, aber kein Bild gezeigt. Versuche eine andere Version oder spiele mit VLC ab."
+      },
+      "start_timeout": {
+        "title": "Der Server hat zu lange zum Starten gebraucht",
+        "message": "Der Server konnte das Video nicht rechtzeitig bereitstellen. Versuche es erneut oder wähle eine niedrigere Qualität."
       }
     },
     "sessionRevoked": {

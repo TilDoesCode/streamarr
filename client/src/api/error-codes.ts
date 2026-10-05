@@ -22,7 +22,7 @@ export const CLIENT_ERROR_CODES = [
   'unexpected_format',
   'decoder_reclaimed',
   'playback_stalled',
-  'start_timeout',
+  'picture_timeout',
   'seek_stalled',
   'picture_black',
   'picture_frozen',
@@ -117,6 +117,8 @@ export const VIEWER_ERROR_CODES = [
   'playback_failed',
   'segment_timeout',
   'transcode_failed',
+  // A start or switch revision the server could not get ready within its 60 s budget (B13b).
+  'start_timeout',
   // Audio rendition requests of an HLS session (in-session audio switch).
   'unknown_audio_rendition',
   'rendition_split_failed',

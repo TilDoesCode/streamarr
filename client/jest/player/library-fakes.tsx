@@ -35,6 +35,10 @@ export class FakeHls {
   bandwidthEstimate = 0;
   recoverMediaError = jest.fn();
   swapAudioCodec = jest.fn();
+  /** Loading runs until `stopLoad`; `startLoad` resumes it. */
+  loading = true;
+  stopLoad = jest.fn(() => void (this.loading = false));
+  startLoad = jest.fn(() => void (this.loading = true));
   destroy = jest.fn();
   private handlers = new Map<string, Handler[]>();
 
@@ -84,7 +88,7 @@ export class FakeHls {
     }: {
       fatal?: boolean;
       status?: number;
-      frag?: { type: string };
+      frag?: { type: string; sn?: number | string; level?: number };
       /** Seconds in the failed answer's `Retry-After` header (read from an XHR like hls.js passes it). */
       retryAfter?: number;
       sourceBufferName?: string;

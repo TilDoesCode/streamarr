@@ -864,3 +864,132 @@ describe('matrix B — step budget against a request that never answers (S4d)', 
     }
   );
 });
+
+describe('matrix B — every conversion of this version fails (S9a B06)', () => {
+  row(
+    'B06',
+    'transcode_failed on every new start: one more start, then another version at the position, never three starts and a card',
+    async () => {
+      jest.useFakeTimers();
+      const server = harness.server;
+      const c = await playing({}, { method: 'remux', version: { releaseId: 'r1' } } as never, 30);
+      const failed = () =>
+        reply.ok(
+          server.playback({
+            state: 'failed',
+            version: { releaseId: 'r1' },
+            error: { code: 'transcode_failed' },
+          } as never)
+        );
+      server.answer('start', failed(), failed());
+      server.answer(
+        'versions',
+        reply.ok({
+          versions: [
+            { releaseId: 'r1', rank: 1, predictedMethod: 'remux' },
+            { releaseId: 'r4', rank: 2, predictedMethod: 'direct' },
+          ],
+        })
+      );
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      for (let second = 0; second < 30; second += 1) await jest.advanceTimersByTimeAsync(1_000);
+      expect(starts().at(-1)).toMatchObject({ releaseId: 'r4', position: 30 });
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — the server bounds a start or switch at 60 s: start_timeout (B13b)', () => {
+  const timedOut = (id?: string) =>
+    reply.ok(
+      harness.server.playback({
+        ...(id ? { playbackId: id } : null),
+        state: 'failed',
+        revision: 1,
+        error: { code: 'start_timeout' },
+        suggestedActions: ['retry', 'lowerQuality'],
+      } as never)
+    );
+
+  row(
+    'B19',
+    'a viewer switch the server gave up on keeps the old source playing, with a notice why',
+    async () => {
+      jest.useFakeTimers();
+      await i18n.changeLanguage('en');
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        41
+      );
+      const before = c.playback;
+      harness.server.answer('switch', timedOut(c.playback!.playbackId!));
+      expect(await c.setQuality(720)).toBe(false);
+      expect(c.phase).toBe('playing');
+      expect(c.playback).toBe(before);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(starts()).toHaveLength(1);
+      expect(c.notice).toMatchObject({ kind: 'switchFailed', params: { code: 'start_timeout' } });
+      expect(describeError(i18n.t, { code: 'start_timeout' }).title).toBe(
+        'The server took too long to start'
+      );
+      await c.stop();
+    }
+  );
+
+  row(
+    'B16',
+    'a start the server gave up on: one fresh start, then another version, then the card with retry and lower quality',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', timedOut(), timedOut());
+      const c = newController();
+      await c.start();
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'start_timeout', category: 'T5' });
+      expect(c.failure?.actions).toEqual(expect.arrayContaining(['retry', 'lowerQuality']));
+    }
+  );
+
+  row(
+    'B16',
+    'a recovery switch the server gave up on: the next step is a fresh start at the position',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        70
+      );
+      harness.server.answer('switch', timedOut(c.playback!.playbackId!));
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(1);
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.position).toBe(70);
+      await c.stop();
+    }
+  );
+});

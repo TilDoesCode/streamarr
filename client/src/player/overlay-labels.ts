@@ -208,7 +208,7 @@ export function stepDownReasonKey(
 ): PlayerKey | undefined {
   const reason = params?.reason;
   if (!reason) return undefined;
-  if (reason === 'start_timeout') return 'notice.because.start_timeout';
+  if (reason === 'picture_timeout') return 'notice.because.picture_timeout';
   const category = categoryOf(reason);
   return category === 'T5' || category === 'T6' || category === 'T7'
     ? `notice.because.${category}`

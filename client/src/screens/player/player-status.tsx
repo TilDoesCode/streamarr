@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
 import { describeError } from '@/api/error-text';
-import { Glass, GlassButton } from '@/components/glass';
+import { Glass } from '@/components/glass';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import type { PlayerStatus } from '@/player/controller';
@@ -12,6 +12,8 @@ import { hintActionKey, hintText, type HintAction } from '@/player/recovery/hint
 import type { Attempt } from '@/player/recovery/ladder';
 import { usePlayerT } from '@/player/use-player-t';
 import { useDesign } from '@/theme';
+
+import { StatusAction } from './status-action';
 
 export type PlayerStatusProps = {
   status: PlayerStatus;
@@ -110,14 +112,19 @@ export function PlayerStatusView({
             </Text>
           </View>
           {actions.length ? (
-            <View style={{ flexDirection: 'row', gap: design.space.sm }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: design.space.sm,
+              }}>
               {actions.map((action, index) => (
-                <GlassButton
+                <StatusAction
                   key={action}
                   testID={`player-status-action-${action}`}
-                  tone={index === 0 ? 'solid' : 'glass'}
+                  primary={index === 0}
                   label={pt(hintActionKey(action))}
-                  hasTVPreferredFocus={false}
                   onPress={() => onAction(action)}
                 />
               ))}

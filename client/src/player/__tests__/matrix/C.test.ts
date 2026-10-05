@@ -1113,3 +1113,194 @@ describe('matrix C — code review S5 + S4b (S4d)', () => {
     }
   );
 });
+
+describe('matrix C — live web audit S9a (S4d)', () => {
+  const remux = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [],
+      video: { height: 1080 },
+    },
+  } as never;
+
+  row(
+    'C14',
+    'while hls.js retries a 503 the stall says "problem on the server" at once, never "buffering" with Lower quality (S9a C10)',
+    async () => {
+      const c = await playing({}, remux, 30);
+      harness.engine.emit({ type: 'loadRetry', status: 503 });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status).toEqual({ spinner: true, hint: { key: 'serverRetrying' }, actions: [] });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    'a transcode whose segments wait for the server is "the server converts slower", not a slow connection (S9a C08)',
+    async () => {
+      harness.features.probe = true;
+      const c = await playing(
+        {},
+        {
+          ...(remux as object),
+          method: 'transcode',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 2_200,
+            video: { height: 1080 },
+          },
+        } as never,
+        10
+      );
+      harness.engine.setHealth({
+        bandwidthBps: 600_000,
+        fetch: { waitMs: 5_400, transferMs: 300, bytes: 1_000_000 },
+      });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'serverSlow' });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'a remux segment that arrives slowly after a quick first byte is the network: measured from the transfer (S9a C03 kept)',
+    async () => {
+      harness.features.probe = true;
+      const c = await playing(
+        {},
+        {
+          ...(remux as object),
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 700,
+            video: { height: 1080 },
+          },
+        } as never,
+        10
+      );
+      harness.engine.setHealth({ fetch: { waitMs: 50, transferMs: 8_000, bytes: 200_000 } });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'slowNet', params: { measured: 0.2, needed: 0.7 } });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C20',
+    'an aborted audio split: "No sound", reload of the audio, the server converts the audio, then the card — never the network loop (S9a D36)',
+    async () => {
+      const c = await playing({}, remux, 40);
+      const keys: string[] = [];
+      const seen = () => {
+        const key = c.status.hint?.key;
+        if (key && keys.at(-1) !== key) keys.push(key);
+      };
+      harness.engine.emit({ type: 'loadRetry', status: 0, audio: true });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(1_000);
+      // Said at once, before hls.js gives up (no 4 s "buffering" first).
+      expect(c.status).toEqual({
+        spinner: true,
+        hint: { key: 'noAudio' },
+        actions: ['otherAudio'],
+      });
+      seen();
+      harness.engine.fail('audioRendition:fragLoadError');
+      await settle();
+      seen();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      harness.engine.fail('audioRendition:fragLoadError');
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+      harness.engine.started();
+      harness.engine.fail('audioRendition:fragLoadError');
+      await settle();
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({
+        code: 'audio_rendition_failed',
+        actions: ['retry', 'otherVersion'],
+      });
+      expect(keys[0]).toBe('noAudio');
+      expect(harness.server.sent('switch').some((r) => r.body?.stepDown)).toBe(false);
+    }
+  );
+});
+
+describe('matrix C — the countdown is the wait the player really uses (S9a P8, B13b)', () => {
+  row(
+    'C14',
+    'an hls.js fragment 503 (its Retry-After is not readable): the fixed 5 s, shown as 5 s',
+    async () => {
+      const c = await playing({}, { method: 'remux' } as never, 41);
+      harness.engine.emit({ type: 'error', reason: 'networkError:fragLoadError', status: 503 });
+      await settle();
+      expect(c.status.hint).toMatchObject({ key: 'serverError', params: { seconds: 5 } });
+      await jest.advanceTimersByTimeAsync(4_900);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(200);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C14',
+    'a request the app sends itself (a new start) answered 503 Retry-After 10: shown and waited as 10 s',
+    async () => {
+      const c = await playing({}, { method: 'remux' } as never, 41);
+      harness.server.answer('start', reply.error(503, 'transcode_capacity', undefined, 10));
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 404');
+      await settle();
+      expect(c.status.hint).toMatchObject({ params: { seconds: 10 } });
+      await jest.advanceTimersByTimeAsync(9_900);
+      expect(harness.server.sent('start')).toHaveLength(2);
+      await jest.advanceTimersByTimeAsync(200);
+      expect(harness.server.sent('start')).toHaveLength(3);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — a remux whose segments wait for the server (S9a C08)', () => {
+  row(
+    'C08',
+    'remux: a segment that waited for its first byte far longer than it took to arrive is the server, not "buffering"',
+    async () => {
+      harness.features.probe = true;
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            bitrateKbps: 2_200,
+            video: { height: 1080 },
+          },
+        } as never,
+        10
+      );
+      harness.engine.setHealth({ fetch: { waitMs: 5_400, transferMs: 300, bytes: 1_000_000 } });
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(c.status.hint).toEqual({ key: 'serverSlow' });
+      await c.stop();
+    }
+  );
+});

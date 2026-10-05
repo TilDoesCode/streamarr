@@ -262,7 +262,13 @@ export function PlayScreen() {
           }}
         />
       ) : null}
-      {controller && playing && status && !pip && !showEndCard ? (
+      {controller &&
+      playing &&
+      status &&
+      !pip &&
+      !showEndCard &&
+      // A viewer's switch shows its explanation in the switching card; running steps keep their spinner and hint.
+      (phase !== 'switching' || status.spinner) ? (
         <PlayerStatusView
           status={status}
           onAction={onStatusAction}
@@ -372,6 +378,11 @@ export function PlayScreen() {
               playback={controller?.playback ?? null}
               states={controller?.states ?? []}
             />
+            {status?.hint && !status.spinner ? (
+              <Text testID={`play-switching-${status.hint.key}`} variant="callout" tone="muted">
+                {hintText(pt, status.hint.key, status.hint.params)}
+              </Text>
+            ) : null}
           </PlayerCard>
         </View>
       ) : null}

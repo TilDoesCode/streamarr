@@ -48,6 +48,15 @@ export type Decision = {
   hint?: HintKey;
 };
 
+/** Server failures to prepare a version: another version (step V) may not need them. */
+const CONVERSION_FAILURES: ReadonlySet<string> = new Set([
+  'transcode_failed',
+  'ffmpeg_unavailable',
+  'rendition_split_failed',
+  'segment_timeout',
+  'step_timeout',
+]);
+
 /** Audio failures the server's audio conversion can fix (ladder step A, B13). */
 export const AUDIO_CODES: ReadonlySet<string> = new Set([
   'audio_decode_error',
@@ -137,6 +146,12 @@ export function nextStep(
       };
     }
     case 'T5': {
+      // The server could not get a start or switch ready in its 60 s (B13b): its playback failed, so a fresh start,
+      // then another version, then the card with the server's actions (retry, lower quality).
+      if (code === 'start_timeout' && !context.attached) {
+        if (incident.count(['N'], 'T5') < 1) return { step: 'N', delayMs: 0, hint: 'reloading' };
+        return incident.count(['V']) < 1 ? { step: 'V', delayMs: 0 } : { step: 'G', delayMs: 0 };
+      }
       // A seek that never continues: reload at the target once before lowering the quality (C09).
       if (code === 'seek_stalled' && context.attached && incident.count(['R'], 'T5') < 1)
         return { step: 'R', delayMs: 0, hint: 'reloading' };
@@ -153,15 +168,18 @@ export function nextStep(
           hint: 'serverError',
         };
       const starts = incident.count(['N'], 'T6');
-      if (starts < (context.attached ? 1 : 2))
+      // A conversion that fails again on a fresh start will not work on a third: another version is next (S9a B06).
+      if (starts < (context.attached || CONVERSION_FAILURES.has(code) ? 1 : 2))
         return {
           step: 'N',
           delayMs: after(context.retryAfter, T6_BACKOFF_S[starts]!),
           hint: 'serverError',
         };
-      return context.attached && incident.count(['S'], 'T6') < 1
-        ? stepDown(incident)
-        : { step: 'G', delayMs: 0 };
+      if (context.attached && incident.count(['S'], 'T6') < 1) return stepDown(incident);
+      // The server cannot prepare this version (conversion fails or never starts): another version may play (S9a B06).
+      if (CONVERSION_FAILURES.has(code) && incident.count(['V']) < 1)
+        return { step: 'V', delayMs: 0 };
+      return { step: 'G', delayMs: 0 };
     }
     case 'T7': {
       const audio = AUDIO_CODES.has(code) && context.attached;
@@ -173,12 +191,14 @@ export function nextStep(
         incident.count(['A']) < 1
       )
         return { step: 'A', delayMs: 0, hint: 'noAudio' };
+      // The server's audio failed even converted: the card, no further reloads or step-downs.
+      if (code === 'audio_rendition_failed' && incident.count(['A']) >= 1)
+        return { step: 'G', delayMs: 0 };
       if (context.attached && incident.count(['R'], 'T7', context.revision) < 1)
         return { step: 'R', delayMs: 0, hint: audio ? 'noAudio' : 'reloading' };
       // Silence after a reload: the server converts the audio before another method is tried (C20, D36).
       if (audio && !context.audioFallback && incident.count(['A']) < 1)
         return { step: 'A', delayMs: 0, hint: 'noAudio' };
-      // The audio rendition keeps failing with converted audio too: another method cannot fix the server's audio.
       if (code === 'audio_rendition_failed') return { step: 'G', delayMs: 0 };
       if (context.attached) return stepDown(incident, 'noPicture');
       // No method of this version plays here: another version may.
@@ -198,6 +218,8 @@ export function nextStep(
     case 'T10':
       return { step: 'W', delayMs: Infinity, hint: 'pausedBySystem' };
     case 'T11': {
+      // The app itself failed (an engine that throws): repeating it only hides the code (S9a E09).
+      if (code === 'player_internal_error') return { step: 'G', delayMs: 0 };
       if (context.attached && incident.count(['R'], 'T11') < 1)
         return { step: 'R', delayMs: 0, hint: 'reloading' };
       if (code.startsWith('invalid_') || incident.count(['N'], 'T11') >= 1)

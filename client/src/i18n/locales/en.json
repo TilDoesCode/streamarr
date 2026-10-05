@@ -864,10 +864,6 @@
         "title": "Playback keeps stopping",
         "message": "The video loads slower than it plays. Try a lower quality or another version."
       },
-      "start_timeout": {
-        "title": "The picture didn’t appear",
-        "message": "The player loaded the video but showed no picture. Try another version or play with VLC."
-      },
       "seek_stalled": {
         "title": "Seeking got stuck",
         "message": "The video didn’t continue after the jump. Try again or choose a lower quality."
@@ -923,6 +919,14 @@
       "audio_rendition_failed": {
         "title": "The sound couldn’t be loaded",
         "message": "The server couldn’t deliver the sound of this version, not even converted. Try again or choose another version."
+      },
+      "picture_timeout": {
+        "title": "The picture didn’t appear",
+        "message": "The player loaded the video but showed no picture. Try another version or play with VLC."
+      },
+      "start_timeout": {
+        "title": "The server took too long to start",
+        "message": "The server couldn’t get this video ready in time. Try again or choose a lower quality."
       }
     },
     "sessionRevoked": {

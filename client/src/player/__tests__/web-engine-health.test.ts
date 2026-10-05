@@ -154,3 +154,55 @@ describe('web health probe (state-matrix § 2 a, S5)', () => {
     expect(events).toContainEqual({ type: 'buffering', buffering: true });
   });
 });
+
+describe('hls.js load failures and fetch timing (S9a, S4d)', () => {
+  const fragLoaded = (
+    hls: FakeHls,
+    type: string,
+    loading = { start: 1000, first: 1100, end: 1600 }
+  ) => hls.trigger('hlsFragLoaded', { frag: { type, stats: { loading, loaded: 500_000 } } });
+
+  it('reads the last video segment: server wait before the first byte, transfer after it (C08)', async () => {
+    const { engine } = await engineOn('hls');
+    fragLoaded(FakeHls.last, 'main', { start: 0, first: 5_400, end: 5_700 });
+    expect((await engine.readHealth()).fetch).toEqual({
+      waitMs: 5_400,
+      transferMs: 300,
+      bytes: 500_000,
+    });
+  });
+
+  it('an audio fragment failing while video still loads is an audio failure, not the network (S9a D36)', async () => {
+    const { events } = await engineOn('hls');
+    const hls = FakeHls.last;
+    fragLoaded(hls, 'main');
+    hls.error('networkError', 'fragLoadError', {
+      fatal: false,
+      status: 0,
+      frag: { type: 'audio' },
+    });
+    expect(events).toContainEqual({ type: 'loadRetry', status: 0, audio: true });
+    hls.error('networkError', 'fragLoadError', { fatal: true, status: 0, frag: { type: 'audio' } });
+    expect(events.filter((event) => event.type === 'error')).toEqual([
+      { type: 'error', reason: 'audioRendition:fragLoadError', status: 0 },
+    ]);
+  });
+
+  it('without video arriving it stays a network failure', async () => {
+    const { events } = await engineOn('hls');
+    FakeHls.last.error('networkError', 'fragLoadError', {
+      fatal: true,
+      status: 0,
+      frag: { type: 'audio' },
+    });
+    expect(events.filter((event) => event.type === 'error')).toEqual([
+      { type: 'error', reason: 'networkError:fragLoadError', status: 0 },
+    ]);
+  });
+
+  it('a non-fatal 503 is forwarded with its status at once (S9a C10)', async () => {
+    const { events } = await engineOn('hls');
+    FakeHls.last.error('networkError', 'fragLoadError', { fatal: false, status: 503 });
+    expect(events).toContainEqual({ type: 'loadRetry', status: 503, audio: false });
+  });
+});

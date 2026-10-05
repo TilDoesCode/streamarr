@@ -50,7 +50,7 @@ export type EngineEvent =
   | { type: 'tracks'; tracks: EngineTracks }
   | { type: 'firstFrame' }
   /** `status`: HTTP status of the failed media request when the engine knows it (0 = no answer). */
-  | { type: 'error'; reason: string; status?: number; retryAfter?: number }
+  | { type: 'error'; reason: string; status?: number }
   | { type: 'ended' }
   | { type: 'pip'; active: boolean }
   /** The viewer paused or resumed outside the app's controls (system full-screen player, lock screen). */

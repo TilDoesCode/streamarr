@@ -11,12 +11,7 @@ import { EngineBase } from './base';
 import { audioErrorCode } from './hls-audio-error';
 import { importHls } from './hls-import';
 import { StartSeek } from './start-seek';
-import {
-  retryAfterLoader,
-  retryAfterMs,
-  retryAfterPolicy,
-  type RetryAfterHint,
-} from './hls-retry-after';
+import { FRAG_RETRY_DELAY_MS, fragLoadPolicy, statusLoader, type LoadStatus } from './hls-retry';
 import { LUMA_WINDOW_S } from '../health/watchdog';
 import { createLumaSampler } from './web-luma';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
@@ -36,6 +31,8 @@ const MAX_SUBTITLE_REASSERTS = 5;
 const MEDIA_RECOVERY_WINDOW_MS = 30_000;
 /** In-engine media recoveries per source, whatever their spacing: then the ladder takes over (review 18). */
 const MEDIA_RECOVERY_TOTAL = 6;
+/** The same fragment failing to parse or decode this often goes to the ladder (B13b: no hot retry loop). */
+export const FRAG_FAIL_BUDGET = 3;
 /** Main fragments loaded this recently mean the network is fine while the audio fails. */
 const AUDIO_ALONE_MS = 15_000;
 
@@ -139,6 +136,9 @@ export class WebEngine extends EngineBase implements PlayerEngine {
   /** When the last main (video) fragment arrived, and how long its server wait and transfer took. */
   private lastMainLoad = 0;
   private lastFetch: EngineHealth['fetch'];
+  /** Parse/decode failures per fragment of this source, and the pending delayed retry. */
+  private readonly fragFailures = new Map<string, number>();
+  private fragRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private mediaRecovery = { count: 0, at: 0, total: 0 };
   /** Safari's native HLS: frame counters count only once they were seen moving on this element. */
   private framesProven = false;
@@ -360,6 +360,9 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     }
     this.audioSwitched = null;
     this.mediaRecovery = { count: 0, at: 0, total: 0 };
+    this.fragFailures.clear();
+    if (this.fragRetryTimer) clearTimeout(this.fragRetryTimer);
+    this.fragRetryTimer = null;
     this.framesAtLoad = undefined;
     // The proof that the counters work belongs to a source, not to the element (Safari direct → native HLS).
     this.framesProven = false;
@@ -373,21 +376,16 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     this.watchFirstFrame(video);
     if (source.kind === 'hls' && this.mode === 'hls.js' && hlsModule) {
       const { default: Hls, Events, ErrorTypes } = hlsModule;
-      const retryAfter: RetryAfterHint = { ms: 0 };
+      const lastStatus: LoadStatus = {};
       this.lastMainLoad = 0;
       this.lastFetch = undefined;
       const BaseLoader = (Hls as { DefaultConfig?: { loader?: unknown } }).DefaultConfig?.loader;
       const hls = new Hls({
         startPosition: source.startPosition ?? -1,
         enableWebVTT: true,
-        fragLoadPolicy: retryAfterPolicy(retryAfter),
+        fragLoadPolicy: fragLoadPolicy(lastStatus),
         ...(BaseLoader
-          ? {
-              loader: retryAfterLoader(
-                BaseLoader as Parameters<typeof retryAfterLoader>[0],
-                retryAfter
-              ),
-            }
+          ? { loader: statusLoader(BaseLoader as Parameters<typeof statusLoader>[0], lastStatus) }
           : null),
       } as ConstructorParameters<typeof Hls>[0]);
       this.hls = hls;
@@ -430,6 +428,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         const subtitle = subtitleFailure(data);
         if (subtitle) return this.emit({ type: 'subtitleError', code: subtitle });
         const status = (data as { response?: { code?: number } }).response?.code;
+        if (this.fragmentFails(hls, data)) return;
         // The audio rendition fails while the video keeps loading: its own failure, not the network (S9a D36).
         const audioRendition = data.type === ErrorTypes.NETWORK_ERROR && this.audioFails(data);
         if (!data.fatal) {
@@ -442,14 +441,12 @@ export class WebEngine extends EngineBase implements PlayerEngine {
           return;
         }
         if (data.type === ErrorTypes.MEDIA_ERROR && this.recoverMedia(hls)) return;
-        const wait = retryAfterMs(data.networkDetails);
         this.emit({
           type: 'error',
           reason: audioRendition
             ? `audioRendition:${data.details}`
             : `${data.type}:${data.details}${audioOnly(data) ? ':audio' : ''}`,
           ...(typeof status === 'number' ? { status } : null),
-          ...(wait ? { retryAfter: wait / 1000 } : null),
         });
         this.setState('error');
       });
@@ -464,6 +461,41 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     }
     void this.autoplay(video);
     this.statsTimer = setInterval(() => this.pollStats(), 1000);
+  }
+
+  /**
+   * One fragment that keeps failing to parse or decode (a corrupt segment): hls.js would fetch it again at once,
+   * thousands of times a minute (B13b). Retries wait 1 s, then 2 s; the third failure stops loading and goes to the
+   * ladder. True when the error was handled here.
+   */
+  private fragmentFails(hls: HlsPlayer, data: ErrorData): boolean {
+    const frag = data.frag;
+    if (!frag || data.type === 'networkError' || (frag.type !== 'main' && frag.type !== 'audio'))
+      return false;
+    const key = `${frag.type}:${frag.level}:${String(frag.sn)}`;
+    const count = (this.fragFailures.get(key) ?? 0) + 1;
+    this.fragFailures.set(key, count);
+    if (count >= FRAG_FAIL_BUDGET) {
+      if (this.fragRetryTimer) clearTimeout(this.fragRetryTimer);
+      hls.stopLoad();
+      this.emit({
+        type: 'error',
+        reason: `${data.type}:${data.details}${audioOnly(data) ? ':audio' : ''}`,
+      });
+      this.setState('error');
+      return true;
+    }
+    if (data.fatal) return false;
+    hls.stopLoad();
+    if (this.fragRetryTimer) clearTimeout(this.fragRetryTimer);
+    this.fragRetryTimer = setTimeout(
+      () => {
+        this.fragRetryTimer = null;
+        if (this.hls === hls) hls.startLoad();
+      },
+      FRAG_RETRY_DELAY_MS * 2 ** (count - 1)
+    );
+    return true;
   }
 
   /** hls.js media errors: recover, then swap the audio codec and recover, then hand the error on (no loop). */
@@ -574,6 +606,8 @@ export class WebEngine extends EngineBase implements PlayerEngine {
 
   private teardown(): void {
     this.deferred = null;
+    if (this.fragRetryTimer) clearTimeout(this.fragRetryTimer);
+    this.fragRetryTimer = null;
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
     this.hls?.destroy();

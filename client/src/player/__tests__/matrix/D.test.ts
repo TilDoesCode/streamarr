@@ -817,7 +817,7 @@ describe('matrix D — audio conversion, Retry-After, seek debounce (S4c, S8)', 
 
   row(
     'D01',
-    'hls.js: a fatal 503 with Retry-After hands the wait to the ladder, which reloads after exactly that',
+    'hls.js: a fatal 503 carries its status, never a guessed Retry-After; the ladder waits its own 5 s',
     async () => {
       jest.useFakeTimers();
       const engine = new WebEngine();
@@ -828,22 +828,52 @@ describe('matrix D — audio conversion, Retry-After, seek debounce (S4c, S8)', 
       engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
       FakeHls.last.error('networkError', 'fragLoadError', { status: 503, retryAfter: 7 });
       expect(events).toEqual([
-        { type: 'error', reason: 'networkError:fragLoadError', status: 503, retryAfter: 7 },
+        { type: 'error', reason: 'networkError:fragLoadError', status: 503 },
       ]);
       engine.release();
-      const c = await playing({}, { method: 'remux' } as never, 60);
-      harness.engine.emit({
-        type: 'error',
-        reason: 'networkError:fragLoadError',
-        status: 503,
-        retryAfter: 7,
+    }
+  );
+
+  row(
+    'D02',
+    'a corrupt fragment that hls.js would fetch again at once: at most three attempts with backoff, then the ladder (B13b)',
+    async () => {
+      jest.useFakeTimers();
+      const engine = new WebEngine();
+      (engine as unknown as { attach(video: unknown): void }).attach(new FakeVideoElement());
+      await loadHls();
+      const events: EngineEvent[] = [];
+      engine.subscribe((event) => void events.push(event));
+      engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+      const hls = FakeHls.last;
+      // hls.js on a fragment that does not parse: it fetches the same segment again right away while it loads.
+      const fetches: number[] = [];
+      const fetchSegment = () => {
+        if (!hls.loading) return;
+        fetches.push(Date.now());
+        hls.error('mediaError', 'fragParsingError', {
+          fatal: false,
+          frag: { type: 'main', sn: 6, level: 0 },
+        });
+        setTimeout(fetchSegment, 1);
+      };
+      hls.startLoad.mockImplementation(() => {
+        hls.loading = true;
+        setTimeout(fetchSegment, 0);
       });
-      expect(c.status.hint).toMatchObject({ key: 'serverError', params: { seconds: 7 } });
-      await jest.advanceTimersByTimeAsync(6_900);
-      expect(harness.engine.load).toHaveBeenCalledTimes(1);
-      await jest.advanceTimersByTimeAsync(100);
-      expect(harness.engine.load).toHaveBeenCalledTimes(2);
-      await c.stop();
+      const started = Date.now();
+      fetchSegment();
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(fetches).toHaveLength(3);
+      const gaps = fetches.slice(1).map((at, index) => at - fetches[index]!);
+      expect(fetches[0]! - started).toBe(0);
+      // 1 s, then 2 s between the attempts (a few ms of fake-timer granularity aside), never a tight loop.
+      expect(gaps.map((gap) => Math.round(gap / 100) * 100)).toEqual([1_000, 2_000]);
+      expect(hls.loading).toBe(false);
+      expect(events.filter((event) => event.type === 'error')).toEqual([
+        { type: 'error', reason: 'mediaError:fragParsingError' },
+      ]);
+      engine.release();
     }
   );
 
@@ -1076,6 +1106,77 @@ describe('matrix D — web probe, code review S5 + S4b (S4d)', () => {
       expect(events.filter((event) => event.type === 'error')).toEqual([
         { type: 'error', reason: 'media_error_2', status: 0 },
       ]);
+    }
+  );
+});
+
+describe('matrix D — Safari treats a playlist without ENDLIST as live (S9a D10)', () => {
+  row(
+    'D10',
+    'a reload that Safari starts in its live window (duration unknown, clock below the position): seek back, keep the position for every step',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, { method: 'remux' } as never, 0);
+      await playFor(5, (second) => ({
+        position: 54 + second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000 },
+      }));
+      harness.engine.fail('networkError:fragLoadError');
+      await settle();
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(harness.engine.source?.startPosition).toBe(59);
+      harness.engine.emit({ type: 'firstFrame' });
+      harness.engine.state('playing');
+      harness.engine.time(21, Infinity);
+      harness.engine.time(22, Infinity);
+      expect(c.duration).toBe(600);
+      expect(harness.engine.seek).toHaveBeenLastCalledWith(59);
+      await playFor(12, (second) => ({
+        position: 22 + Math.min(second, 7),
+        health: {
+          framesPresented: 100 + Math.min(second, 7) * 24,
+          audioProgress: 9_000 + second * 1000,
+        },
+      }));
+      await settle();
+      const resumed = harness.engine.sources.at(-1)?.startPosition ?? 0;
+      expect(resumed).toBeGreaterThanOrEqual(59);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix D — a picture verdict below a start position never reached (S9a D10)', () => {
+  row(
+    'D10',
+    'frames that moved only in a live window below the position are no place to resume: the reload goes back to the position',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, { method: 'remux' } as never, 0);
+      await playFor(5, (second) => ({
+        position: 54 + second,
+        health: { framesPresented: second * 24, audioProgress: second * 1000 },
+      }));
+      harness.engine.fail('networkError:fragLoadError');
+      await settle();
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(harness.engine.source?.startPosition).toBe(59);
+      harness.engine.emit({ type: 'firstFrame' });
+      harness.engine.state('playing');
+      // The engine plays from 0:21 with a finite duration (no seek-back), then its picture freezes.
+      await playFor(14, (second) => ({
+        position: 21 + second,
+        health: {
+          framesPresented: 200 + Math.min(second, 8) * 24,
+          audioProgress: 9_000 + second * 1000,
+        },
+      }));
+      await settle();
+      expect(harness.engine.sources.length).toBeGreaterThanOrEqual(3);
+      expect(harness.engine.sources.at(-1)?.startPosition).toBe(59);
+      await c.stop();
     }
   );
 });

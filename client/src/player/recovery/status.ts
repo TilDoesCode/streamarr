@@ -73,7 +73,8 @@ export function statusOf(input: StatusInput): PlayerStatus {
     );
     return { spinner: true, hint, actions };
   }
-  if (phase === 'starting') {
+  // A start and a viewer's switch wait for the server alike: past its state budget the card explains (E02, S9a P8).
+  if (phase === 'starting' || phase === 'switching') {
     const budget = STATE_BUDGET_MS[input.serverState];
     const slow = !!budget && !!input.serverStateSince && now - input.serverStateSince >= budget;
     return show(slow ? { key: 'startSlow', params: { cause: 'preparing' } } : null, false);
