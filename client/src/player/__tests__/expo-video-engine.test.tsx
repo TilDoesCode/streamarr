@@ -164,6 +164,20 @@ it('the probe tick fills the stats the Info panel reads (S6v: dropped frames, de
   engine.release();
 });
 
+it('S6w R9: the decoder name leaves the stats once Exo reports none (new item, step-down, released decoder)', async () => {
+  const engine = engineWith(0);
+  let name = 'c2.android.hevc.decoder';
+  Object.assign(mockPlayer, {
+    readHealthAsync: async () => ({ framesPresented: 10, framesDropped: 0, decoderName: name }),
+  });
+  await engine.readHealth();
+  expect(engine.getSnapshot().stats.decoder).toBe('c2.android.hevc.decoder');
+  name = '';
+  await engine.readHealth();
+  expect(engine.getSnapshot().stats.decoder).toBeUndefined();
+  engine.release();
+});
+
 describe('start cover (S9b: the new item\'s frame 0 must not show under "Resuming at …")', () => {
   const covered = (engine: ExpoVideoEngine) =>
     (engine as unknown as { cover: { get(): { covered: boolean } } }).cover.get().covered;

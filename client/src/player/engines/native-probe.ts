@@ -174,6 +174,8 @@ export function toStats(raw: RawHealth | null | undefined): EngineStats {
     if (typeof framesPresented === 'number') stats.totalFrames = framesPresented;
   }
   if (typeof bandwidthBps === 'number' && bandwidthBps > 0) stats.bandwidth = bandwidthBps;
+  // A build that names the decoder sends an empty name once it is gone: the old one must not stay in the merged stats (R9).
   if (typeof decoderName === 'string' && decoderName) stats.decoder = decoderName;
+  else if ('decoderName' in raw) stats.decoder = undefined;
   return stats;
 }

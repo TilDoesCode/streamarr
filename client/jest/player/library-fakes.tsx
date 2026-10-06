@@ -280,6 +280,8 @@ export class FakeExpoPlayer {
   replaceAsync(source?: unknown): Promise<void> {
     this.replaced.push(source);
     this.calls.push('replace');
+    this.errorLog = [];
+    this.errorLogReported = 0;
     return new Promise((resolve, reject) => (this.replace = { resolve, reject }));
   }
 
@@ -336,6 +338,22 @@ export class FakeExpoPlayer {
   /** The S6s patch's failed media request (`trackType`: audio · video · text · other). */
   loadError(event: { uri?: string; trackType?: string; status?: number }): void {
     this.fire('loadError', event);
+  }
+
+  /** AVPlayer's error log of the current item; the patch reports each new entry once, in order (S6w R2). */
+  errorLog: Record<string, unknown>[] = [];
+  private errorLogReported = 0;
+
+  /** Entries that land together; AVFoundation posts one notification each, handled after all of them are logged. */
+  logErrors(...entries: Record<string, unknown>[]): void {
+    this.errorLog.push(...entries);
+    for (let i = 0; i < entries.length; i++) this.onErrorLogEntry();
+  }
+
+  private onErrorLogEntry(): void {
+    const fresh = this.errorLog.slice(this.errorLogReported);
+    this.errorLogReported = this.errorLog.length;
+    for (const entry of fresh) this.fire('loadError', entry);
   }
 
   readHealthAsync?: (withFrames?: boolean) => Promise<FakeExpoPlayer['health']> = async () =>

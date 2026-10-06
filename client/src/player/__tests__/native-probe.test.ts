@@ -137,3 +137,17 @@ describe('Info panel numbers from the native probe (S6v)', () => {
     expect(toStats(null)).toEqual({});
   });
 });
+
+describe('a decoder that is gone leaves the Info panel (S6w R9)', () => {
+  it('an empty or missing name on a build that names decoders clears it; AVPlayer (no such key) leaves the stats alone', () => {
+    expect(toStats({ framesDropped: 0, framesPresented: 9, decoderName: '' })).toStrictEqual({
+      droppedFrames: 0,
+      totalFrames: 9,
+      decoder: undefined,
+    });
+    expect(toStats({ framesPresented: 9, decoderName: null })).toStrictEqual({
+      decoder: undefined,
+    });
+    expect(toStats({ framesPresented: 9, bandwidthBps: 1e6 })).toStrictEqual({ bandwidth: 1e6 });
+  });
+});

@@ -103,7 +103,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   /** When the player stopped while the app wanted it to play (the cause may follow, e.g. PiP ✕ on iOS). */
   private strayPauseAt = 0;
   private readonly cover = new PropsStore({ covered: false });
-  /** Shut down behind a card: native status and time events of the unloaded item are not the playback's. */
+  /** Shut down behind a card: native status, time, error and end events of the unloaded item are not the playback's. */
   private unloaded = false;
   /** Subtitle renditions that already failed for this source (one notice, not one per retried segment). */
   private failedText = new Set<string>();
@@ -169,6 +169,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         });
       }),
       player.addListener('playToEnd', () => {
+        // Android has no current-item check: an emptied Exo playlist ends too (R10).
+        if (this.unloaded) return;
         this.setState('ended');
         this.emit({ type: 'ended' });
       }),
@@ -204,7 +206,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
 
   /** A media request failed and the player retries or drops it: subtitles fail on their own, the rest is a retry (C22, R7). */
   private onLoadError(error: NativeLoadError): void {
-    if (!isFailedLoad(error)) return;
+    if (this.unloaded || !isFailedLoad(error)) return;
     const part = loadErrorPart(error);
     if (part === 'text') {
       const key = (error.uri ?? '').replace(/\/[^/]*$/, '');

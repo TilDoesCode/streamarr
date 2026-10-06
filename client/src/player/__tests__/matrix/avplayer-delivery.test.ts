@@ -1255,3 +1255,61 @@ describe('S4p: code review S4n/S4o/S6t-S6v — the reviewer probes P1-P6 and the
     await c.stop();
   });
 });
+
+describe('S6w: native follow-ups of the sixth review (R2, R10)', () => {
+  const subtitled = {
+    method: 'transcode',
+    mediaInfo: {
+      durationTicks: 180 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [{ index: 4, language: 'en', deliveredAs: 'webvtt', selected: true }],
+    },
+  } as never;
+
+  it('R2 two error-log entries back to back (video 404 without URI, then the subtitle playlist 404 with URI) both reach the engine, once each, in order', async () => {
+    const expo = await expoPlaying();
+    expo.player.logErrors(RECORDED.segment404, RECORDED.subtitlePlaylist404);
+    expect(expo.events).toEqual([
+      { type: 'loadRetry', status: 404, audio: false },
+      { type: 'subtitleError', code: 'unknown_subtitle_stream' },
+    ]);
+    // A later notification of the same item reports only what is new.
+    expo.player.logErrors(RECORDED.segment503);
+    expect(expo.events.slice(2)).toEqual([{ type: 'loadRetry', status: 503, audio: false }]);
+    expo.engine.release();
+  });
+
+  it('R2 the review order (subtitle playlist 404 with URI, then a URI-less 404) keeps the URI evidence: subtitles off with the notice, no new start', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, subtitled, 20);
+    harness.engine.emit({
+      type: 'tracks',
+      tracks: { audio: [], subtitles: [{ id: 's0', label: 'en', language: 'en', selected: true }] },
+    });
+    const expo = await expoPlaying();
+    expo.player.logErrors(RECORDED.subtitlePlaylist404, RECORDED.segment404);
+    expo.replay();
+    expo.engine.release();
+    await settle();
+    expect(c.notice).toMatchObject({ kind: 'subtitleFailed' });
+    expect(starts()).toHaveLength(1);
+    expect(harness.engine.load).toHaveBeenCalledTimes(1);
+    await c.stop();
+  });
+
+  it('R10 behind the failure card the unloaded source reports no load error and no end (Android has no current-item check); the next load does', async () => {
+    const expo = await expoPlaying();
+    await expo.engine.shutdown?.();
+    expo.events.length = 0;
+    expo.player.loadError({ uri: 'http://server/media.m3u8', trackType: 'video', status: 404 });
+    expo.player.toEnd();
+    expect(expo.events).toEqual([]);
+    expect(expo.engine.getSnapshot().state).not.toBe('ended');
+    expo.engine.load({ uri: 'http://server/media.m3u8', kind: 'hls' });
+    expo.events.length = 0;
+    expo.player.loadError({ uri: 'http://server/media.m3u8', trackType: 'video', status: 404 });
+    expo.player.toEnd();
+    expect(expo.events.map((event) => event.type)).toEqual(['loadRetry', 'state', 'ended']);
+    expo.engine.release();
+  });
+});
