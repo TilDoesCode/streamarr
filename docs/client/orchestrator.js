@@ -979,6 +979,20 @@ const TASKS = {
       'B17 verifier follow-ups that a viewer can feel are fixed or recorded; contract, e2e and the full server suite green',
     ],
   },
+  'B19': {
+    title: 'Server: release ids that played minutes ago answer release_not_found',
+    track: 'Backend',
+    deps: ['B18'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (live verifier F10 V2 turn 4, docs/client/runs/driver/F10-verify1-V2.md "Non-blocking (new in turn 4)"): on Dev World 39300 (B18 snapshot), release ids that `/devworld/playbacks` reported for current playbacks (The Lighthouse Logs S1E10 and S1E11) answered `release_not_found` a few minutes later when a new playback was started with that `releaseId` (seen twice). The player recovers (another version within ~2.5 s), but a viewer who resumes a specific version, a deep link with `releaseId` or the client\'s "resume the last played version" rule (PLAN.md section 2) would lose the chosen version. Find the cause first (is the id unstable across catalog refreshes / Usenet re-index / the B18 PAR2 publications / release store eviction / the repaired-copy id, or is it a Dev World fixture artefact?) and record it in docs/client/journal/B19.md with evidence; then fix it in the product if it is a product bug (a release id stays resolvable as long as the release exists; a replaced release maps to its successor or answers a specific code the client can explain), or in Dev World if it is a fixture bug. Tests (unit + e2e/robustness on your own Dev World 39310 reproducing the original sequence: start, play a few minutes, start again with the same releaseId).',
+      '- Own Dev World 39310 only; never restart or republish 39300. Contract check, e2e and the full server suite once at the end (nice -n 10). If the API needs a new error code, add it to docs/api.md and tell the orchestrator in the journal (the client maps codes in client/src/api/error-codes.ts; do not edit client/).',
+    ].join('\n'),
+    acceptance: [
+      'the cause of the vanished release ids is found and recorded with evidence',
+      'a release id stays resolvable while its release exists (or a replaced release is mapped / explained by a specific code); test reproduces the original sequence; contract, e2e and the full server suite green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
