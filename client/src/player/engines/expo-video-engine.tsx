@@ -104,6 +104,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   private strayPauseAt = 0;
   private readonly cover = new PropsStore({ covered: false });
   /** Subtitle renditions that already failed for this source (one notice, not one per retried segment). */
+  /** Shut down behind a card: native status and time events of the unloaded item are not the playback's. */
+  private unloaded = false;
   private failedText = new Set<string>();
   private externalDevice: string | undefined;
 
@@ -116,6 +118,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     if (AIRPLAY) player.allowsExternalPlayback = true;
     this.subscriptions.push(
       player.addListener('statusChange', ({ status, error }) => {
+        if (this.unloaded) return;
         if (status === 'error') {
           const native = ownFailure(error as NativeError | undefined);
           this.emit({
@@ -153,6 +156,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         this.onExternal(isExternalPlaybackActive)
       ),
       player.addListener('timeUpdate', ({ currentTime, bufferedPosition }) => {
+        if (this.unloaded) return;
         // Before the start seek the clock still reads 0; the snapshot keeps the start position.
         if (this.start.pending && !this.start.applied) return;
         this.start.time(currentTime);
@@ -305,6 +309,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   load(source: EngineSource): void {
+    this.unloaded = false;
     this.resetForLoad(source);
     this.ready = false;
     this.loaded = false;
@@ -380,6 +385,15 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   setSubtitleTrack(id: string | null): void {
     this.player.subtitleTrack =
       id === null ? null : (this.player.availableSubtitleTracks[Number(id.slice(1))] ?? null);
+  }
+
+  /** A terminal card: stop decoding and loading (the source is unloaded); the card's Retry loads it again (S6u). */
+  async shutdown(): Promise<void> {
+    this.unloaded = true;
+    this.wantPlay = false;
+    this.start.cancel();
+    this.player.pause();
+    void this.player.replaceAsync(null).catch(() => undefined);
   }
 
   release(): void {

@@ -59,7 +59,8 @@ const HINTS: Record<HintKey, Omit<Row, 'id' | 'key' | 'action'>> = {
   restarting: {
     params: { time: '42:10' },
     state: 'The server ended the playback (T2), a new one starts',
-    shows: 'step N for T2 runs, after 4 s of a stalled picture',
+    shows:
+      'step N for T2 runs; at once when the server says the playback is gone (a stall asks after 1 s, playbackAlive=false, a 404 on the main stream)',
     clears: RECOVERY,
   },
   recovering: {

@@ -275,7 +275,10 @@ export class FakeExpoPlayer {
     };
   }
 
-  replaceAsync(): Promise<void> {
+  /** Sources handed to `replaceAsync` (null = unloaded). */
+  readonly replaced: unknown[] = [];
+  replaceAsync(source?: unknown): Promise<void> {
+    this.replaced.push(source);
     this.calls.push('replace');
     return new Promise((resolve, reject) => (this.replace = { resolve, reject }));
   }

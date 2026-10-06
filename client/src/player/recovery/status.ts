@@ -76,8 +76,8 @@ export function statusOf(input: StatusInput): PlayerStatus {
   if (recovery?.extra.quiet) {
     if (loading) return show(null, true);
     if (!input.stallSince || input.paused) return NONE;
-    const hint = now - input.stallSince >= HINT_MS ? runningHint(recovery) : null;
-    return { spinner: true, hint, actions: [] };
+    // The server said the playback is gone: "Restarting at …" at once, no stall hint before it (S6u).
+    return { spinner: true, hint: runningHint(recovery), actions: [] };
   }
   if (recovery?.running)
     // A step runs: say what it does; the viewer's own actions wait until it is done.

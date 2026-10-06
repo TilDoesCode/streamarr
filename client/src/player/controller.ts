@@ -120,9 +120,18 @@ export {
   SUBTITLE_RETRY_MS,
   SYSTEM_PAUSE_MS,
 } from '@/player/recovery/budgets';
+/** Time events within this keep the clock running (AVPlayer sends one about every 0.5 s while it plays). */
+const CLOCK_RUNS_MS = 2_000;
+/** A stall this old asks the server whether the playback still exists (S6u: a gone playback restarts first). */
+const STALL_PROBE_MS = 1_000;
+/** While offline the network state is read again this often: a late or missed NetInfo event must not hold the hint (S6v). */
+const NETWORK_RECHECK_MS = 3_000;
+
 /** Connectivity source (NetInfo unless a test passes its own); `kind` (wifi, cellular …) reveals a handover. */
 export type NetworkSource = {
   subscribe(listener: (online: boolean, kind?: string) => void): () => void;
+  /** Reads the state again now (NetInfo.fetch): a late or missed event must not hold the offline hint (S6v). */
+  refresh?(): Promise<boolean>;
 };
 /** One audio switch: in the session (rendition) or via `/switch`; `ms` until the new track plays on. */
 export type AudioSwitchSample = {
@@ -161,6 +170,7 @@ export type ControllerOptions = {
 const NETINFO: NetworkSource = {
   subscribe: (listener) =>
     NetInfo.addEventListener((state) => listener(state.isConnected !== false, state.type)),
+  refresh: () => NetInfo.fetch().then((state) => state.isConnected !== false),
 };
 
 const MIN_RESUME_SECONDS = 30;
@@ -193,6 +203,13 @@ export class PlaybackController {
   preferences: PlaybackPreferences;
   private version = 0;
   private listeners = new Set<() => void>();
+  /** Inside an engine event: listeners hear once at its end (a native burst must not re-render per call, S6v). */
+  private notifyDepth = 0;
+  private dirty = false;
+  private lastEngineState: EngineState | null = null;
+  /** The current stall already asked the server whether the playback exists. */
+  private stallProbed = false;
+  private networkRecheck: ReturnType<typeof setInterval> | null = null;
   private abort = new AbortController();
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private engineOff: (() => void) | null = null;
@@ -365,7 +382,25 @@ export class PlaybackController {
 
   private changed(): void {
     this.version += 1;
+    if (this.notifyDepth) {
+      this.dirty = true;
+      return;
+    }
     for (const listener of this.listeners) listener();
+  }
+
+  /** Runs one engine event; whatever it changed reaches the listeners once (S6v "Maximum update depth"). */
+  private batched(run: () => void): void {
+    this.notifyDepth += 1;
+    try {
+      run();
+    } finally {
+      this.notifyDepth -= 1;
+      if (!this.notifyDepth && this.dirty) {
+        this.dirty = false;
+        for (const listener of this.listeners) listener();
+      }
+    }
   }
 
   get closed(): boolean {
@@ -507,6 +542,20 @@ export class PlaybackController {
     });
   }
 
+  /** While offline: read the network again on a timer, so the return is seen without waiting for an event (S6v). */
+  private recheckNetwork(): void {
+    if (this.networkRecheck) clearInterval(this.networkRecheck);
+    this.networkRecheck = null;
+    const source = this.options.network ?? NETINFO;
+    if (!this.offline || this.closed || !source.refresh) return;
+    this.networkRecheck = setInterval(() => {
+      void source
+        .refresh?.()
+        .then((online) => online && this.onNetwork(true))
+        .catch(() => undefined);
+    }, NETWORK_RECHECK_MS);
+  }
+
   private onNetwork(online: boolean, kind?: string): void {
     if (kind && kind !== this.networkKind) {
       if (this.networkKind) this.networkChangedAt = Date.now();
@@ -515,6 +564,7 @@ export class PlaybackController {
     if (online === !this.offline || this.closed) return;
     this.offline = !online;
     this.offlineSince = online ? 0 : Date.now();
+    this.recheckNetwork();
     // An outage never counts against a stall or start budget: back online, the clocks start over (no step-down).
     this.restartClocks();
     this.autoRetry.cancel();
@@ -756,6 +806,15 @@ export class PlaybackController {
     });
   }
 
+  /** AVPlayer with subtitles on, picture and clock running: a URI-less 404 can only be a subtitle segment (S6u). */
+  private subtitleSegmentFails(): boolean {
+    const engine = this.engine;
+    if (engine?.kind !== 'expo-video' || Platform.OS !== 'ios' || this.stallSince) return false;
+    const { state, tracks } = engine.getSnapshot();
+    const running = state === 'playing' && Date.now() - this.lastTimeAt < CLOCK_RUNS_MS;
+    return running && this.pictured && tracks.subtitles.some((track) => track.selected);
+  }
+
   /** AVPlayer stalls the whole HLS playback on a broken subtitle rendition: subtitles off is the first try. */
   private subtitleStalls(): boolean {
     const engine = this.engine;
@@ -913,82 +972,91 @@ export class PlaybackController {
       if (old) setTimeout(() => old.release(), 500);
       engine = createEngine(kind);
       this.engine = engine;
-      this.engineOff = engine.subscribe((event) => {
-        if (event.type === 'error' && this.pendingAudio?.engineId)
-          this.settleAudio(false, event.reason);
-        else if (event.type === 'error') this.onEngineError(event.reason, event.status);
-        else if (event.type === 'subtitleError') this.onSubtitleError(event.code);
-        else if (event.type === 'loadRetry') {
-          const at = Date.now();
-          // A run of status-less retries (AVPlayer -1005) starts a break; own answers after it prove the server (S6t).
-          const running = this.loadRetry && at - this.loadRetry.at < LOAD_RETRY_RECENT_MS;
-          if (!event.status && !event.audio && !(running && this.loadRetry?.status === 0))
-            this.brokeAt = at;
-          this.loadRetry = { status: event.status ?? 0, audio: !!event.audio, at };
-          // A video request the server answers 404/410 means it lost the playback; AVPlayer only stalls on it (S9b2 C10).
-          if (!event.audio && lostPlayback(event.status) && !this.runner.current)
-            this.mediaFailure(
-              classify({
-                kind: 'engine',
-                engine: this.engine?.kind ?? 'web',
-                reason: 'networkError:fragLoadError',
-                status: event.status,
-              })
-            );
-          this.changed();
-        } else if (event.type === 'audioError') {
-          if (this.pendingAudio?.engineId) this.settleAudio(false, event.code);
-        } else if (event.type === 'ended') this.onEnded();
-        // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
-        else if (event.type === 'time') {
-          this.lastTimeAt = Date.now();
-          if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
-            this.loadProgress = { buffered: event.buffered, at: Date.now() };
-          if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
-            this.startFloor = 0;
-          if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
-            this.lastGoodPosition = event.position;
-          this.autoplayResumed(event.position);
-          this.audioPlaying(event.position);
-          if (!this.pictured && this.clockRuns(event.position)) this.onPicture();
-          this.keepLivePosition(event.position, event.duration);
-          this.onClock(event.position);
-          if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
-            this.report('progress');
-        } else if (event.type === 'buffering') {
-          if (event.buffering) this.startStall();
-          else this.clearStall();
-        } else if (event.type === 'autoplay') {
-          this.autoplay = event.result;
-          if (event.result === 'muted') this.muted = true;
-          if (event.result === 'blocked') {
-            this.paused = true;
-            this.blockedAt = this.engine?.getSnapshot().position ?? 0;
+      this.engineOff = engine.subscribe((event) =>
+        this.batched(() => {
+          if (event.type === 'error' && this.pendingAudio?.engineId)
+            this.settleAudio(false, event.reason);
+          else if (event.type === 'error') this.onEngineError(event.reason, event.status);
+          else if (event.type === 'subtitleError') this.onSubtitleError(event.code);
+          else if (event.type === 'loadRetry') {
+            const at = Date.now();
+            // A run of status-less retries (AVPlayer -1005) starts a break; own answers after it prove the server (S6t).
+            const running = this.loadRetry && at - this.loadRetry.at < LOAD_RETRY_RECENT_MS;
+            if (!event.status && !event.audio && !(running && this.loadRetry?.status === 0))
+              this.brokeAt = at;
+            this.loadRetry = { status: event.status ?? 0, audio: !!event.audio, at };
+            // AVPlayer names no URI for a WebVTT segment: a 404 while picture and clock run is the subtitles' (S6u).
+            if (!event.audio && event.status === 404 && this.subtitleSegmentFails())
+              this.onSubtitleError('unknown_subtitle_stream');
+            // A video request the server answers 404/410 means it lost the playback; AVPlayer only stalls on it (S9b2 C10).
+            else if (!event.audio && lostPlayback(event.status) && !this.runner.current)
+              this.mediaFailure(
+                classify({
+                  kind: 'engine',
+                  engine: this.engine?.kind ?? 'web',
+                  reason: 'networkError:fragLoadError',
+                  status: event.status,
+                })
+              );
+            this.changed();
+          } else if (event.type === 'audioError') {
+            if (this.pendingAudio?.engineId) this.settleAudio(false, event.code);
+          } else if (event.type === 'ended') this.onEnded();
+          // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
+          else if (event.type === 'time') {
+            this.lastTimeAt = Date.now();
+            if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
+              this.loadProgress = { buffered: event.buffered, at: Date.now() };
+            if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
+              this.startFloor = 0;
+            if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
+              this.lastGoodPosition = event.position;
+            this.autoplayResumed(event.position);
+            this.audioPlaying(event.position);
+            if (!this.pictured && this.clockRuns(event.position)) this.onPicture();
+            this.keepLivePosition(event.position, event.duration);
+            this.onClock(event.position);
+            if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
+              this.report('progress');
+          } else if (event.type === 'buffering') {
+            if (event.buffering) this.startStall();
+            else this.clearStall();
+          } else if (event.type === 'autoplay') {
+            this.autoplay = event.result;
+            if (event.result === 'muted') this.muted = true;
+            if (event.result === 'blocked') {
+              this.paused = true;
+              this.blockedAt = this.engine?.getSnapshot().position ?? 0;
+            }
+            this.changed();
+          } else if (event.type === 'pip') {
+            this.pictureInPicture = event.active;
+            this.changed();
+          } else if (event.type === 'reload') {
+            // The engine reopens its own source: a fresh load with its start budget, not a stall (VLC, D23).
+            this.pictured = false;
+            this.loadingSince = Date.now();
+            this.clearStall();
+            this.monitor.newSource();
+            this.changed();
+          } else if (event.type === 'external') this.system.onExternal(event.active, event.device);
+          else if (event.type === 'userPlayback')
+            this.system.onUserPlayback(event.paused, event.cause);
+          else if (
+            event.type === 'state' ||
+            event.type === 'tracks' ||
+            event.type === 'firstFrame'
+          ) {
+            if (event.type === 'firstFrame') this.onPicture();
+            if (event.type === 'state') this.onEngineState(event.state);
+            if (event.type === 'tracks') {
+              this.audioConfirmed(event.tracks.audio);
+              this.holdSubtitle(event.tracks.subtitles);
+            }
+            if (event.type !== 'state') this.changed();
           }
-          this.changed();
-        } else if (event.type === 'pip') {
-          this.pictureInPicture = event.active;
-          this.changed();
-        } else if (event.type === 'reload') {
-          // The engine reopens its own source: a fresh load with its start budget, not a stall (VLC, D23).
-          this.pictured = false;
-          this.loadingSince = Date.now();
-          this.clearStall();
-          this.monitor.newSource();
-          this.changed();
-        } else if (event.type === 'external') this.system.onExternal(event.active, event.device);
-        else if (event.type === 'userPlayback')
-          this.system.onUserPlayback(event.paused, event.cause);
-        else if (event.type === 'state' || event.type === 'tracks' || event.type === 'firstFrame') {
-          if (event.type === 'firstFrame') this.onPicture();
-          if (event.type === 'state') this.onEngineState(event.state);
-          if (event.type === 'tracks') {
-            this.audioConfirmed(event.tracks.audio);
-            this.holdSubtitle(event.tracks.subtitles);
-          }
-          this.changed();
-        }
-      });
+        })
+      );
     }
     this.playback = playback;
     this.noteUndeliverable(playback);
@@ -1007,6 +1075,7 @@ export class PlaybackController {
     this.startFloor = position;
     this.pictured = false;
     this.loadingSince = Date.now();
+    this.lastEngineState = null;
     this.loadProgress = { buffered: position, at: 0 };
     this.loadPosition = position;
     this.lastClock = null;
@@ -1165,6 +1234,9 @@ export class PlaybackController {
   }
 
   private onEngineState(state: EngineState): void {
+    // The same state again (VLC sends ~56 `buffering` after a seek) changes nothing.
+    if (state === this.lastEngineState) return;
+    this.lastEngineState = state;
     if (state === 'buffering' || (state === 'loading' && this.pictured)) return this.startStall();
     if (state === 'playing') {
       this.clearStall();
@@ -1180,6 +1252,7 @@ export class PlaybackController {
 
   private startStall(): void {
     if (!this.pictured || this.stallSince) return;
+    this.stallProbed = false;
     this.stallSince = Date.now();
     this.stallPosition = this.engine?.getSnapshot().position ?? 0;
     this.stallAfterSeek = this.stallSince - this.seekAt < 2 * SPINNER_MS;
@@ -1273,8 +1346,31 @@ export class PlaybackController {
     this.statusTicker = null;
   }
 
+  /** A stall asks the server once whether the playback still exists: a gone one restarts first, no stall hints (S6u). */
+  private async probeGone(): Promise<void> {
+    const playback = this.playback;
+    if (!playback?.playbackId || (await this.alive(playback))) return;
+    if (this.closed || this.playback !== playback || this.phase !== 'playing') return;
+    if (this.runner.current) return;
+    this.runner.handle(
+      { category: 'T2', code: 'playback_not_found' },
+      { position: this.resumePosition }
+    );
+  }
+
   private statusTick(): void {
     const now = Date.now();
+    if (
+      this.stallSince &&
+      !this.stallProbed &&
+      now - this.stallSince >= STALL_PROBE_MS &&
+      this.phase === 'playing' &&
+      !this.offline &&
+      !this.runner.current
+    ) {
+      this.stallProbed = true;
+      void this.probeGone();
+    }
     const state = this.states.at(-1) ?? '';
     if (this.phase === 'starting' && startStuck(state, this.stateSince, now, this.offline)) {
       this.startAbort?.abort();
@@ -2003,6 +2099,7 @@ export class PlaybackController {
     this.autoRetry.cancel();
     this.stopStatusTicker();
     this.networkOff?.();
+    if (this.networkRecheck) clearInterval(this.networkRecheck);
     this.monitor.stop();
     this.system.engineGone();
     this.settleAudio(false);

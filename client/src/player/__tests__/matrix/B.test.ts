@@ -1209,7 +1209,7 @@ describe('matrix B — code review S4c-S4f (S4g)', () => {
 
   row(
     'B25',
-    'a silent restart whose old buffer runs dry: spinner, then "Restarting at …"; the stall never cancels the restart (review B1)',
+    'a silent restart whose old buffer runs dry: spinner and "Restarting at …" at once (S4o); the stall never cancels the restart (review B1)',
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, { method: 'transcode' } as never, 100);
@@ -1226,7 +1226,8 @@ describe('matrix B — code review S4c-S4f (S4g)', () => {
       harness.engine.time(105);
       harness.engine.emit({ type: 'buffering', buffering: true });
       await jest.advanceTimersByTimeAsync(1_000);
-      expect(c.status).toEqual({ spinner: true, hint: null, actions: [] });
+      // The server said the playback is gone: no stall hint first (S6u).
+      expect(c.status).toMatchObject({ spinner: true, hint: { key: 'restarting' } });
       await jest.advanceTimersByTimeAsync(4_000);
       expect(c.status.hint).toMatchObject({ key: 'restarting' });
       // Well past the stall budget: no card, the restart goes on and attaches when ready.

@@ -38,7 +38,14 @@ export function useClock(engine: PlayerEngine | null | undefined, hidden = false
         duration: snapshot.duration,
         buffered: snapshot.buffered,
       };
-      setClock((shown) => (always || clockMoved(shown, next, hidden) ? next : shown));
+      // A state event re-reads the clock, but an unchanged one is the same object: no re-render (S6v bursts).
+      const same = (shown: Clock) =>
+        shown.position === next.position &&
+        shown.duration === next.duration &&
+        shown.buffered === next.buffered;
+      setClock((shown) =>
+        same(shown) || !(always || clockMoved(shown, next, hidden)) ? shown : next
+      );
     };
     read(true);
     return engine.subscribe((event) => {
