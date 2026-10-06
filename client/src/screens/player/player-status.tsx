@@ -24,20 +24,19 @@ export type PlayerStatusProps = {
   noticeShown?: boolean;
 };
 
-export type StatusLayout = { anchor: 'centre' | 'top'; spinner: boolean; offset: number };
+export type StatusLayout = { anchor: 'centre' | 'top'; offset: number };
 
 /** Visible touch/web controls own the centre (Play, ±10 s): the hint moves under the top bar, below a notice. */
 export function statusLayout(options: {
   controlsVisible: boolean;
   tv: boolean;
-  spinner: boolean;
   top: number;
   noticeShown: boolean;
   noticeHeight: number;
 }): StatusLayout {
-  const { controlsVisible, tv, spinner, top, noticeShown, noticeHeight } = options;
-  if (!controlsVisible || tv) return { anchor: 'centre', spinner, offset: 0 };
-  return { anchor: 'top', spinner, offset: top + (noticeShown ? noticeHeight : 0) };
+  const { controlsVisible, tv, top, noticeShown, noticeHeight } = options;
+  if (!controlsVisible || tv) return { anchor: 'centre', offset: 0 };
+  return { anchor: 'top', offset: top + (noticeShown ? noticeHeight : 0) };
 }
 
 /** Spinner and hint over the picture; never focusable on TV (no buttons there), announced once per change. */
@@ -64,12 +63,11 @@ export function PlayerStatusView({
   const layout = statusLayout({
     controlsVisible,
     tv: design.isTV,
-    spinner: status.spinner,
     top,
     noticeShown,
     noticeHeight: design.px(64),
   });
-  if (!hint && !layout.spinner) return null;
+  if (!hint && !status.spinner) return null;
   const actions = design.isTV ? [] : status.actions;
   return (
     <View
@@ -82,7 +80,7 @@ export function PlayerStatusView({
           : { alignItems: 'center', justifyContent: 'flex-start', paddingTop: layout.offset },
         { gap: design.space.lg },
       ]}>
-      {layout.spinner ? (
+      {status.spinner ? (
         <View
           pointerEvents="none"
           testID="player-status-spinner"

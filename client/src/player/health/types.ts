@@ -3,7 +3,7 @@ export type EngineHealth = {
   /** Monotonic count of frames on screen. */
   framesPresented?: number;
   framesDropped?: number;
-  /** Frames the decoder produced (VLC, Exo): decoded but never presented = no picture (D16, D23). */
+  /** Frames the decoder produced (VLC, Exo); reported for the log, no watchdog rule reads it. */
   framesDecoded?: number;
   /** Monotonic bytes/buffers of audio rendered or decoded. */
   audioProgress?: number;

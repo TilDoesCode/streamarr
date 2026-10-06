@@ -59,11 +59,7 @@ describe('classify (state-matrix § 2 b.1)', () => {
     expect(classify(engine(reason, undefined, 'expo-video'))).toMatchObject({ category, code });
   });
 
-  it('VLC errors and the stall watchdog are format failures', () => {
-    expect(classify(engine('vlc_video_stalled', undefined, 'vlc'))).toMatchObject({
-      category: 'T7',
-      code: 'video_stalled',
-    });
+  it('VLC errors are format failures', () => {
     expect(classify(engine('VLC is unable to open the MRL', undefined, 'vlc')).category).toBe('T7');
   });
 
@@ -98,5 +94,15 @@ describe('classify (state-matrix § 2 b.1)', () => {
   it('every known code has a category', () => {
     for (const code of [...CLIENT_ERROR_CODES, ...VIEWER_ERROR_CODES])
       expect(classify({ kind: 'api', code }).category).toMatch(/^T(1[01]?|[2-9])$/);
+  });
+});
+
+describe('AVFoundation HTTP refusals (code review native N15)', () => {
+  it('-12660 / NSURL -1102 is a 403: the stream capability is gone (T2)', () => {
+    const reason =
+      'NSURLErrorDomain -1102 (CoreMediaErrorDomain -12660): The operation couldn’t be completed.';
+    expect(classify({ kind: 'engine', engine: 'expo-video', reason })).toMatchObject({
+      category: 'T2',
+    });
   });
 });

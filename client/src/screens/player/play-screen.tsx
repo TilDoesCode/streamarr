@@ -9,6 +9,8 @@ import { Dimensions, Platform, ScrollView, StyleSheet, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
+import { parseEndedReason } from '@/accounts/ended-reason';
+import { holdForPlayer } from '@/accounts/player-hold';
 import { describeError } from '@/api/error-text';
 import { languageName } from '@/browse/version-format';
 import { invalidateWatchQueries } from '@/browse/queries';
@@ -74,6 +76,12 @@ export function PlayScreen() {
   const { account, client } = useActiveAccount();
   const queryClient = useQueryClient();
   const [controller, setController] = useState<PlaybackController | null>(null);
+  // The session may end while playing: the screen stays and the card says why (S9b A05).
+  useEffect(() => holdForPlayer(account.id), [account.id]);
+  useEffect(() => {
+    if (!account.signedIn)
+      controller?.endSession(parseEndedReason(account.endedReason ?? 'refresh_session_expired'));
+  }, [controller, account.signedIn, account.endedReason]);
   const [attempt, setAttempt] = useState(0);
   const [capsError, setCapsError] = useState<string | null>(null);
   const [preferences, setPreferences] = useState<PlaybackPreferences>({ engine: 'auto' });

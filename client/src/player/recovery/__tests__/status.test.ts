@@ -1,4 +1,4 @@
-import { statusOf, type StatusInput } from '@/player/recovery/status';
+import { runningHint, statusOf, type StatusInput } from '@/player/recovery/status';
 import type { Recovery } from '@/player/recovery/runner';
 
 const base: StatusInput = {
@@ -35,5 +35,23 @@ describe('statusOf', () => {
       timer: null,
     } as Recovery;
     expect(statusOf({ ...base, recovery }).hint?.params).toMatchObject({ seconds: 1 });
+  });
+});
+
+describe('the decoder hint names the format (code review native N18)', () => {
+  it('a sound format the device cannot decode, at step S: "can\'t play E-AC-3"', () => {
+    const recovery = {
+      decision: { step: 'S' },
+      failure: {
+        category: 'T7',
+        code: 'audio_decode_error',
+        detail: 'DECODING_FAILED [audio/eac3]',
+      },
+      position: 30,
+    } as unknown as Recovery;
+    expect(runningHint(recovery)).toEqual({
+      key: 'decoder',
+      params: { time: '0:30', format: 'E-AC-3' },
+    });
   });
 });

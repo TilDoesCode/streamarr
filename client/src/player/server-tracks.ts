@@ -2,8 +2,8 @@ import { renditionFor } from '@/player/audio-renditions';
 import type { EngineTracks, PlayerEngine } from '@/player/engines/types';
 import type { Playback } from '@/player/playback-api';
 import type { StepTracks } from '@/player/recovery/runner';
+import { LOCAL_SUBTITLES } from '@/player/local-tracks';
 
-const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
 /** How often a new source re-applies the server's track picks over the engine's own choice. */
 const MAX_SERVER_TRACK_APPLIES = 3;
 /** The engine has settled its own picks by then. */

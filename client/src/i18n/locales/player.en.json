@@ -140,7 +140,7 @@
     "endedEarly": "The file ends at {time}, {missing} before the end. Another version may have the rest.",
     "pausedBySystem": "Paused: {cause}.",
     "airplay": "Playing on {device}.",
-    "decoder": "This device can’t play {format}. Converting it instead…",
+    "decoder": "This device can’t play {format}. Trying another way to play at {time}…",
     "mutedAutoplay": "Started without sound (browser rule).",
     "autoplayBlocked": "The browser didn’t let the video start. Press Play.",
     "serverBusy": "The server is busy. Retrying in {seconds} s…",
@@ -165,6 +165,7 @@
       "airplayLost": "AirPlay disconnected",
       "converting": "The server is converting the video.",
       "slowConnection": "The connection is slow.",
+      "loadingFile": "The player is still opening the file.",
       "preparing": "The server is still preparing the video.",
       "outside": "outside the app"
     },

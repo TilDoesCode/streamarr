@@ -57,7 +57,7 @@ during a step the viewer's own actions wait (none shown).
 | H12 | The file ends before its announced length | Die Datei endet bei 1:31:02, 12:40 vor dem Ende. Eine andere Version hat vielleicht den Rest. | The file ends at 1:31:02, 12:40 before the end. Another version may have the rest. | Andere Version, Zurück / Other version, Back | the engine ends more than 12 s before the end and the server confirms the short file | the viewer picks another version or leaves |
 | H13 | The system paused playback | Pausiert: Anruf. | Paused: incoming call. | Weiter / Resume | an engine pause the app did not ask for lasts 1 s | the viewer resumes |
 | H14 | Playing on an AirPlay device | Läuft auf Living room. | Playing on Living room. | — / — | AirPlay is active | AirPlay ends |
-| H15 | Step S runs after the device refused a named format (native decoder error, HDR tag mismatch) | Dieses Gerät kann HEVC nicht abspielen. Es wird umgewandelt … | This device can’t play HEVC. Converting it instead… | — / — | the step runs and the failure names a format (HEVC, AV1, Dolby Vision, HDR, E-AC-3 …) | the step is done: the picture plays again, or the next step or the card follows |
+| H15 | Step S runs after the device refused a named format (native decoder error, HDR tag mismatch) | Dieses Gerät kann HEVC nicht abspielen. Eine andere Wiedergabeart wird versucht, es geht weiter bei 42:10 … | This device can’t play HEVC. Trying another way to play at 42:10… | — / — | the step runs and the failure names a format (HEVC, AV1, Dolby Vision, HDR, E-AC-3 …) | the step is done: the picture plays again, or the next step or the card follows |
 | H16 | Web: the browser only allowed a muted start | Ohne Ton gestartet (Vorgabe des Browsers). | Started without sound (browser rule). | Ton an / Unmute | the muted autoplay fallback was used | the viewer unmutes |
 | H17 | Web: the browser blocked the start | Der Browser hat den Start verhindert. Drücke Abspielen. | The browser didn’t let the video start. Press Play. | Abspielen / Play | play() was refused even muted | the viewer presses Play |
 | H18 | Server busy (T4), the app waits for Retry-After | Der Server ist ausgelastet. Neuer Versuch in 8 s … | The server is busy. Retrying in 8 s… | Jetzt versuchen / Try now | a T4 answer with a wait time | the retry goes through, or the T4 card |
@@ -85,6 +85,7 @@ during a step the viewer's own actions wait (none shown).
 | `outside` | außerhalb der App | outside the app |
 | `converting` | Der Server wandelt das Video um. | The server is converting the video. |
 | `slowConnection` | Die Verbindung ist langsam. | The connection is slow. |
+| `loadingFile` | Der Player öffnet die Datei noch. | The player is still opening the file. |
 | `preparing` | Der Server bereitet das Video noch vor. | The server is still preparing the video. |
 
 ### Hint actions

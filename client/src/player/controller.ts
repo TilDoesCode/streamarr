@@ -5,12 +5,7 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 import type { ApiClient } from '@/api/client';
 import { toAppError, type AppError, type ErrorParams } from '@/api/errors';
 import { isSingleAudio, noteAudioTracks, rememberAudioLanguage } from '@/player/audio-preference';
-import {
-  engineTrackFor,
-  renditionFor,
-  renditionOfTrack,
-  type AudioRendition,
-} from '@/player/audio-renditions';
+import { renditionFor, renditionOfTrack, type AudioRendition } from '@/player/audio-renditions';
 import {
   createEngine,
   type EngineKind,
@@ -34,41 +29,39 @@ import {
 import { subtitleAfterAudio } from '@/player/forced-subtitle';
 import { clock } from '@/player/format';
 import { HealthMonitor, HEALTH_TICK_MS } from '@/player/health/monitor';
-import type { SystemCause } from '@/player/engines/types';
 import type { EngineHealth } from '@/player/health/types';
-import { CLOCK_FROZEN_MS } from '@/player/health/watchdog';
 import { ProgressQueue, type ProgressAnswer } from '@/player/progress-queue';
 import { followServerTracks } from '@/player/server-tracks';
 import { SubtitleRetry } from '@/player/subtitle-retry';
+import { SystemPlayback } from '@/player/system-playback';
+import { LOCAL_SUBTITLES, localTrackId } from '@/player/local-tracks';
+import { apiFailure } from '@/player/recovery/api-failure';
 import { classify, type Classified, type ErrorCategory } from '@/player/recovery/classify';
 import {
   EMPTY_END_MS,
   END_MARGIN_SECONDS,
-  HINT_MS,
   INCIDENT_RESET_MS,
   LOAD_RETRY_RECENT_MS,
   RESUME_REVALIDATE_MS,
   SEEK_DEBOUNCE_MS,
   SETTLE_MS,
   SPINNER_MS,
-  STALL_LADDER_MS,
   START_BUDGET_MS,
-  SYSTEM_PAUSE_MS,
 } from '@/player/recovery/budgets';
 import { cardActions, type Attempt, type LadderStep } from '@/player/recovery/ladder';
 import { nextVersion } from '@/player/recovery/other-version';
 import {
   RecoveryRunner,
-  STEP_TIMEOUT,
   type FailureExtra,
   type Recovery,
   type StatusHint,
   type StepTracks,
 } from '@/player/recovery/runner';
 import { AutoRetry } from '@/player/recovery/auto-retry';
-import { shortFile, transportEnd } from '@/player/recovery/early-end';
+import { engineEnd, shortFile, transportEnd } from '@/player/recovery/early-end';
 import { isRepairing } from '@/player/recovery/repair';
 import { startStuck, stallFailure, type LoadRetry } from '@/player/recovery/stall';
+import { slowStart, switchesBack, tickRules, titleLength } from '@/player/recovery/tick';
 import { StepBudget } from '@/player/recovery/step-budget';
 import { statusOf, type PlayerStatus } from '@/player/recovery/status';
 import { effectiveMuted } from '@/player/test-muted';
@@ -165,9 +158,7 @@ const HEARTBEAT_MS = 10_000;
 export const AUDIO_SWITCH_TIMEOUT_MS = 8_000;
 /** Audio switch measurements kept for diagnostics (newest last). */
 export const AUDIO_SWITCH_SAMPLES = 20;
-const LOCAL_SUBTITLES = new Set(['embedded', 'webvtt']);
 /** Failures of a new source that a viewer's switch caused: slow, broken on the server, or unplayable here. */
-const SWITCH_BACK: ReadonlySet<ErrorCategory> = new Set(['T5', 'T6', 'T7']);
 const STEADY_STATES = new Set<EngineState>(['playing', 'paused', 'buffering', 'ended']);
 const BROKEN_PICTURE = new Set(['picture_black', 'picture_frozen', 'video_stalled']);
 const QUALITY_STEPS = [2160, 1080, 720, 480];
@@ -219,12 +210,25 @@ export class PlaybackController {
   /** The device has no network (NetInfo); playback keeps its engine and waits. */
   offline = false;
   private offlineSince = 0;
-  /** The engine paused without the app asking (call, other audio, headphones, lock …). */
-  systemPaused = false;
-  /** Why, when the engine knows (null = somewhere outside the app). */
-  systemCause: SystemCause | null = null;
-  /** AirPlay / external playback shows the picture elsewhere. */
-  external: { device?: string } | null = null;
+  get systemPaused(): boolean {
+    return this.system.paused;
+  }
+
+  get external(): { device?: string } | null {
+    return this.system.external;
+  }
+
+  /** Pauses by the OS and AirPlay (A12–A18). */
+  readonly system = new SystemPlayback({
+    engine: () => this.engine,
+    terminal: () => this.closed || this.phase === 'failed' || this.phase === 'stopped',
+    paused: () => this.paused,
+    follow: (paused) => void (this.paused = paused),
+    adoptable: () =>
+      this.pictured && !this.ended && !this.runner.current && this.phase === 'playing',
+    report: () => this.report('progress'),
+    changed: () => this.changed(),
+  });
   /** The browser started muted or refused to start. */
   autoplay: 'muted' | 'blocked' | null = null;
   /** Sound is off (the viewer, or the browser's muted autoplay). */
@@ -256,6 +260,9 @@ export class PlaybackController {
   /** The current source showed a picture (first frame or a moving clock). */
   private pictured = false;
   private loadingSince = 0;
+  /** The buffer end of the current source and when it last grew (a slow conversion still delivers, S9b C08). */
+  private loadProgress = { buffered: 0, at: 0 };
+  private lastTimeAt = 0;
   private stallSince = 0;
   /** Stops the polls of the first start when the card takes over (B16). */
   private startAbort: AbortController | null = null;
@@ -271,7 +278,6 @@ export class PlaybackController {
   /** A seek the clock has not passed yet. */
   private seekTarget: number | null = null;
   private stateSince = 0;
-  private systemPauseTimer: ReturnType<typeof setTimeout> | null = null;
   private statusTicker: ReturnType<typeof setInterval> | null = null;
   private networkOff: (() => void) | null = null;
 
@@ -345,9 +351,14 @@ export class PlaybackController {
     const snapshot = this.engine?.getSnapshot();
     if (!snapshot || this.startFloor) return this.lastGoodPosition;
     if (!STEADY_STATES.has(snapshot.state)) return this.lastGoodPosition;
-    // Time events stalled while the engine clock ran on (JS thread starved): trust the engine clock.
+    // Time events stalled while the engine clock ran on (JS thread starved): trust the engine clock,
+    // but never further ahead than the starvation lasted (a probe from before a seek back, S9b R4).
     const native = this.monitor.nativeClock;
-    return native && Date.now() - native.at <= 2 * HEALTH_TICK_MS
+    const now = Date.now();
+    const starved = (now - this.lastTimeAt) / 1000 + 1;
+    return native &&
+      now - native.at <= 2 * HEALTH_TICK_MS &&
+      native.position - snapshot.position <= starved
       ? Math.max(snapshot.position, native.position)
       : snapshot.position;
   }
@@ -355,11 +366,7 @@ export class PlaybackController {
   get duration(): number {
     const engine = this.engine?.getSnapshot().duration ?? 0;
     const ticks = this.playback?.mediaInfo?.durationTicks ?? 0;
-    const server = ticks / TICKS_PER_SECOND;
-    // A playlist without ENDLIST reads as live (Safari) or as cut short (hls.js): the server's length is the title's (S9a D10, S9a2 C12).
-    if (server > 0 && !(Number.isFinite(engine) && engine > server - END_MARGIN_SECONDS))
-      return server;
-    return Number.isFinite(engine) && engine > 0 ? engine : server;
+    return titleLength(engine, ticks / TICKS_PER_SECOND);
   }
 
   async start(): Promise<void> {
@@ -596,20 +603,7 @@ export class PlaybackController {
   /** Any thrown error as a ladder failure; client exceptions get their own code, never "unknown". */
   private failureOf(error: unknown): { failure: Classified; extra: FailureExtra } {
     if (this.phase === 'switching') this.phase = this.engine ? 'playing' : 'starting';
-    if (error === STEP_TIMEOUT)
-      return { failure: { category: 'T6', code: 'step_timeout' }, extra: {} };
-    const appError = toAppError(error);
-    // A 200 that is not JSON: a sign-in page or proxy answered instead of the server (A26).
-    if (appError.code === 'server_error' && appError.cause instanceof SyntaxError)
-      return { failure: { category: 'T1', code: 'network_intercepted' }, extra: {} };
-    if (appError.code === 'unknown') {
-      const detail = error instanceof Error ? error.message : String(error);
-      return { failure: { category: 'T11', code: 'player_internal_error', detail }, extra: {} };
-    }
-    return {
-      failure: classify({ kind: 'api', code: appError.code, status: appError.status || undefined }),
-      extra: { params: appError.params, status: appError.status, retryAfter: appError.retryAfter },
-    };
+    return apiFailure(error);
   }
 
   private onApiFailure(error: unknown): void {
@@ -673,8 +667,13 @@ export class PlaybackController {
     this.runner.handle({ category: 'T2', code: 'playback_not_found' }, { quiet: true });
   }
 
+  /** The account's session ended elsewhere (refresh refused): the same card as a refused heartbeat (S9b A05). */
+  endSession(error: { code: string; params?: AppError['params'] }): void {
+    this.onSignedOut({ code: error.code, params: error.params ?? {}, status: 401 });
+  }
+
   /** A heartbeat refused for good (session ended, password change): pause where it is and say so (A03, A05, A07). */
-  private onSignedOut(error: AppError): void {
+  private onSignedOut(error: Pick<AppError, 'code' | 'params' | 'status'>): void {
     if (this.closed || this.phase === 'failed') return;
     const failure = classify({ kind: 'api', code: error.code, status: error.status || undefined });
     if (failure.category !== 'T3') return;
@@ -830,6 +829,7 @@ export class PlaybackController {
     let engine = this.engine;
     if (!engine || engine.kind !== kind) {
       this.engineOff?.();
+      this.system.engineGone();
       const old = engine;
       await old?.shutdown?.();
       if (old) setTimeout(() => old.release(), 500);
@@ -848,6 +848,9 @@ export class PlaybackController {
         } else if (event.type === 'ended') this.onEnded();
         // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
         else if (event.type === 'time') {
+          this.lastTimeAt = Date.now();
+          if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
+            this.loadProgress = { buffered: event.buffered, at: Date.now() };
           if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
             this.startFloor = 0;
           if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
@@ -880,22 +883,10 @@ export class PlaybackController {
           this.clearStall();
           this.monitor.newSource();
           this.changed();
-        } else if (event.type === 'external') {
-          this.external = event.active ? { device: event.device } : null;
-          this.changed();
-        } else if (event.type === 'userPlayback') {
-          // Paused/resumed from the system controls: adopt it, so the next start of a source does not undo it.
-          this.paused = event.paused;
-          if (event.paused && event.cause) this.systemPaused = true;
-          if (!event.paused) this.systemPaused = false;
-          this.systemCause = event.paused ? (event.cause ?? null) : null;
-          if (event.paused) this.report('progress');
-          this.changed();
-        } else if (
-          event.type === 'state' ||
-          event.type === 'tracks' ||
-          event.type === 'firstFrame'
-        ) {
+        } else if (event.type === 'external') this.system.onExternal(event.active, event.device);
+        else if (event.type === 'userPlayback')
+          this.system.onUserPlayback(event.paused, event.cause);
+        else if (event.type === 'state' || event.type === 'tracks' || event.type === 'firstFrame') {
           if (event.type === 'firstFrame') this.onPicture();
           if (event.type === 'state') this.onEngineState(event.state);
           if (event.type === 'tracks') {
@@ -919,6 +910,7 @@ export class PlaybackController {
     this.startFloor = position;
     this.pictured = false;
     this.loadingSince = Date.now();
+    this.loadProgress = { buffered: position, at: 0 };
     this.loadPosition = position;
     this.lastClock = null;
     this.liveSeekTried = false;
@@ -982,22 +974,23 @@ export class PlaybackController {
   private onEnded(): void {
     const { position, duration } = this.engine?.getSnapshot() ?? { position: 0, duration: 0 };
     if (this.ended || this.phase !== 'playing') return;
-    // A file with no or under a second of media (C31): nothing to watch, so it is explained, never "ended".
-    const blank =
-      !this.pictured && !!this.loadingSince && Date.now() - this.loadingSince >= EMPTY_END_MS;
-    if (this.loadPosition < 1 && ((duration > 0 && duration < 1) || blank))
-      return this.runner.handle({ category: 'T8', code: 'empty_media' }, { position: 0 });
-    if (!duration) return;
-    if (position >= duration - 3) return this.finish();
-    // A reloaded short file often ends again before any time event: its position is the one it was loaded at.
-    const endAt = this.startFloor ? this.loadPosition : position;
     if (this.earlyEndAt && Date.now() - this.earlyEndAt.at > INCIDENT_RESET_MS)
       this.earlyEndAt = null;
-    const first = this.earlyEndAt;
-    if (first && this.phase === 'playing') return void this.earlyEnd(endAt, first.position);
-    // expo-video reports playToEnd while a new source loads; a source that played and stops short ended early.
-    if (!this.pictured || this.startFloor || this.phase !== 'playing') return;
-    void this.earlyEnd(position);
+    const end = engineEnd({
+      position,
+      duration: this.duration,
+      engineDuration: duration,
+      loadPosition: this.loadPosition,
+      blank:
+        !this.pictured && !!this.loadingSince && Date.now() - this.loadingSince >= EMPTY_END_MS,
+      pictured: this.pictured,
+      startFloor: this.startFloor,
+      firstEnd: this.earlyEndAt?.position,
+    });
+    if (end?.kind === 'empty')
+      this.runner.handle({ category: 'T8', code: 'empty_media' }, { position: 0 });
+    else if (end?.kind === 'end') this.finish();
+    else if (end) void this.earlyEnd(end.endAt, end.firstEnd);
   }
 
   /** An end before the duration: offline or cut elsewhere is transport, a gone playback restarts, else the file is short. */
@@ -1044,12 +1037,8 @@ export class PlaybackController {
     const engine = this.engine;
     if (!engine || this.closed || this.runner.replacing) return;
     if (this.phase === 'failed' || this.phase === 'switching') return;
-    // A failed engine may already report 0: the last good position says where it stopped.
-    const { duration } = engine.getSnapshot();
-    const position = this.resumePosition;
-    // A missing last segment or a short tail: the end is reached, not a failure (C13).
-    if (this.pictured && duration && position >= duration - END_MARGIN_SECONDS)
-      return this.finish();
+    // A missing last segment or a short tail of the title: the end is reached, not a failure (C13, S9b C12).
+    if (this.nearEnd()) return this.finish();
     this.mediaFailure(classify({ kind: 'engine', engine: engine.kind, reason, status }));
   }
 
@@ -1082,36 +1071,14 @@ export class PlaybackController {
     if (state === 'buffering' || (state === 'loading' && this.pictured)) return this.startStall();
     if (state === 'playing') {
       this.clearStall();
-      if (this.systemPaused) {
-        // The system resumed on its own (end of a call).
-        this.systemPaused = false;
-        this.systemCause = null;
-        this.paused = false;
-      } else if (this.paused) this.engine?.pause();
+      this.system.onPlaying();
     } else if (state === 'paused') {
       this.clearStall();
       // Paused by the viewer, a source that is ready to play counts as loaded (no picture event while paused).
       if (this.paused && !this.pictured && this.phase === 'playing') this.onPicture();
-      this.watchSystemPause();
+      this.system.onPaused();
     } else if (state === 'ended' || state === 'error') this.clearStall();
     this.changed();
-  }
-
-  /** A pause the app did not ask for (native engines; web reports `userPlayback`) is adopted after a moment. */
-  private watchSystemPause(): void {
-    const engine = this.engine;
-    if (!engine || engine.kind === 'web' || this.paused || !this.pictured || this.ended) return;
-    if (this.systemPauseTimer) clearTimeout(this.systemPauseTimer);
-    this.systemPauseTimer = setTimeout(() => {
-      this.systemPauseTimer = null;
-      if (this.engine !== engine || engine.getSnapshot().state !== 'paused') return;
-      if (this.paused || this.ended || this.runner.current || this.phase !== 'playing') return;
-      this.paused = true;
-      this.systemPaused = true;
-      this.systemCause = null;
-      this.report('progress');
-      this.changed();
-    }, SYSTEM_PAUSE_MS);
   }
 
   private startStall(): void {
@@ -1164,6 +1131,7 @@ export class PlaybackController {
 
   /** The watchdog's guards right now (state-matrix § 2 a). */
   private healthContext(health: EngineHealth) {
+    this.system.probed(health);
     const snapshot = this.engine?.getSnapshot();
     const info = this.playback?.mediaInfo;
     return {
@@ -1221,37 +1189,40 @@ export class PlaybackController {
     }
     const recovery = this.runner.current;
     // A step that already ran (the source reloaded) does not hold the budgets: a reload without a picture fails again.
-    const pending = !!recovery && !recovery.running;
-    const ready = !pending && !this.offline && this.phase === 'playing';
-    // A running step has its own budget: the stall and seek rules must not cancel it (review B1).
-    const calm = ready && !this.paused && !recovery?.running;
-    // A seek whose clock never arrives, without a stall from the engine, is a stall too (D29).
-    if (
-      calm &&
-      this.seekTarget !== null &&
-      !this.stallSince &&
-      now - this.seekAt >= CLOCK_FROZEN_MS
-    ) {
+    const ready = !(recovery && !recovery.running) && !this.offline && this.phase === 'playing';
+    const { seekStall, rule } = tickRules({
+      now,
+      ready,
+      calm: ready && !this.paused && !recovery?.running,
+      seeking: this.seekTarget !== null,
+      seekAt: this.seekAt,
+      stallSince: this.stallSince,
+      loadingSince: this.loadingSince,
+      pictured: this.pictured,
+      startBudget: this.startBudget(),
+      converting: this.playback?.method === 'transcode',
+      progressAt: this.loadProgress.at,
+      nearEnd: this.nearEnd(),
+      offline: this.offline,
+    });
+    if (seekStall) {
       this.startStall();
       this.stallAfterSeek = true;
     }
-    // The start budget runs while paused too: a source that never loads is not waiting for the viewer.
-    if (
-      ready &&
-      this.loadingSince &&
-      !this.pictured &&
-      now - this.loadingSince >= this.startBudget()
-    ) {
+    if (rule === 'pictureTimeout' || rule === 'conversionTimeout') {
       this.loadingSince = 0;
-      this.mediaFailure({ category: 'T7', code: 'picture_timeout' });
-    } else if (calm && this.stallSince && this.nearEnd() && now - this.stallSince >= HINT_MS) {
-      this.finish();
-    } else if (calm && this.stallSince && now - this.stallSince >= STALL_LADDER_MS) {
+      this.mediaFailure(
+        rule === 'pictureTimeout'
+          ? { category: 'T7', code: 'picture_timeout' }
+          : { category: 'T5', code: 'segment_timeout' }
+      );
+    } else if (rule === 'finish') this.finish();
+    else if (rule === 'stallLadder') {
       this.stallSince = 0;
       this.mediaFailure(
         stallFailure(this.loadRetry, now, this.stallAfterSeek, this.engine?.kind ?? 'web')
       );
-    } else if (this.offline) this.runner.expireOffline(now - this.offlineSince);
+    } else if (rule === 'offline') this.runner.expireOffline(now - this.offlineSince);
     this.tickStatus();
     this.changed();
   }
@@ -1268,9 +1239,9 @@ export class PlaybackController {
       seekAt: this.seekAt,
       seeking: this.seekTarget !== null,
       paused: this.paused,
-      systemPaused: this.systemPaused,
-      systemCause: this.systemCause,
-      external: this.external,
+      systemPaused: this.system.paused,
+      systemCause: this.system.cause,
+      external: this.system.external,
       autoplay: this.autoplay,
       health: this.monitor.finding,
       frozenAt: this.monitor.watchdog.lastGoodPosition ?? 0,
@@ -1281,6 +1252,15 @@ export class PlaybackController {
       bandwidthBps: this.monitor.last.bandwidthBps,
       fetch: this.monitor.last.fetch,
       conversionRate: this.monitor.last.conversionRate,
+      slowConversion:
+        slowStart({
+          now: Date.now(),
+          loadingSince: this.pictured ? 0 : this.loadingSince,
+          startBudget: this.startBudget(),
+          converting: this.playback?.method === 'transcode',
+          progressAt: this.loadProgress.at,
+          pictured: this.pictured,
+        }) === 'slow',
       repairing: isRepairing(this.playback?.repair?.state),
       serverRetry:
         this.loadRetry && Date.now() - this.loadRetry.at < LOAD_RETRY_RECENT_MS
@@ -1504,7 +1484,7 @@ export class PlaybackController {
   /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
   private mediaFailure(failure: Classified, extra?: FailureExtra): void {
     const from = this.switchedFrom;
-    if (!from || this.pictured || !SWITCH_BACK.has(failure.category))
+    if (!from || !switchesBack(this.pictured, failure.category))
       return this.runner.handle(failure, extra);
     this.switchedFrom = null;
     this.lastError = failure.code;
@@ -1526,30 +1506,12 @@ export class PlaybackController {
     this.switchBudget = null;
   }
 
-  /** Engine track that renders server track `index` locally, if the delivery allows it. */
   private localTrackId(
     kind: 'audio' | 'subtitle',
     index: number,
     tracks = this.engine?.getSnapshot().tracks
   ): string | null {
-    const info = this.playback?.mediaInfo;
-    if (!info || !tracks) return null;
-    if (kind === 'audio') {
-      const list = info.audioTracks ?? [];
-      const track = list.find((item) => item.index === index);
-      const rendition = renditionFor(this.playback, index);
-      if (rendition) {
-        const renditions = this.playback?.audioRenditions ?? [];
-        return engineTrackFor(rendition, renditions, tracks.audio)?.id ?? null;
-      }
-      if (track?.deliveredAs !== 'original') return null;
-      return tracks.audio[list.indexOf(track)]?.id ?? null;
-    }
-    const list = (info.subtitleTracks ?? []).filter((item) =>
-      LOCAL_SUBTITLES.has(item.deliveredAs ?? '')
-    );
-    const position = list.findIndex((item) => item.index === index);
-    return position >= 0 ? (tracks.subtitles[position]?.id ?? null) : null;
+    return localTrackId(this.playback, kind, index, tracks);
   }
 
   /** Server audio index currently heard (engine selection for local tracks). */
@@ -1817,8 +1779,7 @@ export class PlaybackController {
 
   setPaused(paused: boolean): void {
     if (!paused) {
-      this.systemPaused = false;
-      this.systemCause = null;
+      this.system.clear();
       if (this.autoplay === 'blocked') this.autoplay = null;
     }
     if (this.paused === paused) return;
@@ -1889,7 +1850,7 @@ export class PlaybackController {
     this.stopStatusTicker();
     this.networkOff?.();
     this.monitor.stop();
-    if (this.systemPauseTimer) clearTimeout(this.systemPauseTimer);
+    this.system.engineGone();
     this.settleAudio(false);
     this.chooseStart(false);
     if (this.heartbeat) clearInterval(this.heartbeat);

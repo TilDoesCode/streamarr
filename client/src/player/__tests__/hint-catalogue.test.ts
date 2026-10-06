@@ -87,6 +87,16 @@ describe('player hint catalogue (S4h)', () => {
     );
   });
 
+  it('the decoder hint names the step that runs, never a conversion VLC would not do (code review native #4)', () => {
+    const en = i18n.getFixedT('en') as unknown as (key: string, options: object) => string;
+    const de = i18n.getFixedT('de') as unknown as (key: string, options: object) => string;
+    const params = { format: 'HEVC', time: '0:30', ns: 'player' };
+    expect(en('hints.decoder', params)).toBe(
+      'This device can’t play HEVC. Trying another way to play at 0:30…'
+    );
+    expect(de('hints.decoder', params)).not.toMatch(/umgewandelt/);
+  });
+
   it('numbers follow the locale', () => {
     type Untyped = (key: string, options: Record<string, unknown>) => string;
     const de = i18n.getFixedT('de') as unknown as Untyped;
