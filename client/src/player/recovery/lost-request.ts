@@ -33,10 +33,6 @@ export type PlayerSignals = {
   state: EngineState;
   subtitlesShown: boolean;
   paused: boolean;
-  pictured: boolean;
-  stalled: boolean;
-  /** A time event came within the last 2 s. */
-  clockRuns: boolean;
 };
 
 /** A media 404/410 the engine retries, after the server answered: gone restarts; anything else waits for the stall. */
@@ -108,26 +104,14 @@ export class LostWatch {
   }
 }
 
-/** Time events within this keep the clock running (AVPlayer sends one about every 0.5 s while it plays). */
-const CLOCK_RUNS_MS = 2_000;
-
 /** The player's signals now, from its engine and its own state. */
-export function signalsOf(
-  engine: PlayerEngine | null,
-  paused: boolean,
-  pictured: boolean,
-  stallSince: number,
-  lastTimeAt: number
-): PlayerSignals {
+export function signalsOf(engine: PlayerEngine | null, paused: boolean): PlayerSignals {
   const snapshot = engine?.getSnapshot();
   return {
     avplayer: engine?.kind === 'expo-video' && Platform.OS === 'ios',
     state: snapshot?.state ?? 'idle',
     subtitlesShown: !!snapshot?.tracks.subtitles.some((track) => track.selected),
     paused,
-    pictured,
-    stalled: !!stallSince,
-    clockRuns: Date.now() - lastTimeAt < CLOCK_RUNS_MS,
   };
 }
 

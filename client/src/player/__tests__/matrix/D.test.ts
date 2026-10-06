@@ -11,6 +11,7 @@ import { Incident, nextStep } from '@/player/recovery/ladder';
 import { SYSTEM_PAUSE_MS } from '@/player/recovery/budgets';
 import { AUDIO_SWITCH_TIMEOUT_MS } from '@/player/controller';
 import { describeError } from '@/api/error-text';
+import { cardButtons } from '@/screens/player/card-actions';
 import i18n from '@/i18n';
 import { harness, newController, reply } from '@/../jest/player/harness';
 import {
@@ -2912,6 +2913,188 @@ describe('matrix D — S4x: AVPlayer gives up waiting in a stall, replayed on th
 
   row(
     'D19',
+    'V2 order, then AVPlayer starves again and one 0.3 s clock step (drained frames) arrives: the stall goes on — no notice, spinner stays, the reload keeps the subtitle (review 9 P2-1)',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, expo } = await starved();
+      await jest.advanceTimersByTimeAsync(16_000);
+      expect(harness.engine.commands).toContain('subtitle:null');
+      // The flicker: readyToPlay and playing for a moment, the clock stands.
+      expo.player.playing = true;
+      expo.player.setStatus('readyToPlay');
+      expo.replay();
+      await jest.advanceTimersByTimeAsync(500);
+      // Starved again, then one time event 0.3 s ahead and nothing more.
+      expo.player.setStatus('loading');
+      expo.player.setPlaying(false);
+      expo.replay();
+      await jest.advanceTimersByTimeAsync(3_000);
+      harness.engine.time(47.3);
+      expect(c.notice).toBeNull();
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(12_000);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(c.notice?.kind).not.toBe('subtitleFailed');
+      expect(c.currentSubtitle()).toBe(5);
+      expo.engine.release();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'an engine that only says "buffering" (VLC, no state change): buffering over, starving again, one 0.3 s step — still the stall (review 9 M39)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 47);
+      expect(harness.engine.kind).toBe('vlc');
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(3_000);
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.time(47.3);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      // The clock really runs: the stall ends.
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.time(47.6);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'a forward seek during the quiet subtitle try: no "subtitles failed", the subtitles come back, the spinner stays while the engine waits at the new place (review 9 P2-2)',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, expo } = await starved();
+      await jest.advanceTimersByTimeAsync(16_000);
+      expect(harness.engine.commands).toContain('subtitle:null');
+      c.seekTo(120);
+      harness.engine.time(120);
+      expect(c.notice).toBeNull();
+      expect(
+        harness.engine.commands.filter((command) => command.startsWith('subtitle:')).at(-1)
+      ).toBe('subtitle:s0');
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      // It plays at the new place: the stall ends, nobody is blamed.
+      harness.engine.time(121.5);
+      expect(c.status.spinner).toBe(false);
+      expect(c.notice).toBeNull();
+      expect(c.currentSubtitle()).toBe(5);
+      expo.engine.release();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'Back within the half second after AVPlayer stopped itself: no "play again" reaches the closed player (review 9 P3-1)',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, expo } = await starved();
+      await stopsItself(expo);
+      await jest.advanceTimersByTimeAsync(200);
+      await c.stop();
+      harness.engine.play.mockClear();
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(harness.engine.play).not.toHaveBeenCalled();
+      expo.engine.release();
+      os.restore();
+    }
+  );
+
+  row(
+    'D19',
+    'the stall ends within the half second (the data came): no late "play again" (review 9 M33)',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, expo } = await starved();
+      await stopsItself(expo);
+      harness.engine.time(48.5);
+      expect(c.status.spinner).toBe(false);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(harness.engine.play).not.toHaveBeenCalled();
+      expo.engine.release();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row('D19', "on AirPlay AVPlayer's stop is not overridden (review 9 M17)", async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const { c, expo } = await starved();
+    harness.engine.emit({ type: 'external', active: true, device: 'Living room' });
+    await stopsItself(expo);
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(harness.engine.play).not.toHaveBeenCalled();
+    expo.engine.release();
+    os.restore();
+    await c.stop();
+  });
+
+  row(
+    'D19',
+    'Android (Exo): readyToPlay without playing during buffering is a pause (audio focus), never a stalledPause or a "play again" (review 9 M14)',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'android');
+      const c = await playing({}, subtitled, 47);
+      const expo = await expoPlaying();
+      expo.player.setStatus('loading');
+      expo.player.setPlaying(false);
+      expo.replay();
+      await jest.advanceTimersByTimeAsync(3_000);
+      expo.player.setStatus('readyToPlay');
+      expect(expo.of('stalledPause')).toEqual([]);
+      expo.replay();
+      harness.engine.play.mockClear();
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(harness.engine.play).not.toHaveBeenCalled();
+      expo.engine.release();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'headphones out after AVPlayer stopped itself, the data comes while paused, then Play: no stall counted at once, no spinner without a wait (review 9 P3-4)',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, expo } = await starved();
+      await stopsItself(expo);
+      // AVPlayer was already not playing: the patch's systemPlayback comes without a playingChange.
+      expo.player.fire('systemPlayback', { paused: true, cause: 'headphones' });
+      expect(expo.of('state')).toEqual([{ type: 'state', state: 'paused' }]);
+      expo.replay();
+      expect(c.paused).toBe(true);
+      await jest.advanceTimersByTimeAsync(5_000);
+      c.setPaused(false);
+      await jest.advanceTimersByTimeAsync(1_200);
+      expect(c.status.spinner).toBe(false);
+      expect((c as unknown as { stallSince: number }).stallSince).toBe(0);
+      expo.engine.release();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
     'the viewer presses pause in the app within the half second: no "play again" (review 8 R01)',
     async () => {
       jest.useFakeTimers();
@@ -3134,6 +3317,26 @@ describe('matrix D — S4x: the quiet subtitle try never costs the viewer their 
     }
   );
 
+  it.each([
+    ['an engine error', () => harness.engine.state('error')],
+    ['a VLC reload of its own source', () => harness.engine.emit({ type: 'reload' })],
+    [
+      'the stream ending at the stall position (an early end)',
+      () => harness.engine.emit({ type: 'ended' }),
+    ],
+  ])(
+    'D19 %s during the quiet try ends the stall without the picture: no "subtitles failed" (review 9 M22)',
+    async (_name, exit) => {
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const c = await quietTry();
+      exit();
+      await settle();
+      expect(c.notice?.kind).not.toBe('subtitleFailed');
+      os.restore();
+      await c.stop();
+    }
+  );
+
   row(
     'D19',
     'the viewer pauses during the quiet try: no "subtitles failed", the subtitles come back (review 8 R08)',
@@ -3279,4 +3482,51 @@ describe('matrix D — S4w: one corrupt segment freezes AVPlayer, the subtitles 
       await c.stop();
     }
   );
+});
+
+describe('matrix D — S4y: a direct file that stays missing (V2 turn 2, GTV VLC 404)', () => {
+  row(
+    'D27',
+    'VLC 404 after every automatic new start: the card says the file is missing on the server and offers another version and Back — never "start again", de and en',
+    async () => {
+      jest.useFakeTimers();
+      const vlcDirect = { method: 'direct', engine: 'vlc' } as never;
+      harness.server.answer(
+        'start',
+        ...Array.from({ length: 6 }, () => reply.ok(harness.server.playback(vlcDirect)))
+      );
+      const c = newController();
+      await c.start();
+      for (let attempt = 0; attempt < 6 && c.phase !== 'failed'; attempt++) {
+        harness.engine.started();
+        harness.engine.time(10);
+        harness.engine.emit({ type: 'error', reason: 'Player encountered an error', status: 404 });
+        await jest.advanceTimersByTimeAsync(2_000);
+        await settle();
+      }
+      expect(c.phase).toBe('failed');
+      expect(c.failure).toMatchObject({ code: 'stream_missing', category: 'T2' });
+      expect(cardButtons(c.failure!.actions)).toEqual(['otherVersion', 'back']);
+      expect(c.failure!.tried?.filter((attempt) => attempt.step === 'N').length).toBeGreaterThan(0);
+      for (const [lang, title, wrong] of [
+        ['en', 'Video file missing on the server', /Start playback again/],
+        ['de', 'Videodatei fehlt auf dem Server', /Starte die Wiedergabe neu/],
+      ] as const) {
+        const text = describeError(i18n.getFixedT(lang), c.failure!);
+        expect(text.title).toBe(title);
+        expect(text.message).not.toMatch(wrong);
+      }
+      await c.stop();
+    }
+  );
+
+  row('D27', 'a single 404 still starts again at once (the lost capability, C01)', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 10);
+    harness.engine.emit({ type: 'error', reason: 'Player encountered an error', status: 404 });
+    await settle();
+    expect(starts()).toHaveLength(2);
+    expect(c.failure).toBeNull();
+    await c.stop();
+  });
 });

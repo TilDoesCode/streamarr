@@ -12,6 +12,8 @@ export type SystemHost = {
   follow(paused: boolean): void;
   /** A pause of the engine the app did not ask for may be adopted now (picture shown, no step, not ended). */
   adoptable(): boolean;
+  /** The title played to its end: the end card or up-next is the state, never a system pause (V2 iPad A16). */
+  ended(): boolean;
   report(): void;
   changed(): void;
 };
@@ -31,6 +33,8 @@ export class SystemPlayback {
   /** Paused/resumed from the system controls; a resume behind a card is refused (review native #1). */
   onUserPlayback(paused: boolean, cause?: SystemCause): void {
     if (!paused && this.host.terminal()) return void this.host.engine()?.pause();
+    // PiP closed (or a lock) after the title ended in it: the end state wins, no "Paused …" with a Resume that replays.
+    if (paused && this.host.ended()) return;
     this.host.follow(paused);
     if (paused && cause) this.paused = true;
     if (!paused) this.paused = false;

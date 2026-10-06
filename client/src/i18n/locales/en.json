@@ -904,6 +904,10 @@
         "title": "The player hit an internal error",
         "message": "Something in the app went wrong while playing. Retry continues where you were; if it happens again, report the code below."
       },
+      "stream_missing": {
+        "title": "Video file missing on the server",
+        "message": "The server can’t find this video’s file, even after starting again. Choose another version."
+      },
       "step_timeout": {
         "title": "The server took too long",
         "message": "The server didn’t get the video ready in time. Try again or choose another version."

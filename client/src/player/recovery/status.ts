@@ -25,6 +25,8 @@ export type StatusInput = {
   recovery: Recovery | null;
   /** Since when the current source loads without a picture (0 = it showed one). */
   loadingSince: number;
+  /** A recovery step's new source reported its start, its frames do not run yet (V2 VLC step-down black frame). */
+  confirmingPicture?: boolean;
   stallSince: number;
   seekAt: number;
   seeking: boolean;
@@ -107,6 +109,7 @@ export function statusOf(input: StatusInput): PlayerStatus {
       false
     );
   if (input.autoplay === 'blocked') return show({ key: 'autoplayBlocked' }, false);
+  if (input.confirmingPicture && !input.paused && !input.stallSince) return show(null, true);
   if (loading) {
     if (input.slowConversion) return show({ key: 'serverSlow' }, true);
     const slow = now - input.loadingSince >= HINT_MS;

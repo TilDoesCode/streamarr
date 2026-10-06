@@ -39,4 +39,26 @@ describe('web Media Session: the browser controls go through the player (V2 turn
     await hook.unmount();
     expect([...handlers.values()].every((handler) => handler === null)).toBe(true);
   });
+
+  it('an old player unmounting after the next one mounted (up-next replace with a transition) keeps the new handlers', async () => {
+    const first = {
+      setPaused: jest.fn(),
+      seekTo: jest.fn(),
+      position: 0,
+    } as unknown as PlaybackController;
+    const second = {
+      setPaused: jest.fn(),
+      seekTo: jest.fn(),
+      position: 0,
+    } as unknown as PlaybackController;
+    const old = await renderHook(() => useMediaSession(first));
+    const next = await renderHook(() => useMediaSession(second));
+    await old.unmount();
+    expect(handlers.get('play')).not.toBeNull();
+    handlers.get('play')!({});
+    expect(second.setPaused).toHaveBeenLastCalledWith(false);
+    expect(first.setPaused).not.toHaveBeenCalled();
+    await next.unmount();
+    expect(handlers.get('play')).toBeNull();
+  });
 });

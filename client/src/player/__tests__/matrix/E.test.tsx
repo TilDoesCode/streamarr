@@ -1123,3 +1123,50 @@ describe('matrix E — S4s: a seek or play after the end leaves the end card (S6
     }
   );
 });
+
+describe('matrix E — S4y: a title that ends in picture-in-picture (V2 turn 3, iPad A16)', () => {
+  row(
+    'E07',
+    'PiP ✕ after the end: no "Paused: picture-in-picture closed" with a Resume, the end state wins and up-next keeps running',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.emit({ type: 'pip', active: true });
+      harness.engine.time(600, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.ended).toBe(true);
+      // The ✕: iOS pauses the item (the engine names the cause) and puts it back to 0:00.5.
+      harness.engine.emit({ type: 'userPlayback', paused: true, cause: 'pipClosed' });
+      harness.engine.emit({ type: 'pip', active: false });
+      harness.engine.time(0.5, 600);
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(c.systemPaused).toBe(false);
+      expect(c.paused).toBe(false);
+      expect(c.status.hint?.key).not.toBe('pausedBySystem');
+      expect(c.ended).toBe(true);
+      expect(
+        endOverlay({
+          playing: true,
+          ended: c.ended,
+          hasNext: true,
+          upNextDismissed: false,
+          blocked: false,
+          remaining: 0,
+          duration: 600,
+          upNextSeconds: 30,
+        })
+      ).toBe('upNext');
+      await c.stop();
+    }
+  );
+
+  row('E06', 'a PiP ✕ while the title still plays is the system pause as before', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, {}, 30);
+    harness.engine.emit({ type: 'userPlayback', paused: true, cause: 'pipClosed' });
+    expect(c.systemPaused).toBe(true);
+    expect(c.status.hint).toMatchObject({ key: 'pausedBySystem', params: { cause: 'pipClosed' } });
+    await c.stop();
+  });
+});

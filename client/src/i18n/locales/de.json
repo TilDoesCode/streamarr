@@ -904,6 +904,10 @@
         "title": "Interner Fehler im Player",
         "message": "In der App ist beim Abspielen etwas schiefgelaufen. Erneut versuchen macht dort weiter, wo du warst; passiert es wieder, melde den Code unten."
       },
+      "stream_missing": {
+        "title": "Videodatei fehlt auf dem Server",
+        "message": "Der Server findet die Datei dieses Videos nicht, auch nicht nach einem Neustart. Wähle eine andere Version."
+      },
       "step_timeout": {
         "title": "Der Server hat zu lange gebraucht",
         "message": "Der Server hat das Video nicht rechtzeitig bereitgestellt. Versuche es erneut oder wähle eine andere Version."

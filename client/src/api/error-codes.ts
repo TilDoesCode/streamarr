@@ -44,6 +44,7 @@ export const CLIENT_ERROR_CODES = [
   'subtitle_unreadable',
   'empty_media',
   'delivery_interrupted',
+  'stream_missing',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */

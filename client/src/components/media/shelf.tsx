@@ -209,9 +209,9 @@ export function Shelf<T>({
             offset: gutter + index * stride,
             index,
           })}
-          initialScrollIndex={restoreIndex}
+          // No initialScrollIndex: it skips the cards before the restored one until a scroll event (F10 S4y-9).
           contentOffset={restore?.offset}
-          initialNumToRender={design.isTV ? 12 : 6}
+          initialNumToRender={design.isTV ? (restoreIndex ?? 0) + 12 : 6}
           windowSize={design.isTV ? 9 : 5}
           removeClippedSubviews={false}
           snapToAlignment={design.isTV ? 'item' : undefined}

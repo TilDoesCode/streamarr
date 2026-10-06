@@ -1,5 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import i18n from '@/i18n';
 import { renderWithProviders } from '@/../jest/render';
@@ -60,6 +60,12 @@ const mockCaps = jest.fn<Promise<{ profile: object }>, []>(async () => ({ profil
 const mockClock = { position: 0, duration: 0 };
 const mockNext: { current: object | null } = { current: null };
 const mockRouter = { back: jest.fn(), replace: jest.fn(), canGoBack: () => true };
+
+let mockWindow: { width: number; height: number; scale: number; fontScale: number } | undefined;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => {
+  const actual = jest.requireActual('react-native/Libraries/Utilities/useWindowDimensions');
+  return { __esModule: true, default: () => mockWindow ?? actual.default() };
+});
 
 jest.mock('@/player/controller', () => ({
   PlaybackController: function MockController(options: { profile: unknown }) {
@@ -146,6 +152,7 @@ beforeEach(async () => {
   mockClock.position = 0;
   mockClock.duration = 0;
   mockNext.current = null;
+  mockWindow = undefined;
   mockAccount.mustChangePassword = false;
   mockRouter.replace.mockClear();
   await i18n.changeLanguage('en');
@@ -391,6 +398,72 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
       expect(screen.queryByTestId('player-status')).toBeNull();
       await change(c, { pictureInPicture: false });
       expect(screen.getByTestId('player-notice-otherTab')).toBeOnTheScreen();
+    }
+  );
+
+  it.each([
+    ['iPad landscape', 1180, 820],
+    ['iPad portrait', 820, 1180],
+  ])(
+    "E06 %s: the paused hint starts below the header's title line, never over it (V2 turn 3)",
+    async (_name, width, height) => {
+      mockWindow = { width, height, scale: 2, fontScale: 1 };
+      const c = await open();
+      await change(c, {
+        phase: 'playing',
+        paused: true,
+        status: {
+          spinner: false,
+          hint: { key: 'pausedBySystem', params: { cause: 'pipClosed' } },
+          actions: ['resume'],
+        },
+      });
+      await act(async () =>
+        (
+          mockProps.overlay as unknown as { onVisibleChange(visible: boolean): void }
+        ).onVisibleChange(true)
+      );
+      const style = StyleSheet.flatten(screen.getByTestId('player-status').props.style);
+      // The overlay's large header: top max(inset, s(64)), a 64 pt button row, 14 gap, a 68 pt title line.
+      const s = (value: number) => value * Math.max(0.6, width / 1920);
+      expect(style.paddingTop).toBeGreaterThanOrEqual(s(64) + s(64) + s(14) + s(68));
+    }
+  );
+
+  it.each([
+    ['iPhone landscape', 844, 390, 2],
+    ['iPhone portrait', 390, 844, 4],
+    ['iPad landscape', 1180, 820, 4],
+    ['TV', 1920, 1080, 4],
+  ])(
+    'E09 %s: the failure card fits — on a short window the last two steps of "What was tried" and a "show all" (V2)',
+    async (_name, width, height, lines) => {
+      mockWindow = { width, height, scale: 2, fontScale: 1 };
+      const c = await open();
+      const at = { at: 0, revision: 0, category: 'T6', code: 'server_error' };
+      await change(c, {
+        ...failed({
+          tried: [
+            { ...at, step: 'R', position: 754 },
+            { ...at, step: 'N', position: 754 },
+            { ...at, step: 'S', position: 754 },
+            { ...at, step: 'V', position: 754 },
+          ],
+        }),
+      });
+      const shown = () => screen.getByTestId('play-error-tried').children.length;
+      expect(screen.queryAllByTestId(/^play-error-tried-[RNSV]$/)).toHaveLength(lines);
+      if (lines === 4) {
+        expect(screen.queryByTestId('play-error-tried-more')).toBeNull();
+        return;
+      }
+      expect(screen.getByTestId('play-error-tried-V')).toBeOnTheScreen();
+      expect(screen.queryByTestId('play-error-tried-R')).toBeNull();
+      expect(screen.getByTestId('play-error-tried-more')).toHaveTextContent('Show 2 more');
+      expect(shown()).toBeGreaterThan(0);
+      await act(async () => fireEvent.press(screen.getByTestId('play-error-tried-more')));
+      expect(screen.queryAllByTestId(/^play-error-tried-[RNSV]$/)).toHaveLength(4);
+      expect(screen.queryByTestId('play-error-tried-more')).toBeNull();
     }
   );
 

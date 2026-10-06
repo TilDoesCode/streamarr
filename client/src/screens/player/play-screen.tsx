@@ -41,8 +41,10 @@ import { hintText, type HintAction } from '@/player/recovery/hints';
 import { usePlayerT } from '@/player/use-player-t';
 import { isPlayingHere, useOneTabPlays } from '@/player/tab-guard';
 import { useShell } from '@/shell/use-shell';
+import { useWindowControlsInset } from '@/shell/window-controls';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
+import { largeHeaderBottom } from './header-geometry';
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
 import { cardButtons, failureReason } from './card-actions';
@@ -72,7 +74,10 @@ export function PlayScreen() {
   const untypedT = t as unknown as (key: string, options?: Record<string, unknown>) => string;
   const design = useDesign();
   const resumeGap = useFocusGap(design.space.md);
-  const { large } = useShell();
+  const { large, s } = useShell();
+  // A phone in landscape (390 pt high): the failure card must fit without scrolling (V2).
+  const short = !large && design.window.height < 500;
+  const windowControls = useWindowControlsInset();
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -302,7 +307,11 @@ export function PlayScreen() {
             status={hintDismiss.hidden ? { ...status, hint: null } : status}
             onAction={onStatusAction}
             controlsVisible={controlsShown}
-            top={top + design.px(design.isTV ? 70 : 56)}
+            top={
+              large && !design.isTV
+                ? largeHeaderBottom(insets.top, s, windowControls) + s(16)
+                : top + design.px(design.isTV ? 70 : 56)
+            }
             noticeShown={!!notice && !pip}
           />
         ) : null}
@@ -310,9 +319,12 @@ export function PlayScreen() {
           <ScrollView
             contentContainerStyle={[
               styles.centre,
-              { padding: design.layout.gutter, gap: design.space.xl },
+              {
+                padding: short ? design.space.sm : design.layout.gutter,
+                gap: design.space.xl,
+              },
             ]}>
-            <PlayerCard testID="play-error-card" width={900}>
+            <PlayerCard testID="play-error-card" width={900} compact={short}>
               <View style={{ gap: design.space.xs, alignItems: 'center' }}>
                 <Text variant="overline" tone="muted">
                   {pt('stepper.failed')}
@@ -342,7 +354,9 @@ export function PlayScreen() {
                   {hintText(pt, failure.hint.key, failure.hint.params)}
                 </Text>
               ) : null}
-              {failure?.tried?.length ? <RecoveryLog tried={failure.tried} /> : null}
+              {failure?.tried?.length ? (
+                <RecoveryLog tried={failure.tried} limit={short ? 2 : undefined} />
+              ) : null}
             </PlayerCard>
           </ScrollView>
         ) : phase === 'resume' && controller ? (

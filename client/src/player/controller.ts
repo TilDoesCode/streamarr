@@ -166,6 +166,8 @@ type StepContext = { position: number; tracks: StepTracks | null; signal: AbortS
 
 /** After the engine says a stall is over, this step of the clock confirms it (time events come every 0.25–0.5 s). */
 const RESUMED_STEP_S = 0.2;
+/** A new source's start without moving frames shows the spinner at most this long. */
+const PICTURE_CONFIRM_MS = 4_000;
 /** A clock that stood this long under a waiting engine is a stall, whatever path led there (V2 D19: a resume after a lock). */
 const STARVED_MS = 2_000;
 
@@ -279,6 +281,7 @@ export class PlaybackController {
       !this.stallSince &&
       !this.runner.current &&
       this.phase === 'playing',
+    ended: () => this.ended,
     report: () => this.report('progress'),
     changed: () => this.changed(),
   });
@@ -344,6 +347,10 @@ export class PlaybackController {
   private stallRenewed = false;
   /** The app is in the foreground (its last AppState change). */
   private appActive = true;
+  /** A step's new source waits for its frame counter to move before the spinner goes (V2 VLC step-down). */
+  private confirmFrames = false;
+  private confirmingSince = 0;
+  private frameBase: number | undefined;
   /** The engine said the stall is over ("buffering over", "playing"): the clock's first step confirms it (V2 D19). */
   private stallResumed = false;
   /** The clock's last position and when it last changed: a starved engine has a clock that stands (V2 D19). */
@@ -710,12 +717,15 @@ export class PlaybackController {
   }
 
   private giveUp(failure: Classified, extra: FailureExtra, tried: Attempt[]): void {
+    // A direct file still answers 404 after the automatic new starts: "start again" already failed, it is missing (V2).
+    const restarted = tried.some((attempt) => attempt.step === 'N' && attempt.category === 'T2');
+    const code = failure.code === 'unknown_stream' && restarted ? 'stream_missing' : failure.code;
     this.fail({
-      code: failure.code,
+      code,
       params: extra.params,
       status: extra.status,
       category: failure.category,
-      actions: cardActions(failure.category, failure.code, extra.serverActions),
+      actions: cardActions(failure.category, code, extra.serverActions),
       tried,
       hint: extra.hint,
     });
@@ -873,9 +883,18 @@ export class PlaybackController {
     this.stallSince = 0;
   }
 
+  /** A seek inside a stall: the jump is no progress; a seek stall at the new place, the quiet subtitle try undone (review 9 P2-2). */
+  private stallSeeked(target: number): void {
+    this.subtitlesBackInStall();
+    this.stallSince = this.seekAt;
+    this.stallAfterSeek = true;
+    this.stallResumed = false;
+    this.stallPosition = target;
+  }
+
   /** What the player sees now, for the AVPlayer subtitle and lost-request rules (recovery/lost-request). */
   private signals(): PlayerSignals {
-    return signalsOf(this.engine, this.paused, this.pictured, this.stallSince, this.lastTimeAt);
+    return signalsOf(this.engine, this.paused);
   }
 
   /** A selected subtitle the server cannot deliver to this device is said at once, with VLC when it could (C24). */
@@ -1009,6 +1028,9 @@ export class PlaybackController {
     // The old picture stays under the switching card, unless it is the broken picture being replaced (review R5).
     const failed = this.runner.current?.failure.code ?? '';
     const keepLastFrame = this.phase === 'switching' && !BROKEN_PICTURE.has(failed);
+    // A step's new source: its start alone is no picture yet (libVLC's clock may run over black, V2).
+    this.confirmFrames = !!this.runner.current?.running;
+    this.confirmingSince = 0;
     const kind = this.engineFor(playback);
     let engine = this.engine;
     if (!engine || engine.kind !== kind) {
@@ -1057,7 +1079,7 @@ export class PlaybackController {
               this.lastGoodPosition = event.position;
             this.autoplayResumed(event.position);
             this.audioPlaying(event.position);
-            if (!this.pictured && this.clockRuns(event.position)) this.onPicture();
+            if (!this.pictured && this.clockRuns(event.position)) this.onPicture(true);
             this.keepLivePosition(event.position, event.duration);
             this.onClock(event.position);
             if (this.pictureInPicture && Date.now() - this.reportedAt >= HEARTBEAT_MS)
@@ -1281,9 +1303,15 @@ export class PlaybackController {
     return previous !== null && position > previous && position - previous <= 3;
   }
 
-  private onPicture(): void {
+  private onPicture(fromClock = false): void {
     if (this.pictured) return;
     this.pictured = true;
+    // Only a start read from the clock (libVLC's "first frame", a time event) can be black; a frame counter confirms it.
+    const inferred = fromClock || this.engine?.kind === 'vlc';
+    if (this.confirmFrames && inferred && this.engine?.readHealth)
+      this.confirmingSince = Date.now();
+    this.confirmFrames = false;
+    this.frameBase = undefined;
     this.reloadAt = 0;
     this.troubleAt = Date.now();
     this.loadingSince = 0;
@@ -1291,6 +1319,22 @@ export class PlaybackController {
     // The first frame while the engine still loads (an hls.js reload at a playlist's end): the tick arms it after 2 s (V2 C12).
     this.clockMovedAt = Date.now();
     this.tickStatus();
+    this.changed();
+  }
+
+  /** The spinner after a step stays until the new source's frame counter moves (or the engine counts none, or 4 s). */
+  private confirmPicture(frames: number | undefined): void {
+    if (!this.confirmingSince) return;
+    const late = Date.now() - this.confirmingSince >= PICTURE_CONFIRM_MS;
+    if (
+      frames !== undefined &&
+      !late &&
+      (this.frameBase === undefined || frames <= this.frameBase)
+    ) {
+      this.frameBase ??= frames;
+      return;
+    }
+    this.confirmingSince = 0;
     this.changed();
   }
 
@@ -1323,6 +1367,8 @@ export class PlaybackController {
     const waiting = state === 'buffering' || (state === 'loading' && this.pictured);
     if (!waiting || this.stallSince || this.paused || this.ended || this.phase !== 'playing')
       return;
+    // A seek has its own stall rule (D29): its wait is a seek stall, never counted.
+    if (this.seekTarget !== null) return;
     // A transition that knows the engine waits arms at once; the tick waits for a clock that stood STARVED_MS.
     if (this.runner.current || (!now && Date.now() - this.clockMovedAt < STARVED_MS)) return;
     this.startStall();
@@ -1331,13 +1377,15 @@ export class PlaybackController {
   /** AVPlayer gave up waiting: the stall goes on; play once more if no system pause explains it meanwhile (D19). */
   private onStalledPause(): void {
     const engine = this.engine;
-    if (!this.stallSince || this.stallNudged || !engine) return;
+    const stall = this.stallSince;
+    if (!stall || this.stallNudged || !engine) return;
     this.stallNudged = true;
     // Longer than the patch's 0.3 s check for a system cause (headphones, interruption, AirPlay lost).
     setTimeout(() => {
       const quiet =
         this.engine === engine &&
-        !!this.stallSince &&
+        !this.closed &&
+        this.stallSince === stall &&
         !this.paused &&
         !this.system.paused &&
         !this.system.external &&
@@ -1348,7 +1396,9 @@ export class PlaybackController {
   }
 
   private startStall(afterSeek = false): void {
-    if (!this.pictured || this.stallSince) return;
+    // Starving again inside a running stall: "it may be over" is withdrawn (review 9 P2-1).
+    if (this.stallSince) return void (this.stallResumed = false);
+    if (!this.pictured) return;
     this.lostWatch.stallStarted();
     this.stallSince = Date.now();
     this.stallNudged = false;
@@ -1417,7 +1467,8 @@ export class PlaybackController {
       this.settle();
       this.changed();
     }
-    if (position !== this.clockLast) this.clockMovedAt = Date.now();
+    // A clock that steps back (an hls.js nudge, AVPlayer's keyframe snap) is no progress (review 9 M40).
+    if (position > this.clockLast) this.clockMovedAt = Date.now();
     this.clockLast = position;
     // Played from outside the app after the end (a media key, the browser's controls): no "Finished" over it (V2 E07).
     if (this.ended && this.engine?.getSnapshot().state === 'playing' && this.duration)
@@ -1437,6 +1488,7 @@ export class PlaybackController {
   /** The watchdog's guards right now (state-matrix § 2 a). */
   private healthContext(health: EngineHealth) {
     this.system.probed(health);
+    this.confirmPicture(health.framesPresented);
     return watchContext(health, this.engine?.getSnapshot().state, this.playback?.mediaInfo, {
       stalled: !!this.stallSince,
       wantsPlayback: this.phase === 'playing' && this.pictured && !this.paused && !this.ended,
@@ -1565,6 +1617,7 @@ export class PlaybackController {
       offline: this.offline,
       recovery: this.runner.current,
       loadingSince: this.pictured ? 0 : this.loadingSince,
+      confirmingPicture: !!this.confirmingSince,
       stallSince: this.stallSince,
       seekAt: this.seekAt,
       seeking: this.seekTarget !== null,
@@ -1940,6 +1993,8 @@ export class PlaybackController {
       language,
       this.preferences
     );
+    // The rule turned the forced subtitle off: off it stays, also where the engine shows the file's forced track itself.
+    if (subtitle.changes) this.subtitlesOff = subtitle.index === null;
     // A subtitle that must change but cannot change in the engine (burned in, not delivered) needs `/switch`.
     const subtitleLocal =
       subtitle.index === null ? null : this.localTrackId('subtitle', subtitle.index);
@@ -2193,6 +2248,7 @@ export class PlaybackController {
     this.startFloor = 0;
     this.seekAt = Date.now();
     this.seekTarget = clamped;
+    if (this.stallSince) this.stallSeeked(clamped);
     this.monitor.nativeClock = null;
     this.monitor.watchdog.reset();
     // A step that waits resumes where the viewer is now, not where the failure was (review B4).

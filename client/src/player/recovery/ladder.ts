@@ -311,7 +311,7 @@ export function cardActions(
 ): string[] {
   const own: Record<ErrorCategory, string[]> = {
     T1: code === 'tls_error' ? [] : ['retry'],
-    T2: ['retry'],
+    T2: code === 'stream_missing' ? ['otherVersion'] : ['retry'],
     T3: ['signIn'],
     T4: ['retry'],
     T5: ['lowerQuality', 'otherVersion'],

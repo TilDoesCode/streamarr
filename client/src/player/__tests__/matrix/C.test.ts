@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { harness, newController, reply } from '@/../jest/player/harness';
 import { row } from '@/../jest/player/matrix';
 import { expoPlaying } from '@/../jest/player/native';
@@ -3077,6 +3079,285 @@ describe('matrix C — S4x: a stall nobody announced is armed by one rule (V2 tu
       expect(
         harness.engine.load.mock.calls.length + harness.server.sent('switch').length
       ).toBeGreaterThan(1);
+      await c.stop();
+    }
+  );
+});
+
+describe("matrix C — S4y: a step's new source on VLC shows the spinner until its frames run (V2 VLC step-down black frame)", () => {
+  row(
+    'C32',
+    "VLC: the reload's clock starts over a black picture: the spinner stays until the frame counter moves (or 4 s), never black without a spinner",
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 40);
+      expect(harness.engine.kind).toBe('vlc');
+      harness.engine.setHealth({ framesPresented: 900 });
+      harness.engine.fail('vlc_error: libVLC playback failed');
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      // libVLC's "first frame" is its clock: it runs while the picture is still black, the counter stands.
+      harness.engine.setHealth({ framesPresented: 0 });
+      harness.engine.started();
+      harness.engine.time(40.5);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      harness.engine.setHealth({ framesPresented: 24 });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row('C32', 'a frame counter that never moves releases the spinner after 4 s', async () => {
+    jest.useFakeTimers();
+    harness.features.probe = true;
+    const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 40);
+    harness.engine.fail('vlc_error: libVLC playback failed');
+    await settle();
+    harness.engine.setHealth({ framesPresented: 0 });
+    harness.engine.started();
+    for (let second = 1; second <= 5; second++) {
+      harness.engine.time(40 + second);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    expect(c.status.spinner).toBe(false);
+    await c.stop();
+  });
+
+  row('C32', 'Exo/AVPlayer report a rendered first frame: no extra spinner after it', async () => {
+    jest.useFakeTimers();
+    harness.features.probe = true;
+    const c = await playing({}, {}, 40);
+    harness.engine.fail('ERROR_CODE_DECODER_INIT_FAILED: video/avc');
+    await settle();
+    harness.engine.setHealth({ framesPresented: 0 });
+    harness.engine.started();
+    expect(c.status.spinner).toBe(false);
+    await c.stop();
+  });
+});
+
+describe('matrix C — S4y: forced subtitles follow the audio language on every engine (PLAN.md § 2, V2 turn 1)', () => {
+  const audioTracks = [
+    { index: 1, language: 'ger', deliveredAs: 'original', selected: true },
+    { index: 2, language: 'eng', deliveredAs: 'original', selected: false },
+  ];
+  const subtitleTracks = [
+    { index: 5, language: 'ger', forced: true, deliveredAs: 'webvtt', selected: true },
+    { index: 6, language: 'ger', forced: false, deliveredAs: 'webvtt', selected: false },
+  ];
+  const tracks = (audio: number, subtitle: string | null) => ({
+    audio: [
+      { id: 'a0', label: 'de', language: 'de', selected: audio === 0 },
+      { id: 'a1', label: 'en', language: 'en', selected: audio === 1 },
+    ],
+    subtitles: [
+      { id: 's0', label: 'de', language: 'de', forced: true, selected: subtitle === 's0' },
+      { id: 's1', label: 'de', language: 'de', selected: subtitle === 's1' },
+    ],
+  });
+
+  it.each([
+    ['web (hls.js)', 'web', 'remux'],
+    ['iPhone / Apple TV (AVPlayer)', 'expo-video', 'remux'],
+    ['Google TV / Apple TV (VLC)', 'vlc', 'direct'],
+  ] as const)(
+    '%s: English audio turns the forced German subtitle off, and it stays off when the engine lists it again',
+    async (_name, engine, method) => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', engine === 'web' ? 'web' : 'ios');
+      const c = await playing(
+        engine === 'web' ? ({ nativeEngine: 'web' } as never) : {},
+        {
+          method,
+          ...(engine === 'vlc' ? { engine: 'vlc' } : null),
+          mediaInfo: { durationTicks: 600 * TICKS, audioTracks, subtitleTracks },
+        } as never,
+        24
+      );
+      expect(harness.engine.kind).toBe(engine);
+      harness.engine.emit({ type: 'tracks', tracks: tracks(0, 's0') });
+      expect(c.currentSubtitle()).toBe(5);
+      await c.selectAudio(audioTracks[1] as never);
+      harness.engine.emit({ type: 'tracks', tracks: tracks(1, null) });
+      expect(c.currentAudio()).toBe(2);
+      expect(c.currentSubtitle()).toBeNull();
+      // The engine shows the forced track of the file again by itself (AVPlayer's auto selection, hls.js on reload).
+      harness.engine.emit({ type: 'tracks', tracks: tracks(1, 's0') });
+      await playOn(2);
+      expect(c.currentSubtitle()).toBeNull();
+      expect(
+        harness.engine.commands.filter((command) => command.startsWith('subtitle:')).at(-1)
+      ).toBe('subtitle:null');
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  it('a full subtitle the viewer picked stays with English audio', async () => {
+    jest.useFakeTimers();
+    const c = await playing(
+      { nativeEngine: 'web' } as never,
+      {
+        method: 'remux',
+        mediaInfo: { durationTicks: 600 * TICKS, audioTracks, subtitleTracks },
+      } as never,
+      24
+    );
+    harness.engine.emit({ type: 'tracks', tracks: tracks(0, 's0') });
+    await c.selectSubtitle(subtitleTracks[1] as never);
+    await c.selectAudio(audioTracks[1] as never);
+    harness.engine.emit({ type: 'tracks', tracks: tracks(1, 's1') });
+    expect(c.currentSubtitle()).toBe(6);
+    await c.stop();
+  });
+});
+
+describe('matrix C — S4z: the starved rule stays out of the end, a step and a fresh picture (review 9 M08, M09, M10, M40)', () => {
+  const stalled = (c: object) => (c as { stallSince?: number }).stallSince;
+
+  row(
+    'C12',
+    'a stall in the last 12 s ends the title while the engine still says "buffering": no spinner or stall over the end card (M08)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 590);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(c.ended).toBe(true);
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(stalled(c)).toBe(0);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    "while a reload waits out the server's 503 (its 5 s backoff) the engine still buffers: no second stall is armed or counted (M09)",
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, hls, 100);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      for (let second = 0; second < 16; second++) {
+        if (second % 2 === 0) harness.engine.emit({ type: 'loadRetry', status: 503, audio: false });
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+      await settle();
+      expect(c.status.hint?.key).toBe('serverError');
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(stalled(c)).toBe(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'the first frame after a long load on an engine that still loads: the stall comes 2 s later, not at once (M10)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', reply.ok(harness.server.playback({})));
+      const c = newController();
+      await c.start();
+      await jest.advanceTimersByTimeAsync(8_000);
+      // expo-video renders its first frame without a time event.
+      harness.engine.emit({ type: 'firstFrame' });
+      await jest.advanceTimersByTimeAsync(1_200);
+      expect(stalled(c)).toBe(0);
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(stalled(c)).not.toBe(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'a clock that only steps back under a waiting engine (an hls.js nudge, a keyframe snap) is no progress: the stall is armed (M40)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', reply.ok(harness.server.playback({})));
+      const c = newController();
+      await c.start();
+      harness.engine.emit({ type: 'time', position: 10, duration: 600 });
+      harness.engine.emit({ type: 'firstFrame' });
+      for (const position of [9.6, 9.3, 9.0, 8.7]) {
+        await jest.advanceTimersByTimeAsync(1_000);
+        harness.engine.emit({ type: 'time', position, duration: 600 });
+      }
+      await jest.advanceTimersByTimeAsync(500);
+      expect(stalled(c)).not.toBe(0);
+      expect(c.status.spinner).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'a stall that ended with "playing" and the clock: the next stall starts without that mark — one 0.3 s step does not end it (review 9 M39)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 47);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(3_000);
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.time(47.3);
+      expect(stalled(c)).toBe(0);
+      await jest.advanceTimersByTimeAsync(2_000);
+      harness.engine.time(49.3);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(2_000);
+      harness.engine.time(49.6);
+      expect(stalled(c)).not.toBe(0);
+      expect(c.status.spinner).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'AVPlayer snaps back to a keyframe inside a stall, then plays: the first 0.3 s from there ends the stall (review 9 M13)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 47);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(3_000);
+      harness.engine.time(46.5);
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.time(46.8);
+      expect(stalled(c)).toBe(0);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C33',
+    'VLC playing an HLS remux of a .ts source runs longer than announced: its length wins, the MPEG guess rule is for direct files only (M30)',
+    async () => {
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          engine: 'vlc',
+          mediaInfo: {
+            durationTicks: 180 * TICKS,
+            container: 'ts',
+            audioTracks: [],
+            subtitleTracks: [],
+          },
+        } as never,
+        10
+      );
+      expect(harness.engine.kind).toBe('vlc');
+      harness.engine.time(12, 200);
+      expect(c.duration).toBe(200);
       await c.stop();
     }
   );

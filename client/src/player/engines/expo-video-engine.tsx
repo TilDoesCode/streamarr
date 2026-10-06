@@ -249,6 +249,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
       this.strayPauseAt = 0;
       this.systemPause = systemCause(cause, Platform.isTV);
       this.emit({ type: 'userPlayback', paused: true, cause: this.systemPause ?? undefined });
+      // After a starved self-stop (`stalledPause`) the state still read "buffering": now it is a pause (review 9 P3-4).
+      if (this.player.status === 'readyToPlay' && !this.player.playing) this.setState('paused');
     } else if (cause === 'resume' && this.systemPause) {
       // The OS ended the interruption and allows the playback to continue (end of a call).
       this.play();

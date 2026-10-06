@@ -7,6 +7,9 @@ type Session = { setActionHandler(action: string, handler: Handler | null): void
 
 const STEP_SECONDS = 10;
 
+/** The player whose handlers are set: an old screen unmounting after a new one mounted leaves the new ones (review 9). */
+let owner: object | null = null;
+
 /** The browser's media controls and keys go through the player, never straight to the <video> element (V2 E07). */
 export function useMediaSession(controller: PlaybackController | null): void {
   useEffect(() => {
@@ -30,7 +33,13 @@ export function useMediaSession(controller: PlaybackController | null): void {
         }
       }
     };
+    const token = {};
+    owner = token;
     set((action) => handlers[action]!);
-    return () => set(() => null);
+    return () => {
+      if (owner !== token) return;
+      owner = null;
+      set(() => null);
+    };
   }, [controller]);
 }

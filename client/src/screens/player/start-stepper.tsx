@@ -137,10 +137,13 @@ export function PlayerCard({
   children,
   testID,
   width = 760,
+  compact = false,
 }: {
   children: ReactNode;
   testID?: string;
   width?: number;
+  /** A short window (a phone in landscape): tighter padding and gaps so the card fits (V2). */
+  compact?: boolean;
 }) {
   const design = useDesign();
   const { large, s } = useShell();
@@ -155,8 +158,8 @@ export function PlayerCard({
         width: large ? s(width) : undefined,
         maxWidth: '100%',
         paddingHorizontal: large ? s(64) : design.space.xl,
-        paddingVertical: large ? s(52) : design.space.xl,
-        gap: large ? s(28) : design.space.lg,
+        paddingVertical: large ? s(52) : compact ? design.space.md : design.space.xl,
+        gap: large ? s(28) : compact ? design.space.sm : design.space.lg,
       }}>
       <View
         pointerEvents="none"

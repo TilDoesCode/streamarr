@@ -140,17 +140,20 @@ const styles = StyleSheet.create({
 });
 
 /** "What was tried" on the failure card: one line per ladder step, with the failure that led to it. */
-export function RecoveryLog({ tried }: { tried: readonly Attempt[] }) {
+export function RecoveryLog({ tried, limit }: { tried: readonly Attempt[]; limit?: number }) {
   const pt = usePlayerT();
   const { t } = useTranslation();
   const design = useDesign();
+  const [all, setAll] = useState(false);
   if (!tried.length) return null;
+  // A short window (a phone in landscape) shows the last steps; the rest on request (V2).
+  const hidden = !all && limit !== undefined ? Math.max(0, tried.length - limit) : 0;
   return (
     <View testID="play-error-tried" style={{ gap: design.space.xs, alignSelf: 'stretch' }}>
       <Text variant="overline" tone="muted">
         {pt('tried.title')}
       </Text>
-      {tried.map((attempt, index) => (
+      {tried.slice(hidden).map((attempt, index) => (
         <Text
           key={index}
           variant="caption"
@@ -164,6 +167,14 @@ export function RecoveryLog({ tried }: { tried: readonly Attempt[] }) {
           }`}
         </Text>
       ))}
+      {hidden ? (
+        <StatusAction
+          testID="play-error-tried-more"
+          primary={false}
+          label={pt('tried.more', { count: hidden })}
+          onPress={() => setAll(true)}
+        />
+      ) : null}
     </View>
   );
 }
