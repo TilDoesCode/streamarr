@@ -57,14 +57,14 @@ public class FaultBootTests(FakeWorld world) : IClassFixture<FakeWorld>
         using (var normal = await SendAsync(http, HttpMethod.Get, "/api/v1/viewer/me", anna, null, ct))
             Assert.Equal("application/json", normal.Content.Headers.ContentType?.MediaType);
 
-        // list, get, clear by scope, clear all.
+        // list (the spent once fault left it), get, clear by scope, clear all.
         var listed = await http.GetFromJsonAsync<JsonElement>("/devworld/faults", ct);
-        Assert.Equal(2, listed.GetArrayLength());
+        Assert.Equal(1, listed.GetArrayLength());
         var one = await http.GetFromJsonAsync<JsonElement>($"/devworld/faults/{id}", ct);
         Assert.Equal(0, one.GetProperty("fault").GetProperty("remaining").GetInt32());
         Assert.Equal(1, one.GetProperty("lastHits").GetArrayLength());
         Assert.Equal(HttpStatusCode.NoContent, (await http.DeleteAsync("/devworld/faults?scope=viewer:kind", ct)).StatusCode);
-        Assert.Equal(1, (await http.GetFromJsonAsync<JsonElement>("/devworld/faults", ct)).GetArrayLength());
+        Assert.Equal(0, (await http.GetFromJsonAsync<JsonElement>("/devworld/faults", ct)).GetArrayLength());
         Assert.Equal(HttpStatusCode.NoContent, (await http.DeleteAsync($"/devworld/faults/{id}", ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await http.DeleteAsync($"/devworld/faults/{id}", ct)).StatusCode);
 

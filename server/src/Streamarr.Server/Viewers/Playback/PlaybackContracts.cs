@@ -137,6 +137,28 @@ public sealed record PlaybackSwitchRequest
     public bool? AudioFallback { get; init; }
 }
 
+/// <summary>A request of the playback's HLS session that the server answered with an error (or broke off after it started).</summary>
+public sealed record PlaybackDeliveryIssueDto
+{
+    /// <summary><c>audioRendition</c>, <c>subtitleRendition</c> or <c>segment</c> (main playlist, init or video segment).</summary>
+    public required string Kind { get; init; }
+
+    /// <summary>Audio rendition id (the master's <c>audio/{id}</c>) for <c>audioRendition</c>.</summary>
+    public string? RenditionId { get; init; }
+
+    /// <summary>Subtitle stream index (<c>subtitles/{index}</c>) for <c>subtitleRendition</c>.</summary>
+    public int? SubtitleStreamIndex { get; init; }
+
+    /// <summary>The error code of the answer (e.g. <c>rendition_split_failed</c>, <c>segment_timeout</c>).</summary>
+    public required string Code { get; init; }
+
+    /// <summary>HTTP status of the answer; 500 when the answer broke off after it started.</summary>
+    public required int Status { get; init; }
+
+    /// <summary>When the server answered (the latest of equal issues).</summary>
+    public required DateTimeOffset At { get; init; }
+}
+
 /// <summary>One viewer playback: its preparation state and, once <c>ready</c>, what to play and why.</summary>
 public sealed record PlaybackResponse
 {
@@ -203,6 +225,9 @@ public sealed record PlaybackResponse
 
     /// <summary>True after a <c>/switch</c> with <c>audioFallback</c>: every rendition carries the selected audio as AAC stereo.</summary>
     public bool AudioFallback { get; init; }
+
+    /// <summary>Error answers of this revision's HLS session in the last 30 s, oldest first (empty when none); see also the progress answer.</summary>
+    public IReadOnlyList<PlaybackDeliveryIssueDto> DeliveryIssues { get; init; } = [];
 }
 
 /// <summary>One <c>EXT-X-MEDIA:TYPE=AUDIO</c> entry; <see cref="Label"/> equals its NAME and <see cref="Language"/> its LANGUAGE.</summary>

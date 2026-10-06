@@ -307,6 +307,8 @@ Bind via `appsettings*.json` (`"Streamarr": { … }`) or env vars (`Streamarr__K
 | `AdminRefreshTokenTtlSeconds` | `2592000` | Sliding lifetime of the rotating HttpOnly browser refresh token (30 days). Each successful refresh restarts the window. |
 | `LoginAttemptsPerMinute` | `5` | Fixed-window login-attempt limit per client IP. |
 | `ViewerAuthAttemptsPerMinute` | `20` | Fixed-window limit per client IP for viewer sign-in, sign-in code, and password-reset requests (only relevant when the viewer module is enabled). |
+| `ViewerRefreshPerIpPerMinute` | `60` | Fixed-window limit per client IP for viewer token refreshes (`429 rate_limited` + `Retry-After`). |
+| `ViewerRefreshPerTokenPerMinute` | `10` | Fixed-window limit for refreshes presenting the same refresh token. |
 | `DataProtectionKeysPath` | `""` | Directory the secret-encryption key ring persists to. Empty → a `keys` folder next to the app. |
 | `NzbCachePath` | `""` | Persistent NZB cache directory. Empty → `cache/nzb` below the Core content root. Container images default to `/app/data/nzb`. |
 | `NzbCacheSizeMb` | `1024` | Maximum total size of cached NZB source documents. Least-recently-used entries are pruned first. |

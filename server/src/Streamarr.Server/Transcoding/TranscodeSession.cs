@@ -88,6 +88,18 @@ public sealed class TranscodeSession
     internal TranscodeJob? Job { get; set; }
     internal int JobSequence { get; set; }
 
+    /// <summary>Segment range of the run a request restart replaced; a request back into it waits while the new position is in use.</summary>
+    internal (int Start, int End)? ReplacedRun { get; set; }
+
+    /// <summary>Last time a request needed the current run's position (served by it or restarting it there).</summary>
+    internal DateTimeOffset RunRequestedAt
+    {
+        get => new(Volatile.Read(ref _runRequestedTicks), TimeSpan.Zero);
+        set => Volatile.Write(ref _runRequestedTicks, value.UtcTicks);
+    }
+
+    private long _runRequestedTicks;
+
     internal void Touch() => Interlocked.Exchange(ref _lastAccessTicks, DateTimeOffset.UtcNow.UtcTicks);
 
     internal void NoteRequested(int segment)

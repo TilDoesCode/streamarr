@@ -35,16 +35,17 @@ public sealed class ReleaseContainerStoreTests
             Assert.Equal("mp4", store.Get("r0"));
             Assert.Equal("mkv", store.Get("r3"));
             Assert.Equal("ts", store.Get("r10"));
-            await WaitAsync(db, 9);
             await store.StopAsync(CancellationToken.None);
+            Assert.Equal(9, await CountAsync(db));
 
             var reloaded = new ReleaseContainerStore(db, null, clock, NullLogger<ReleaseContainerStore>.Instance) { MaxEntries = 5 };
             await reloaded.StartAsync(CancellationToken.None);
-            await WaitAsync(db, 5);
+            await reloaded.Loaded.WaitAsync(TimeSpan.FromSeconds(30));
 
             Assert.Equal(["r0", "r10", "r3", "r8", "r9"], new[] { "r0", "r10", "r3", "r7", "r8", "r9" }.Where(id => reloaded.Get(id) is not null));
             Assert.Equal("mp4", reloaded.Get("r0"));
             await reloaded.StopAsync(CancellationToken.None);
+            Assert.Equal(5, await CountAsync(db));
         }
         finally
         {
@@ -65,17 +66,10 @@ public sealed class ReleaseContainerStoreTests
         Assert.Equal(("mkv", "mp4", (string?)null), (store.Get("a"), store.Get("b"), store.Get("c")));
     }
 
-    private static async Task WaitAsync(TestDbFactory db, int rows)
+    private static async Task<int> CountAsync(TestDbFactory db)
     {
-        for (var i = 0; i < 200; i++)
-        {
-            await using var context = await db.CreateDbContextAsync();
-            if (await context.ReleaseContainers.CountAsync() == rows)
-                return;
-            await Task.Delay(20);
-        }
-        await using var final = await db.CreateDbContextAsync();
-        Assert.Equal(rows, await final.ReleaseContainers.CountAsync());
+        await using var context = await db.CreateDbContextAsync();
+        return await context.ReleaseContainers.CountAsync();
     }
 
     private sealed class ManualClock : TimeProvider

@@ -63,7 +63,7 @@ public sealed class ViewerWatchController(
             ct);
         if (link is not null && kind == "stop")
             await playbacks.StopAsync(caller, playbackId!, "progress stop");
-        return Ok(ViewerMappings.State(state) with { PlaybackAlive = playbackId is null ? null : link is not null });
+        return Ok(ViewerMappings.State(state) with { PlaybackAlive = playbackId is null ? null : link is not null, DeliveryIssues = link?.DeliveryIssues });
     }
 
     /// <summary>Mark works played; season and series ids expand to all aired episodes via TMDB.</summary>

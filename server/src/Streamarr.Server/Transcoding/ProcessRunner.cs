@@ -155,18 +155,6 @@ public sealed class ProcessRunner : IProcessRunner
 }
 
 /// <summary>Pauses and resumes a process tree root via POSIX job-control signals.</summary>
-public static class ProcessSignals
-{
-    public static bool IsSupported => OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD();
-
-    public static bool Pause(int pid) => IsSupported && Kill(pid, OperatingSystem.IsLinux() ? 19 : 17) == 0;
-
-    public static bool Resume(int pid) => IsSupported && Kill(pid, OperatingSystem.IsLinux() ? 18 : 19) == 0;
-
-    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static extern int Kill(int pid, int signal);
-}
-
 /// <summary>Removes stream capability tokens and local paths from ffmpeg diagnostics before they are stored or shown.</summary>
 public static partial class TranscodeRedaction
 {

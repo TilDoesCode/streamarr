@@ -216,22 +216,29 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   SIGSEGV at sign-in, probably from an "rr" dev reload during adb text input. Prefer argent paste for passwords.
 
 - B9 verify: on the very first fetch an episode whose versions were never looked up is `available: true` (optimistic,
-  queued for the warm-up) while the series page may already know false; a previous-token replay does not check
-  `IsDisabled` (moot today: disabling revokes sessions); the retired-hash lookup scans ViewerSessions for unknown tokens;
+  queued for the warm-up) while the series page may already know false; ~~a previous-token replay does not check
+  `IsDisabled` (moot today: disabling revokes sessions); the retired-hash lookup scans ViewerSessions for unknown tokens~~
+  → B14: replay checks IsDisabled, the tombstone PK lookup runs before the retired-hash scan;
   continue watching loads every resumable row of a viewer before the limit.
-- Server tests (B9): ReleaseContainerStoreTests.Store_EvictsTheLeastRecentlyUsed_AndSurvivesARestart and
-  RepairConcurrencyTests flake under load (timing of background writers); green on reruns.
+- ~~Server tests (B9): ReleaseContainerStoreTests.Store_EvictsTheLeastRecentlyUsed_AndSurvivesARestart and
+  RepairConcurrencyTests flake under load (timing of background writers); green on reruns.~~ → B14: the store drains its
+  queued writes on stop + `Loaded` (20/20 under load); repair success is counted before waiters resume. ~~RepairConcurrencyTests
+  still fails ~1 in 5 for a product race (one of 56 readers gets 500 UsenetArticleNotFoundException)~~ → B16: a cancelled
+  reader's article loss invalidated the shared capability session before the repair admission had registered the release;
+  cancelled readers now end as cancelled and admissions in flight count as active repair (50/50 under load).
 
 - B10 verify: sign-in code responses still differ by well under a millisecond on loopback (known first send ~1.0 ms,
   linked alias ~0.6 ms, unknown ~0.4 ms; status/body/headers identical, 5 tries per hour per login; the known/unknown
   gap predates B10); `logoUrl` and cast `profileUrl` have no size classes; generated `ArtworkSizesDto` fields are
   `string | null` although always set (repo-wide nullability convention).
-- Server tests (B10 verify): HealthCheckerTests.Concurrency_UsesConfiguredProviderBudget flakes under full-suite load.
+- ~~Server tests (B10 verify): HealthCheckerTests.Concurrency_UsesConfiguredProviderBudget flakes under full-suite load.~~
+  → B14: the fake holds STATs until the budget is reached (bounded), 20/20 under load.
 
-- B11 verify: `POST /viewer/auth/refresh` has no rate limit (predates B11) and every refusal now logs a line, so an
+- ~~B11 verify: `POST /viewer/auth/refresh` has no rate limit (predates B11) and every refusal now logs a line, so an
   anonymous caller can flood the in-memory log feed; an unknown token runs a LIKE scan over retired hashes before the
   tombstone lookup (B9 code); account deletion writes tombstones outside the session lock (a racing refresh can answer
-  `unknown`); the hourly ViewerSessionCleanup job has no unit test of its own (verified live).
+  `unknown`)~~ → B14 (60/min per IP, 10/min per token, 429 + Retry-After, aggregated log lines); the hourly
+  ViewerSessionCleanup job has no unit test of its own (verified live).
 
 - F8 verify V2: on Mobile Safari the first tap on a hidden player overlay toggles playback instead of only showing the
   controls (since M4.2); Apple TV focus lands on the "Start" tab after the player when the played title left Home;
@@ -239,22 +246,39 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   signing out or signing the same account in again throws (S6, P3); the iPhone video full-screen leave path
   (`webkitEnterFullscreen`) is untested; after leaving the system full screen paused, the overlay stays hidden (P3).
 
-- B12 verify (Dev World only): `POST /devworld/faults` answers 500 instead of 400 for a numeric `params.mode` or a
+- B12 verify (Dev World only): ~~`POST /devworld/faults` answers 500 instead of 400 for a numeric `params.mode` or a
   fractional `ttlSeconds`; the `transcode_kill` smoke only checks the kill, not the next-segment 500 and restart; spent
-  once/count faults stay listed until TTL or clear; with nothing armed playlists and API answers now carry
+  once/count faults stay listed until TTL or clear~~ → B14; with nothing armed playlists and API answers now carry
   `Content-Length` (bodies identical); the contract check runs 65-71 checks depending on server state.
 
-- B13 verify: no automated test for `Retry-After` on `segment_evicted`, the WebVTT wait cap or the 25 s budget across
-  restarts (verified live); two requests competing on one transcode session keep restarting the run and the loser
-  gets `503 segment_unavailable` at ~9 s (bounded, Retry-After, pre-existing); a progress `stop` with a live id answers
-  `playbackAlive: true` although that call ends the playback (document it); the B12 `transcode_slow` fault does not
-  slow remux runs.
+- B13 verify: ~~no automated test for `Retry-After` on `segment_evicted`, the WebVTT wait cap or the 25 s budget across
+  restarts~~ → B14 (TranscodeWaitTests; `segment_evicted` via the extracted response helper, the race stays live-only);
+  ~~two requests competing on one transcode session keep restarting the run and the loser gets `503 segment_unavailable`~~
+  → B16: the newer position keeps the run, the other waits (2 restarts instead of 50 live); ~~`stop` + `playbackAlive: true`
+  undocumented; `transcode_slow` does not slow remux runs~~ → B14.
 
-- B13b verify (pre-existing, same on the published snapshot): when a start is replaced, the old start's late remux
-  session is closed only when the playback ends (measured 47 s, holds a remux slot); the wait sits inside the
-  non-cancellable StartJobLockedAsync, so the 60 s start budget cannot cut it. Smaller: the "Maps a remux/transcode
-  start error" doc comment now sits on StartTimeout(); playback_robustness_check's switch_under_fault passes
-  params.how but the fault reads params.mode; the Dev World README still says start_hang "stays starting".
+- ~~B13b verify: when a start is replaced, the old start's late remux session is closed only when the playback ends;
+  doc comment on StartTimeout(); switch_under_fault params.how; README start_hang~~ → B14: switch/stop cancel the old
+  start (no late session, no slot; robustness check `superseded_start`).
+- ~~**B14 finding (high, server, pre-existing): on macOS/.NET 8 `Process.Start` blocks while any child process is
+  SIGSTOPped.**~~ → B16: the throttle parks runs (ends ffmpeg, resumes at the parked front) instead of SIGSTOP; mechanism
+  (SIGCHLD handler spins on stopped children while holding the process-start lock) in journal/B16.md. The transcode throttle pauses ffmpeg with SIGSTOP, so while one session is paused every new ffmpeg/ffprobe
+  spawn waits until that run is resumed or killed: a unit probe blocked 586 s; live on 39310 a second start (same or
+  another title, another viewer) sat in `planning`/`resolving` for 40 s+ while a first remux was paused. This was the real
+  cause of the B13b "late session" and very likely of the client's unexplained long `starting` on 39300. Fix idea:
+  pause without SIGSTOP (stop reading / -readrate), or SIGCONT paused runs around each spawn; check Linux too.
+- Server tests (B14 full run): ProviderSpeedTesterTests.SpeedTest_AutomaticallyDiscoversAndTransfersARecentArticle failed
+  once under full-suite load (Assert.True), 3/3 alone.
+
+- B14-B16 verify (non-blocking): a flooder behind the same IP as real viewers (home network, carrier NAT, an
+  untrusted proxy) keeps their refreshes at 429 while the flood lasts — count only failed refreshes per IP or let a
+  valid live token pass the IP limit; a parked (throttled) run gives up its slot, so with all slots taken its resume
+  answers `503 remux_capacity` mid-playback (before B16 the paused run kept the slot; undocumented); one player that
+  jumps far ahead and straight back within 3 s now waits 3.4-4 s for the first segment (was 0.3-0.5 s); a transcode
+  resume overlaps by one video frame and ~37 ms of audio; every error answer on the transcode routes scans all
+  playbacks' issue gates (skip unknown sessions); leftover doc comment ProcessRunner.cs:157; Dev World logs at Warning
+  so the limiter's Information lines are invisible there; `fault:7` answers an unclear 400 message; faults_smoke's
+  usenet_hole leaves releases dead, so run e2e on a fresh instance.
 
 ## Tests and tooling (more)
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);

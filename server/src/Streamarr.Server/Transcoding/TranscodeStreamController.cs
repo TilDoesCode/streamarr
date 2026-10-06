@@ -11,7 +11,8 @@ namespace Streamarr.Server.Transcoding;
 [ApiController]
 [AllowAnonymous]
 [Route("api/v1/transcode/{token}")]
-public sealed class TranscodeStreamController(TranscodeSessionManager sessions, ILogger<TranscodeStreamController> logger) : ControllerBase
+[ServiceFilter(typeof(HlsDeliveryIssueFilter))]
+public sealed class TranscodeStreamController(TranscodeSessionManager sessions, HlsDeliveryIssues issues, ILogger<TranscodeStreamController> logger) : ControllerBase
 {
     private const string PlaylistType = "application/vnd.apple.mpegurl";
 
@@ -130,9 +131,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
             }
             catch (FileNotFoundException)
             {
-                Response.Headers.RetryAfter = "1";
-                return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                    ErrorResponse.Of("segment_evicted", "The segment was replaced while opening; retry."));
+                return SegmentEvicted(Response);
             }
             if (track is not { } id)
             {
@@ -160,11 +159,22 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
             if (Response.HasStarted)
             {
                 logger.LogWarning(e, "Audio rendition {Rendition} segment {Segment} broke off while streaming", rendition, segment);
+                issues.Report(Request.Path, StatusCodes.Status500InternalServerError, "rendition_split_failed");
                 HttpContext.Abort();
                 return new EmptyResult();
             }
             return SplitFailure(e, rendition, segment);
         }
+    }
+
+    /// <summary>The segment file vanished between the wait and the open (retention or a restart); a quick retry finds the new one.</summary>
+    internal static ObjectResult SegmentEvicted(HttpResponse response)
+    {
+        response.Headers.RetryAfter = "1";
+        return new ObjectResult(ErrorResponse.Of("segment_evicted", "The segment was replaced while opening; retry."))
+        {
+            StatusCode = StatusCodes.Status503ServiceUnavailable,
+        };
     }
 
     /// <summary>A demuxed session serves the video track on the main playlist and one audio track per rendition; null track = the muxed file.</summary>

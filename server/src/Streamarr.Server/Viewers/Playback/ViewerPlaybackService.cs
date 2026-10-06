@@ -18,7 +18,7 @@ namespace Streamarr.Server.Viewers.Playback;
 public sealed record ViewerCaller(string ViewerId, string SessionId, string Username, string DeviceName);
 
 /// <summary>What a progress report with a server <c>playbackId</c> fills in.</summary>
-public sealed record PlaybackLink(string? ReleaseId, string? StreamToken);
+public sealed record PlaybackLink(string? ReleaseId, string? StreamToken, IReadOnlyList<PlaybackDeliveryIssueDto> DeliveryIssues);
 
 /// <summary>Poll and retry pacing; tests shorten it.</summary>
 public sealed record PlaybackTimings(
@@ -42,10 +42,13 @@ public sealed class ViewerPlaybackService(
     IOptions<StreamarrOptions> options,
     TimeProvider time,
     ILogger<ViewerPlaybackService> logger,
-    PlaybackTimings? timings = null) : BackgroundService
+    PlaybackTimings? timings = null) : BackgroundService, IHlsDeliveryIssueSink
 {
     public const int MaxPlaybacksPerViewer = 16;
     public const int MaxPlaybacks = 1024;
+    internal const int MaxDeliveryIssues = 16;
+    internal static readonly TimeSpan DeliveryIssueRetention = TimeSpan.FromSeconds(60);
+    internal static readonly TimeSpan DeliveryIssueWindow = TimeSpan.FromSeconds(30);
     private static readonly string[] PreparingStates = [States.Queued, States.Resolving, States.Fallback, States.Repairing, States.Planning, States.Starting];
 
     private readonly ConcurrentDictionary<string, Playback> _playbacks = new(StringComparer.Ordinal);
@@ -219,6 +222,7 @@ public sealed class ViewerPlaybackService(
             if (playback.CurrentHls is { } current)
                 playback.PreviousHls.Add(new PreviousRendition(current, null));
             playback.CurrentHls = null;
+            playback.Issues.Clear();
             playback.Ready = null;
             playback.Failure = null;
             playback.Decision = null;
@@ -246,6 +250,7 @@ public sealed class ViewerPlaybackService(
         if (playback is null || playback.Work.WorkId != workId)
             return null;
         List<string> hls;
+        IReadOnlyList<PlaybackDeliveryIssueDto> issues;
         lock (playback.Gate)
         {
             var now = time.GetUtcNow();
@@ -253,10 +258,54 @@ public sealed class ViewerPlaybackService(
             playback.LastActivity = now;
             playback.PositionTicks = positionTicks;
             hls = OpenRenditions(playback).ToList();
+            // Each issue is told once: recorded after the previous heartbeat answer, at most 30 s ago.
+            issues = DeliveryIssues(playback, now, playback.IssuesTold);
+            playback.IssuesTold = playback.IssueSequence;
         }
         foreach (var id in hls)
             media.TouchHls(id);
-        return new PlaybackLink(playback.ResolvedReleaseId, playback.StreamToken);
+        return new PlaybackLink(playback.ResolvedReleaseId, playback.StreamToken, issues);
+    }
+
+    /// <summary>Remembers a failed answer on the playback's current HLS session (bounded; equal issues collapse to the latest).</summary>
+    public void Report(string sessionId, HlsDeliveryIssue issue)
+    {
+        foreach (var playback in _playbacks.Values)
+        {
+            lock (playback.Gate)
+            {
+                if (playback.Stopped || playback.CurrentHls != sessionId)
+                    continue;
+                playback.Issues.RemoveAll(i => issue.At - i.Issue.At > DeliveryIssueRetention || Same(i.Issue, issue));
+                playback.Issues.Add((issue, ++playback.IssueSequence));
+                if (playback.Issues.Count > MaxDeliveryIssues)
+                    playback.Issues.RemoveAt(0);
+                return;
+            }
+        }
+    }
+
+    private static bool Same(HlsDeliveryIssue a, HlsDeliveryIssue b)
+        => a.Kind == b.Kind && a.RenditionId == b.RenditionId && a.SubtitleStreamIndex == b.SubtitleStreamIndex && a.Code == b.Code && a.Status == b.Status;
+
+    /// <summary>Issues of the last 30 s recorded after sequence <paramref name="after"/>, oldest first; call under the playback's gate.</summary>
+    private static List<PlaybackDeliveryIssueDto> DeliveryIssues(Playback playback, DateTimeOffset now, long after = 0)
+    {
+        playback.Issues.RemoveAll(i => now - i.Issue.At > DeliveryIssueRetention);
+        return playback.Issues.Where(i => i.Sequence > after && now - i.Issue.At <= DeliveryIssueWindow).Select(e => e.Issue).Select(i => new PlaybackDeliveryIssueDto
+        {
+            Kind = i.Kind switch
+            {
+                HlsDeliveryKind.AudioRendition => "audioRendition",
+                HlsDeliveryKind.SubtitleRendition => "subtitleRendition",
+                _ => "segment",
+            },
+            RenditionId = i.RenditionId,
+            SubtitleStreamIndex = i.SubtitleStreamIndex,
+            Code = i.Code,
+            Status = i.Status,
+            At = i.At,
+        }).ToList();
     }
 
     /// <summary>Stops idle playbacks and closes renditions replaced by a switch once their grace period is over.</summary>
@@ -562,6 +611,7 @@ public sealed class ViewerPlaybackService(
         TranscodeException? lastError = null;
         DeliveryMode? lastMethod = null;
         using var budget = new CancellationTokenSource(_timings.StartLimit);
+        using var startToken = CancellationTokenSource.CreateLinkedTokenSource(budget.Token, ct);
         foreach (var candidate in decision.Viable)
         {
             if (budget.IsCancellationRequested)
@@ -580,9 +630,9 @@ public sealed class ViewerPlaybackService(
             try
             {
                 rendition = await media.StartHlsAsync(token, candidate.Client, candidate.Limits, Label(playback), startTicks / (double)TimeSpan.TicksPerSecond,
-                    candidate.Method == DeliveryMode.Remux ? ModePreference.Remux : ModePreference.Transcode, budget.Token);
+                    candidate.Method == DeliveryMode.Remux ? ModePreference.Remux : ModePreference.Transcode, startToken.Token);
             }
-            catch (OperationCanceledException) when (budget.IsCancellationRequested)
+            catch (OperationCanceledException) when (budget.IsCancellationRequested && !ct.IsCancellationRequested)
             {
                 logger.LogWarning("Playback {PlaybackId}: {Method} on {Engine} did not start within {Budget}",
                     playback.Id, candidate.Method.ToApi(), candidate.Engine.Name, _timings.StartLimit);
@@ -716,6 +766,7 @@ public sealed class ViewerPlaybackService(
                 Error = failed is null ? null : new PlaybackErrorDto { Code = failed.Code, Message = failed.Message, Params = failed.Parameters },
                 SuggestedActions = failed?.SuggestedActions,
                 AudioFallback = p.AudioFallback,
+                DeliveryIssues = DeliveryIssues(p, time.GetUtcNow()),
             };
         }
     }
@@ -899,10 +950,11 @@ public sealed class ViewerPlaybackService(
         _ => new PlaybackFailure("playback_failed", "The playback could not be prepared.", null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]),
     };
 
-    /// <summary>Maps a remux/transcode start error onto the documented failed-playback codes; a mapped code keeps the original in <c>params.reason</c>.</summary>
+    /// <summary>The error of a start that ran out of the per-revision start budget.</summary>
     private TranscodeException StartTimeout()
         => new("start_timeout", $"The stream did not start within {_timings.StartLimit.TotalSeconds:0} s.", 504);
 
+    /// <summary>Maps a remux/transcode start error onto the documented failed-playback codes; a mapped code keeps the original in <c>params.reason</c>.</summary>
     internal static (string Code, IReadOnlyDictionary<string, string>? Parameters) StartError(TranscodeException e, DeliveryMode? method)
     {
         var reason = TrackSelector.Params(("reason", e.Code));
@@ -1035,6 +1087,9 @@ public sealed class ViewerPlaybackService(
         public bool Stopped { get; set; }
         public TaskCompletionSource Changed { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public SourceMediaInfo? Media { get; set; }
+        public List<(HlsDeliveryIssue Issue, long Sequence)> Issues { get; } = [];
+        public long IssueSequence { get; set; }
+        public long IssuesTold { get; set; }
 
         /// <summary>Method and engine of the last ready state: what the device plays until a switch becomes ready.</summary>
         public string? PlayingKey { get; set; }

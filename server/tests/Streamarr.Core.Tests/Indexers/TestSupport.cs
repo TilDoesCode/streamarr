@@ -113,6 +113,17 @@ internal sealed class FakeNewznabClient : INewznabClient
         return this;
     }
 
+    /// <summary>The indexer's search waits for <paramref name="gate"/> (honouring the fan-out's token).</summary>
+    public FakeNewznabClient WaitsFor(string indexerName, Task gate, params NewznabItem[] items)
+    {
+        _behaviours[indexerName] = async ct =>
+        {
+            await gate.WaitAsync(ct);
+            return new NewznabSearchResponse { Items = items };
+        };
+        return this;
+    }
+
     public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
         => Task.FromResult(new NewznabCapabilities());
 

@@ -221,6 +221,33 @@ public class RepairAwareStreamTests
         Assert.Equal(0, gateway.HoleWaits);
     }
 
+    /// <summary>Cancels the reader's token while the remote fetch is in flight, then fails it at the hole.</summary>
+    private sealed class CancelledAtHoleStream(byte[] data, CancellationTokenSource reader, Exception failure) : MemoryStream(data)
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            await Task.Yield();
+            reader.Cancel();
+            throw failure;
+        }
+    }
+
+    [Fact]
+    public async Task AReaderCancelledDuringItsFetch_EndsCancelled_NotWithTheArticleLoss()
+    {
+        // Its article loss must not reach the session's release-death handling while other readers repair through it.
+        var gateway = new FakeGateway();
+        using var cts = new CancellationTokenSource();
+        var missing = new UsenetArticleNotFoundException("seg@test");
+        await using var stream = new RepairAwareStream(new CancelledAtHoleStream(Payload(), cts, missing), gateway, Context);
+
+        var thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.ReadAsync(new byte[1024], cts.Token));
+
+        Assert.Same(missing, thrown.InnerException);
+        Assert.False(RepairAwareStream.IsRepairableFailure(thrown));
+        Assert.Equal(0, gateway.HoleWaits);
+    }
+
     [Fact]
     public async Task SeekingWorksAcrossTheLocalSwap()
     {

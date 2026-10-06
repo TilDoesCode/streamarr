@@ -217,7 +217,7 @@ public class HealthCheckerTests
     public async Task Concurrency_UsesConfiguredProviderBudgetWithoutChangingSampleSet()
     {
         var segments = Segments(24);
-        var client = new FakeNntpClient(segments) { StatDelay = TimeSpan.FromMilliseconds(20) };
+        var client = new FakeNntpClient(segments) { HoldStatsUntilConcurrent = 12 };
 
         var result = await Checker(
             client,

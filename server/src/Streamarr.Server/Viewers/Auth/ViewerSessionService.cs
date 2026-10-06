@@ -42,6 +42,7 @@ public sealed class ViewerSessionService(
     private static readonly TimeSpan RevokedRetention = TimeSpan.FromDays(1);
     private readonly IDataProtector _rotated = dataProtection.CreateProtector("Streamarr.Viewers.RotatedTokens.v1");
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly LogBudget _unknownLog = new(5, TimeSpan.FromMinutes(1));
 
     public async Task<ViewerTokens> IssueAsync(ViewerEntity viewer, ViewerSessionRequest request, CancellationToken ct)
     {
@@ -134,25 +135,29 @@ public sealed class ViewerSessionService(
             var retired = session is null;
             if (retired)
             {
+                var tombstone = await db.ViewerSessionTombstones.AsNoTracking()
+                    .SingleOrDefaultAsync(t => t.RefreshTokenHash == hash && t.ExpiresAt > now, ct);
+                if (tombstone is not null)
+                {
+                    return tombstone.Reason == ExpiredReason
+                        ? Refused(RefreshFailure.Expired, null, "tombstone", tombstone.SessionId, tombstone.ViewerId)
+                        : Refused(RefreshFailure.Revoked, PublicReason(tombstone.Reason), "tombstone", tombstone.SessionId, tombstone.ViewerId);
+                }
                 session = await db.ViewerSessions.FirstOrDefaultAsync(
                     s => s.RetiredRefreshTokenHashes != null && s.RetiredRefreshTokenHashes.Contains(hash), ct);
                 if (session is not null && !session.RetiredRefreshTokenHashes!.Split(' ').Contains(hash))
                     session = null;
             }
             if (session is null)
-            {
-                var tombstone = await db.ViewerSessionTombstones.AsNoTracking()
-                    .SingleOrDefaultAsync(t => t.RefreshTokenHash == hash && t.ExpiresAt > now, ct);
-                if (tombstone is null)
-                    return Refused(RefreshFailure.Unknown, null, "no_match", null);
-                return tombstone.Reason == ExpiredReason
-                    ? Refused(RefreshFailure.Expired, null, "tombstone", tombstone.SessionId, tombstone.ViewerId)
-                    : Refused(RefreshFailure.Revoked, PublicReason(tombstone.Reason), "tombstone", tombstone.SessionId, tombstone.ViewerId);
-            }
+                return Refused(RefreshFailure.Unknown, null, "no_match", null);
             if (session.RevokedAt is not null)
                 return Refused(RefreshFailure.Revoked, PublicReason(session.RevokedReason), "revoked", session.Id, session.ViewerId);
             if (session.RefreshExpiresAt <= now)
                 return Refused(RefreshFailure.Expired, null, "expired", session.Id, session.ViewerId);
+
+            var viewer = await db.Viewers.AsNoTracking().SingleOrDefaultAsync(v => v.Id == session.ViewerId, ct);
+            if (viewer is null || viewer.IsDisabled)
+                return Refused(RefreshFailure.Revoked, "account_disabled", "account_disabled", session.Id, session.ViewerId);
 
             if (session.RefreshTokenHash != hash)
             {
@@ -175,10 +180,6 @@ public sealed class ViewerSessionService(
                 logger.LogWarning("Viewer refresh token reuse detected; session {SessionId} revoked", session.Id);
                 return Refused(RefreshFailure.Reused, null, retired ? "retired_token" : "previous_token_after_use", session.Id, session.ViewerId);
             }
-
-            var viewer = await db.Viewers.AsNoTracking().SingleOrDefaultAsync(v => v.Id == session.ViewerId, ct);
-            if (viewer is null || viewer.IsDisabled)
-                return Refused(RefreshFailure.Revoked, "account_disabled", "account_disabled", session.Id, session.ViewerId);
 
             var access = ViewerAuth.NewToken(ViewerAuth.AccessTokenPrefix);
             var refresh = ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix);
@@ -203,11 +204,32 @@ public sealed class ViewerSessionService(
         }
     }
 
+    /// <summary>Runs <paramref name="action"/> under the lock refreshes take, so no refresh can rotate a session it is about to end.</summary>
+    public async Task UnderSessionLockAsync(Func<Task> action, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private const string ExpiredReason = "expired";
     private const string ReuseReason = "refresh_token_reuse";
 
     private RefreshResult Refused(RefreshFailure failure, string? reason, string detail, string? sessionId, string? viewerId = null)
     {
+        if (failure == RefreshFailure.Unknown)
+        {
+            if (!_unknownLog.TryTake(time.GetUtcNow(), out var suppressed))
+                return new RefreshResult(null, failure, reason);
+            if (suppressed > 0)
+                logger.LogInformation("Viewer refresh refused {Suppressed} more unknown tokens in the previous window (not logged one by one)", suppressed);
+        }
         logger.LogInformation(
             "Viewer refresh refused: {RefreshFailure} ({RefreshDetail}), reason {RefreshReason}, session {SessionId}, viewer {ViewerId}",
             failure, detail, reason ?? "-", sessionId ?? "-", viewerId ?? "-");

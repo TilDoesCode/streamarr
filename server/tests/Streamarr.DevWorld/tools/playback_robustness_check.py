@@ -9,7 +9,9 @@ Checks: a stalled transcode answers 504 segment_timeout with Retry-After within 
 behind the retained window restarts the run at the target instead of waiting; a progress report says whether the
 playbackId is still a live server playback (playbackAlive); /switch {audioFallback} converts the selected audio to AAC
 stereo (verified with ffprobe on the delivered segment); a cross-origin faulted 503 exposes Retry-After; a /switch on a
-playback with an active segment/playlist fault leaves `starting`. Exits non-zero when a check fails.
+playback with an active segment/playlist fault leaves `starting`; a held start replaced by a switch leaves no second session; fault answers on audio/subtitle renditions and video
+segments are named in the next progress answer (deliveryIssues).
+Exits non-zero when a check fails.
 """
 import json
 import os
@@ -66,7 +68,7 @@ def check_seek_back_evicted():
             assert r.status == 200, f"segment {i}: {r}"
         sessions = fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1]
         session = max(sessions, key=lambda s: s.get("job", {}).get("front", 0) if s.get("job") else 0)
-        running = session["job"]["running"]
+        running = session["job"]["running"] or session["job"]["paused"]
         restarts = session["restarts"]
         time.sleep(16)
         r = fs.raw("GET", f"{base}/1.m4s", timeout=120)
@@ -164,7 +166,7 @@ def check_switch_under_fault():
     cases = [
         ("seg_status", {"target": "video", "params": {"status": 503, "code": "segment_unavailable", "retryAfter": 10}, "mode": {"count": 9}},
          {"positionTicks": 410_000_000, "preferences": {"maxHeight": 720}}),
-        ("seg_corrupt", {"target": "video", "params": {"how": "garbage"}, "mode": "always"}, {"positionTicks": 290_000_000, "stepDown": True}),
+        ("seg_corrupt", {"target": "video", "params": {"mode": "garbage"}, "mode": "always"}, {"positionTicks": 290_000_000, "stepDown": True}),
         ("playlist_endless", {"params": {"segments": 10}, "mode": "always"}, {"positionTicks": 450_000_000, "stepDown": True}),
     ]
     out, ok = [], True
@@ -185,9 +187,153 @@ def check_switch_under_fault():
     return ok, "; ".join(out)
 
 
+def check_superseded_start():
+    """A start held by start_hang and replaced by a switch never leaves a second session (B14)."""
+    anna = fs.ctx.anna["accessToken"]
+    admin = admin_token()
+    before = {s["handle"] for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1]}
+    fid = fs.arm("start_hang", {"next": "anna"}, params={"seconds": 8})
+    _, p = fs.start_playback(anna, *fs.REMUX, wait_ready=False)
+    fs.wait_state(anna, p["playbackId"], ("starting",), 30)
+    fs.api("POST", f"/api/v1/viewer/playback/{p['playbackId']}/switch", {"positionTicks": 0}, anna)
+    b = wait_revision(anna, p["playbackId"], 1)
+    seen = set()
+    deadline = time.time() + 12
+    while time.time() < deadline:
+        seen |= {s["handle"] for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1]} - before
+        time.sleep(0.5)
+    hits = fs.fault_info(fid)["fault"]["hits"]
+    fs.stop(anna, p["playbackId"])
+    left = {s["handle"] for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1]} - before
+    ok = b["state"] == "ready" and hits == 1 and len(seen) == 1 and not left
+    return ok, f"held start replaced: revision 1 {b['state']} {b.get('method')}; sessions seen over 12 s {len(seen)}; after stop {len(left)}"
+
+
+def check_delivery_issues():
+    """Fault-layer answers on audio/subtitle renditions and video segments come back in the next progress answer (B15)."""
+    anna = fs.ctx.anna["accessToken"]
+    _, p = fs.start_playback(anna, *fs.REMUX)
+    base = p["url"].rsplit("/", 1)[0]
+    pid, work = p["playbackId"], p["workId"]
+    out, ok = [], True
+    first = progress(anna, pid, 10_000_000, work)[1].get("deliveryIssues")
+    ok &= first == []
+    out.append(f"before {first}")
+    cases = [
+        ("split_abort", {"target": "audio", "rendition": "1", "params": {"afterBytes": 500}}, "/audio/1/1.m4s",
+         ("audioRendition", "1", None, "rendition_split_failed", 500)),
+        ("subtitle_status", {"target": "subtitle", "rendition": "3", "params": {"status": 404}}, "/subtitles/3/main.m3u8",
+         ("subtitleRendition", None, 3, "unknown_subtitle_stream", 404)),
+        ("seg_status", {"target": "video", "params": {"status": 503, "code": "segment_unavailable"}}, "/2.m4s",
+         ("segment", None, None, "segment_unavailable", 503)),
+    ]
+    for fault, arm, path, expected in cases:
+        fs.arm(fault, fs.pb(p), **arm)
+        fs.raw("GET", base + path)
+        answer = progress(anna, pid, 20_000_000, work)[1]
+        named = [(i["kind"], i.get("renditionId"), i.get("subtitleStreamIndex"), i["code"], i["status"]) for i in answer.get("deliveryIssues") or []]
+        again = progress(anna, pid, 21_000_000, work)[1].get("deliveryIssues")
+        good = named == [expected] and again == []
+        ok &= good
+        out.append(f"{fault}: {named} then {again}")
+    # A product answer (unknown audio rendition) goes through the same hook; another viewer never sees it.
+    fs.raw("GET", base + "/audio/9/main.m3u8")
+    status, body = fs.api("GET", f"/api/v1/viewer/playback/{pid}", token=anna)
+    listed = [(i["kind"], i.get("renditionId"), i["code"]) for i in body.get("deliveryIssues") or []]
+    gast = fs.login("gast")["accessToken"]
+    foreign = progress(gast, pid, 1, work)[1]
+    fs.stop(anna, pid)
+    fs.clear()
+    good = ("audioRendition", "9", "unknown_audio_rendition") in listed and len(listed) == 4 and foreign.get("deliveryIssues") is None
+    ok &= good
+    out.append(f"status lists {len(listed)} incl. unknown rendition 9: {good}; other viewer {foreign.get('deliveryIssues')}")
+    return ok, "; ".join(out)
+
+
+def newest_session(admin):
+    return max(fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1], key=lambda s: s["createdAt"])
+
+
+def check_competing_requests():
+    """Two readers far apart on one transcode session: the newer position keeps the run, no restart storm (B16)."""
+    import threading
+    anna, admin = fs.ctx.anna["accessToken"], admin_token()
+    _, p = fs.start_playback(anna, *fs.TRANSCODE)
+    base = p["url"].rsplit("/", 1)[0]
+    count = len([line for line in fs.raw("GET", base + "/main.m3u8").body.decode().splitlines() if line.endswith(".m4s")])
+    far = max(20, count - 12)
+    assert fs.raw("GET", base + "/0.m4s", timeout=90).status == 200
+    restarts0 = newest_session(admin)["restarts"]
+    stop_b, stop_a = threading.Event(), threading.Event()
+    a, b, b_stopped = [], [], []
+
+    def reader(start, stop, out, limit):
+        i = start
+        while not stop.is_set() and i < limit:
+            r = fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
+            out.append((time.time(), r.status, r.code()))
+            i += 1
+
+    tb = threading.Thread(target=reader, args=(far, stop_b, b, count))
+    ta = threading.Thread(target=reader, args=(1, stop_a, a, far - 1))
+    tb.start()
+    time.sleep(1.0)
+    ta.start()
+    time.sleep(12)
+    contested = newest_session(admin)["restarts"] - restarts0
+    stop_b.set()
+    tb.join(60)
+    b_stopped.append(time.time())
+    time.sleep(10)
+    stop_a.set()
+    ta.join(60)
+    total = newest_session(admin)["restarts"] - restarts0
+    fs.stop(anna, p["playbackId"])
+    a_after = [x for x in a if x[0] > b_stopped[0] and x[1] == 200]
+    errors = sorted({f"{s} {c}" for _, s, c in a + b if s != 200})
+    served = sum(1 for x in a if x[1] == 200), sum(1 for x in b if x[1] == 200)
+    # No restart storm and no attempt-exhausted 503: each reader gets its segments or a 504 at its wait budget.
+    ok = contested <= 2 and total <= 3 and min(served) > 0 and all(e.startswith("504") for e in errors)
+    return ok, (f"far reader from {far}: {served[1]}/{len(b)} served; near reader {served[0]}/{len(a)} served ({len(a_after)} after the far one stopped); "
+                f"restarts while contested {contested}, total {total}; non-200 {errors}")
+
+
+def check_throttle_no_block():
+    """A parked (throttled) run leaves no stopped ffmpeg and does not delay another start (B16)."""
+    import subprocess
+    anna, admin = fs.ctx.anna["accessToken"], admin_token()
+    _, before = fs.api("GET", "/api/v1/transcoding/config", token=admin)
+    fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": 30}, admin)
+    try:
+        _, p = fs.start_playback(anna, *fs.REMUX)
+        base = p["url"].rsplit("/", 1)[0]
+        for i in range(2):
+            fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
+        deadline, parked = time.time() + 60, False
+        while time.time() < deadline and not parked:
+            job = newest_session(admin).get("job") or {}
+            parked = bool(job.get("paused")) and not job.get("running")
+            time.sleep(0.5)
+        stopped = [l for l in subprocess.run(["ps", "-ax", "-o", "stat=,comm="], capture_output=True, text=True).stdout.splitlines()
+                   if "ffmpeg" in l and l.strip().startswith("T")]
+        # Another device starts a transcode: probe + ffmpeg spawns while the first run is parked.
+        other = fs.login("anna", "throttle-check-2")["accessToken"]
+        started = time.time()
+        _, q = fs.start_playback(other, *fs.TRANSCODE, timeout=60)
+        took = time.time() - started
+        fs.stop(other, q["playbackId"])
+        fs.stop(anna, p["playbackId"])
+        ok = parked and not stopped and q["state"] == "ready" and took < 5
+        return ok, f"run parked {parked}, stopped ffmpeg processes {len(stopped)}; a transcode start on another device ready in {took:.1f}s ({q['state']})"
+    finally:
+        fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": before["throttleBufferSeconds"]}, admin)
+
+
 CHECKS = [("segment_timeout", check_segment_timeout), ("seek_back_evicted", check_seek_back_evicted),
           ("playback_alive", check_playback_alive), ("audio_fallback", check_audio_fallback),
-          ("cors_retry_after", check_cors_retry_after), ("switch_under_fault", check_switch_under_fault)]
+          ("cors_retry_after", check_cors_retry_after), ("switch_under_fault", check_switch_under_fault),
+          ("superseded_start", check_superseded_start), ("delivery_issues", check_delivery_issues),
+          ("competing_requests", check_competing_requests), ("throttle_no_block", check_throttle_no_block)]
 
 
 def main():

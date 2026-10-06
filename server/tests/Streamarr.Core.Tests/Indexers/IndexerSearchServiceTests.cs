@@ -271,18 +271,22 @@ public class IndexerSearchServiceTests
     [Fact]
     public async Task CancelledWaiter_DoesNotCancelSharedFanOut()
     {
+        var indexerAnswers = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var client = new FakeNewznabClient()
-            .Delays(
-                "Alpha",
-                TimeSpan.FromMilliseconds(100),
-                FakeNewznabClient.Item("Alpha.Release-A", 1000, "a"));
+            .WaitsFor("Alpha", indexerAnswers.Task, FakeNewznabClient.Item("Alpha.Release-A", 1000, "a"));
         var service = Service(client, [NewznabFixtures.Indexer("Alpha")]);
-        using var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+        using var cancelled = new CancellationTokenSource();
 
         var abandoned = service.SearchAsync(Query, cancelled.Token);
         var surviving = service.SearchAsync(Query, CancellationToken.None);
+        for (var i = 0; i < 500 && client.SearchCallCount == 0; i++)
+            await Task.Delay(10);
+        Assert.Equal(1, client.SearchCallCount);
+        await cancelled.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => abandoned);
+        Assert.False(surviving.IsCompleted);
+        indexerAnswers.SetResult();
         Assert.Single((await surviving).Releases);
         Assert.Equal(1, client.SearchCallCount);
     }

@@ -107,7 +107,9 @@ details, seasons and versions of such a title answer `403 age_restricted` with t
 - **Lockout** after repeated failures (default 10 attempts → 15 minutes). A locked
   account only says so when the correct password is supplied.
 - **Rate limit** per client IP on all sign-in, code, and reset endpoints
-  (`Streamarr:ViewerAuthAttemptsPerMinute`, default 20).
+  (`Streamarr:ViewerAuthAttemptsPerMinute`, default 20). Token refresh has its own limits per client IP
+  (`Streamarr:ViewerRefreshPerIpPerMinute`, default 60) and per presented token
+  (`Streamarr:ViewerRefreshPerTokenPerMinute`, default 10): `429 rate_limited` + `Retry-After`.
 - **Browser clients** can pass `"useCookies": true` to receive HttpOnly,
   `SameSite=Strict` cookies scoped to `/api/v1/viewer` instead of tokens in JSON.
   Cookie-authenticated state changes require a same-origin `Origin` header.

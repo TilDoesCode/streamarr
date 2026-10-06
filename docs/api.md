@@ -865,7 +865,10 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 `503 transcode_capacity` / `remux_capacity` / `init_unavailable` / `segment_unavailable`,
 `504 segment_timeout`. One request waits at most `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` (default 25 s,
 below the players' fragment timeouts) in total, across ffmpeg restarts, then answers `504 segment_timeout`. A
-segment deleted between the wait and the read answers `503 segment_evicted`. Every `503` and `504` carries
+segment deleted between the wait and the read answers `503 segment_evicted`. Of two requests competing for
+far-apart positions of one session the newer position wins; the other waits (no restart back) while the newer one was
+used in the last 3 s, so it gets its segment or `504 segment_timeout` instead of a restart storm (see transcoding.md).
+Every `503` and `504` carries
 `Retry-After: 1` (retry the same URL). Every fetch of a playlist or segment counts
 as activity of the session (and of the viewer playback that owns it, § 13).
 | `DELETE` on the capability root | Ends the session and its ffmpeg process (`204`). |
@@ -942,7 +945,18 @@ tombstone with the session id, viewer id, reason and time for 30 days after the 
 maps to its reason. A cleanup job runs hourly (and on every sign-in) and drops older tombstones. Lookups go by the
 SHA-256 hash of the presented token only; a caller without a token that was once valid learns nothing about any
 account. Every refusal is logged at Information as `Viewer refresh refused: <case> (<detail>), reason …, session …,
-viewer …` (ids only when a session or tombstone matched; never the token or its hash).
+viewer …` (ids only when a session or tombstone matched; never the token or its hash). Unknown-token refusals are
+logged one by one for the first 5 per minute; the rest of that minute is counted and reported in one line with the next
+refusal, so an anonymous flood cannot fill the log feed. Account deletion writes its tombstones under the same lock as
+refresh, so a refresh racing the deletion answers `refresh_session_revoked` (`admin`), never `unknown`; a previous-token
+replay of a disabled account answers `refresh_session_revoked` (`account_disabled`).
+
+**Refresh rate limit.** `POST …/refresh` counts one-minute windows per client IP
+(`Streamarr:ViewerRefreshPerIpPerMinute`, default 60) and per presented refresh token
+(`Streamarr:ViewerRefreshPerTokenPerMinute`, default 10). Over either limit it answers `429 rate_limited` with
+`Retry-After` (seconds until the window ends) before looking at the token. An app refreshes about once per access-token
+lifetime (default 60 minutes) plus a retry or two, so a household behind one address stays far below it. Limiter lines
+are logged at most 5 per minute (the rest counted), and the request log writes these 429s at Debug.
 
 **E-mail code cooldown.** A new code for the same purpose is sent at most every 30 seconds and at most
 5 times per hour. Inside that window `POST …/auth/email-code` and `POST …/me/email` send **no** mail and answer
@@ -998,7 +1012,7 @@ number of sessions ended (`0` when there were none). Replaces looping over `DELE
 
 | Endpoint | Purpose |
 |---|---|
-| `POST …/progress` | `{ event: start\|progress\|stop, workId, positionTicks, durationTicks, playbackId, releaseId?, streamToken?, title? }` → the updated `WatchStateResponse`. A `playbackId` from `/viewer/playback` (same device, same work) fills `releaseId` and `streamToken`, counts as that playback's heartbeat and `stop` ends it (§ 13); any other id is just the client's play id. With a `playbackId` the answer adds `playbackAlive` (`false`: no such live server playback). |
+| `POST …/progress` | `{ event: start\|progress\|stop, workId, positionTicks, durationTicks, playbackId, releaseId?, streamToken?, title? }` → the updated `WatchStateResponse`. A `playbackId` from `/viewer/playback` (same device, same work) fills `releaseId` and `streamToken`, counts as that playback's heartbeat and `stop` ends it (§ 13); any other id is just the client's play id. With a `playbackId` the answer adds `playbackAlive` (`false`: no such live server playback) and, for a live one, `deliveryIssues` (§ 13). |
 | `GET …/resume` · `DELETE …/resume/{workId}` | Continue watching, and hiding an entry from it. Items carry `title` in the viewer's language (the movie title, the series title for episodes; the last reported `title` when TMDB has none, else `null`), plus `tint`, `tint2`, `highlight`, `spec` and `available`. A series appears with its current episode only (see *Current episode* below): a resume point older than the latest completion in its series is left out. |
 | `GET …/next-up?seriesWorkId=` | `{ items, incomplete }` — the current episode per recently watched series (see below); items carry `available`. |
 | `GET …/history?limit&offset` | `{ items, total }`, most recent first. |
@@ -1331,7 +1345,7 @@ VLC (PLAN § 2) and uses only the first `native` or `web` entry.
 | `fallback` | The requested version is dead; the next healthy version is being checked. `fallbackFrom` names the requested one, `attempts[]` lists every hop with `resolving`, `ready`, `degraded` or `dead`. |
 | `repairing` | No healthy version is left and a PAR2 repair job is running: `repair` has `state`, `phase`, `progressPercent`, `etaSeconds`; `pollAfterMs` follows the job's `retryAfterSeconds`. When the job is ready the repaired copy plays. |
 | `planning` | Probing the file and deciding method and engine; `version` (a `VersionDto`, `rank: 0` when not in the cached ranking) is known. |
-| `starting` | Starting the remux or transcode; bounded at 60 s per revision, then `failed` with `start_timeout`. |
+| `starting` | Starting the remux or transcode; bounded at 60 s per revision, then `failed` with `start_timeout`. A switch or stop cancels the old revision's start: it never registers a session or takes a remux/transcode slot (a start that already registered is closed at once). |
 | `ready` | Play `url` with `engine`. |
 | `failed` | `error` + `suggestedActions`; `decision.skipped` explains a decision failure. |
 
@@ -1507,8 +1521,24 @@ with `POST /viewer/watch/progress` and the `playbackId` (every ~10 s while playi
 playback and its HLS session alive, and `event: stop` ends the playback like `…/stop`. The answer's `playbackAlive` (only when a `playbackId` was
 sent) is `true` while that id is a live playback of this device for this work and `false` once it is gone (idle
 expiry, stop, server restart, another work): the report is still saved, but the player should start a new playback
-at its position instead of waiting for its HLS requests to fail. A playback
-without polls, heartbeats, switches or HLS fetches for `Streamarr:ViewerPlaybackIdleSeconds`
+at its position instead of waiting for its HLS requests to fail. A `stop` event with a live id answers `true`: the
+value describes the playback as the report found it, and that same call then ends it.
+
+**Delivery issues.** Some players never say which request failed (AVPlayer reports a broken audio rendition as a
+bare network error, segment errors without a URI). The server knows: every error answer of the playback's current
+HLS session (`/api/v1/transcode/{capability}/…`) is recorded on the playback — main playlist, init and video
+segments as `segment`, `audio/{id}/…` as `audioRendition` with `renditionId`, `subtitles/{index}/…` as
+`subtitleRendition` with `subtitleStreamIndex` — with the error `code`, the HTTP `status` (500 when an answer broke
+off after it started, e.g. `rendition_split_failed`) and `at`. Equal issues (kind, rendition, code, status) collapse
+to the latest; at most 16 per playback, each kept 60 s, dropped with the playback and cleared by every switch.
+The progress answer for a live `playbackId` carries `deliveryIssues`: the issues recorded since the previous
+progress answer of that playback, at most 30 s old, oldest first (`[]` when none; `null` without a live
+`playbackId`), so each issue is told once. `GET …/playback/{id}` always lists the last 30 s (not consumed), e.g.
+`{ "kind": "audioRendition", "renditionId": "1", "code": "rendition_split_failed", "status": 500, "at": "…" }` →
+offer the audio fallback (`/switch { audioFallback: true }`) or another audio track. Only the owning device sees
+them; no token material is stored.
+
+A playback without polls, heartbeats, switches or HLS fetches for `Streamarr:ViewerPlaybackIdleSeconds`
 (default 600) is stopped. Playbacks live in memory and end with a server restart. Stop closes the
 remux/transcode sessions, so their HLS URLs stop working; a `direct` URL (`/api/v1/stream/{token}`)
 is the stream capability itself and keeps working until its normal TTL, so playing the same version

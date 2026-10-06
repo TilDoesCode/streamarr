@@ -23,6 +23,10 @@ public sealed class TranscodeSessionManager(
     ILogger<TranscodeSessionManager> logger) : BackgroundService
 {
     private const double SeekGapSeconds = 24;
+
+    /// <summary>A request back into the replaced run's range waits until the current position was not requested for this long.</summary>
+    internal static readonly TimeSpan ContendedWindow = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ContendedPoll = TimeSpan.FromMilliseconds(200);
     private const long MinimumFreeBytes = 2L * 1024 * 1024 * 1024;
     private static readonly TimeSpan ProbeCacheTtl = TimeSpan.FromMinutes(10);
 
@@ -172,6 +176,8 @@ public sealed class TranscodeSessionManager(
         var spawnClock = System.Diagnostics.Stopwatch.StartNew();
         try
         {
+            // A caller that went away (superseded playback revision) must not take a run slot.
+            ct.ThrowIfCancellationRequested();
             await StartJobLockedAsync(session, start);
             session.Startup = new TranscodeStartup(
                 requestedAt, planned.CapabilitiesMs, planned.ProbeMs, planned.ProbeCached, planned.PlanMs,
@@ -200,11 +206,13 @@ public sealed class TranscodeSessionManager(
             if (File.Exists(path))
             {
                 NoteFirstSegment(session);
-                ResumeIfNeeded(session);
+                if (session.Job is { } current && index >= current.StartSegment)
+                    session.RunRequestedAt = DateTimeOffset.UtcNow;
+                await ResumeParkedAsync(session);
                 return path;
             }
 
-            TranscodeJob job;
+            TranscodeJob? job;
             await session.Gate.WaitAsync(ct);
             try
             {
@@ -219,6 +227,12 @@ public sealed class TranscodeSessionManager(
                 session.Gate.Release();
             }
 
+            if (job is null)
+            {
+                attempt--;
+                await Task.Delay(ContendedPoll, ct);
+                continue;
+            }
             if (await WaitForAsync(session, job, () => File.Exists(path), deadline, ct))
                 return path;
         }
@@ -342,14 +356,14 @@ public sealed class TranscodeSessionManager(
                 {
                     await KillJobAsync(session, job, "no segment requests");
                 }
-                else if (settings.ThrottleEnabled)
+                else if (settings.ThrottleEnabled && SecondsAhead(session, job) > settings.ThrottleBufferSeconds)
                 {
-                    var ahead = SecondsAhead(session, job);
-                    if (!job.Paused && ahead > settings.ThrottleBufferSeconds && job.Pause())
-                        logger.LogDebug("Transcode {Handle} paused {Ahead:0}s ahead of the player", session.Handle, ahead);
-                    else if (job.Paused && ahead < settings.ThrottleBufferSeconds / 2d && job.Resume())
-                        logger.LogDebug("Transcode {Handle} resumed {Ahead:0}s ahead of the player", session.Handle, ahead);
+                    await ParkAsync(session, job);
                 }
+            }
+            else
+            {
+                await ResumeParkedAsync(session);
             }
 
             if (retentionPass)
@@ -358,21 +372,36 @@ public sealed class TranscodeSessionManager(
         PruneProbeCache(now);
     }
 
-    private async Task<TranscodeJob> EnsureJobForSegmentLockedAsync(TranscodeSession session, int index)
+    private static int Gap(TranscodeSession session) => Math.Max(2, (int)Math.Ceiling(SeekGapSeconds / session.Timeline.SegmentLength));
+
+    /// <summary>The run serving <paramref name="index"/>, or null when the request has to wait: it would move the run back to the
+    /// range a restart just left while the new position is still requested (two players or a stale retry — no restart ping-pong).</summary>
+    private async Task<TranscodeJob?> EnsureJobForSegmentLockedAsync(TranscodeSession session, int index)
     {
         var job = session.Job;
+        var gap = Gap(session);
         if (job is not null && !job.HasExited && index >= job.StartSegment)
         {
             var front = job.Front();
-            var gap = Math.Max(2, (int)Math.Ceiling(SeekGapSeconds / session.Timeline.SegmentLength));
             // A segment behind the front that is gone was evicted by retention: this run will never write it again.
             var evicted = index < front && !File.Exists(session.SegmentPath(index));
             if (!evicted && index <= front + gap)
             {
-                ResumeIfNeeded(session);
+                session.RunRequestedAt = DateTimeOffset.UtcNow;
                 return job;
             }
         }
+
+        if (job is not null && !(job.Parked && index == job.Front()))
+        {
+            if (session.ReplacedRun is { } replaced && index >= replaced.Start - gap && index <= replaced.End + gap
+                && DateTimeOffset.UtcNow - session.RunRequestedAt < ContendedWindow)
+            {
+                return null;
+            }
+            session.ReplacedRun = (job.StartSegment, job.Front());
+        }
+        session.RunRequestedAt = DateTimeOffset.UtcNow;
 
         if (job is { Failed: true } failed && failed.StartSegment == index && (DateTimeOffset.UtcNow - failed.StartedAt) < TimeSpan.FromSeconds(30))
         {
@@ -388,7 +417,9 @@ public sealed class TranscodeSessionManager(
         {
             CoverTranscodedSubtitles(session);
             await previous.KillAsync();
-            session.NoteRestart();
+            // Resuming a parked run where it stopped is throttling, not a restart.
+            if (!(previous.Parked && previous.Front() == startSegment))
+                session.NoteRestart();
         }
         await EnsureCapacityAsync(session);
 
@@ -464,7 +495,7 @@ public sealed class TranscodeSessionManager(
         var deadline = WaitDeadline();
         for (var attempt = 0; attempt < 4 && !Covered() && DateTimeOffset.UtcNow < deadline; attempt++)
         {
-            TranscodeJob job;
+            TranscodeJob? job;
             await session.Gate.WaitAsync(ct);
             try
             {
@@ -481,6 +512,12 @@ public sealed class TranscodeSessionManager(
                 session.Gate.Release();
             }
 
+            if (job is null)
+            {
+                attempt--;
+                await Task.Delay(ContendedPoll, ct);
+                continue;
+            }
             try
             {
                 if (await WaitForAsync(session, job, Covered, deadline, ct))
@@ -518,6 +555,8 @@ public sealed class TranscodeSessionManager(
                 return true;
             if (!ReferenceEquals(session.Job, job) || session.Closed)
                 return false;
+            // A request waiting on the current run keeps its position in use (see EnsureJobForSegmentLockedAsync).
+            session.RunRequestedAt = DateTimeOffset.UtcNow;
             if (job.HasExited)
             {
                 await Task.Delay(50, ct);
@@ -531,17 +570,58 @@ public sealed class TranscodeSessionManager(
                 logger.LogWarning("Transcode {Handle} ffmpeg exited with {ExitCode}: {Error}", session.Handle, job.ExitCode, session.LastError);
                 throw new TranscodeException("transcode_failed", $"ffmpeg failed: {session.LastError}", 500);
             }
-            if (job.Paused)
-                job.Resume();
             await Task.Delay(10, ct);
         }
         throw SegmentTimeout();
     }
 
-    private void ResumeIfNeeded(TranscodeSession session)
+    /// <summary>The throttle ends a run that is far enough ahead; segments, retention and seeks work as after any other ended run.</summary>
+    private async Task ParkAsync(TranscodeSession session, TranscodeJob job)
     {
-        if (session.Job is { Paused: true } job && SecondsAhead(session, job) < settingsService.Current.ThrottleBufferSeconds / 2d)
-            job.Resume();
+        if (!await session.Gate.WaitAsync(0))
+            return;
+        try
+        {
+            if (!ReferenceEquals(session.Job, job) || job.HasExited || session.Closed)
+                return;
+            CoverTranscodedSubtitles(session);
+            await job.ParkAsync();
+            logger.LogDebug("Transcode {Handle} run {Run} parked {Ahead:0}s ahead of the player at segment {Front}",
+                session.Handle, job.Tag, SecondsAhead(session, job), job.Front());
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
+    /// <summary>Starts a new run at the parked run's front once the player is within half the throttle buffer of it.</summary>
+    private async Task ResumeParkedAsync(TranscodeSession session)
+    {
+        if (session.Job is not { Parked: true } parked || session.Closed
+            || SecondsAhead(session, parked) >= settingsService.Current.ThrottleBufferSeconds / 2d)
+            return;
+        if (!await session.Gate.WaitAsync(0))
+            return;
+        try
+        {
+            if (!ReferenceEquals(session.Job, parked) || session.Closed)
+                return;
+            var front = parked.Front();
+            if (front < session.Timeline.Count)
+            {
+                await StartJobLockedAsync(session, front);
+                logger.LogDebug("Transcode {Handle} resumed at segment {Front}", session.Handle, front);
+            }
+        }
+        catch (TranscodeException e)
+        {
+            logger.LogDebug("Transcode {Handle} could not resume yet ({Code})", session.Handle, e.Code);
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
     }
 
     private static double SecondsAhead(TranscodeSession session, TranscodeJob job)
@@ -580,9 +660,8 @@ public sealed class TranscodeSessionManager(
 
         var now = DateTimeOffset.UtcNow;
         var victims = running
-            .OrderByDescending(s => s.Job!.Paused)
-            .ThenBy(s => s.LastAccessAt)
-            .Where(s => s.Job!.Paused || now - s.LastAccessAt > TimeSpan.FromSeconds(15));
+            .OrderBy(s => s.LastAccessAt)
+            .Where(s => now - s.LastAccessAt > TimeSpan.FromSeconds(15));
         foreach (var victim in victims)
         {
             if (victim.Job is { } job)

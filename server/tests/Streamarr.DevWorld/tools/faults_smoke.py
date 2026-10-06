@@ -507,19 +507,28 @@ def check_transcode_kill():
     assert p["state"] == "ready" and p["method"] == "transcode", p
     base = p["url"].rsplit("/", 1)[0]
     first = raw("GET", base + "/0.m4s", timeout=90)
+    admin = api("POST", "/api/v1/auth/login", {"username": "admin", "password": manifest["admin"]["password"]})[1]["token"]
+
+    def session():
+        return max(api("GET", "/api/v1/transcoding/sessions", token=admin)[1], key=lambda s: s["createdAt"])
+
+    before = session()
     status, armed = api("POST", "/devworld/faults", {"fault": "transcode_kill", "scope": pb(p)})
-    seen = []
-    deadline = time.time() + 60
-    n = 1
-    while time.time() < deadline and n < 40:
+    # The next segment the killed run had not written yet: 500 transcode_failed (then a retry restarts) or a restart at once.
+    n = max(1, session()["job"]["front"])
+    answers = []
+    for _ in range(3):
         r = raw("GET", base + f"/{n}.m4s", timeout=90)
-        seen.append(r.status)
-        if r.status != 200:
+        answers.append(r.status if r.status == 200 else f"{r.status} {r.code()}")
+        if r.status == 200:
             break
-        n += 1
+    after = session()
     stop(ctx.anna["accessToken"], p["playbackId"])
-    ok = status == 201 and first.status == 200 and "killed" in (armed.get("action") or "") and not armed["action"].startswith("killed 0")
-    return ok, f"{armed.get('action')}; following segments: {seen[-5:]} (500 transcode_failed or restart)"
+    recovered = answers[-1:] == [200] and all(a == 200 or a == "500 transcode_failed" for a in answers)
+    ok = status == 201 and first.status == 200 and "killed" in (armed.get("action") or "") and not armed["action"].startswith("killed 0") \
+        and recovered and after["restarts"] > before["restarts"] and after["job"]["running"]
+    return ok, (f"{armed.get('action')}; segment {n} after the kill: {answers}; restarts {before['restarts']} -> {after['restarts']}, "
+                f"new run at {after['job']['startSegment']} running {after['job']['running']}")
 
 
 def check_transcode_slow():
@@ -758,9 +767,9 @@ def check_api_lifecycle():
     token = ctx.direct["url"].rsplit("/", 1)[-1]
     redacted = all(token not in h["path"] for h in info["lastHits"])
     good = rs == [503, 503, 206] and other.status == 206 and info["fault"]["remaining"] == 0 and info["fault"]["hits"] == 2 \
-        and any(f["id"] == fid for f in listed) and redacted
+        and not any(f["id"] == fid for f in listed) and redacted
     ok &= good
-    out.append(f"count:2 -> {rs}; kind's playback {other.status} (isolation); hits/remaining {info['fault']['hits']}/{info['fault']['remaining']}; tokens redacted {redacted}")
+    out.append(f"count:2 -> {rs}; kind's playback {other.status} (isolation); hits/remaining {info['fault']['hits']}/{info['fault']['remaining']}; spent fault listed {any(f['id'] == fid for f in listed)}; tokens redacted {redacted}")
     g = arm("direct_status", {"global": True}, params={"status": 500}, mode="always")
     second = api("POST", "/devworld/faults", {"fault": "seg_delay", "scope": {"global": True}, "params": {"ms": 1}})
     both = [raw("GET", u, headers={"Range": "bytes=0-9"}).status for u in (direct_url(), kind_pb["url"])]
@@ -772,8 +781,10 @@ def check_api_lifecycle():
     bad = [api("POST", "/devworld/faults", b)[0] for b in (
         {"fault": "nope", "scope": {"global": True}}, {"fault": "seg_status", "scope": {}},
         {"fault": "seg_status", "scope": {"global": True}, "target": "direct"}, {"fault": "token_expire", "scope": {"global": True}},
-        {"fault": "seg_delay", "scope": {"global": True}}, {"fault": "seg_status", "scope": {"global": True}, "ttlSeconds": 9000})]
-    good = bad == [400] * 6
+        {"fault": "seg_delay", "scope": {"global": True}}, {"fault": "seg_status", "scope": {"global": True}, "ttlSeconds": 9000},
+        {"fault": "seg_corrupt", "scope": {"global": True}, "params": {"mode": 3}}, {"fault": "seg_status", "scope": {"global": True}, "ttlSeconds": 1.5},
+        {"fault": "seg_status", "scope": {"global": True}, "after": {"segment": 2.5}}, {"fault": 7, "scope": {"global": True}})]
+    good = bad == [400] * 10
     ok &= good
     out.append(f"invalid requests {bad}")
     arm("seg_delay", {"viewer": "anna"}, params={"ms": 1}, mode="always")

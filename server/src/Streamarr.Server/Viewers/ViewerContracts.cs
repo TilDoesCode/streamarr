@@ -259,6 +259,9 @@ public sealed record WatchStateResponse
 
     /// <summary>Progress answers that named a <c>playbackId</c> only (null elsewhere): true while it is a live server playback of this device for this work, false once it ended (idle expiry, stop, server restart) — start a new playback.</summary>
     public bool? PlaybackAlive { get; init; }
+
+    /// <summary>Progress answers for a live <c>playbackId</c> only (null elsewhere): error answers of its HLS session since the previous progress answer of that playback (at most the last 30 s), oldest first.</summary>
+    public IReadOnlyList<Streamarr.Server.Viewers.Playback.PlaybackDeliveryIssueDto>? DeliveryIssues { get; init; }
 }
 
 public sealed record WatchHistoryResponse

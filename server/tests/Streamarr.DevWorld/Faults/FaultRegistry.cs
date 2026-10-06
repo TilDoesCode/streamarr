@@ -11,6 +11,7 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
 
     private readonly object _lock = new();
     private readonly List<Fault> _faults = [];
+    private readonly Queue<Fault> _spent = new();
     private readonly ILogger _log = loggers.CreateLogger(LoggerName);
     private int _next;
 
@@ -24,7 +25,7 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
     {
         if (body.ValueKind != JsonValueKind.Object)
             return (null, "body must be a JSON object");
-        var name = Prop(body, "fault")?.GetString();
+        var name = Prop(body, "fault") is { ValueKind: JsonValueKind.String } f ? f.GetString() : null;
         if (name is null || !FaultCatalog.Targets.TryGetValue(name, out var targets))
             return (null, $"unknown fault '{name}'");
 
@@ -34,6 +35,8 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
         if (FaultCatalog.RequiredScopes.TryGetValue(name, out var required) && !required.Contains(scope!.Kind))
             return (null, $"{name} needs scope {string.Join(" or ", required)}");
 
+        if (Prop(body, "target") is { ValueKind: not JsonValueKind.String })
+            return (null, "target must be a string");
         var target = Prop(body, "target")?.GetString();
         if (targets.Length == 0 && target is not null)
             return (null, $"{name} takes no target");
@@ -62,7 +65,10 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
         if (paramError is not null)
             return (null, paramError);
 
-        var ttl = Prop(body, "ttlSeconds") is { ValueKind: JsonValueKind.Number } t ? t.GetInt32() : DefaultTtl;
+        var ttlProp = Prop(body, "ttlSeconds");
+        var ttl = DefaultTtl;
+        if (ttlProp is { } t && (t.ValueKind != JsonValueKind.Number || !t.TryGetInt32(out ttl)))
+            return (null, $"ttlSeconds must be a whole number 1..{MaxTtl}");
         if (ttl is < 1 or > MaxTtl)
             return (null, $"ttlSeconds must be 1..{MaxTtl}");
 
@@ -106,7 +112,14 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
         return list;
     }
 
-    public Fault? Get(string id) => List().FirstOrDefault(f => f.Id == id);
+    /// <summary>A listed fault, or one of the last 50 that left the list because their budget was spent.</summary>
+    public Fault? Get(string id)
+    {
+        if (List().FirstOrDefault(f => f.Id == id) is { } live)
+            return live;
+        lock (_lock)
+            return _spent.FirstOrDefault(f => f.Id == id && f.ExpiresAt > time.GetUtcNow());
+    }
 
     public bool Remove(string id)
     {
@@ -116,6 +129,13 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
             fault = _faults.FirstOrDefault(f => f.Id == id);
             if (fault is not null)
                 _faults.Remove(fault);
+            else if (_spent.FirstOrDefault(f => f.Id == id) is { } spent)
+            {
+                var kept = _spent.Where(f => f != spent).ToList();
+                _spent.Clear();
+                kept.ForEach(_spent.Enqueue);
+                return true;
+            }
         }
         if (fault is not null)
             Notify([fault]);
@@ -263,6 +283,13 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
         expired = _faults.Where(f => f.ExpiresAt <= now).ToList();
         if (expired.Count > 0)
             _faults.RemoveAll(expired.Contains);
+        foreach (var spent in _faults.Where(f => f.Spent && !FaultCatalog.Lingering.Contains(f.Name)).ToList())
+        {
+            _faults.Remove(spent);
+            _spent.Enqueue(spent);
+            if (_spent.Count > 50)
+                _spent.Dequeue();
+        }
     }
 
     private void Notify(IEnumerable<Fault> removed)
@@ -351,10 +378,11 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
                 return $"after.{prop.Name} must be a number";
             switch (prop.Name)
             {
-                case "segment": segment = prop.Value.GetInt32(); break;
-                case "requests": requests = prop.Value.GetInt32(); break;
+                case "segment" when prop.Value.TryGetInt32(out var n): segment = n; break;
+                case "requests" when prop.Value.TryGetInt32(out var n): requests = n; break;
                 case "secondsAfterReady": seconds = prop.Value.GetDouble(); break;
-                case "bytes": bytes = prop.Value.GetInt64(); break;
+                case "bytes" when prop.Value.TryGetInt64(out var n): bytes = n; break;
+                case "segment" or "requests" or "bytes": return $"after.{prop.Name} must be a whole number";
                 default: return $"unknown after.{prop.Name}";
             }
         }
@@ -366,6 +394,12 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
     {
         bool Has(string key) => p.ContainsKey(key);
         bool IsNum(string key) => p.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number;
+        string? Str(string key) => p.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        foreach (var key in (string[])["mode", "signal", "state", "reason", "code", "value", "message"])
+        {
+            if (Has(key) && p[key].ValueKind != JsonValueKind.String)
+                return $"params.{key} must be a string";
+        }
         switch (name)
         {
             case "seg_delay" or "api_delay" when !IsNum("ms"):
@@ -376,9 +410,9 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
                 return "params.afterBytes must be a number";
             case "seg_truncate" or "direct_truncate" when !IsNum("percent"):
                 return $"{name} needs params.percent";
-            case "seg_corrupt" when Has("mode") && p["mode"].GetString() is not ("mdat" or "box" or "garbage"):
+            case "seg_corrupt" when Has("mode") && Str("mode") is not ("mdat" or "box" or "garbage"):
                 return "params.mode must be mdat, box or garbage";
-            case "subtitle_corrupt" when Has("mode") && p["mode"].GetString() is not ("header" or "timing"):
+            case "subtitle_corrupt" when Has("mode") && Str("mode") is not ("header" or "timing"):
                 return "params.mode must be header or timing";
             case "content_type" when !Has("value"):
                 return "content_type needs params.value";
@@ -388,11 +422,11 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
                 return "throttle needs params.kbps";
             case "transcode_slow" when Has("readrate") && !IsNum("readrate"):
                 return "params.readrate must be a number";
-            case "transcode_kill" when Has("signal") && p["signal"].GetString() is not ("KILL" or "TERM"):
+            case "transcode_kill" when Has("signal") && Str("signal") is not ("KILL" or "TERM"):
                 return "params.signal must be KILL or TERM";
-            case "playback_stuck" when Has("state") && p["state"].GetString() is not ("resolving" or "planning" or "starting"):
+            case "playback_stuck" when Has("state") && Str("state") is not ("resolving" or "planning" or "starting"):
                 return "params.state must be resolving, planning or starting";
-            case "session_revoke" when Has("reason") && !FaultCatalog.RevokeReasons.Contains(p["reason"].GetString() ?? ""):
+            case "session_revoke" when Has("reason") && !FaultCatalog.RevokeReasons.Contains(Str("reason") ?? ""):
                 return $"params.reason must be one of {string.Join(", ", FaultCatalog.RevokeReasons)}";
             case "usenet_hole" when !IsNum("fromPercent") || !IsNum("toPercent"):
                 return "usenet_hole needs params.fromPercent and params.toPercent";

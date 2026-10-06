@@ -64,6 +64,8 @@ public sealed class FakePlaybackMedia : IPlaybackMedia
     public HashSet<string> DeadStreams { get; } = [];
     public ServerHls Server { get; set; } = Available();
     public TaskCompletionSource? StartGate { get; set; }
+    public bool StartIgnoresCancellation { get; set; }
+    public ConcurrentQueue<string> CancelledStarts { get; } = new();
     public TaskCompletionSource? ProbeGate { get; set; }
 
     public static ServerHls Available(bool enabled = true)
@@ -88,7 +90,17 @@ public sealed class FakePlaybackMedia : IPlaybackMedia
         string streamToken, ClientProfile client, TranscodeLimits limits, string clientLabel, double startSeconds, ModePreference mode, CancellationToken ct)
     {
         if (StartGate is { } gate)
-            await gate.Task.WaitAsync(ct);
+        {
+            try
+            {
+                await gate.Task.WaitAsync(StartIgnoresCancellation ? CancellationToken.None : ct);
+            }
+            catch (OperationCanceledException)
+            {
+                CancelledStarts.Enqueue(streamToken);
+                throw;
+            }
+        }
         if (FailModes.TryGetValue(mode, out var code))
             throw new TranscodeException(code, $"Injected {code}.", 422);
         var media = (await ProbeAsync(streamToken, ct))!;

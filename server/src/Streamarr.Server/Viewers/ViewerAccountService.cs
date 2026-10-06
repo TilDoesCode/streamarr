@@ -187,7 +187,7 @@ public sealed class ViewerAccountService(
         return generated;
     }
 
-    public async Task DeleteAsync(string id, CancellationToken ct)
+    public Task DeleteAsync(string id, CancellationToken ct) => sessions.UnderSessionLockAsync(async () =>
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -200,7 +200,7 @@ public sealed class ViewerAccountService(
         if (await db.Viewers.Where(x => x.Id == id).ExecuteDeleteAsync(ct) == 0)
             throw ViewerProblem.NotFound("viewer_not_found", "No viewer account with this id exists.");
         await transaction.CommitAsync(ct);
-    }
+    }, ct);
 
     /// <summary>The viewer's own profile edit; omitted fields stay unchanged.</summary>
     public async Task<ViewerEntity> UpdateProfileAsync(string id, ViewerProfileUpdateRequest request, CancellationToken ct)

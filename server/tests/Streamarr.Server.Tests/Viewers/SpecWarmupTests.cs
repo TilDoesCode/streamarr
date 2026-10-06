@@ -40,23 +40,31 @@ public sealed class SpecWarmupTests(ViewerCatalogWarmupFactory factory) : IClass
 
         var first = await DiscoverAsync(viewer);
         Assert.Contains(first.Values, i => i.GetProperty("spec").ValueKind == JsonValueKind.Null);
+        Assert.True(warmup.Queued > 0);
 
-        var deadline = DateTime.UtcNow.AddSeconds(20);
+        // Wait for the background lookups themselves (bounded), not for a guessed delay.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         Dictionary<string, JsonElement> later;
+        bool Warm(Dictionary<string, JsonElement> cards) => cards["tmdb-movie-501"].GetProperty("spec").ValueKind != JsonValueKind.Null
+            && cards["tmdb-tv-600"].GetProperty("spec").ValueKind != JsonValueKind.Null;
         do
         {
-            await Task.Delay(100);
+            while (!warmup.Idle && DateTime.UtcNow < deadline)
+                await Task.Delay(20);
             later = await DiscoverAsync(viewer);
         }
-        while (DateTime.UtcNow < deadline && later["tmdb-movie-501"].GetProperty("spec").ValueKind == JsonValueKind.Null);
+        while (DateTime.UtcNow < deadline && !(warmup.Idle && Warm(later)));
 
+        Assert.True(warmup.Idle, $"queued {warmup.Queued}, started {warmup.StartedToday}");
         Assert.Equal("4K", later["tmdb-movie-501"].GetProperty("spec").GetProperty("resolution").GetString());
         Assert.Equal("1080p", later["tmdb-tv-600"].GetProperty("spec").GetProperty("resolution").GetString());
         var started = warmup.StartedToday;
+        var queued = warmup.Queued;
         Assert.InRange(started, 1, first.Count);
 
+        // Within the cooldown a fetch queues nothing (Request runs inside the request, so no wait is needed).
         await DiscoverAsync(viewer);
-        await Task.Delay(300);
+        Assert.Equal(queued, warmup.Queued);
         Assert.Equal(started, warmup.StartedToday);
     }
 }

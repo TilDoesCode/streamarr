@@ -193,13 +193,24 @@ no longer waits for detection: capability detection starts immediately at startu
   SDR sources keep their own tags; a remux copies the stream untouched and announces `PQ`/`HLG` from the source.
   The Dev World e2e (`colour_check`) ffprobes init + first segment of every remux/transcode and fails when
   `VIDEO-RANGE` and the tags disagree.
-- **Throttling.** When ffmpeg is more than *throttle buffer* seconds ahead of the player
-  it is paused with `SIGSTOP` and resumed with `SIGCONT` when the player catches up
-  (Linux and macOS).
+- **Throttling.** When a run is more than *throttle buffer* seconds ahead of the player it is
+  *parked*: ffmpeg is ended (the segments it wrote stay, `job.paused: true`, no process, no
+  remux/transcode slot). Once the player is within half the buffer of the parked front, a new run
+  starts at that front segment, like a seek restart at a segment boundary (not counted in
+  `restarts`). Any platform. The server no longer stops ffmpeg with `SIGSTOP`: on macOS a stopped
+  child makes .NET's SIGCHLD handler spin (`waitid` reports stopped children there) while it holds
+  the process-start lock, so every other ffmpeg/ffprobe spawn of the server waited (B16).
 - **Cleanup.** ffmpeg is stopped after *job idle timeout* without segment requests, the
   whole session after *session idle timeout*; segments older than *segment retention*
   behind the playhead are deleted. A seek back to a deleted segment that the running ffmpeg already passed restarts
   ffmpeg at that segment (the run would never write it again). Sessions never survive a restart.
+- **Competing requests.** One session has one run. When two requests want far-apart positions (two players on
+  one session, or a stale hls.js retry next to a seek), the newer position wins at once; a request that would move
+  the run back into the range the last restart left *waits* (polling, within its own wait budget) as long as the
+  current position is still in use — requested, served or waited on within the last 3 s. It restarts back only once
+  the newer position has been idle for 3 s. So the two never take turns restarting ffmpeg; the waiting one ends with
+  its segment or `504 segment_timeout` at its budget. Before B16 they restarted the run on every attempt and the
+  loser ran out of attempts (`503 segment_unavailable` after ~4 s, 7 restarts).
 - **Waiting.** A segment, init or WebVTT request waits for ffmpeg at most *SegmentWaitTimeoutSeconds* (25 s) in
   total, across restarts, then answers `504 segment_timeout` with `Retry-After: 1`: the player gets a clear answer
   it can retry instead of a request that outlives its own fragment timeout.
@@ -248,7 +259,7 @@ longest one rounded (RFC 8216), `#EXT-X-ENDLIST` is present from the start, so p
 `-copyts -start_at_zero -avoid_negative_ts disabled`, fragmented MP4 (`frag_keyframe`, `delay_moov`,
 `frag_discont`) on stdout. The server reads that box stream and writes the run's init segment and each
 planned `{n}.m4s` atomically as soon as its last fragment reaches the next boundary; the final segment
-is written only after a clean ffmpeg exit, never after a kill. Serving, throttling (SIGSTOP), idle stop
+is written only after a clean ffmpeg exit, never after a kill. Serving, throttling (parking), idle stop
 and retention are the same as for transcodes.
 
 **Seeks.** A request far from the running copy restarts ffmpeg one keyframe *before* the target
@@ -379,7 +390,7 @@ Editable in **Transcoding → Settings** (stored in the database):
 | Segment length | 3 s | 2–10 s. Shorter segments start and seek faster; see *Time to first frame*. |
 | Concurrent transcodes | 2 | Running ffmpeg processes across all users. |
 | Concurrent remuxes | 8 | Running stream copies (1–64), counted separately. |
-| Throttle / buffer | on / 120 s | Pause ffmpeg this far ahead of the player. |
+| Throttle / buffer | on / 120 s | Park (end) the run this far ahead of the player; it resumes at half the buffer. |
 | ffmpeg threads | 0 (auto) | Limits encoder threads for software encodes. |
 | Job idle / session idle / retention | 60 s / 30 min / 15 min | See *Cleanup*. |
 

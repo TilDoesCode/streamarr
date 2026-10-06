@@ -93,7 +93,7 @@ public sealed class ViewerTmdbFake : ITmdbClient
         => new() { EpisodeNumber = number, Title = $"Episode {number}", AirDate = airDate };
 }
 
-public sealed class ViewerApiFactory : WebApplicationFactory<Program>
+public class ViewerApiFactory : WebApplicationFactory<Program>
 {
     public const string ApiKey = "machine-key-for-viewer-tests-0123456789";
     private readonly string _dir = Directory.CreateTempSubdirectory("streamarr-viewers-").FullName;
@@ -103,7 +103,7 @@ public sealed class ViewerApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Production");
-        builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        var settings = new Dictionary<string, string?>
         {
             ["Streamarr:ApiKey"] = ApiKey,
             ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
@@ -112,7 +112,11 @@ public sealed class ViewerApiFactory : WebApplicationFactory<Program>
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
             ["Streamarr:LoginAttemptsPerMinute"] = "1000",
             ["Streamarr:ViewerAuthAttemptsPerMinute"] = "1000",
-        }));
+            ["Streamarr:ViewerRefreshPerIpPerMinute"] = "10000",
+            ["Streamarr:ViewerRefreshPerTokenPerMinute"] = "1000",
+        };
+        Configure(settings);
+        builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(settings));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<TimeProvider>();
@@ -120,6 +124,10 @@ public sealed class ViewerApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ITmdbClient>();
             services.AddSingleton<ITmdbClient, ViewerTmdbFake>();
         });
+    }
+
+    protected virtual void Configure(Dictionary<string, string?> settings)
+    {
     }
 
     private readonly SemaphoreSlim _adminGate = new(1, 1);

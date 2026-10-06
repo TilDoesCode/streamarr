@@ -8412,6 +8412,26 @@
               }
             }
           },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -17295,6 +17315,50 @@
         },
         "additionalProperties": false
       },
+      "PlaybackDeliveryIssueDto": {
+        "required": [
+          "at",
+          "code",
+          "kind",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`audioRendition`, `subtitleRendition` or `segment` (main playlist, init or video segment).",
+            "nullable": true
+          },
+          "renditionId": {
+            "type": "string",
+            "description": "Audio rendition id (the master's `audio/{id}`) for `audioRendition`.",
+            "nullable": true
+          },
+          "subtitleStreamIndex": {
+            "type": "integer",
+            "description": "Subtitle stream index (`subtitles/{index}`) for `subtitleRendition`.",
+            "format": "int32",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "description": "The error code of the answer (e.g. `rendition_split_failed`, `segment_timeout`).",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "description": "HTTP status of the answer; 500 when the answer broke off after it started.",
+            "format": "int32"
+          },
+          "at": {
+            "type": "string",
+            "description": "When the server answered (the latest of equal issues).",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "A request of the playback's HLS session that the server answered with an error (or broke off after it started)."
+      },
       "PlaybackErrorDto": {
         "required": [
           "code",
@@ -17671,6 +17735,14 @@
           "audioFallback": {
             "type": "boolean",
             "description": "True after a `/switch` with `audioFallback`: every rendition carries the selected audio as AAC stereo."
+          },
+          "deliveryIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackDeliveryIssueDto"
+            },
+            "description": "Error answers of this revision's HLS session in the last 30 s, oldest first (empty when none); see also the progress answer.",
+            "nullable": true
           }
         },
         "additionalProperties": false,
@@ -23219,6 +23291,14 @@
           "playbackAlive": {
             "type": "boolean",
             "description": "Progress answers that named a `playbackId` only (null elsewhere): true while it is a live server playback of this device for this work, false once it ended (idle expiry, stop, server restart) — start a new playback.",
+            "nullable": true
+          },
+          "deliveryIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackDeliveryIssueDto"
+            },
+            "description": "Progress answers for a live `playbackId` only (null elsewhere): error answers of its HLS session since the previous progress answer of that playback (at most the last 30 s), oldest first.",
             "nullable": true
           }
         },

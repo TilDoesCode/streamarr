@@ -35,6 +35,11 @@ public sealed class ReleaseContainerStore(
 
     public int MaxEntries { get; init; } = DefaultMaxEntries;
 
+    private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Completes once the persisted entries are in memory (at once without a database).</summary>
+    internal Task Loaded => _loaded.Task;
+
     public int Count => _known.Count;
 
     /// <summary>Records a file extension (<c>mp4</c>) or an ffprobe format name (<c>mov,mp4,m4a,…</c>).</summary>
@@ -102,7 +107,10 @@ public sealed class ReleaseContainerStore(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (dbFactory is null)
+        {
+            _loaded.TrySetResult();
             return;
+        }
         try
         {
             await using var db = await dbFactory.CreateDbContextAsync(stoppingToken);
@@ -115,6 +123,10 @@ public sealed class ReleaseContainerStore(
         catch (Exception e) when (e is not OperationCanceledException)
         {
             logger?.LogWarning(e, "Loading the known release containers failed");
+        }
+        finally
+        {
+            _loaded.TrySetResult();
         }
 
         await foreach (var write in _writes.Reader.ReadAllAsync(stoppingToken))
@@ -141,6 +153,15 @@ public sealed class ReleaseContainerStore(
                 _failures?.Log(e, "Persisting known release containers failed");
             }
         }
+    }
+
+    /// <summary>Writes what is queued before stopping, so a shutdown does not lose recent entries.</summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _writes.Writer.TryComplete();
+        if (ExecuteTask is { } running)
+            await Task.WhenAny(running, Task.Delay(Timeout.Infinite, cancellationToken)).ConfigureAwait(false);
+        await base.StopAsync(cancellationToken);
     }
 
     /// <summary>The ffprobe format name the planner expects for a container family.</summary>

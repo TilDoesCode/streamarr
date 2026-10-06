@@ -161,6 +161,9 @@ public static class FaultCatalog
     /// <summary>Faults that act once when armed (no request matching).</summary>
     public static readonly ISet<string> Actions = new HashSet<string> { "token_expire", "session_revoke", "password_change", "usenet_hole", "usenet_stall" };
 
+    /// <summary>Faults whose effect lasts after their budget is spent; they stay listed until TTL or clear, which undoes them.</summary>
+    public static readonly ISet<string> Lingering = new HashSet<string> { "password_change", "usenet_hole", "usenet_stall", "transcode_slow" };
+
     /// <summary>Faults that describe a state rather than one bad answer: <c>always</c> unless a mode is given.</summary>
     public static readonly ISet<string> StateLike = new HashSet<string>
         { "playback_gone", "playback_stuck", "captive_portal", "playlist_endless", "playlist_event_stale", "early_end", "direct_truncate", "throttle" };

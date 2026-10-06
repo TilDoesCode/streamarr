@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Services;
 using Streamarr.Server.Tests.Transcoding;
@@ -28,6 +29,7 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         factory.Media.DeadStreams.Clear();
         factory.Media.Server = FakePlaybackMedia.Available();
         factory.Media.StartGate = null;
+        factory.Media.StartIgnoresCancellation = false;
         factory.Media.ProbeGate = null;
     }
 
@@ -749,8 +751,8 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
 
         Assert.Equal("transcode", ready.GetProperty("method").GetString());
         Assert.Equal(720, ready.GetProperty("mediaInfo").GetProperty("video").GetProperty("deliveredHeight").GetInt32());
-        var remux = factory.Media.Starts.Single(s => s.StreamToken == FakePlaybackResolver.Token(release) && s.Mode == ModePreference.Remux);
-        await WaitUntilAsync(() => factory.Media.Closed.Contains(remux.Id));
+        await WaitUntilAsync(() => factory.Media.CancelledStarts.Contains(FakePlaybackResolver.Token(release)));
+        Assert.DoesNotContain(factory.Media.Starts, s => s.StreamToken == FakePlaybackResolver.Token(release) && s.Mode == ModePreference.Remux);
     }
 
     [Fact]
@@ -788,7 +790,6 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         factory.Media.StartGate.SetResult();
         var last = await WaitAsync(viewer, Id(ready), b => b.GetProperty("revision").GetInt32() == 3 && State(b) is "ready" or "failed");
         Assert.Equal("ready", State(last));
-        await WaitUntilAsync(() => factory.Media.Starts.Count(s => s.StreamToken == FakePlaybackResolver.Token(release)) >= 2);
 
         Assert.Equal(HttpStatusCode.NoContent, (await viewer.PostAsync($"{Base}/{Id(ready)}/stop", null)).StatusCode);
         var started = factory.Media.Starts.Where(s => s.StreamToken == FakePlaybackResolver.Token(release)).Select(s => s.Id).ToList();
@@ -831,10 +832,26 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task Stop_WhileStarting_CancelsTheStart_SoNoSessionIsCreated()
+    {
+        var (viewer, _) = await ViewerAsync("stopcancel");
+        var release = Release(Mkv());
+        factory.Media.StartGate = new TaskCompletionSource();
+        var created = await StartAsync(viewer, Play(release, AppleTv));
+        await WaitAsync(viewer, Id(created), b => State(b) == "starting");
+
+        Assert.Equal(HttpStatusCode.NoContent, (await viewer.PostAsync($"{Base}/{Id(created)}/stop", null)).StatusCode);
+
+        await WaitUntilAsync(() => factory.Media.CancelledStarts.Contains(FakePlaybackResolver.Token(release)));
+        Assert.DoesNotContain(factory.Media.Starts, s => s.StreamToken == FakePlaybackResolver.Token(release));
+    }
+
+    [Fact]
     public async Task Stop_WhileStarting_ClosesTheSessionThatStartsLate()
     {
         var (viewer, _) = await ViewerAsync("stoplate");
         var release = Release(Mkv());
+        factory.Media.StartIgnoresCancellation = true;
         factory.Media.StartGate = new TaskCompletionSource();
         var created = await StartAsync(viewer, Play(release, AppleTv));
         await WaitAsync(viewer, Id(created), b => State(b) == "starting");
@@ -919,6 +936,79 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.Equal(1_300_000_000L, dead.GetProperty("positionTicks").GetInt64());
         var other = await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress", new { @event = "progress", workId = "tmdb-movie-504", positionTicks = 5L, playbackId = Id(ready) });
         Assert.False((await other.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("playbackAlive").GetBoolean());
+    }
+
+    [Fact]
+    public async Task WatchProgress_NamesTheDeliveryIssuesOfThePlayback_OnceEach()
+    {
+        var (viewer, _) = await ViewerAsync("issues");
+        var (other, _) = await ViewerAsync("issues-other");
+        var ready = await ReadyAsync(viewer, Play(Release(Mkv()), AppleTv));
+        var hls = factory.Media.Starts.Last().Id;
+        var theirs = await ReadyAsync(other, Play(Release(Mkv()), AppleTv));
+        var theirHls = factory.Media.Starts.Last().Id;
+        var issues = factory.Services.GetRequiredService<HlsDeliveryIssues>();
+        async Task<JsonElement> ReportAsync(HttpClient client, string? playbackId)
+        {
+            var response = await client.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+                new { @event = "progress", workId = Movie, positionTicks = 100_000_000L, durationTicks = 6_000_000_000L, playbackId });
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return await response.Content.ReadFromJsonAsync<JsonElement>();
+        }
+        static string[] Named(JsonElement answer) => answer.GetProperty("deliveryIssues").EnumerateArray()
+            .Select(i => $"{i.GetProperty("kind").GetString()}:{(i.TryGetProperty("renditionId", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() : "")}:"
+                + $"{(i.TryGetProperty("subtitleStreamIndex", out var x) && x.ValueKind == JsonValueKind.Number ? x.GetInt32() : -1)}:{i.GetProperty("code").GetString()}:{i.GetProperty("status").GetInt32()}")
+            .ToArray();
+
+        Assert.Empty(Named(await ReportAsync(viewer, Id(ready))));
+        issues.Report($"/api/v1/transcode/{hls}/audio/2/3.m4s", 500, "rendition_split_failed");
+        issues.Report($"/api/v1/transcode/{hls}/audio/2/4.m4s", 500, "rendition_split_failed");
+        factory.Clock.Advance(TimeSpan.FromSeconds(1));
+        issues.Report($"/api/v1/transcode/{hls}/subtitles/4/main.m3u8", 404, "unknown_subtitle_stream");
+        issues.Report($"/api/v1/transcode/{hls}/7.m4s", 504, "segment_timeout");
+        issues.Report($"/api/v1/transcode/{hls}/7.m4s", 200, "ok");
+        issues.Report($"/api/v1/transcode/{theirHls}/9.m4s", 503, "segment_unavailable");
+
+        var first = await ReportAsync(viewer, Id(ready));
+        Assert.Equal(["audioRendition:2:-1:rendition_split_failed:500", "subtitleRendition::4:unknown_subtitle_stream:404", "segment::-1:segment_timeout:504"], Named(first));
+        Assert.Empty(Named(await ReportAsync(viewer, Id(ready))));
+        Assert.Equal(3, (await GetAsync(viewer, Id(ready))).GetProperty("deliveryIssues").GetArrayLength());
+
+        // Another viewer's playback only sees its own; without a playbackId there is no list.
+        Assert.Equal(["segment::-1:segment_unavailable:503"], Named(await ReportAsync(other, Id(theirs))));
+        Assert.Equal(JsonValueKind.Null, (await ReportAsync(viewer, null)).GetProperty("deliveryIssues").ValueKind);
+        Assert.Equal(JsonValueKind.Null, (await ReportAsync(other, Id(ready))).GetProperty("deliveryIssues").ValueKind);
+
+        // Older than 30 s: not told again; older than 60 s: gone from the status too.
+        factory.Clock.Advance(TimeSpan.FromSeconds(31));
+        issues.Report($"/api/v1/transcode/{hls}/8.m4s", 504, "segment_timeout");
+        Assert.Equal(["segment::-1:segment_timeout:504"], Named(await GetAsync(viewer, Id(ready))));
+        factory.Clock.Advance(TimeSpan.FromSeconds(61));
+        Assert.Empty(Named(await GetAsync(viewer, Id(ready))));
+    }
+
+    [Fact]
+    public async Task DeliveryIssues_StayBounded_AndASwitchStartsAFreshList()
+    {
+        var (viewer, _) = await ViewerAsync("issuesbound");
+        var ready = await ReadyAsync(viewer, Play(Release(Mkv()), AppleTv));
+        var hls = factory.Media.Starts.Last().Id;
+        var issues = factory.Services.GetRequiredService<HlsDeliveryIssues>();
+        for (var i = 0; i < 100; i++)
+            issues.Report($"/api/v1/transcode/{hls}/audio/{i}/0.m4s", 500, "rendition_split_failed");
+        for (var i = 0; i < 1_000; i++)
+            issues.Report($"/api/v1/transcode/{hls}/0.m4s", 503, "segment_unavailable");
+
+        var listed = (await GetAsync(viewer, Id(ready))).GetProperty("deliveryIssues").EnumerateArray().ToList();
+        Assert.Equal(ViewerPlaybackService.MaxDeliveryIssues, listed.Count);
+        Assert.Equal("segment_unavailable", listed[^1].GetProperty("code").GetString());
+        Assert.Single(listed, i => i.GetProperty("code").GetString() == "segment_unavailable");
+
+        await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { preferences = new { maxHeight = 720 } });
+        var switched = await WaitAsync(viewer, Id(ready), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready" or "failed");
+        Assert.Equal(0, switched.GetProperty("deliveryIssues").GetArrayLength());
+        issues.Report($"/api/v1/transcode/{hls}/1.m4s", 503, "segment_unavailable");
+        Assert.Equal(0, (await GetAsync(viewer, Id(ready))).GetProperty("deliveryIssues").GetArrayLength());
     }
 
     [Fact]

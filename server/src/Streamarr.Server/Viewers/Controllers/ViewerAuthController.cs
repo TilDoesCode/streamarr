@@ -20,7 +20,8 @@ public sealed class ViewerAuthController(
     ViewerSettingsService settings,
     ViewerLoginService logins,
     ViewerSessionService sessions,
-    ViewerTwoFactorService twoFactor) : ControllerBase
+    ViewerTwoFactorService twoFactor,
+    ViewerRefreshLimiter refreshLimiter) : ControllerBase
 {
     /// <summary>Which sign-in methods a viewer client should offer.</summary>
     [AllowAnonymous]
@@ -121,11 +122,19 @@ public sealed class ViewerAuthController(
     [HttpPost("refresh")]
     [ProducesResponseType(typeof(ViewerSessionTokensResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<ViewerSessionTokensResponse>> Refresh([FromBody] ViewerRefreshRequest? request, CancellationToken ct)
     {
         var cookieMode = string.IsNullOrEmpty(request?.RefreshToken);
         var presented = cookieMode ? Request.Cookies[ViewerAuth.RefreshCookieName] : request!.RefreshToken;
-        var (tokens, failure, reason) = await sessions.RefreshAsync(presented, HttpContext.Connection.RemoteIpAddress?.ToString(), ct);
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var presentedHash = ViewerAuth.HasShape(presented, ViewerAuth.RefreshTokenPrefix) ? ViewerAuth.Hash(presented!) : null;
+        if (refreshLimiter.Acquire(ip, presentedHash) is { } wait)
+        {
+            Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return StatusCode(StatusCodes.Status429TooManyRequests, ErrorResponse.Of("rate_limited", "Too many token refreshes; retry after the time in Retry-After."));
+        }
+        var (tokens, failure, reason) = await sessions.RefreshAsync(presented, ip, ct);
         if (tokens is null)
         {
             DeleteCookies();

@@ -4,13 +4,14 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Streamarr.Server.Services;
+using Streamarr.Server.Transcoding;
 using Streamarr.Server.Viewers.Auth;
 
 namespace Streamarr.DevWorld.Faults;
 
 /// <summary>H1 + H2: matches viewer media/API requests against armed faults, learns playbacks, applies the wire behaviour.</summary>
 public sealed partial class DevWorldFaultMiddleware(
-    RequestDelegate next, FaultRegistry registry, FaultIdentity identity, FaultActions actions, SessionManager streams)
+    RequestDelegate next, FaultRegistry registry, FaultIdentity identity, FaultActions actions, SessionManager streams, HlsDeliveryIssues issues)
 {
     public const string Header = "X-DevWorld-Fault";
     private const string TranscoderAgent = "Streamarr-Transcoder/1";
@@ -170,6 +171,9 @@ public sealed partial class DevWorldFaultMiddleware(
         {
             case "seg_reset" or "split_abort":
             {
+                // Like the product's own broken split: reported before the client sees the reset.
+                if (fault.Name == "split_abort")
+                    issues.Report(context.Request.Path, StatusCodes.Status500InternalServerError, fault.Str("code") ?? "rendition_split_failed");
                 var after = (int)Math.Clamp(fault.Num("afterBytes") ?? body.Length / 2, 0, body.Length);
                 context.Response.ContentLength = body.Length;
                 await context.Response.Body.WriteAsync(body.AsMemory(0, after), ct);
@@ -397,9 +401,11 @@ public sealed partial class DevWorldFaultMiddleware(
             await context.Response.Body.WriteAsync(body, ct);
     }
 
-    private static async Task<string> ErrorAsync(
+    /// <summary>A made-up error answer; it reaches the product's delivery-issue hook like the product's own errors.</summary>
+    private async Task<string> ErrorAsync(
         HttpContext context, Fault fault, int status, string code, int? retryAfter = null, bool html = false, Dictionary<string, string>? extra = null)
     {
+        issues.Report(context.Request.Path, status, code);
         context.Response.StatusCode = status;
         if (retryAfter is { } seconds)
             context.Response.Headers.RetryAfter = seconds.ToString();

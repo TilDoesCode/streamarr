@@ -613,6 +613,9 @@ public static class StreamarrServerBootstrap
         {
             return LogEventLevel.Verbose;
         }
+        // The refresh limiter writes its own aggregated lines, so a flood cannot fill the log feed.
+        if (status == StatusCodes.Status429TooManyRequests && path.StartsWithSegments("/api/v1/viewer/auth/refresh", StringComparison.OrdinalIgnoreCase))
+            return LogEventLevel.Debug;
         if (status is StatusCodes.Status408RequestTimeout or StatusCodes.Status429TooManyRequests)
             return LogEventLevel.Warning;
         if (status >= StatusCodes.Status400BadRequest)

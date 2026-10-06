@@ -198,9 +198,9 @@ Shorthand below: `arm '<json>'` = `curl -s -XPOST localhost:39310/devworld/fault
 | `usenet_hole` | `{"fault":"usenet_hole",P,"params":{"fromPercent":40,"toPercent":60}}` | mock Usenet answers 430 for those articles of the largest file. Before the start (scope `workId`) the server's health check finds it (`release_dead`). Mid-play it hits only bytes the server has not read ahead yet (Dev World files are small, so mostly before the start) |
 | `usenet_stall` | `{"fault":"usenet_stall","scope":{"workId":"…"},"params":{"ms":1500}}` | holds article bodies for `ms` (until cleared without `ms`) |
 | `transcode_kill` | `{"fault":"transcode_kill",P,"params":{"signal":"KILL"},"after":{"segment":5}}` | kills the playback's ffmpeg (now, or on the first segment request matching `after`). The product restarts it or answers 500 `transcode_failed` |
-| `transcode_slow` | `{"fault":"transcode_slow","scope":{"next":"anna"},"params":{"readrate":0.5}}` | the next ffmpeg session run of the scope gets `-readrate 0.5` (`always` keeps it for restarts) |
+| `transcode_slow` | `{"fault":"transcode_slow","scope":{"next":"anna"},"params":{"readrate":0.5}}` | the next ffmpeg session run (transcode or remux) of the scope gets `-readrate 0.5` (`always` keeps it for restarts) |
 | `transcode_never_start` | `{"fault":"transcode_never_start","scope":{"next":"anna"},"params":{"code":"transcode_capacity"}}` | HLS start throws that code (503 for capacity codes, else 500). The server then falls through or fails |
-| `start_hang` | `{"fault":"start_hang","scope":{"next":"anna"},"params":{"seconds":30}}` | the playback stays `starting` |
+| `start_hang` | `{"fault":"start_hang","scope":{"next":"anna"},"params":{"seconds":30}}` | the HLS start waits `seconds` (default 60) in `starting`; the server's 60 s start budget ends a longer hang with `failed start_timeout`, a shorter one starts late |
 | `probe_fail` | `{"fault":"probe_fail","scope":{"next":"anna"}}` | the probe reads nothing: `failed probe_failed` (or a VLC direct play when available) |
 | `stream_dead` | `{"fault":"stream_dead",P}` | the stream capability reports dead on the next switch: the server re-resolves |
 | `resolve_hang` | `{"fault":"resolve_hang","scope":{"next":"anna"},"params":{"seconds":30}}` | the playback stays `resolving` |
@@ -232,6 +232,12 @@ fault. Its helpers (`arm`, `clear`, `start_playback`, `raw`) are meant for reuse
 a slowed transcode answers `504 segment_timeout` + `Retry-After` within the 25 s wait budget, a seek back behind the
 retained window restarts the run (retention set to 60 s for the check, then restored), `playbackAlive` in progress
 answers, and `/switch {audioFallback}` delivering AAC stereo (ffprobe). About 90 s on a fresh instance.
+
+Error answers the fault layer makes up on transcode paths (`seg_status`, `rendition_status`, `subtitle_status`,
+`seg_stall` with `respond`, `early_end`, and `split_abort` as `500 rendition_split_failed`) are reported to the
+product's delivery-issue hook before they are sent, like the product's own errors, so the playback's next progress
+answer names them in `deliveryIssues`. Network-style faults (`seg_reset`, `seg_truncate`, `seg_corrupt`, delays) are
+not: the server would not know about them either.
 
 ## Tests
 

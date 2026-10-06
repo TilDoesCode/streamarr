@@ -81,6 +81,12 @@ public sealed class RepairAwareStream(
                 position = _inner.Position;
                 failure = ExceptionDispatchInfo.Capture(e);
             }
+            catch (Exception e) when (!_local && IsRepairableFailure(e) && gateway.Enabled)
+            {
+                // The reader went away while its fetch failed: it ends as cancelled, so its article loss is not taken
+                // as release death that would invalidate the session other readers are repairing through.
+                throw new OperationCanceledException("The reader was cancelled at a damaged article.", e, cancellationToken);
+            }
 
             IRepairHoleTicket? ticket;
             try

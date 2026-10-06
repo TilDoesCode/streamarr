@@ -201,6 +201,77 @@ public sealed class ViewerRefreshFailureTests(ViewerApiFactory factory) : IClass
         Assert.Equal(HttpStatusCode.NoContent, (await _admin.DeleteAsync($"/api/v1/config/viewers/{id}")).StatusCode);
         await AssertRevokedAsync(anon, refresh, "admin");
     }
+
+    [Fact]
+    public async Task Account_Deletion_Waits_For_The_Session_Lock_So_A_Racing_Refresh_Never_Answers_Unknown()
+    {
+        var sessions = factory.Services.GetRequiredService<ViewerSessionService>();
+        var held = new TaskCompletionSource();
+        var id = await NewViewerAsync("locked-delete");
+        var holding = sessions.UnderSessionLockAsync(() => held.Task, default);
+        var deletion = _admin.DeleteAsync($"/api/v1/config/viewers/{id}");
+        try
+        {
+            Assert.NotSame(deletion, await Task.WhenAny(deletion, Task.Delay(500)));
+        }
+        finally
+        {
+            held.SetResult();
+            await holding;
+        }
+        Assert.Equal(HttpStatusCode.NoContent, (await deletion).StatusCode);
+
+        for (var i = 0; i < 10; i++)
+        {
+            var viewer = await NewViewerAsync($"race-delete-{i}");
+            using var anon = factory.CreateClient();
+            var (_, refresh, _) = await SignInAsync(anon, $"race-delete-{i}");
+            var refreshing = RefreshAsync(anon, refresh);
+            var deleting = _admin.DeleteAsync($"/api/v1/config/viewers/{viewer}");
+            using var answer = await refreshing;
+            Assert.Equal(HttpStatusCode.NoContent, (await deleting).StatusCode);
+            var latest = refresh;
+            if (answer.StatusCode == HttpStatusCode.OK)
+                latest = (await answer.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("refreshToken").GetString()!;
+            else
+                Assert.Equal("refresh_session_revoked", (await FailureAsync(answer)).Code);
+            await AssertRevokedAsync(anon, latest, "admin");
+        }
+    }
+
+    [Fact]
+    public async Task A_Previous_Token_Replay_Checks_That_The_Account_Is_Still_Enabled()
+    {
+        var id = await NewViewerAsync("disabled-replay");
+        using var anon = factory.CreateClient();
+        var (_, refresh, _) = await SignInAsync(anon, "disabled-replay");
+        Assert.Equal(HttpStatusCode.OK, (await RefreshAsync(anon, refresh)).StatusCode);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync())
+            await db.Viewers.Where(v => v.Id == id).ExecuteUpdateAsync(v => v.SetProperty(x => x.IsDisabled, true));
+        await AssertRevokedAsync(anon, refresh, "account_disabled");
+    }
+
+    [Fact]
+    public async Task A_Tombstone_Answers_Before_The_Retired_Hash_Scan()
+    {
+        var id = await NewViewerAsync("tombstone-first");
+        using var anon = factory.CreateClient();
+        var (_, refresh, sessionId) = await SignInAsync(anon, "tombstone-first");
+        var ghost = ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix);
+        var hash = ViewerAuth.Hash(ghost);
+        var now = factory.Clock.GetUtcNow();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync())
+        {
+            db.ViewerSessionTombstones.Add(new Streamarr.Server.Persistence.Entities.ViewerSessionTombstoneEntity
+            {
+                RefreshTokenHash = hash, SessionId = "gone", ViewerId = id, Reason = "logout", EndedAt = now, ExpiresAt = now.AddDays(1),
+            });
+            await db.SaveChangesAsync();
+            await db.ViewerSessions.Where(s => s.Id == sessionId).ExecuteUpdateAsync(s => s.SetProperty(x => x.RetiredRefreshTokenHashes, hash));
+        }
+        await AssertRevokedAsync(anon, ghost, "signed_out");
+        Assert.Equal(HttpStatusCode.OK, (await RefreshAsync(anon, refresh)).StatusCode);
+    }
 }
 
 [CollectionDefinition("viewer-refresh-logs", DisableParallelization = true)]

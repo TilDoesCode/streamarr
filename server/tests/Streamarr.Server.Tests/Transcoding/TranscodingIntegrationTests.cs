@@ -132,7 +132,7 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
         await PollAsync(async () => { await Task.Yield(); return JsonSerializer.SerializeToElement(File.Exists(Path.Combine(directory, "2.m4s"))); },
             gone => !gone.GetBoolean(), TimeSpan.FromSeconds(20));
         var job = (await AdminSessionAsync(created)).GetProperty("job");
-        Assert.True(job.GetProperty("running").GetBoolean());
+        Assert.True(job.GetProperty("running").GetBoolean() || job.GetProperty("paused").GetBoolean(), job.ToString());
         Assert.True(job.GetProperty("front").GetInt32() > 2);
         var restartsBefore = (await AdminSessionAsync(created)).GetProperty("restarts").GetInt32();
 
@@ -169,7 +169,7 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
     }
 
     [Fact]
-    public async Task Throttling_PausesARunThatRacesAhead_AndResumesWhenThePlayerCatchesUp()
+    public async Task Throttling_ParksARunThatRacesAhead_AndResumesWhenThePlayerCatchesUp()
     {
         await ConfigureAsync(new { throttleBufferSeconds = 30, encoderPreset = "medium", threads = 1 });
         var created = await CreateStreamSessionAsync(_machine, new { maxHeight = 360 });
@@ -188,6 +188,46 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
         var resumed = await WaitForJobAsync(created, job => !job.GetProperty("paused").GetBoolean(), TimeSpan.FromSeconds(10));
         Assert.True(resumed.GetProperty("running").GetBoolean());
         await WaitForJobAsync(created, job => job.GetProperty("front").GetInt32() > frontWhilePaused, TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public async Task AThrottledRun_NeverDelaysAnotherStart()
+    {
+        await ConfigureAsync(new { throttleBufferSeconds = 30, encoderPreset = "medium", threads = 1 });
+        var created = await CreateStreamSessionAsync(_machine, new { maxHeight = 360 });
+        using var raw = RawClient();
+        var basePath = BasePath(created);
+        await raw.GetByteArrayAsync($"{basePath}/init.mp4");
+        await raw.GetByteArrayAsync($"{basePath}/0.m4s");
+        var parked = await WaitForJobAsync(created, job => job.GetProperty("paused").GetBoolean(), TimeSpan.FromSeconds(60));
+        Assert.False(parked.GetProperty("running").GetBoolean());
+        Assert.Empty(StoppedChildren());
+
+        // B16: with SIGSTOP this blocked until the stopped ffmpeg went away (macOS waitid reports stopped children).
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var spawn = Task.Run(() =>
+        {
+            using var echo = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/bin/echo", "x") { RedirectStandardOutput = true })!;
+            echo.WaitForExit();
+        });
+        Assert.Same(spawn, await Task.WhenAny(spawn, Task.Delay(TimeSpan.FromSeconds(2))));
+        var second = await CreateStreamSessionAsync(_machine, new { maxHeight = 240 });
+        var started = clock.Elapsed;
+        Assert.True(started < TimeSpan.FromSeconds(2), $"spawn + second session start took {started.TotalSeconds:0.00} s");
+        await raw.GetByteArrayAsync($"{BasePath(second)}/0.m4s");
+        Assert.True((await AdminSessionAsync(created)).GetProperty("job").GetProperty("paused").GetBoolean());
+    }
+
+    /// <summary>Child processes of this test host that are stopped (ps state T).</summary>
+    private static List<string> StoppedChildren()
+    {
+        using var ps = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/bin/ps", "-A -o ppid=,pid=,stat=,comm=") { RedirectStandardOutput = true })!;
+        var lines = ps.StandardOutput.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        ps.WaitForExit();
+        var self = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return lines.Select(l => l.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Where(f => f.Length >= 4 && f[0] == self && f[2].StartsWith('T'))
+            .Select(f => string.Join(' ', f)).ToList();
     }
 
     [Fact]

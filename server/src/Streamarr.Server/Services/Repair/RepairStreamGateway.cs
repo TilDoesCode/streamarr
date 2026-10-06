@@ -19,8 +19,11 @@ public sealed class RepairStreamGateway(
 {
     public bool Enabled => coordinator.Enabled;
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _admitting = new(StringComparer.Ordinal);
+
+    /// <summary>True while a repair job or artifact can serve the release, and while a reader's repair admission is still running.</summary>
     public bool AllowsPlaybackWhileDead(string releaseId)
-        => coordinator.AllowsPlaybackWhileDead(releaseId);
+        => _admitting.ContainsKey(releaseId) || coordinator.AllowsPlaybackWhileDead(releaseId);
 
     public async Task<Stream?> TryOpenLocalMediaAsync(string releaseId, CancellationToken ct)
     {
@@ -57,9 +60,19 @@ public sealed class RepairStreamGateway(
             context.ReleaseId,
             position);
 
-        var handle = await coordinator.GetOrStartJobAsync(
-            context.ReleaseId, context.WorkId, context.ReleaseTitle, RepairTrigger.Runtime, ct)
-            .ConfigureAwait(false);
+        // Until admission has registered the release, other readers' failures must not invalidate its sessions.
+        _admitting.AddOrUpdate(context.ReleaseId, 1, (_, n) => n + 1);
+        RepairJobHandle? handle;
+        try
+        {
+            handle = await coordinator.GetOrStartJobAsync(
+                context.ReleaseId, context.WorkId, context.ReleaseTitle, RepairTrigger.Runtime, ct)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            EndAdmission(context.ReleaseId);
+        }
         if (handle is null)
         {
             logger.LogInformation(
@@ -138,6 +151,17 @@ public sealed class RepairStreamGateway(
         metrics?.RepairCacheHit();
         return new PinnedStream(stream, lease);
     }
+
+    private void EndAdmission(string releaseId)
+    {
+        while (_admitting.TryGetValue(releaseId, out var n))
+        {
+            if (n <= 1 ? _admitting.TryRemove(new KeyValuePair<string, int>(releaseId, n)) : _admitting.TryUpdate(releaseId, n - 1, n))
+                return;
+        }
+    }
+
+    internal int AdmissionsInFlight(string releaseId) => _admitting.TryGetValue(releaseId, out var n) ? n : 0;
 
     private TimeSpan WaitAtHoleTimeout
         => TimeSpan.FromSeconds(Math.Max(1, options.Value.Repair.WaitAtHoleTimeoutSeconds));

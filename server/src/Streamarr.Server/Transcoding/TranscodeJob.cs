@@ -16,7 +16,7 @@ public sealed class TranscodeJob
     private readonly TaskCompletionSource<int> _processExit = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _front;
     private TimeSpan _cpu;
-    private int _paused;
+    private int _parked;
     private int _killed;
     private int _pid;
     private Task _pumps = Task.CompletedTask;
@@ -42,7 +42,8 @@ public sealed class TranscodeJob
     public double Fps { get; private set; }
     public double Speed { get; private set; }
     public long Frames { get; private set; }
-    public bool Paused => Volatile.Read(ref _paused) == 1;
+    /// <summary>Ended by the throttle far enough ahead of the player; the next run resumes at <see cref="Front"/>.</summary>
+    public bool Parked => Volatile.Read(ref _parked) == 1;
     public bool Killed => Volatile.Read(ref _killed) == 1;
     public bool HasExited => _exited.Task.IsCompleted;
     public int? ExitCode { get; private set; }
@@ -111,21 +112,11 @@ public sealed class TranscodeJob
         return init.Exists && init.Length > 0 && (ProducedByThisRun(StartSegment) || HasExited);
     }
 
-    public bool Pause()
+    /// <summary>Ends the run for the throttle: no SIGSTOP, because on macOS a stopped child blocks every Process.Start of the server.</summary>
+    public async Task ParkAsync()
     {
-        if (HasExited || !ProcessSignals.IsSupported || Interlocked.CompareExchange(ref _paused, 1, 0) != 0)
-            return false;
-        if (ProcessSignals.Pause(_pid))
-            return true;
-        Volatile.Write(ref _paused, 0);
-        return false;
-    }
-
-    public bool Resume()
-    {
-        if (Interlocked.CompareExchange(ref _paused, 0, 1) != 1)
-            return false;
-        return HasExited || ProcessSignals.Resume(_pid);
+        await KillAsync();
+        Volatile.Write(ref _parked, 1);
     }
 
     public void SampleCpu() => _cpu = ProcessRunner.SampleCpu(_process, _cpu);
@@ -276,7 +267,6 @@ public sealed class TranscodeJob
         {
             _processExit.TrySetResult(ExitCode ?? -1);
             ExitedAt = DateTimeOffset.UtcNow;
-            Volatile.Write(ref _paused, 0);
             _exited.TrySetResult();
             _process.Dispose();
         }

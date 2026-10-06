@@ -6272,6 +6272,17 @@ export interface paths {
                         "text/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -10668,6 +10679,30 @@ export interface components {
             /** @description Higher-ranked methods that were not possible, each with why. */
             skipped: components["schemas"]["PlaybackSkippedDto"][] | null;
         };
+        /** @description A request of the playback's HLS session that the server answered with an error (or broke off after it started). */
+        PlaybackDeliveryIssueDto: {
+            /** @description `audioRendition`, `subtitleRendition` or `segment` (main playlist, init or video segment). */
+            kind: string | null;
+            /** @description Audio rendition id (the master's `audio/{id}`) for `audioRendition`. */
+            renditionId?: string | null;
+            /**
+             * Format: int32
+             * @description Subtitle stream index (`subtitles/{index}`) for `subtitleRendition`.
+             */
+            subtitleStreamIndex?: number | null;
+            /** @description The error code of the answer (e.g. `rendition_split_failed`, `segment_timeout`). */
+            code: string | null;
+            /**
+             * Format: int32
+             * @description HTTP status of the answer; 500 when the answer broke off after it started.
+             */
+            status: number;
+            /**
+             * Format: date-time
+             * @description When the server answered (the latest of equal issues).
+             */
+            at: string;
+        };
         PlaybackErrorDto: {
             code: string | null;
             message: string | null;
@@ -10806,6 +10841,8 @@ export interface components {
             suggestedActions?: string[] | null;
             /** @description True after a `/switch` with `audioFallback`: every rendition carries the selected audio as AAC stereo. */
             audioFallback?: boolean;
+            /** @description Error answers of this revision's HLS session in the last 30 s, oldest first (empty when none); see also the progress answer. */
+            deliveryIssues?: components["schemas"]["PlaybackDeliveryIssueDto"][] | null;
         };
         PlaybackSkippedDto: {
             method: string | null;
@@ -12684,6 +12721,8 @@ export interface components {
             available?: boolean | null;
             /** @description Progress answers that named a `playbackId` only (null elsewhere): true while it is a live server playback of this device for this work, false once it ended (idle expiry, stop, server restart) — start a new playback. */
             playbackAlive?: boolean | null;
+            /** @description Progress answers for a live `playbackId` only (null elsewhere): error answers of its HLS session since the previous progress answer of that playback (at most the last 30 s), oldest first. */
+            deliveryIssues?: components["schemas"]["PlaybackDeliveryIssueDto"][] | null;
         };
         WatchWorkIdsRequest: {
             /** @description Movie/episode ids; for played/unplayed also season (`tmdb-tv-1-s02`) or series (`tmdb-tv-1`) ids. */

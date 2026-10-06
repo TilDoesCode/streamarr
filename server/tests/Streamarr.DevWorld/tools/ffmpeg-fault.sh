@@ -6,7 +6,8 @@ if [ -z "$state" ] || [ ! -d "$state" ]; then
   exec "$real" "$@"
 fi
 rate=""
-case " $* " in *" -progress "*) session=1 ;; *) session="" ;; esac
+# Session runs: transcodes report -progress, remux runs carry the fragment flags.
+case " $* " in *" -progress "*|*"+frag_discont+"*) session=1 ;; *) session="" ;; esac
 for f in "$state"/ffmpeg-faults/*; do
   [ -n "$session" ] || break
   [ -f "$f" ] || continue

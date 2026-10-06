@@ -106,6 +106,33 @@ public class FaultUnitTests
         Assert.Equal("once", Arm("""{"fault":"playback_gone","scope":{"playbackId":"pb"},"mode":"once"}""").Mode);
     }
 
+    [Theory]
+    [InlineData("""{"fault":"seg_corrupt","scope":{"global":true},"params":{"mode":3}}""", "params.mode must be a string")]
+    [InlineData("""{"fault":"transcode_kill","scope":{"playbackId":"pa"},"params":{"signal":9}}""", "params.signal must be a string")]
+    [InlineData("""{"fault":"seg_status","scope":{"global":true},"ttlSeconds":1.5}""", "ttlSeconds must be a whole number 1..7200")]
+    [InlineData("""{"fault":"seg_status","scope":{"global":true},"ttlSeconds":"60"}""", "ttlSeconds must be a whole number 1..7200")]
+    [InlineData("""{"fault":"seg_status","scope":{"global":true},"after":{"segment":2.5}}""", "after.segment must be a whole number")]
+    [InlineData("""{"fault":7,"scope":{"global":true}}""", "unknown fault ''")]
+    [InlineData("""{"fault":"seg_status","scope":{"global":true},"target":1}""", "target must be a string")]
+    public void Arm_RefusesWrongJsonTypes_WithAMessage(string json, string error)
+        => Assert.Equal(error, Refused(json));
+
+    [Fact]
+    public void SpentFaults_LeaveTheList_ButStayReadableById()
+    {
+        var video = FaultMatcher.Classify("GET", "/api/v1/transcode/t/1.m4s");
+        var once = Arm("""{"fault":"seg_status","scope":{"playbackId":"pa"}}""");
+        var counted = Arm("""{"fault":"seg_status","scope":{"playbackId":"pb"},"mode":{"count":2}}""");
+        var always = Arm("""{"fault":"seg_delay","scope":{"playbackId":"pa"},"params":{"ms":1},"mode":"always"}""");
+        Assert.NotNull(_registry.Match(video, PlaybackA));
+        Assert.NotNull(_registry.Match(video, PlaybackB));
+        Assert.Equal([counted.Id, always.Id], _registry.List().Select(f => f.Id));
+        Assert.NotNull(_registry.Match(video, PlaybackB));
+        Assert.Equal([always.Id], _registry.List().Select(f => f.Id));
+        Assert.Equal(2, _registry.Get(counted.Id)!.Hits);
+        Assert.Equal(1, _registry.Get(once.Id)!.Hits);
+    }
+
     [Fact]
     public void Scope_PlaybackFaultNeverTouchesAnotherPlayback()
     {

@@ -30,6 +30,10 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
     public TimeSpan StatDelay { get; set; }
     public int MaxConcurrentStats => Volatile.Read(ref _maxConcurrentStats);
 
+    /// <summary>When set, STATs wait (at most 10 s) until this many run at once, so a concurrency limit is reached regardless of machine load.</summary>
+    public int? HoldStatsUntilConcurrent { get; set; }
+    private readonly TaskCompletionSource _concurrentReached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public override Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
         => Task.CompletedTask;
 
@@ -42,6 +46,12 @@ public sealed class FakeNntpClient(IEnumerable<string>? existingSegments = null)
         UpdateMax(ref _maxConcurrentStats, active);
         try
         {
+            if (HoldStatsUntilConcurrent is { } wanted)
+            {
+                if (active >= wanted)
+                    _concurrentReached.TrySetResult();
+                await Task.WhenAny(_concurrentReached.Task, Task.Delay(TimeSpan.FromSeconds(10), cancellationToken));
+            }
             if (StatDelay > TimeSpan.Zero)
                 await Task.Delay(StatDelay, cancellationToken);
             lock (StattedSegments)

@@ -41,6 +41,8 @@ public sealed class SpecWarmupService(
     private readonly FailureLog _failures = new(logger);
     private DateOnly _day;
     private int _today;
+    private int _queued;
+    private int _done;
 
     /// <summary>The background lookup of one target; replaceable in tests.</summary>
     internal Func<SpecWarmupTarget, CancellationToken, Task> Lookup { get; init; } =
@@ -58,6 +60,12 @@ public sealed class SpecWarmupService(
         }
     }
 
+    /// <summary>Targets queued so far; for tests.</summary>
+    internal int Queued => Volatile.Read(ref _queued);
+
+    /// <summary>Every queued target has been looked up (or skipped); for tests.</summary>
+    internal bool Idle => Volatile.Read(ref _done) == Volatile.Read(ref _queued);
+
     /// <summary>Queue lookups for works whose card has no spec; cheap and non-blocking.</summary>
     public void Request(IEnumerable<string> workIds)
     {
@@ -73,8 +81,12 @@ public sealed class SpecWarmupService(
                 continue;
             if (!_attempts.TryAdd(target.Key, now) && !_attempts.TryUpdate(target.Key, now, last))
                 continue;
+            Interlocked.Increment(ref _queued);
             if (!_queue.Writer.TryWrite(target))
+            {
+                Interlocked.Decrement(ref _queued);
                 _attempts.TryRemove(target.Key, out _);
+            }
         }
         PruneAttempts(now, cooldown);
     }
@@ -88,28 +100,41 @@ public sealed class SpecWarmupService(
     {
         await foreach (var target in _queue.Reader.ReadAllAsync(ct))
         {
-            if (!TryCount())
-            {
-                // Over the daily cap: forget the attempt so the title is queued again tomorrow.
-                _attempts.TryRemove(target.Key, out _);
-                continue;
-            }
             try
             {
-                await Lookup(target, ct);
+                await LookupAsync(target, ct);
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            finally
             {
+                Interlocked.Increment(ref _done);
+            }
+            if (ct.IsCancellationRequested)
                 return;
-            }
-            catch (ViewerProblem e) when (e.Status == StatusCodes.Status429TooManyRequests)
-            {
-                _attempts.TryRemove(target.Key, out _);
-            }
-            catch (Exception e)
-            {
-                _failures.Log(e, "Spec warm-up of {Target} failed", target.Key);
-            }
+        }
+    }
+
+    private async Task LookupAsync(SpecWarmupTarget target, CancellationToken ct)
+    {
+        if (!TryCount())
+        {
+            // Over the daily cap: forget the attempt so the title is queued again tomorrow.
+            _attempts.TryRemove(target.Key, out _);
+            return;
+        }
+        try
+        {
+            await Lookup(target, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (ViewerProblem e) when (e.Status == StatusCodes.Status429TooManyRequests)
+        {
+            _attempts.TryRemove(target.Key, out _);
+        }
+        catch (Exception e)
+        {
+            _failures.Log(e, "Spec warm-up of {Target} failed", target.Key);
         }
     }
 

@@ -38,6 +38,8 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         if (o.AdminRefreshTokenTtlSeconds < o.AdminSessionTtlSeconds)
             failures.Add("AdminRefreshTokenTtlSeconds must be at least AdminSessionTtlSeconds.");
         Range(o.LoginAttemptsPerMinute, 1, 1_000, nameof(o.LoginAttemptsPerMinute));
+        Range(o.ViewerRefreshPerIpPerMinute, 1, 10_000, nameof(o.ViewerRefreshPerIpPerMinute));
+        Range(o.ViewerRefreshPerTokenPerMinute, 1, 1_000, nameof(o.ViewerRefreshPerTokenPerMinute));
         if (o.TrustedProxies.Count > 32 ||
             o.TrustedProxies.Any(value => !IPAddress.TryParse(value, out _)))
         {

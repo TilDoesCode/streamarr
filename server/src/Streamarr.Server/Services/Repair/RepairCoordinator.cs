@@ -627,8 +627,9 @@ public sealed class RepairCoordinator(
             staging.CloseFiles();
             PruneStagingExtras(staging.Directory, artifactFiles);
             var artifact = artifactCache.Publish(context.Fingerprint, staging.Directory, manifest, ct);
-            job.Succeed(artifact);
+            // Counted before the waiters resume, so a reader that finished never sees the success uncounted.
             metrics?.RepairSucceeded();
+            job.Succeed(artifact);
             logger.LogInformation(
                 "Repair job {JobId} for release {ReleaseId} is ready ({DamagedBlocks} block(s) repaired, {SourceMiB} MiB source, {ParityMiB} MiB parity, {Seconds:F0}s)",
                 job.JobId,

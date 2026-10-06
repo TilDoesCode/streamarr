@@ -21,6 +21,8 @@ public static class TranscodingServiceCollectionExtensions
         services.AddSingleton<KeyframeIndexService>();
         services.AddSingleton<TranscodingSampleLibrary>();
         services.AddSingleton<TranscodeSourceResolver>();
+        services.AddSingleton<HlsDeliveryIssues>();
+        services.AddSingleton<HlsDeliveryIssueFilter>();
         services.AddSingleton<TranscodeSessionManager>();
         services.AddHostedService(sp => sp.GetRequiredService<TranscodeSessionManager>());
         services.AddSingleton<TranscodingBenchmarkService>();

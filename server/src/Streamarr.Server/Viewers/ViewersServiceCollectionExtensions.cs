@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Streamarr.Server.Modules;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
+using Streamarr.Server.Transcoding;
 using Streamarr.Server.Viewers.Access;
 using Streamarr.Server.Viewers.Artwork;
 using Streamarr.Server.Viewers.Auth;
@@ -29,6 +30,7 @@ public static class ViewersServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<ViewerMailer>());
         services.AddSingleton<ViewerCodeService>();
         services.AddSingleton<ViewerSessionService>();
+        services.AddSingleton<ViewerRefreshLimiter>();
         services.AddHostedService<ViewerSessionCleanup>();
         services.AddSingleton<ViewerAccountService>();
         services.AddSingleton<ViewerTwoFactorService>();
@@ -59,6 +61,7 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<IPlaybackMedia, ServerPlaybackMedia>();
         services.AddSingleton<ViewerPlaybackService>();
         services.AddHostedService(sp => sp.GetRequiredService<ViewerPlaybackService>());
+        services.AddSingleton<IHlsDeliveryIssueSink>(sp => sp.GetRequiredService<ViewerPlaybackService>());
 
         services.AddAuthentication()
             .AddScheme<AuthenticationSchemeOptions, ViewerAuthenticationHandler>(ViewerAuth.Scheme, _ => { });
