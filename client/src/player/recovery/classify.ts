@@ -52,6 +52,7 @@ const PARSER = /ParserException|PARSING_|-12642|-11850|unexpected format|content
 const ENCRYPTED = /keySystem|KEY_SYSTEM|DrmSession|DRM|-42\d{3}|encrypted|keyLoad/i;
 const RECLAIMED = /reclaim|-11819\b/i;
 const CLEARTEXT = /CLEARTEXT/i;
+const INTERCEPTED_MANIFEST = /PARSING_MANIFEST_\w*.*(?:does not start with the #EXTM3U|<html)/i;
 
 /** AVFoundation's codes for an HTTP refusal: -12938 / NSURL -1100 = 404, -12660 / NSURL -1102 = 403. */
 function avFoundationStatus(reason: string): number | undefined {
@@ -110,6 +111,12 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
   // A VOD source never has a live window: the engine lost its place, a reload at the position helps (D14).
   if (/BEHIND_LIVE_WINDOW/.test(reason))
     return { category: 'T1', code: 'stream_interrupted', detail: reason };
+  // A playlist that is a web page (hotel or captive portal answering HTML): the network, not the file (A26, S4p B2).
+  if (INTERCEPTED_MANIFEST.test(reason))
+    return { category: 'T1', code: 'network_intercepted', detail: reason };
+  // Any other playlist error is the stream's format, never this device's decoder (S4p B2).
+  if (/PARSING_MANIFEST_/.test(reason))
+    return { category: 'T6', code: 'unexpected_format', detail: reason };
   if (AUDIO_DECODER.test(reason))
     return { category: 'T7', code: 'audio_decode_error', detail: reason };
   if (DECODER.test(reason) || /^(mediaError|muxError|otherError):/.test(reason))

@@ -1,5 +1,5 @@
 import type { Href } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useBackHandler, useMenuClaim } from '@/components/focus';
 import type { RouteLeaf } from '@/navigation/routes';
@@ -37,4 +37,24 @@ export function recoveryBack(
   now: number
 ): 'dismiss' | 'leave' {
   return recovering && now - dismissedAt > BACK_CONFIRM_MS ? 'dismiss' : 'leave';
+}
+
+/** Back during a running recovery hides its hint once; the hint going away or a new cause ends that (S4p B1). */
+export function useHintDismiss(hintKey: string | null) {
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const at = useRef(0);
+  // The picture ran again (no hint) or another cause took its place: the next hint shows.
+  if (dismissed !== null && hintKey !== dismissed) setDismissed(null);
+  const hidden = dismissed !== null && hintKey === dismissed;
+  return {
+    hidden,
+    /** 'dismiss' hides the running hint; 'leave' when nothing runs, it is already hidden, or Back came twice in 4 s. */
+    back(recovering: boolean, now = Date.now()): 'dismiss' | 'leave' {
+      if (hidden || !hintKey || recoveryBack(recovering, at.current, now) === 'leave')
+        return 'leave';
+      at.current = now;
+      setDismissed(hintKey);
+      return 'dismiss';
+    },
+  };
 }

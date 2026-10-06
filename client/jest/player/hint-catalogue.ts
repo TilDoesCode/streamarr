@@ -422,6 +422,15 @@ const NOTICES: Row[] = [
     clears: 'with the notice',
   },
   {
+    id: 'N22',
+    key: 'notice.subtitlesOn',
+    state:
+      'Action under N15 when the same subtitles failed twice in this video (touch, web; TV uses the panel)',
+    action: 'Turns the subtitles on again',
+    shows: 'with N15 (kept off)',
+    clears: 'with the notice',
+  },
+  {
     id: 'N10',
     key: 'notice.because.media_damaged',
     params: { time: '0:41' },

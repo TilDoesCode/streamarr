@@ -22,7 +22,7 @@ import { Text } from '@/components/ui/text';
 import { detailHref, isDetailOf, openerLeaf, playHref } from '@/navigation/routes';
 import { useScreenTitle } from '@/navigation/screen-title';
 
-import { leavePlayer, recoveryBack, usePlayerBack } from './player-tv-back';
+import { leavePlayer, useHintDismiss, usePlayerBack } from './player-tv-back';
 import { rememberedAudioLanguage } from '@/player/audio-preference';
 import { PlaybackController } from '@/player/controller';
 import { loadDeviceCaps } from '@/player/device-profile';
@@ -49,6 +49,7 @@ import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
 import { useCloseAfterFrame } from './closing';
+import { StatusAction } from './status-action';
 import { LoaderMotionContext } from '@/components/ui/loader-motion';
 
 type Params = {
@@ -93,8 +94,6 @@ export function PlayScreen() {
   const [picker, setPicker] = useState(false);
   const [upNextDismissedFor, setUpNextDismissedFor] = useState<string | null>(null);
   const overlayBack = useRef<(() => boolean) | null>(null);
-  const hintBack = useRef<{ at: number; key: string | null }>({ at: 0, key: null });
-  const [hintDismissed, setHintDismissed] = useState<string | null>(null);
   const workId = params.workId ?? '';
   const title = params.title ?? '';
   const startSeconds = params.start === undefined ? undefined : Number(params.start) || 0;
@@ -169,6 +168,11 @@ export function PlayScreen() {
   useEffect(() => exitPlayerFullscreen, []);
 
   const notice = controller?.notice;
+  // Subtitles kept off for this video (failed twice): touch and web get the way back on (S4p R1; TV uses the panel).
+  const keptOff =
+    !design.isTV && notice?.kind === 'subtitleFailed' && !notice.params?.retry
+      ? Number(notice.params?.index)
+      : null;
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => controller?.dismissNotice(), noticeMs(design.isTV));
@@ -203,6 +207,7 @@ export function PlayScreen() {
     router.replace(playHref({ workId: next.workId, title: next.playTitle, startSeconds: 0 }));
   };
 
+  const hintDismiss = useHintDismiss(controller?.status.hint?.key ?? null);
   const onBack = () => {
     const recovering = playing && !!controller?.status.spinner && !!controller.status.hint;
     if (picker) setPicker(false);
@@ -210,10 +215,7 @@ export function PlayScreen() {
     else if (showUpNext) setUpNextDismissedFor(workId);
     else if (showEndCard) close();
     else if (playing && overlayBack.current?.()) return true;
-    else if (recoveryBack(recovering, hintBack.current.at, Date.now()) === 'dismiss') {
-      hintBack.current = { at: Date.now(), key: controller?.status.hint?.key ?? null };
-      setHintDismissed(hintBack.current.key);
-    } else close();
+    else if (hintDismiss.back(recovering) === 'leave') close();
     return true;
   };
   usePlayerBack(onBack);
@@ -290,11 +292,7 @@ export function PlayScreen() {
         // A viewer's switch shows its explanation in the switching card; running steps keep their spinner and hint.
         (phase !== 'switching' || status.spinner) ? (
           <PlayerStatusView
-            status={
-              hintDismissed && status.hint?.key === hintDismissed
-                ? { ...status, hint: null }
-                : status
-            }
+            status={hintDismiss.hidden ? { ...status, hint: null } : status}
             onAction={onStatusAction}
             controlsVisible={controlsShown}
             top={top + design.px(design.isTV ? 70 : 56)}
@@ -420,7 +418,7 @@ export function PlayScreen() {
         {notice && !pip ? (
           <Glass
             testID={`player-notice-${notice.kind}`}
-            pointerEvents="none"
+            pointerEvents={keptOff !== null ? 'box-none' : 'none'}
             style={{
               position: 'absolute',
               top: top + design.px(design.isTV ? 70 : 56),
@@ -450,6 +448,20 @@ export function PlayScreen() {
                 }
               )}
             </Text>
+            {keptOff !== null ? (
+              <StatusAction
+                testID="player-notice-subtitles-on"
+                primary
+                label={pt('notice.subtitlesOn')}
+                onPress={() => {
+                  const track = controller?.playback?.mediaInfo?.subtitleTracks?.find(
+                    (item) => item.index === keptOff
+                  );
+                  controller?.dismissNotice();
+                  if (track) void controller?.selectSubtitle(track);
+                }}
+              />
+            ) : null}
           </Glass>
         ) : null}
         {showUpNext && next ? (

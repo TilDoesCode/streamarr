@@ -1784,7 +1784,7 @@ describe('matrix C — code review S4c-S4f (S4g)', () => {
 describe('matrix C — subtitles after a healthy stretch (S4g)', () => {
   row(
     'C22',
-    'a subtitle failure long after a successful retry is a first failure again: retried, never off for good (review B5)',
+    'a second failure of the same subtitles, even long after a successful retry, keeps them off for this video with the way back on (S4p R1, was review B5)',
     async () => {
       const subtitleTracks = [
         { index: 3, language: 'de', title: 'German', deliveredAs: 'webvtt', selected: true },
@@ -1809,7 +1809,7 @@ describe('matrix C — subtitles after a healthy stretch (S4g)', () => {
       harness.engine.emit({ type: 'tracks', tracks: shown });
       await playOn(1800);
       harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
-      expect(c.notice?.params?.retry).toBe('later');
+      expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { index: '3', retry: '' } });
       await c.stop();
     }
   );
@@ -2051,6 +2051,8 @@ describe('matrix C — live native audit S9b turn 2: AVPlayer delivery failures 
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, converting, 36);
+      // The server lost the playback: its status read answers 404 (S4p: asked first).
+      harness.server.answer('poll', reply.error(404, 'playback_not_found'));
       stall();
       harness.engine.emit({ type: 'loadRetry', status: 404, audio: false });
       await settle();
@@ -2068,6 +2070,8 @@ describe('matrix C — live native audit S9b turn 2: AVPlayer delivery failures 
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, converting, 36);
+      // The server lost the playback: its status read answers 404 (S4p: asked first).
+      harness.server.answer('poll', reply.error(404, 'playback_not_found'));
       harness.engine.emit({ type: 'loadRetry', status: 410, audio: false });
       await settle();
       expect(starts()).toHaveLength(2);
@@ -2082,6 +2086,8 @@ describe('matrix C — live native audit S9b turn 2: AVPlayer delivery failures 
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, converting, 36);
+      // The server lost the playback: its status read answers 404 (S4p: asked first).
+      harness.server.answer('poll', reply.error(404, 'playback_not_found'));
       harness.server.answer('start', reply.hang());
       harness.engine.emit({ type: 'loadRetry', status: 404, audio: false });
       await settle();

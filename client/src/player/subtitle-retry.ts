@@ -1,4 +1,4 @@
-import { INCIDENT_RESET_MS, SUBTITLE_RETRIES, SUBTITLE_RETRY_MS } from '@/player/recovery/budgets';
+import { SUBTITLE_RETRIES, SUBTITLE_RETRY_MS } from '@/player/recovery/budgets';
 
 /** What the retry needs from the player. */
 export type SubtitleRetryHost = {
@@ -7,42 +7,47 @@ export type SubtitleRetryHost = {
   release(): string | null;
   /** Shows the failed subtitles again; false when the engine has no track for them. */
   show(index: number): boolean;
-  /** Playback runs without a stall: a subtitle dropped for a stall comes back only then. */
-  healthy?(): boolean;
+  /** Since when playback runs healthy (picture, no stall, no step); 0 = not healthy now. */
+  healthySince?(): number;
 };
 
 type Entry = {
   index: number;
   release: string | null;
-  failures: number;
-  at: number;
   retrying: boolean;
   timer: ReturnType<typeof setTimeout> | null;
 };
 
-/** Failed subtitles (C22, C23): off, one retry a minute later; a failure after a healthy stretch starts over (review B5). */
+/** Failed subtitles (C22, C23): off, back after a healthy minute; a second failure in this playback keeps them off (S4p R1). */
 export class SubtitleRetry {
   private entry: Entry | null = null;
+  /** Failures per release and track in this playback (a stall drop counts too: a track that blocks AVPlayer never loops). */
+  private readonly failures = new Map<string, number>();
 
   constructor(private readonly host: SubtitleRetryHost) {}
 
   /** The shown subtitles failed; null when none were shown. `retryLater` says whether they come back on their own. */
-  fail(
-    now = Date.now(),
-    { stall = false }: { stall?: boolean } = {}
-  ): { index: number; retryLater: boolean } | null {
+  fail(): { index: number; retryLater: boolean } | null {
     const entry = this.entry;
     // While they are off, more failures of the same subtitles find nothing shown and change nothing.
     const index = entry?.retrying ? entry.index : this.host.current();
     if (index === null) return null;
-    const recent = !!entry && entry.index === index && now - entry.at < INCIDENT_RESET_MS;
-    // Dropped only to unblock a stall (AVPlayer): not a failure of the subtitles, never off for good (S4n).
-    const failures = (recent ? entry.failures : 0) + (stall ? 0 : 1);
+    const release = this.host.release();
+    const key = `${release}|${index}`;
+    const failures = (this.failures.get(key) ?? 0) + 1;
+    this.failures.set(key, failures);
     this.clear();
     const retryLater = failures <= SUBTITLE_RETRIES;
-    const timer = retryLater ? setTimeout(() => this.retry(), SUBTITLE_RETRY_MS) : null;
-    this.entry = { index, release: this.host.release(), failures, at: now, retrying: false, timer };
+    this.entry = { index, release, retrying: false, timer: null };
+    if (retryLater) this.schedule(SUBTITLE_RETRY_MS);
     return { index, retryLater };
+  }
+
+  private schedule(ms: number): void {
+    const entry = this.entry;
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => this.retry(), ms);
   }
 
   private retry(): void {
@@ -51,10 +56,11 @@ export class SubtitleRetry {
     entry.timer = null;
     // The viewer chose other subtitles meanwhile (theirs win), or another release has other indexes.
     if (this.host.current() !== null || this.host.release() !== entry.release) return this.clear();
-    // Still stalled: try again a retry interval later instead of re-adding what may block it.
-    if (this.host.healthy && !this.host.healthy()) {
-      entry.timer = setTimeout(() => this.retry(), SUBTITLE_RETRY_MS);
-      return;
+    // Back only after a whole healthy minute with them off: never straight into the next stall.
+    const since = this.host.healthySince?.();
+    if (since !== undefined) {
+      const healthyFor = since ? Date.now() - since : 0;
+      if (healthyFor < SUBTITLE_RETRY_MS) return this.schedule(SUBTITLE_RETRY_MS - healthyFor);
     }
     if (!this.host.show(entry.index)) return this.clear();
     entry.retrying = true;

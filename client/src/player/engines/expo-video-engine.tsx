@@ -103,9 +103,9 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   /** When the player stopped while the app wanted it to play (the cause may follow, e.g. PiP ✕ on iOS). */
   private strayPauseAt = 0;
   private readonly cover = new PropsStore({ covered: false });
-  /** Subtitle renditions that already failed for this source (one notice, not one per retried segment). */
   /** Shut down behind a card: native status and time events of the unloaded item are not the playback's. */
   private unloaded = false;
+  /** Subtitle renditions that already failed for this source (one notice, not one per retried segment). */
   private failedText = new Set<string>();
   private externalDevice: string | undefined;
 

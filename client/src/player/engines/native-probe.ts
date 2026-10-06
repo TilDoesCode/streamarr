@@ -28,16 +28,13 @@ export type NativeLoadError = {
   comment?: string | null;
 };
 
-/** AVPlayer error-log entries that are notes, not failed requests (-12318: a segment above the variant's bandwidth). */
-const NOTE_CODES = new Set([-12318]);
-
-/** A load error the player actually had: notes in AVPlayer's error log are no failure (S6t live). */
+/** A load error the player actually had: from AVPlayer's error log only network errors and HTTP 4xx/5xx (S4p R3). */
 export function isFailedLoad(error: NativeLoadError): boolean {
-  return !(
-    error.domain === 'CoreMediaErrorDomain' &&
-    NOTE_CODES.has(error.code ?? 0) &&
-    !error.status
-  );
+  // Exo names no domain: its load errors are failed requests.
+  if (!error.domain) return true;
+  if ((error.status ?? 0) >= 400) return true;
+  // Status-less CoreMedia entries (-12318 bandwidth, -12889 late segment, -12971 stale live playlist …) are notes.
+  return error.domain === 'NSURLErrorDomain';
 }
 
 /** Which part of a Streamarr HLS session a URL addresses (docs/api.md § HLS); `other` = a playlist or a direct file. */
@@ -63,6 +60,7 @@ export function subtitleCode(status: number | null | undefined): string {
 
 /** Container data that does not parse: a damaged segment, not a device that cannot decode (D41). */
 const DAMAGED = /PARSING_CONTAINER_(?:MALFORMED|UNSUPPORTED)|ParserException/;
+const CONTAINER = /PARSING_CONTAINER_/;
 
 /** The engine reason for a failed item: an audio rendition or a damaged segment get their own prefix (D36, D41). */
 export function failureReason(
@@ -73,8 +71,8 @@ export function failureReason(
   const reason = errorReason(error);
   if (!error) return reason;
   const part = mediaPart(error.uri);
-  // Exo names no URI for a parser error (seen live, S6t): on an HLS source the container data is a segment.
-  const segment = part === 'segment' || (hls && !error.uri);
+  // Exo names no URI for a parser error (S6t): on HLS only a container error is a segment; a manifest error never is (S4p B2).
+  const segment = part === 'segment' || (hls && !error.uri && CONTAINER.test(reason));
   if (segment && DAMAGED.test(reason)) return `damagedSegment:${reason}`;
   // The audio rendition dies while the picture plays: the audio path (reload, conversion), not "connection lost".
   if (part === 'audio' && playing && !error.httpStatus) return `audioRendition:${reason}`;

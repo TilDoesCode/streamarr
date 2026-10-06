@@ -6,6 +6,9 @@ import { classify, type Classified } from './classify';
 /** A media request the engine retries on its own: its HTTP status, whether only the audio fails, and when. */
 export type LoadRetry = { status: number; audio: boolean; at: number };
 
+/** A media request answered 404/410: the server no longer knows the playback (T2). */
+export const lostPlayback = (status: number | undefined) => status === 404 || status === 410;
+
 /** Why a long stall happened: the audio rendition, a server error the engine retries (5xx), else a slow source (T5). */
 export function stallFailure(
   retry: LoadRetry | null,
@@ -19,7 +22,8 @@ export function stallFailure(
   if (recent && retry.status === 0 && engine !== 'web')
     return { category: 'T1', code: 'stream_interrupted' };
   // A 5xx the engine retries is the server's; classify makes a 504 (its own wait budget) T5 too (review M20).
-  if (recent && retry.status >= 500)
+  // A 404/410 the server answered "alive" for (S4p): the playback's segments are gone, a bounded new start (T2).
+  if (recent && (retry.status >= 500 || lostPlayback(retry.status)))
     return classify({
       kind: 'engine',
       engine,
@@ -28,9 +32,6 @@ export function stallFailure(
     });
   return { category: 'T5', code: afterSeek ? 'seek_stalled' : 'playback_stalled' };
 }
-
-/** A media request answered 404/410: the server no longer knows the playback (T2). */
-export const lostPlayback = (status: number | undefined) => status === 404 || status === 410;
 
 /** Start states the client bounds with a card; a queue or a release search waits as long as the server lets it (review R1). */
 const HARD_STATES = new Set(['planning', 'fallback', 'starting']);

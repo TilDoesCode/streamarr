@@ -80,3 +80,14 @@ const SWITCH_BACK: ReadonlySet<ErrorCategory> = new Set(['T5', 'T6', 'T7']);
 export function switchesBack(pictured: boolean, category: ErrorCategory): boolean {
   return !pictured && SWITCH_BACK.has(category);
 }
+
+const QUALITY_STEPS = [2160, 1080, 720, 480];
+
+/** One quality step below what plays now (and below the viewer's own cap); null at the bottom. */
+export function lowerHeightOf(
+  playing: number,
+  preferences: { maxHeight?: number | null }
+): number | null {
+  const current = Math.min(playing, preferences.maxHeight ?? Infinity);
+  return QUALITY_STEPS.find((height) => height < current) ?? null;
+}

@@ -89,6 +89,8 @@ export class ScriptedEngine implements PlayerEngine {
 
   /** Emits like a real engine: the snapshot follows state, time and track events first. */
   emit(event: EngineEvent): void {
+    // Like EngineBase: an unchanged state is no event (S4p, review T9).
+    if (event.type === 'state' && event.state === this.snapshot.state) return;
     if (event.type === 'state') this.snapshot = { ...this.snapshot, state: event.state };
     else if (event.type === 'time')
       this.snapshot = {

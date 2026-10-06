@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * Leaving the player: its loaders stop first (a render with motion off), the navigation runs one frame later.
- * A JS pop unmounts the screen in the same commit, so a blur would come too late for the UI thread (F12-1).
- */
+/** Leaving the player: loaders stop in one render with motion off, the navigation (which unmounts at once) a frame later. */
 export function useCloseAfterFrame(
   nextFrame: (run: () => void) => unknown = requestAnimationFrame
 ) {

@@ -1,13 +1,16 @@
 import { Platform } from 'react-native';
 
-import { harness, reply } from '@/../jest/player/harness';
+import { harness, newController, reply } from '@/../jest/player/harness';
 import { expoPlaying } from '@/../jest/player/native';
 import { fakeNetwork, playing, playOn, settle, starts, TICKS } from '@/../jest/player/play';
+import { failureReason, isFailedLoad } from '@/player/engines/native-probe';
 import { stepDownReasonKey } from '@/player/overlay-labels';
+import { classify } from '@/player/recovery/classify';
 import {
   deliveryFailure,
   deliveryIssuesOf,
   recentIssue,
+  issuesFor,
   stampIssues,
 } from '@/player/recovery/delivery';
 
@@ -66,15 +69,35 @@ const converting = {
 } as never;
 
 describe('AVPlayer delivery failures as recorded in S6t (S4m)', () => {
-  it('C10 a video segment 404 (status, no URI, trackType other) is the server losing the playback: a new start at once', async () => {
+  it('C10 a video segment 404 (status, no URI, trackType other) of a playback the server lost: a new start at once', async () => {
     jest.useFakeTimers();
     const c = await playing({}, converting, 36);
+    harness.server.answer('poll', reply.error(404, 'playback_not_found'));
     harness.engine.emit({ type: 'buffering', buffering: true });
     const events = await fromAVPlayer(RECORDED.segment404);
     expect(events).toEqual([{ type: 'loadRetry', status: 404, audio: false }]);
     await settle();
     expect(starts()).toHaveLength(2);
     expect(starts().at(-1)?.position).toBe(36);
+    expect(harness.server.sent('switch')).toHaveLength(0);
+    await c.stop();
+  });
+
+  it('C10 the server still has the playback (seg_status fault): no new start per retry; the stall ladder starts anew once, bounded (S4p)', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, converting, 36);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    for (let second = 0; second < 14; second++) {
+      if (second % 2 === 0) await fromAVPlayer(RECORDED.segment404);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    expect(starts()).toHaveLength(1);
+    for (let second = 0; second < 4; second++) {
+      await fromAVPlayer(RECORDED.segment404);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    await settle();
+    expect(starts()).toHaveLength(2);
     expect(harness.server.sent('switch')).toHaveLength(0);
     await c.stop();
   });
@@ -696,7 +719,7 @@ describe('AVPlayer turns the subtitles off for a stall only when nothing else ex
     await c.stop();
   });
 
-  it('an unexplained stall drops them, and they come back once playback runs again; a second stall is never "off for good"', async () => {
+  it('an unexplained stall drops them, back after a healthy minute; a second stall of the track keeps them off for this video (S4p R1)', async () => {
     jest.useFakeTimers();
     const os = jest.replaceProperty(Platform, 'OS', 'ios');
     const c = await stalledWithSubtitles();
@@ -717,25 +740,21 @@ describe('AVPlayer turns the subtitles off for a stall only when nothing else ex
       await jest.advanceTimersByTimeAsync(1_000);
     }
     expect(subtitleCommands().at(-1)).toBe('subtitle:s0');
-    // A second unexplained stall within two minutes: dropped again, and again only until playback runs.
+    // A second stall of the same track in this playback: off for this video, with the way to turn them on (S4p R1).
     harness.engine.emit({ type: 'tracks', tracks: shown(true) });
     harness.engine.emit({ type: 'buffering', buffering: true });
     harness.engine.state('buffering');
     await jest.advanceTimersByTimeAsync(16_000);
     expect(subtitleCommands().at(-1)).toBe('subtitle:null');
-    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
+    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: '' } });
     harness.engine.emit({ type: 'tracks', tracks: shown(false) });
     harness.engine.state('playing');
     harness.engine.emit({ type: 'buffering', buffering: false });
-    for (let second = 0; second < 62; second++) {
+    for (let second = 0; second < 180; second++) {
       harness.engine.time(130 + second);
       await jest.advanceTimersByTimeAsync(1_000);
     }
-    expect(subtitleCommands().at(-1)).toBe('subtitle:s0');
-    // A stall drop is no subtitle failure: a real one afterwards is still the first, retried later (never off for good).
-    harness.engine.emit({ type: 'tracks', tracks: shown(true) });
-    harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
-    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
+    expect(subtitleCommands().at(-1)).toBe('subtitle:null');
     os.restore();
     await c.stop();
   });
@@ -782,6 +801,9 @@ describe('S4o: the native live rows of S6t, S6u and S6v', () => {
     await playOn(3);
     const events = await fromAVPlayer(subtitleSegment404);
     expect(events).toEqual([{ type: 'loadRetry', status: 404, audio: false }]);
+    // The server is asked first (one status read): it still has the playback, so the 404 is the subtitles'.
+    await settle();
+    expect(harness.server.sent('poll')).toHaveLength(1);
     expect(harness.engine.commands.at(-1)).toBe('subtitle:null');
     expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
     expect(starts()).toHaveLength(1);
@@ -789,22 +811,26 @@ describe('S4o: the native live rows of S6t, S6u and S6v', () => {
     await c.stop();
   });
 
-  it('S6u control: the same 404 during a stall, or with no subtitles shown, is the main stream: a new start', async () => {
+  it('S6u control: the same 404 during a stall, the server still has the playback: no new start per retry, no subtitle notice; the stall ladder decides (S4p)', async () => {
     jest.useFakeTimers();
     const os = jest.replaceProperty(Platform, 'OS', 'ios');
     const c = await playing({}, subtitledAVPlayer, 30);
     harness.engine.emit({ type: 'tracks', tracks: shownSubtitles });
     await playOn(3);
     harness.engine.emit({ type: 'buffering', buffering: true });
-    await fromAVPlayer(subtitleSegment404);
-    await settle();
-    expect(starts()).toHaveLength(2);
+    for (let retry = 0; retry < 5; retry++) {
+      await fromAVPlayer(subtitleSegment404);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    expect(starts()).toHaveLength(1);
     expect(c.notice?.kind).not.toBe('subtitleFailed');
+    // One status read for the whole retry run (an "alive" answer holds 10 s).
+    expect(harness.server.sent('poll')).toHaveLength(1);
     os.restore();
     await c.stop();
   });
 
-  it('S6u control: subtitles shown but the clock stands (no time event for 2 s): the 404 is the main stream', async () => {
+  it('S6u control: subtitles shown but the clock stands (no time event for 2 s), server alive: not the subtitles, no restart either', async () => {
     jest.useFakeTimers();
     const os = jest.replaceProperty(Platform, 'OS', 'ios');
     const c = await playing({}, subtitledAVPlayer, 30);
@@ -813,7 +839,7 @@ describe('S4o: the native live rows of S6t, S6u and S6v', () => {
     await jest.advanceTimersByTimeAsync(2_500);
     await fromAVPlayer(subtitleSegment404);
     await settle();
-    expect(starts()).toHaveLength(2);
+    expect(starts()).toHaveLength(1);
     expect(c.notice?.kind).not.toBe('subtitleFailed');
     os.restore();
     await c.stop();
@@ -904,6 +930,328 @@ describe('S4o: the native live rows of S6t, S6u and S6v', () => {
     const reads = network.refresh.mock.calls.length;
     await jest.advanceTimersByTimeAsync(10_000);
     expect(network.refresh.mock.calls.length).toBe(reads);
+    await c.stop();
+  });
+});
+
+describe('S4p: code review S4n/S4o/S6t-S6v — the reviewer probes P1-P6 and the test gaps', () => {
+  const subtitled = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [{ index: 5, language: 'de', deliveredAs: 'webvtt', selected: true }],
+    },
+  } as never;
+  const shown = {
+    audio: [],
+    subtitles: [{ id: 's0', label: 'de', language: 'de', selected: true }],
+  };
+  const off = { audio: [], subtitles: [{ ...shown.subtitles[0]!, selected: false }] };
+  const segment404 = {
+    domain: 'CoreMediaErrorDomain',
+    code: -12938,
+    comment: 'CoreMediaErrorDomain -12938 - HTTP 404: File Not Found',
+    status: 404,
+    uri: null,
+  };
+
+  it('P1 (B2) an Exo HLS manifest parse error (captive portal HTML) is the network, never "damaged media"', () => {
+    const portal = failureReason(
+      {
+        errorCodeName: 'ERROR_CODE_PARSING_MANIFEST_MALFORMED',
+        message:
+          'Source error: androidx.media3.common.ParserException: Input does not start with the #EXTM3U header.',
+      } as never,
+      false,
+      true
+    );
+    expect(classify({ kind: 'engine', engine: 'expo-video', reason: portal })).toMatchObject({
+      category: 'T1',
+      code: 'network_intercepted',
+    });
+    const container = failureReason(
+      {
+        errorCodeName: 'ERROR_CODE_PARSING_CONTAINER_MALFORMED',
+        message: 'Source error: ParserException: Skipping atom with length > 2147483647',
+      } as never,
+      true,
+      true
+    );
+    expect(classify({ kind: 'engine', engine: 'expo-video', reason: container }).code).toBe(
+      'media_damaged'
+    );
+    const otherManifest = failureReason(
+      { errorCodeName: 'ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED', message: 'bad tag' } as never,
+      false,
+      true
+    );
+    expect(classify({ kind: 'engine', engine: 'expo-video', reason: otherManifest }).code).toBe(
+      'unexpected_format'
+    );
+  });
+
+  it('P2 (B3) a URI-less 404 while paused starts no new playback and asks nothing until play', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const c = await playing({}, subtitled, 30);
+    harness.engine.emit({ type: 'tracks', tracks: shown });
+    await playOn(3);
+    c.setPaused(true);
+    harness.engine.emit({ type: 'state', state: 'paused' });
+    for (let i = 0; i < 4; i++) {
+      await fromAVPlayer(segment404);
+      await jest.advanceTimersByTimeAsync(3_000);
+    }
+    expect(starts()).toHaveLength(1);
+    expect(harness.server.sent('poll')).toHaveLength(0);
+    os.restore();
+    await c.stop();
+  });
+
+  it('T1 a URI-less 404 before the first picture is no subtitle failure (server alive)', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    harness.server.answer('start', reply.ok(harness.server.playback(subtitled)));
+    const c = newController();
+    await c.start();
+    harness.engine.state('playing');
+    harness.engine.emit({ type: 'tracks', tracks: shown });
+    harness.engine.time(0.3);
+    await fromAVPlayer(segment404);
+    await settle();
+    expect(c.notice?.kind).not.toBe('subtitleFailed');
+    expect(starts()).toHaveLength(1);
+    os.restore();
+    await c.stop();
+  });
+
+  it('P3 (B4) a URI-less 404 of a playback the server LOST is a new start at once, never "subtitles failed"', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const c = await playing({}, subtitled, 30);
+    harness.engine.emit({ type: 'tracks', tracks: shown });
+    await playOn(3);
+    harness.server.answer('poll', reply.error(404, 'playback_not_found'));
+    await fromAVPlayer(segment404);
+    await settle();
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(c.notice?.kind).not.toBe('subtitleFailed');
+    expect(starts().length).toBeGreaterThan(1);
+    // The viewer's subtitles go along to the new start.
+    expect(starts().at(-1)?.body.subtitleStreamIndex).toBe(5);
+    os.restore();
+    await c.stop();
+  });
+
+  it('P6 (B5) the in-flight retry of the same subtitle segment after the subtitles went off is no new start', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const c = await playing({}, subtitled, 30);
+    harness.engine.emit({ type: 'tracks', tracks: shown });
+    await playOn(3);
+    await fromAVPlayer(segment404);
+    await settle();
+    expect(c.notice).toMatchObject({ kind: 'subtitleFailed' });
+    harness.engine.emit({ type: 'tracks', tracks: off });
+    harness.engine.time(34);
+    await fromAVPlayer(segment404);
+    await settle();
+    expect(starts()).toHaveLength(1);
+    os.restore();
+    await c.stop();
+  });
+
+  it('P4 (R1) a subtitle rendition that blocks AVPlayer each time it is shown ends after two stalls, never a loop', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const sub = (selected: boolean) => ({
+      audio: [],
+      subtitles: [{ id: 's0', label: 'en', language: 'en', selected }],
+    });
+    const c = await playing(
+      {},
+      {
+        method: 'transcode',
+        mediaInfo: {
+          durationTicks: 6000 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [{ index: 2, language: 'en', deliveredAs: 'webvtt', selected: true }],
+        },
+      } as never,
+      45
+    );
+    let drops = 0;
+    let at = 46;
+    for (let cycle = 0; cycle < 5; cycle++) {
+      harness.engine.commands.length = 0;
+      // Whatever the engine was told, the track comes back only if the player shows it again.
+      if (cycle === 0 || harness.engine.getSnapshot().tracks.subtitles[0]?.selected)
+        harness.engine.emit({ type: 'tracks', tracks: sub(true) });
+      if (!harness.engine.getSnapshot().tracks.subtitles[0]?.selected) break;
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(16_000);
+      if (harness.engine.commands.includes('subtitle:null')) drops += 1;
+      harness.engine.emit({ type: 'tracks', tracks: sub(false) });
+      harness.engine.state('playing');
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      for (let second = 0; second < 62; second++) {
+        harness.engine.time(at++);
+        await jest.advanceTimersByTimeAsync(1_000);
+        // The player shows the subtitles again: the engine echoes the selection.
+        if (
+          harness.engine.commands.at(-1) === 'subtitle:s0' &&
+          !harness.engine.getSnapshot().tracks.subtitles[0]?.selected
+        )
+          harness.engine.emit({ type: 'tracks', tracks: sub(true) });
+      }
+    }
+    expect(drops).toBe(2);
+    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: '' } });
+    os.restore();
+    await c.stop();
+  });
+
+  it('R1 a dropped subtitle comes back only after a whole healthy minute, not at a stall that just ended', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const c = await playing({}, subtitled, 30);
+    harness.engine.emit({ type: 'tracks', tracks: shown });
+    await playOn(3);
+    harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+    harness.engine.emit({ type: 'tracks', tracks: off });
+    // 50 s of play, a 12 s stall, then playing again: the minute starts over at the stall's END, not its start.
+    await playOn(50);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(12_000);
+    harness.engine.emit({ type: 'buffering', buffering: false });
+    await playOn(59);
+    expect(harness.engine.commands.at(-1)).toBe('subtitle:null');
+    await playOn(3);
+    expect(harness.engine.commands.at(-1)).toBe('subtitle:s0');
+    os.restore();
+    await c.stop();
+  });
+
+  it("R3 only network errors and HTTP 4xx/5xx of AVPlayer's error log are failed requests; other CoreMedia notes are not", () => {
+    const notes = [-12318, -12889, -12971, -12645].map((code) => ({
+      domain: 'CoreMediaErrorDomain',
+      code,
+      status: null,
+      uri: null,
+    }));
+    for (const note of notes) expect(isFailedLoad(note)).toBe(false);
+    // T2: a -12318 entry that does carry an HTTP status is a failure.
+    expect(isFailedLoad({ domain: 'CoreMediaErrorDomain', code: -12318, status: 503 })).toBe(true);
+    expect(isFailedLoad({ domain: 'CoreMediaErrorDomain', code: -12938, status: 404 })).toBe(true);
+    expect(isFailedLoad({ domain: 'NSURLErrorDomain', code: -1005, status: null })).toBe(true);
+    // Exo names no domain: every load error is a failed request.
+    expect(isFailedLoad({ uri: 'http://server/x/0.m4s', status: null })).toBe(true);
+  });
+
+  it('T3 the stall probe: never while offline, never while a step runs, and once per stall again for the next stall', async () => {
+    jest.useFakeTimers();
+    const network = fakeNetwork();
+    const c = await playing({ network }, subtitled, 30);
+    network.set(false);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(harness.server.sent('poll')).toHaveLength(0);
+    network.set(true);
+    harness.engine.emit({ type: 'buffering', buffering: false });
+    await playOn(12);
+    // Back online the player checks the playback once (revalidate); then a stall asks once more.
+    const base = harness.server.sent('poll').length;
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(harness.server.sent('poll')).toHaveLength(base + 1);
+    harness.engine.emit({ type: 'buffering', buffering: false });
+    // A second stall later asks again (the "alive" answer is no longer fresh).
+    await playOn(12);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(harness.server.sent('poll')).toHaveLength(base + 2);
+    harness.engine.emit({ type: 'buffering', buffering: false });
+    await playOn(2);
+    // A step already running (the server ended the playback; its quiet new start hangs): the stall asks nothing.
+    harness.server.answer('progress', reply.ok({ playbackAlive: false }));
+    harness.server.answer('start', reply.hang());
+    await playOn(10);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(harness.server.sent('poll')).toHaveLength(base + 2);
+    await c.stop();
+  });
+
+  it('T4 stop() while offline ends the network re-read', async () => {
+    jest.useFakeTimers();
+    const network = Object.assign(fakeNetwork(), { refresh: jest.fn(async () => false) });
+    const c = await playing({ network }, subtitled, 30);
+    network.set(false);
+    await jest.advanceTimersByTimeAsync(6_000);
+    expect(network.refresh).toHaveBeenCalled();
+    await c.stop();
+    const reads = network.refresh.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(network.refresh.mock.calls.length).toBe(reads);
+  });
+
+  it('T5 an AVPlayer stall while the device is offline keeps the subtitles on (offline explains it)', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const network = fakeNetwork();
+    const c = await playing({ network }, subtitled, 30);
+    harness.engine.emit({ type: 'tracks', tracks: shown });
+    await playOn(3);
+    network.set(false);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    harness.engine.state('buffering');
+    await jest.advanceTimersByTimeAsync(16_000);
+    expect(harness.engine.commands).not.toContain('subtitle:null');
+    os.restore();
+    await c.stop();
+  });
+
+  it('T6 a reported issue never refines a network that answers with its own page (network_intercepted)', () => {
+    const now = Date.now();
+    const issue = stampIssues([], [{ kind: 'audioRendition', code: 'x', at: now }], now)[0]!;
+    expect(
+      deliveryFailure(
+        { category: 'T1', code: 'network_intercepted' },
+        { online: true, serverOkAt: now, brokeAt: now - 1, now, issue }
+      ).code
+    ).toBe('network_intercepted');
+  });
+
+  it('T7 issues of a playback that is no longer the playing one explain nothing', () => {
+    const now = Date.now();
+    const issues = stampIssues(
+      [],
+      [{ kind: 'audioRendition', renditionId: '1', code: 'x', at: now }],
+      now
+    );
+    expect(issuesFor(issues, { current: false, audioRendition: '1', subtitleIndex: null })).toEqual(
+      []
+    );
+    expect(
+      issuesFor(issues, { current: true, audioRendition: '1', subtitleIndex: null })
+    ).toHaveLength(1);
+  });
+
+  it('T9 the scripted engine, like EngineBase, never repeats a state', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, subtitled, 30);
+    const seen: string[] = [];
+    const off = harness.engine.subscribe((event) => {
+      if (event.type === 'state') seen.push(event.state);
+    });
+    harness.engine.state('playing');
+    harness.engine.state('playing');
+    harness.engine.state('buffering');
+    harness.engine.state('buffering');
+    expect(seen).toEqual(['buffering']);
+    off();
     await c.stop();
   });
 });

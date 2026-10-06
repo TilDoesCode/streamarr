@@ -117,3 +117,77 @@ export function deliveryFailure(
   if (handover || !answering) return failure;
   return { category: 'T6', code: 'delivery_interrupted', detail: failure.detail };
 }
+
+/** Issues of the playing playback that concern what plays now: the failing rendition only (S4n, review R5). */
+export function issuesFor(
+  issues: readonly DeliveryIssue[],
+  now: { current: boolean; audioRendition: string | null; subtitleIndex: number | null }
+): DeliveryIssue[] {
+  if (!now.current) return [];
+  return issues.filter((issue) => {
+    if (!issue.renditionId) return true;
+    if (issue.kind === 'audioRendition') return issue.renditionId === now.audioRendition;
+    if (issue.kind === 'subtitleRendition') return issue.renditionId === `${now.subtitleIndex}`;
+    return true;
+  });
+}
+
+/** What the player knows of the stream's delivery: own answers, the start of a media break, the server's issues. */
+export class DeliveryState {
+  /** When the last own request that answered was sent (S4n: an answer in flight at a break proves nothing). */
+  private serverOkAt = 0;
+  /** When the current run of status-less media retries began (AVPlayer -1005). */
+  private brokeAt = 0;
+  private issues: DeliveryIssue[] = [];
+  /** The playback the issues were reported for: a new start of another playback forgets them. */
+  private issuesOf: string | null = null;
+
+  /** A progress answer; issues are kept for the playing playback only (S4n, C7). */
+  answered(
+    sentAt: number,
+    reportFor: string | null | undefined,
+    playing: string | null,
+    issues: DeliveryIssue[]
+  ): boolean {
+    this.serverOkAt = Math.max(this.serverOkAt, sentAt);
+    if (!playing || reportFor !== playing) return false;
+    this.issues = stampIssues(this.issuesOf === playing ? this.issues : [], issues, Date.now());
+    this.issuesOf = playing;
+    return true;
+  }
+
+  /** A status-less retry that is not part of a running break starts one. */
+  retried(at: number, status: number | undefined, audio: boolean, breaking: boolean): void {
+    if (!status && !audio && !breaking) this.brokeAt = at;
+  }
+
+  /** Issues that concern what plays now: this playback, the failing rendition only (S4n, review R5). */
+  relevant(now: {
+    playbackId: string | null;
+    audioRendition: string | null;
+    subtitleIndex: number | null;
+  }) {
+    return issuesFor(this.issues, { ...now, current: this.issuesOf === now.playbackId });
+  }
+
+  /** The failure as the delivery explains it (S4m, S4n). */
+  refine(
+    failure: Classified,
+    context: {
+      online: boolean;
+      breaking: boolean;
+      networkChangedAt: number;
+      issue: DeliveryIssue | null;
+    },
+    now = Date.now()
+  ): Classified {
+    return deliveryFailure(failure, {
+      online: context.online,
+      serverOkAt: this.serverOkAt,
+      brokeAt: context.breaking ? this.brokeAt : now,
+      now,
+      networkChangedAt: context.networkChangedAt,
+      issue: context.issue,
+    });
+  }
+}
