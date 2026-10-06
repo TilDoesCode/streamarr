@@ -1,4 +1,5 @@
 import type { Account, SessionTokens, TokenVault } from './types';
+import { serverKey } from '@/api/server-url';
 
 export type KeyValueStorage = {
   getString(key: string): string | undefined;
@@ -73,7 +74,7 @@ function parseAccounts(raw: string | undefined): Account[] {
 }
 
 const sameUser = (account: Account, serverUrl: string, viewerId: string, username: string) =>
-  account.serverUrl === serverUrl &&
+  serverKey(account.serverUrl) === serverKey(serverUrl) &&
   (account.viewerId === viewerId || account.username.toLowerCase() === username.toLowerCase());
 
 /** One profile per (server, user): a server reset changes viewer ids, so the username also identifies it. */

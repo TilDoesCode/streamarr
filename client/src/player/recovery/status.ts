@@ -48,12 +48,16 @@ export type StatusInput = {
   fetch?: { waitMs: number; transferMs: number; bytes: number };
   /** Media seconds delivered per second waited over the last segments (web). */
   conversionRate?: number;
+  /** A transcode past its start budget whose buffer still grows: slow, not broken (S9b C08). */
+  slowConversion?: boolean;
   /** The server is repairing missing data of a direct-play release (C04). */
   repairing?: boolean;
   /** The engine is retrying a failed media request right now: its HTTP status, and whether only the audio fails. */
   serverRetry?: { status?: number; audio?: boolean } | null;
 };
 
+/** A first byte later than this is a slow link or server, not the engine (S9b START). */
+const SLOW_FIRST_BYTE_MS = 2_000;
 const NONE: PlayerStatus = { spinner: false, hint: null, actions: [] };
 
 const show = (hint: StatusHint | null, spinner: boolean): PlayerStatus => ({
@@ -104,11 +108,9 @@ export function statusOf(input: StatusInput): PlayerStatus {
     );
   if (input.autoplay === 'blocked') return show({ key: 'autoplayBlocked' }, false);
   if (loading) {
+    if (input.slowConversion) return show({ key: 'serverSlow' }, true);
     const slow = now - input.loadingSince >= HINT_MS;
-    return show(
-      slow ? { key: 'startSlow', params: { cause: slowCause(input.method) } } : null,
-      true
-    );
+    return show(slow ? { key: 'startSlow', params: { cause: slowCause(input) } } : null, true);
   }
   if (input.stallSince && !input.paused && input.serverRetry) {
     // The engine already knows why it stalls: say so at once, and offer nothing that cannot help (S9a C10, D36).
@@ -184,10 +186,11 @@ function stallHint(input: StatusInput): StatusHint {
   return { key: input.method === 'transcode' ? 'serverSlow' : 'buffering' };
 }
 
-function slowCause(method: string | null | undefined): string {
-  return method === 'transcode'
-    ? 'converting'
-    : method === 'remux'
-      ? 'preparing'
-      : 'slowConnection';
+/** Why a start or seek takes long: the server's work, a measured slow link, else the engine still opening the file (S9b). */
+function slowCause(input: StatusInput): string {
+  if (input.method === 'transcode') return 'converting';
+  if (input.method === 'remux') return 'preparing';
+  const { bandwidthBps: bandwidth, bitrateKbps: bitrate, fetch } = input;
+  const slowLink = !!bandwidth && !!bitrate && bandwidth < 1.2 * bitrate * 1000;
+  return slowLink || (fetch?.waitMs ?? 0) >= SLOW_FIRST_BYTE_MS ? 'slowConnection' : 'loadingFile';
 }

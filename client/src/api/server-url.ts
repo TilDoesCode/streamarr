@@ -59,6 +59,15 @@ export function isPrivateHost(rawHost: string): boolean {
 }
 
 /** Parses what the user typed into probe candidates; throws AppError('invalid_url'). */
+/** One spelling per server: case, trailing slashes and loopback aliases never make a second profile (S9b). */
+export function serverKey(baseUrl: string): string {
+  const match = /^([a-z][a-z0-9+.-]*):\/\/([^/]+)(.*)$/i.exec(baseUrl.trim());
+  if (!match) return baseUrl.trim();
+  const [, scheme = '', authority = '', path = ''] = match;
+  const host = authority.toLowerCase().replace(/^(localhost|\[::1\])(?=:|$)/, '127.0.0.1');
+  return `${scheme.toLowerCase()}://${host}${path.replace(/\/+$/, '')}`;
+}
+
 export function parseServerInput(input: string): ServerAddress {
   const trimmed = input.trim();
   const parsed = trimmed && !/\s/.test(trimmed) ? parseUrl(trimmed) : undefined;

@@ -521,7 +521,8 @@ describe('matrix A — code review S5 + S4b (S4d)', () => {
         }),
         5
       );
-      expect(c.status.hint).toBeNull();
+      // The picture plays elsewhere: said so, never judged as missing (S4j: the probe's external is read).
+      expect(c.status.hint).toEqual({ key: 'airplay', params: { device: 'AirPlay' } });
       expect(harness.engine.load).toHaveBeenCalledTimes(1);
       await c.stop();
     }
@@ -822,6 +823,117 @@ describe('matrix A — signed out, background, PiP, OS, network (S4f)', () => {
       expect(
         Number(harness.server.sent('progress').at(-1)?.body?.positionTicks)
       ).toBeGreaterThanOrEqual(110 * TICKS);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix A — code review native (S4j)', () => {
+  row(
+    'A13',
+    'a system resume while the sign-in card shows is ignored: the engine stays paused (review native #1)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(420);
+      harness.server.answer('progress', reply.error(401, 'refresh_session_expired'));
+      // A call pauses; the session ends during the call.
+      harness.engine.emit({ type: 'userPlayback', paused: true, cause: 'call' });
+      harness.engine.state('paused');
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(c.phase).toBe('failed');
+      // The call ends: the OS says "may resume", the engine starts playing.
+      harness.engine.emit({ type: 'userPlayback', paused: false });
+      harness.engine.state('playing');
+      expect(c.paused).toBe(true);
+      expect(harness.engine.commands.at(-1)).toBe('pause');
+      await c.stop();
+    }
+  );
+
+  row(
+    'A13',
+    'media keys or a remote (no cause) pause as the viewer: no system hint, and the engine playing by itself is paused again (review native N24)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(42);
+      const remote = await expoPlaying();
+      remote.player.system(true, 'remote');
+      remote.replay();
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(c.paused).toBe(true);
+      expect(c.systemPaused).toBe(false);
+      expect(c.status.hint).toBeNull();
+      harness.engine.state('playing');
+      expect(c.paused).toBe(true);
+      expect(harness.engine.commands.at(-1)).toBe('pause');
+      remote.engine.release();
+      await c.stop();
+    }
+  );
+
+  row(
+    'A13',
+    'the system resumes on its own (end of a call) without telling: playing, no hint, no pause command (review native N25)',
+    async () => {
+      const { c, expo } = await systemPause('call');
+      expect(c.status.hint).toMatchObject({ key: 'pausedBySystem' });
+      harness.engine.state('playing');
+      expect(c.paused).toBe(false);
+      expect(c.systemPaused).toBe(false);
+      expect(c.status.hint).toBeNull();
+      expect(harness.engine.commands.at(-1)).not.toBe('pause');
+      expo.engine.release();
+      await c.stop();
+    }
+  );
+
+  row(
+    'A18',
+    'AirPlay ends with the engine: no stale "Playing on …" after VLC took over; the new engine’s probe is read (review native #2)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, {}, 30);
+      harness.engine.emit({ type: 'external', active: true, device: 'TV' });
+      expect(c.status.hint).toEqual({ key: 'airplay', params: { device: 'TV' } });
+      harness.server.answer(
+        'switch',
+        reply.ok(harness.server.playback({ engine: 'vlc' } as never))
+      );
+      await c.setEnginePreference('vlc');
+      await settle();
+      expect(harness.engine.kind).toBe('vlc');
+      harness.engine.started();
+      harness.engine.time(31);
+      expect(c.external).toBeNull();
+      expect(c.status.hint).toBeNull();
+      // An engine whose probe says it plays elsewhere is external again, even without its own event.
+      harness.engine.setHealth({ external: true });
+      await playOn(2);
+      expect(c.external).toEqual({});
+      expect(c.status.hint).toEqual({ key: 'airplay', params: { device: 'AirPlay' } });
+      await c.stop();
+      expect(c.external).toBeNull();
+    }
+  );
+});
+
+describe('matrix A — live native audit S9b: the session ends under the player (S4k)', () => {
+  row(
+    'A05',
+    "the account's session ends elsewhere (refresh refused) while playing: paused, the Sign in card in the player, the position kept (S9b A05)",
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(25);
+      c.endSession({ code: 'refresh_session_expired' });
+      expect(c.phase).toBe('failed');
+      expect(c.paused).toBe(true);
+      expect(harness.engine.pause).toHaveBeenCalled();
+      expect(c.failure).toMatchObject({ code: 'refresh_session_expired', category: 'T3' });
+      expect(cardButtons(c.failure!.actions)).toEqual(['signIn', 'back']);
       await c.stop();
     }
   );

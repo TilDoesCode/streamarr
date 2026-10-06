@@ -1,3 +1,4 @@
+import { statusOf } from '@/player/recovery/status';
 import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
 import { createPlayer, profileOrFallback } from '@/player/caps-fallback';
@@ -82,7 +83,7 @@ describe('matrix E — Player UI states', () => {
       expect(c.phase).toBe('playing');
       expect(c.status).toEqual({ spinner: true, hint: null, actions: [] });
       await jest.advanceTimersByTimeAsync(HINT_MS);
-      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'slowConnection' } });
+      expect(c.status.hint).toEqual({ key: 'startSlow', params: { cause: 'loadingFile' } });
       expect(c.status.actions).toEqual(['lowerQuality', 'cancel']);
       await jest.advanceTimersByTimeAsync(START_BUDGET_MS.progressive - HINT_MS);
       expect(harness.engine.load).toHaveBeenCalledTimes(2);
@@ -475,25 +476,21 @@ describe('matrix E — code review S1-S4 (S4b)', () => {
     'E11',
     'with visible controls the hint and the spinner move under the top bar (below a notice); the spinner is never hidden (review 20, S9a2 START)',
     () => {
-      const base = { tv: false, spinner: true, top: 80, noticeShown: false, noticeHeight: 64 };
+      const base = { tv: false, top: 80, noticeShown: false, noticeHeight: 64 };
       expect(statusLayout({ ...base, controlsVisible: false })).toEqual({
         anchor: 'centre',
-        spinner: true,
         offset: 0,
       });
       expect(statusLayout({ ...base, controlsVisible: true })).toEqual({
         anchor: 'top',
-        spinner: true,
         offset: 80,
       });
       expect(statusLayout({ ...base, controlsVisible: true, noticeShown: true })).toEqual({
         anchor: 'top',
-        spinner: true,
         offset: 144,
       });
       expect(statusLayout({ ...base, controlsVisible: true, tv: true })).toEqual({
         anchor: 'centre',
-        spinner: true,
         offset: 0,
       });
     }
@@ -890,4 +887,77 @@ describe('matrix E — live re-audit S9a2: the start at a saved position (S4i)',
       await c.stop();
     }
   );
+});
+
+describe('matrix E — code review native: the start floor (S4j)', () => {
+  row(
+    'E02',
+    'an engine that lands 2 s before the start position has arrived: the clock follows the engine (review native N22)',
+    async () => {
+      harness.server.answer('start', reply.ok(harness.server.playback()));
+      const c = newController({ startSeconds: 90 });
+      await c.start();
+      harness.engine.time(0, 180);
+      expect(c.position).toBe(90);
+      harness.engine.started();
+      harness.engine.time(88, 180);
+      expect(c.position).toBe(88);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix E — the spinner under visible controls (S4j)', () => {
+  row(
+    'E11',
+    'with the controls up the spinner is drawn under the top bar, not dropped (S9a2 START)',
+    async () => {
+      const status = { spinner: true, hint: null, actions: [] };
+      await renderWithProviders(
+        <PlayerStatusView status={status} onAction={jest.fn()} controlsVisible top={80} />
+      );
+      expect(screen.getByTestId('player-status-spinner')).toBeOnTheScreen();
+    }
+  );
+});
+
+describe('matrix E — live native audit S9b: a slow direct start names the engine, not the network (S4k)', () => {
+  const input = {
+    now: 10_000,
+    phase: 'playing',
+    offline: false,
+    recovery: null,
+    loadingSince: 1,
+    stallSince: 0,
+    seekAt: 0,
+    seeking: false,
+    paused: false,
+    systemPaused: false,
+    autoplay: null,
+    health: null,
+    frozenAt: 0,
+    serverState: '',
+    serverStateSince: 0,
+    method: 'direct',
+    bitrateKbps: 8_000,
+    bandwidthBps: 50_000_000,
+  } as const;
+
+  row(
+    'E03',
+    'direct play on a fast link: "The player is still opening the file." (S9b START VLC)',
+    () => {
+      expect(statusOf(input).hint).toEqual({ key: 'startSlow', params: { cause: 'loadingFile' } });
+    }
+  );
+
+  row('E03', 'a measured slow link or a late first byte is still "The connection is slow."', () => {
+    expect(statusOf({ ...input, bandwidthBps: 5_000_000 }).hint).toEqual({
+      key: 'startSlow',
+      params: { cause: 'slowConnection' },
+    });
+    expect(
+      statusOf({ ...input, fetch: { waitMs: 3_000, transferMs: 100, bytes: 1 } }).hint
+    ).toEqual({ key: 'startSlow', params: { cause: 'slowConnection' } });
+  });
 });

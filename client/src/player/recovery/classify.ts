@@ -86,8 +86,6 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
     return { category: 'T7', code: 'audio_rendition_failed', detail: reason };
   const hls = hlsReason(reason, status);
   if (hls) return hls;
-  if (reason === 'vlc_video_stalled')
-    return { category: 'T7', code: 'video_stalled', detail: reason };
   // libVLC asked a question nobody answers: a certificate one is TLS, the rest "VLC cannot play this" (D27).
   if (reason.startsWith('vlc_dialog'))
     return TLS.test(reason)

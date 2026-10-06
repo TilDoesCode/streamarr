@@ -1478,3 +1478,29 @@ describe('matrix B — live re-audit S9a2: a viewer switch on a slow server (S4i
     }
   );
 });
+
+describe('matrix B — code review native: switch back (S4j)', () => {
+  row(
+    'B19',
+    'a fresh viewer switch whose new source fails with a server-side format error (T6) goes back to the previous choice (review native N23)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'remux' } as never, 50);
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'switch',
+        reply.ok(harness.server.playback({ playbackId: id, revision: 2 } as never))
+      );
+      harness.server.answer('start', reply.ok(harness.server.playback({ playbackId: 'back2' })));
+      await c.setQuality(720);
+      harness.engine.fail('Source error: ParserException: unexpected format');
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(1);
+      expect(starts().at(-1)?.position).toBe(50);
+      harness.engine.started();
+      expect(c.notice).toMatchObject({ kind: 'switchFailed' });
+      expect(c.preferences.maxHeight).toBeUndefined();
+      await c.stop();
+    }
+  );
+});

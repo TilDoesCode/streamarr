@@ -32,3 +32,33 @@ export function shortFile(
     },
   };
 }
+
+/** What an engine "ended" means: an empty file (C31), the end, an early end to confirm (D26), or nothing yet. */
+export function engineEnd(input: {
+  position: number;
+  /** The title's length (the server's wins over a cut playlist, S9b C12). */
+  duration: number;
+  /** What the engine itself loaded: under a second is an empty file. */
+  engineDuration: number;
+  loadPosition: number;
+  /** No picture for EMPTY_END_MS since the load. */
+  blank: boolean;
+  pictured: boolean;
+  startFloor: number;
+  /** Where the last early end of this incident was. */
+  firstEnd?: number;
+}):
+  { kind: 'empty' } | { kind: 'end' } | { kind: 'early'; endAt: number; firstEnd?: number } | null {
+  const { position, duration, loadPosition, startFloor } = input;
+  const media = input.engineDuration;
+  // A file with no or under a second of media: nothing to watch, so it is explained, never "ended".
+  if (loadPosition < 1 && ((media > 0 && media < 1) || input.blank)) return { kind: 'empty' };
+  if (!duration) return null;
+  if (position >= duration - 3) return { kind: 'end' };
+  // A reloaded short file often ends again before any time event: its position is the one it was loaded at.
+  if (input.firstEnd !== undefined)
+    return { kind: 'early', endAt: startFloor ? loadPosition : position, firstEnd: input.firstEnd };
+  // expo-video reports playToEnd while a new source loads; a source that played and stops short ended early.
+  if (!input.pictured || startFloor) return null;
+  return { kind: 'early', endAt: position };
+}

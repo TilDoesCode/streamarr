@@ -458,7 +458,7 @@ describe('matrix C — Delivery (server → engine)', () => {
   );
   row(
     'C26',
-    'AVPlayer -12927 (HDR tag mismatch): kept in the log, reload, then "This device can\'t play HDR. Converting…"',
+    'AVPlayer -12927 (HDR tag mismatch): kept in the log, reload, then "This device can\'t play HDR. Trying another way to play…"',
     async () => {
       const c = await playing({}, hls, 0);
       harness.engine.time(30);
@@ -1812,6 +1812,180 @@ describe('matrix C — live re-audit S9a2 (S4i)', () => {
       expect(c.failure?.code).not.toBe('playback_not_found');
       expect(c.failure).toMatchObject({ code: 'step_timeout' });
       expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — code review native: the length (S4j)', () => {
+  row(
+    'C12',
+    'no server length and an engine that calls the stream endless: the length is unknown (0), never "∞" (review native N21)',
+    async () => {
+      const c = await playing({}, { mediaInfo: { durationTicks: 0 } } as never, 0);
+      harness.engine.time(10, Infinity);
+      expect(c.duration).toBe(0);
+      harness.engine.time(11, 180);
+      expect(c.duration).toBe(180);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — live native audit S9b: the engine ends before the title (S4k)', () => {
+  const endless = {
+    method: 'remux',
+    mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] },
+  } as never;
+
+  row(
+    'C12',
+    'Exo calls a playlist without ENDLIST 1:00 long and ends at 0:59 of a 3:00 title: an early end that is explained, never "Finished" (S9b C12)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('poll', reply.ok(harness.server.playback(endless)));
+      const c = await playing({}, endless, 40);
+      harness.engine.time(59, 60);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.ended).toBe(false);
+      // The short-file ladder: a reload at the position first, then the card that says where it ends.
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(59);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'an engine error at 0:59 of a 3:00 title that the engine calls 1:00 long is a failure, not the missing last segment of the end (S9b C12)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, endless, 40);
+      harness.engine.time(59, 60);
+      harness.engine.fail('networkError:fragLoadError');
+      await settle();
+      expect(c.ended).toBe(false);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — live native audit S9b: a conversion that is only slow (S4k)', () => {
+  const converting = { method: 'transcode' } as never;
+  /** The server delivers half a second of media per second: the buffer grows, the picture has not come yet. */
+  async function slowSegments(seconds: number, from: number) {
+    for (let second = 1; second <= seconds; second++) {
+      const buffered = Math.max(from, harness.engine.getSnapshot().buffered) + 0.5;
+      harness.engine.emit({ type: 'time', position: from, duration: 600, buffered });
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+  }
+
+  row(
+    'C08',
+    'a start whose conversion is slow but delivers: "The server converts slower …" past the start budget, never "The picture didn\'t appear"; too slow for 90 s is "Conversion too slow" (S9b C08)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', reply.ok(harness.server.playback(converting)));
+      const c = newController({});
+      await c.start();
+      await slowSegments(40, 0);
+      expect(c.failure).toBeNull();
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.status.hint).toMatchObject({ key: 'serverSlow' });
+      await slowSegments(55, 0);
+      // 90 s too slow: one T5 step (here another way to play, the height is unknown), never the picture reload.
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.server.sent('switch')).toEqual([
+        expect.objectContaining({ body: expect.objectContaining({ stepDown: true }) }),
+      ]);
+      expect(starts()).toHaveLength(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    'a slow conversion that stops delivering is "Conversion too slow" one start budget later, not after 90 s (S9b C08)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', reply.ok(harness.server.playback(converting)));
+      const c = newController({});
+      await c.start();
+      await slowSegments(35, 0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(31_000);
+      expect(harness.server.sent('switch')).toEqual([
+        expect.objectContaining({ body: expect.objectContaining({ stepDown: true }) }),
+      ]);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    'a start that loads nothing at all is still "The picture didn\'t appear" after the start budget (S9b C08 control)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', reply.ok(harness.server.playback(converting)));
+      const c = newController({});
+      await c.start();
+      await jest.advanceTimersByTimeAsync(31_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    'a viewer switch to 720p on a slow conversion waits with the hint, then goes back to the previous quality at its position (S9b C08/R4)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, converting, 20);
+      const id = c.playback!.playbackId!;
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({ playbackId: id, revision: 2, method: 'transcode' } as never)
+        )
+      );
+      harness.server.answer('start', reply.ok(harness.server.playback({ playbackId: 'back2' })));
+      await c.setQuality(720);
+      await slowSegments(40, 20);
+      expect(starts()).toHaveLength(1);
+      expect(c.status.hint).toMatchObject({ key: 'serverSlow' });
+      await slowSegments(55, 20);
+      expect(starts().at(-1)?.position).toBe(20);
+      expect(starts().at(-1)?.body.preferences).not.toMatchObject({ maxHeight: 720 });
+      harness.engine.started();
+      expect(c.notice).toMatchObject({ kind: 'switchFailed', params: { code: 'segment_timeout' } });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — live native audit S9b: a switch right after a seek (S4k)', () => {
+  row(
+    'C08',
+    'a quality switch 2 s after seeking back from 0:59 to 0:20 continues at 0:20, not at the native clock read before the seek (S9b R4)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, { method: 'remux' } as never, 59);
+      harness.engine.setHealth({ nativePosition: 59 });
+      c.seekTo(20);
+      harness.engine.time(20);
+      // The probe asked before the seek landed still answers 0:59.
+      await jest.advanceTimersByTimeAsync(1_500);
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({ playbackId: c.playback!.playbackId!, revision: 2 } as never)
+        )
+      );
+      await c.setQuality(720);
+      expect(Number(harness.server.sent('switch').at(-1)?.body?.positionTicks) / TICKS).toBe(20);
       await c.stop();
     }
   );

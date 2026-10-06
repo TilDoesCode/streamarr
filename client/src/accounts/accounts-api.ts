@@ -9,6 +9,7 @@ import { createAuthApi } from './auth-api';
 import { AccountSession } from './session';
 import { signInFlow } from './sign-in-flow';
 import type { Account, SessionTokens } from './types';
+import { serverKey } from '@/api/server-url';
 
 export type AccountsActions = {
   store: AccountStore;
@@ -89,7 +90,10 @@ export function createAccountsApi({
       store.reload();
       const existing = store
         .getSnapshot()
-        .accounts.find((item) => item.serverUrl === server.url && item.viewerId === viewer.id);
+        .accounts.find(
+          (item) =>
+            serverKey(item.serverUrl) === serverKey(server.url) && item.viewerId === viewer.id
+        );
       const previous = existing
         ? await store.readTokens(existing.id, true).catch(() => null)
         : null;

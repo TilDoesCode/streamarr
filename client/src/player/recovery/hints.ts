@@ -88,6 +88,7 @@ export type HintCause =
   | 'airplayLost'
   | 'converting'
   | 'slowConnection'
+  | 'loadingFile'
   | 'preparing'
   | 'outside';
 

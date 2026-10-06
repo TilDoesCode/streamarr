@@ -451,3 +451,40 @@ describe('AccountStore with a failing vault (verify V1)', () => {
     expect(attempts).toBe(2);
   });
 });
+
+describe('signing in an account that is already on this device (S9b side finding)', () => {
+  const LOOPBACK = { url: 'http://127.0.0.1:39300', name: 'Home' };
+
+  it.each([
+    ['the same address', 'http://127.0.0.1:39300'],
+    ['a trailing slash', 'http://127.0.0.1:39300/'],
+    ['another spelling of the host', 'HTTP://LocalHost:39300'],
+  ])(
+    'a deep-link sign-in with %s reactivates the signed-out profile, never a second tile',
+    async (_, url) => {
+      const store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
+      const anna = await store.addSignedIn(LOOPBACK, viewer('v-anna', 'anna'), tokens(1));
+      await store.signOut(anna.id, 'refresh_session_expired');
+      const again = await store.addSignedIn(
+        { url, name: 'Home' },
+        viewer('v-anna', 'anna'),
+        tokens(2)
+      );
+      expect(again.id).toBe(anna.id);
+      expect(store.getSnapshot().accounts).toEqual([
+        expect.objectContaining({ id: anna.id, signedIn: true, serverUrl: url }),
+      ]);
+    }
+  );
+
+  it('two different servers keep two profiles', async () => {
+    const store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
+    await store.addSignedIn(LOOPBACK, viewer('v-anna', 'anna'), tokens(1));
+    await store.addSignedIn(
+      { url: 'http://192.168.1.20:39300', name: 'Other' },
+      viewer('v-anna', 'anna'),
+      tokens(2)
+    );
+    expect(store.getSnapshot().accounts).toHaveLength(2);
+  });
+});

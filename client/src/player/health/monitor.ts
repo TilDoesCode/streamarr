@@ -5,6 +5,10 @@ import { Watchdog, type WatchdogContext } from './watchdog';
 
 /** The watchdog reads the engine probe this often while playback runs. */
 export const HEALTH_TICK_MS = 1_000;
+/** A probe answer later than this is no answer: the clock rules run without it (code review native #3). */
+export const PROBE_TIMEOUT_MS = 1_500;
+/** After this many unanswered probes in a row the engine counts as having none until the next source. */
+export const PROBE_GIVE_UP = 3;
 
 /** What the monitor needs from the player: the engine, the guards, and where its findings go. */
 export type MonitorHost = {
@@ -32,6 +36,9 @@ export class HealthMonitor {
   nativeClock: { position: number; at: number } | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
+  /** The probe still unanswered from an earlier tick: asked again only once it settles. */
+  private pending: Promise<EngineHealth> | null = null;
+  private missed = 0;
 
   constructor(private readonly host: MonitorHost) {}
 
@@ -43,6 +50,8 @@ export class HealthMonitor {
   newSource(): void {
     this.watchdog.newSource();
     this.nativeClock = null;
+    this.missed = 0;
+    this.pending = null;
     if (this.finding) {
       this.finding = null;
       this.host.changed();
@@ -69,9 +78,7 @@ export class HealthMonitor {
     this.busy = true;
     let health: EngineHealth = {};
     try {
-      health = engine.readHealth ? await engine.readHealth() : {};
-    } catch {
-      health = {};
+      health = await this.probe(engine);
     } finally {
       this.busy = false;
     }
@@ -96,6 +103,25 @@ export class HealthMonitor {
         ? { position: native, at: now }
         : null;
     this.judge(finding);
+  }
+
+  /** The engine's answer within PROBE_TIMEOUT_MS, else `{}`; a probe that keeps missing is not asked any more. */
+  private async probe(engine: PlayerEngine): Promise<EngineHealth> {
+    if (!engine.readHealth || this.missed >= PROBE_GIVE_UP) return {};
+    const asked = (this.pending ??= engine.readHealth().catch(() => ({})));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>(
+      (resolve) => (timer = setTimeout(resolve, PROBE_TIMEOUT_MS, null))
+    );
+    const answer = await Promise.race([asked, late]);
+    clearTimeout(timer);
+    if (answer === null) {
+      this.missed += 1;
+      return {};
+    }
+    this.pending = null;
+    this.missed = 0;
+    return answer;
   }
 
   /** Clock-frozen joins the stall timeline; the others hint, then enter the ladder. */
