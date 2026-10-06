@@ -917,6 +917,21 @@ const TASKS = {
       'no regressions on TV/phone/web; typecheck, lint and tests green',
     ],
   },
+  'B14': {
+    title: 'Server: backlog sweep from the round I verifiers (rate limit, races, flaky tests, Dev World nits)',
+    track: 'Backend',
+    deps: ['B13'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I. Close the server items the round-I verifiers left in docs/client/BACKLOG.md (sections B9 verify, B10 verify, B11 verify, B12 verify, B13 verify, B13b verify, Server tests). In order of value: (1) rate limit for POST /viewer/auth/refresh per client IP and per presented token hash (generous for real apps that refresh every few minutes, tight for floods; 429 with Retry-After; refusal log lines aggregated so an anonymous flood cannot fill the log feed), tests incl. that a normal app refresh cadence never hits it. (2) Superseded start: when a start is replaced, the old start\'s late remux session must be closed as soon as it registers (not when the playback ends) and must not hold a remux slot; make the wait inside StartJobLockedAsync cancellable or check the revision after it; test with the B12 start_hang fault. (3) Account deletion writes tombstones under the same session lock as refresh (no racing refresh answering unknown); a previous-token replay checks IsDisabled; the unknown-token path does the tombstone PK lookup before any LIKE scan over retired hashes (or index the retired hashes). (4) Flaky tests: ReleaseContainerStoreTests.Store_EvictsTheLeastRecentlyUsed_AndSurvivesARestart, RepairConcurrencyTests, HealthCheckerTests.Concurrency_UsesConfiguredProviderBudget, IndexerSearchServiceTests.CancelledWaiter_DoesNotCancelSharedFanOut, SpecWarmupTests — find each timing assumption and make the test deterministic (no sleeps racing background writers; await the condition with a bound) without weakening what it proves; run each 20x under load. (5) Automated tests for Retry-After on 503 segment_evicted, the WebVTT wait cap and the 25 s budget across ffmpeg restarts. (6) Dev World nits: POST /devworld/faults answers 400 (not 500) for a numeric params.mode or fractional ttlSeconds; spent once/count faults leave the list; transcode_kill smoke checks the next-segment 500 + restart; transcode_slow also slows remux runs; playback_robustness_check switch_under_fault passes params.mode; README start_hang wording; the StartTimeout() doc comment. (7) Docs: a progress stop with a live id answers playbackAlive true although the call ends the playback.',
+      '- Test on your own Dev World 39310; contract check, e2e and the full server suite once at the end; OpenAPI unchanged unless a documented 429 needs adding (then re-freeze, regenerate web and client types once at the very end).',
+    ].join('\n'),
+    acceptance: [
+      'refresh rate limit with tests (normal cadence never limited, floods 429 + Retry-After, log aggregated); superseded start closes its late session at once (test)',
+      'tombstone/refresh race closed, IsDisabled on replay, tombstone lookup before any scan; the five flaky tests deterministic (20x green under load)',
+      'Retry-After/WebVTT/cross-restart budget tests; Dev World nits fixed; contract, e2e and full suite green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
