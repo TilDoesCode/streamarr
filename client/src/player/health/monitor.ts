@@ -18,6 +18,8 @@ export type MonitorHost = {
   context(health: EngineHealth): WatchdogContext & { buffering: boolean };
   /** A frozen clock joins the stall timeline. */
   stall(): void;
+  /** Once a second: an engine that waits for data while the player wants to play is a stall, whatever path led here. */
+  starved(): void;
   /** A confirmed picture/audio/slideshow verdict enters the ladder; `resumeAt` is where frames last moved. */
   escalate(
     verdict: Exclude<HealthVerdict, 'ok' | 'clock-frozen'>,
@@ -83,6 +85,7 @@ export class HealthMonitor {
       this.busy = false;
     }
     if (this.host.engine() !== engine || this.host.closed()) return;
+    this.host.starved();
     this.last = health;
     const snapshot = engine.getSnapshot();
     const now = Date.now();

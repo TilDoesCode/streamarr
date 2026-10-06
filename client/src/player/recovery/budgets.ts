@@ -65,3 +65,5 @@ export const RESUME_REVALIDATE_MS = 60_000;
 export const LOAD_RETRY_RECENT_MS = 20_000;
 /** A reload that shows no picture while its sound requests fail again is judged this soon, not at the start budget (S9c D36). */
 export const AUDIO_RELOAD_MS = 10_000;
+/** AVPlayer stopped itself in a stall: it is asked to play again after this, unless a system pause came meanwhile (D19). */
+export const STALL_NUDGE_MS = 500;

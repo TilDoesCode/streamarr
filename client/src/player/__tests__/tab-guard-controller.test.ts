@@ -117,7 +117,7 @@ describe('one playing tab per browser: the player side (F12)', () => {
     jest.useRealTimers();
   });
 
-  it('the paused tab keeps saying why after the toast is gone ("Paused: playing in another tab"), until Play (S9c turn 2 F12)', async () => {
+  it('the paused tab keeps saying why after the toast is gone ("Paused: another tab started playing"), until Play (S9c turn 2 F12, review 8 P3-4)', async () => {
     jest.useFakeTimers();
     const c = await playing({}, {}, 30);
     c.yieldToOtherTab();
@@ -126,8 +126,8 @@ describe('one playing tab per browser: the player side (F12)', () => {
     expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'otherTab' } });
     expect(c.status.actions).toEqual(['resume']);
     for (const [lang, text] of [
-      ['de', 'Pausiert: Wiedergabe in einem anderen Tab.'],
-      ['en', 'Paused: playing in another tab.'],
+      ['de', 'Pausiert: ein anderer Tab hat die Wiedergabe gestartet.'],
+      ['en', 'Paused: another tab started playing.'],
     ] as const) {
       await i18n.changeLanguage(lang);
       const pt = (key: string, options?: Record<string, unknown>) =>

@@ -30,6 +30,7 @@ function monitorWith(readHealth: () => Promise<EngineHealth>) {
       buffering: false,
     }),
     stall,
+    starved: jest.fn(),
     escalate: jest.fn(),
     changed,
   });

@@ -736,6 +736,7 @@ describe('AVPlayer turns the subtitles off for a stall only when nothing else ex
     harness.engine.emit({ type: 'tracks', tracks: shown(false) });
     harness.engine.state('playing');
     harness.engine.emit({ type: 'buffering', buffering: false });
+    harness.engine.time(harness.engine.getSnapshot().position + 0.5);
     expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
     for (let second = 0; second < 62; second++) {
       harness.engine.time(46 + second);
@@ -751,6 +752,7 @@ describe('AVPlayer turns the subtitles off for a stall only when nothing else ex
     harness.engine.emit({ type: 'tracks', tracks: shown(false) });
     harness.engine.state('playing');
     harness.engine.emit({ type: 'buffering', buffering: false });
+    harness.engine.time(harness.engine.getSnapshot().position + 0.5);
     expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: '' } });
     for (let second = 0; second < 180; second++) {
       harness.engine.time(130 + second);
@@ -795,7 +797,7 @@ describe('S4o: the native live rows of S6t, S6u and S6v', () => {
     expect(events).toEqual([]);
   });
 
-  it('S6u: a URI-less 404 while picture, clock and subtitles run is the subtitle segment: off with the notice, retried later, no new start', async () => {
+  it('V2 Apple TV: a URI-less 404 while picture, clock and the forced subtitle run (AVPlayer reading video ahead) blames nobody: the subtitle stays on, no notice, no new start; the stall decides', async () => {
     jest.useFakeTimers();
     const os = jest.replaceProperty(Platform, 'OS', 'ios');
     const c = await playing({}, subtitledAVPlayer, 30);
@@ -803,12 +805,19 @@ describe('S4o: the native live rows of S6t, S6u and S6v', () => {
     await playOn(3);
     const events = await fromAVPlayer(subtitleSegment404);
     expect(events).toEqual([{ type: 'loadRetry', status: 404, audio: false }]);
-    // The server is asked first (one status read): it still has the playback, so the 404 is the subtitles'.
+    // The server is asked first (one status read): it still has the playback, so nothing is decided yet.
     await settle();
     expect(harness.server.sent('poll')).toHaveLength(1);
-    expect(harness.engine.commands.at(-1)).toBe('subtitle:null');
-    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
+    expect(harness.engine.commands).not.toContain('subtitle:null');
+    expect(c.notice?.kind).not.toBe('subtitleFailed');
+    expect(c.currentSubtitle()).toBe(5);
     expect(starts()).toHaveLength(1);
+    // The video segments 404 too: once the buffer runs dry the stall ladder takes it (the quiet subtitle try first).
+    await playOn(3);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    harness.engine.state('buffering');
+    await jest.advanceTimersByTimeAsync(16_000);
+    expect(c.notice?.kind).not.toBe('subtitleFailed');
     os.restore();
     await c.stop();
   });
@@ -1052,7 +1061,7 @@ describe('S4p: code review S4n/S4o/S6t-S6v — the reviewer probes P1-P6 and the
     const c = await playing({}, subtitled, 30);
     harness.engine.emit({ type: 'tracks', tracks: shown });
     await playOn(3);
-    await fromAVPlayer(segment404);
+    harness.engine.emit({ type: 'subtitleError', code: 'unknown_subtitle_stream' });
     await settle();
     expect(c.notice).toMatchObject({ kind: 'subtitleFailed' });
     harness.engine.emit({ type: 'tracks', tracks: off });
@@ -1686,5 +1695,146 @@ describe('S4r: the live audit S9c turn 1 timelines', () => {
     expect(
       classify({ kind: 'engine', engine: 'vlc', reason: "Your input can't be opened" }).code
     ).toBe('vlc_error');
+  });
+});
+describe('S4x: a black reload is judged by its own sound only while the player can judge it (review 8 P2-3, P3-1, R11)', () => {
+  const avplayer = {
+    method: 'remux',
+    audioRenditions: [
+      {
+        id: '1',
+        streamIndex: 1,
+        language: 'de',
+        label: 'Deutsch',
+        channels: 2,
+        codec: 'aac',
+        default: true,
+      },
+    ],
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [
+        { index: 1, language: 'de', selected: true, deliveredAs: 'remux', renditionId: '1' },
+      ],
+      subtitleTracks: [],
+    },
+  } as never;
+  const hints: string[] = [];
+  const watch = (c: {
+    subscribe(listener: () => void): () => void;
+    status: { hint: { key: string } | null };
+  }) => {
+    hints.length = 0;
+    c.subscribe(() => {
+      const key = c.status.hint?.key;
+      if (key && hints.at(-1) !== key) hints.push(key);
+    });
+  };
+
+  it('PROBE-8: the network drops during a black reload and AVPlayer\'s audio requests fail with it: "offline", then a normal reload — never "Converting the audio"', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const network = fakeNetwork();
+    const c = await playing({ network }, avplayer, 20);
+    watch(c);
+    harness.engine.emit({
+      type: 'error',
+      reason: 'CoreMediaErrorDomain -16849 - HTTP 503',
+      status: 503,
+    });
+    await jest.advanceTimersByTimeAsync(6_000);
+    await settle();
+    const loads = harness.engine.load.mock.calls.length;
+    expect(loads).toBeGreaterThan(1);
+    network.set(false);
+    for (let second = 0; second < 12; second++) {
+      await fromAVPlayer(RECORDED.audioAbort);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    network.set(true);
+    await jest.advanceTimersByTimeAsync(40_000);
+    await settle();
+    expect(hints).toContain('offline');
+    expect(hints).not.toContain('convertingAudio');
+    expect(JSON.stringify(harness.server.sent('switch'))).not.toContain('audioFallback');
+    os.restore();
+    await c.stop();
+  });
+
+  it('an outage right after the reload\'s own audio failures: the reload\'s clock starts over online, never "Converting the audio" for the outage', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const network = fakeNetwork();
+    const c = await playing({ network }, avplayer, 20);
+    watch(c);
+    harness.engine.emit({
+      type: 'error',
+      reason: 'CoreMediaErrorDomain -16849 - HTTP 503',
+      status: 503,
+    });
+    await jest.advanceTimersByTimeAsync(6_000);
+    await settle();
+    await fromAVPlayer(RECORDED.audioAbort);
+    await jest.advanceTimersByTimeAsync(1_000);
+    network.set(false);
+    await jest.advanceTimersByTimeAsync(2_000);
+    network.set(true);
+    await jest.advanceTimersByTimeAsync(8_000);
+    await settle();
+    expect(hints).not.toContain('convertingAudio');
+    expect(JSON.stringify(harness.server.sent('switch'))).not.toContain('audioFallback');
+    os.restore();
+    await c.stop();
+  });
+
+  it('PROBE-6: an audio sign of an earlier reload never judges the new start that followed it', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const c = await playing({}, avplayer, 20);
+    watch(c);
+    harness.engine.emit({
+      type: 'error',
+      reason: 'CoreMediaErrorDomain -16849 - HTTP 503',
+      status: 503,
+    });
+    await jest.advanceTimersByTimeAsync(6_000);
+    await settle();
+    await fromAVPlayer(RECORDED.audioAbort);
+    // The reload fails another way: the server lost the playback, a new start.
+    harness.engine.emit({
+      type: 'error',
+      reason: 'CoreMediaErrorDomain -12938 - HTTP 404',
+      status: 404,
+    });
+    await settle();
+    expect(starts().length).toBeGreaterThan(1);
+    await jest.advanceTimersByTimeAsync(9_000);
+    await settle();
+    expect(hints).not.toContain('convertingAudio');
+    expect(JSON.stringify(harness.server.sent('switch'))).not.toContain('audioFallback');
+    os.restore();
+    await c.stop();
+  });
+
+  it('R11: the audio sign that came before the reload does not judge it: no "Converting the audio" 10 s after a reload without new audio failures', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const c = await playing({}, avplayer, 20);
+    watch(c);
+    await fromAVPlayer(RECORDED.audioAbort);
+    harness.engine.emit({
+      type: 'error',
+      reason: 'CoreMediaErrorDomain -16849 - HTTP 503',
+      status: 503,
+    });
+    await jest.advanceTimersByTimeAsync(6_000);
+    await settle();
+    expect(harness.engine.load.mock.calls.length).toBeGreaterThan(1);
+    await jest.advanceTimersByTimeAsync(14_000);
+    await settle();
+    expect(hints).not.toContain('convertingAudio');
+    expect(JSON.stringify(harness.server.sent('switch'))).not.toContain('audioFallback');
+    os.restore();
+    await c.stop();
   });
 });

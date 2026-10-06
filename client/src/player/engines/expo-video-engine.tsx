@@ -96,6 +96,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   private ready = false;
   private loaded = false;
   private wantPlay = false;
+  /** The last native status: a readyToPlay right after loading without playing is a starved self-pause (D19). */
+  private nativeStatus: string = 'idle';
   private start = new StartSeek(0, () => undefined);
   /** Paused by the OS (call, other audio, headphones, lock); a resume the OS allows plays again. */
   private systemPause: SystemCause | null = null;
@@ -119,6 +121,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     this.subscriptions.push(
       player.addListener('statusChange', ({ status, error }) => {
         if (this.unloaded) return;
+        const previous = this.nativeStatus;
+        this.nativeStatus = status;
         if (status === 'error') {
           const native = ownFailure(error as NativeError | undefined);
           this.emit({
@@ -131,6 +135,9 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
           if (this.ready) this.emit({ type: 'buffering', buffering: true });
           this.setState(this.ready ? 'buffering' : 'loading');
         } else if (status === 'readyToPlay') {
+          // Starved AVPlayer stops waiting by itself: no "buffering over", no pause — the stall goes on (S9c D19).
+          const starved = this.ready && previous === 'loading' && this.wantPlay && !player.playing;
+          if (starved && Platform.OS === 'ios') return void this.emit({ type: 'stalledPause' });
           if (this.ready) this.emit({ type: 'buffering', buffering: false });
           this.ready = true;
           if (this.loaded) this.applyStart();

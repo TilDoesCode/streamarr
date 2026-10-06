@@ -35,6 +35,7 @@ import { clock } from '@/player/format';
 import { noticeMs, noticeText, subtitleLabel } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
 import { usePlayerClock } from '@/player/use-clock';
+import { useMediaSession } from '@/player/use-media-session';
 import { useCloseOnFailure } from './use-close-on-failure';
 import { hintText, type HintAction } from '@/player/recovery/hints';
 import { usePlayerT } from '@/player/use-player-t';
@@ -80,6 +81,7 @@ export function PlayScreen() {
   const { account, client } = useActiveAccount();
   const queryClient = useQueryClient();
   const [controller, setController] = useState<PlaybackController | null>(null);
+  useMediaSession(controller);
   // The session may end while playing: the screen stays and the card says why (S9b A05).
   useEffect(() => holdForPlayer(account.id), [account.id]);
   useEffect(() => {

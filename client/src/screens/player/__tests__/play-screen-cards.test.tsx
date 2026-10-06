@@ -21,6 +21,8 @@ class MockPlayer {
   failure: object | null = null;
   states: string[] = [];
   resumeSeconds = 0;
+  /** The title's length as the controller knows it (0 = the clock's). */
+  duration = 0;
   playback: object | null = null;
   engine = null;
   status: PlayerStatus = { spinner: false, hint: null, actions: [] };
@@ -223,6 +225,22 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
     await act(async () => jest.advanceTimersByTime(3_000));
     expect(countdown()).toHaveTextContent('Starts in 7 seconds');
   });
+
+  row(
+    'E07',
+    "VLC guesses 1:49:42 for a 3:00 MPEG-PS: up-next counts from the controller's 3:00, not from the guess (review 8 R29)",
+    async () => {
+      jest.useFakeTimers();
+      mockNext.current = { workId: 'tmdb-tv-1-s1e2', title: 'S1 E2', playTitle: 'Show S1 E2' };
+      mockClock.duration = 6582;
+      mockClock.position = 170;
+      const c = await open();
+      await change(c, { phase: 'playing', status: running, duration: 180 });
+      expect(screen.getByTestId('player-up-next-countdown')).toHaveTextContent(
+        'Starts in 10 seconds'
+      );
+    }
+  );
 
   row(
     'E09',

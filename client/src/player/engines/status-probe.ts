@@ -3,7 +3,7 @@
 /** A HEAD that does not answer by then counts as no answer; the media error goes on regardless. */
 export const PROBE_TIMEOUT_MS = 5_000;
 /** Statuses that tell what happened to a plain media URL; any other answer says nothing (D09). */
-const TELLING_STATUS = new Set([0, 404, 410, 416, 500, 502, 503, 504]);
+const TELLING_STATUS = new Set([0, 401, 403, 404, 410, 416, 500, 502, 503, 504]);
 
 /** HTTP status of a direct-play URL (HEAD, which only that route answers); undefined when it says nothing. */
 export async function probeStatus(uri: string): Promise<number | undefined> {

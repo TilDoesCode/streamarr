@@ -177,7 +177,7 @@
       "loadingFile": "The player is still opening the file.",
       "preparing": "The server is still preparing the video.",
       "outside": "outside the app",
-      "otherTab": "playing in another tab"
+      "otherTab": "another tab started playing"
     },
     "actions": {
       "lowerQuality": "Lower quality",

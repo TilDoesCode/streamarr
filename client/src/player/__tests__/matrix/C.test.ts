@@ -166,6 +166,7 @@ describe('matrix C — Delivery (server → engine)', () => {
       await jest.advanceTimersByTimeAsync(2_000);
       expect(c.status.spinner).toBe(true);
       harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.time(harness.engine.getSnapshot().position + 0.5);
       expect(c.status.spinner).toBe(false);
       expect(harness.server.sent('switch')).toHaveLength(0);
       await c.stop();
@@ -2200,6 +2201,7 @@ describe('matrix C — live native audit S9b turn 2: a broken subtitle rendition
       // The picture runs again with them off: they blocked the player, now it is said.
       harness.engine.emit({ type: 'buffering', buffering: false });
       harness.engine.state('playing');
+      harness.engine.time(harness.engine.getSnapshot().position + 0.5);
       expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { index: '2' } });
       await c.stop();
     }
@@ -2800,7 +2802,12 @@ describe('matrix C — S4v: the server length wins over an engine guess (S9c tur
         {
           method: 'direct',
           engine: 'vlc',
-          mediaInfo: { durationTicks: 179.96 * TICKS, audioTracks: [], subtitleTracks: [] },
+          mediaInfo: {
+            durationTicks: 179.96 * TICKS,
+            container: 'mpeg',
+            audioTracks: [],
+            subtitleTracks: [],
+          },
         } as never,
         10
       );
@@ -2811,9 +2818,37 @@ describe('matrix C — S4v: the server length wins over an engine guess (S9c tur
       expect(c.duration).toBe(181);
       harness.engine.time(14, 120);
       expect(c.duration).toBeCloseTo(179.96, 2);
-      // Longer than announced on VLC is its guess too (on Exo/AVPlayer it is real media, C33).
+      // Longer than announced on VLC is its guess too for an MPEG-PS (on Exo/AVPlayer it is real media, C33).
       harness.engine.time(15, 200);
       expect(c.duration).toBeCloseTo(179.96, 2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C33',
+    'VLC playing an MKV that really runs longer than announced (3:20 of 3:00): its length wins, so up-next never comes before the real end (review 8 P3-3)',
+    async () => {
+      const c = await playing(
+        {},
+        {
+          method: 'direct',
+          engine: 'vlc',
+          mediaInfo: {
+            durationTicks: 180 * TICKS,
+            container: 'mkv',
+            audioTracks: [],
+            subtitleTracks: [],
+          },
+        } as never,
+        10
+      );
+      expect(harness.engine.kind).toBe('vlc');
+      harness.engine.time(12, 200);
+      expect(c.duration).toBe(200);
+      // A guess beyond twice the server's length stays a guess on any container.
+      harness.engine.time(13, 6582);
+      expect(c.duration).toBe(180);
       await c.stop();
     }
   );
@@ -2918,6 +2953,131 @@ describe('matrix C — S4w: an endless playlist on the web engine (S9c turn 3 C1
       expect(d.failure?.code).not.toBe('end_of_stream');
       expect(harness.server.sent('versions')).toHaveLength(0);
       await d.stop();
+    }
+  );
+});
+
+describe('matrix C — S4x: the playlist-end rule only at the playlist end (review 8 R09, R30)', () => {
+  row(
+    'C12',
+    'a stall at 0:30 of a 1:00 playlist (server 3:00) is a stall, not an early end: the stall ladder, no "ends early"',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        { nativeEngine: 'web' },
+        {
+          method: 'remux',
+          mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] },
+        } as never,
+        20
+      );
+      harness.engine.time(30, 60);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      // The stall ladder's own step (here another way to play), never the early-end reload at 0:30.
+      expect(c.status.hint?.key).not.toBe('endedEarly');
+      expect(c.status.hint?.key).not.toBe('reloading');
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      expect(c.failure?.code).not.toBe('end_of_stream');
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'AVPlayer at the end of a short playlist with subtitles on: the quiet try, then the early end reloads at 0:59 with the subtitles back',
+    async () => {
+      jest.useFakeTimers();
+      const endless = {
+        method: 'remux',
+        mediaInfo: {
+          durationTicks: 180 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [{ index: 5, language: 'de', deliveredAs: 'webvtt', selected: true }],
+        },
+      } as never;
+      harness.server.answer('poll', reply.ok(harness.server.playback(endless)));
+      const c = await playing({}, endless, 40);
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [],
+          subtitles: [{ id: 's0', label: 'de', language: 'de', selected: true }],
+        },
+      });
+      harness.engine.time(59, 60);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(16_000);
+      expect(harness.engine.commands).toContain('subtitle:null');
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.engine.source?.startPosition).toBe(59);
+      expect(
+        harness.engine.commands.filter((command) => command.startsWith('subtitle:')).at(-1)
+      ).toBe('subtitle:s0');
+      expect(c.currentSubtitle()).toBe(5);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — S4x: a stall nobody announced is armed by one rule (V2 turn 2 blocking 3, Chrome)', () => {
+  const endless = {
+    method: 'remux',
+    mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] },
+  } as never;
+
+  row(
+    'C12',
+    'the early-end reload at 0:59 lands in "loading", its first frame comes, the engine never plays: spinner within 3 s, then another version — never a frozen frame without a hint',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('poll', reply.ok(harness.server.playback(endless)));
+      const c = await playing({ nativeEngine: 'web' }, endless, 40);
+      for (let position = 41; position <= 59; position++) {
+        harness.engine.emit({ type: 'time', position, duration: 60, buffered: 60 });
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      // The reloaded hls.js source: loading at 59.89, its first frame, then nothing (V2's recorded state).
+      harness.engine.emit({ type: 'time', position: 59.89, duration: 60, buffered: 60 });
+      harness.engine.emit({ type: 'firstFrame' });
+      expect(harness.engine.getSnapshot().state).toBe('loading');
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'any engine: the first frame while the engine still loads and the clock stands is a stall with its budget (V2 blocking 3)',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('start', reply.ok(harness.server.playback({})));
+      const c = newController();
+      await c.start();
+      harness.engine.emit({ type: 'time', position: 0, duration: 600 });
+      harness.engine.emit({ type: 'firstFrame' });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(false);
+      await jest.advanceTimersByTimeAsync(2_500);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(
+        harness.engine.load.mock.calls.length + harness.server.sent('switch').length
+      ).toBeGreaterThan(1);
+      await c.stop();
     }
   );
 });

@@ -78,6 +78,8 @@ export type EngineEvent =
   | { type: 'subtitleError'; code: string }
   /** The engine reopens its own source (VLC without direct rendering): a fresh load, not a stall. */
   | { type: 'reload' }
+  /** AVPlayer gave up waiting in a stall and stopped itself (loading → readyToPlay, not playing): still the stall (D19). */
+  | { type: 'stalledPause' }
   /** The browser refused to start with sound (`muted`) or at all (`blocked`). */
   | { type: 'autoplay'; result: 'muted' | 'blocked' }
   | { type: 'stats'; stats: EngineStats };

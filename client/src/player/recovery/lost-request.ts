@@ -39,17 +39,10 @@ export type PlayerSignals = {
   clockRuns: boolean;
 };
 
-/** A media 404/410 the engine retries, after the server answered: gone restarts, a subtitle segment drops the subtitles. */
-export function lostRequest(
-  gone: boolean,
-  player: PlayerSignals
-): 'restart' | 'subtitles' | 'ignore' {
-  if (gone) return 'restart';
-  // The server still has the playback: a URI-less 404 while picture and clock run with subtitles on is theirs (S6u).
-  const running = player.state === 'playing' && player.clockRuns && !player.stalled;
-  if (player.avplayer && player.subtitlesShown && player.pictured && running) return 'subtitles';
-  // Anything else waits for the stall ladder (bounded new starts), never a restart per retry (S4p B3, B5).
-  return 'ignore';
+/** A media 404/410 the engine retries, after the server answered: gone restarts; anything else waits for the stall. */
+export function lostRequest(gone: boolean): 'restart' | 'ignore' {
+  // A URI-less 404 is no proof against the subtitles (AVPlayer reads video ahead too, V2 ATV): their own error or the stall decides.
+  return gone ? 'restart' : 'ignore';
 }
 
 /** On AVPlayer a stall with subtitles on and nothing else explaining it: subtitles off is the first try (S4n). */
@@ -74,8 +67,6 @@ export type LostWatchHost = {
   signals(): PlayerSignals;
   /** The server lost the playback: a new start at the position. */
   restart(): void;
-  /** The 404 was a subtitle segment: the subtitle path. */
-  subtitles(): void;
 };
 
 /** Lost requests and long stalls ask the server first; its answer decides (S4o, S4p). */
@@ -93,9 +84,7 @@ export class LostWatch {
     if (!id || this.host.signals().paused || this.host.busy()) return;
     const gone = await this.check.gone(id);
     if (this.host.playbackId() !== id || this.host.busy()) return;
-    const decision = lostRequest(gone, this.host.signals());
-    if (decision === 'restart') this.host.restart();
-    else if (decision === 'subtitles') this.host.subtitles();
+    if (lostRequest(gone) === 'restart') this.host.restart();
   }
 
   /** A new stall may ask once more. */

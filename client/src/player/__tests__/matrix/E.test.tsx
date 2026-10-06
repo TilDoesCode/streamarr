@@ -121,11 +121,13 @@ describe('matrix E — Player UI states', () => {
       expect(c.status.hint).toEqual({ key: 'buffering' });
       expect(c.status.actions).toEqual(['lowerQuality']);
       harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.time(harness.engine.getSnapshot().position + 0.5);
       expect(c.status.spinner).toBe(false);
       c.seekTo(200);
       harness.engine.state('buffering');
       expect(c.status.spinner).toBe(true);
       harness.engine.state('playing');
+      harness.engine.time(harness.engine.getSnapshot().position + 0.5);
       await jest.advanceTimersByTimeAsync(3_000);
       harness.engine.emit({ type: 'buffering', buffering: true });
       await jest.advanceTimersByTimeAsync(STALL_LADDER_MS);
@@ -1054,6 +1056,48 @@ describe('matrix E — S4s: a seek or play after the end leaves the end card (S6
       expect(heard).toHaveBeenCalled();
       expect(c.ended).toBe(false);
       expect(overlayAt(c)).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'E07',
+    'web, V2 turn 2: Chrome\'s media controls / a media key play the <video> from 0:00 after the end without the app: "Finished" goes, a new viewing is reported',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({ nativeEngine: 'web' }, {}, 0);
+      harness.engine.time(600, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(overlayAt(c)).toBe('endCard');
+      const heard = jest.fn();
+      c.subscribe(heard);
+      // HTMLMediaElement.play() from outside: playing, the clock from the start, no userPlayback event.
+      harness.engine.state('playing');
+      harness.engine.time(0.4, 600);
+      harness.engine.time(0.9, 600);
+      expect(c.ended).toBe(false);
+      expect(c.paused).toBe(false);
+      expect(heard).toHaveBeenCalled();
+      expect(overlayAt(c)).toBeNull();
+      await settle();
+      expect(harness.server.sent('progress').at(-1)?.body).toMatchObject({ positionTicks: 0 });
+      await c.stop();
+    }
+  );
+
+  row(
+    'E07',
+    'a time before the end while the engine is still "ended" (Safari scrubbing its ended element, no play) keeps the end card until it plays',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({ nativeEngine: 'web' }, {}, 0);
+      harness.engine.time(600, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      harness.engine.time(300, 600);
+      expect(c.ended).toBe(true);
+      expect(overlayAt(c)).toBe('endCard');
       await c.stop();
     }
   );
