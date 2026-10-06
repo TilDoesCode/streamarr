@@ -101,5 +101,12 @@ describe('native probe (S6r review gaps)', () => {
         true
       )
     ).toMatch(/^damagedSegment:/);
+    // Live on Google TV (S6t): Exo's parser error carries no URI; an HLS source makes it a damaged segment, a file not.
+    const parser = {
+      errorCodeName: 'ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED',
+      message: 'Source error Skipping atom with length > 2147483647 (unsupported).',
+    };
+    expect(failureReason(parser, true, true)).toMatch(/^damagedSegment:/);
+    expect(failureReason(parser, true, false)).not.toMatch(/^damagedSegment:/);
   });
 });

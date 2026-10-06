@@ -17,6 +17,7 @@ import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps, SystemCause } from './types';
 import {
   failureReason,
+  isFailedLoad,
   loadErrorPart,
   ownFailure,
   subtitleCode,
@@ -118,7 +119,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
           const native = ownFailure(error as NativeError | undefined);
           this.emit({
             type: 'error',
-            reason: failureReason(native, this.ready),
+            reason: failureReason(native, this.ready, this.source?.kind === 'hls'),
             status: native?.httpStatus ?? undefined,
           });
           this.setState('error');
@@ -198,6 +199,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
 
   /** A media request failed and the player retries or drops it: subtitles fail on their own, the rest is a retry (C22, R7). */
   private onLoadError(error: NativeLoadError): void {
+    if (!isFailedLoad(error)) return;
     const part = loadErrorPart(error);
     if (part === 'text') {
       const key = (error.uri ?? '').replace(/\/[^/]*$/, '');

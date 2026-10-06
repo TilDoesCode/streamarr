@@ -461,10 +461,10 @@ index ab8807e..aaffd3d 100644
        self.emit(event: event, payload: payload?.toDictionary(appContext: appContext))
 diff --git a/node_modules/expo-video/ios/VideoPlayerHealth.swift b/node_modules/expo-video/ios/VideoPlayerHealth.swift
 new file mode 100644
-index 0000000..8a8cb85
+index 0000000..089ae55
 --- /dev/null
 +++ b/node_modules/expo-video/ios/VideoPlayerHealth.swift
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,204 @@
 +// Streamarr: health probe and system-pause causes for the player watchdog (patches/expo-video).
 +
 +import AVFoundation
@@ -618,8 +618,29 @@ index 0000000..8a8cb85
 +      let event = item.errorLog()?.events.last else {
 +      return
 +    }
-+    let status = (400...599).contains(event.errorStatusCode) ? event.errorStatusCode : nil
-+    owner.safeEmit(event: "loadError", payload: LoadErrorPayload(uri: event.uri, trackType: "other", status: status))
++    owner.safeEmit(event: "loadError", payload: LoadErrorPayload(
++      uri: event.uri,
++      trackType: "other",
++      status: Self.httpStatus(event),
++      domain: event.errorDomain,
++      code: event.errorStatusCode,
++      comment: event.errorComment
++    ))
++  }
++
++  /// The HTTP status of a failed request: the code itself, "HTTP 404" in the comment, or CoreMedia's 404/403 codes.
++  static func httpStatus(_ event: AVPlayerItemErrorLogEvent) -> Int? {
++    if (400...599).contains(event.errorStatusCode) {
++      return event.errorStatusCode
++    }
++    if let comment = event.errorComment, let range = comment.range(of: "HTTP [0-9]{3}", options: .regularExpression) {
++      return Int(comment[range].dropFirst(5))
++    }
++    switch event.errorStatusCode {
++    case -12938: return 404
++    case -12660: return 403
++    default: return nil
++    }
 +  }
 +
 +  private func emit(paused: Bool, cause: String) {
@@ -639,6 +660,9 @@ index 0000000..8a8cb85
 +  @Field var uri: String? = nil
 +  @Field var trackType: String = "other"
 +  @Field var status: Int? = nil
++  @Field var domain: String? = nil
++  @Field var code: Int? = nil
++  @Field var comment: String? = nil
 +}
 +
 +internal struct SystemPlaybackPayload: Record {

@@ -2111,4 +2111,24 @@ describe('matrix D — live re-audit S9a2: hls.js cancelling its own requests (S
       engine.release();
     }
   );
+  row(
+    'D41',
+    'Exo on HLS: a parser error without a URI (seen live on Google TV, S6t) is damaged content, on a file it is the decoder',
+    async () => {
+      const hls = await expoPlaying('hls');
+      hls.player.failWith({
+        message: 'Source error Skipping atom with length > 2147483647 (unsupported).',
+        errorCodeName: 'ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED',
+      });
+      expect(classified(hls.of('error')[0]!)).toMatchObject({ code: 'media_damaged' });
+      hls.engine.release();
+      const file = await expoPlaying('progressive');
+      file.player.failWith({
+        message: 'Source error Skipping atom with length > 2147483647 (unsupported).',
+        errorCodeName: 'ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED',
+      });
+      expect(classified(file.of('error')[0]!).code).not.toBe('media_damaged');
+      file.engine.release();
+    }
+  );
 });

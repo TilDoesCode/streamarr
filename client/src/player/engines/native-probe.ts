@@ -22,7 +22,23 @@ export type NativeLoadError = {
   /** `audio` · `video` · `text` · `other`, when the player knows the track type. */
   trackType?: string | null;
   status?: number | null;
+  /** AVPlayer's error-log entry (domain, code, comment); segment entries carry no URI, playlist entries do. */
+  domain?: string | null;
+  code?: number | null;
+  comment?: string | null;
 };
+
+/** AVPlayer error-log entries that are notes, not failed requests (-12318: a segment above the variant's bandwidth). */
+const NOTE_CODES = new Set([-12318]);
+
+/** A load error the player actually had: notes in AVPlayer's error log are no failure (S6t live). */
+export function isFailedLoad(error: NativeLoadError): boolean {
+  return !(
+    error.domain === 'CoreMediaErrorDomain' &&
+    NOTE_CODES.has(error.code ?? 0) &&
+    !error.status
+  );
+}
 
 /** Which part of a Streamarr HLS session a URL addresses (docs/api.md § HLS); `other` = a playlist or a direct file. */
 export function mediaPart(uri: string | null | undefined): 'audio' | 'text' | 'segment' | 'other' {
@@ -49,11 +65,17 @@ export function subtitleCode(status: number | null | undefined): string {
 const DAMAGED = /PARSING_CONTAINER_(?:MALFORMED|UNSUPPORTED)|ParserException/;
 
 /** The engine reason for a failed item: an audio rendition or a damaged segment get their own prefix (D36, D41). */
-export function failureReason(error: NativeError | undefined, playing: boolean): string {
+export function failureReason(
+  error: NativeError | undefined,
+  playing: boolean,
+  hls = false
+): string {
   const reason = errorReason(error);
   if (!error) return reason;
   const part = mediaPart(error.uri);
-  if (part === 'segment' && DAMAGED.test(reason)) return `damagedSegment:${reason}`;
+  // Exo names no URI for a parser error (seen live, S6t): on an HLS source the container data is a segment.
+  const segment = part === 'segment' || (hls && !error.uri);
+  if (segment && DAMAGED.test(reason)) return `damagedSegment:${reason}`;
   // The audio rendition dies while the picture plays: the audio path (reload, conversion), not "connection lost".
   if (part === 'audio' && playing && !error.httpStatus) return `audioRendition:${reason}`;
   return reason;

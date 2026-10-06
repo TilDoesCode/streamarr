@@ -935,6 +935,15 @@ describe('matrix C — subtitles and content edge cases (S8)', () => {
         type: 'subtitleError',
         code: 'subtitle_unavailable',
       });
+      // AVPlayer's note about a segment above the variant's bandwidth (seen live, S6t) is no failed request.
+      const before = expo.events.length;
+      expo.player.loadError({
+        uri: 'http://server/api/v1/transcode/tok/audio/1/0.m4s',
+        domain: 'CoreMediaErrorDomain',
+        code: -12318,
+        comment: 'Segment exceeds specified bandwidth for variant',
+      } as never);
+      expect(expo.events.length).toBe(before);
       // Audio and video requests the player retries are retries, not subtitles.
       expo.player.loadError({
         uri: 'http://server/api/v1/transcode/tok/audio/1/9.m4s',
