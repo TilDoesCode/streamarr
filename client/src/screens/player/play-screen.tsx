@@ -38,6 +38,7 @@ import { usePlayerClock } from '@/player/use-clock';
 import { useCloseOnFailure } from './use-close-on-failure';
 import { hintText, type HintAction } from '@/player/recovery/hints';
 import { usePlayerT } from '@/player/use-player-t';
+import { useOneTabPlays } from '@/player/tab-guard';
 import { useShell } from '@/shell/use-shell';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
@@ -112,6 +113,10 @@ export function PlayScreen() {
     controller?.subscribe ?? noopSubscribe,
     controller?.getVersion ?? zero,
     controller?.getVersion ?? zero
+  );
+  // Web: one playing tab per browser; a start in another tab pauses this one (F12).
+  useOneTabPlays(controller?.phase === 'playing' && !controller.paused, () =>
+    controller?.yieldToOtherTab()
   );
   const { clock: clockState, onVisibleChange: setOverlayShown } = usePlayerClock(
     controller?.engine,

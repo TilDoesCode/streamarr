@@ -72,8 +72,6 @@ Grouped by device. None of these can be closed from code or an emulator.
   file). Decoder names stay unexposed; AVPlayer has no drop counts.
 - Google TV (F8 S4b): a Back pressed within ~0.5 s after a side panel closed is dropped natively (RN Modal dismissal).
   F8 V2 item 5 passed with Back + Back 200 ms later, so re-run it once on the AVD to close it or reproduce it.
-- Web/Safari (F8 S4b): two tabs playing the same title on one browser run two playbacks of one device (seen as a
-  test artifact: a background tab kept playing); no guard today (no BroadcastChannel/lock; P3).
 
 ## Browse, navigation and UX
 
@@ -83,8 +81,8 @@ Grouped by device. None of these can be closed from code or an emulator.
   is Android layout (FlatList offset/ListEmptyComponent after the old rows unmount?). Re-check live on the phone AVD.
 - iPad (F7): Split View / Stage Manager widths not checked live (needs Mac UI input in the simulator); the narrow rule
   is covered by web 1024×900 and a jest test at 820 pt.
-- Apple TV (F8 verify V2, P3): focus lands on the "Start" tab after the player when the played title left Home; once,
-  Up right after Down kept focus on the seek bar (not reproduced).
+- Apple TV (F8 verify V2): once, Up right after Down kept focus on the player's seek bar (not reproduced). The other
+  half of this entry (focus on the "Start" tab after the played title left Home) is fixed in F12.
 
 ## Accounts
 
@@ -100,9 +98,8 @@ Grouped by device. None of these can be closed from code or an emulator.
     `[runtime not ready]: Exception in HostFunction: The current activity is no longer available` at the first native call
     (`expo-modules-core NativeModulesProxy` ← `expo/src/Expo.fx`). Library-level startup race → watch on real hardware;
     upstream issue if it repeats. Stack in journal/R1.md.
-  - Reanimated `synchronouslyUpdateUIProps failed for tag …` (`Unable to find SurfaceMountingManager`) with a ~120-line
-    stack each on the UI thread: 90× at player close (Google TV release), 640× for one tag on the phone R8 build — an
-    animated view outlives its surface (player overlay / ambient candidates).
+  - Reanimated `synchronouslyUpdateUIProps … Unable to find SurfaceMountingManager`: fixed in code in F12 (see Fixed);
+    confirm in Q2 on a release build that the log is gone at player close (Google TV) and on the phone R8 build.
   - R8 + resource shrinking: APK 105.1 → 94.3 MB, dex 49.6 → 18.3 MB, smoke (start, session, Home, detail, play) passes, but
     detail push measured 25 s vs 3.4 s → re-measure with a non-polling timer before enabling it in app.config.
   - Release APK is 105 MB for arm64 alone (libvlc.so 52.5 MB): consider VLC as a separate download or ABI splits.
@@ -183,6 +180,23 @@ Grouped by device. None of these can be closed from code or an emulator.
 - Offline downloads of series and movies on phones and tablets.
 
 ## Fixed
+
+- F12 (2026-10-06), each with a test that fails without the fix:
+  - R1 release logs `synchronouslyUpdateUIProps failed … Unable to find SurfaceMountingManager` (90× at player close,
+    640× for one tag on the phone R8 build): the only endless animations in the app are the Reanimated 4 CSS loops of
+    `Spinner` (rotation) and `Skeleton` (pulse); nothing stopped them before their screen's surface went. Both now ask
+    `useLoaderMotion()` (loader-motion.ts), which stops them at the screen's blur (a close starts with it); no
+    `withRepeat`/frame callback exists. Guards: loader-motion.test (blur stops, focus resumes, unmount unsubscribes)
+    and a static check that every `animationIterationCount: 'infinite'`/`withRepeat` in src goes through the hook or a
+    `cancelAnimation`. Likely source of the 90×: the player's status/"Switching…" spinner; of the 640× for one tag: a
+    poster `Skeleton` of a Library/Home grid left loading when its tab was detached (Q2 confirms on a release build).
+  - Web/Safari two tabs playing on one browser (F8 S4b): `player/tab-guard.ts` — a start or resume in one tab tells the
+    others (BroadcastChannel, else `storage` events), which pause with the notice "Wiedergabe in einem anderen Tab
+    gestartet, deshalb hier pausiert …" (`notice.otherTab`, catalogue N20); no server change; tab-guard tests with a
+    fake channel.
+  - Apple TV focus on the "Start" tab after the player when the played title left Home: the I4 return now falls back
+    to the screen's preferred target (`usePreferredFocus`, Home: the hero's main button) when the remembered card is
+    gone, never to the bare guide; screen-focus.test "the played card left the screen …".
 
 - F11 (2026-10-06), fixed in F11 with a test each:
   - Web Library: a genre/sort change pushed a history entry and kept the previous Library screen mounted (21 after 21

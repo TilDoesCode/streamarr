@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { LandscapeCardSkeleton, PosterCardSkeleton } from '@/components/ui/skeleton';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { usePreferredFocus } from '@/navigation/screen-focus';
 import { BrandMark } from '@/shell/brand-mark';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -238,6 +239,8 @@ export function HomeScreen() {
     query.data === undefined && !query.error;
   const loading = pending(rows) || pending(resume) || pending(nextUp);
   useLaunchFocus(heroTarget, !focusTaken && !loading);
+  // Apple TV: a played card that left Home (finished, dropped out of Continue) hands its return to the hero (F12).
+  usePreferredFocus(heroTarget);
 
   const body =
     rows.data === undefined && rows.error ? (

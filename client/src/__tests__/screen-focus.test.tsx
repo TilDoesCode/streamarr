@@ -13,6 +13,7 @@ import {
   RETURN_FOCUS_MS,
   ScreenFocusProvider,
   ScreenFocusScope,
+  usePreferredFocus,
   useScreenFocusHost,
 } from '@/navigation/screen-focus';
 import { renderWithProviders } from '@/../jest/render';
@@ -60,7 +61,22 @@ function MemoryProbe() {
   return null;
 }
 
-function Shell({ showScreen }: { showScreen: boolean }) {
+/** Home's main target (the hero's button) as the screen's preferred return. */
+const hero = { requestTVFocus: jest.fn() };
+function Preferred() {
+  usePreferredFocus(hero as never);
+  return null;
+}
+
+function Shell({
+  showScreen,
+  card = true,
+  preferred = false,
+}: {
+  showScreen: boolean;
+  card?: boolean;
+  preferred?: boolean;
+}) {
   const host = useScreenFocusHost();
   useEffect(() => {
     shell = host;
@@ -70,9 +86,12 @@ function Shell({ showScreen }: { showScreen: boolean }) {
       {showScreen ? (
         <ScreenFocusScope>
           <MemoryProbe />
-          <Focusable testID="card" onPress={jest.fn()}>
-            <Text>{'a'}</Text>
-          </Focusable>
+          {preferred ? <Preferred /> : null}
+          {card ? (
+            <Focusable testID="card" onPress={jest.fn()}>
+              <Text>{'a'}</Text>
+            </Focusable>
+          ) : null}
         </ScreenFocusScope>
       ) : null}
     </ScreenFocusProvider>
@@ -228,6 +247,33 @@ describe('ScreenFocusScope on TV', () => {
     await emit('focus');
     expect(guideRequests()).toBe(1);
   });
+  it('the played card left the screen (finished, out of Continue): the return lands on the hero, never the tab bar (F12)', async () => {
+    Platform.OS = 'ios';
+    hero.requestTVFocus.mockClear();
+    const view = await renderWithProviders(<Shell showScreen preferred />);
+    const card = await focusCard();
+    await emit('blur');
+    // While the player plays to the end, the title leaves Continue watching.
+    await act(async () => view.rerender(<Shell showScreen card={false} preferred />));
+    requestReturnFocus();
+    await emit('focus');
+    expect(card.requestTVFocus).not.toHaveBeenCalled();
+    expect(hero.requestTVFocus).toHaveBeenCalledTimes(1);
+    expect(guideRequests()).toBe(0);
+  });
+
+  it('a played card still on the screen keeps the return (the hero is only the fallback)', async () => {
+    Platform.OS = 'ios';
+    hero.requestTVFocus.mockClear();
+    await renderWithProviders(<Shell showScreen preferred />);
+    const card = await focusCard();
+    await emit('blur');
+    requestReturnFocus();
+    await emit('focus');
+    expect(card.requestTVFocus).toHaveBeenCalledTimes(1);
+    expect(hero.requestTVFocus).not.toHaveBeenCalled();
+  });
+
   it('drops a return-focus request that no screen took in time (player opened from a sheet)', async () => {
     Platform.OS = 'ios';
     await renderWithProviders(<Shell showScreen />);

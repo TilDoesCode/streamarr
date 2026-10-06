@@ -112,7 +112,8 @@
     "subtitleFailed": "Untertitel „{label}“ konnten nicht geladen werden und sind aus. {retry, select, later {Sie werden in einer Minute erneut versucht.} other {Wähle andere Untertitel.}}",
     "subtitleNotDeliverable": "Untertitel „{label}“ können auf diesem Gerät nicht angezeigt werden. Wähle andere Untertitel.",
     "subtitleNotDeliverableVlc": "Untertitel „{label}“ können hier nicht angezeigt werden. Spiele mit VLC ab, um sie zu sehen.",
-    "audioRestarted": "Tonspur gewechselt; die Wiedergabe wurde dafür an derselben Stelle neu gestartet."
+    "audioRestarted": "Tonspur gewechselt; die Wiedergabe wurde dafür an derselben Stelle neu gestartet.",
+    "otherTab": "Wiedergabe in einem anderen Tab gestartet, deshalb hier pausiert. Drücke Abspielen, um hier weiterzuschauen."
   },
   "upNext": {
     "title": "Als Nächstes",

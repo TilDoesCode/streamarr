@@ -458,6 +458,14 @@ const NOTICES: Row[] = [
     clears: '6 s (TV 8 s)',
   },
   {
+    id: 'N20',
+    key: 'notice.otherTab',
+    state: 'Web: another tab of this browser started playing',
+    action: 'Play',
+    shows: 'the other tab starts or resumes a playback; this one pauses',
+    clears: '6 s (TV 8 s)',
+  },
+  {
     id: 'N13',
     key: 'notice.switchFailed',
     state: 'A viewer switch was refused, the old source plays on',

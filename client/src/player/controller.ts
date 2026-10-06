@@ -82,7 +82,8 @@ export type NoticeKind =
   | 'audioFallback'
   | 'subtitleFailed'
   | 'subtitleNotDeliverable'
-  | 'audioRestarted';
+  | 'audioRestarted'
+  | 'otherTab';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
@@ -1342,6 +1343,13 @@ export class PlaybackController {
     this.noticeId += 1;
     this.notice = { kind, params, id: this.noticeId };
     this.changed();
+  }
+
+  /** Another tab of this browser started playing (web, F12): pause here and say why. */
+  yieldToOtherTab(): void {
+    if (this.paused || this.phase !== 'playing') return;
+    this.setPaused(true);
+    this.showNotice('otherTab');
   }
 
   dismissNotice(): void {

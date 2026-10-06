@@ -112,7 +112,8 @@
     "subtitleFailed": "Subtitles “{label}” couldn’t be loaded and are off. {retry, select, later {They’ll be tried again in a minute.} other {Choose other subtitles.}}",
     "subtitleNotDeliverable": "Subtitles “{label}” can’t be shown on this device. Choose other subtitles.",
     "subtitleNotDeliverableVlc": "Subtitles “{label}” can’t be shown here. Play with VLC to see them.",
-    "audioRestarted": "Audio track switched; playback restarted at the same spot for it."
+    "audioRestarted": "Audio track switched; playback restarted at the same spot for it.",
+    "otherTab": "Playback started in another tab, so it paused here. Press Play to continue here."
   },
   "upNext": {
     "title": "Up next",
