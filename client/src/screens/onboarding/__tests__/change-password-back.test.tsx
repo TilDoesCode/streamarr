@@ -11,6 +11,7 @@ import { createMemoryVault } from '@/accounts/types';
 import AppLayout from '@/app/(app)/_layout';
 import ProfilesRoute from '@/app/(onboarding)/profiles';
 import ChangePasswordRoute from '@/app/(onboarding)/sign-in/change-password';
+import { currentMenuMode } from '@/components/focus';
 import { ToastProvider } from '@/components/ui/toast';
 import { setLanguagePreference } from '@/i18n';
 import { DesignProvider } from '@/theme';
@@ -101,9 +102,12 @@ afterEach(() => {
 /** BackHandler's dispatch: newest listener first; when none handles the press the app exits. */
 const pressBack = () =>
   act(() => void ([...handlers].reverse().some((handler) => handler()) || BackHandler.exitApp()));
+/** tvOS Menu with focus on the form: only an `always` gate hands it to JS; otherwise tvOS leaves the app. */
+const pressMenu = () =>
+  currentMenuMode() === 'always' ? pressBack() : act(() => BackHandler.exitApp());
 
-it('Google TV: Back on the password gate the player card led to stays in the app (S4y item 8)', async () => {
-  const exitApp = jest.spyOn(BackHandler, 'exitApp').mockImplementation(() => undefined);
+/** Home, then the player, which the card replaces with the password gate mid-play (A07): nothing is below. */
+async function gateFromPlayer() {
   const anna = await store.addSignedIn(
     { url: 'http://dev.test', name: 'Dev World' },
     { id: 'v-anna', username: 'anna', displayName: 'Anna', mustChangePassword: false },
@@ -132,8 +136,25 @@ it('Google TV: Back on the password gate the player card led to stays in the app
   });
   await waitFor(() => expect(router.getPathname()).toBe('/sign-in/change-password'));
   expect(screen.getByTestId('change-password-screen')).toBeOnTheScreen();
+  return { router };
+}
+
+it('Google TV: Back on the password gate the player card led to stays in the app (S4y item 8)', async () => {
+  const exitApp = jest.spyOn(BackHandler, 'exitApp').mockImplementation(() => undefined);
+  const { router } = await gateFromPlayer();
 
   await pressBack();
+  expect(exitApp).not.toHaveBeenCalled();
+  await waitFor(() => expect(router.getPathname()).toBe('/profiles'));
+  expect(screen.getByTestId('profiles-screen')).toBeOnTheScreen();
+});
+
+it('Apple TV: Menu on the lonely password gate opens the profiles instead of leaving the app (Y16)', async () => {
+  Platform.OS = 'ios';
+  const exitApp = jest.spyOn(BackHandler, 'exitApp').mockImplementation(() => undefined);
+  const { router } = await gateFromPlayer();
+
+  await pressMenu();
   expect(exitApp).not.toHaveBeenCalled();
   await waitFor(() => expect(router.getPathname()).toBe('/profiles'));
   expect(screen.getByTestId('profiles-screen')).toBeOnTheScreen();

@@ -3086,7 +3086,55 @@ describe('matrix D — S4x: AVPlayer gives up waiting in a stall, replayed on th
       c.setPaused(false);
       await jest.advanceTimersByTimeAsync(1_200);
       expect(c.status.spinner).toBe(false);
-      expect((c as unknown as { stallSince: number }).stallSince).toBe(0);
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(c.status.spinner).toBe(false);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expo.engine.release();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  it.each([300, 100])(
+    'D19 AVPlayer stops itself %d ms before the quiet subtitle try: still asked once to play again (review 10 P3-1)',
+    async (before) => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, expo } = await starved();
+      await jest.advanceTimersByTimeAsync(15_000 - before);
+      harness.engine.play.mockClear();
+      expo.player.setStatus('readyToPlay');
+      expect(expo.events).toEqual([{ type: 'stalledPause' }]);
+      expo.replay();
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(harness.engine.commands).toContain('subtitle:null');
+      expect(harness.engine.play).toHaveBeenCalledTimes(1);
+      expo.engine.release();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'the data comes within the half second and the next stall starts at once: that stall gets no "play again" meant for the last one (review 10 Z09)',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, expo } = await starved();
+      await stopsItself(expo);
+      await jest.advanceTimersByTimeAsync(100);
+      // AVPlayer plays on by itself (the data came), the clock runs, then it starves again right away.
+      expo.player.playing = true;
+      expo.player.setStatus('loading');
+      expo.player.setStatus('readyToPlay');
+      expo.replay();
+      harness.engine.time(47.5);
+      expect(c.status.spinner).toBe(false);
+      expo.player.setStatus('loading');
+      expo.replay();
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(harness.engine.play).not.toHaveBeenCalled();
       expo.engine.release();
       os.restore();
       await c.stop();
@@ -3519,6 +3567,54 @@ describe('matrix D — S4y: a direct file that stays missing (V2 turn 2, GTV VLC
       await c.stop();
     }
   );
+
+  /** A source that answers `status` after every automatic new start (the review 10 probe). */
+  async function refused(over: object, status: number, reason = 'Player encountered an error') {
+    jest.useFakeTimers();
+    harness.server.answer(
+      'start',
+      ...Array.from({ length: 8 }, () => reply.ok(harness.server.playback(over as never)))
+    );
+    const c = newController();
+    await c.start();
+    for (let attempt = 0; attempt < 8 && c.phase !== 'failed'; attempt++) {
+      harness.engine.started();
+      harness.engine.time(10);
+      harness.engine.emit({ type: 'error', reason, status });
+      await jest.advanceTimersByTimeAsync(2_000);
+      await settle();
+    }
+    return c;
+  }
+
+  it.each([
+    ['VLC direct 403', { method: 'direct', engine: 'vlc' }, 403, 'Player encountered an error'],
+    ['VLC direct 401', { method: 'direct', engine: 'vlc' }, 401, 'Player encountered an error'],
+    ['HLS remux 403', { method: 'remux' }, 403, 'networkError:fragLoadError'],
+    ['transcode 401', { method: 'transcode' }, 401, 'networkError:fragLoadError'],
+  ])(
+    'D27 %s after every automatic new start: "No access to this video file" with Try again and another version — never "file missing" (review 10 P2-1)',
+    async (_name, over, status, reason) => {
+      const c = await refused(over, status, reason);
+      expect(c.phase).toBe('failed');
+      expect(c.failure?.code).not.toBe('stream_missing');
+      expect(c.failure).toMatchObject({ code: 'stream_forbidden', category: 'T2' });
+      expect(cardButtons(c.failure!.actions)).toEqual(['retry', 'otherVersion', 'back']);
+      for (const [lang, title] of [
+        ['en', 'No access to this video file'],
+        ['de', 'Kein Zugriff auf die Videodatei'],
+      ] as const)
+        expect(describeError(i18n.getFixedT(lang), c.failure!).title).toBe(title);
+      await c.stop();
+    }
+  );
+
+  it('D27 an HLS remux 404 after the new starts keeps its own name (the server lost the stream), no "file missing"', async () => {
+    const c = await refused({ method: 'remux' }, 404, 'networkError:fragLoadError');
+    expect(c.failure?.code).not.toBe('stream_missing');
+    expect(c.failure?.code).not.toBe('stream_forbidden');
+    await c.stop();
+  });
 
   row('D27', 'a single 404 still starts again at once (the lost capability, C01)', async () => {
     jest.useFakeTimers();

@@ -50,6 +50,7 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   playback_slideshow: 'T5',
   player_internal_error: 'T11',
   stream_missing: 'T2',
+  stream_forbidden: 'T2',
   step_timeout: 'T6',
   stream_interrupted: 'T1',
   audio_rendition_failed: 'T7',

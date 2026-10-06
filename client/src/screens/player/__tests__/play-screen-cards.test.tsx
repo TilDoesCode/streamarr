@@ -6,6 +6,8 @@ import { renderWithProviders } from '@/../jest/render';
 import { row } from '@/../jest/player/matrix';
 import type { PlayerStatus } from '@/player/recovery/status';
 import { PlayScreen } from '@/screens/player/play-screen';
+import { largeHeaderBottom } from '@/screens/player/header-geometry';
+import { createDesign } from '@/theme';
 
 // Rows A15, B07/B10, E01, E02, E07, E09–E11, E16 as the viewer sees them: the real PlayScreen, a driven controller (V1).
 
@@ -28,7 +30,7 @@ class MockPlayer {
   status: PlayerStatus = { spinner: false, hint: null, actions: [] };
   private version = 0;
   private listeners = new Set<() => void>();
-  constructor(readonly options: { profile: unknown }) {
+  constructor(readonly options: { profile: unknown; workId?: string; releaseId?: string }) {
     if (MockPlayer.throwOnCreate) throw new Error('engine module missing');
     MockPlayer.all.push(this);
   }
@@ -67,6 +69,15 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => {
   return { __esModule: true, default: () => mockWindow ?? actual.default() };
 });
 
+const START_PARAMS = { playbackId: 'new', workId: 'tmdb-movie-1', title: 'Sintel' };
+let mockParams: Record<string, string> = START_PARAMS;
+const mockChrome = { inset: 0 };
+jest.mock('@/player/fullscreen', () => ({
+  ...jest.requireActual('@/player/fullscreen'),
+  isFullscreen: () => mockChrome.inset > 0,
+  fullscreenChromeInset: (fullscreen: boolean) => (fullscreen ? mockChrome.inset : 0),
+}));
+
 jest.mock('@/player/controller', () => ({
   PlaybackController: function MockController(options: { profile: unknown }) {
     return new MockPlayer(options);
@@ -90,7 +101,7 @@ jest.mock('@/accounts/accounts-provider', () => ({
   useActiveAccount: () => ({ account: mockAccount, client: {} }),
 }));
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => ({ playbackId: 'new', workId: 'tmdb-movie-1', title: 'Sintel' }),
+  useLocalSearchParams: () => mockParams,
   useNavigation: () => ({ getState: () => ({ routes: [] }), dispatch: jest.fn() }),
   useRouter: () => mockRouter,
 }));
@@ -153,6 +164,8 @@ beforeEach(async () => {
   mockClock.duration = 0;
   mockNext.current = null;
   mockWindow = undefined;
+  mockChrome.inset = 0;
+  mockParams = START_PARAMS;
   mockAccount.mustChangePassword = false;
   mockRouter.replace.mockClear();
   await i18n.changeLanguage('en');
@@ -466,6 +479,83 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
       expect(screen.queryByTestId('play-error-tried-more')).toBeNull();
     }
   );
+
+  it('E06 iPad Safari in full screen: the hint moves down by the Safari chrome like the overlay header (review 10 P3-6)', async () => {
+    mockChrome.inset = 40;
+    mockWindow = { width: 1180, height: 820, scale: 2, fontScale: 1 };
+    const c = await open();
+    await change(c, {
+      phase: 'playing',
+      paused: true,
+      status: {
+        spinner: false,
+        hint: { key: 'pausedBySystem', params: { cause: 'pipClosed' } },
+        actions: ['resume'],
+      },
+    });
+    await act(async () =>
+      (mockProps.overlay as unknown as { onVisibleChange(visible: boolean): void }).onVisibleChange(
+        true
+      )
+    );
+    const top = StyleSheet.flatten(screen.getByTestId('player-status').props.style).paddingTop;
+    const s = (value: number) => Math.round(value * Math.max(0.6, 1180 / 1920) * 2) / 2;
+    expect(top).toBeGreaterThanOrEqual(largeHeaderBottom(0, s, 40) + s(16));
+  });
+
+  it.each([
+    ['iPhone landscape', 844, 390, 'md'],
+    ['iPhone portrait', 390, 844, 'xl'],
+  ] as const)(
+    'E09 %s: the failure card padding (compact in landscape, review 10 Y12, Y25)',
+    async (_name, width, height, space) => {
+      mockWindow = { width, height, scale: 3, fontScale: 1 };
+      const c = await open();
+      await change(c, failed());
+      const style = StyleSheet.flatten(screen.getByTestId('play-error-card').props.style);
+      const design = createDesign('phone', width, height);
+      expect(style.paddingVertical).toBe(design.space[space]);
+      expect(style.gap).toBe(space === 'md' ? design.space.sm : design.space.lg);
+    }
+  );
+
+  it.each([
+    ['without a version', undefined],
+    ['with its own version', 'r-lighthouse'],
+  ])(
+    "B02 a deep link to another title (%s) while the player is open never sends the previous title's version (B19)",
+    async (_name, next) => {
+      mockParams = { ...START_PARAMS, releaseId: 'r-sintel' };
+      await open();
+      expect(MockPlayer.all.at(-1)!.options).toMatchObject({
+        workId: 'tmdb-movie-1',
+        releaseId: 'r-sintel',
+      });
+      mockParams = {
+        playbackId: 'new',
+        workId: 'tmdb-tv-7-s1e10',
+        title: 'Lighthouse',
+        ...(next ? { releaseId: next } : {}),
+      };
+      await act(async () => screen.rerender(<PlayScreen />));
+      await act(async () => undefined);
+      const latest = MockPlayer.all.at(-1)!.options;
+      expect(latest.workId).toBe('tmdb-tv-7-s1e10');
+      expect(latest.releaseId).toBe(next);
+    }
+  );
+
+  it("B02 the viewer picks another version in the player: the new start asks for it, the route's version is gone (B19 control)", async () => {
+    mockParams = { ...START_PARAMS, releaseId: 'r-sintel' };
+    await open();
+    await act(async () =>
+      (mockProps.picker as unknown as { onPlay(version: { releaseId: string }): void }).onPlay({
+        releaseId: 'r-other',
+      })
+    );
+    await act(async () => undefined);
+    expect(MockPlayer.all.at(-1)!.options.releaseId).toBe('r-other');
+  });
 
   row('B07', 'the failure card says why the server cannot convert (reason line)', async () => {
     const c = await open();

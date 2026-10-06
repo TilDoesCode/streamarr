@@ -3112,21 +3112,27 @@ describe("matrix C — S4y: a step's new source on VLC shows the spinner until i
     }
   );
 
-  row('C32', 'a frame counter that never moves releases the spinner after 4 s', async () => {
-    jest.useFakeTimers();
-    harness.features.probe = true;
-    const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 40);
-    harness.engine.fail('vlc_error: libVLC playback failed');
-    await settle();
-    harness.engine.setHealth({ framesPresented: 0 });
-    harness.engine.started();
-    for (let second = 1; second <= 5; second++) {
-      harness.engine.time(40 + second);
-      await jest.advanceTimersByTimeAsync(1_000);
+  row(
+    'C32',
+    'a frame counter that never moves: the spinner holds every second until the watchdog says "no picture" — no black gap (review 10 P3-2)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 40);
+      harness.engine.fail('vlc_error: libVLC playback failed');
+      await settle();
+      harness.engine.setHealth({ framesPresented: 0 });
+      harness.engine.started();
+      let second = 1;
+      for (; second <= 15 && c.status.hint?.key !== 'noPicture'; second++) {
+        harness.engine.time(40 + second);
+        await jest.advanceTimersByTimeAsync(1_000);
+        expect(c.status.spinner).toBe(true);
+      }
+      expect(c.status.hint?.key).toBe('noPicture');
+      await c.stop();
     }
-    expect(c.status.spinner).toBe(false);
-    await c.stop();
-  });
+  );
 
   row('C32', 'Exo/AVPlayer report a rendered first frame: no extra spinner after it', async () => {
     jest.useFakeTimers();
@@ -3218,8 +3224,6 @@ describe('matrix C — S4y: forced subtitles follow the audio language on every 
 });
 
 describe('matrix C — S4z: the starved rule stays out of the end, a step and a fresh picture (review 9 M08, M09, M10, M40)', () => {
-  const stalled = (c: object) => (c as { stallSince?: number }).stallSince;
-
   row(
     'C12',
     'a stall in the last 12 s ends the title while the engine still says "buffering": no spinner or stall over the end card (M08)',
@@ -3230,9 +3234,10 @@ describe('matrix C — S4z: the starved rule stays out of the end, a step and a 
       harness.engine.state('buffering');
       await jest.advanceTimersByTimeAsync(5_000);
       expect(c.ended).toBe(true);
-      await jest.advanceTimersByTimeAsync(5_000);
-      expect(stalled(c)).toBe(0);
-      expect(c.status.spinner).toBe(false);
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(c.status).toMatchObject({ spinner: false, hint: null });
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(harness.server.sent('switch')).toHaveLength(0);
       await c.stop();
     }
   );
@@ -3253,7 +3258,8 @@ describe('matrix C — S4z: the starved rule stays out of the end, a step and a 
       expect(c.status.hint?.key).toBe('serverError');
       expect(harness.engine.load).toHaveBeenCalledTimes(1);
       await jest.advanceTimersByTimeAsync(3_000);
-      expect(stalled(c)).toBe(0);
+      // The server's hint stays: no stall timeline of its own over the waiting step.
+      expect(c.status.hint?.key).toBe('serverError');
       await c.stop();
     }
   );
@@ -3270,9 +3276,9 @@ describe('matrix C — S4z: the starved rule stays out of the end, a step and a 
       // expo-video renders its first frame without a time event.
       harness.engine.emit({ type: 'firstFrame' });
       await jest.advanceTimersByTimeAsync(1_200);
-      expect(stalled(c)).toBe(0);
+      expect(c.status.spinner).toBe(false);
       await jest.advanceTimersByTimeAsync(2_000);
-      expect(stalled(c)).not.toBe(0);
+      expect(c.status.spinner).toBe(true);
       await c.stop();
     }
   );
@@ -3291,8 +3297,7 @@ describe('matrix C — S4z: the starved rule stays out of the end, a step and a 
         await jest.advanceTimersByTimeAsync(1_000);
         harness.engine.emit({ type: 'time', position, duration: 600 });
       }
-      await jest.advanceTimersByTimeAsync(500);
-      expect(stalled(c)).not.toBe(0);
+      await jest.advanceTimersByTimeAsync(1_500);
       expect(c.status.spinner).toBe(true);
       await c.stop();
     }
@@ -3308,13 +3313,12 @@ describe('matrix C — S4z: the starved rule stays out of the end, a step and a 
       await jest.advanceTimersByTimeAsync(3_000);
       harness.engine.emit({ type: 'buffering', buffering: false });
       harness.engine.time(47.3);
-      expect(stalled(c)).toBe(0);
+      expect(c.status.spinner).toBe(false);
       await jest.advanceTimersByTimeAsync(2_000);
       harness.engine.time(49.3);
       harness.engine.emit({ type: 'buffering', buffering: true });
       await jest.advanceTimersByTimeAsync(2_000);
       harness.engine.time(49.6);
-      expect(stalled(c)).not.toBe(0);
       expect(c.status.spinner).toBe(true);
       await c.stop();
     }
@@ -3331,7 +3335,6 @@ describe('matrix C — S4z: the starved rule stays out of the end, a step and a 
       harness.engine.time(46.5);
       harness.engine.emit({ type: 'buffering', buffering: false });
       harness.engine.time(46.8);
-      expect(stalled(c)).toBe(0);
       expect(c.status.spinner).toBe(false);
       await c.stop();
     }
@@ -3358,6 +3361,207 @@ describe('matrix C — S4z: the starved rule stays out of the end, a step and a 
       expect(harness.engine.kind).toBe('vlc');
       harness.engine.time(12, 200);
       expect(c.duration).toBe(200);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — S4z2: a seek inside a stall and the confirm spinner, pinned (review 10 P3-3, P3-4)', () => {
+  const uhd = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [],
+      video: { height: 2160 },
+    },
+  } as never;
+  const laddered = () =>
+    harness.engine.load.mock.calls.length + harness.server.sent('switch').length > 1;
+
+  row(
+    'C03',
+    'a seek 10 s into a stall: the budget starts at the seek — no step 15 s after the stall began, one 15 s after the seek (Z05)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, uhd, 100);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(10_000);
+      c.seekTo(200);
+      await jest.advanceTimersByTimeAsync(12_000);
+      await settle();
+      expect(laddered()).toBe(false);
+      expect(c.status.spinner).toBe(true);
+      await jest.advanceTimersByTimeAsync(4_000);
+      await settle();
+      expect(laddered()).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    '"buffering over" without the clock, then a seek, then one 0.3 s step at the target: the stall goes on (Z06)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, uhd, 100);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(3_000);
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      c.seekTo(200);
+      harness.engine.time(200);
+      harness.engine.time(200.3);
+      await jest.advanceTimersByTimeAsync(2_500);
+      expect(c.status.spinner).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'a seek back inside a stall, then the picture runs at the new place: the stall ends after a second of clock there (Z03)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, uhd, 100);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(3_000);
+      c.seekTo(50);
+      for (let step = 1; step <= 6; step++) {
+        harness.engine.time(50 + step * 0.5);
+        await jest.advanceTimersByTimeAsync(500);
+      }
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    "a transcode: one long rebuffer, then a stall the viewer seeks out of at once: the seek's wait is no second long rebuffer, no quality drop (Z04)",
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'transcode',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 2160 },
+          },
+        } as never,
+        100
+      );
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(6_000);
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      for (let second = 1; second <= 20; second++) {
+        harness.engine.time(100 + second);
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      c.seekTo(300);
+      await jest.advanceTimersByTimeAsync(8_000);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(c.status.hint?.key).not.toBe('lowering');
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'two counted stalls, then a seek whose clock never comes while the engine already reads "buffering": its wait is the seek\'s own, never a third counted stall (Z07)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, uhd, 100);
+      const at = { now: 100 };
+      for (let stall = 0; stall < 2; stall++) {
+        harness.engine.emit({ type: 'buffering', buffering: true });
+        await jest.advanceTimersByTimeAsync(3_000);
+        harness.engine.emit({ type: 'buffering', buffering: false });
+        for (let second = 1; second <= 10; second++) {
+          at.now += 1;
+          harness.engine.time(at.now);
+          await jest.advanceTimersByTimeAsync(1_000);
+        }
+      }
+      // The last clock step comes with the seek; the engine then reads "buffering" without an event.
+      harness.engine.time(at.now + 0.5);
+      harness.engine.snapshot = { ...harness.engine.snapshot, state: 'buffering' };
+      c.seekTo(300);
+      await jest.advanceTimersByTimeAsync(8_000);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  /** A VLC (or any probed) playback whose reload step's frames do not run yet. */
+  async function reloadWithStuckFrames(over: object = { method: 'direct', engine: 'vlc' }) {
+    jest.useFakeTimers();
+    harness.features.probe = true;
+    const c = await playing({}, over as never, 40);
+    harness.engine.setHealth({ framesPresented: 900 });
+    harness.engine.fail('vlc_error: libVLC playback failed');
+    await settle();
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    harness.engine.setHealth({ framesPresented: 0 });
+    return c;
+  }
+
+  row(
+    'C32',
+    'AVPlayer/Exo: a reload whose start is only read from the clock (no rendered-frame event) waits for the frame counter too (Y05)',
+    async () => {
+      const c = await reloadWithStuckFrames({ method: 'remux' });
+      harness.engine.state('playing');
+      harness.engine.time(40.5);
+      harness.engine.time(41);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      harness.engine.setHealth({ framesPresented: 24 });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row('C32', "VLC's first start (no recovery step) gets no confirm spinner (Y09)", async () => {
+    jest.useFakeTimers();
+    harness.features.probe = true;
+    const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 40);
+    harness.engine.setHealth({ framesPresented: 0 });
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(c.status.spinner).toBe(false);
+    await c.stop();
+  });
+
+  row(
+    'C32',
+    'paused during the confirm window: no spinner over the paused picture (Y20)',
+    async () => {
+      const c = await reloadWithStuckFrames();
+      harness.engine.started();
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(c.status.spinner).toBe(true);
+      c.setPaused(true);
+      expect(c.status.spinner).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C32',
+    'a stall during the confirm window gets its own timeline: "Buffering…" after 4 s, not a bare spinner (Y21)',
+    async () => {
+      const c = await reloadWithStuckFrames();
+      harness.engine.started();
+      await jest.advanceTimersByTimeAsync(500);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(4_500);
+      expect(c.status.hint?.key).toBe('buffering');
       await c.stop();
     }
   );

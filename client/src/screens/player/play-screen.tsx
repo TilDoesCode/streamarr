@@ -41,10 +41,9 @@ import { hintText, type HintAction } from '@/player/recovery/hints';
 import { usePlayerT } from '@/player/use-player-t';
 import { isPlayingHere, useOneTabPlays } from '@/player/tab-guard';
 import { useShell } from '@/shell/use-shell';
-import { useWindowControlsInset } from '@/shell/window-controls';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
-import { largeHeaderBottom } from './header-geometry';
+import { largeHeaderBottom, useHeaderInset } from './header-geometry';
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
 import { cardButtons, failureReason } from './card-actions';
@@ -77,7 +76,7 @@ export function PlayScreen() {
   const { large, s } = useShell();
   // A phone in landscape (390 pt high): the failure card must fit without scrolling (V2).
   const short = !large && design.window.height < 500;
-  const windowControls = useWindowControlsInset();
+  const windowControls = useHeaderInset();
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -96,7 +95,11 @@ export function PlayScreen() {
   const [attempt, setAttempt] = useState(0);
   const [capsError, setCapsError] = useState<string | null>(null);
   const [preferences, setPreferences] = useState<PlaybackPreferences>({ engine: 'auto' });
-  const [releaseId, setReleaseId] = useState(params.releaseId || undefined);
+  // The version is the route's until the viewer picks another; a new title in the route never keeps the old one (B19).
+  const routeKey = `${params.workId ?? ''}|${params.releaseId ?? ''}`;
+  const [picked, setPicked] = useState<{ route: string; releaseId?: string } | null>(null);
+  const releaseId = picked?.route === routeKey ? picked.releaseId : params.releaseId || undefined;
+  const setReleaseId = (id: string | undefined) => setPicked({ route: routeKey, releaseId: id });
   const [panel, setPanel] = useState<PanelKind | null>(null);
   const [picker, setPicker] = useState(false);
   const [upNextDismissedFor, setUpNextDismissedFor] = useState<string | null>(null);

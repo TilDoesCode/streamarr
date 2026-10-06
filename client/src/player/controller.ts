@@ -1,7 +1,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { AppState, Platform, type NativeEventSubscription } from 'react-native';
 
-import { toAppError, type AppError, type ErrorParams } from '@/api/errors';
+import { isAppError, toAppError, type AppError, type ErrorParams } from '@/api/errors';
 import { noteAudioTracks, rememberAudioLanguage } from '@/player/audio-preference';
 import { renditionFor, type AudioRendition } from '@/player/audio-renditions';
 import {
@@ -166,13 +166,24 @@ type StepContext = { position: number; tracks: StepTracks | null; signal: AbortS
 
 /** After the engine says a stall is over, this step of the clock confirms it (time events come every 0.25–0.5 s). */
 const RESUMED_STEP_S = 0.2;
-/** A new source's start without moving frames shows the spinner at most this long. */
-const PICTURE_CONFIRM_MS = 4_000;
+/** A new source's start without moving frames keeps the spinner at most this long (the watchdog judges well before). */
+const PICTURE_CONFIRM_MS = 15_000;
 /** A clock that stood this long under a waiting engine is a stall, whatever path led there (V2 D19: a resume after a lock). */
 const STARVED_MS = 2_000;
 
 /** Containers whose length libVLC guesses from the bytes (the server's `mediaInfo.container` family names). */
 const GUESSED_CONTAINERS = new Set(['mpeg', 'ts', 'vob', 'mpegts']);
+
+/** After the automatic new starts "start again" already failed: a 404 is a missing file, a 401/403 a refused one (V2, review 10). */
+function afterRestarts(failure: Classified, tried: readonly Attempt[]): string {
+  const restarted = tried.some((attempt) => attempt.step === 'N' && attempt.category === 'T2');
+  if (!restarted || failure.category !== 'T2') return failure.code;
+  // The new starts asked the API with this session: a session problem would have ended on the sign-in card (T3).
+  if (failure.status === 401 || failure.status === 403) return 'stream_forbidden';
+  return failure.code === 'unknown_stream' && failure.status === 404
+    ? 'stream_missing'
+    : failure.code;
+}
 
 /** One playback on this device: server start flow, engine, switches, step-down and progress reporting. */
 export class PlaybackController {
@@ -356,6 +367,12 @@ export class PlaybackController {
   /** The clock's last position and when it last changed: a starved engine has a clock that stands (V2 D19). */
   private clockLast = -1;
   private clockMovedAt = 0;
+  /** One number per stall: its budget rules move `stallSince`, the nudge stays bound to the stall (review 10 P3-1). */
+  private stallSerial = 0;
+  /** The version the viewer asked for; dropped when it turned out to be another title's (B19). */
+  private wantedRelease: string | undefined;
+  /** The last start failed only because its version was another title's: it starts again without one. */
+  private releaseMixUp = false;
   /** The engine paused itself in this stall and was asked to play again (D19). */
   private stallNudged = false;
   private stallPosition = 0;
@@ -368,6 +385,7 @@ export class PlaybackController {
   private networkOff: (() => void) | null = null;
 
   constructor(readonly options: ControllerOptions) {
+    this.wantedRelease = options.releaseId;
     this.preferences = { engine: 'auto', ...options.preferences };
     this.progress = new ProgressQueue(options.accountId, options.client);
     this.progress.onAnswer = (answer) => this.onProgressAnswer(answer);
@@ -522,12 +540,24 @@ export class PlaybackController {
     const startSeconds = resumeAt ?? this.options.startSeconds ?? 0;
     // Nothing played yet: a failed start is retried at the asked position, and "What was tried" says so (S9c E10).
     if (!this.pictured) this.lastGoodPosition = startSeconds;
-    const created = await startPlayback(
-      this.options.client,
-      this.startRequest(startSeconds, null, releaseId ?? this.options.releaseId, null),
-      signal
-    );
-    let ready = await this.wait(created, true, signal);
+    const requested = releaseId ?? this.wantedRelease;
+    let created: Playback;
+    try {
+      created = await startPlayback(
+        this.options.client,
+        this.startRequest(startSeconds, null, requested, null),
+        signal
+      );
+    } catch (error) {
+      if (isAppError(error) && this.mixedUp(requested, error.code, error.params))
+        return this.begin(resumeAt, undefined, signal);
+      throw error;
+    }
+    let ready = await this.wait(created, true, signal, requested);
+    if (!ready && this.releaseMixUp) {
+      this.releaseMixUp = false;
+      return this.begin(resumeAt, undefined, signal);
+    }
     if (!ready || this.phase === 'failed') return;
     const asked = Date.now();
     const position = resumeAt ?? (await this.askResume(ready, startSeconds));
@@ -671,7 +701,8 @@ export class PlaybackController {
   private async wait(
     created: Playback,
     failPlayback = true,
-    signal: AbortSignal = this.abort.signal
+    signal: AbortSignal = this.abort.signal,
+    requested?: string
   ): Promise<Playback | null> {
     const ready = await waitForPlayback(
       this.options.client,
@@ -680,6 +711,10 @@ export class PlaybackController {
       signal
     );
     if (ready.state !== 'failed') return ready;
+    if (this.mixedUp(requested, ready.error?.code, ready.error?.params)) {
+      this.releaseMixUp = true;
+      return null;
+    }
     if (!failPlayback) {
       this.lastError = ready.error?.code ?? 'playback_failed';
       this.lastErrorStatus = undefined;
@@ -689,6 +724,20 @@ export class PlaybackController {
     if (this.phase === 'switching') this.phase = this.engine ? 'playing' : 'starting';
     this.onFailedPlayback(ready);
     return null;
+  }
+
+  /** The asked version is another title's (a screen that kept the previous title's id, B19): the title's own pick, silently. */
+  private mixedUp(
+    requested: string | undefined,
+    code: string | null | undefined,
+    params: ErrorParams | null | undefined
+  ): boolean {
+    if (!requested || code !== 'release_not_found' || params?.reason !== 'otherTitle') return false;
+    console.warn(
+      `[player] release ${requested} belongs to another title than ${this.options.workId}`
+    );
+    this.wantedRelease = undefined;
+    return true;
   }
 
   /** The server failed the playback: its source is gone, so the ladder can only start anew or give up. */
@@ -717,9 +766,7 @@ export class PlaybackController {
   }
 
   private giveUp(failure: Classified, extra: FailureExtra, tried: Attempt[]): void {
-    // A direct file still answers 404 after the automatic new starts: "start again" already failed, it is missing (V2).
-    const restarted = tried.some((attempt) => attempt.step === 'N' && attempt.category === 'T2');
-    const code = failure.code === 'unknown_stream' && restarted ? 'stream_missing' : failure.code;
+    const code = afterRestarts(failure, tried);
     this.fail({
       code,
       params: extra.params,
@@ -912,7 +959,7 @@ export class PlaybackController {
 
   /** Ladder step V: the best other version this device plays, at the same position. */
   private async otherVersion(context: StepContext): Promise<boolean> {
-    if (this.options.releaseId) this.triedReleases.add(this.options.releaseId);
+    if (this.wantedRelease) this.triedReleases.add(this.wantedRelease);
     const releaseId = await nextVersion(
       this.options.client,
       this.playback?.workId ?? this.options.workId,
@@ -952,7 +999,7 @@ export class PlaybackController {
       this.startRequest(
         position,
         tracks,
-        releaseId ?? previous?.version?.releaseId ?? this.options.releaseId,
+        releaseId ?? previous?.version?.releaseId ?? this.wantedRelease,
         previous,
         languages
       ),
@@ -1325,12 +1372,10 @@ export class PlaybackController {
   /** The spinner after a step stays until the new source's frame counter moves (or the engine counts none, or 4 s). */
   private confirmPicture(frames: number | undefined): void {
     if (!this.confirmingSince) return;
-    const late = Date.now() - this.confirmingSince >= PICTURE_CONFIRM_MS;
-    if (
-      frames !== undefined &&
-      !late &&
-      (this.frameBase === undefined || frames <= this.frameBase)
-    ) {
+    const moved = frames === undefined || (this.frameBase !== undefined && frames > this.frameBase);
+    // Held until the watchdog's own verdict or a step takes over: no black gap between them (review 10 P3-2).
+    const taken = !!this.monitor.finding || !!this.runner.current;
+    if (!moved && !taken && Date.now() - this.confirmingSince < PICTURE_CONFIRM_MS) {
       this.frameBase ??= frames;
       return;
     }
@@ -1377,15 +1422,16 @@ export class PlaybackController {
   /** AVPlayer gave up waiting: the stall goes on; play once more if no system pause explains it meanwhile (D19). */
   private onStalledPause(): void {
     const engine = this.engine;
-    const stall = this.stallSince;
-    if (!stall || this.stallNudged || !engine) return;
+    const stall = this.stallSerial;
+    if (!this.stallSince || this.stallNudged || !engine) return;
     this.stallNudged = true;
     // Longer than the patch's 0.3 s check for a system cause (headphones, interruption, AirPlay lost).
     setTimeout(() => {
       const quiet =
         this.engine === engine &&
         !this.closed &&
-        this.stallSince === stall &&
+        !!this.stallSince &&
+        this.stallSerial === stall &&
         !this.paused &&
         !this.system.paused &&
         !this.system.external &&
@@ -1401,6 +1447,7 @@ export class PlaybackController {
     if (!this.pictured) return;
     this.lostWatch.stallStarted();
     this.stallSince = Date.now();
+    this.stallSerial += 1;
     this.stallNudged = false;
     this.stallRenewed = false;
     this.stallResumed = false;

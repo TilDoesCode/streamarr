@@ -14,7 +14,13 @@ export type FailureSource =
   | { kind: 'engine'; engine: EngineKind; reason: string; status?: number }
   | { kind: 'watchdog'; verdict: WatchdogVerdict };
 
-export type Classified = { category: ErrorCategory; code: string; detail?: string };
+/** `status`: the HTTP status of the failed media request when one decided (stream_missing vs a refused file, S4z2). */
+export type Classified = {
+  category: ErrorCategory;
+  code: string;
+  detail?: string;
+  status?: number;
+};
 
 /** Engine codes for media failures that have no server code (shown as "Code: …" under the category text). */
 const MEDIA_STATUS_CODES: Record<number, string> = {
@@ -29,7 +35,8 @@ const telling = (status: number) => [401, 403, 404, 410, 416].includes(status) |
 
 /** A failed media request: 401/403/404/410 mean the capability or session is gone, 503 a transient server failure. */
 function mediaStatus(status: number, detail: string): Classified {
-  if (status === 401 || status === 403) return { category: 'T2', code: 'unknown_stream', detail };
+  if (status === 401 || status === 403)
+    return { category: 'T2', code: 'unknown_stream', detail, status };
   // A range past the end of a direct-play file: the file is shorter than announced (C02).
   if (status === 416) return { category: 'T8', code: 'end_of_stream', detail };
   const code = MEDIA_STATUS_CODES[status] ?? (status >= 500 ? 'server_error' : `http_${status}`);
@@ -40,8 +47,8 @@ function mediaStatus(status: number, detail: string): Classified {
 /** A failed direct-play file (VLC, web progressive): no segments, so a 404 is the stream, a 5xx the server, a 401 its capability. */
 function streamStatus(status: number, detail: string): Classified {
   // A refused capability: a new start asks the API, whose own 401 goes through the session refresh (T3) if needed.
-  if (status === 401) return { category: 'T2', code: 'unauthorized', detail };
-  if (status === 404) return { category: 'T2', code: 'unknown_stream', detail };
+  if (status === 401) return { category: 'T2', code: 'unauthorized', detail, status };
+  if (status === 404) return { category: 'T2', code: 'unknown_stream', detail, status };
   if (status >= 500) return { category: 'T6', code: 'server_error', detail };
   return mediaStatus(status, detail);
 }

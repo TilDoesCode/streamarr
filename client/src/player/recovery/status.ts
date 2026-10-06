@@ -109,7 +109,8 @@ export function statusOf(input: StatusInput): PlayerStatus {
       false
     );
   if (input.autoplay === 'blocked') return show({ key: 'autoplayBlocked' }, false);
-  if (input.confirmingPicture && !input.paused && !input.stallSince) return show(null, true);
+  if (input.confirmingPicture && !input.paused && !input.stallSince && !input.health)
+    return show(null, true);
   if (loading) {
     if (input.slowConversion) return show({ key: 'serverSlow' }, true);
     const slow = now - input.loadingSince >= HINT_MS;

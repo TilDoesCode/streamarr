@@ -1804,3 +1804,64 @@ describe('matrix B — S4w: "What was tried" after a server 500 at the start (S9
     }
   );
 });
+
+describe('matrix B — S4z2: a version of another title in the start (B19, V2 turn 4)', () => {
+  const hints = (c: {
+    subscribe(listener: () => void): () => void;
+    status: { hint: { key: string } | null };
+  }) => {
+    const seen: string[] = [];
+    c.subscribe(() => {
+      const key = c.status.hint?.key;
+      if (key && seen.at(-1) !== key) seen.push(key);
+    });
+    return seen;
+  };
+
+  it.each([
+    [
+      'a failed playback',
+      () =>
+        failedWith('release_not_found', {
+          params: { releaseId: 'r-sintel', reason: 'otherTitle' },
+        }),
+    ],
+    [
+      'a 404 answer',
+      () => reply.error(404, 'release_not_found', { releaseId: 'r-sintel', reason: 'otherTitle' }),
+    ],
+  ])(
+    'B02 %s with reason otherTitle: the title starts again without a version, silently — no "trying another version", no notice, no version list',
+    async (_name, answer) => {
+      jest.useFakeTimers();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      harness.server.answer('start', answer(), reply.ok(harness.server.playback({})));
+      const c = newController({ releaseId: 'r-sintel' });
+      const seen = hints(c);
+      await c.start();
+      await settle();
+      expect(starts().map((start) => start.releaseId)).toEqual(['r-sintel', undefined]);
+      expect(c.phase).toBe('playing');
+      expect(c.failure).toBeNull();
+      expect(c.notice).toBeNull();
+      expect(seen).not.toContain('switchingVersion');
+      expect(harness.server.sent('versions')).toHaveLength(0);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('r-sintel'));
+      warn.mockRestore();
+      await c.stop();
+    }
+  );
+
+  it('B02 reason unknown (the version is gone): the other-version step as before', async () => {
+    jest.useFakeTimers();
+    harness.server.answer(
+      'start',
+      failedWith('release_not_found', { params: { releaseId: 'r-gone', reason: 'unknown' } })
+    );
+    const c = newController({ releaseId: 'r-gone' });
+    await c.start();
+    await settle();
+    expect(harness.server.sent('versions')).toHaveLength(1);
+    await c.stop();
+  });
+});

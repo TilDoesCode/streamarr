@@ -908,6 +908,10 @@
         "title": "Video file missing on the server",
         "message": "The server can’t find this video’s file, even after starting again. Choose another version."
       },
+      "stream_forbidden": {
+        "title": "No access to this video file",
+        "message": "The server refuses this video’s file, even after starting again. Try again later, choose another version, or ask the server admin."
+      },
       "step_timeout": {
         "title": "The server took too long",
         "message": "The server didn’t get the video ready in time. Try again or choose another version."
