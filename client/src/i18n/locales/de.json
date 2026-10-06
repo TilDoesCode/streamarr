@@ -932,6 +932,10 @@
         "title": "Diese Version enthält nichts zum Abspielen",
         "message": "Die Datei dieser Version ist leer oder kürzer als eine Sekunde. Wähle eine andere Version."
       },
+      "delivery_interrupted": {
+        "title": "Der Stream bricht immer wieder ab",
+        "message": "Der Server antwortet, aber der Videostream bricht immer wieder ab. Versuche es erneut oder wähle eine andere Version."
+      },
       "audio_rendition_failed": {
         "title": "Der Ton konnte nicht geladen werden",
         "message": "Der Server konnte den Ton dieser Version nicht liefern, auch nicht umgewandelt. Versuche es erneut oder wähle eine andere Version."

@@ -314,7 +314,9 @@ describe('matrix E — Player UI states', () => {
     await i18n.changeLanguage('en');
     expect(stepDownReasonKey(c.notice!.params)).toBe('notice.because.T7');
     expect(stepDownReasonKey({ reason: 'picture_timeout' })).toBe('notice.because.picture_timeout');
-    expect(stepDownReasonKey({ reason: 'playback_stalled' })).toBe('notice.because.T5');
+    // A stall without a decoder error names what was seen (S4m); "too slowly" stays for a measured timeout.
+    expect(stepDownReasonKey({ reason: 'playback_stalled' })).toBe('notice.because.stalled');
+    expect(stepDownReasonKey({ reason: 'segment_timeout' })).toBe('notice.because.T5');
     expect(stepDownReasonKey({ reason: 'network_unreachable' })).toBeUndefined();
     await c.stop();
   });

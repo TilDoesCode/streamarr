@@ -36,3 +36,21 @@ describe('focus clearance', () => {
     expect(focusGap(focus, 0, 'ring')).toBe(focus.ringGap);
   });
 });
+
+describe('the focus rule on web and tablets (F11 decision: kept, not TV-only)', () => {
+  // Keyboard focus on web (:focus-visible) and iPad (hardware keyboard, pointer) draws the same ring.
+  it.each(['desktop-web', 'tablet'] as const)(
+    '%s raises a row gap to the clearance of its own smaller ring: genre chips 8 -> 12, panel options 4 -> 9',
+    (formFactor) => {
+      const { focus } = createDesign(formFactor, 1280, 800);
+      expect(focusGap(focus, 8, 'row')).toBe(12);
+      expect(focusGap(focus, 4, 'ring')).toBe(9);
+      expect(focusGap(focus, 16, 'row')).toBe(16);
+    }
+  );
+
+  it('phones keep their design gaps (no focus ring there)', () => {
+    const { focus } = createDesign('phone', 390, 844);
+    expect(focusGap(focus, 8, 'row')).toBe(8);
+  });
+});

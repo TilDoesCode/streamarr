@@ -5,6 +5,16 @@ import { useMenuClaim } from '@/components/focus/tv-menu';
 
 export type LibraryZone = 'genres' | 'sort' | 'grid' | null;
 
+export type LibraryFilterParams = { genre?: string; sort?: string };
+
+/** A genre or sort change replaces the page's params on every platform: one Library entry, Back leaves it (F11). */
+export function applyLibraryFilter(
+  router: { setParams(params: LibraryFilterParams): void },
+  params: LibraryFilterParams
+): void {
+  router.setParams(params);
+}
+
 /** TV Back inside a library page: grid or sort -> the selected chip, the chip -> the rail, else the shell's Back. */
 export function libraryBackStep(zone: LibraryZone): {
   step: 'chip' | 'rail' | null;

@@ -30,6 +30,7 @@ export const HINT_KEYS = [
   'convertingAudio',
   'serverRetrying',
   'serverRepairing',
+  'streamBreaks',
 ] as const;
 export type HintKey = (typeof HINT_KEYS)[number];
 
@@ -76,6 +77,7 @@ export const HINT_ACTIONS: Record<HintKey, readonly HintAction[]> = {
   convertingAudio: [],
   serverRetrying: [],
   serverRepairing: [],
+  streamBreaks: [],
 };
 
 /** `{cause}` of `startSlow` and `pausedBySystem`. */

@@ -1,4 +1,5 @@
-import { predictedMethod, type PredictedMethod } from '@/browse/version-format';
+import { languageName, predictedMethod, type PredictedMethod } from '@/browse/version-format';
+import i18n from '@/i18n';
 import type { Version } from '@/browse/queries';
 import { categoryOf } from '@/api/error-categories';
 import type { ErrorLike } from '@/api/error-text';
@@ -202,6 +203,9 @@ export function noticeError(params?: Readonly<Record<string, string>>): ErrorLik
 /** How long a notice stays: TV viewers sit further away and read slower (E11). */
 export const noticeMs = (tv: boolean): number => (tv ? 8_000 : 6_000);
 
+/** Failures seen as a stuck picture, not reported by a decoder. */
+const STALLED = new Set(['picture_frozen', 'video_stalled', 'playback_stalled', 'seek_stalled']);
+
 /** Why a step-down happened, appended to its notice (E14); undefined when the reason says nothing useful. */
 export function stepDownReasonKey(
   params?: Readonly<Record<string, string>>
@@ -209,6 +213,8 @@ export function stepDownReasonKey(
   const reason = params?.reason;
   if (!reason) return undefined;
   if (reason === 'picture_timeout') return 'notice.because.picture_timeout';
+  // A stall or a frozen picture without a decoder error says what was seen, never "this device can't decode" (S6t).
+  if (STALLED.has(reason)) return 'notice.because.stalled';
   if (reason === 'media_damaged') return 'notice.because.media_damaged';
   const category = categoryOf(reason);
   return category === 'T5' || category === 'T6' || category === 'T7'
@@ -219,6 +225,9 @@ export function stepDownReasonKey(
 type NoticeLike = { kind: string; params?: Readonly<Record<string, string>> };
 
 /** The notice line: what changed so playback goes on, in the viewer's words (never a raw code). */
+/** A language code in the viewer's language ("de" → "German" / "Deutsch"). */
+const languageOf = (code: string) => languageName(code, i18n.language);
+
 export function noticeText(
   notice: NoticeLike,
   pt: (key: PlayerKey, options?: Record<string, unknown>) => string,
@@ -234,11 +243,21 @@ export function noticeText(
         .flatMap((key) => (key ? [pt(key, { time: params?.at ?? '' })] : []))
         .join(' ');
     case 'otherVersion':
-      return pt('notice.otherVersion');
+      return [
+        pt('notice.otherVersion'),
+        ...(params?.noAudio
+          ? [pt('notice.noAudioLanguage', { language: languageOf(params.noAudio) })]
+          : []),
+        ...(params?.noSubtitle
+          ? [pt('notice.noSubtitleLanguage', { language: languageOf(params.noSubtitle) })]
+          : []),
+      ].join(' ');
     case 'audioFallback':
       return pt('notice.audioFallback');
     case 'audioRestarted':
       return pt('notice.audioRestarted');
+    case 'otherTab':
+      return pt('notice.otherTab');
     case 'subtitleFailed':
       return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
     case 'subtitleNotDeliverable':

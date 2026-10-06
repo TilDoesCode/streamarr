@@ -59,6 +59,7 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   subtitle_timeout: 'T6',
   subtitle_unreadable: 'T8',
   empty_media: 'T8',
+  delivery_interrupted: 'T6',
   seek_stalled: 'T5',
   module_disabled: 'T9',
   unauthorized: 'T3',

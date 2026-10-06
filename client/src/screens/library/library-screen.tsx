@@ -41,7 +41,13 @@ import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
 import { GenreRow } from './genre-row';
-import { backToChip, libraryBack, useLibraryMenuClaim, type LibraryZone } from './library-back';
+import {
+  applyLibraryFilter,
+  backToChip,
+  libraryBack,
+  type LibraryZone,
+  useLibraryMenuClaim,
+} from './library-back';
 
 // Request the next page while the last loaded rows are this close to the viewport.
 const PAGING_ROWS = 2;
@@ -183,19 +189,15 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
       genre: nextGenre ? String(nextGenre) : undefined,
       sort: nextSort === 'popular' ? undefined : nextSort,
     };
-    // Web: every filter is a history entry (Back restores the previous one); native keeps one screen.
-    if (Platform.OS === 'web') router.push({ pathname: `/${tab}`, params });
-    else router.setParams(params);
+    applyLibraryFilter(router, params);
   };
 
   // A genre id the server does not list (old link, other type) falls back to All.
   const knownGenre = !genre || !genres.data || genres.data.some((item) => item.id === genre);
   useEffect(() => {
     if (knownGenre) return;
-    const params = { genre: undefined, sort: sort === 'popular' ? undefined : sort };
-    if (Platform.OS === 'web') router.replace({ pathname: `/${tab}`, params });
-    else router.setParams(params);
-  }, [knownGenre, router, sort, tab]);
+    applyLibraryFilter(router, { genre: undefined, sort: sort === 'popular' ? undefined : sort });
+  }, [knownGenre, router, sort]);
 
   const loadMore = () => {
     if (library.hasNextPage && !library.isFetchingNextPage && !library.error)

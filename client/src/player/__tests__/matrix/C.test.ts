@@ -198,7 +198,7 @@ describe('matrix C — Delivery (server → engine)', () => {
   );
   row(
     'C08',
-    'a transcode slower than real time: "The server converts slower than playback", then lower quality',
+    'a transcode stall with nothing measured: "Loading takes longer" (never a guessed "converts slower", S9b2 C11), then lower quality',
     async () => {
       const c = await playing(
         {},
@@ -215,7 +215,7 @@ describe('matrix C — Delivery (server → engine)', () => {
       );
       harness.engine.emit({ type: 'buffering', buffering: true });
       await jest.advanceTimersByTimeAsync(4_000);
-      expect(c.status.hint?.key).toBe('serverSlow');
+      expect(c.status.hint?.key).toBe('buffering');
       await jest.advanceTimersByTimeAsync(11_000);
       await settle();
       expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({
@@ -2033,6 +2033,240 @@ describe('matrix C — live native audit S9b: a switch right after a seek (S4k)'
       );
       await c.setQuality(720);
       expect(Number(harness.server.sent('switch').at(-1)?.body?.positionTicks) / TICKS).toBe(20);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — live native audit S9b turn 2: AVPlayer delivery failures (S4l)', () => {
+  const converting = {
+    method: 'transcode',
+    mediaInfo: { durationTicks: 600 * TICKS, audioTracks: [], subtitleTracks: [] },
+  } as never;
+  const stall = () => harness.engine.emit({ type: 'buffering', buffering: true });
+
+  row(
+    'C10',
+    'AVPlayer: a video segment answered 404 while it stalls is the server losing the playback: a new start at the position at once, never a lower quality (S9b2 C10)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, converting, 36);
+      stall();
+      harness.engine.emit({ type: 'loadRetry', status: 404, audio: false });
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.position).toBe(36);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'C15',
+    'AVPlayer: 410 (session closed) on a video segment starts anew at once too (S9b2 C10)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, converting, 36);
+      harness.engine.emit({ type: 'loadRetry', status: 410, audio: false });
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(c.failure).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'C10',
+    'more 404 retries while the new start prepares are the same loss: the new start goes on, never the card (S9b2 C10)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, converting, 36);
+      harness.server.answer('start', reply.hang());
+      harness.engine.emit({ type: 'loadRetry', status: 404, audio: false });
+      await settle();
+      harness.engine.emit({ type: 'loadRetry', status: 404, audio: false });
+      harness.engine.emit({ type: 'loadRetry', status: 404, audio: false });
+      await settle();
+      expect(c.failure).toBeNull();
+      expect(starts()).toHaveLength(2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C11',
+    'AVPlayer: 503 on the video segments during a stall says "Problem on the server, retrying", then reloads; never "converts slower", never a lower quality (S9b2 C11)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, converting, 30);
+      stall();
+      for (let second = 0; second < 20; second++) {
+        if (second % 3 === 0) harness.engine.emit({ type: 'loadRetry', status: 503, audio: false });
+        await jest.advanceTimersByTimeAsync(1_000);
+        expect(c.status.hint?.key).not.toBe('serverSlow');
+      }
+      expect(c.status.hint?.key).toMatch(/serverRetrying|serverError|reloading/);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    'a converted playback that stalls with no measured conversion speed and no error says "Loading takes longer", never "converts slower" (S9b2 C11)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, converting, 30);
+      stall();
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(c.status.hint).toEqual({ key: 'buffering' });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — live native audit S9b turn 2: a broken subtitle rendition stalls AVPlayer (S4l)', () => {
+  const subtitled = {
+    method: 'transcode',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [
+        { index: 2, language: 'en', deliveredAs: 'webvtt', selected: true },
+        { index: 3, language: 'de', deliveredAs: 'webvtt', selected: false },
+      ],
+    },
+  } as never;
+  const tracks = (selected: string | null) => ({
+    audio: [],
+    subtitles: [
+      { id: 's0', label: 'en', language: 'en', selected: selected === 's0' },
+      { id: 's1', label: 'de', language: 'de', selected: selected === 's1' },
+    ],
+  });
+
+  row(
+    'C22',
+    'AVPlayer waits for a subtitle segment that fails: the error turns the subtitles off first and the stall gets a fresh budget, no step-down (S9b2 C22)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, subtitled, 45);
+      harness.engine.emit({ type: 'tracks', tracks: tracks('s0') });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(10_000);
+      harness.engine.emit({ type: 'subtitleError', code: 'unknown_subtitle_stream' });
+      expect(harness.engine.commands.at(-1)).toBe('subtitle:null');
+      expect(c.notice).toMatchObject({ kind: 'subtitleFailed' });
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C22',
+    'AVPlayer stalls with a subtitle rendition on and no error at all: the first step turns the subtitles off (with the notice), before any lower quality or other way (S9b2 C22)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, subtitled, 45);
+      harness.engine.emit({ type: 'tracks', tracks: tracks('s0') });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(16_000);
+      expect(harness.engine.commands).toContain('subtitle:null');
+      expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { index: '2' } });
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      // Still stalled with the subtitles off: now the usual ladder.
+      await jest.advanceTimersByTimeAsync(16_000);
+      expect(
+        harness.server.sent('switch').length + harness.engine.load.mock.calls.length
+      ).toBeGreaterThan(1);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C22',
+    'the web engine is never asked to drop subtitles for a stall: hls.js does not wait for them',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({ nativeEngine: 'web' } as never, subtitled, 45);
+      harness.engine.emit({ type: 'tracks', tracks: tracks('s0') });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(16_000);
+      expect(harness.engine.commands).not.toContain('subtitle:null');
+      await c.stop();
+    }
+  );
+
+  row(
+    'C10',
+    'a forced subtitle the engine shows on its own (none selected in the engine) survives a ladder step: the new source asks for it again (S9b2 forced subtitle)',
+    async () => {
+      jest.useFakeTimers();
+      const forced = {
+        method: 'remux',
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [
+            { index: 5, language: 'de', forced: true, deliveredAs: 'webvtt', selected: true },
+          ],
+        },
+      } as never;
+      const c = await playing({}, forced, 36);
+      const avplayer = {
+        audio: [],
+        subtitles: [{ id: 's0', label: 'de', language: 'de', selected: false }],
+      };
+      harness.engine.emit({ type: 'tracks', tracks: avplayer });
+      await playOn(16);
+      // AVPlayer shows a forced rendition by itself and reports no selected legible option.
+      harness.engine.emit({ type: 'tracks', tracks: avplayer });
+      expect(c.currentSubtitle()).toBe(5);
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 410');
+      await settle();
+      expect(starts().at(-1)?.body.subtitleStreamIndex).toBe(5);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C10',
+    'a viewer who turned the forced subtitle off keeps it off through a ladder step',
+    async () => {
+      jest.useFakeTimers();
+      const forced = {
+        method: 'remux',
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [],
+          subtitleTracks: [
+            { index: 5, language: 'de', forced: true, deliveredAs: 'webvtt', selected: true },
+          ],
+        },
+      } as never;
+      const c = await playing({}, forced, 36);
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [],
+          subtitles: [{ id: 's0', label: 'de', language: 'de', selected: true }],
+        },
+      });
+      await c.selectSubtitle(null);
+      expect(c.currentSubtitle()).toBeNull();
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 410');
+      await settle();
+      expect(starts().at(-1)?.body.subtitleStreamIndex).toBe(-1);
       await c.stop();
     }
   );

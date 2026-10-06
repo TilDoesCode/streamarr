@@ -932,6 +932,10 @@
         "title": "This version has nothing to play",
         "message": "The file of this version is empty or shorter than a second. Choose another version."
       },
+      "delivery_interrupted": {
+        "title": "The stream keeps breaking off",
+        "message": "The server answers, but the video stream keeps breaking off. Try again or choose another version."
+      },
       "audio_rendition_failed": {
         "title": "The sound couldn’t be loaded",
         "message": "The server couldn’t deliver the sound of this version, not even converted. Try again or choose another version."

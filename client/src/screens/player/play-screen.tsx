@@ -38,6 +38,7 @@ import { usePlayerClock } from '@/player/use-clock';
 import { useCloseOnFailure } from './use-close-on-failure';
 import { hintText, type HintAction } from '@/player/recovery/hints';
 import { usePlayerT } from '@/player/use-player-t';
+import { isPlayingHere, useOneTabPlays } from '@/player/tab-guard';
 import { useShell } from '@/shell/use-shell';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
@@ -47,6 +48,8 @@ import { cardButtons, failureReason } from './card-actions';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
+import { useCloseAfterFrame } from './closing';
+import { LoaderMotionContext } from '@/components/ui/loader-motion';
 
 type Params = {
   playbackId: string;
@@ -96,14 +99,18 @@ export function PlayScreen() {
   const title = params.title ?? '';
   const startSeconds = params.start === undefined ? undefined : Number(params.start) || 0;
   const leaving = useRef(false);
+  // Loaders stop one render before the player's screen goes (F12-1); the navigation follows a frame later.
+  const { closing, closeAfterFrame } = useCloseAfterFrame();
   const close = () => {
     leaving.current = true;
-    leavePlayer(router);
+    const opener = openerLeaf(navigation.getState());
+    closeAfterFrame(() => leavePlayer(router, { detail: detailHref(workId), opener }));
   };
   const backToDetails = () => {
     const href = detailHref(workId);
-    if (!href || isDetailOf(openerLeaf(navigation.getState()), workId)) close();
-    else router.replace(href);
+    if (!href || isDetailOf(openerLeaf(navigation.getState()), workId)) return close();
+    leaving.current = true;
+    closeAfterFrame(() => router.replace(href));
   };
 
   useSyncExternalStore(
@@ -111,6 +118,8 @@ export function PlayScreen() {
     controller?.getVersion ?? zero,
     controller?.getVersion ?? zero
   );
+  // Web: one playing tab per browser; a start in another tab pauses this one (F12).
+  useOneTabPlays(isPlayingHere(controller), () => controller?.yieldToOtherTab());
   const { clock: clockState, onVisibleChange: setOverlayShown } = usePlayerClock(
     controller?.engine,
     panel !== null
@@ -226,7 +235,7 @@ export function PlayScreen() {
     else if (action === 'signIn') {
       // Signed out mid-play: the position is saved (queued reports); the account screen signs in again.
       leaving.current = true;
-      router.replace('/profiles');
+      closeAfterFrame(() => router.replace('/profiles'));
     } else close();
   };
 
@@ -252,230 +261,241 @@ export function PlayScreen() {
   const top = Math.max(insets.top, design.layout.edgeVertical);
 
   return (
-    <View
-      testID={`play-screen-${params.playbackId}`}
-      style={{ flex: 1, backgroundColor: colors.video }}>
-      {controller && playing ? (
-        <PlayerOverlay
-          controller={controller}
-          clock={clockState}
-          title={title}
-          suspended={panel !== null || picker || showUpNext || showEndCard}
-          ended={showEndCard}
-          onPanel={setPanel}
-          panel={panel}
-          onClose={close}
-          backRef={overlayBack}
-          onVisibleChange={(visible) => {
-            setOverlayShown(visible);
-            setControlsShown(visible);
-          }}
-        />
-      ) : null}
-      {controller &&
-      playing &&
-      status &&
-      !pip &&
-      !showEndCard &&
-      // A viewer's switch shows its explanation in the switching card; running steps keep their spinner and hint.
-      (phase !== 'switching' || status.spinner) ? (
-        <PlayerStatusView
-          status={
-            hintDismissed && status.hint?.key === hintDismissed ? { ...status, hint: null } : status
-          }
-          onAction={onStatusAction}
-          controlsVisible={controlsShown}
-          top={top + design.px(design.isTV ? 70 : 56)}
-          noticeShown={!!notice && !pip}
-        />
-      ) : null}
-      {failed ? (
-        <ScrollView
-          contentContainerStyle={[
-            styles.centre,
-            { padding: design.layout.gutter, gap: design.space.xl },
-          ]}>
-          <PlayerCard testID="play-error-card" width={900}>
-            <View style={{ gap: design.space.xs, alignItems: 'center' }}>
-              <Text variant="overline" tone="muted">
-                {pt('stepper.failed')}
-              </Text>
-              {title ? <PlayerCardTitle>{title}</PlayerCardTitle> : null}
-            </View>
-            {controller?.states.length ? (
-              <StartStepper playback={controller.playback} states={controller.states} failed />
-            ) : null}
-            <ErrorState
-              testID="play-error"
-              compact
-              code={code}
-              params={failure?.params}
-              status={failure?.status}
-              actions={workId ? actions : ['back']}
-              autoFocus={!picker}
-              onAction={onFailureAction}
-            />
-            {reason ? (
-              <Text testID="play-error-reason" variant="callout" tone="muted">
-                {reason}
-              </Text>
-            ) : null}
-            {failure?.hint ? (
-              <Text testID="play-error-hint" variant="callout" style={{ textAlign: 'center' }}>
-                {hintText(pt, failure.hint.key, failure.hint.params)}
-              </Text>
-            ) : null}
-            {failure?.tried?.length ? <RecoveryLog tried={failure.tried} /> : null}
-          </PlayerCard>
-        </ScrollView>
-      ) : phase === 'resume' && controller ? (
-        <View testID="play-resume" style={[styles.fill, styles.centre, { gap: design.space.lg }]}>
-          <PlayerCard>
-            <Text variant="overline" tone="muted">
-              {title}
-            </Text>
-            <PlayerCardTitle>{pt('resume.title')}</PlayerCardTitle>
-            <FocusGuide trap={CENTRED_ROW} style={{ flexDirection: 'row', gap: resumeGap }}>
-              <GlassButton
-                testID="play-resume-yes"
-                tone="solid"
-                icon={Play}
-                label={pt('resume.resume', { time: clock(controller.resumeSeconds) })}
-                hasTVPreferredFocus
-                onPress={() => controller.chooseStart(true)}
-              />
-              <GlassButton
-                testID="play-resume-no"
-                icon={RotateCcw}
-                label={pt('resume.fromStart')}
-                onPress={() => controller.chooseStart(false)}
-              />
-            </FocusGuide>
-          </PlayerCard>
-        </View>
-      ) : !playing ? (
-        <View testID="play-starting" style={[styles.fill, styles.centre, { gap: design.space.xl }]}>
-          <PlayerCard testID="play-starting-card">
-            <View style={{ gap: design.space.xs, alignItems: 'center' }}>
-              <Text variant="overline" tone="muted">
-                {pt('stepper.title')}
-              </Text>
-              <PlayerCardTitle>{title}</PlayerCardTitle>
-            </View>
-            <StartStepper
-              playback={controller?.playback ?? null}
-              states={controller?.states ?? []}
-            />
-            {status?.hint ? (
-              <Text testID={`play-starting-${status.hint.key}`} variant="callout" tone="muted">
-                {hintText(pt, status.hint.key, status.hint.params)}
-              </Text>
-            ) : null}
-          </PlayerCard>
-        </View>
-      ) : null}
-      {/* TV: a failed start offers Zurück in the card; a corner X there would hold focus out of the card's reach. */}
-      {(!playing || failed) && !(failed && design.isTV) ? (
-        <View style={{ position: 'absolute', top, left: design.layout.gutter }}>
-          <GlassButton
-            testID="play-close"
-            iconOnly
-            icon={X}
-            label={pt('controls.close')}
-            hasTVPreferredFocus={!failed && phase !== 'resume'}
-            onPress={close}
+    <LoaderMotionContext value={!closing}>
+      <View
+        testID={`play-screen-${params.playbackId}`}
+        style={{ flex: 1, backgroundColor: colors.video }}>
+        {controller && playing ? (
+          <PlayerOverlay
+            controller={controller}
+            clock={clockState}
+            title={title}
+            suspended={panel !== null || picker || showUpNext || showEndCard}
+            ended={showEndCard}
+            onPanel={setPanel}
+            panel={panel}
+            onClose={close}
+            backRef={overlayBack}
+            onVisibleChange={(visible) => {
+              setOverlayShown(visible);
+              setControlsShown(visible);
+            }}
           />
-        </View>
-      ) : null}
-      {phase === 'switching' ? (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
-          <PlayerCard testID="play-switching" width={640}>
-            <Text variant="callout">{pt('stepper.switching')}</Text>
-            <StartStepper
-              playback={controller?.playback ?? null}
-              states={controller?.states ?? []}
-            />
-            {status?.hint && !status.spinner ? (
-              <Text testID={`play-switching-${status.hint.key}`} variant="callout" tone="muted">
-                {hintText(pt, status.hint.key, status.hint.params)}
+        ) : null}
+        {controller &&
+        playing &&
+        status &&
+        !pip &&
+        !showEndCard &&
+        // A viewer's switch shows its explanation in the switching card; running steps keep their spinner and hint.
+        (phase !== 'switching' || status.spinner) ? (
+          <PlayerStatusView
+            status={
+              hintDismissed && status.hint?.key === hintDismissed
+                ? { ...status, hint: null }
+                : status
+            }
+            onAction={onStatusAction}
+            controlsVisible={controlsShown}
+            top={top + design.px(design.isTV ? 70 : 56)}
+            noticeShown={!!notice && !pip}
+          />
+        ) : null}
+        {failed ? (
+          <ScrollView
+            contentContainerStyle={[
+              styles.centre,
+              { padding: design.layout.gutter, gap: design.space.xl },
+            ]}>
+            <PlayerCard testID="play-error-card" width={900}>
+              <View style={{ gap: design.space.xs, alignItems: 'center' }}>
+                <Text variant="overline" tone="muted">
+                  {pt('stepper.failed')}
+                </Text>
+                {title ? <PlayerCardTitle>{title}</PlayerCardTitle> : null}
+              </View>
+              {controller?.states.length ? (
+                <StartStepper playback={controller.playback} states={controller.states} failed />
+              ) : null}
+              <ErrorState
+                testID="play-error"
+                compact
+                code={code}
+                params={failure?.params}
+                status={failure?.status}
+                actions={workId ? actions : ['back']}
+                autoFocus={!picker}
+                onAction={onFailureAction}
+              />
+              {reason ? (
+                <Text testID="play-error-reason" variant="callout" tone="muted">
+                  {reason}
+                </Text>
+              ) : null}
+              {failure?.hint ? (
+                <Text testID="play-error-hint" variant="callout" style={{ textAlign: 'center' }}>
+                  {hintText(pt, failure.hint.key, failure.hint.params)}
+                </Text>
+              ) : null}
+              {failure?.tried?.length ? <RecoveryLog tried={failure.tried} /> : null}
+            </PlayerCard>
+          </ScrollView>
+        ) : phase === 'resume' && controller ? (
+          <View testID="play-resume" style={[styles.fill, styles.centre, { gap: design.space.lg }]}>
+            <PlayerCard>
+              <Text variant="overline" tone="muted">
+                {title}
               </Text>
-            ) : null}
-          </PlayerCard>
-        </View>
-      ) : null}
-      {notice && !pip ? (
-        <Glass
-          testID={`player-notice-${notice.kind}`}
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: top + design.px(design.isTV ? 70 : 56),
-            alignSelf: 'center',
-            maxWidth: design.px(640),
-            paddingHorizontal: design.space.lg,
-            paddingVertical: design.space.sm,
-          }}
-          intensity="strong"
-          radius={design.radius.md}>
-          <Text variant="callout">
-            {noticeText(
-              notice,
-              pt,
-              (error) => describeError(t, error).message,
-              (index) => {
-                const tracks = controller?.playback?.mediaInfo?.subtitleTracks ?? [];
-                const track = tracks.find((item) => item.index === index);
-                return track
-                  ? subtitleLabel(track, tracks, (code) => languageName(code, i18n.language, t), '')
-                  : pt('trackFallback', { index });
-              }
-            )}
-          </Text>
-        </Glass>
-      ) : null}
-      {showUpNext && next ? (
-        <UpNextCard
-          next={next}
-          paused={!!controller?.paused}
-          onPlay={playNext}
-          onCancel={() => setUpNextDismissedFor(workId)}
-        />
-      ) : null}
-      {showEndCard && controller ? (
-        <EndCard
+              <PlayerCardTitle>{pt('resume.title')}</PlayerCardTitle>
+              <FocusGuide trap={CENTRED_ROW} style={{ flexDirection: 'row', gap: resumeGap }}>
+                <GlassButton
+                  testID="play-resume-yes"
+                  tone="solid"
+                  icon={Play}
+                  label={pt('resume.resume', { time: clock(controller.resumeSeconds) })}
+                  hasTVPreferredFocus
+                  onPress={() => controller.chooseStart(true)}
+                />
+                <GlassButton
+                  testID="play-resume-no"
+                  icon={RotateCcw}
+                  label={pt('resume.fromStart')}
+                  onPress={() => controller.chooseStart(false)}
+                />
+              </FocusGuide>
+            </PlayerCard>
+          </View>
+        ) : !playing ? (
+          <View
+            testID="play-starting"
+            style={[styles.fill, styles.centre, { gap: design.space.xl }]}>
+            <PlayerCard testID="play-starting-card">
+              <View style={{ gap: design.space.xs, alignItems: 'center' }}>
+                <Text variant="overline" tone="muted">
+                  {pt('stepper.title')}
+                </Text>
+                <PlayerCardTitle>{title}</PlayerCardTitle>
+              </View>
+              <StartStepper
+                playback={controller?.playback ?? null}
+                states={controller?.states ?? []}
+              />
+              {status?.hint ? (
+                <Text testID={`play-starting-${status.hint.key}`} variant="callout" tone="muted">
+                  {hintText(pt, status.hint.key, status.hint.params)}
+                </Text>
+              ) : null}
+            </PlayerCard>
+          </View>
+        ) : null}
+        {/* TV: a failed start offers Zurück in the card; a corner X there would hold focus out of the card's reach. */}
+        {(!playing || failed) && !(failed && design.isTV) ? (
+          <View style={{ position: 'absolute', top, left: design.layout.gutter }}>
+            <GlassButton
+              testID="play-close"
+              iconOnly
+              icon={X}
+              label={pt('controls.close')}
+              hasTVPreferredFocus={!failed && phase !== 'resume'}
+              onPress={close}
+            />
+          </View>
+        ) : null}
+        {phase === 'switching' ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
+            <PlayerCard testID="play-switching" width={640}>
+              <Text variant="callout">{pt('stepper.switching')}</Text>
+              <StartStepper
+                playback={controller?.playback ?? null}
+                states={controller?.states ?? []}
+              />
+              {status?.hint && !status.spinner ? (
+                <Text testID={`play-switching-${status.hint.key}`} variant="callout" tone="muted">
+                  {hintText(pt, status.hint.key, status.hint.params)}
+                </Text>
+              ) : null}
+            </PlayerCard>
+          </View>
+        ) : null}
+        {notice && !pip ? (
+          <Glass
+            testID={`player-notice-${notice.kind}`}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: top + design.px(design.isTV ? 70 : 56),
+              alignSelf: 'center',
+              maxWidth: design.px(640),
+              paddingHorizontal: design.space.lg,
+              paddingVertical: design.space.sm,
+            }}
+            intensity="strong"
+            radius={design.radius.md}>
+            <Text variant="callout">
+              {noticeText(
+                notice,
+                pt,
+                (error) => describeError(t, error).message,
+                (index) => {
+                  const tracks = controller?.playback?.mediaInfo?.subtitleTracks ?? [];
+                  const track = tracks.find((item) => item.index === index);
+                  return track
+                    ? subtitleLabel(
+                        track,
+                        tracks,
+                        (code) => languageName(code, i18n.language, t),
+                        ''
+                      )
+                    : pt('trackFallback', { index });
+                }
+              )}
+            </Text>
+          </Glass>
+        ) : null}
+        {showUpNext && next ? (
+          <UpNextCard
+            next={next}
+            paused={!!controller?.paused}
+            onPlay={playNext}
+            onCancel={() => setUpNextDismissedFor(workId)}
+          />
+        ) : null}
+        {showEndCard && controller ? (
+          <EndCard
+            title={title}
+            next={next}
+            onReplay={() => controller.replay()}
+            onBack={backToDetails}
+            onNext={playNext}
+          />
+        ) : null}
+        {controller ? (
+          <PlayerPanels
+            panel={panel}
+            onClose={() => setPanel(null)}
+            controller={controller}
+            title={title}
+            glass={large}
+            clock={clockState}
+            onPanel={setPanel}
+            onBack={onBack}
+          />
+        ) : null}
+        <VersionPicker
+          open={picker}
+          onClose={() => setPicker(false)}
+          workId={workId}
           title={title}
-          next={next}
-          onReplay={() => controller.replay()}
-          onBack={backToDetails}
-          onNext={playNext}
-        />
-      ) : null}
-      {controller ? (
-        <PlayerPanels
-          panel={panel}
-          onClose={() => setPanel(null)}
-          controller={controller}
-          title={title}
+          currentReleaseId={controller?.playback?.version?.releaseId}
           glass={large}
-          clock={clockState}
-          onPanel={setPanel}
-          onBack={onBack}
+          onPlay={(version) => {
+            setPicker(false);
+            setReleaseId(version.releaseId ?? undefined);
+            setAttempt((value) => value + 1);
+          }}
         />
-      ) : null}
-      <VersionPicker
-        open={picker}
-        onClose={() => setPicker(false)}
-        workId={workId}
-        title={title}
-        currentReleaseId={controller?.playback?.version?.releaseId}
-        glass={large}
-        onPlay={(version) => {
-          setPicker(false);
-          setReleaseId(version.releaseId ?? undefined);
-          setAttempt((value) => value + 1);
-        }}
-      />
-    </View>
+      </View>
+    </LoaderMotionContext>
   );
 }
 

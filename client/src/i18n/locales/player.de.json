@@ -103,14 +103,18 @@
       "T5": "Das Video kam zu langsam an.",
       "T6": "Der Server hatte ein Problem.",
       "picture_timeout": "Das Bild blieb schwarz.",
+      "stalled": "Das Bild blieb hängen.",
       "media_damaged": "Die Videodaten sind bei {time} beschädigt."
     },
     "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht.",
+    "noSubtitleLanguage": "Diese Version hat keine Untertitel auf {language}.",
+    "noAudioLanguage": "Diese Version hat keinen Ton auf {language}.",
     "audioFallback": "Ton in Stereo umgewandelt, damit es weitergeht.",
     "subtitleFailed": "Untertitel „{label}“ konnten nicht geladen werden und sind aus. {retry, select, later {Sie werden in einer Minute erneut versucht.} other {Wähle andere Untertitel.}}",
     "subtitleNotDeliverable": "Untertitel „{label}“ können auf diesem Gerät nicht angezeigt werden. Wähle andere Untertitel.",
     "subtitleNotDeliverableVlc": "Untertitel „{label}“ können hier nicht angezeigt werden. Spiele mit VLC ab, um sie zu sehen.",
-    "audioRestarted": "Tonspur gewechselt; die Wiedergabe wurde dafür an derselben Stelle neu gestartet."
+    "audioRestarted": "Tonspur gewechselt; die Wiedergabe wurde dafür an derselben Stelle neu gestartet.",
+    "otherTab": "Wiedergabe in einem anderen Tab gestartet, deshalb hier pausiert. Drücke Abspielen, um hier weiterzuschauen."
   },
   "upNext": {
     "title": "Als Nächstes",
@@ -154,6 +158,7 @@
     "convertingAudio": "Kein Ton. Der Ton wird umgewandelt, es geht weiter bei {time} …",
     "serverRetrying": "Der Server hatte ein Problem mit diesem Teil des Videos. Neuer Versuch …",
     "serverRepairing": "Der Server repariert fehlende Daten dieses Videos. Wird gepuffert …",
+    "streamBreaks": "Der Stream bricht immer wieder ab. Wird bei {time} neu geladen …",
     "causes": {
       "call": "Anruf",
       "otherAudio": "eine andere App spielt Ton",

@@ -7,6 +7,8 @@ export type SubtitleRetryHost = {
   release(): string | null;
   /** Shows the failed subtitles again; false when the engine has no track for them. */
   show(index: number): boolean;
+  /** Playback runs without a stall: a subtitle dropped for a stall comes back only then. */
+  healthy?(): boolean;
 };
 
 type Entry = {
@@ -25,13 +27,17 @@ export class SubtitleRetry {
   constructor(private readonly host: SubtitleRetryHost) {}
 
   /** The shown subtitles failed; null when none were shown. `retryLater` says whether they come back on their own. */
-  fail(now = Date.now()): { index: number; retryLater: boolean } | null {
+  fail(
+    now = Date.now(),
+    { stall = false }: { stall?: boolean } = {}
+  ): { index: number; retryLater: boolean } | null {
     const entry = this.entry;
     // While they are off, more failures of the same subtitles find nothing shown and change nothing.
     const index = entry?.retrying ? entry.index : this.host.current();
     if (index === null) return null;
     const recent = !!entry && entry.index === index && now - entry.at < INCIDENT_RESET_MS;
-    const failures = (recent ? entry.failures : 0) + 1;
+    // Dropped only to unblock a stall (AVPlayer): not a failure of the subtitles, never off for good (S4n).
+    const failures = (recent ? entry.failures : 0) + (stall ? 0 : 1);
     this.clear();
     const retryLater = failures <= SUBTITLE_RETRIES;
     const timer = retryLater ? setTimeout(() => this.retry(), SUBTITLE_RETRY_MS) : null;
@@ -45,6 +51,11 @@ export class SubtitleRetry {
     entry.timer = null;
     // The viewer chose other subtitles meanwhile (theirs win), or another release has other indexes.
     if (this.host.current() !== null || this.host.release() !== entry.release) return this.clear();
+    // Still stalled: try again a retry interval later instead of re-adding what may block it.
+    if (this.host.healthy && !this.host.healthy()) {
+      entry.timer = setTimeout(() => this.retry(), SUBTITLE_RETRY_MS);
+      return;
+    }
     if (!this.host.show(entry.index)) return this.clear();
     entry.retrying = true;
   }

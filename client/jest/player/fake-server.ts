@@ -3,13 +3,19 @@ import type { Playback } from '@/player/playback-api';
 
 /** One scripted answer: an HTTP status with a body, or a transport failure (fetch rejects). */
 export type Reply =
-  | { status: number; body?: unknown; retryAfter?: number }
+  | { status: number; body?: unknown; retryAfter?: number; date?: string }
   | { network: string }
   /** No answer until the request is aborted; then it rejects like React Native's fetch (AbortError, not the reason). */
   | { hang: true };
 
 export const reply = {
   ok: (body?: unknown, status = 200): Reply => ({ status, body }),
+  /** A 2xx whose `Date` header carries the server's clock (B15 issue ages). */
+  okAt: (body: unknown, serverTime: number): Reply => ({
+    status: 200,
+    body,
+    date: new Date(serverTime).toUTCString(),
+  }),
   /** The server's error envelope. */
   error: (
     status: number,
@@ -136,9 +142,10 @@ export class FakeServer {
       response: {
         ok,
         status: answer.status,
-        headers: new Headers(
-          answer.retryAfter === undefined ? {} : { 'Retry-After': String(answer.retryAfter) }
-        ),
+        headers: new Headers({
+          ...(answer.retryAfter === undefined ? {} : { 'Retry-After': String(answer.retryAfter) }),
+          ...(answer.date === undefined ? {} : { Date: answer.date }),
+        }),
       },
     };
   }

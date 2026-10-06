@@ -7,6 +7,8 @@ export type FocusMemory = {
   forget: (view: View) => void;
   /** Forgets the remembered element (its content was replaced). */
   reset?: () => void;
+  /** Where focus returns when the remembered element is gone (the screen's main target, F12). */
+  prefer?: (view: View | null) => void;
 };
 
 export const FocusMemoryContext = createContext<FocusMemory | null>(null);

@@ -1,151 +1,100 @@
 # Streamarr Client — backlog
 
-Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every earlier entry is either still open below
-(with the reason it stays) or listed under "Fixed" with the task that fixed it. The journals hold the evidence.
+Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30) and again in F11 (2026-10-06): every earlier
+entry is either still open below (with the reason it stays) or listed under "Fixed" with the task that fixed it. The
+journals hold the evidence.
 
 ## Decisions for the user
 
 - None open. Decided 2026-10-02: forced subtitles follow the audio language; phones resume the last played version
-  (PLAN.md section 5, implemented in F7 S4). Round G decisions are in PLAN.md section 2.
+  (PLAN.md section 5, implemented in F7 S4). Round G decisions are in PLAN.md section 2. F11 recorded one design
+  decision itself (focus gaps on web/tablet, see Fixed).
 
 ## Needs Xcode (pending-ios)
 
 - Apple TV (I4): VLCKit works on tvOS (H.264 MKV direct over VLC, AC3 5.1 + forced ASS tracks, remote keys, release;
   sim), but tvOS versions stay native-only (no VLC hints): HEVC/AV1/MPEG-2 software decoding through VLC on a real
-  Apple TV is unchecked. Check on hardware, then add `tvos` to `VLC_HINT_PLATFORMS` (player/device-profile.ts).
-- Apple TV (I4): a JS-initiated pop inside a tab stack (`navigation.goBack()`/`POP`/`POP_TO`) leaves the native stack
-  at its root when a page below was pushed by a deep link (react-native-screens skips its controller as removed); Menu
-  (a native pop) is fine. Deep links now pop natively (tv-native `popToScreen`); any future JS back in a tvOS tab stack
-  must use the same path or be checked live.
+  Apple TV is unchecked. Check on hardware, then add `tvos` to `VLC_HINT_PLATFORMS` (player/device-profile.ts; still
+  absent in F11).
+- Apple TV (I4), standing rule rather than a bug: a JS-initiated pop inside a tab stack (`navigation.goBack()`/`POP`/
+  `POP_TO`) leaves the native stack at its root when a page below was pushed by a deep link (react-native-screens skips
+  its controller as removed); Menu (a native pop) is fine. Deep links now pop natively (tv-native `popToScreen`); any
+  future JS back in a tvOS tab stack must use the same path or be checked live.
 - Apple TV dev builds (I4 S4): a Metro reload can crash in expo-modules-core `ExpoFabricView.injectInitializer`
-  (AppContextLost) while a TVFocusHost view mounts during the reload; dev-only, seen once. A deep link to a new title
-  while the player is open still closes the player through the router.
-- HeroFade has no fallback when the masked-view native module is missing (check after the first iOS pod install).
-
-## Needs real hardware (Android TV, ideally a 2 GB device; a real phone)
-
-- F5: Android phone pass of the in-session audio switch not done: the dev build ANRs right after the player starts on
-  the 2 GB `Streamarr_Phone` AVD (Google TV covered ExoPlayer). Run it on a real phone or a release build.
-
-- HEVC Main10 / HDR10 / Dolby Vision decode and HDR display modes; AC-3 / E-AC-3 / DTS / TrueHD passthrough; 4K on a TV SoC.
-- VLC: direct rendering (zero copy, black on emulators), first-seek latency in MKV (2.7–7.3 s on emulators), HDR output
-  (the TextureView cannot carry HDR), stall watchdog on a real stall.
-- Hold-scrub tiers 30/60/120 s on a real remote (emulator sends one repeat; unit-tested).
-- Memory: home screen uses ~520 MB native in the dev build; measure a release build (the 2 GB emulator had one player ANR
-  at ~290 MB free after many bundle reloads in F1).
-- Phone blur cost: the software-GL AVD shows RenderThread ~84 % with the blurred ambient; re-measure on a real phone.
-- TV: returning to Home from the profile picker shows a 1–2 s frame of lifted rows over the hero copy (slow emulator).
-- TLS failure message against a real self-signed server; TV keyboards other than Gboard.
-- iPhone/iPad (I1/I2): HEVC/HDR/Dolby Vision media caps, PiP start, AirPlay picker, iPad pointer hover
-  (`modules/pointer-events` -> `Focusable` onPointerEnter) and hardware-key hold-repeat (unit-tested only).
+  (AppContextLost) while a TVFocusHost view mounts during the reload; dev-only, seen once. (The "deep link while the
+  player is open closes the player" half was handled in I4.)
+- F5: the Apple HLS validator (`mediastreamvalidator`) was still not run on the audio-rendition master (needs Apple's
+  HLS tools; also listed under Server for the server-side group).
 - iPadOS window controls: the inset in a resized window is a fixed 30 pt (iPadOS 27 simulator); a native layout-region
   read would be exact.
-- Apple TV (I3): Siri Remote touch surface (swipe scrubbing, clickpad), AVPlayer HDR10/Dolby Vision output and HEVC
-  hardware decode (the simulator reports H.264-only SDR), top shelf, audio passthrough.
+
+## Needs real hardware
+
+Grouped by device. None of these can be closed from code or an emulator.
+
+**Android phone (a real one, or a release build)**
+- P3 (reopened in F12 follow-up, verify F11-1): a keyboard that comes up late (slow device, IME switch) leaves "Sign in"
+  half covered; the screen scrolls only partly (F9.md:474). `auth-scaffold.tsx` is unchanged since F9. Check on a real
+  phone with a slow IME.
+- F5: in-session audio switch on the phone not done: the dev build ANRs right after the player starts on the 2 GB
+  `Streamarr_Phone` AVD (Google TV covered ExoPlayer); R1 played on a release phone build but did not switch audio.
+- Phone blur cost: the software-GL AVD shows RenderThread ~84 % with the blurred ambient (R1 still an AVD number).
+- Accounts (F4 slice 2): ANRs on the two-step setup screen (QR + secret) under host memory pressure; likely dev-only
+  (R1 release builds had no ANR at ⅓ of the memory) — re-run the QR/Glass screen once on a release build.
+
+**Android TV (ideally a 2 GB device)**
+- HEVC Main10 / HDR10 / Dolby Vision decode and HDR display modes; AC-3 / E-AC-3 / DTS / TrueHD passthrough; 4K on a TV SoC.
+- VLC: direct rendering (zero copy, black on emulators), first-seek latency in MKV (2.7–7.3 s on emulators), HDR output
+  (the TextureView cannot carry HDR), stall watchdog on a real stall (F10 S7 added the DR black check and the shared
+  watchdog for VLC; jest-only so far).
+- Hold-scrub tiers 30/60/120 s on a real remote (emulator sends one repeat; unit-tested).
+- TV: returning to Home from the profile picker shows a 1–2 s frame of lifted rows over the hero copy (slow emulator;
+  not re-checked).
+- TLS failure message against a real self-signed server (F10 classifies it as T1 `tls_error`); TV keyboards other
+  than Gboard.
+
+**iPhone / iPad**
+- P3 (reopened in F12 follow-up, verify F11-1): the large title on Search shrinking on scroll was never shown live; F9
+  showed it on Settings only and called Search "same structure" (F9.md:293). Check on an iPhone with a real library.
+- HEVC/HDR/Dolby Vision media caps, PiP start, AirPlay picker, iPad pointer hover (`modules/pointer-events` ->
+  `Focusable` onPointerEnter) and hardware-key hold-repeat (unit-tested only).
+- iPhone (I1 verify): BBB WEB-DL direct play showed frame 0 for ~45 s while the clock ran until a seek (loaded host);
+  not reproduced since I2's StartSeek fix (F10's start cover may now hide it); watch for it on hardware.
+- iPhone simulator (F9 S2b, Q1-48): first launch after a simulator boot drew the picker sideways once (1 of 3 cold
+  starts; splash already rotated, so native/UIKit before JS). Not reproducible on demand; re-check on hardware.
+
+**Apple TV**
+- Siri Remote touch surface (swipe scrubbing, clickpad), AVPlayer HDR10/Dolby Vision output and HEVC hardware decode
+  (the simulator reports H.264-only SDR), top shelf, audio passthrough (I3).
 
 ## Player
 
-- F5: the native engines' in-session error path (rendition 404/500 -> `/switch`, 8 s timeout) is unit-tested only;
-  ExoPlayer/AVPlayer report no per-rendition HTTP error. Force it live once on a fast host (JS hook that alters the
-  rendition URL is not possible natively; needs a server-side test switch).
-- F5: Safari lists the forced subtitle with `kind: "forced"`, the web engine skips that kind, so the subtitle panel on
-  Safari misses the forced track (pre-existing; audio no longer depends on the count).
-- F5: the Apple HLS validator (`mediastreamvalidator`) was still not run on the audio-rendition master.
-
-- Decoder and dropped-frame figures are "—" for expo-video on Android; VLC decoder labels are best effort (needs an
-  expo-video API for decoder stats).
-
-- Google TV (F8 S4b): a Back pressed within ~0.5 s after a side panel closed is dropped natively: neither the RN
-  Modal's onRequestClose nor BackHandler sees it (Android dialog dismissal; also with an immediate unmount). The JS
-  stale-closure cases are fixed (overlay `hiddenByBack`, Sheet `closeRequested`). Lead: ReactModalHostView key
-  handling during dismiss, or a non-Modal side panel on TV. Back, pause, Back works; Apple TV Menu Menu works.
-- Player (F8 S4b, iPhone Safari): the up-next countdown keeps running while the player is paused (P3).
-- Web/Safari (F8 S4b): two tabs playing the same title on one browser run two playbacks of one device (seen as a
-  test artifact: a background tab kept playing); no guard today (P3).
+- F5/F10: the native engines' in-session error path (rendition 404/500 -> `/switch`, 8 s timeout) is unit-tested only.
+  The missing pieces now exist: B12 fault switches (`split_abort`/`seg_status` on an audio rendition) and F10 S6s
+  native `loadError {uri, trackType, status}`; force it live once on Exo and AVPlayer (F10 S9 live audit).
+- expo-video on Android shows "—" for decoder and dropped frames in Info: the F10 S6 probe already returns
+  `droppedBufferCount` (watchdog only); map it into `stats.droppedFrames` in `expo-video-engine.tsx` (native builder's
+  file). Decoder names stay unexposed; AVPlayer has no drop counts.
+- Google TV (F8 S4b): a Back pressed within ~0.5 s after a side panel closed is dropped natively (RN Modal dismissal).
+  F8 V2 item 5 passed with Back + Back 200 ms later, so re-run it once on the AVD to close it or reproduce it.
 
 ## Browse, navigation and UX
 
-- TV (F7 verify): while an episode's versions load, the stage shows Play + Versions and flips to "No versions yet"
-  once they arrive (~15 s on the Google TV AVD). A neutral main button would need the same Focusable to stay mounted
-  across the swap (TV focus must not move) — give TitleActions a loading state that keeps the main button's identity.
-- Google TV (F7 verify): the stage pill once showed "Season 3 · Episode" without the number after an in-place update
-  (Android text clipping on a width change?); seen once on the 1080p AVD.
-
-- Google TV dev client (F7 verify 2): crashed once on the first deep link after a snapshot boot ("App react context
-  shouldn't be created before"); fine after restart-app. Dev client only; check whether a release build is affected.
-- Android TV emulator (F7): a detail page pop takes ~5 s and deep links land seconds late on the 2 GB Google TV AVD
-  (it swaps ~580 MB); check on hardware. The emulator's anna session also ends between runs ("Signed out for your
-  security" / "Your session has ended") — find out which side ends it (refresh reuse after an emulator kill?).
-- TV (F7): the long-season strip position (focused card at x = 552 from the second card on) is unit-tested only; Dev
-  World seasons have 3 episodes. Check with a long season (seed one or use a real library).
-- iPad (F7): Split View / Stage Manager widths not checked live (needs Mac UI input in the simulator); the narrow rule is
-  covered by web 1024×900 and a jest test at 820 pt.
-
-- TV (F6): a detail deep link opened from another detail page keeps the previous page's focused slot (Sintel opened on
-  the watched toggle after Wing It!); deep-link-only, focus memory keyed per route.
-- Web (F6): Escape / Alt+Left for the detail BackControl (Tab + Enter and browser Back work).
-- iPhone (I1 verify): BBB WEB-DL direct play showed frame 0 for ~45 s while the clock ran until a seek (loaded host);
-  not reproduced in I2 after the StartSeek fix; watch for it on hardware.
-- iPad Safari (I2 verify): closing the player leaves the page in element fullscreen, so Safari's X covers the rail logo.
-- iPhone Safari (I2): a pause from the system fullscreen controls is not reflected in our Pause button until the next tap.
-- Android phone (I1 verify): the Sign in button sits half under the keyboard/autofill strip (reachable via the IME Go
-  key or a short scroll); the logo hides only on iOS while typing. Not re-checked in F4: Streamarr_Phone shows no soft
-  keyboard on a cold boot (hardware keyboard) and the dev build hit ANRs under host load.
-- Google TV dev build (I1 verify): LogBox "Can't perform a React state update on a component that hasn't mounted yet"
-  at Home start, no stack.
-- iOS: NativeTabs accessibility labels keep the old language after a live language switch; large titles do not shrink
-  on scroll on Search/Settings (I1).
-- Brand PNGs are large (icon 554 KB, top shelf 2.2–2.6 MB) because of dithered gradients; pngquant bands them. Revisit
-  with a noise-free render if bundle size matters.
-
-- iPhone (F4 verify): the first player close after a fresh simulator boot + sign-in stayed landscape (1 of 3 closes;
-  later closes and the first close after an app restart restored portrait); cause not isolated, the orientation test
-  cannot catch it.
-
-- TV Filme (F6 verify): the genre scroller ends 8 pt before the sort control, so a focused last chip's ring comes within
-  ~10 pt of the sort track (the neighbouring sort pill stays ~17 pt clear); derive that gap from the focus rule too.
-- Focus spacing (F6 verify): `useFocusGap` also raises some web/tablet gaps (genre chips 8 -> 12 px, side-panel options
-  4 -> 9 px); looks fine, record it as a decision or limit the rule to focus platforms.
-
-- iPhone simulator (F9 S2b, Q1-48): first launch after a simulator boot drew the picker sideways once (1 of 3 cold starts;
-  splash already rotated, so native/UIKit before JS; orientation module reported portrait + unlocked). Not reproducible on
-  demand; re-check on hardware. The cold-start `releaseLaunchOrientation` (S1b) does not affect it.
-- Onboarding (F9 S2a, P3): the server step reached while a profile is signed in has no "Zurück zur App" (the sign-in step
-  has one).
-
-- Web (F8 S4a): each genre/sort change pushes a history entry and keeps the previous Library screen mounted (21 after
-  21 clicks); consider replacing params when the previous entry is the same tab (F9 area).
-- Android phone (F8 S4b): on a genre switch that has to fetch, the grid is blank (no skeleton) until data or the
-  error card arrives (~4 s offline) (F9 area, P3).
+- Android phone (F8 S4b): on a genre switch that has to fetch, the grid was seen blank (no skeleton) until data or the
+  error card arrived (~4 s offline). F11: the JS already renders `library-loading` on such a switch (screen test
+  "Android phone: a genre switch that has to fetch shows the skeleton grid" passes on the unchanged code), so the blank
+  is Android layout (FlatList offset/ListEmptyComponent after the old rows unmount?). Re-check live on the phone AVD.
+- iPad (F7): Split View / Stage Manager widths not checked live (needs Mac UI input in the simulator); the narrow rule
+  is covered by web 1024×900 and a jest test at 820 pt.
+- Apple TV (F8 verify V2): once, Up right after Down kept focus on the player's seek bar (not reproduced). The other
+  half of this entry (focus on the "Start" tab after the played title left Home) is fixed in F12.
 
 ## Accounts
 
-- DONE in I4 (Apple TV, native module client/modules/tv-native, tvOS-only): Versions/About sheets open with focus on
-  their first card / Schließen; Menu goes one level (sheet, library grid/sort -> chip -> tab bar, non-Start tab -> Start,
-  player overlay -> seek bar); "Zurück zu den Details" and player close return focus to the page; Settings starts below
-  the floating tab bar (tvOS 27's bar ignores observed scroll views, so a layout clip instead); last Versions card glow
-  clear of the panel edge; deep link to a title pushes it, a link to an open title returns to it (all platforms).
-- DONE in F4 slice 3 (iPhone): API responses no longer reach NSURLCache. Native module client/modules/url-cache gives RN
-  networking and expo/fetch a session without URLCache, purges the old shared cache and replaces it with a 0-byte cache
-  (the dev client's network inspector re-sends requests through a default session). Cache.db before 96 rows / 63 /api/
-  / 4 /viewer/auth, after 0. tvOS: the module (podspec ios + tvos) is in the next tvOS build; the cached tvOS app
-  (~/.cache/streamarr-tvos-app) still lacks it.
-- DONE in F4 slice 2 (Android phone + web; iPhone/iPad live pass in slice 3): profile editing (display name, avatar
-  colour) in Settings; translated sign-in methods incl. `password+2fa`/`email_code+2fa`; the two-step panel closes
-  after "Saved" and after turning it off; "Sign out all other devices" uses the atomic B4 endpoint; the e-mail code
-  cooldown shows a live "Wait N s" on a disabled button (onboarding send/resend, Settings e-mail).
-- Android phone dev build on the 8 GB Mac: ANRs ("isn't responding") under host memory pressure, once on the two-step
-  setup screen (QR + secret; main thread busy in vsync/Choreographer, 78 s CPU). Re-check on a less loaded run; if it
-  reproduces, profile the QR `Svg` path and the Glass panel animations (F4 slice 2). F4 slice 4: the live "I saved
-  them" close on the phone was not reached again (cold-booted Streamarr_Phone: app ANR after the sign-in, then
-  "Process system isn't responding"); it is screen-tested and was verified live on the iPhone (slice 3).
-
-- iOS (F4 slice 3): a `streamarr:///sign-in?...` deep link opened while signed in shows the sign-in screen without a back
-  button (AuthScaffold uses `router.canGoBack()`, false there); only another deep link leaves it. Offer "back to the
-  app" (replace to the tabs) when a profile is active.
-
-- Web (F4 verify): every tab writes the whole account list to localStorage, so a second open tab can overwrite an edited
-  display name until `/viewer/me` resyncs; write per-account or merge on storage events.
+- Auth residual (F8 S6, P3): if the Keystore *write* of a rotated pair fails, the app uses the pair from memory
+  (S3), which confirms the rotation on the server; if the app is then killed before the throttled retry stores it,
+  the next launch presents the previous token and B9 revokes the session for reuse ("Signed out for your
+  security"). Needs a failed write plus a kill within the retry window; no client-only fix without the vault.
 
 ## Tests and tooling
 
@@ -154,15 +103,29 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
     `[runtime not ready]: Exception in HostFunction: The current activity is no longer available` at the first native call
     (`expo-modules-core NativeModulesProxy` ← `expo/src/Expo.fx`). Library-level startup race → watch on real hardware;
     upstream issue if it repeats. Stack in journal/R1.md.
-  - Reanimated `synchronouslyUpdateUIProps failed for tag …` (`Unable to find SurfaceMountingManager`) with a ~120-line
-    stack each on the UI thread: 90× at player close (Google TV release), 640× for one tag on the phone R8 build — an
-    animated view outlives its surface (player overlay / ambient candidates).
+  - Reanimated `synchronouslyUpdateUIProps … Unable to find SurfaceMountingManager`: fixed in code in F12 (see Fixed);
+    confirm in Q2 on a release build that the log is gone at player close (Google TV) and on the phone R8 build.
   - R8 + resource shrinking: APK 105.1 → 94.3 MB, dex 49.6 → 18.3 MB, smoke (start, session, Home, detail, play) passes, but
     detail push measured 25 s vs 3.4 s → re-measure with a non-polling timer before enabling it in app.config.
   - Release APK is 105 MB for arm64 alone (libvlc.so 52.5 MB): consider VLC as a separate download or ABI splits.
-
 - Dev only: after a JS reload nothing is focused on TV until the first D-pad press; the dev client can start with a
   cached bundle.
+- Android TV and phone AVD boot snapshots hold an ended anna session (cause proven in F8 S6: a snapshot boot restores
+  the app storage of 2026-10-01, the server deleted that session since -> 401 `refresh_session_expired`). Tooling
+  action left: re-save `default_boot` after a fresh sign-in, or always cold-boot (`-no-snapshot-load`).
+- Google TV AVD (F5 verify): with the Metro debugger attached the dev build's JS stalls (~980 MB of 2 GB); one Fabric
+  SIGSEGV at sign-in, probably from an "rr" dev reload during adb text input. Prefer argent paste for passwords.
+- F4 verify: `url-cache-module.test.ts` only greps the Objective-C source (T1: not feasible in jest); a native
+  smoke/Cache.db check in CI would be real coverage. The F4 slice 3 note "the cached tvOS app lacks url-cache" was
+  never re-checked against the I4 tvOS build.
+- T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
+  one failure also cascades into later tests of controller.test.ts.
+- T1 verify: `audioTracks?.length ?? 2` (unknown track count) is still repeated three times in controller.ts (left
+  alone in F11: the native builder owns controller.ts this round); the single-audio release set
+  (`audio-preference.ts`) is module-global with no reset (test hygiene only).
+- T1: assets/brand/render.sh needs python3 + Pillow (denoise.py); not checked by any script.
+- TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
+- Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Server (backend track)
 
@@ -176,49 +139,21 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   in a full run.
 - Art highlight is measured over the whole backdrop; add per-region values (right panel, left rail) if the client finds
   the whole-image value too strict.
-- B8 verify: a replay is only detected when a report of the completing playback lands below 5 %; the client must send
-  a report at position 0 when it replays (check `controller.replay()` in F8/F9). The group conversion reuses the
+- B8 verify: a replay is only detected when a report of the completing playback lands below 5 %; ~~the client must send
+  a report at position 0 when it replays (check `controller.replay()` in F8/F9).~~ → F8 S1: `replay()` reports 0 (F11 triage). The group conversion reuses the
   `audio_converted` reason code. ~~The long-season series (The Lighthouse Logs) has no artwork.~~ → B10: generated artwork.
 - ~~Username and e-mail of one account share the sign-in code cooldown, so someone who knows both can link them (429 on
   the second alias within 30 s); documented, low impact (B4 verify).~~ → B10: the other alias answers 202 without a mail.
 - Dev World artwork uses fixed per-language URLs; the real selection rule is covered by `TmdbDiscoverTests` only. No
   German logos in the Dev World (TMDB has none for the fixture titles).
 
-## Next update (out of scope)
-
-- Offline downloads of series and movies on phones and tablets.
-
-- F4 verify: `url-cache-module.test.ts` only greps the Objective-C source (a native smoke/Cache.db check in CI would be
-  real coverage); `orientation.test.ts` cannot catch the first-close case.
-
-- F6 verify: `focus-clearance.test.ts` checks the derived tokens only; a row that goes back to a fixed gap would not
-  fail (only card rows are covered). Add a screen test per primitive (action row, chip row) asserting the gap.
-- F6 verify: `PHONE_HEADER_HEIGHT` duplicates `HEADER_HEIGHT` in `phone-detail.tsx`; a stray blank import line.
-- Android TV and phone AVD boot snapshots hold an ended anna session (re-signed in by each run); refresh the snapshots
-  once with a fresh sign-in, or sign in through a deep link in the run scripts.
-  F8 S6 proof (F9 V2 "Your session has ended" at 23:51): Streamarr_Phone `default_boot` RAM/disk snapshot is from
-  2026-10-01 19:25 local; a snapshot boot restores the app storage to that day, so the app presents a refresh token
-  of a session the server has since deleted -> 401 `refresh_session_expired`, no revoke. Cold boots
-  (`-no-snapshot-load`) use the current disk and keep the live session. Emulator-only; re-save the snapshot after a
-  fresh sign-in (or always cold-boot) to stop it.
-- Auth residual (F8 S6, P3): if the Keystore *write* of a rotated pair fails, the app uses the pair from memory
-  (S3), which confirms the rotation on the server; if the app is then killed before the throttled retry stores it,
-  the next launch presents the previous token and B9 revokes the session for reuse ("Signed out for your
-  security"). Needs a failed write plus a kill within the retry window; no client-only fix without the vault.
-
-- F5 verify (mutation run, 7 of 9 caught): no test covers the engine-error -> `/switch` fallback of an in-session
-  switch, and none covers NAME-first track matching (`audio-renditions.ts`); add both.
-- F5 verify: `controller.audioSwitches` (measurement samples) is unbounded and ships in production; cap it or keep it
-  behind `__DEV__`. `audio-renditions.ts` has a three-line doc comment (convention: one line).
-- F5 verify: the remembered audio language is also sent for single-audio titles (harmless; skip it when there is one
-  track).
-- Google TV AVD (F5 verify): with the Metro debugger attached the dev build's JS stalls (~980 MB of 2 GB); one Fabric
-  SIGSEGV at sign-in, probably from an "rr" dev reload during adb text input. Prefer argent paste for passwords.
+## Server findings from client verifies
 
 - B9 verify: on the very first fetch an episode whose versions were never looked up is `available: true` (optimistic,
   queued for the warm-up) while the series page may already know false; a previous-token replay does not check
   `IsDisabled` (moot today: disabling revokes sessions); the retired-hash lookup scans ViewerSessions for unknown tokens;
   continue watching loads every resumable row of a viewer before the limit.
+
 - Server tests (B9): ReleaseContainerStoreTests.Store_EvictsTheLeastRecentlyUsed_AndSurvivesARestart and
   RepairConcurrencyTests flake under load (timing of background writers); green on reruns.
 
@@ -226,18 +161,13 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   linked alias ~0.6 ms, unknown ~0.4 ms; status/body/headers identical, 5 tries per hour per login; the known/unknown
   gap predates B10); `logoUrl` and cast `profileUrl` have no size classes; generated `ArtworkSizesDto` fields are
   `string | null` although always set (repo-wide nullability convention).
+
 - Server tests (B10 verify): HealthCheckerTests.Concurrency_UsesConfiguredProviderBudget flakes under full-suite load.
 
 - B11 verify: `POST /viewer/auth/refresh` has no rate limit (predates B11) and every refusal now logs a line, so an
   anonymous caller can flood the in-memory log feed; an unknown token runs a LIKE scan over retired hashes before the
   tombstone lookup (B9 code); account deletion writes tombstones outside the session lock (a racing refresh can answer
   `unknown`); the hourly ViewerSessionCleanup job has no unit test of its own (verified live).
-
-- F8 verify V2: on Mobile Safari the first tap on a hidden player overlay toggles playback instead of only showing the
-  controls (since M4.2); Apple TV focus lands on the "Start" tab after the player when the played title left Home;
-  once, Up right after Down kept focus on the seek bar (not reproduced); while the secure storage keeps failing to read,
-  signing out or signing the same account in again throws (S6, P3); the iPhone video full-screen leave path
-  (`webkitEnterFullscreen`) is untested; after leaving the system full screen paused, the overlay stays hidden (P3).
 
 - B12 verify (Dev World only): `POST /devworld/faults` answers 500 instead of 400 for a numeric `params.mode` or a
   fractional `ttlSeconds`; the `transcode_kill` smoke only checks the kill, not the next-segment 500 and restart; spent
@@ -250,16 +180,95 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   `playbackAlive: true` although that call ends the playback (document it); the B12 `transcode_slow` fault does not
   slow remux runs.
 
-## Tests and tooling (more)
-- T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
-  one failure also cascades into later tests of controller.test.ts.
-- T1 verify: `audioTracks?.length ?? 2` (unknown track count) is repeated three times in controller.ts; the
-  single-audio release set is module-global with no reset; testID `stage-actions` exists only for a test.
-- T1: assets/brand/render.sh now needs python3 + Pillow (denoise.py); not checked by any script.
-- TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
-- Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
+## Next update (out of scope)
+
+- Offline downloads of series and movies on phones and tablets.
 
 ## Fixed
+
+- F12 (2026-10-06), each with a test that fails without the fix:
+  - R1 release logs `synchronouslyUpdateUIProps failed … Unable to find SurfaceMountingManager` (90× at player close,
+    640× for one tag on the phone R8 build): the only endless animations in the app are the Reanimated 4 CSS loops of
+    `Spinner` (rotation) and `Skeleton` (pulse); nothing stopped them before their screen's surface went. Both now ask
+    `useLoaderMotion()` (loader-motion.ts), which stops them at the screen's blur (a close starts with it); no
+    `withRepeat`/frame callback exists. Guards: loader-motion.test (blur stops, focus resumes, unmount unsubscribes)
+    and a static check that every `animationIterationCount: 'infinite'`/`withRepeat` in src goes through the hook or a
+    `cancelAnimation`. Likely source of the 90×: the player's status/"Switching…" spinner; of the 640× for one tag: a
+    poster `Skeleton` of a Library/Home grid left loading when its tab was detached (Q2 confirms on a release build).
+  - Web/Safari two tabs playing on one browser (F8 S4b): `player/tab-guard.ts` — a start or resume in one tab tells the
+    others (BroadcastChannel, else `storage` events), which pause with the notice "Wiedergabe in einem anderen Tab
+    gestartet, deshalb hier pausiert …" (`notice.otherTab`, catalogue N20); no server change; tab-guard tests with a
+    fake channel.
+  - Apple TV focus on the "Start" tab after the player when the played title left Home: the I4 return now falls back
+    to the screen's preferred target (`usePreferredFocus`, Home: the hero's main button) when the remembered card is
+    gone, never to the bare guide; screen-focus.test "the played card left the screen …".
+
+- F11 (2026-10-06), fixed in F11 with a test each:
+  - Web Library: a genre/sort change pushed a history entry and kept the previous Library screen mounted (21 after 21
+    clicks) → `applyLibraryFilter()` (library-back.ts) replaces the params on every platform (expo-router `setParams`:
+    the URL keeps the filter for a reload, Back leaves the Library); library-filter.test.ts.
+  - Onboarding: the server step reached while a profile is signed in had no "Zurück zur App" → `server-back-to-app`
+    like the sign-in step (`enterApp`); onboarding-q1 "the server step reached while a profile is signed in …".
+  - iPhone Safari video full screen (`webkitEnterFullscreen`) leave path untested (F8 verify V2) → two
+    fullscreen-exit.test cases (close leaves the video full screen; after the system Done the close leaves it alone).
+  - Decision: `useFocusGap` stays on web and tablets (keyboard `:focus-visible` on web and iPad keyboard/pointer focus
+    draw the same, smaller ring; genre chips 8 → 12 px, panel options 4 → 9 px), phones keep their design gaps;
+    pinned in focus-clearance.test.ts.
+- F11 triage (2026-10-06): fixed earlier, evidence checked in code/tests/journals:
+  - TV Filme genre scroller ended 8 pt before the sort control → F8 S1: `trailingGap = useFocusGap(space.md)`
+    (genre-row.tsx), focus-gap-rows.test "genre scroller before the Apple TV sort control", live ~30 px (F8.md:140).
+  - TV versions-loading flip (Play + Versions → "No versions yet") → F8 S1: Versions only after load, the main button
+    keeps its Focusable (title-actions.tsx; F8.md:175, 196).
+  - Google TV stage pill "Season 3 · Episode" without the number → F8 S1: `numberOfLines={1}` + key per label
+    (F8.md:176, 197).
+  - TV detail deep link kept the previous page's focused slot → F8 S1: detail routes keyed by id
+    (`<MovieScreen key={id} />`, `<SeriesScreen key={id} />`); live on Apple TV (F8.md:140).
+  - TV long-season strip position → F8 S2: live "Lighthouse strip, focused E21 card at x ≈ 552" (F8.md:177, 511).
+  - Web Escape / Alt+Left for the detail BackControl → F9 S1: `isWebBackKey` (navigation/back-control.tsx:101),
+    back-control.test; live "real Escape on ToS → Home" (Alt+Left on Windows/Linux Chrome untested, F9.md:436).
+  - iPad Safari: closing the player left element full screen → F8 S3: `useEffect(() => exitPlayerFullscreen, [])`
+    (play-screen.tsx:162), fullscreen-exit.test; live on iPad Safari (F8.md:411-416).
+  - iPhone Safari: a pause from the system full-screen controls not reflected → F8 S3/S4b: `userPlayback` adoption
+    (web-engine-player.test "reports a pause and a resume from the system full-screen controls"); live in F8 V2.
+  - Android phone: Sign in button half under the keyboard → F9 (Q1-34): live V2 "'Sign in' fully above the keyboard".
+    The late-keyboard residual was reopened in F12 follow-up (see "Needs real hardware: Android phone").
+  - iOS NativeTabs accessibility labels kept the old language → F9: label passed explicitly (native-tabs-shell.tsx);
+    S2b "AX labels follow EN/DE live"; Settings large title collapses (F9 V2). The Search half of the large-title
+    entry was reopened in F12 follow-up (see "Needs real hardware: iPhone / iPad").
+  - iOS: a sign-in deep link while signed in had no way back → F9 (Q1-09): `sign-in-back-to-app`
+    (sign-in-screen.tsx, onboarding-q1 test); live on iPhone S2b.
+  - Web: a second tab overwrote an edited display name → T1: `useEffectEvent` in use-profile-sync.ts,
+    profile-sync.test "does not write a tab's older /viewer/me answer" (T1.md:50-58).
+  - Brand PNGs large (icon 554 KB, top shelf 2.2–2.6 MB) → T1: `assets/brand/denoise.py`, icon 541 → 76 KB, top
+    shelf 2204 → 224 KB, total 7.9 → 0.93 MB (T1.md:64-65).
+  - iPhone: first player close after a fresh boot stayed landscape → F8 S2: `lockPlayerLandscape` waits for a portrait
+    window before unlocking; orientation.test race cases (F8.md:237).
+  - Player: up-next countdown ran while paused → F10 S3: `if (paused) return;` (up-next.tsx:76), matrix E row.
+  - F5: Safari's forced subtitle (`kind: "forced"`) missing in the panel → F8 S3: accepted in web-engine.web.tsx;
+    live on iPhone Safari (F8 S4b, V2).
+  - F8 verify V2: Mobile Safari first tap toggled playback → F10 S3 (`player/surface-tap.ts`); the overlay stayed
+    hidden after leaving the system full screen paused → F10 S3 (overlay shows on `paused`); signing out or in again
+    while the vault read fails threw → F8 S7 (storage-failure-sign-out tests).
+  - F5 verify: no test for the engine-error → `/switch` fallback nor NAME-first track matching → T1 (mutations M1/M2
+    caught, T1.md:12-16); `controller.audioSwitches` unbounded → T1 `AUDIO_SWITCH_SAMPLES = 20`; three-line doc
+    comment in audio-renditions.ts → T1; remembered language sent for single-audio titles → T1
+    (audio-preference.ts; the first start of a release still sends it by decision, T1.md:88).
+  - F6 verify: focus-clearance checked tokens only → T1 `src/__tests__/focus-gap-rows.test.tsx` per primitive (action
+    row, season chips, genre chips, language chips); `PHONE_HEADER_HEIGHT` duplicate in phone-detail.tsx → T1 (imported
+    from back-control).
+  - T1 verify: testID `stage-actions` existed only for a test → moot: R1's uiautomator timing polls it too (R1.md:242).
+  - HeroFade without a masked-view fallback → moot since I1: every iOS/tvOS build links RNCMaskedView (I1.md:23).
+  - Memory: Home ~520 MB native in the dev build → R1: release Home PSS 263 MB on Google TV, 262–269 MB on the phone.
+  - Google TV dev client crash on the first deep link after a snapshot boot, and the LogBox "state update on a
+    component that hasn't mounted yet" at Home start → R1: dev-client only, release cold/warm links and 16 cold starts
+    clean (R1.md:123, 329, 331).
+  - Android TV: a detail pop took ~5 s and anna's session ended between runs → R1: release pop 3.4–3.7 s; the session
+    loss is the AVD snapshot (F8 S6 proof); the snapshot tooling item stays under Tests and tooling.
+  - B8 verify "the client must report position 0 on replay" → F8 S1: `replay()` reports progress 0 (controller.ts),
+    mutation M15; live as Q1-47.
+  - Accounts: the "DONE in I4 / F4 slice 2 / F4 slice 3" bullets that sat in the open Accounts section are history
+    (I4: Apple TV sheets/Menu/focus and deep links; F4 slice 3: NSURLCache off on iOS; F4 slice 2: profile editing,
+    translated sign-in methods, atomic sign-out of others, live e-mail cooldown) — the details are in I4.md and F4.md.
 
 - B8 (2026-10-04): replay inside the completing playback keeps a resume point (report back below the minimum resume
   percentage = new viewing; later reports of the completing playback still ignored); one remux audio group codec per

@@ -159,6 +159,7 @@ export function runningHint(recovery: Recovery): StatusHint {
   if (step === 'R' && (code === 'audio_rendition_failed' || code === 'audio_silent'))
     return { key: 'noAudio', params };
   if (code === 'picture_frozen') return { key: 'recovering', params };
+  if (code === 'delivery_interrupted') return { key: 'streamBreaks', params };
   return { key: 'reloading', params };
 }
 
@@ -167,10 +168,11 @@ function stallHint(input: StatusInput): StatusHint {
   const { bandwidthBps, bitrateKbps: bitrate, fetch } = input;
   if (input.repairing) return { key: 'serverRepairing' };
   // Only a transcode converts; it is slow when it delivers less media than real time over several segments (C08, review B3).
+  // A long server wait before a fast transfer is the same measurement for one segment (S9a C08).
+  const waited = !!fetch && fetch.waitMs >= SLOW_FIRST_BYTE_MS && fetch.waitMs > fetch.transferMs;
   if (
     input.method === 'transcode' &&
-    input.conversionRate !== undefined &&
-    input.conversionRate < 1
+    ((input.conversionRate !== undefined && input.conversionRate < 1) || waited)
   )
     return { key: 'serverSlow' };
   const bandwidth =
@@ -183,7 +185,8 @@ function stallHint(input: StatusInput): StatusHint {
         needed: Math.round(bitrate / 100) / 10,
       },
     };
-  return { key: input.method === 'transcode' ? 'serverSlow' : 'buffering' };
+  // "Converts slower" only when measured (S9b2 C11): an unexplained stall is just loading.
+  return { key: 'buffering' };
 }
 
 /** Why a start or seek takes long: the server's work, a measured slow link, else the engine still opening the file (S9b). */
