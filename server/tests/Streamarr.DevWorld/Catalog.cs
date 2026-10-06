@@ -164,6 +164,8 @@ public sealed record ReleaseEntry
     /// <summary>ready | dead | degraded.</summary>
     public string Health { get; init; } = "ready";
     public double? NominalMbps { get; init; }
+    /// <summary>PAR2 recovery published with the file, as a percentage of its slices (repair tests).</summary>
+    public int? RecoveryPercent { get; init; }
     /// <summary>Season packs only.</summary>
     public int? Season { get; init; }
 }
@@ -385,6 +387,8 @@ public sealed class WorldPlan
 
         if (release.Entry.Health is not ("ready" or "dead" or "degraded"))
             yield return $"{release.Name}: health must be ready, dead or degraded.";
+        if (release.Entry.RecoveryPercent is { } recovery && (recovery is < 1 or > 100 || release.Files.Count != 1 || release.Entry.Health != "ready"))
+            yield return $"{release.Name}: recoveryPercent needs 1..100, one file and health ready.";
     }
 
     private static string Normalize(string value)

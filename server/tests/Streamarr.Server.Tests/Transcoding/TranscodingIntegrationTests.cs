@@ -256,7 +256,12 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
         var basePath = BasePath(created);
         await raw.GetByteArrayAsync($"{basePath}/init.mp4");
         await raw.GetByteArrayAsync($"{basePath}/0.m4s");
-        var front = (await WaitForJobAsync(created, job => job.GetProperty("paused").GetBoolean(), TimeSpan.FromSeconds(60))).GetProperty("front").GetInt32();
+        // The player stays active until the run parks (a slow encode under load would otherwise hit the 10 s idle stop first).
+        var front = (await PollAsync(async () =>
+        {
+            await raw.GetStringAsync($"{basePath}/main.m3u8");
+            return (await AdminSessionAsync(created)).GetProperty("job");
+        }, job => job.GetProperty("paused").GetBoolean(), TimeSpan.FromSeconds(90))).GetProperty("front").GetInt32();
         await Task.Delay(TimeSpan.FromSeconds(11));
 
         var other = await CreateStreamSessionAsync(_machine, new { maxHeight = 240 });

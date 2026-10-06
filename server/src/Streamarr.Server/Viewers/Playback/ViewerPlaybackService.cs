@@ -169,7 +169,44 @@ public sealed class ViewerPlaybackService(
             }
             playback = Find(caller, playbackId) ?? throw NotFound();
         }
+        RefreshRepair(playback);
         return Snapshot(playback, touch: true);
+    }
+
+    /// <summary>Minimum time between two live repair reads of one playback.</summary>
+    internal static readonly TimeSpan RepairRefreshInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>During play, replaces the resolve-time repair state by the release's live one until it is terminal (then it stays).</summary>
+    private void RefreshRepair(Playback playback)
+    {
+        string releaseId;
+        int revision;
+        RepairStatusInfo? known;
+        var now = time.GetUtcNow();
+        lock (playback.Gate)
+        {
+            if (playback.State != States.Ready || playback.ResolvedReleaseId is not { } resolved
+                || playback.Repair is { } current && IsTerminal(current.State) || now - playback.RepairReadAt < RepairRefreshInterval)
+                return;
+            playback.RepairReadAt = now;
+            (releaseId, revision, known) = (resolved, playback.Revision, playback.Repair);
+        }
+        var live = resolver.RepairStatus(releaseId);
+        if (live is null ? known is null : known is not null && live == known)
+            return;
+        // Without a known repair only a running one is news; an old finished job of the release says nothing about this playback.
+        if (known is null && IsTerminal(live!.State))
+            return;
+        live ??= known! with { State = "cancelled", Phase = null, EtaSeconds = null, RetryAfterSeconds = null, FailureReason = "repair_job_gone" };
+        if (!IsTerminal(live.State) && known is not null && known.JobId == live.JobId)
+            live = live with { ProgressiveEligible = known.ProgressiveEligible };
+        lock (playback.Gate)
+        {
+            if (playback.Stopped || playback.Revision != revision || playback.ResolvedReleaseId != releaseId || !ReferenceEquals(playback.Repair, known))
+                return;
+            playback.Repair = live;
+            playback.UpdatedAt = time.GetUtcNow();
+        }
     }
 
     public async Task<PlaybackResponse> SwitchAsync(ViewerCaller caller, ViewerEntity viewer, string playbackId, PlaybackSwitchRequest request, CancellationToken ct)
@@ -500,11 +537,11 @@ public sealed class ViewerPlaybackService(
         var version = await catalog.VersionAsync(playback.Viewer, playback.Work, response.ReleaseId, ct);
         Update(playback, revision, p =>
         {
+            p.Repair = response.Repair ?? (p.ResolvedReleaseId is null || p.ResolvedReleaseId == response.ReleaseId ? p.Repair : null);
             p.StreamToken = token;
             p.ResolvedReleaseId = response.ReleaseId;
             p.Playability = response.Playability;
             p.ResolvedStatus = response.Status;
-            p.Repair = response.Repair ?? p.Repair;
             p.Attempts = Attempts(response, p);
             p.FallbackFrom = response.FallbackFromReleaseId is { } from ? new PlaybackReleaseDto { ReleaseId = from, Name = NameOf(from, p.Work.WorkId) } : null;
             p.Version = version;
@@ -1083,6 +1120,7 @@ public sealed class ViewerPlaybackService(
         public PlaybackReleaseDto? FallbackFrom { get; set; }
         public VersionDto? Version { get; set; }
         public RepairStatusInfo? Repair { get; set; }
+        public DateTimeOffset RepairReadAt { get; set; }
         public string? StreamToken { get; set; }
         public string? ResolvedReleaseId { get; set; }
         public string? ResolvedStatus { get; set; }

@@ -13,7 +13,9 @@ playback with an active segment/playlist fault leaves `starting`; a held start r
 segments are named in the next progress answer (deliveryIssues); two players (own `?p=` tags) far apart do not ping-pong
 restarts, while one player's own far seek and straight back is answered at once; a parked run keeps its slot (a new start
 is refused, the parked playback resumes) until it lapses, after which its resume competes like a new start; one player's
-far/near flips restart at most about once per second; a resumed transcode continues the previous segment exactly (ffprobe).
+far/near flips restart at most about once per second; a resumed transcode continues the previous segment exactly (ffprobe);
+during play the playback GET follows a real PAR2 repair to ready (Lighthouse Logs S01E26), or to failed when the recovery
+volumes go missing (S01E25); each repairs once per instance (the server keeps the articles it read).
 Exits non-zero when a check fails.
 """
 import json
@@ -253,12 +255,23 @@ def check_delivery_issues():
     return ok, "; ".join(out)
 
 
-def newest_session(admin):
-    return max(fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1], key=lambda s: s["createdAt"])
-
-
 def handles(admin):
     return {s["handle"] for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1]}
+
+
+def pinned_session(admin, known):
+    """Reads the session this check created (the first new one), even after the check starts another playback."""
+    handle = []
+
+    def read():
+        if not handle:
+            handle.append(own_session(admin, known)["handle"])
+        return by_handle(admin, handle[0])
+    return read
+
+
+def by_handle(admin, handle):
+    return next(s for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1] if s["handle"] == handle)
 
 
 def own_session(admin, known):
@@ -275,13 +288,15 @@ def check_competing_requests():
     """Two players far apart on one transcode session: the newer position keeps the run, no restart storm (B16)."""
     import threading
     anna, admin = fs.ctx.anna["accessToken"], admin_token()
+    known = handles(admin)
     _, p = fs.start_playback(anna, *fs.TRANSCODE)
     base = p["url"].rsplit("/", 1)[0]
+    mine = pinned_session(admin, known)
     tag_a, tag_b = player_tag(base), player_tag(base)
     count = len([line for line in fs.raw("GET", base + "/main.m3u8").body.decode().splitlines() if line.endswith(".m4s")])
     far = max(20, count - 12)
     assert fs.raw("GET", base + "/0.m4s", timeout=90).status == 200
-    restarts0 = newest_session(admin)["restarts"]
+    restarts0 = mine()["restarts"]
     stop_b, stop_a = threading.Event(), threading.Event()
     a, b, b_stopped = [], [], []
 
@@ -298,14 +313,14 @@ def check_competing_requests():
     time.sleep(1.0)
     ta.start()
     time.sleep(12)
-    contested = newest_session(admin)["restarts"] - restarts0
+    contested = mine()["restarts"] - restarts0
     stop_b.set()
     tb.join(60)
     b_stopped.append(time.time())
     time.sleep(10)
     stop_a.set()
     ta.join(60)
-    total = newest_session(admin)["restarts"] - restarts0
+    total = mine()["restarts"] - restarts0
     fs.stop(anna, p["playbackId"])
     a_after = [x for x in a if x[0] > b_stopped[0] and x[1] == 200]
     errors = sorted({f"{s} {c}" for _, s, c in a + b if s != 200})
@@ -323,13 +338,15 @@ def check_throttle_no_block():
     _, before = fs.api("GET", "/api/v1/transcoding/config", token=admin)
     fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": 30}, admin)
     try:
+        known = handles(admin)
         _, p = fs.start_playback(anna, *fs.REMUX)
         base = p["url"].rsplit("/", 1)[0]
+        mine = pinned_session(admin, known)
         for i in range(2):
             fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
         deadline, parked = time.time() + 60, False
         while time.time() < deadline and not parked:
-            job = newest_session(admin).get("job") or {}
+            job = mine().get("job") or {}
             parked = bool(job.get("paused")) and not job.get("running")
             time.sleep(0.5)
         stopped = [l for l in subprocess.run(["ps", "-ax", "-o", "stat=,comm="], capture_output=True, text=True).stdout.splitlines()
@@ -369,13 +386,15 @@ def check_parked_resume_capacity():
     _, before = fs.api("GET", "/api/v1/transcoding/config", token=admin)
     fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": 30, "maxConcurrentTranscodes": 1}, admin)
     try:
+        known = handles(admin)
         _, p = fs.start_playback(anna, *fs.TRANSCODE)
         base = p["url"].rsplit("/", 1)[0]
+        mine = pinned_session(admin, known)
         for i in range(2):
             fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
         deadline, job = time.time() + 90, {}
         while time.time() < deadline and not (job.get("paused") and not job.get("running")):
-            job = newest_session(admin).get("job") or {}
+            job = mine().get("job") or {}
             time.sleep(0.5)
         front = job.get("front", 0)
         other = fs.login("anna", "capacity-check-2")["accessToken"]
@@ -391,10 +410,10 @@ def check_parked_resume_capacity():
         fs.api("PUT", "/api/v1/transcoding/config", {k: before[k] for k in ("throttleBufferSeconds", "maxConcurrentTranscodes")}, admin)
 
 
-def wait_parked(admin, known):
+def wait_parked(read):
     deadline, job = time.time() + 90, {}
     while time.time() < deadline and not (job.get("paused") and not job.get("running")):
-        job = own_session(admin, known).get("job") or {}
+        job = read().get("job") or {}
         time.sleep(0.5)
     return job
 
@@ -413,7 +432,7 @@ def check_lapsed_reservation():
         base = p["url"].rsplit("/", 1)[0]
         for i in range(2):
             fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
-        job = wait_parked(admin, known)
+        job = wait_parked(pinned_session(admin, known))
         front = job.get("front", 0)
         time.sleep(11)
         _, q = fs.start_playback(other, *fs.TRANSCODE, wait_ready=False)
@@ -445,23 +464,68 @@ def check_own_flip_pacing():
     tag = player_tag(base)
     count = len([line for line in fs.raw("GET", base + "/main.m3u8").body.decode().splitlines() if line.endswith(".m4s")])
     assert fs.raw("GET", f"{base}/0.m4s{tag}", timeout=90).status == 200
-    restarts0 = own_session(admin, known)["restarts"]
-    threads = []
+    mine = pinned_session(admin, known)
+    restarts0 = mine()["restarts"]
+    threads, answers = [], {}
     started = time.time()
     for i in range(10):
         index = count - 12 if i % 2 == 0 else 30
-        t = threading.Thread(target=lambda n=index: fs.raw("GET", f"{base}/{n}.m4s{tag}", timeout=60), daemon=True)
+        t = threading.Thread(target=lambda n=index, k=i: answers.__setitem__(k, fs.raw("GET", f"{base}/{n}.m4s{tag}", timeout=60).status), daemon=True)
         t.start()
         threads.append(t)
         time.sleep(0.2)
-    burst = own_session(admin, known)["restarts"] - restarts0
+    burst = mine()["restarts"] - restarts0
     took = time.time() - started
     for t in threads:
         t.join(60)
-    session = own_session(admin, known)
+    session = mine()
     fs.stop(anna, p["playbackId"])
-    ok = 2 <= burst <= 4
-    return ok, f"10 flips in {took:.1f}s -> {burst} restarts (B17 before pacing: 9 in 1.9 s); total {session['restarts'] - restarts0}, run at {session['job']['startSegment']}"
+    ok = 2 <= burst <= 4 and answers.get(9) == 200
+    return ok, (f"10 flips in {took:.1f}s -> {burst} restarts (B17 before pacing: 9 in 1.9 s); total {session['restarts'] - restarts0}, "
+                f"latest request (segment 30) -> {answers.get(9)}, run at {session['job']['startSegment']}")
+
+
+def repair_run(fail):
+    """A starts a PAR2 episode with a hole and waits for its repair (held in downloadingRecovery); B starts meanwhile and plays."""
+    title = next(t for t in fs.manifest["titles"] if t["title"] == "The Lighthouse Logs")
+    episode = title["seasons"][0]["episodes"][24 if fail else 25]
+    work, release = episode["workId"], episode["releases"][0]["releaseId"]
+    first = fs.login("anna", "repair-check-1")["accessToken"]
+    second = fs.login("anna", "repair-check-2")["accessToken"]
+    fs.arm("usenet_hole", {"workId": work}, params={"fromPercent": 70, "toPercent": 95}, ttlSeconds=300)
+    stall = fs.arm("usenet_stall", {"workId": work}, params={"file": "recovery", "ms": 10000}, ttlSeconds=300)
+    _, a = fs.start_playback(first, work, release, wait_ready=False)
+    get = lambda token, playback: fs.api("GET", f"/api/v1/viewer/playback/{playback['playbackId']}", token=token)[1]
+    deadline = time.time() + 20
+    while time.time() < deadline and (get(first, a).get("repair") or {}).get("state") != "downloadingRecovery":
+        time.sleep(0.3)
+    _, b = fs.start_playback(second, work, release, wait_ready=False)
+    seen, body, started = [], {}, time.time()
+    while time.time() - started < 45:
+        body = get(second, b)
+        state = (body.get("repair") or {}).get("state")
+        if body["state"] == "ready" and (not seen or seen[-1] != state):
+            seen.append(state)
+            if fail and state == "downloadingRecovery":
+                fs.arm("usenet_hole", {"workId": work}, params={"fromPercent": 0, "toPercent": 100, "file": "recovery"}, ttlSeconds=300)
+                fs.api("DELETE", f"/devworld/faults/{stall}")
+        if body["state"] == "failed" or state in ("ready", "failed", "cancelled", "evicted"):
+            break
+        time.sleep(0.3)
+    reasons = [r["code"] for r in (body.get("decision") or {}).get("reasons", [])]
+    fs.stop(first, a["playbackId"])
+    fs.stop(second, b["playbackId"])
+    fs.clear()
+    return seen, reasons, (body.get("repair") or {}).get("failureReason")
+
+
+def check_live_repair():
+    """During play the playback GET follows the repair job (B18): a progressive start moves to ready, a failing repair to failed."""
+    ready, ready_reasons, _ = repair_run(fail=False)
+    failed, failed_reasons, reason = repair_run(fail=True)
+    ok = ("repair_progressive" in ready_reasons and len(ready) >= 2 and ready[0] == "downloadingRecovery" and ready[-1] == "ready"
+          and "repair_progressive" in failed_reasons and failed[0] == "downloadingRecovery" and failed[-1] == "failed")
+    return ok, f"progressive start, GET during play: {' -> '.join(map(str, ready))}; recovery volumes lost: {' -> '.join(map(str, failed))} ({reason})"
 
 
 def check_resume_continuity():
@@ -470,18 +534,20 @@ def check_resume_continuity():
     _, before = fs.api("GET", "/api/v1/transcoding/config", token=admin)
     fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": 30}, admin)
     try:
+        known = handles(admin)
         _, p = fs.start_playback(anna, *fs.TRANSCODE)
         base = p["url"].rsplit("/", 1)[0]
+        mine = pinned_session(admin, known)
         init = fs.raw("GET", base + "/init.mp4", timeout=60).body
         for i in range(2):
             fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
         deadline, job = time.time() + 90, {}
         while time.time() < deadline and not (job.get("paused") and not job.get("running")):
-            job = newest_session(admin).get("job") or {}
+            job = mine().get("job") or {}
             time.sleep(0.5)
         front = job["front"]
         segs = {i: fs.raw("GET", f"{base}/{i}.m4s", timeout=60).body for i in (front - 1, front)}
-        resumed = newest_session(admin)["job"]["startSegment"] == front
+        resumed = mine()["job"]["startSegment"] == front
         fs.stop(anna, p["playbackId"])
         gaps = {}
         with tempfile.TemporaryDirectory() as tmp:
@@ -508,7 +574,7 @@ CHECKS = [("segment_timeout", check_segment_timeout), ("seek_back_evicted", chec
           ("competing_requests", check_competing_requests), ("throttle_no_block", check_throttle_no_block),
           ("own_seek_back", check_own_seek_back), ("parked_resume_capacity", check_parked_resume_capacity),
           ("resume_continuity", check_resume_continuity), ("lapsed_reservation", check_lapsed_reservation),
-          ("own_flip_pacing", check_own_flip_pacing)]
+          ("own_flip_pacing", check_own_flip_pacing), ("live_repair", check_live_repair)]
 
 
 def main():

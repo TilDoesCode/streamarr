@@ -543,7 +543,8 @@
           "name": "Elephants.Dream.2006.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD",
           "variant": "mp4-h264-aac-1080p",
           "grabs": 510,
-          "ageDays": 500
+          "ageDays": 500,
+          "recoveryPercent": 20
         }
       ]
     },
@@ -1718,7 +1719,8 @@
                   "name": "The.Lighthouse.Logs.S01E25.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
                   "variant": "mp4-h264-aac-480p",
                   "grabs": 65,
-                  "ageDays": 125
+                  "ageDays": 125,
+                  "recoveryPercent": 25
                 }
               ]
             },
@@ -1736,7 +1738,8 @@
                   "name": "The.Lighthouse.Logs.S01E26.480p.WEB-DL.AAC2.0.H.264-DEVWORLD",
                   "variant": "mp4-h264-aac-480p",
                   "grabs": 66,
-                  "ageDays": 118
+                  "ageDays": 118,
+                  "recoveryPercent": 25
                 }
               ]
             }

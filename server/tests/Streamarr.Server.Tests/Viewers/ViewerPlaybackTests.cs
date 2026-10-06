@@ -114,6 +114,8 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         return JsonDocument.Parse(text).RootElement;
     }
 
+    private static JsonValueKind ValueKind(JsonElement body, string name) => body.TryGetProperty(name, out var value) ? value.ValueKind : JsonValueKind.Null;
+
     private static object Play(string? releaseId, object device, object? preferences = null, long? start = null, int? audio = null, int? subtitle = null, string workId = Movie)
         => new { workId, releaseId, device, preferences, startPositionTicks = start, audioStreamIndex = audio, subtitleStreamIndex = subtitle };
 
@@ -354,6 +356,85 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.Equal("ready", State(ready));
         Assert.Contains("repaired_copy", Codes(ready.GetProperty("decision").GetProperty("reasons")));
         Assert.Contains(factory.Resolver.Calls, c => c.ReleaseId == release && !c.AutoFallback);
+    }
+
+    [Fact]
+    public async Task DuringPlay_TheGetReportsTheLiveRepairState_UntilItIsTerminal_ThenKeepsIt()
+    {
+        var (viewer, _) = await ViewerAsync("liverepair");
+        var release = Release(Mp4());
+        var repair = new RepairStatusInfo { JobId = "job-live", Disposition = "repairable", State = "downloadingRecovery", Phase = "recovery", ProgressPercent = 10, EtaSeconds = 80, RetryAfterSeconds = 5, ProgressiveEligible = true };
+        factory.Resolver.Script = (_, observer, _) =>
+        {
+            observer.HopStarted(release, 0);
+            observer.HopFinished(release, "ready");
+            return Task.FromResult(FakePlaybackResolver.Ready(release) with { Playability = "repairing", Repair = repair });
+        };
+        factory.Resolver.Repairs[release] = repair;
+        var ready = await ReadyAsync(viewer, Play(release, AppleTv));
+        Assert.Equal("downloadingRecovery", ready.GetProperty("repair").GetProperty("state").GetString());
+
+        async Task<JsonElement> NextAsync()
+        {
+            factory.Clock.Advance(ViewerPlaybackService.RepairRefreshInterval);
+            return (await GetAsync(viewer, Id(ready))).GetProperty("repair");
+        }
+
+        factory.Resolver.Repairs[release] = repair with { State = "reconstructing", Phase = "reconstruct", ProgressPercent = 70, EtaSeconds = 20, ProgressiveEligible = false };
+        var moving = await NextAsync();
+        Assert.Equal("reconstructing", moving.GetProperty("state").GetString());
+        Assert.Equal(70, moving.GetProperty("progressPercent").GetInt32());
+        Assert.Equal(20, moving.GetProperty("etaSeconds").GetDouble());
+        Assert.True(moving.GetProperty("progressiveEligible").GetBoolean());
+
+        factory.Resolver.Repairs[release] = repair with { State = "ready", Phase = null, ProgressPercent = 100, EtaSeconds = null, RetryAfterSeconds = null };
+        Assert.Equal("ready", (await NextAsync()).GetProperty("state").GetString());
+        factory.Resolver.Repairs[release] = repair with { JobId = "job-later", State = "failed" };
+        Assert.Equal("ready", (await NextAsync()).GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task DuringPlay_ARepairThatFailsOrVanishes_IsReportedAsTerminal()
+    {
+        var (viewer, _) = await ViewerAsync("liverepairfail");
+        var release = Release(Mp4());
+        var repair = new RepairStatusInfo { JobId = "job-dies", Disposition = "repairable", State = "downloadingRecovery", Phase = "recovery", ProgressPercent = 10, EtaSeconds = 80, RetryAfterSeconds = 5 };
+        factory.Resolver.Script = (_, _, _) => Task.FromResult(FakePlaybackResolver.Ready(release) with { Playability = "repairing", Repair = repair });
+        factory.Resolver.Repairs[release] = repair;
+        var ready = await ReadyAsync(viewer, Play(release, AppleTv));
+        await GetAsync(viewer, Id(ready));
+
+        factory.Resolver.Repairs[release] = repair with { State = "failed", Phase = null, EtaSeconds = null, RetryAfterSeconds = null, FailureReason = "insufficient parity" };
+        Assert.Equal("downloadingRecovery", (await GetAsync(viewer, Id(ready))).GetProperty("repair").GetProperty("state").GetString());
+        factory.Clock.Advance(ViewerPlaybackService.RepairRefreshInterval);
+        var failed = (await GetAsync(viewer, Id(ready))).GetProperty("repair");
+        Assert.Equal("failed", failed.GetProperty("state").GetString());
+        Assert.Equal("insufficient parity", failed.GetProperty("failureReason").GetString());
+        Assert.Equal("ready", State(await GetAsync(viewer, Id(ready))));
+
+        var (other, _) = await ViewerAsync("liverepairgone");
+        factory.Resolver.Repairs[release] = repair;
+        var second = await ReadyAsync(other, Play(release, AppleTv));
+        factory.Resolver.Repairs.TryRemove(release, out _);
+        factory.Clock.Advance(ViewerPlaybackService.RepairRefreshInterval);
+        var gone = (await GetAsync(other, Id(second))).GetProperty("repair");
+        Assert.Equal("cancelled", gone.GetProperty("state").GetString());
+        Assert.Equal("repair_job_gone", gone.GetProperty("failureReason").GetString());
+    }
+
+    [Fact]
+    public async Task DuringPlay_ARepairThatStartsLater_IsShown_ButAnOldFinishedJobIsNot()
+    {
+        var (viewer, _) = await ViewerAsync("liverepairlate");
+        var release = Release(Mp4());
+        factory.Resolver.Repairs[release] = new RepairStatusInfo { JobId = "job-old", Disposition = "repairable", State = "ready", ProgressPercent = 100 };
+        var ready = await ReadyAsync(viewer, Play(release, AppleTv));
+        factory.Clock.Advance(ViewerPlaybackService.RepairRefreshInterval);
+        Assert.Equal(JsonValueKind.Null, ValueKind(await GetAsync(viewer, Id(ready)), "repair"));
+
+        factory.Resolver.Repairs[release] = new RepairStatusInfo { JobId = "job-new", Disposition = "repairable", State = "planning", Phase = "plan", RetryAfterSeconds = 5 };
+        factory.Clock.Advance(ViewerPlaybackService.RepairRefreshInterval);
+        Assert.Equal("job-new", (await GetAsync(viewer, Id(ready))).GetProperty("repair").GetProperty("jobId").GetString());
     }
 
     [Fact]

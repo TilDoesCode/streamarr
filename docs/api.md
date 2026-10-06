@@ -1354,8 +1354,15 @@ VLC (PLAN § 2) and uses only the first `native` or `web` entry.
 | `repairing` | No healthy version is left and a PAR2 repair job is running: `repair` has `state`, `phase`, `progressPercent`, `etaSeconds`; `pollAfterMs` follows the job's `retryAfterSeconds`. When the job is ready the repaired copy plays. |
 | `planning` | Probing the file and deciding method and engine; `version` (a `VersionDto`, `rank: 0` when not in the cached ranking) is known. |
 | `starting` | Starting the remux or transcode; bounded at 60 s per revision, then `failed` with `start_timeout`. A switch or stop cancels the old revision's start: it never registers a session or takes a remux/transcode slot (a start that already registered is closed at once). |
-| `ready` | Play `url` with `engine`. |
+| `ready` | Play `url` with `engine`. `repair` is live during play (see below). |
 | `failed` | `error` + `suggestedActions`; `decision.skipped` explains a decision failure. |
+
+**Repair during play.** While the playback is `ready` and its `repair` is not terminal, every `GET` reads the
+release's live repair job (at most once per second per playback): a repair-while-streaming start moves through its
+states and ends at `ready`, `failed`, `cancelled` or `evicted` (a job that disappears reads as `cancelled`,
+`failureReason: "repair_job_gone"`). A repair that starts during play shows up as soon as it runs (an older finished
+job of the release does not). A terminal state stays until the playback changes release (switch or fallback); a
+release without a repair has `repair: null`. The progress answer does not carry it.
 
 **Ready.**
 

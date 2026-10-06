@@ -199,7 +199,8 @@ public sealed class FaultActions
         var from = fault.Num("fromPercent") ?? 0;
         var to = fault.Num("toPercent") ?? 100;
         var keys = new List<string>();
-        foreach (var file in releases.Select(r => r.Files.MaxBy(f => f.FileSize)).OfType<Publication>())
+        var recovery = fault.Str("file") == "recovery";
+        foreach (var file in releases.SelectMany(r => recovery ? r.Files.Where(PublicationStore.IsRecoveryVolume) : [r.Files.MaxBy(f => f.FileSize)!]))
         {
             var first = Math.Max(1, (int)Math.Ceiling(file.TotalParts * from / 100));
             var last = Math.Min(file.TotalParts, Math.Max(first, (int)Math.Floor(file.TotalParts * to / 100)));
@@ -241,8 +242,14 @@ public sealed class FaultActions
                     _nntp.BodyScripts.TryRemove(key, out _);
                 if (fault.State.TryGetValue("releases", out var broken) && _services.GetService<ResettableHealthCache>() is { } health)
                 {
+                    var coordinator = _services.GetService<Streamarr.Server.Services.Repair.RepairCoordinator>();
+                    var artifacts = _services.GetService<Streamarr.Server.Services.Repair.RepairArtifactCache>();
                     foreach (var release in (List<string>)broken)
+                    {
                         health.Reset(release);
+                        if (coordinator?.FingerprintForRelease(release) is { } fingerprint)
+                            artifacts?.Evict(fingerprint);
+                    }
                 }
                 break;
             case "usenet_stall" when fault.State.TryGetValue("keys", out var keys):

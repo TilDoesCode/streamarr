@@ -60,6 +60,9 @@ public sealed class PublicationStore : IMockArticleSource, IDisposable
                 files.Add(publication);
             }
 
+            if (release.Entry.RecoveryPercent is { } percent)
+                files.AddRange(PublishRecovery(release, files[0], percent, defaultPartSize));
+
             var nzbPath = Path.Combine(nzbDir, $"{Slug(release.Name)}.nzb");
             releases.Add(new PublishedRelease(release, nzbPath, files, DevWorldIds.ReleaseId(release.Guid)));
         }
@@ -69,6 +72,37 @@ public sealed class PublicationStore : IMockArticleSource, IDisposable
             release.NzbPath,
             NzbTestFixtures.BuildNzbXml(release.Files.Select(ToNzbFile).ToArray())));
     }
+
+    /// <summary>A PAR2 index plus recovery volumes for the release's file (cached next to the media), so the server's repair can run against Dev World.</summary>
+    private IEnumerable<Publication> PublishRecovery(PlannedRelease release, Publication media, int percent, int partSize)
+    {
+        var sliceSize = (int)Math.Max(65_536, (media.FileSize / 64 + 3) / 4 * 4);
+        var dir = Path.Combine(Path.GetDirectoryName(media.FilePath)!, "..", "par2", $"{Path.GetFileNameWithoutExtension(media.FilePath)}-r{percent}-s{sliceSize}");
+        var stem = Path.GetFileNameWithoutExtension(media.FileName);
+        if (!File.Exists(Path.Combine(dir, "complete")))
+        {
+            Directory.CreateDirectory(dir);
+            var data = File.ReadAllBytes(media.FilePath);
+            var slices = (data.Length + sliceSize - 1) / sliceSize;
+            var set = Par2TestWriter.Create([(media.FileName, data)], sliceSize, Math.Max(1, slices * percent / 100), recoverySlicesPerVolume: 4);
+            File.WriteAllBytes(Path.Combine(dir, $"{stem}.par2"), set.IndexBytes);
+            foreach (var (name, bytes) in set.Volumes)
+                File.WriteAllBytes(Path.Combine(dir, $"{stem}.{name["testset.".Length..]}"), bytes);
+            File.WriteAllText(Path.Combine(dir, "complete"), string.Empty);
+        }
+        foreach (var path in Directory.GetFiles(dir, "*.par2").Order(StringComparer.Ordinal))
+        {
+            var name = Path.GetFileName(path);
+            var size = new FileInfo(path).Length;
+            var prefix = "dw" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{release.Guid}\npar2\n{name}")))[..16].ToLowerInvariant();
+            var publication = new Publication(prefix, path, name, size, partSize, (int)((size + partSize - 1) / partSize), new HashSet<int>(), new HashSet<int>());
+            _byPrefix[prefix] = publication;
+            yield return publication;
+        }
+    }
+
+    public static bool IsRecoveryVolume(Publication file)
+        => file.FileName.EndsWith(".par2", StringComparison.OrdinalIgnoreCase) && file.FileName.Contains(".vol", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Message-ids whose STAT must drop the connection (degraded releases).</summary>
     public IEnumerable<string> StatDisconnectIds

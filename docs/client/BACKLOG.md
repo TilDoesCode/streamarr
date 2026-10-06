@@ -166,6 +166,17 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
+- B17 verify leftovers (not felt by a viewer, recorded by B18): requests over the per-IP refresh budget each cost one
+  indexed read-only DB query; a disabled account's live session passes the address gate and then gets 401 (per-token
+  limit still applies); restart pacing is per session (two players seeking at once share the burst of 2);
+  `transcode_slow` with `mode: always` never writes a segment after a seek restart (`-readrate` + input seek inside the
+  fault fixture, not the product); contract_check reports 67 checks on some instances and 73 on others (instance
+  content, 0 failures everywhere).
+- B18: progressive (repair-while-streaming) admission needs the repair plan's first damaged byte at resolve time, so a
+  release's very first playback always waits in `repairing`; only a playback started while that repair runs plays at
+  once. A repair started by a hole met *during* play is not reproducible on Dev World (its small files are read ahead
+  or materialized at start). The server keeps articles it read in its segment cache, so a Dev World release repairs
+  once per instance.
 
 - Audio renditions: `mediastreamvalidator` never run (Apple HLS tools not installed; ffprobe + hlssim instead); rendition
   segments ignore byte ranges like video; a group stays mixed only when every rendition is copied FLAC/Opus/MP3
@@ -292,6 +303,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   (ProcessRunner doc comment, Dev World limiter log level, `fault` 400 messages, `usenet_hole` restores its releases).
   Fix round 1: a lapsed reservation never revives on later access (its resume competes like a new start); request
   restarts of a session are paced (burst of 2, then 1/s).
+
+- B18 (2026-10-06): during play the playback GET follows the release's live repair job (moving states, then a sticky
+  ready/failed/cancelled/evicted) instead of the resolve-time snapshot (F10 code review 7, P2-4); a fallback to another
+  release no longer carries the old release's repair. Dev World publishes real PAR2 recovery for three releases and
+  runs progressive repair, so the repair path is testable live (robustness `live_repair`).
 
 - B8 (2026-10-04): replay inside the completing playback keeps a resume point (report back below the minimum resume
   percentage = new viewing; later reports of the completing playback still ignored); one remux audio group codec per

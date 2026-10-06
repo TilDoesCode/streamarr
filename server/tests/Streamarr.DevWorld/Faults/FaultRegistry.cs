@@ -438,6 +438,8 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
                 return $"params.reason must be one of {string.Join(", ", FaultCatalog.RevokeReasons)}";
             case "usenet_hole" when !IsNum("fromPercent") || !IsNum("toPercent"):
                 return "usenet_hole needs params.fromPercent and params.toPercent";
+            case "usenet_hole" or "usenet_stall" when Has("file") && Str("file") is not ("media" or "recovery"):
+                return "params.file must be media or recovery";
             case "captive_portal" when scope.Kind is not ("global" or "viewer"):
                 return "captive_portal needs scope global or viewer";
             case "refresh_fail" when scope.Kind is not ("global" or "viewer"):

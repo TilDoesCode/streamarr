@@ -215,7 +215,8 @@ subtitle language, subtitle mode). The server then works asynchronously and the 
 
 - **Resolve** is the same pipeline the Jellyfin plugin uses: a Usenet health check, automatic
   fallback to the next healthy version when the chosen one is dead (every hop is listed in
-  `attempts`), and a PAR2 repair with progress and ETA when nothing else is left. Without a version,
+  `attempts`), and a PAR2 repair with progress and ETA when nothing else is left (during play the
+  playback's `repair` follows the live job until it is ready or failed). Without a version,
   the version recommended for the sent device profile plays.
 - **Decision.** The server probes the file and picks, in this order: the device's own player
   playing the original file, the device's player via a server **remux** (video copied, audio copied

@@ -96,7 +96,7 @@ Operation Barbershop and Wing It!: no releases, so their versions list is empty)
 artwork URLs, episodes) captured from public TMDB web pages with `tools/capture_tmdb.py`,
 the `variants` (container, codecs, tracks, bitrates) and per title the releases
 (`name`, `variant`, `grabs`, `ageDays`, `health`: `ready|dead|degraded`, optional
-`nominalMbps`). To extend: add a variant and/or releases, keep names honest — boot fails when a
+`nominalMbps`, optional `recoveryPercent`). To extend: add a variant and/or releases, keep names honest — boot fails when a
 release name does not parse to its variant's resolution/codec/audio/HDR/languages or when the
 generated file does not probe as the variant.
 
@@ -121,6 +121,13 @@ names — and English where a fixture has no German text (Sprite Fright, Wing It
 - `dead`: every second article is missing (health check finds 430s) -> auto-fallback.
 - `degraded`: small parts (> 80 articles); STAT of the last article drops the connection, so
   the health check counts one indeterminate probe -> `degraded`, still playable.
+- `recoveryPercent`: the release also publishes a PAR2 index and recovery volumes (that share of the
+  file's slices, generated once into `cache/par2/`), so the server's repair runs for real: The Lighthouse
+  Logs S01E25 and S01E26 (25 %, the only version of their episode) and Elephants Dream mp4 (20 %). Dev World enables
+  progressive repair (`Repair:ProgressiveEnabled`, 256 KiB intact prefix): with a `usenet_hole` at
+  70-95 % S01E26 waits in `repairing` and plays the repaired copy; a second playback started while that
+  repair runs plays at once (`repair_progressive`) and its `repair` follows the job to `ready`/`failed`.
+  The server keeps the articles it has read, so a release repairs once per instance (restart for another run).
 - Indexer sizes are nominal (`nominalMbps` x TMDB runtime) so the size-sanity/sample rules
   accept them; the real clips are short (movies 180 s, episodes 120 s, the 2160p and 480p samples 60 s).
 - Media: testsrc2 background, a coloured title bar on the right edge, and a bottom panel with
@@ -195,8 +202,8 @@ Shorthand below: `arm '<json>'` = `curl -s -XPOST localhost:39310/devworld/fault
 | `direct_status` | `{"fault":"direct_status",P,"params":{"status":429}}` | 429 `stream_capacity` + `Retry-After: 1`; 404 `unknown_stream`; 416 with `Content-Range: bytes */<size>`; 500 |
 | `direct_reset` | `{"fault":"direct_reset",P,"params":{"afterBytes":100000}}` | reset after N bytes of that response |
 | `direct_truncate` | `{"fault":"direct_truncate",P,"params":{"percent":50},"mode":"always"}` | never a byte past 50 %; a range starting beyond answers 416 |
-| `usenet_hole` | `{"fault":"usenet_hole",P,"params":{"fromPercent":40,"toPercent":60}}` | mock Usenet answers 430 for those articles of the largest file. Before the start (scope `workId`) the server's health check finds it (`release_dead`). Mid-play it hits only bytes the server has not read ahead yet (Dev World files are small, so mostly before the start). Clearing it restores the articles and forgets the releases' dead health, so they play again |
-| `usenet_stall` | `{"fault":"usenet_stall","scope":{"workId":"…"},"params":{"ms":1500}}` | holds article bodies for `ms` (until cleared without `ms`) |
+| `usenet_hole` | `{"fault":"usenet_hole",P,"params":{"fromPercent":40,"toPercent":60}}` | mock Usenet answers 430 for those articles of the largest file (`"file":"recovery"`: of the PAR2 recovery volumes instead). Before the start (scope `workId`) the server's health check finds it (`release_dead`). Mid-play it hits only bytes the server has not read ahead yet (Dev World files are small, so mostly before the start). Clearing it restores the articles, forgets the releases' dead health and drops their repaired copy, so they play (and repair) again |
+| `usenet_stall` | `{"fault":"usenet_stall","scope":{"workId":"…"},"params":{"ms":1500}}` | holds article bodies for `ms` (until cleared without `ms`); `"file":"recovery"` holds the PAR2 recovery volumes (a repair waits in `downloadingRecovery`) |
 | `transcode_kill` | `{"fault":"transcode_kill",P,"params":{"signal":"KILL"},"after":{"segment":5}}` | kills the playback's ffmpeg (now, or on the first segment request matching `after`). The product restarts it or answers 500 `transcode_failed` |
 | `transcode_slow` | `{"fault":"transcode_slow","scope":{"next":"anna"},"params":{"readrate":0.5}}` | the next ffmpeg session run (transcode or remux) of the scope gets `-readrate 0.5` (`always` keeps it for restarts) |
 | `transcode_never_start` | `{"fault":"transcode_never_start","scope":{"next":"anna"},"params":{"code":"transcode_capacity"}}` | HLS start throws that code (503 for capacity codes, else 500). The server then falls through or fails |
