@@ -18,3 +18,15 @@ export function usePlayerBack(onBack: () => boolean): void {
   useMenuClaim('always');
   useEffect(() => () => expireReturnFocus(), []);
 }
+
+/** A second Back within this time after one that only dismissed a recovery hint leaves the player. */
+export const BACK_CONFIRM_MS = 4_000;
+
+/** While a recovery shows its spinner and hint, the first Back only dismisses the hint; the next one leaves (S6u). */
+export function recoveryBack(
+  recovering: boolean,
+  dismissedAt: number,
+  now: number
+): 'dismiss' | 'leave' {
+  return recovering && now - dismissedAt > BACK_CONFIRM_MS ? 'dismiss' : 'leave';
+}

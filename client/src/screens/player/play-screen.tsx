@@ -22,7 +22,7 @@ import { Text } from '@/components/ui/text';
 import { detailHref, isDetailOf, openerLeaf, playHref } from '@/navigation/routes';
 import { useScreenTitle } from '@/navigation/screen-title';
 
-import { leavePlayer, usePlayerBack } from './player-tv-back';
+import { leavePlayer, recoveryBack, usePlayerBack } from './player-tv-back';
 import { rememberedAudioLanguage } from '@/player/audio-preference';
 import { PlaybackController } from '@/player/controller';
 import { loadDeviceCaps } from '@/player/device-profile';
@@ -90,6 +90,8 @@ export function PlayScreen() {
   const [picker, setPicker] = useState(false);
   const [upNextDismissedFor, setUpNextDismissedFor] = useState<string | null>(null);
   const overlayBack = useRef<(() => boolean) | null>(null);
+  const hintBack = useRef<{ at: number; key: string | null }>({ at: 0, key: null });
+  const [hintDismissed, setHintDismissed] = useState<string | null>(null);
   const workId = params.workId ?? '';
   const title = params.title ?? '';
   const startSeconds = params.start === undefined ? undefined : Number(params.start) || 0;
@@ -193,11 +195,16 @@ export function PlayScreen() {
   };
 
   const onBack = () => {
+    const recovering = playing && !!controller?.status.spinner && !!controller.status.hint;
     if (picker) setPicker(false);
     else if (panel) setPanel(null);
     else if (showUpNext) setUpNextDismissedFor(workId);
     else if (showEndCard) close();
-    else if (!(playing && overlayBack.current?.())) close();
+    else if (playing && overlayBack.current?.()) return true;
+    else if (recoveryBack(recovering, hintBack.current.at, Date.now()) === 'dismiss') {
+      hintBack.current = { at: Date.now(), key: controller?.status.hint?.key ?? null };
+      setHintDismissed(hintBack.current.key);
+    } else close();
     return true;
   };
   usePlayerBack(onBack);
@@ -273,7 +280,9 @@ export function PlayScreen() {
       // A viewer's switch shows its explanation in the switching card; running steps keep their spinner and hint.
       (phase !== 'switching' || status.spinner) ? (
         <PlayerStatusView
-          status={status}
+          status={
+            hintDismissed && status.hint?.key === hintDismissed ? { ...status, hint: null } : status
+          }
           onAction={onStatusAction}
           controlsVisible={controlsShown}
           top={top + design.px(design.isTV ? 70 : 56)}

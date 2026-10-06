@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react-native';
 import { BackHandler, Platform } from 'react-native';
 
-import { leavePlayer, usePlayerBack } from '../player-tv-back';
+import { BACK_CONFIRM_MS, leavePlayer, recoveryBack, usePlayerBack } from '../player-tv-back';
 
 const mockSetMenuMode = jest.fn();
 const mockRequestReturnFocus = jest.fn();
@@ -56,5 +56,13 @@ describe('player Back on Apple TV (I4 review M9, M10, item 9)', () => {
     const lonely = { canGoBack: () => false, back: jest.fn(), replace: jest.fn() };
     leavePlayer(lonely);
     expect(lonely.replace).toHaveBeenCalledWith('/');
+  });
+
+  it('during a running recovery the first Menu only dismisses the hint, the next one leaves (S6u live)', () => {
+    const now = 100_000;
+    expect(recoveryBack(true, 0, now)).toBe('dismiss');
+    expect(recoveryBack(true, now - 1_000, now)).toBe('leave');
+    expect(recoveryBack(true, now - BACK_CONFIRM_MS - 1, now)).toBe('dismiss');
+    expect(recoveryBack(false, 0, now)).toBe('leave');
   });
 });
