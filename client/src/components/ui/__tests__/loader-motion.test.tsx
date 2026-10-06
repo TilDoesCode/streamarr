@@ -70,13 +70,27 @@ describe('endless loaders stop when their screen closes (F12, R1 release logs)',
       }
     };
     walk(join(__dirname, '../../..'));
-    const unguarded = files.filter((path) => {
-      const source = readFileSync(path, 'utf8');
-      const endless =
-        /animationIterationCount:\s*'infinite'/.test(source) || /withRepeat\(/.test(source);
-      const stops = /useLoaderMotion\(\)/.test(source) || /cancelAnimation\(/.test(source);
-      return endless && !stops;
-    });
+    const unguarded = files.filter((path) => unguardedLoops(readFileSync(path, 'utf8')) > 0);
     expect(unguarded).toEqual([]);
   });
+
+  it('the guard sees every loop form, one stop per loop (verify B4, B5)', () => {
+    expect(unguardedLoops(`{ animationIterationCount: "infinite" }`)).toBe(1);
+    expect(unguardedLoops(`{ animationIterationCount: 'infinite' }`)).toBe(1);
+    expect(unguardedLoops('Animated.loop(Animated.timing(value, {}))')).toBe(1);
+    expect(unguardedLoops('withRepeat(withTiming(1), -1)')).toBe(1);
+    const twoLoops = `useLoaderMotion(); withRepeat(a); withRepeat(b);`;
+    expect(unguardedLoops(twoLoops)).toBe(1);
+    expect(unguardedLoops(`useLoaderMotion(); { animationIterationCount: 'infinite' }`)).toBe(0);
+  });
 });
+
+/** Endless loops in a source file minus their stops (each loop needs its own useLoaderMotion or cancelAnimation). */
+function unguardedLoops(source: string): number {
+  const count = (pattern: RegExp) => source.match(pattern)?.length ?? 0;
+  const loops =
+    count(/animationIterationCount:\s*(?:'infinite'|"infinite"|`infinite`|Infinity\b)/g) +
+    count(/withRepeat\(/g) +
+    count(/Animated\.loop\(/g);
+  return Math.max(0, loops - count(/useLoaderMotion\(\)/g) - count(/cancelAnimation\(/g));
+}

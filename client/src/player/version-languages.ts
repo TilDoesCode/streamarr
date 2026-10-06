@@ -10,11 +10,27 @@ const ALIASES: Record<string, string> = {
   spa: 'es',
   ita: 'it',
   jpn: 'ja',
+  dut: 'nl',
+  nld: 'nl',
+  chi: 'zh',
+  zho: 'zh',
+  cze: 'cs',
+  ces: 'cs',
+  gre: 'el',
+  ell: 'el',
+  rum: 'ro',
+  ron: 'ro',
+  slo: 'sk',
+  slk: 'sk',
 };
 const key = (code: string | null | undefined) => {
   const lower = (code ?? '').toLowerCase();
   return ALIASES[lower] ?? lower;
 };
+/** Undetermined, multiple, no linguistic content, missing: never a preference, never named in a notice (S4n). */
+const NO_LANGUAGE = new Set(['', 'und', 'mul', 'zxx', 'mis']);
+const language = (code: string | null | undefined) =>
+  NO_LANGUAGE.has(key(code)) ? undefined : (code ?? undefined);
 
 export type ViewerLanguages = {
   audio?: string;
@@ -29,10 +45,9 @@ export function viewerLanguages(
   subtitleIndex: number | null
 ): ViewerLanguages {
   const info = playback?.mediaInfo;
-  const audio =
-    info?.audioTracks?.find((track) => track.index === audioIndex)?.language ?? undefined;
+  const audio = language(info?.audioTracks?.find((track) => track.index === audioIndex)?.language);
   const subtitle = info?.subtitleTracks?.find((track) => track.index === subtitleIndex);
-  const full = subtitle && !subtitle.forced ? (subtitle.language ?? undefined) : undefined;
+  const full = subtitle && !subtitle.forced ? language(subtitle.language) : undefined;
   return {
     audio,
     subtitle: full,
@@ -49,12 +64,14 @@ export function missingLanguages(
   playback: Playback | null
 ): Record<string, string> {
   const info = playback?.mediaInfo;
+  // A start answer without track lists says nothing about languages (S4n).
+  if (!info) return {};
   const has = (list: { language?: string | null }[] | null | undefined, code: string) =>
     (list ?? []).some((track) => key(track.language) === key(code));
+  // Only full subtitles count: a forced-only track is not "German subtitles" (S4n).
+  const full = (info.subtitleTracks ?? []).filter((track) => !track.forced);
   return {
-    ...(wanted.audio && !has(info?.audioTracks, wanted.audio) ? { noAudio: wanted.audio } : {}),
-    ...(wanted.subtitle && !has(info?.subtitleTracks, wanted.subtitle)
-      ? { noSubtitle: wanted.subtitle }
-      : {}),
+    ...(wanted.audio && !has(info.audioTracks, wanted.audio) ? { noAudio: wanted.audio } : {}),
+    ...(wanted.subtitle && !has(full, wanted.subtitle) ? { noSubtitle: wanted.subtitle } : {}),
   };
 }

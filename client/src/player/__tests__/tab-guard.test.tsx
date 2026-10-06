@@ -1,8 +1,12 @@
 import { act, render } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import {
   createTabGuard,
+  isPlayingHere,
   openTabChannel,
   useOneTabPlays,
   type TabChannel,
@@ -112,5 +116,72 @@ describe('one playing tab per browser (F12)', () => {
     page.addEventListener = listen;
     (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = original;
     os.restore();
+  });
+
+  it('older Safari: the storage transport reads only its own key, skips foreign values and stops listening (verify B9)', () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    const original = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    const page = new EventTarget();
+    const win = window as unknown as Record<string, unknown>;
+    const saved = {
+      addEventListener: win.addEventListener,
+      removeEventListener: win.removeEventListener,
+    };
+    win.addEventListener = page.addEventListener.bind(page);
+    win.removeEventListener = page.removeEventListener.bind(page);
+    const storage = jest.replaceProperty(window, 'localStorage', { setItem: jest.fn() } as never);
+    const storageEvent = (key: string, newValue: string | null) =>
+      Object.assign(new Event('storage'), { key, newValue });
+    const heard: TabMessage[] = [];
+    const channel = openTabChannel()!;
+    const off = channel.listen((message) => heard.push(message));
+    page.dispatchEvent(
+      storageEvent('streamarr.player', JSON.stringify({ type: 'playing', tab: 'b' }))
+    );
+    page.dispatchEvent(storageEvent('other.key', JSON.stringify({ type: 'playing', tab: 'c' })));
+    page.dispatchEvent(storageEvent('streamarr.player', '{not json'));
+    page.dispatchEvent(storageEvent('streamarr.player', null));
+    expect(heard).toEqual([{ type: 'playing', tab: 'b' }]);
+    off();
+    page.dispatchEvent(
+      storageEvent('streamarr.player', JSON.stringify({ type: 'playing', tab: 'd' }))
+    );
+    expect(heard).toHaveLength(1);
+    storage.restore();
+    win.addEventListener = saved.addEventListener;
+    win.removeEventListener = saved.removeEventListener;
+    (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = original;
+    os.restore();
+  });
+
+  it('storage blocked (a throwing localStorage getter) means no guard, never a crash (F12-3)', () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    const original = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get: () => {
+        throw Object.assign(new Error('blocked'), { name: 'SecurityError' });
+      },
+    });
+    try {
+      expect(openTabChannel()).toBeNull();
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
+      else delete (window as unknown as Record<string, unknown>).localStorage;
+      (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = original;
+      os.restore();
+    }
+  });
+
+  it('the play screen announces exactly when this tab plays: playing and not paused (verify B8)', () => {
+    expect(isPlayingHere({ phase: 'playing', paused: false })).toBe(true);
+    expect(isPlayingHere({ phase: 'playing', paused: true })).toBe(false);
+    expect(isPlayingHere({ phase: 'starting', paused: false })).toBe(false);
+    expect(isPlayingHere(null)).toBe(false);
+    const source = readFileSync(join(__dirname, '../../screens/player/play-screen.tsx'), 'utf8');
+    expect(source).toMatch(/useOneTabPlays\(isPlayingHere\(controller\),/);
   });
 });

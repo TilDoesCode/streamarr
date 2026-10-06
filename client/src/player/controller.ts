@@ -40,6 +40,7 @@ import {
   deliveryFailure,
   issueFailure,
   recentIssue,
+  stampIssues,
   type DeliveryIssue,
 } from '@/player/recovery/delivery';
 import { LOCAL_SUBTITLES, localTrackId } from '@/player/local-tracks';
@@ -119,8 +120,10 @@ export {
   SUBTITLE_RETRY_MS,
   SYSTEM_PAUSE_MS,
 } from '@/player/recovery/budgets';
-/** Connectivity source (NetInfo unless a test passes its own). */
-export type NetworkSource = { subscribe(listener: (online: boolean) => void): () => void };
+/** Connectivity source (NetInfo unless a test passes its own); `kind` (wifi, cellular …) reveals a handover. */
+export type NetworkSource = {
+  subscribe(listener: (online: boolean, kind?: string) => void): () => void;
+};
 /** One audio switch: in the session (rendition) or via `/switch`; `ms` until the new track plays on. */
 export type AudioSwitchSample = {
   via: 'session' | 'server';
@@ -157,7 +160,7 @@ export type ControllerOptions = {
 
 const NETINFO: NetworkSource = {
   subscribe: (listener) =>
-    NetInfo.addEventListener((state) => listener(state.isConnected !== false)),
+    NetInfo.addEventListener((state) => listener(state.isConnected !== false, state.type)),
 };
 
 const MIN_RESUME_SECONDS = 30;
@@ -251,6 +254,13 @@ export class PlaybackController {
   private serverOkAt = 0;
   private brokeAt = 0;
   private issues: DeliveryIssue[] = [];
+  /** The playback the issues were reported for: a new start of another playback forgets them. */
+  private issuesFor: string | null = null;
+  /** The device's network kind (wifi, cellular …) and when it last changed (a handover is the connection's). */
+  private networkKind: string | null = null;
+  private networkChangedAt = 0;
+  /** Another tab started while this one was still starting: it comes up paused with the notice. */
+  private yieldPending = false;
   /** The budget of a viewer's switch (or its restore): no server progress for a minute ends it (S9a P8). */
   private switchBudget: StepBudget | null = null;
   private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -262,6 +272,8 @@ export class PlaybackController {
       if (id !== null) this.engine?.setSubtitleTrack(id);
       return id !== null;
     },
+    healthy: () =>
+      this.phase === 'playing' && this.pictured && !this.stallSince && !this.runner.current,
   });
   private readonly undeliverableNoted = new Set<number>();
   private readonly runner: RecoveryRunner;
@@ -339,7 +351,9 @@ export class PlaybackController {
       changed: () => this.changed(),
     });
     // Known from the first moment: an offline start waits for the network instead of failing (A24).
-    this.networkOff = (options.network ?? NETINFO).subscribe((online) => this.onNetwork(online));
+    this.networkOff = (options.network ?? NETINFO).subscribe((online, kind) =>
+      this.onNetwork(online, kind)
+    );
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -493,7 +507,11 @@ export class PlaybackController {
     });
   }
 
-  private onNetwork(online: boolean): void {
+  private onNetwork(online: boolean, kind?: string): void {
+    if (kind && kind !== this.networkKind) {
+      if (this.networkKind) this.networkChangedAt = Date.now();
+      this.networkKind = kind;
+    }
     if (online === !this.offline || this.closed) return;
     this.offline = !online;
     this.offlineSince = online ? 0 : Date.now();
@@ -680,10 +698,24 @@ export class PlaybackController {
   }
 
   /** The server lost the playback (idle expiry, restart, B13 `playbackAlive`): a silent new start at the position. */
-  private onProgressAnswer({ report, playbackAlive, deliveryIssues }: ProgressAnswer): void {
-    this.serverOkAt = Date.now();
-    if (deliveryIssues && report.playbackId === this.playback?.playbackId)
-      this.onDeliveryIssues(deliveryIssues);
+  private onProgressAnswer({
+    report,
+    playbackAlive,
+    deliveryIssues,
+    sentAt,
+  }: ProgressAnswer): void {
+    // When the request was sent: an answer already in flight at a media break proves nothing (S4n).
+    this.serverOkAt = Math.max(this.serverOkAt, sentAt ?? Date.now());
+    const id = this.playback?.playbackId ?? null;
+    if (id && report.playbackId === id) {
+      this.issues = stampIssues(
+        this.issuesFor === id ? this.issues : [],
+        deliveryIssues ?? [],
+        Date.now()
+      );
+      this.issuesFor = id;
+      this.onDeliveryIssues();
+    }
     if (playbackAlive !== false || report.event === 'stop' || this.closed) return;
     const playback = this.playback;
     if (!playback?.playbackId || report.playbackId !== playback.playbackId) return;
@@ -708,9 +740,9 @@ export class PlaybackController {
   }
 
   /** Subtitles failed to load or parse (C22, C23): off with a notice, one retry later; never a reason to stop. */
-  private onSubtitleError(code: string): void {
+  private onSubtitleError(code: string, { stall = false }: { stall?: boolean } = {}): void {
     if (this.closed || this.phase !== 'playing') return;
-    const failed = this.subtitleRetry.fail();
+    const failed = this.subtitleRetry.fail(Date.now(), { stall });
     if (!failed) return;
     // The server's pick must not be re-applied over the failed track right after a load.
     this.serverTracksOff?.();
@@ -729,7 +761,11 @@ export class PlaybackController {
     const engine = this.engine;
     if (engine?.kind !== 'expo-video' || Platform.OS !== 'ios') return false;
     const { state, tracks } = engine.getSnapshot();
-    return state === 'buffering' && tracks.subtitles.some((track) => track.selected);
+    if (state !== 'buffering' || !tracks.subtitles.some((track) => track.selected)) return false;
+    // Only when nothing else explains the stall: no media retry (a 503, a -1005 run), no network or server signal (S4n).
+    const now = Date.now();
+    const retrying = !!this.loadRetry && now - this.loadRetry.at < LOAD_RETRY_RECENT_MS;
+    return !retrying && !this.offline && !recentIssue(this.relevantIssues(), now);
   }
 
   /** A selected subtitle the server cannot deliver to this device is said at once, with VLC when it could (C24). */
@@ -962,6 +998,10 @@ export class PlaybackController {
     this.endSwitch();
     this.switchedFrom = null;
     this.phase = 'playing';
+    if (this.yieldPending) {
+      this.yieldPending = false;
+      this.showNotice('otherTab');
+    }
     this.ended = false;
     this.lastGoodPosition = position;
     this.startFloor = position;
@@ -1275,7 +1315,7 @@ export class PlaybackController {
       );
     } else if (rule === 'finish') this.finish();
     else if (rule === 'stallLadder' && this.subtitleStalls())
-      this.onSubtitleError('subtitle_timeout');
+      this.onSubtitleError('subtitle_timeout', { stall: true });
     else if (rule === 'stallLadder') {
       this.stallSince = 0;
       this.mediaFailure(
@@ -1369,7 +1409,16 @@ export class PlaybackController {
 
   /** Another tab of this browser started playing (web, F12): pause here and say why. */
   yieldToOtherTab(): void {
-    if (this.paused || this.phase !== 'playing') return;
+    if (this.paused || this.closed) return;
+    // Still starting or switching: the newest start wins, so this one comes up paused with the notice (S4n).
+    if (this.phase === 'starting' || this.phase === 'resume' || this.phase === 'switching') {
+      this.paused = true;
+      this.engine?.pause();
+      this.yieldPending = true;
+      this.changed();
+      return;
+    }
+    if (this.phase !== 'playing') return;
     this.setPaused(true);
     this.showNotice('otherTab');
   }
@@ -1549,9 +1598,23 @@ export class PlaybackController {
 
   /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
   /** B15: the server says which part failed; an audio rendition takes the audio path at once while playback is stuck. */
-  private onDeliveryIssues(issues: DeliveryIssue[]): void {
-    this.issues = issues;
-    const issue = recentIssue(issues, Date.now());
+  /** Issues of this playback that concern what plays now: the failing rendition only (S4n). */
+  private relevantIssues(): DeliveryIssue[] {
+    if (!this.playback?.playbackId || this.issuesFor !== this.playback.playbackId) return [];
+    const audio = this.playback.mediaInfo?.audioTracks?.find(
+      (track) => track.index === this.currentAudio()
+    );
+    const subtitle = this.currentSubtitle();
+    return this.issues.filter((issue) => {
+      if (!issue.renditionId) return true;
+      if (issue.kind === 'audioRendition') return issue.renditionId === audio?.renditionId;
+      if (issue.kind === 'subtitleRendition') return issue.renditionId === `${subtitle}`;
+      return true;
+    });
+  }
+
+  private onDeliveryIssues(): void {
+    const issue = recentIssue(this.relevantIssues(), Date.now());
     if (!issue || this.closed || this.phase !== 'playing' || this.runner.current) return;
     if (issue.kind === 'subtitleRendition' && this.currentSubtitle() !== null)
       return this.onSubtitleError('subtitle_unavailable');
@@ -1567,7 +1630,8 @@ export class PlaybackController {
       serverOkAt: this.serverOkAt,
       brokeAt: breaking ? this.brokeAt : now,
       now,
-      issue: recentIssue(this.issues, now),
+      networkChangedAt: this.networkChangedAt,
+      issue: recentIssue(this.relevantIssues(), now),
     });
     const from = this.switchedFrom;
     if (!from || !switchesBack(this.pictured, failure.category))

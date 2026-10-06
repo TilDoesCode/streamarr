@@ -49,10 +49,22 @@ function storageChannel(): TabChannel | null {
   };
 }
 
-/** The transport of this platform; none on native apps (one player per app). */
+/** The transport of this platform; none on native apps (one player per app) or where storage is blocked. */
 export function openTabChannel(): TabChannel | null {
   if (Platform.OS !== 'web') return null;
-  return broadcastChannel() ?? storageChannel();
+  try {
+    return broadcastChannel() ?? storageChannel();
+  } catch {
+    // Storage blocked (old Safari private mode throws on `localStorage`): one tab can't know of the others.
+    return null;
+  }
+}
+
+/** This tab plays right now: a start or resume to announce to the other tabs. */
+export function isPlayingHere(
+  controller: { phase: string; paused: boolean } | null | undefined
+): boolean {
+  return controller?.phase === 'playing' && !controller.paused;
 }
 
 /** One playing tab per browser (F12): playing here tells the others, which pause and say why. */

@@ -7,15 +7,15 @@ import { harness, newController, reply } from './harness';
 export const TICKS = 10_000_000;
 
 /** Connectivity under test control. */
-export function fakeNetwork(): NetworkSource & { set(online: boolean): void } {
-  const listeners = new Set<(online: boolean) => void>();
+export function fakeNetwork(): NetworkSource & { set(online: boolean, kind?: string): void } {
+  const listeners = new Set<(online: boolean, kind?: string) => void>();
   return {
     subscribe(listener) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
-    set(online) {
-      for (const listener of [...listeners]) listener(online);
+    set(online, kind) {
+      for (const listener of [...listeners]) listener(online, kind);
     },
   };
 }

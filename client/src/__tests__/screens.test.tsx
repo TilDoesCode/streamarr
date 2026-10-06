@@ -19,9 +19,21 @@ import { methodLabel } from '@/screens/settings/account-security';
 import { colors, DesignProvider } from '@/theme';
 
 import { appRoutes } from '../../jest/app-routes';
+import { usePreferredFocus } from '@/navigation/screen-focus';
+import { useLaunchFocus } from '@/screens/home/launch-focus';
+import * as libraryBack from '@/screens/library/library-back';
 
 // Counts MovieScreen mounts: a new title must remount the page (TV focus memory lives in its focus guides).
 const mockMovieMounts = { count: 0 };
+// Pass-through spies: Home must hand the same hero target to the launch focus and the TV return fallback (verify B11).
+jest.mock('@/navigation/screen-focus', () => {
+  const actual = jest.requireActual('@/navigation/screen-focus');
+  return { ...actual, usePreferredFocus: jest.fn(actual.usePreferredFocus) };
+});
+jest.mock('@/screens/home/launch-focus', () => {
+  const actual = jest.requireActual('@/screens/home/launch-focus');
+  return { ...actual, useLaunchFocus: jest.fn(actual.useLaunchFocus) };
+});
 jest.mock('@/screens/detail/movie-screen', () => {
   const actual = jest.requireActual('@/screens/detail/movie-screen');
   const { useEffect } = jest.requireActual('react');
@@ -175,6 +187,19 @@ describe('Home', () => {
     await open('/');
     expect(await screen.findByTestId('home-loading')).toBeOnTheScreen();
     expect(screen.queryByTestId('home-row-trending-movies')).toBeNull();
+  });
+
+  it('Apple TV: the hero is both the launch target and the return fallback after the player (F12, verify B11)', async () => {
+    const preferred = jest.mocked(usePreferredFocus);
+    const launch = jest.mocked(useLaunchFocus);
+    preferred.mockClear();
+    launch.mockClear();
+    await open('/');
+    expect(await screen.findByTestId('home-row-trending-movies', {}, WAIT)).toBeOnTheScreen();
+    expect(preferred).toHaveBeenCalled();
+    expect(preferred.mock.calls.map(([target]) => target)).toEqual(
+      launch.mock.calls.map(([target]) => target)
+    );
   });
 
   it('shows the empty state without rows', async () => {
@@ -382,6 +407,17 @@ describe('Library', () => {
     await waitFor(() => expect(screen.getByTestId('library-genre-27')).toBeChecked(), WAIT);
     expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: false });
     scrollToOffset.mockRestore();
+  });
+
+  it('a genre chip changes the filter through applyLibraryFilter (one entry, verify A2)', async () => {
+    const apply = jest.spyOn(libraryBack, 'applyLibraryFilter');
+    afterThis = () => apply.mockRestore();
+    handlers['/api/v1/viewer/catalog/browse'] = () => page([browseItem(1, 'Sintel')], 1, false);
+    await open('/movies');
+    expect(await screen.findByTestId('library-item-0', {}, WAIT)).toBeOnTheScreen();
+    await userEvent.setup().press(screen.getByTestId('library-genre-27'));
+    await waitFor(() => expect(screen.getByTestId('library-genre-27')).toBeChecked(), WAIT);
+    expect(apply).toHaveBeenCalledWith(expect.anything(), { genre: '27', sort: undefined });
   });
 
   it('Android phone: a genre switch that has to fetch shows the skeleton grid, like the first load (F11)', async () => {

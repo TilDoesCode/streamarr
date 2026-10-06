@@ -33,6 +33,9 @@ journals hold the evidence.
 Grouped by device. None of these can be closed from code or an emulator.
 
 **Android phone (a real one, or a release build)**
+- P3 (reopened in F12 follow-up, verify F11-1): a keyboard that comes up late (slow device, IME switch) leaves "Sign in"
+  half covered; the screen scrolls only partly (F9.md:474). `auth-scaffold.tsx` is unchanged since F9. Check on a real
+  phone with a slow IME.
 - F5: in-session audio switch on the phone not done: the dev build ANRs right after the player starts on the 2 GB
   `Streamarr_Phone` AVD (Google TV covered ExoPlayer); R1 played on a release phone build but did not switch audio.
 - Phone blur cost: the software-GL AVD shows RenderThread ~84 % with the blurred ambient (R1 still an AVD number).
@@ -51,6 +54,8 @@ Grouped by device. None of these can be closed from code or an emulator.
   than Gboard.
 
 **iPhone / iPad**
+- P3 (reopened in F12 follow-up, verify F11-1): the large title on Search shrinking on scroll was never shown live; F9
+  showed it on Settings only and called Search "same structure" (F9.md:293). Check on an iPhone with a real library.
 - HEVC/HDR/Dolby Vision media caps, PiP start, AirPlay picker, iPad pointer hover (`modules/pointer-events` ->
   `Focusable` onPointerEnter) and hardware-key hold-repeat (unit-tested only).
 - iPhone (I1 verify): BBB WEB-DL direct play showed frame 0 for ~45 s while the clock ran until a seek (loaded host);
@@ -225,10 +230,11 @@ Grouped by device. None of these can be closed from code or an emulator.
     (play-screen.tsx:162), fullscreen-exit.test; live on iPad Safari (F8.md:411-416).
   - iPhone Safari: a pause from the system full-screen controls not reflected → F8 S3/S4b: `userPlayback` adoption
     (web-engine-player.test "reports a pause and a resume from the system full-screen controls"); live in F8 V2.
-  - Android phone: Sign in button half under the keyboard → F9 (Q1-34): live V2 "'Sign in' fully above the keyboard"
-    (F9.md:474; a late keyboard scrolls only partly, P3).
+  - Android phone: Sign in button half under the keyboard → F9 (Q1-34): live V2 "'Sign in' fully above the keyboard".
+    The late-keyboard residual was reopened in F12 follow-up (see "Needs real hardware: Android phone").
   - iOS NativeTabs accessibility labels kept the old language → F9: label passed explicitly (native-tabs-shell.tsx);
-    S2b "AX labels follow EN/DE live"; Settings large title collapses (F9 V2).
+    S2b "AX labels follow EN/DE live"; Settings large title collapses (F9 V2). The Search half of the large-title
+    entry was reopened in F12 follow-up (see "Needs real hardware: iPhone / iPad").
   - iOS: a sign-in deep link while signed in had no way back → F9 (Q1-09): `sign-in-back-to-app`
     (sign-in-screen.tsx, onboarding-q1 test); live on iPhone S2b.
   - Web: a second tab overwrote an edited display name → T1: `useEffectEvent` in use-profile-sync.ts,

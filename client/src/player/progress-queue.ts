@@ -12,6 +12,8 @@ export type ProgressAnswer = {
   playbackAlive: boolean | null;
   /** B15 (optional): what the server saw fail while delivering (recovery/delivery.ts). */
   deliveryIssues?: DeliveryIssue[];
+  /** When this request was sent: only a request sent after a media break proves the server answers (S4n). */
+  sentAt?: number;
 };
 type Entry = { accountId: string; report: ProgressReport; at: number };
 
@@ -42,13 +44,25 @@ function outcome(error: unknown): 'retry' | 'keep' | 'drop' {
 }
 
 async function send(client: ApiClient, report: ProgressReport): Promise<ProgressAnswer> {
-  const answer = await unwrap(client.POST('/api/v1/viewer/watch/progress', { body: report }));
-  const deliveryIssues = deliveryIssuesOf(answer);
+  const sentAt = Date.now();
+  const call = client.POST('/api/v1/viewer/watch/progress', { body: report });
+  const answer = await unwrap(call);
+  const deliveryIssues = deliveryIssuesOf(answer, serverTimeOf((await call).response));
   return {
     report,
     playbackAlive: answer?.playbackAlive ?? null,
     ...(deliveryIssues.length ? { deliveryIssues } : {}),
+    sentAt,
   };
+}
+
+/** The server's clock from the answer's `Date` header (issue ages are measured on it, never on this device's). */
+export function serverTimeOf(
+  response: { headers?: { get(name: string): string | null } } | undefined
+) {
+  const date = response?.headers?.get('Date');
+  const at = date ? Date.parse(date) : NaN;
+  return Number.isFinite(at) ? at : undefined;
 }
 
 /** Progress reports with an offline queue: failed sends are kept (per account, persisted) and retried with backoff. */
