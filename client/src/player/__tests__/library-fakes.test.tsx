@@ -119,7 +119,9 @@ describe('scriptable library fakes drive the real engines (state-matrix § 2 d.1
     engine.load({ uri: 'http://server.test/a.mkv', kind: 'progressive' });
     await render(<engine.Surface />);
     expect(FakeVlcView.props?.source).toBeTruthy();
+    globalThis.fetch = jest.fn(async () => ({ status: 206 })) as unknown as typeof fetch;
     FakeVlcView.call('onEncounteredError', { message: 'VLC is unable to open the MRL' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(errors(events)).toEqual(['VLC is unable to open the MRL']);
     expect(
       classify({ kind: 'engine', engine: 'vlc', reason: 'VLC is unable to open the MRL' })

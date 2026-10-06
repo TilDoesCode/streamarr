@@ -8,6 +8,7 @@ import type { EngineHealth } from '../health/types';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase, PropsStore } from './base';
 import { createPropsSurface } from './props-surface';
+import { probeStatus } from './status-probe';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps } from './types';
 
 export type VlcOptions = {
@@ -80,6 +81,8 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
   private startReseeks = 0;
   /** MediaCodec direct rendering; turned off for good when it decodes without showing a picture. */
   private directRendering: boolean;
+  /** The server's answer for the current source, read once per load when libVLC fails (S6x). */
+  private statusProbe: Promise<number | undefined> | null = null;
 
   constructor(options: VlcOptions = {}) {
     super();
@@ -123,18 +126,12 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
               this.emit({ type: 'ended' });
             }
           }}
-          onEncounteredError={(error) => {
-            this.emit({ type: 'error', reason: error.message });
-            this.setState('error');
-          }}
+          onEncounteredError={(error) => this.fail(error.message, true)}
           onDialogDisplay={(dialog) => {
             // libVLC waits for an answer (certificate, login, codec question): nobody answers on a TV.
             void this.view.current?.dismiss().catch(() => undefined);
-            this.emit({
-              type: 'error',
-              reason: `vlc_dialog ${dialog.type}: ${dialog.title} ${dialog.text}`.trim(),
-            });
-            this.setState('error');
+            const reason = `vlc_dialog ${dialog.type}: ${dialog.title} ${dialog.text}`.trim();
+            this.fail(reason, dialog.type === 'error');
           }}
           onTimeChanged={(time) => this.onTime(time.value / 1000)}
           onFirstPlay={(info) => {
@@ -184,6 +181,24 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     if (this.started && !seeking && now - this.timeAt < TIME_EVENT_MS) return;
     this.timeAt = now;
     this.emitTime(this.started ? reported : Math.max(reported, start));
+  }
+
+  /** The error now; its event once the server said what the source answers (libVLC names no HTTP status). */
+  private fail(reason: string, askServer: boolean): void {
+    this.setState('error');
+    const source = this.source;
+    if (!askServer || source?.kind !== 'progressive' || !/^https?:/.test(source.uri)) {
+      this.emit({ type: 'error', reason });
+      return;
+    }
+    const nonce = this.props.get().nonce;
+    // No answer is no evidence here: the controller sees the network itself, VLC's failure stays VLC's.
+    void (this.statusProbe ??= probeStatus(source.uri).then((status) => status || undefined)).then(
+      (status) => {
+        if (this.props.get().nonce !== nonce) return;
+        this.emit(status ? { type: 'error', reason, status } : { type: 'error', reason });
+      }
+    );
   }
 
   /** libVLC/VLCKit statistics in the one health shape; the controller's watchdog judges them (D23–D25). */
@@ -267,6 +282,7 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
 
   load(source: EngineSource): void {
     this.resetForLoad(source);
+    this.statusProbe = null;
     this.started = false;
     this.pendingPause = false;
     this.seekGuard = null;

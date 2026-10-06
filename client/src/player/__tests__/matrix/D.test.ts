@@ -613,8 +613,11 @@ describe('matrix D — Engine and decoder', () => {
       const vlc = vlcPlaying();
       vlc.internals.view.current = FakeVlcView.ref;
       await render(createElement(vlc.engine.Surface));
+      globalThis.fetch = jest.fn(async () => ({ status: 206 })) as unknown as typeof fetch;
       FakeVlcView.call('onEncounteredError', { message: "Your input can't be opened" });
+      await jest.advanceTimersByTimeAsync(0);
       const [event] = vlc.of('error');
+      expect(event).not.toHaveProperty('status');
       expect(classify({ kind: 'engine', engine: 'vlc', ...event! })).toMatchObject({
         category: 'T7',
         code: 'vlc_error',
@@ -753,6 +756,7 @@ describe('matrix D — Engine and decoder', () => {
         category: 'T1',
         code: 'tls_error',
       });
+      globalThis.fetch = jest.fn(async () => ({ status: 206 })) as unknown as typeof fetch;
       FakeVlcView.call('onDialogDisplay', {
         title: 'Codec not supported',
         text: 'VLC could not decode the format "dts "',
@@ -761,6 +765,7 @@ describe('matrix D — Engine and decoder', () => {
         action1Text: null,
         action2Text: null,
       });
+      await new Promise((resolve) => setTimeout(resolve, 0));
       expect(classify({ kind: 'engine', engine: 'vlc', ...vlc.of('error')[1]! })).toMatchObject({
         category: 'T7',
         code: 'vlc_dialog',
@@ -769,6 +774,94 @@ describe('matrix D — Engine and decoder', () => {
       vlc.engine.release();
     }
   );
+  describe('S6x: libVLC names no HTTP status, the engine asks the server', () => {
+    const notFound = {
+      title: "Your input can't be opened",
+      text: 'VLC is unable to open the MRL',
+      type: 'error',
+      cancelText: null,
+      action1Text: null,
+      action2Text: null,
+    };
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    row(
+      'D22',
+      'a direct source answering 404: the dialog and the error that follows carry status 404 (one HEAD), and the stop is no end',
+      async () => {
+        const head = jest.fn(async () => ({ status: 404 }));
+        globalThis.fetch = head as unknown as typeof fetch;
+        const vlc = vlcPlaying();
+        await render(createElement(vlc.engine.Surface));
+        vlc.internals.view.current = FakeVlcView.ref;
+        FakeVlcView.call('onDialogDisplay', notFound);
+        expect(vlc.engine.getSnapshot().state).toBe('error');
+        FakeVlcView.call('onEncounteredError', { message: 'Player encountered an error' });
+        FakeVlcView.call('onStopped');
+        await flush();
+        expect(head).toHaveBeenCalledTimes(1);
+        expect(head).toHaveBeenCalledWith(
+          'http://server/media.mkv',
+          expect.objectContaining({ method: 'HEAD' })
+        );
+        expect(vlc.of('error')).toEqual([
+          {
+            type: 'error',
+            reason: "vlc_dialog error: Your input can't be opened VLC is unable to open the MRL",
+            status: 404,
+          },
+          { type: 'error', reason: 'Player encountered an error', status: 404 },
+        ]);
+        expect(vlc.of('ended')).toEqual([]);
+        expect(classify({ kind: 'engine', engine: 'vlc', ...vlc.of('error')[1]! })).toMatchObject({
+          category: 'T2',
+        });
+        // The next load asks again: another version that answers is not "missing".
+        globalThis.fetch = jest.fn(async () => ({ status: 206 })) as unknown as typeof fetch;
+        vlc.engine.load({ uri: 'http://server/other.mkv', kind: 'progressive' });
+        FakeVlcView.call('onEncounteredError', { message: 'Player encountered an error' });
+        await flush();
+        expect(vlc.of('error').at(-1)).toEqual({
+          type: 'error',
+          reason: 'Player encountered an error',
+        });
+        vlc.engine.release();
+      }
+    );
+
+    row(
+      'D22',
+      'no answer, a fine answer or an HLS source add no status; an answer for the previous load is dropped',
+      async () => {
+        globalThis.fetch = jest.fn(async () => {
+          throw new TypeError('Network request failed');
+        }) as unknown as typeof fetch;
+        const vlc = vlcPlaying();
+        await render(createElement(vlc.engine.Surface));
+        FakeVlcView.call('onEncounteredError', { message: 'Player encountered an error' });
+        await flush();
+        expect(vlc.of('error')).toEqual([{ type: 'error', reason: 'Player encountered an error' }]);
+
+        let answer: (value: { status: number }) => void = () => undefined;
+        const head = jest.fn(() => new Promise((resolve) => (answer = resolve)));
+        globalThis.fetch = head as unknown as typeof fetch;
+        vlc.engine.load({ uri: 'http://server/other.mkv', kind: 'progressive' });
+        FakeVlcView.call('onDialogDisplay', notFound);
+        vlc.engine.load({ uri: 'http://server/third.mkv', kind: 'progressive' });
+        answer({ status: 404 });
+        await flush();
+        expect(vlc.of('error')).toHaveLength(1);
+
+        head.mockClear();
+        vlc.engine.load({ uri: 'http://server/master.m3u8', kind: 'hls' });
+        FakeVlcView.call('onDialogDisplay', notFound);
+        expect(head).not.toHaveBeenCalled();
+        expect(vlc.of('error').at(-1)).not.toHaveProperty('status');
+        vlc.engine.release();
+      }
+    );
+  });
+
   row(
     'D28',
     'a libVLC stop that never reports Stopped releases after 3 s; a reported stop releases at once',

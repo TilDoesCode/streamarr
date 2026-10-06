@@ -11,6 +11,7 @@ import { EngineBase } from './base';
 import { audioErrorCode } from './hls-audio-error';
 import { importHls } from './hls-import';
 import { StartSeek } from './start-seek';
+import { probeStatus } from './status-probe';
 import { FRAG_RETRY_DELAY_MS, fragLoadPolicy, statusLoader, type LoadStatus } from './hls-retry';
 import { LUMA_WINDOW_S } from '../health/watchdog';
 import { createLumaSampler } from './web-luma';
@@ -83,34 +84,6 @@ export function loadHls(): Promise<HlsModule> {
     }
   );
   return hlsLoading;
-}
-
-/** A HEAD that does not answer by then counts as no answer; the media error goes on regardless. */
-export const PROBE_TIMEOUT_MS = 5_000;
-/** Statuses that tell what happened to a plain media URL; any other answer says nothing (D09). */
-const TELLING_STATUS = new Set([0, 404, 410, 416, 500, 502, 503, 504]);
-
-/** HTTP status of a direct-play URL (HEAD, which only that route answers); undefined when it says nothing. */
-async function probeStatus(uri: string): Promise<number | undefined> {
-  const abort = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      abort.abort();
-      reject(new Error('probe_timeout'));
-    }, PROBE_TIMEOUT_MS);
-  });
-  try {
-    const { status } = await Promise.race([
-      fetch(uri, { method: 'HEAD', signal: abort.signal }),
-      timeout,
-    ]);
-    return TELLING_STATUS.has(status) ? status : undefined;
-  } catch {
-    return 0;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function mseAvailable(): boolean {
