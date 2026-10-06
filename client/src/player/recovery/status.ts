@@ -159,6 +159,7 @@ export function runningHint(recovery: Recovery): StatusHint {
   if (step === 'R' && (code === 'audio_rendition_failed' || code === 'audio_silent'))
     return { key: 'noAudio', params };
   if (code === 'picture_frozen') return { key: 'recovering', params };
+  if (code === 'delivery_interrupted') return { key: 'streamBreaks', params };
   return { key: 'reloading', params };
 }
 

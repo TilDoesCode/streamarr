@@ -36,6 +36,12 @@ import { SubtitleRetry } from '@/player/subtitle-retry';
 import { SystemPlayback } from '@/player/system-playback';
 import { missingLanguages, viewerLanguages } from '@/player/version-languages';
 import { lostPlayback } from '@/player/recovery/stall';
+import {
+  deliveryFailure,
+  issueFailure,
+  recentIssue,
+  type DeliveryIssue,
+} from '@/player/recovery/delivery';
 import { LOCAL_SUBTITLES, localTrackId } from '@/player/local-tracks';
 import { apiFailure } from '@/player/recovery/api-failure';
 import { classify, type Classified, type ErrorCategory } from '@/player/recovery/classify';
@@ -241,6 +247,10 @@ export class PlaybackController {
   private earlyEndAt: { position: number; at: number } | null = null;
   /** The engine is retrying a failed media request on its own (status of the last one). */
   private loadRetry: LoadRetry | null = null;
+  /** When the app's own request (progress) last answered, and what the server last said failed (S6t, B15). */
+  private serverOkAt = 0;
+  private brokeAt = 0;
+  private issues: DeliveryIssue[] = [];
   /** The budget of a viewer's switch (or its restore): no server progress for a minute ends it (S9a P8). */
   private switchBudget: StepBudget | null = null;
   private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -299,6 +309,10 @@ export class PlaybackController {
         revision: this.playback?.revision ?? 0,
         playbackId: this.playback?.playbackId ?? undefined,
         audioFallback: !!this.playback?.audioFallback,
+        audioRenditions:
+          this.engine?.kind === 'expo-video' &&
+          Platform.OS === 'ios' &&
+          !!this.playback?.audioRenditions?.length,
       }),
       resumePosition: () => this.resumePosition,
       tracks: () => this.viewerTracks(),
@@ -666,7 +680,10 @@ export class PlaybackController {
   }
 
   /** The server lost the playback (idle expiry, restart, B13 `playbackAlive`): a silent new start at the position. */
-  private onProgressAnswer({ report, playbackAlive }: ProgressAnswer): void {
+  private onProgressAnswer({ report, playbackAlive, deliveryIssues }: ProgressAnswer): void {
+    this.serverOkAt = Date.now();
+    if (deliveryIssues && report.playbackId === this.playback?.playbackId)
+      this.onDeliveryIssues(deliveryIssues);
     if (playbackAlive !== false || report.event === 'stop' || this.closed) return;
     const playback = this.playback;
     if (!playback?.playbackId || report.playbackId !== playback.playbackId) return;
@@ -866,7 +883,12 @@ export class PlaybackController {
         else if (event.type === 'error') this.onEngineError(event.reason, event.status);
         else if (event.type === 'subtitleError') this.onSubtitleError(event.code);
         else if (event.type === 'loadRetry') {
-          this.loadRetry = { status: event.status ?? 0, audio: !!event.audio, at: Date.now() };
+          const at = Date.now();
+          // A run of status-less retries (AVPlayer -1005) starts a break; own answers after it prove the server (S6t).
+          const running = this.loadRetry && at - this.loadRetry.at < LOAD_RETRY_RECENT_MS;
+          if (!event.status && !event.audio && !(running && this.loadRetry?.status === 0))
+            this.brokeAt = at;
+          this.loadRetry = { status: event.status ?? 0, audio: !!event.audio, at };
           // A video request the server answers 404/410 means it lost the playback; AVPlayer only stalls on it (S9b2 C10).
           if (!event.audio && lostPlayback(event.status) && !this.runner.current)
             this.mediaFailure(
@@ -1526,7 +1548,27 @@ export class PlaybackController {
   }
 
   /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
+  /** B15: the server says which part failed; an audio rendition takes the audio path at once while playback is stuck. */
+  private onDeliveryIssues(issues: DeliveryIssue[]): void {
+    this.issues = issues;
+    const issue = recentIssue(issues, Date.now());
+    if (!issue || this.closed || this.phase !== 'playing' || this.runner.current) return;
+    if (issue.kind === 'subtitleRendition' && this.currentSubtitle() !== null)
+      return this.onSubtitleError('subtitle_unavailable');
+    if (issue.kind === 'audioRendition' && this.stallSince) this.mediaFailure(issueFailure(issue)!);
+  }
+
   private mediaFailure(failure: Classified, extra?: FailureExtra): void {
+    // A break while online and the server answers is the stream's delivery (S6t); a server-reported issue decides (B15).
+    const now = Date.now();
+    const breaking = this.loadRetry?.status === 0 && now - this.loadRetry.at < LOAD_RETRY_RECENT_MS;
+    failure = deliveryFailure(failure, {
+      online: !this.offline,
+      serverOkAt: this.serverOkAt,
+      brokeAt: breaking ? this.brokeAt : now,
+      now,
+      issue: recentIssue(this.issues, now),
+    });
     const from = this.switchedFrom;
     if (!from || !switchesBack(this.pictured, failure.category))
       return this.runner.handle(failure, extra);

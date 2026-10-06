@@ -103,6 +103,7 @@
       "T5": "Das Video kam zu langsam an.",
       "T6": "Der Server hatte ein Problem.",
       "picture_timeout": "Das Bild blieb schwarz.",
+      "stalled": "Das Bild blieb hängen.",
       "media_damaged": "Die Videodaten sind bei {time} beschädigt."
     },
     "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht.",
@@ -157,6 +158,7 @@
     "convertingAudio": "Kein Ton. Der Ton wird umgewandelt, es geht weiter bei {time} …",
     "serverRetrying": "Der Server hatte ein Problem mit diesem Teil des Videos. Neuer Versuch …",
     "serverRepairing": "Der Server repariert fehlende Daten dieses Videos. Wird gepuffert …",
+    "streamBreaks": "Der Stream bricht immer wieder ab. Wird bei {time} neu geladen …",
     "causes": {
       "call": "Anruf",
       "otherAudio": "eine andere App spielt Ton",

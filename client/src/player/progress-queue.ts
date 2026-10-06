@@ -3,10 +3,16 @@ import { createMMKV } from 'react-native-mmkv';
 import { unwrap, type ApiClient } from '@/api/client';
 import { isAppError, type AppError } from '@/api/errors';
 import type { components } from '@/api/schema';
+import { deliveryIssuesOf, type DeliveryIssue } from '@/player/recovery/delivery';
 
 export type ProgressReport = components['schemas']['WatchProgressRequest'];
 /** What the server says about the reported playback (B13): false = it no longer exists. */
-export type ProgressAnswer = { report: ProgressReport; playbackAlive: boolean | null };
+export type ProgressAnswer = {
+  report: ProgressReport;
+  playbackAlive: boolean | null;
+  /** B15 (optional): what the server saw fail while delivering (recovery/delivery.ts). */
+  deliveryIssues?: DeliveryIssue[];
+};
 type Entry = { accountId: string; report: ProgressReport; at: number };
 
 const storage = createMMKV({ id: 'streamarr.progress-queue' });
@@ -37,7 +43,12 @@ function outcome(error: unknown): 'retry' | 'keep' | 'drop' {
 
 async function send(client: ApiClient, report: ProgressReport): Promise<ProgressAnswer> {
   const answer = await unwrap(client.POST('/api/v1/viewer/watch/progress', { body: report }));
-  return { report, playbackAlive: answer?.playbackAlive ?? null };
+  const deliveryIssues = deliveryIssuesOf(answer);
+  return {
+    report,
+    playbackAlive: answer?.playbackAlive ?? null,
+    ...(deliveryIssues.length ? { deliveryIssues } : {}),
+  };
 }
 
 /** Progress reports with an offline queue: failed sends are kept (per account, persisted) and retried with backoff. */

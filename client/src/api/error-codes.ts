@@ -43,6 +43,7 @@ export const CLIENT_ERROR_CODES = [
   'subtitle_timeout',
   'subtitle_unreadable',
   'empty_media',
+  'delivery_interrupted',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */

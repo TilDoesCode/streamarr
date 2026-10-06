@@ -203,6 +203,9 @@ export function noticeError(params?: Readonly<Record<string, string>>): ErrorLik
 /** How long a notice stays: TV viewers sit further away and read slower (E11). */
 export const noticeMs = (tv: boolean): number => (tv ? 8_000 : 6_000);
 
+/** Failures seen as a stuck picture, not reported by a decoder. */
+const STALLED = new Set(['picture_frozen', 'video_stalled', 'playback_stalled', 'seek_stalled']);
+
 /** Why a step-down happened, appended to its notice (E14); undefined when the reason says nothing useful. */
 export function stepDownReasonKey(
   params?: Readonly<Record<string, string>>
@@ -210,6 +213,8 @@ export function stepDownReasonKey(
   const reason = params?.reason;
   if (!reason) return undefined;
   if (reason === 'picture_timeout') return 'notice.because.picture_timeout';
+  // A stall or a frozen picture without a decoder error says what was seen, never "this device can't decode" (S6t).
+  if (STALLED.has(reason)) return 'notice.because.stalled';
   if (reason === 'media_damaged') return 'notice.because.media_damaged';
   const category = categoryOf(reason);
   return category === 'T5' || category === 'T6' || category === 'T7'

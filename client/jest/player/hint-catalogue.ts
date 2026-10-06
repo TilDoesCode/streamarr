@@ -183,6 +183,13 @@ const HINTS: Record<HintKey, Omit<Row, 'id' | 'key' | 'action'>> = {
     shows: 'a stall while the server reports a repair',
     clears: 'the picture runs again',
   },
+  streamBreaks: {
+    params: { time: '42:10' },
+    state: 'The stream keeps breaking off while the server answers (T6 delivery_interrupted)',
+    shows:
+      "step R runs for a media break without a status (AVPlayer -1005) while the app's own requests answer",
+    clears: RECOVERY,
+  },
 };
 
 const STEPPER: Row[] = [
@@ -403,6 +410,14 @@ const NOTICES: Row[] = [
     state: 'Reason before a step-down: black picture',
     action: '—',
     shows: 'with N01–N05',
+    clears: 'with the notice',
+  },
+  {
+    id: 'N21',
+    key: 'notice.because.stalled',
+    state: 'Reason before a step-down: a stuck picture without a decoder error',
+    action: '—',
+    shows: 'with N01–N05 (playback_stalled, seek_stalled, picture_frozen, video_stalled)',
     clears: 'with the notice',
   },
   {

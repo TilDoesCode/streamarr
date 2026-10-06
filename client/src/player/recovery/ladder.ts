@@ -39,6 +39,8 @@ export type LadderContext = {
   playbackId?: string;
   /** The server already converts the audio to AAC stereo for this playback (B13 `audioFallback`). */
   audioFallback: boolean;
+  /** AVPlayer plays separate audio renditions: an unexplained break may be one it cannot fetch (S6t). */
+  audioRenditions?: boolean;
   /** The same failure keeps coming back (incidents within 15 min): skip the reload, another way to play. */
   recurring?: boolean;
 };
@@ -177,6 +179,12 @@ export function nextStep(
       return context.attached ? stepDown(incident, 'buffering') : { step: 'G', delayMs: 0 };
     }
     case 'T6': {
+      // The stream keeps breaking off while the app's requests answer (S6t): one reload, then the converted audio.
+      if (code === 'delivery_interrupted' && context.attached) {
+        if (incident.count(['R'], 'T6') < 1) return { step: 'R', delayMs: 0, hint: 'streamBreaks' };
+        if (context.audioRenditions && !context.audioFallback && incident.count(['A']) < 1)
+          return { step: 'A', delayMs: 0, hint: 'convertingAudio' };
+      }
       const reloads = incident.count(['R'], 'T6');
       if (context.attached && reloads < T6_BACKOFF_S.length)
         return {

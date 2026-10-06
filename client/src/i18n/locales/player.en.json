@@ -103,6 +103,7 @@
       "T5": "The video loaded too slowly.",
       "T6": "The server had a problem.",
       "picture_timeout": "The picture stayed black.",
+      "stalled": "The picture got stuck.",
       "media_damaged": "The video data is damaged at {time}."
     },
     "otherVersion": "Switched to another version to keep playing.",
@@ -157,6 +158,7 @@
     "convertingAudio": "No sound. Converting the audio to keep playing at {time}…",
     "serverRetrying": "The server had a problem with this part of the video. Retrying…",
     "serverRepairing": "The server is repairing missing data of this video. Buffering…",
+    "streamBreaks": "The stream keeps breaking off. Reloading at {time}…",
     "causes": {
       "call": "incoming call",
       "otherAudio": "another app is playing sound",
