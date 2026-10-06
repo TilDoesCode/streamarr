@@ -503,6 +503,7 @@ export class PlaybackController {
     this.appState = AppState.addEventListener('change', (state) => {
       // Time in the background never counts against a stall or start budget.
       this.restartClocks();
+      this.networkWatch.setBackground(state === 'background');
       if (state === 'active') {
         void this.progress.flush();
         return void this.revalidate();
@@ -583,6 +584,8 @@ export class PlaybackController {
   chooseStart(resume: boolean): void {
     const choose = this.resumeChoice;
     this.resumeChoice = null;
+    // Choosing where to start is the viewer starting here: it wins over another tab's earlier start (S4q R6).
+    if (choose && this.yieldPending) this.setPaused(false);
     choose?.(resume ? this.resumeSeconds : 0);
   }
 
@@ -1906,6 +1909,8 @@ export class PlaybackController {
 
   setPaused(paused: boolean): void {
     if (!paused) {
+      // The viewer's own Play here is the newest start: a pending yield to another tab is over (S4q R6).
+      this.yieldPending = false;
       this.system.clear();
       if (this.autoplay === 'blocked') this.autoplay = null;
     }

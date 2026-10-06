@@ -8,11 +8,16 @@ export const ISSUE_RECENT_MS = 60_000;
 /** A network change (Wi-Fi to cellular) this close to a break makes it the connection's, not the delivery's. */
 export const HANDOVER_MS = 15_000;
 
-/** B15 (server, in progress): what the server saw fail while it delivered this playback. */
+/** B15 `PlaybackDeliveryIssueDto`: what the server answered with an error while it delivered this playback. */
 export type DeliveryIssue = {
   kind: 'audioRendition' | 'subtitleRendition' | 'segment';
+  /** The master's `audio/{id}` (audioRendition). */
   renditionId?: string;
+  /** The server subtitle stream (`subtitles/{index}`) of a subtitleRendition. */
+  subtitleStreamIndex?: number;
   code: string;
+  /** HTTP status of the answer (500 when it broke off after it started). */
+  status?: number;
   /** Epoch milliseconds on the server's clock. */
   at: number;
   /** How old the issue was when the server answered (its own clock), if the answer carried the server time. */
@@ -32,18 +37,23 @@ export function deliveryIssuesOf(answer: unknown, serverNow?: number): DeliveryI
   return raw.flatMap((item): DeliveryIssue[] => {
     const entry = item as Record<string, unknown> | null;
     if (!entry || typeof entry !== 'object') return [];
-    const { kind, code, renditionId } = entry;
+    const { kind, code, renditionId, subtitleStreamIndex, status } = entry;
     const text = typeof entry.at === 'string' ? entry.at.trim() : null;
     if (text !== null && !ZONED.test(text)) return [];
     const at = text !== null ? Date.parse(text) : entry.at;
     if (typeof kind !== 'string' || !KINDS.has(kind) || typeof code !== 'string') return [];
     if (typeof at !== 'number' || !Number.isFinite(at)) return [];
+    const index = typeof subtitleStreamIndex === 'number' ? subtitleStreamIndex : undefined;
+    // A subtitle issue names its stream by index (B15): without one it concerns no subtitle we show.
+    if (kind === 'subtitleRendition' && index === undefined) return [];
     return [
       {
         kind: kind as DeliveryIssue['kind'],
         code,
         at,
         ...(typeof renditionId === 'string' ? { renditionId } : {}),
+        ...(index !== undefined ? { subtitleStreamIndex: index } : {}),
+        ...(typeof status === 'number' ? { status } : {}),
         ...(serverNow !== undefined ? { ageMs: Math.max(0, serverNow - at) } : {}),
       },
     ];
@@ -51,7 +61,7 @@ export function deliveryIssuesOf(answer: unknown, serverNow?: number): DeliveryI
 }
 
 const issueKey = (issue: DeliveryIssue) =>
-  `${issue.kind}|${issue.renditionId ?? ''}|${issue.code}|${issue.at}`;
+  `${issue.kind}|${issue.renditionId ?? ''}|${issue.subtitleStreamIndex ?? ''}|${issue.code}|${issue.at}`;
 
 /** Gives each issue a time on this device's clock: its server age where known, else the first answer that named it. */
 export function stampIssues(
@@ -78,14 +88,25 @@ export function recentIssue(issues: readonly DeliveryIssue[], now: number): Deli
 export function issueFailure(issue: DeliveryIssue): Classified | null {
   if (issue.kind === 'audioRendition') return { category: 'T7', code: 'audio_rendition_failed' };
   if (issue.kind === 'segment') {
-    const failure = classify({ kind: 'api', code: issue.code });
+    const failure = classify({ kind: 'api', code: issue.code, status: issue.status });
     return failure.category === 'T11' ? { category: 'T6', code: 'delivery_interrupted' } : failure;
   }
   return null;
 }
 
-/** Connection failures no server report and no answering heartbeat can explain away. */
-const OWN_CONNECTION = new Set(['tls_error', 'mixed_content', 'network_intercepted']);
+/** The failures a server issue may refine: stalls and delivery breaks only; anything else, now or future, stays itself (S4q R4). */
+const REFINABLE = new Set([
+  'playback_stalled',
+  'seek_stalled',
+  'segment_timeout',
+  'segment_unavailable',
+  'server_error',
+  'delivery_interrupted',
+  'stream_interrupted',
+  'network_unreachable',
+]);
+/** An online connection failure that, with own requests answering, is the stream's delivery breaking (S4m). */
+const BREAKS = new Set(['stream_interrupted', 'network_unreachable', 'timeout']);
 
 /** A broken media request while online and the app's own requests answer: the stream's delivery, never "connection lost". */
 export function deliveryFailure(
@@ -103,10 +124,9 @@ export function deliveryFailure(
   }
 ): Classified {
   const { category, code } = failure;
-  const connectionOnline = category === 'T1' && context.online && !OWN_CONNECTION.has(code);
-  // A server report only refines a stall or a delivery break: never offline, TLS or a real decoder failure (S4n).
-  const refinable =
-    connectionOnline || category === 'T5' || category === 'T6' || category === 'T11';
+  const connectionOnline = category === 'T1' && context.online && BREAKS.has(code);
+  // A server report only refines a stall or a delivery break: never offline, TLS or a real decoder failure (S4n, S4q).
+  const refinable = REFINABLE.has(code) && (category !== 'T1' || context.online);
   const reported = context.issue && refinable ? issueFailure(context.issue) : null;
   if (reported) return reported;
   if (!connectionOnline) return failure;
@@ -125,9 +145,9 @@ export function issuesFor(
 ): DeliveryIssue[] {
   if (!now.current) return [];
   return issues.filter((issue) => {
+    if (issue.kind === 'subtitleRendition') return issue.subtitleStreamIndex === now.subtitleIndex;
     if (!issue.renditionId) return true;
     if (issue.kind === 'audioRendition') return issue.renditionId === now.audioRendition;
-    if (issue.kind === 'subtitleRendition') return issue.renditionId === `${now.subtitleIndex}`;
     return true;
   });
 }
