@@ -932,6 +932,23 @@ const TASKS = {
       'Retry-After/WebVTT/cross-restart budget tests; Dev World nits fixed; contract, e2e and full suite green',
     ],
   },
+  'B16': {
+    title: 'Server: ffmpeg throttle without SIGSTOP (Process.Start blocks), repair-race 500, competing transcode requests',
+    track: 'Backend',
+    deps: ['B14'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (findings of B14, docs/client/journal/B14.md "Open issues" and docs/client/BACKLOG.md). (1) HIGH: on macOS/.NET 8 `Process.Start` blocks while any child process is SIGSTOPped; the transcode throttle pauses ffmpeg with SIGSTOP, so while one session is paused every new ffmpeg/ffprobe spawn (any title, any viewer) waits until that run resumes or is killed (a unit probe blocked 586 s; live a second start sat in planning/resolving 40 s+). This is very likely the long unexplained `starting` the client sees. Find the exact mechanism (read the .NET Process/SIGCHLD code path for the installed runtime), then remove the dependency: throttle without SIGSTOP (e.g. ffmpeg -readrate / segment-ahead window enforced by not requesting/serving further and letting ffmpeg block on a bounded output, or a stop-and-resume of the run at the throttle point) — keep the B5/B13 behaviour (segment retention, seek restarts, wait budgets, renditions) and the CPU/disk benefits of throttling; prove with a test that a new start is not delayed while another session is throttled (the old probe must pass in < 2 s), on macOS. Check Linux too if a container runtime is available (docker/colima/podman — do not install one; if none, reason from the .NET source and record it).',
+      '- (2) Repair race: RepairConcurrencyTests fails ~1 in 5: one of 56 concurrent readers that hit a new Usenet hole gets 500 UsenetArticleNotFoundException because RepairAwareStream rethrows the original error after a failed hole wait/admission instead of joining the shared repair job; fix the product race (every concurrent reader of the same hole joins the one job and gets its result), make the test pass 50/50 under load.',
+      '- (3) Two live requests competing on one transcode session ping-pong restarts until one runs out of attempts (503): two players / an hls.js retry and a seek asking for far-apart segments of the same session. Decide the rule (e.g. the most recent request position wins and the other gets a fast 409/redirect or waits for the window; never a restart storm), implement and test with the robustness check.',
+      '- Test on your own Dev World 39310 (B12 faults help), full server suite once at the end; no contract change expected.',
+    ].join('\n'),
+    acceptance: [
+      'a throttled session never delays another start or ffprobe (test: new start < 2 s while another run is throttled), throttling still saves CPU/disk, Linux reasoning or check recorded',
+      'RepairConcurrencyTests 50/50 under load with the product race fixed (no 500 for a reader that hits a hole under repair)',
+      'two competing requests on one transcode session no longer cause a restart storm (rule documented and tested); contract, e2e and the full server suite green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
