@@ -75,3 +75,52 @@ describe('player full screen on close (iPad Safari stayed in element full screen
     }
   );
 });
+
+describe('iPhone Safari: only the video goes full screen (webkitEnterFullscreen, F8 verify V2)', () => {
+  type AppleVideo = EventTarget & {
+    webkitDisplayingFullscreen: boolean;
+    webkitEnterFullscreen: jest.Mock;
+    webkitExitFullscreen: jest.Mock;
+  };
+
+  function iPhone() {
+    const video: AppleVideo = Object.assign(new EventTarget(), {
+      webkitDisplayingFullscreen: false,
+      webkitEnterFullscreen: jest.fn(() => void (video.webkitDisplayingFullscreen = true)),
+      webkitExitFullscreen: jest.fn(() => void (video.webkitDisplayingFullscreen = false)),
+    });
+    const doc = Object.assign(new EventTarget(), {
+      fullscreenElement: null,
+      documentElement: {},
+      querySelector: () => video,
+    });
+    class FakeVideoElement {}
+    Object.assign(FakeVideoElement.prototype, { webkitEnterFullscreen: () => undefined });
+    (globalThis as { HTMLVideoElement?: unknown }).HTMLVideoElement = FakeVideoElement;
+    return { video, api: loadWith(doc as never), doc };
+  }
+
+  afterEach(() => {
+    delete (globalThis as { HTMLVideoElement?: unknown }).HTMLVideoElement;
+  });
+
+  it('closing the player leaves the video full screen the player entered', () => {
+    const { video, api } = iPhone();
+    api.toggleFullscreen();
+    expect(video.webkitEnterFullscreen).toHaveBeenCalledTimes(1);
+    expect(api.isFullscreen()).toBe(true);
+    api.exitPlayerFullscreen();
+    expect(video.webkitExitFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it('after the system Done button left it, closing the player does not touch full screen again', () => {
+    const { video, api, doc } = iPhone();
+    api.toggleFullscreen();
+    video.webkitDisplayingFullscreen = false;
+    doc.dispatchEvent(new Event('webkitendfullscreen'));
+    // The viewer enters the video full screen again from the system controls of the same session.
+    video.webkitDisplayingFullscreen = true;
+    api.exitPlayerFullscreen();
+    expect(video.webkitExitFullscreen).not.toHaveBeenCalled();
+  });
+});

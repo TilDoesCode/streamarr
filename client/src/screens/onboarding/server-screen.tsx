@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View, type TextInput } from 'react-native';
 
-import { useAccounts } from '@/accounts/accounts-provider';
+import { useAccounts, useSessionGate } from '@/accounts/accounts-provider';
 import { probeServer, type ServerInfo } from '@/api/probe';
 import { displayServerUrl } from '@/api/server-url';
+import { ArrowLeft } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { Spinner } from '@/components/ui/spinner';
@@ -18,13 +19,15 @@ import { useDesign } from '@/theme';
 
 import { AuthScaffold } from './auth-scaffold';
 import { FormError } from './form-parts';
-import { useLeftOnboarding } from './use-onboarding';
+import { enterApp, useLeftOnboarding } from './use-onboarding';
 
 /** Step 1: which server. Normalises the address, probes the viewer auth options, warns on remote http. */
 export function ServerScreen() {
   const { t } = useTranslation();
   const design = useDesign();
   const router = useRouter();
+  // A profile is signed in (another server is being added): the way back, like the sign-in step (F11).
+  const signedIn = useSessionGate().reason === 'ready';
   const queryClient = useQueryClient();
   const { accounts } = useAccounts();
   const params = useLocalSearchParams<{ address?: string }>();
@@ -178,6 +181,16 @@ export function ServerScreen() {
             />
           ))}
         </View>
+      ) : null}
+      {signedIn ? (
+        <Button
+          testID="server-back-to-app"
+          variant="ghost"
+          icon={ArrowLeft}
+          label={t('onboarding.signIn.backToApp')}
+          disabled={probe.isPending}
+          onPress={() => enterApp(router)}
+        />
       ) : null}
     </AuthScaffold>
   );

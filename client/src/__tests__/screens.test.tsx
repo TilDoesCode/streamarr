@@ -321,6 +321,11 @@ describe('Search', () => {
 });
 
 describe('Library', () => {
+  let afterThis: (() => void) | undefined;
+  afterEach(() => {
+    afterThis?.();
+    afterThis = undefined;
+  });
   const browseItem = (id: number, title: string) => ({
     workId: `tmdb-movie-${id}`,
     mediaType: 'movie',
@@ -377,6 +382,19 @@ describe('Library', () => {
     await waitFor(() => expect(screen.getByTestId('library-genre-27')).toBeChecked(), WAIT);
     expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: false });
     scrollToOffset.mockRestore();
+  });
+
+  it('Android phone: a genre switch that has to fetch shows the skeleton grid, like the first load (F11)', async () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'android');
+    afterThis = () => os.restore();
+    handlers['/api/v1/viewer/catalog/browse'] = (url) =>
+      url.searchParams.get('genre') ? never() : page([browseItem(1, 'Sintel')], 1, false);
+    await open('/movies');
+    expect(await screen.findByTestId('library-item-0', {}, WAIT)).toBeOnTheScreen();
+    await userEvent.setup().press(screen.getByTestId('library-genre-27'));
+    await waitFor(() => expect(screen.getByTestId('library-genre-27')).toBeChecked(), WAIT);
+    expect(screen.queryByTestId('library-item-0')).toBeNull();
+    expect(screen.getByTestId('library-loading')).toBeOnTheScreen();
   });
 
   it('puts the sort into the title line and the genres into one horizontal row', async () => {
