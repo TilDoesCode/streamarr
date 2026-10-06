@@ -588,3 +588,10 @@ doing about it, what the viewer can do). Work items:
 - **F10 — the player handles every state (client):** implements the matrix with jest tests per state (fake engines)
   and live fault-injection runs on every engine/device, one at a time; independent verification with the matrix as
   the checklist.
+
+**Server follow-ups (orchestrator, 2026-10-06):** **B14** (refresh rate limit, races, flaky tests), **B15**
+(`deliveryIssues` in the progress answer), **B16** (throttle without SIGSTOP, repair race, competing requests) are done
+and verified. **B17** closes what their verifiers left that a viewer can feel: a parked run must always resume (no
+`503 remux_capacity` mid-playback), a valid refresh token is never limited by a flooder on the same IP, one player's own
+seek back is never treated as a competing request, a transcode resume has continuous timestamps; plus the small nits
+(orchestrator.js B17).

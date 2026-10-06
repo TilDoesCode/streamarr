@@ -949,6 +949,21 @@ const TASKS = {
       'two competing requests on one transcode session no longer cause a restart storm (rule documented and tested); contract, e2e and the full server suite green',
     ],
   },
+  'B17': {
+    title: 'Server: B14-B16 verify follow-ups (parked run keeps playing, same-IP refresh fairness, own seek back, resume overlap, nits)',
+    track: 'Backend',
+    deps: ['B14', 'B15', 'B16'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (docs/client/BACKLOG.md "B14-B16 verify (non-blocking)" and the "Verification (round 1)" sections of docs/client/journal/B14.md, B15.md, B16.md). The player must never see an error the server could avoid. In order of value: (1) a parked (throttled) run gives up its remux/transcode slot, so with all slots taken its resume answers 503 remux_capacity mid-playback: a playback that is already playing must always be able to resume (keep a reserved slot, or let the resume take precedence over a new start that would otherwise queue/refuse); test with all slots taken. (2) A refresh flooder behind the same IP as real viewers keeps their refreshes at 429: a valid, live refresh token must never be limited by the per-IP budget (count only failed/unknown refreshes per IP, or let a valid token bypass it); keep the flood protection and the per-token limit; tests for both. (3) One player that jumps far ahead and straight back within 3 s now waits 3.4-4 s for the first segment (was 0.3-0.5 s): requests from the same playback are never "competing" with themselves - the latest request of one playback wins at once; the 3 s rule applies only between different requesters; test. (4) A transcode resume overlaps by one video frame and ~37 ms of audio: make the resumed segment start exactly where the previous one ended (timestamps continuous, no duplicate frame, no audio overlap), check with ffprobe over the boundary; test. (5) Error answers on the transcode routes scan all playbacks issue gates: skip unknown sessions (O(1) lookup). (6) Nits: leftover doc comment ProcessRunner.cs:157; Dev World logs the refresh limiter Information lines (category-level override, not global); fault:7 answers a clear 400 message naming the bad field; faults_smoke usenet_hole restores the releases it breaks (or the e2e doc says to run on a fresh instance - prefer restoring).',
+      '- Test on your own Dev World 39310; never restart or republish 39300. Contract check, e2e and the full server suite once at the end; no contract change expected (if one is unavoidable, re-freeze and regenerate web and client types once at the very end).',
+    ].join('\n'),
+    acceptance: [
+      'a playing (parked) run always resumes with all slots taken (no 503 remux_capacity mid-playback; test); a valid live refresh token is never limited by the per-IP budget while floods stay limited (tests)',
+      'one playback seeking far and back within 3 s gets its first segment as fast as before B16 (test); a transcode resume has continuous timestamps without a duplicate frame or audio overlap (ffprobe evidence + test)',
+      'error answers skip unknown sessions; nits fixed (doc comment, limiter log level in Dev World, fault 400 message, usenet_hole restores); contract, e2e and the full server suite green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
