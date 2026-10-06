@@ -990,6 +990,7 @@
     },
     "ageRestricted": "{reason, select, above_age_limit {This title is above the age limit set for this profile.} unrated_blocked {This profile can only watch titles with a known age rating.} rating_unavailable {The age rating of this title couldn’t be checked, so it’s blocked for this profile.} other {This title isn’t available for this profile.}}",
     "tooManyStreamsOn": "This profile is already watching on {device}. Stop playback there to watch here.",
+    "tooManyStreamsPlaying": "This profile is already watching “{releaseName}” on {device}. Stop playback there to watch here.",
     "categories": {
       "T1": {
         "title": "Connection problem",

@@ -74,8 +74,7 @@ export function failureReason(
   // Exo names no URI for a parser error (S6t): on HLS only a container error is a segment; a manifest error never is (S4p B2).
   const segment = part === 'segment' || (hls && !error.uri && CONTAINER.test(reason));
   if (segment && DAMAGED.test(reason)) return `damagedSegment:${reason}`;
-  // The audio rendition dies while the picture plays: the audio path (reload, conversion), not "connection lost" and
-  // not "the server had a problem" (S9c D36: Exo's 500 on audio/1); a 404/410 there still means the playback is gone.
+  // A dead audio rendition while the picture plays is the audio path, any status but 404/410 (S9c D36).
   const lost = error.httpStatus === 404 || error.httpStatus === 410;
   if (part === 'audio' && playing && !lost) return `audioRendition:${reason}`;
   return reason;

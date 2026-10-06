@@ -39,6 +39,7 @@ describe('status hints (state-matrix § 2 b.4)', () => {
       missing: '9 min',
       label: 'English (SDH)',
       device: 'Living room TV',
+      releaseName: 'Sintel 2160p',
       reason: 'Password changed',
     };
     for (const key of HINT_KEYS) {

@@ -179,8 +179,7 @@ export function nextStep(
       };
     }
     case 'T5': {
-      // The server could not get a start or switch ready in its 60 s (B13b): its playback failed, so a fresh start,
-      // then another version, then the card with the server's actions (retry, lower quality).
+      // The server could not get a start ready in its 60 s (B13b): a fresh start, another version, then the card.
       if (code === 'start_timeout' && !context.attached) {
         if (incident.count(['N'], 'T5') < 1) return { step: 'N', delayMs: 0, hint: 'reloading' };
         return incident.count(['V']) < 1 ? { step: 'V', delayMs: 0 } : { step: 'G', delayMs: 0 };
@@ -196,8 +195,12 @@ export function nextStep(
       return context.attached ? stepDown(incident, 'buffering') : { step: 'G', delayMs: 0 };
     }
     case 'T6': {
-      // The stream keeps breaking off while the app's requests answer (S6t): one reload, then the converted audio only
-      // with audio evidence (S9c D19: a video segment that never answers is no audio problem), else a fresh start at once.
+      // The device took the decoder back (memory, another app): its own event, never "the server had a problem" (D17).
+      if (code === 'decoder_reclaimed' && context.attached)
+        return incident.count(['R'], 'T6') < 1
+          ? { step: 'R', delayMs: 0, hint: 'reloading' }
+          : stepDown(incident, 'steppingDown');
+      // A delivery break (S6t): one reload, then converted audio only with audio evidence (S9c D19), else a new start.
       if (code === 'delivery_interrupted' && context.attached) {
         if (incident.count(['R'], 'T6') < 1) return { step: 'R', delayMs: 0, hint: 'streamBreaks' };
         if (audioStep(incident, context)) return { step: 'A', delayMs: 0, hint: 'convertingAudio' };
@@ -264,7 +267,11 @@ export function nextStep(
       return { step: 'G', delayMs: 0 };
     case 'T9':
       if (code === 'too_many_streams' && incident.count(['N'], 'T9') < STREAM_POLLS)
-        return { step: 'N', delayMs: seconds(STREAM_POLL_S), hint: 'waitingForStream' };
+        return {
+          step: 'N',
+          delayMs: seconds(STREAM_POLL_S),
+          hint: context.params?.releaseName ? 'waitingForStreamRelease' : 'waitingForStream',
+        };
       return { step: 'G', delayMs: 0 };
     case 'T10':
       return { step: 'W', delayMs: Infinity, hint: 'pausedBySystem' };

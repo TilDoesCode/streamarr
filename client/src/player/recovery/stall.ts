@@ -39,8 +39,7 @@ export function stallFailure(
   // A native engine retrying without any status (AVPlayer -1005) lost the stream: connection or delivery, never "slow" (S6t).
   if (recent && retry.status === 0 && engine !== 'web')
     return { category: 'T1', code: 'stream_interrupted' };
-  // A 5xx the engine retries is the server's; classify makes a 504 (its own wait budget) T5 too (review M20).
-  // A 404/410 the server answered "alive" for (S4p): the playback's segments are gone, a bounded new start (T2).
+  // A retried 5xx is the server's (a 504 is T5, review M20); a 404/410 on an "alive" playback a new start (S4p).
   if (recent && (retry.status >= 500 || lostPlayback(retry.status)))
     return classify({
       kind: 'engine',

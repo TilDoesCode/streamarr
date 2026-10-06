@@ -35,7 +35,7 @@ export const STEP_BUDGET_MS = 60_000;
 export const STEP_MAX_MS = 5 * 60_000;
 /** Offline longer than this gives up (the card retries on its own once online). */
 export const OFFLINE_BUDGET_MS = 120_000;
-/** Every incident ends on a card after this many steps, whatever the categories say. */
+/** Every incident ends on a card after this many steps; a wait with its own budget (offline, server, another device) ends on that. */
 export const MAX_ATTEMPTS = 12;
 /** Step-downs per incident: direct → remux → transcode → VLC at most. */
 export const MAX_STEP_DOWNS = 3;
@@ -43,6 +43,7 @@ export const MAX_STEP_DOWNS = 3;
 export const T1_BACKOFF_S = [2, 4, 8, 16];
 export const T4_BACKOFF_S = [5, 10, 20];
 export const T6_BACKOFF_S = [5, 15];
+/** Another device plays: one start every 10 s for two minutes, the only cap of that wait (B04). */
 export const STREAM_POLL_S = 10;
 export const STREAM_POLLS = 12;
 export const MAX_QUALITY_STEPS = 2;

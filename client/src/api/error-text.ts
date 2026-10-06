@@ -50,6 +50,14 @@ export function describeError(t: TFunction, error: ErrorLike): ErrorText {
   const title = t(`errors.codes.${code}.title`);
   if (code === 'age_restricted')
     return { title, message: t('errors.ageRestricted', { reason: params.reason ?? 'other' }) };
+  if (code === 'too_many_streams' && params.device && params.releaseName)
+    return {
+      title,
+      message: t('errors.tooManyStreamsPlaying', {
+        device: params.device,
+        releaseName: params.releaseName,
+      }),
+    };
   if (code === 'too_many_streams' && params.device)
     return { title, message: t('errors.tooManyStreamsOn', { device: params.device }) };
   return { title, message: t(`errors.codes.${code}.message`) };

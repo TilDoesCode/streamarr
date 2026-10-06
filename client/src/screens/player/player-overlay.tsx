@@ -311,9 +311,12 @@ export function PlayerOverlay({
         show('buttons');
         return 'release';
       case 'down':
-        if (visible && zone === 'progress') show('buttons');
-        else show('progress');
-        return;
+        if (!visible || zone !== 'progress') return void show('progress');
+        // To the button row like ▲: native focus at once and the D-pad handed back, so a quick ▶ never scrubs (S6x).
+        handOver.current = tv;
+        if (tv && !rowFocused.current) tvFocus(playRef.current);
+        show('buttons');
+        return 'release';
       case 'stop':
         onClose();
         return;

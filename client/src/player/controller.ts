@@ -92,7 +92,7 @@ import {
   shortFile,
   transportEnd,
 } from '@/player/recovery/early-end';
-import { isRepairing } from '@/player/recovery/repair';
+import { isRepairing, repairAborted } from '@/player/recovery/repair';
 import {
   damagedAgain,
   lostPlayback,
@@ -102,7 +102,9 @@ import {
 } from '@/player/recovery/stall';
 import {
   lowerHeightOf,
+  StallHistory,
   slowStart,
+  throughputOk,
   switchesBack,
   tickRules,
   titleLength,
@@ -182,8 +184,12 @@ export class PlaybackController {
   /** The last sign pointing at the sound (audio request, broken-off AVPlayer transfer) and a damaged place (S9c). */
   private audioSignAt = 0;
   private damagedAt: { position: number; at: number } | null = null;
+  /** Method and release of the source attached last. */
+  private attachedSource = '';
   /** The last stall, step or load: a dropped subtitle comes back only a healthy minute after it (S4p R1). */
   private troubleAt = 0;
+  /** Stall starts and long rebuffers for the repeated-stall rule (C03, C08). */
+  private readonly stalls = new StallHistory();
   /** While offline the network is read again on a timer (S6v). */
   private readonly networkWatch: NetworkWatch;
   /** Asks the server whether the playback still exists (lost requests, stalls), one request at a time. */
@@ -212,6 +218,7 @@ export class PlaybackController {
     playback: Playback;
     position: number;
     preferences: PlaybackPreferences;
+    tracks: StepTracks;
   } | null = null;
   /** Start position not yet reached: reports never go below it, so a failed start keeps the resume point. */
   private startFloor = 0;
@@ -409,8 +416,7 @@ export class PlaybackController {
   }
 
   get position(): number {
-    // A debounced seek is where the viewer wants to be before the engine is told (D31).
-    // A source still seeking to its start position reports 0: the start position is where it is (S9a2 START).
+    // A debounced seek target or an unreached start position is where the viewer is (D31, S9a2 START).
     return (
       this.pendingSeek?.target ?? (this.startFloor || (this.engine?.getSnapshot().position ?? 0))
     );
@@ -421,8 +427,7 @@ export class PlaybackController {
     const snapshot = this.engine?.getSnapshot();
     if (!snapshot || this.startFloor) return this.lastGoodPosition;
     if (!STEADY_STATES.has(snapshot.state)) return this.lastGoodPosition;
-    // Time events stalled while the engine clock ran on (JS thread starved): trust the engine clock,
-    // but never further ahead than the starvation lasted (a probe from before a seek back, S9b R4).
+    // Starved time events: trust the engine clock, but not further ahead than the starvation lasted (S9b R4).
     const native = this.monitor.nativeClock;
     const now = Date.now();
     const starved = (now - this.lastTimeAt) / 1000 + 1;
@@ -1010,6 +1015,13 @@ export class PlaybackController {
         })
       );
     }
+    // Another way to play or another release: the old file's early end and damaged place are not this source's (S6x).
+    const source = `${playback.method}|${playback.version?.releaseId ?? ''}`;
+    if (source !== this.attachedSource) {
+      this.earlyEndAt = null;
+      this.damagedAt = null;
+    }
+    this.attachedSource = source;
     this.playback = playback;
     this.noteUndeliverable(playback);
     // Every release that played counts as tried for the "other version" step.
@@ -1028,6 +1040,7 @@ export class PlaybackController {
     this.pictured = false;
     this.loadingSince = Date.now();
     this.troubleAt = Date.now();
+    this.stalls.clear();
     this.loadProgress = { buffered: position, at: 0 };
     this.loadPosition = position;
     this.lastClock = null;
@@ -1191,9 +1204,18 @@ export class PlaybackController {
     this.troubleAt = this.stallSince;
     this.stallPosition = this.engine?.getSnapshot().position ?? 0;
     this.stallAfterSeek = this.stallSince - this.seekAt < 2 * SPINNER_MS;
+    if (!this.stallAfterSeek) this.stalls.started(this.stallSince);
     if (this.playback?.method === 'direct') void this.refreshRepair();
     this.tickStatus();
     this.changed();
+  }
+
+  /** The server's repair of this release, for the stall budget: its ETA while it runs, or that it gave up (C04). */
+  private repairTick(): { repairEtaMs?: number | null; repairAborted?: boolean } {
+    const repair = this.playback?.repair;
+    if (repairAborted(repair?.state)) return { repairAborted: true };
+    if (!isRepairing(repair?.state)) return {};
+    return { repairEtaMs: repair?.etaSeconds == null ? null : repair.etaSeconds * 1000 };
   }
 
   /** A direct play that stalls may wait on a Usenet repair: the playback says so (C04). */
@@ -1212,6 +1234,7 @@ export class PlaybackController {
 
   private clearStall(): void {
     if (!this.stallSince) return;
+    this.stalls.ended(Date.now(), this.stallSince);
     this.stallSince = 0;
     this.troubleAt = Date.now();
     this.tickStatus();
@@ -1299,6 +1322,13 @@ export class PlaybackController {
       progressAt: this.loadProgress.at,
       nearEnd: this.nearEnd(),
       offline: this.offline,
+      ...this.repairTick(),
+      repeated: this.stalls.repeated(
+        now,
+        this.stallAfterSeek ? 0 : this.stallSince,
+        this.playback?.method === 'transcode',
+        throughputOk(this.monitor.last.bandwidthBps, this.playback?.mediaInfo?.bitrateKbps)
+      ),
     });
     if (seekStall) {
       this.startStall();
@@ -1320,7 +1350,11 @@ export class PlaybackController {
       })
     )
       this.onSubtitleError('subtitle_timeout');
-    else if (rule === 'stallLadder') {
+    else if (rule === 'repairAborted') {
+      this.stallSince = 0;
+      this.mediaFailure({ category: 'T8', code: 'repair_failed' });
+    } else if (rule === 'stallLadder') {
+      this.stalls.clear();
       this.stallSince = 0;
       this.mediaFailure(
         stallFailure(this.loadRetry, now, this.stallAfterSeek, this.engine?.kind ?? 'web')
@@ -1465,6 +1499,8 @@ export class PlaybackController {
     }
     const position = step?.position ?? this.resumePosition;
     const previousPreferences = this.preferences;
+    // What the viewer hears and reads now, incl. picks made in the engine: a restore brings exactly these back (B19).
+    const previousTracks = this.viewerTracks();
     if (body.preferences) this.preferences = body.preferences;
     this.phase = 'switching';
     this.states = [];
@@ -1494,12 +1530,19 @@ export class PlaybackController {
           this.keepOldSource(playback, previousPreferences);
           return false;
         }
-        if (!step) await this.restore(playback, position, previousPreferences, signal);
+        if (!step)
+          await this.restore(playback, position, previousPreferences, signal, previousTracks);
         return false;
       }
       if (signal.aborted) throw signal.reason;
       await this.attach(ready, position);
-      if (!step) this.switchedFrom = { playback, position, preferences: previousPreferences };
+      if (!step)
+        this.switchedFrom = {
+          playback,
+          position,
+          preferences: previousPreferences,
+          tracks: previousTracks,
+        };
       return true;
     } catch (error) {
       if (this.closed) return false;
@@ -1535,7 +1578,7 @@ export class PlaybackController {
         });
         return false;
       }
-      await this.restore(playback, position, previousPreferences, signal);
+      await this.restore(playback, position, previousPreferences, signal, previousTracks);
       return false;
     }
   }
@@ -1545,7 +1588,8 @@ export class PlaybackController {
     previous: Playback,
     position: number,
     preferences: PlaybackPreferences,
-    signal: AbortSignal = this.abort.signal
+    signal: AbortSignal = this.abort.signal,
+    tracks?: StepTracks
   ): Promise<void> {
     this.preferences = preferences;
     const code = this.lastError || 'playback_failed';
@@ -1559,7 +1603,7 @@ export class PlaybackController {
         this.options.client,
         this.startRequest(
           position,
-          {
+          tracks ?? {
             audio: selected(previous.mediaInfo?.audioTracks),
             subtitle: selected(previous.mediaInfo?.subtitleTracks),
           },
@@ -1647,7 +1691,13 @@ export class PlaybackController {
     this.lastErrorStatus = undefined;
     this.phase = 'switching';
     this.changed();
-    void this.restore(from.playback, from.position, from.preferences, this.beginSwitch().signal);
+    void this.restore(
+      from.playback,
+      from.position,
+      from.preferences,
+      this.beginSwitch().signal,
+      from.tracks
+    );
   }
 
   /** A viewer's switch gets a step's budget (recovery/step-budget). */
@@ -1905,6 +1955,8 @@ export class PlaybackController {
 
   setPaused(paused: boolean): void {
     if (!paused) {
+      // Play after the end (system controls, a remote): playing again, not "Finished" (S6x).
+      this.ended = false;
       // The viewer's own Play here is the newest start: a pending yield to another tab is over (S4q R6).
       this.yieldPending = false;
       this.system.clear();
@@ -1939,6 +1991,8 @@ export class PlaybackController {
     if (!engine) return;
     const duration = this.duration;
     const clamped = Math.max(0, duration ? Math.min(target, duration - 1) : target);
+    // A seek after the end plays on from there: the end card and up-next go (S6x).
+    this.ended = false;
     this.startFloor = 0;
     this.seekAt = Date.now();
     this.seekTarget = clamped;

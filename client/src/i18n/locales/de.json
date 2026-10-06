@@ -990,6 +990,7 @@
     },
     "ageRestricted": "{reason, select, above_age_limit {Dieser Titel liegt über der Altersgrenze dieses Profils.} unrated_blocked {Dieses Profil darf nur Titel mit bekannter Altersfreigabe sehen.} rating_unavailable {Die Altersfreigabe dieses Titels ließ sich nicht prüfen, deshalb ist er für dieses Profil gesperrt.} other {Dieser Titel ist für dieses Profil nicht verfügbar.}}",
     "tooManyStreamsOn": "Dieses Profil schaut bereits auf {device}. Beende die Wiedergabe dort, um hier zu schauen.",
+    "tooManyStreamsPlaying": "Dieses Profil schaut bereits „{releaseName}“ auf {device}. Beende die Wiedergabe dort, um hier zu schauen.",
     "categories": {
       "T1": {
         "title": "Verbindungsproblem",

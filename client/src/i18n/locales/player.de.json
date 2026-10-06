@@ -151,6 +151,7 @@
     "autoplayBlocked": "Der Browser hat den Start verhindert. Drücke Abspielen.",
     "serverBusy": "Der Server ist ausgelastet. Neuer Versuch in {seconds} s …",
     "waitingForStream": "Startet, sobald die Wiedergabe auf {device} endet.",
+    "waitingForStreamRelease": "Startet, sobald „{releaseName}“ auf {device} endet.",
     "buffering": "Das Laden dauert länger als üblich. Wird gepuffert …",
     "serverError": "Der Server hatte ein Problem. Neuer Versuch in {seconds} s …",
     "reloading": "Die Wiedergabe ist stehen geblieben. Es geht weiter bei {time} …",

@@ -22,10 +22,25 @@ export type TickInput = {
   progressAt: number;
   nearEnd: boolean;
   offline: boolean;
+  /** The server repairs this release: its ETA in ms (null = unknown); undefined = no repair (C04). */
+  repairEtaMs?: number | null;
+  /** The server gave up the repair of this release while it stalls (C04). */
+  repairAborted?: boolean;
+  /** Short stalls keep coming (3 in 2 min, or 2 rebuffers > 4 s on a transcode): the stall ladder at once (C03, C08). */
+  repeated?: boolean;
 };
 
 export type TickRule =
-  'pictureTimeout' | 'conversionTimeout' | 'finish' | 'stallLadder' | 'offline' | null;
+  | 'pictureTimeout'
+  | 'conversionTimeout'
+  | 'finish'
+  | 'stallLadder'
+  | 'repairAborted'
+  | 'offline'
+  | null;
+
+/** A stall while the server repairs waits for it this long at most (its ETA, 15–90 s) (C04). */
+export const REPAIR_WAIT_MAX_MS = 90_000;
 
 /** A conversion that keeps delivering but too slowly to start waits at most this long (S9b C08). */
 export const SLOW_START_MAX_MS = 90_000;
@@ -62,7 +77,16 @@ export function tickRules(input: TickInput): { seekStall: boolean; rule: TickRul
   }
   if (calm && stallSince && input.nearEnd && now - stallSince >= HINT_MS)
     return { seekStall, rule: 'finish' };
-  if (calm && stallSince && now - stallSince >= STALL_LADDER_MS)
+  if (calm && stallSince && input.repairAborted) return { seekStall, rule: 'repairAborted' };
+  // The server mends the release: its repair, not the network, holds the picture (C04).
+  if (calm && stallSince && input.repairEtaMs !== undefined) {
+    const wait = Math.min(
+      REPAIR_WAIT_MAX_MS,
+      Math.max(STALL_LADDER_MS, input.repairEtaMs ?? Infinity)
+    );
+    return { seekStall, rule: now - stallSince >= wait ? 'stallLadder' : null };
+  }
+  if (calm && stallSince && (input.repeated || now - stallSince >= STALL_LADDER_MS))
     return { seekStall, rule: 'stallLadder' };
   return { seekStall, rule: input.offline ? 'offline' : null };
 }
@@ -90,4 +114,49 @@ export function lowerHeightOf(
 ): number | null {
   const current = Math.min(playing, preferences.maxHeight ?? Infinity);
   return QUALITY_STEPS.find((height) => height < current) ?? null;
+}
+
+/** Three stalls in two minutes, or two rebuffers over 4 s on a transcode, are one slow source (state matrix § 2 b.3). */
+export const REPEAT_WINDOW_MS = 120_000;
+const REPEAT_STALLS = 3;
+const LONG_REBUFFER_MS = 4_000;
+const LONG_REBUFFERS = 2;
+
+/** Stall starts and long rebuffers of one playback; a quiet 2 min forgets them, a new source or a step clears them. */
+export class StallHistory {
+  private starts: number[] = [];
+  private long: number[] = [];
+
+  started(now: number): void {
+    this.starts = [...this.recent(this.starts, now), now];
+  }
+
+  ended(now: number, since: number): void {
+    if (now - since > LONG_REBUFFER_MS) this.long = [...this.recent(this.long, now), now];
+  }
+
+  /** The current stall makes it one too many; `fast` = measured throughput well above the bitrate (not the network). */
+  repeated(now: number, stallSince: number, converting: boolean, fast: boolean): boolean {
+    if (!stallSince || fast) return false;
+    if (this.recent(this.starts, now).length >= REPEAT_STALLS) return true;
+    const longNow = now - stallSince > LONG_REBUFFER_MS ? 1 : 0;
+    return converting && this.recent(this.long, now).length + longNow >= LONG_REBUFFERS;
+  }
+
+  clear(): void {
+    this.starts = [];
+    this.long = [];
+  }
+
+  private recent(list: number[], now: number): number[] {
+    return list.filter((at) => now - at < REPEAT_WINDOW_MS);
+  }
+}
+
+/** Measured throughput well above the bitrate: stalls are not the network's. */
+export function throughputOk(
+  bandwidthBps: number | undefined,
+  bitrateKbps: number | null | undefined
+): boolean {
+  return !!bandwidthBps && !!bitrateKbps && bandwidthBps >= 1.2 * bitrateKbps * 1000;
 }

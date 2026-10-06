@@ -2285,3 +2285,227 @@ describe('matrix C — live native audit S9b turn 2: a broken subtitle rendition
     }
   );
 });
+
+describe('matrix C — S4s: repeated short stalls and a stall during a server repair (V1 C03, C08, C04)', () => {
+  const media = {
+    durationTicks: 600 * TICKS,
+    audioTracks: [],
+    subtitleTracks: [],
+    bitrateKbps: 8_000,
+  };
+  /** A stall of `seconds`, then `play` seconds of a running clock. */
+  async function stallThenPlay(at: { now: number }, seconds: number, play: number) {
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(seconds * 1000);
+    harness.engine.emit({ type: 'buffering', buffering: false });
+    for (let second = 0; second < play; second += 1) {
+      at.now += 1;
+      harness.engine.time(at.now);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+  }
+
+  row(
+    'C03',
+    'three 6 s stalls within 2 min lower the quality (V1 probe P2); two do not',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { method: 'remux', mediaInfo: { ...media, video: { height: 2160 } } } as never,
+        100
+      );
+      const at = { now: 100 };
+      await stallThenPlay(at, 6, 20);
+      await stallThenPlay(at, 6, 20);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await stallThenPlay(at, 3, 0);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({
+        preferences: expect.objectContaining({ maxHeight: 1080 }),
+      });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'short stalls more than 2 min apart, after a seek, or with a fast measured connection are no pattern',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { method: 'remux', mediaInfo: { ...media, video: { height: 2160 } } } as never,
+        100
+      );
+      const at = { now: 100 };
+      for (let stall = 0; stall < 3; stall += 1) await stallThenPlay(at, 5, 70);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C08',
+    'a transcode that rebuffers twice for more than 4 s lowers the quality at the second one',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { method: 'transcode', mediaInfo: { ...media, video: { height: 2160 } } } as never,
+        100
+      );
+      const at = { now: 100 };
+      await stallThenPlay(at, 5, 30);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(6_000);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({
+        preferences: expect.objectContaining({ maxHeight: 1080 }),
+      });
+      await c.stop();
+    }
+  );
+
+  const repairing = (state: string, etaSeconds?: number) =>
+    reply.ok(
+      harness.server.playback({
+        playbackId: 'p1',
+        repair: { state, progressPercent: 40, ...(etaSeconds ? { etaSeconds } : {}) },
+      } as never)
+    );
+
+  row(
+    'C04',
+    'a stall while the server repairs waits for the repair: "The server is repairing …" at 20 s, no step-down (V1 probe P1)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
+      harness.server.answer(
+        'poll',
+        ...Array.from({ length: 5 }, () => repairing('downloadingRecovery'))
+      );
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(c.status.hint).toEqual({ key: 'serverRepairing' });
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      // At most 90 s (no ETA): then the normal stall ladder.
+      await jest.advanceTimersByTimeAsync(71_000);
+      await settle();
+      expect(
+        harness.engine.load.mock.calls.length + harness.server.sent('switch').length
+      ).toBeGreaterThan(1);
+      await c.stop();
+    }
+  );
+
+  row('C04', 'the server ETA bounds the wait (30 s here)', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
+    harness.server.answer(
+      'poll',
+      ...Array.from({ length: 5 }, () => repairing('reconstructing', 30))
+    );
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await settle();
+    await jest.advanceTimersByTimeAsync(25_000);
+    expect(harness.engine.load).toHaveBeenCalledTimes(1);
+    expect(harness.server.sent('switch')).toHaveLength(0);
+    await jest.advanceTimersByTimeAsync(7_000);
+    await settle();
+    expect(
+      harness.engine.load.mock.calls.length + harness.server.sent('switch').length
+    ).toBeGreaterThan(1);
+    await c.stop();
+  });
+
+  row(
+    'C04',
+    'the server gives the repair up while it stalls: the same release once more, then another version',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
+      harness.server.answer('poll', ...Array.from({ length: 5 }, () => repairing('failed')));
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      await jest.advanceTimersByTimeAsync(1_500);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(300);
+      harness.engine.started();
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      await jest.advanceTimersByTimeAsync(1_500);
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — S4s: a new method plays past the cut of a truncated file (S6x Left, Google TV VLC run 2)', () => {
+  row(
+    'C32',
+    'after a step-down to a transcode that plays past the old early end, a stall there is a stall: no "damaged" verdict, no other version',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'direct',
+          mediaInfo: {
+            durationTicks: 180 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [],
+            video: { height: 1080 },
+          },
+        } as never,
+        80
+      );
+      // The direct file stops at 1:28 of 3:00: the early end is remembered there.
+      harness.engine.time(88, 180);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      // The viewer (or a later step) changes the way to play: the transcode delivers the whole title.
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            method: 'transcode',
+            revision: 1,
+            mediaInfo: {
+              durationTicks: 180 * TICKS,
+              audioTracks: [],
+              subtitleTracks: [],
+              video: { height: 1080 },
+            },
+          } as never)
+        )
+      );
+      await c.stepDown();
+      await settle();
+      harness.engine.started(180);
+      for (let second = 89; second <= 91; second += 1) {
+        harness.engine.time(second, 180);
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+      const before = harness.server.sent('switch').length;
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(0);
+      // A plain stall ladder (lower quality), never another step-down for "damaged" data.
+      const after = harness.server.sent('switch').slice(before);
+      expect(after.some((request) => request.body?.stepDown)).toBe(false);
+      expect(after.at(-1)?.body).toMatchObject({
+        preferences: expect.objectContaining({ maxHeight: 720 }),
+      });
+      await c.stop();
+    }
+  );
+});

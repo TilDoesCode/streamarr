@@ -154,3 +154,29 @@ describe('a pause from outside the controls shows them (F8 V2: leaving the syste
     expect(screen.getByTestId('player-overlay')).toBeTruthy();
   });
 });
+
+describe('TV: ▼ from the scrubber reaches the button row (S6x Left, Google TV)', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('▼ hands the D-pad to the buttons at once: a quick ▶ right after it never scrubs', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+    const backRef = createRef<(() => boolean) | null>();
+    const controller = await overlay(backRef);
+    // Hidden: ▼ shows the controls on the scrubber.
+    await act(async () => void backRef.current?.());
+    await act(async () => mockKeys.listener?.({ key: 'down', repeat: 0 }));
+    expect(screen.getByTestId('player-position')).toHaveTextContent('0:52');
+    // ▼ to the buttons and ▶ before the next render, as a remote (or adb) sends them.
+    await act(async () => {
+      mockKeys.listener?.({ key: 'down', repeat: 0 });
+      mockKeys.listener?.({ key: 'right', repeat: 0 });
+    });
+    await act(async () => jest.runOnlyPendingTimers());
+    expect(controller.seekTo).not.toHaveBeenCalled();
+    expect(screen.getByTestId('player-position')).toHaveTextContent('0:52');
+  });
+});

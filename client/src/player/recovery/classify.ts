@@ -33,9 +33,8 @@ function mediaStatus(status: number, detail: string): Classified {
   // A range past the end of a direct-play file: the file is shorter than announced (C02).
   if (status === 416) return { category: 'T8', code: 'end_of_stream', detail };
   const code = MEDIA_STATUS_CODES[status] ?? (status >= 500 ? 'server_error' : `http_${status}`);
-  const category: ErrorCategory =
-    status === 503 ? 'T6' : status === 0 ? 'T1' : (categoryOfStatus(status) ?? 'T11');
-  return { category, code: status === 0 ? 'network_unreachable' : code, detail };
+  const category: ErrorCategory = status === 503 ? 'T6' : (categoryOfStatus(status) ?? 'T11');
+  return { category, code, detail };
 }
 
 const TLS =
@@ -52,6 +51,8 @@ const PARSER = /ParserException|PARSING_|-12642|-11850|unexpected format|content
 const ENCRYPTED = /keySystem|KEY_SYSTEM|DrmSession|DRM|-42\d{3}|encrypted|keyLoad/i;
 const RECLAIMED = /reclaim|-11819\b/i;
 const CLEARTEXT = /CLEARTEXT/i;
+/** Browser network messages: Chrome's demuxer read error, Firefox's NS_ERROR_NET_*, Chromium net errors. */
+const WEB_NETWORK = /PIPELINE_ERROR_READ|NS_ERROR_NET_|NS_ERROR_CONNECTION|net::ERR_/;
 /** libVLC's input dialog "VLC is unable to open the MRL 'http…'": the source itself did not open (S9c). */
 const VLC_CANNOT_OPEN = /unable to open the MRL '?https?:/i;
 const INTERCEPTED_MANIFEST = /PARSING_MANIFEST_\w*.*(?:does not start with the #EXTM3U|<html)/i;
@@ -81,6 +82,12 @@ function hlsReason(reason: string, status?: number): Classified | undefined {
   return undefined;
 }
 
+/** A browser media error of the network: MEDIA_ERR_NETWORK, an unreachable HEAD probe or a network message (D09). */
+function webNetwork(reason: string, status: number | undefined): boolean {
+  if (/^media_error_[34]\b/.test(reason)) return false;
+  return status === 0 || /^media_error_2\b/.test(reason) || WEB_NETWORK.test(reason);
+}
+
 function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Classified {
   const { reason, status } = source;
   if (reason === 'hlsjs:load')
@@ -92,8 +99,10 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
     return { category: 'T7', code: 'media_damaged', detail: reason };
   const hls = hlsReason(reason, status);
   if (hls) return hls;
-  // libVLC cannot open the http(s) source at all (an HTTP 404/403 on a direct URL): the server lost it (T2), not a
-  // certificate, login or component question (S9c VLC 404); a named status still decides.
+  // libVLC names no HTTP status; the engine asks the server (S6x): a telling one decides before any dialog wording.
+  if (source.engine === 'vlc' && status !== undefined && telling(status))
+    return mediaStatus(status, reason);
+  // libVLC cannot open the http(s) source and nobody knows why: the server lost it (T2, S9c VLC 404).
   if (VLC_CANNOT_OPEN.test(reason) && !TLS.test(reason))
     return mediaStatus(Number(/\b(40[134]|410|5\d\d)\b/.exec(reason)?.[1] ?? 404), reason);
   // libVLC asked a question nobody answers: a certificate one is TLS, the rest "VLC cannot play this" (D27).
@@ -110,6 +119,12 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
     avFoundationStatus(reason);
   if (httpStatus !== undefined && telling(httpStatus)) return mediaStatus(httpStatus, reason);
   if (TLS.test(reason)) return { category: 'T1', code: 'tls_error', detail: reason };
+  // Exo names a missing file or an unspecified I/O failure: the stream is gone (T2) or broke off (T1), not the device (D11).
+  if (/ERROR_CODE_IO_FILE_NOT_FOUND/.test(reason)) return mediaStatus(404, reason);
+  if (/ERROR_CODE_IO_UNSPECIFIED/.test(reason))
+    return { category: 'T1', code: 'stream_interrupted', detail: reason };
+  if (source.engine === 'web' && webNetwork(reason, status))
+    return { category: 'T1', code: 'network_unreachable', detail: reason };
   if (ENCRYPTED.test(reason)) return { category: 'T8', code: 'encrypted_media', detail: reason };
   if (RECLAIMED.test(reason)) return { category: 'T6', code: 'decoder_reclaimed', detail: reason };
   if (CLEARTEXT.test(reason))

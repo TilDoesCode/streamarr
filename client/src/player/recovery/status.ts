@@ -167,8 +167,7 @@ export function runningHint(recovery: Recovery): StatusHint {
 function stallHint(input: StatusInput): StatusHint {
   const { bandwidthBps, bitrateKbps: bitrate, fetch } = input;
   if (input.repairing) return { key: 'serverRepairing' };
-  // Only a transcode converts; it is slow when it delivers less media than real time over several segments (C08, review B3).
-  // A long server wait before a fast transfer is the same measurement for one segment (S9a C08).
+  // A transcode is slow when it delivers less than real time, or one segment waited long and came fast (C08, S9a).
   const waited = !!fetch && fetch.waitMs >= SLOW_FIRST_BYTE_MS && fetch.waitMs > fetch.transferMs;
   if (
     input.method === 'transcode' &&

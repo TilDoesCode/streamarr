@@ -1,6 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
 
-import '@/i18n';
+import { describeError } from '@/api/error-text';
+import i18n from '@/i18n';
 import { renderWithProviders } from '@/../jest/render';
 import type { PlayerStatus } from '@/player/recovery/status';
 import { PlayScreen } from '@/screens/player/play-screen';
@@ -171,5 +172,17 @@ describe('PlayScreen: subtitles kept off for this video offer the way back on (S
     c.notice = { kind: 'subtitleFailed', params: { index: '3', code: 'x', retry: 'later' }, id: 1 };
     await act(async () => c.notify());
     expect(screen.queryByTestId('player-notice-subtitles-on')).toBeNull();
+  });
+});
+
+describe('PlayScreen: a failure card never shows the generic text (V1 clean-up, E16)', () => {
+  it("a failed phase without a controller failure says it is the player's own problem", async () => {
+    const c = await open();
+    c.phase = 'failed';
+    await act(async () => c.set({ spinner: false, hint: null, actions: [] }));
+    const own = describeError(i18n.t, { code: 'player_internal_error' });
+    const generic = describeError(i18n.t, { code: 'unknown' });
+    expect(screen.getByText(own.title)).toBeOnTheScreen();
+    expect(screen.queryByText(generic.title)).toBeNull();
   });
 });

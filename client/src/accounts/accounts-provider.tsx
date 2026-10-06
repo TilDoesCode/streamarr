@@ -141,7 +141,9 @@ export function useSessionGate(): { account: Account | null; reason: GateReason 
   const held = usePlayerHold(active?.id);
   const signedIn = accounts.filter((account) => account.signedIn);
   if (!accounts.length) return { account: null, reason: 'no_accounts' };
-  if (active && !active.signedIn && held) return { account: active, reason: 'ready' };
+  // The same for a password change the server asks for mid-play: the card leads there (S4s A07).
+  if (active && (!active.signedIn || active.mustChangePassword) && held)
+    return { account: active, reason: 'ready' };
   if (!active || !active.signedIn) return { account: null, reason: 'pick_profile' };
   if (active.mustChangePassword) return { account: active, reason: 'change_password' };
   if (signedIn.length > 1 && !profileChosen) return { account: active, reason: 'pick_profile' };

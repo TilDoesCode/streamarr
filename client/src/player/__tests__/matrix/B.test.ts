@@ -1,5 +1,6 @@
 import { cardActions } from '@/player/recovery/ladder';
-import { STEP_BUDGET_MS } from '@/player/recovery/budgets';
+import { STEP_BUDGET_MS, STREAM_POLLS } from '@/player/recovery/budgets';
+import { hintText } from '@/player/recovery/hints';
 import { categoryOf } from '@/api/error-categories';
 import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
@@ -1549,6 +1550,127 @@ describe('matrix B — live native audit S9b turn 2: the server loses the playba
       await settle();
       await jest.advanceTimersByTimeAsync(5_000);
       expect(c.failure).toMatchObject({ category: 'T2' });
+    }
+  );
+});
+
+describe('matrix B — S4s: a restore brings back the tracks the viewer picked in the player (V1 B19)', () => {
+  row(
+    'B19',
+    'English audio and German subtitles picked in the engine survive a failed quality switch: the restore asks for them',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [
+              { index: 1, language: 'de', selected: true, deliveredAs: 'original' },
+              { index: 2, language: 'en', selected: false, deliveredAs: 'original' },
+            ],
+            subtitleTracks: [{ index: 4, language: 'de', selected: false, deliveredAs: 'webvtt' }],
+          },
+        } as never,
+        41
+      );
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [
+            { id: 'a0', label: 'de', language: 'de', selected: true },
+            { id: 'a1', label: 'en', language: 'en', selected: false },
+          ],
+          subtitles: [{ id: 's0', label: 'de', language: 'de', selected: false }],
+        },
+      });
+      await playOn(16);
+      // The viewer switches to English and turns German subtitles on in the player (no server switch).
+      const info = c.playback!.mediaInfo!;
+      await c.selectAudio(info.audioTracks![1]!);
+      await c.selectSubtitle(info.subtitleTracks![0]!);
+      await playOn(10);
+      expect(c.currentAudio()).toBe(2);
+      expect(c.currentSubtitle()).toBe(4);
+      harness.engine.state('error');
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            state: 'failed',
+            revision: 1,
+            error: { code: 'transcode_capacity' },
+          } as never)
+        )
+      );
+      await c.setQuality(720);
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.body).toMatchObject({ audioStreamIndex: 2, subtitleStreamIndex: 4 });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — S4s: the stream limit names the title and owns its two minutes (S4t B04)', () => {
+  const busy = (params: Record<string, string>) => reply.error(409, 'too_many_streams', params);
+  const pt = (lang: string) =>
+    ((key: string, options?: object) =>
+      i18n.getFixedT(lang)(key as never, { ...options, ns: 'player' } as never)) as never;
+
+  row(
+    'B04',
+    'the wait and the card name the release the other device plays, de and en',
+    async () => {
+      jest.useFakeTimers();
+      const params = { device: 'Living room TV', releaseName: 'Sintel 2160p' };
+      harness.server.answer('start', ...Array.from({ length: 13 }, () => busy(params)));
+      const c = newController();
+      await c.start();
+      const hint = c.status.hint!;
+      expect(hint).toMatchObject({ key: 'waitingForStreamRelease', params });
+      expect(hintText(pt('en'), hint.key, hint.params)).toBe(
+        'Starts as soon as “Sintel 2160p” stops playing on Living room TV.'
+      );
+      expect(hintText(pt('de'), hint.key, hint.params)).toBe(
+        'Startet, sobald „Sintel 2160p“ auf Living room TV endet.'
+      );
+      await jest.advanceTimersByTimeAsync(130_000);
+      expect(c.failure).toMatchObject({ code: 'too_many_streams', params });
+      expect(describeError(i18n.getFixedT('en'), c.failure!).message).toBe(
+        'This profile is already watching “Sintel 2160p” on Living room TV. Stop playback there to watch here.'
+      );
+      expect(describeError(i18n.getFixedT('de'), c.failure!).message).toContain(
+        '„Sintel 2160p“ auf Living room TV'
+      );
+      await c.stop();
+    }
+  );
+
+  row(
+    'B04',
+    'earlier steps of the incident never shorten the two-minute wait: STREAM_POLLS is its only cap',
+    async () => {
+      jest.useFakeTimers();
+      const params = { device: 'Living room TV' };
+      harness.server.answer(
+        'start',
+        ...Array.from({ length: 3 }, () => reply.error(429, 'too_many_playbacks', undefined, 1)),
+        ...Array.from({ length: 30 }, () => busy(params))
+      );
+      const c = newController();
+      await c.start();
+      await jest.advanceTimersByTimeAsync(3_500);
+      expect(harness.server.sent('start')).toHaveLength(4);
+      expect(c.status.hint?.key).toBe('waitingForStream');
+      await jest.advanceTimersByTimeAsync(110_000);
+      expect(c.phase).not.toBe('failed');
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(harness.server.sent('start')).toHaveLength(4 + STREAM_POLLS);
+      expect(c.failure).toMatchObject({ code: 'too_many_streams', params });
+      await c.stop();
     }
   );
 });

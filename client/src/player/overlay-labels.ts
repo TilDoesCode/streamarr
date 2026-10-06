@@ -213,6 +213,8 @@ export function stepDownReasonKey(
   const reason = params?.reason;
   if (!reason) return undefined;
   if (reason === 'picture_timeout') return 'notice.because.picture_timeout';
+  // A reclaimed decoder is this device's, not the server's (D17).
+  if (reason === 'decoder_reclaimed') return 'notice.because.T7';
   // A stall or a frozen picture without a decoder error says what was seen, never "this device can't decode" (S6t).
   if (STALLED.has(reason)) return 'notice.because.stalled';
   if (reason === 'media_damaged') return 'notice.because.media_damaged';

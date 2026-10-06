@@ -79,7 +79,7 @@ describe('scriptable library fakes drive the real engines (state-matrix § 2 d.1
     );
     const failures = events.flatMap((event) => (event.type === 'error' ? [event] : []));
     expect(failures.map((event) => event.reason)).toEqual([
-      'PIPELINE_ERROR_DECODE: video decode failed',
+      'media_error_3: PIPELINE_ERROR_DECODE: video decode failed',
       'media_error_2',
     ]);
     expect(

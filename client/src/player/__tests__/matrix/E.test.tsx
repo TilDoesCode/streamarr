@@ -1,6 +1,7 @@
 import { statusOf } from '@/player/recovery/status';
 import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
+import { endOverlay } from '@/player/end-state';
 import { createPlayer, profileOrFallback } from '@/player/caps-fallback';
 import { noticeError, noticeMs, stepDownReasonKey } from '@/player/overlay-labels';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
@@ -962,4 +963,62 @@ describe('matrix E — live native audit S9b: a slow direct start names the engi
       statusOf({ ...input, fetch: { waitMs: 3_000, transferMs: 100, bytes: 1 } }).hint
     ).toEqual({ key: 'startSlow', params: { cause: 'slowConnection' } });
   });
+});
+
+describe('matrix E — S4s: a seek or play after the end leaves the end card (S6x Left)', () => {
+  row(
+    'E07',
+    'seekTo(60) after the title ended: no "Finished" card over the playing picture',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(600, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.ended).toBe(true);
+      expect(
+        endOverlay({
+          playing: true,
+          ended: c.ended,
+          hasNext: false,
+          upNextDismissed: false,
+          blocked: false,
+          remaining: 0,
+          duration: 600,
+          upNextSeconds: 30,
+        })
+      ).toBe('endCard');
+      c.seekTo(60);
+      expect(c.ended).toBe(false);
+      expect(
+        endOverlay({
+          playing: true,
+          ended: c.ended,
+          hasNext: true,
+          upNextDismissed: false,
+          blocked: false,
+          remaining: 540,
+          duration: 600,
+          upNextSeconds: 30,
+        })
+      ).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'E07',
+    'Play from the system controls after the end plays again, not "Finished"',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(600, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      c.setPaused(true);
+      c.setPaused(false);
+      expect(c.ended).toBe(false);
+      await c.stop();
+    }
+  );
 });

@@ -151,6 +151,7 @@
     "autoplayBlocked": "The browser didn’t let the video start. Press Play.",
     "serverBusy": "The server is busy. Retrying in {seconds} s…",
     "waitingForStream": "Starts as soon as playback on {device} stops.",
+    "waitingForStreamRelease": "Starts as soon as “{releaseName}” stops playing on {device}.",
     "buffering": "Loading takes longer than usual. Buffering…",
     "serverError": "The server had a problem. Retrying in {seconds} s…",
     "reloading": "Playback stopped. Resuming at {time}…",

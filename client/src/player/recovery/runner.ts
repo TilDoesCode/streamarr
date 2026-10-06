@@ -112,7 +112,8 @@ export class RecoveryRunner {
     const incident = this.incident;
     const situation = this.host.situation();
     const decision =
-      incident.attempts.length >= MAX_ATTEMPTS || this.stuckTooLong(failure, now)
+      (incident.attempts.length >= MAX_ATTEMPTS && !OWN_WAIT.has(failure.category)) ||
+      this.stuckTooLong(failure, now)
         ? ({ step: 'G', delayMs: 0 } as Decision)
         : nextStep(incident, failure, {
             ...situation,

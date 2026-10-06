@@ -63,4 +63,13 @@ describe('a session that ends while the player is open (S9b A05)', () => {
     expect(screen.getByTestId('gate')).toHaveTextContent('pick_profile');
     expect(screen.getByText(/sign-in has expired/i)).toBeOnTheScreen();
   });
+
+  it('A07 a password change the server asks for mid-play keeps the player too, until it closes (S4s)', async () => {
+    const { store, anna } = await signedIn();
+    const release = holdForPlayer(anna.id);
+    await act(async () => store.update(anna.id, { mustChangePassword: true }));
+    expect(screen.getByTestId('gate')).toHaveTextContent('ready');
+    await act(async () => release());
+    expect(screen.getByTestId('gate')).toHaveTextContent('change_password');
+  });
 });

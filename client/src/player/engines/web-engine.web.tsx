@@ -206,8 +206,10 @@ export class WebEngine extends EngineBase implements PlayerEngine {
         this.emitTracks();
       }),
       on('error', () => {
-        const reason = element.error?.message || `media_error_${element.error?.code ?? 0}`;
         const code = element.error?.code;
+        const message = element.error?.message;
+        // The MediaError code stays in the reason: a browser message alone hides "network" behind decoder words (D09).
+        const reason = `media_error_${code ?? 0}${message ? `: ${message}` : ''}`;
         const uri = this.source?.uri;
         // A network or "not supported" error of a direct-play URL: its HTTP status tells session loss from transport (D09).
         if (this.source?.kind === 'progressive' && uri && (code === 2 || code === 4))

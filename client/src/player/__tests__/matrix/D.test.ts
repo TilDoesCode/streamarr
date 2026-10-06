@@ -2319,3 +2319,139 @@ describe("matrix D — live native audit S9b turn 2: another version keeps the v
     }
   );
 });
+
+describe('matrix D — S4s: a browser network error keeps its MediaError code (V1 blocking D09)', () => {
+  const web = (reason: string, status?: number) =>
+    classify({
+      kind: 'engine',
+      engine: 'web',
+      reason,
+      ...(status === undefined ? {} : { status }),
+    });
+
+  row(
+    'D09',
+    'Chrome, Firefox and Safari messages on MEDIA_ERR_NETWORK, or an unreachable HEAD, are the network (T1), never a decoder step-down',
+    async () => {
+      // The <video> element keeps the code in front of the browser's message.
+      const engine = new WebEngine();
+      const video = new FakeVideoElement();
+      (engine as unknown as { attach(video: unknown): void }).attach(video);
+      const reasons: string[] = [];
+      engine.subscribe((event) => void (event.type === 'error' && reasons.push(event.reason)));
+      engine.load({ uri: 'http://server.test/master.m3u8', kind: 'hls' });
+      video.fail(2, 'PIPELINE_ERROR_READ: FFmpegDemuxer: data source error');
+      expect(reasons).toEqual([
+        'media_error_2: PIPELINE_ERROR_READ: FFmpegDemuxer: data source error',
+      ]);
+      engine.release();
+      for (const reason of [
+        'media_error_2: PIPELINE_ERROR_READ: FFmpegDemuxer: data source error',
+        'media_error_2: NS_ERROR_NET_PARTIAL_TRANSFER',
+        'media_error_2: Load failed',
+        'media_error_2',
+      ])
+        expect(web(reason)).toMatchObject({ category: 'T1', code: 'network_unreachable' });
+      // The V1 probes: a browser message without the code, but the HEAD probe got no answer (status 0).
+      expect(web('PIPELINE_ERROR_READ: FFmpegDemuxer: data source error', 0).category).toBe('T1');
+      expect(web('NS_ERROR_NET_PARTIAL_TRANSFER', 0).category).toBe('T1');
+      // Any other message (not a decode or format code) with the HEAD unanswered is the network too.
+      expect(web('DEMUXER_ERROR_COULD_NOT_OPEN', 0).category).toBe('T1');
+    }
+  );
+
+  row('D09', 'MEDIA_ERR_DECODE and SRC_NOT_SUPPORTED keep their paths', () => {
+    expect(web('media_error_3: PIPELINE_ERROR_DECODE: video decode failed')).toMatchObject({
+      category: 'T7',
+      code: 'decode_error',
+    });
+    expect(web('media_error_4: MEDIA_ERR_SRC_NOT_SUPPORTED', 0).category).toBe('T7');
+    expect(web('media_error_4', 404)).toMatchObject({ category: 'T2' });
+  });
+});
+
+describe('matrix D — S4s: a reclaimed decoder is the device, not the server (V1 D17, A21)', () => {
+  row(
+    'D17',
+    'reclaim: "Reloading at …" at once (no server hint, no wait), a second reclaim steps down with the device as the reason (V1 probe P5)',
+    async () => {
+      jest.useFakeTimers();
+      const reclaim = 'ERROR_CODE_DECODING_RESOURCES_RECLAIMED: MediaCodec released';
+      const failure = classify({ kind: 'engine', engine: 'expo-video', reason: reclaim });
+      const context = {
+        attached: true,
+        online: true,
+        canLowerQuality: true,
+        revision: 1,
+        audioFallback: false,
+      };
+      const first = nextStep(new Incident(0), failure, context);
+      expect(first).toEqual({ step: 'R', delayMs: 0, hint: 'reloading' });
+      const c = await playing({}, {}, 33);
+      harness.engine.fail(reclaim);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(33);
+      expect(c.status.hint?.key).not.toBe('serverError');
+      harness.engine.started();
+      harness.engine.time(34);
+      harness.engine.fail(reclaim);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      expect(stepDownReasonKey({ reason: 'decoder_reclaimed' })).toBe('notice.because.T7');
+      await c.stop();
+    }
+  );
+});
+
+describe("matrix D — S4s: a VLC failure with the server's HTTP status (S6x payloads)", () => {
+  const vlc = (reason: string, status?: number) =>
+    classify({
+      kind: 'engine',
+      engine: 'vlc',
+      reason,
+      ...(status === undefined ? {} : { status }),
+    });
+  const dialog =
+    "vlc_dialog error: Your media can't be opened VLC is unable to open the MRL 'http://127.0.0.1:39300/api/v1/stream/tok'. Check the log for details.";
+
+  row(
+    'D27',
+    'the recorded S6x payload (dialog + error, status 404) is the missing file (T2, new start); 5xx the server; no status keeps the S4r rule',
+    () => {
+      expect(vlc(dialog, 404)).toMatchObject({ category: 'T2', code: 'unknown_transcode' });
+      expect(vlc('Player encountered an error', 404)).toMatchObject({ category: 'T2' });
+      expect(vlc(dialog, 410)).toMatchObject({ category: 'T2', code: 'session_closed' });
+      expect(vlc(dialog, 416)).toMatchObject({ category: 'T8', code: 'end_of_stream' });
+      expect(vlc(dialog, 503)).toMatchObject({ category: 'T6' });
+      expect(
+        vlc('vlc_dialog error: Codec not supported VLC could not decode the format "dts "', 503)
+      ).toMatchObject({
+        category: 'T6',
+      });
+      // No answer from the server: the S4r rule (MRL open failure = a new start) still agrees.
+      expect(vlc(dialog)).toMatchObject({ category: 'T2' });
+      expect(
+        vlc('vlc_dialog error: Codec not supported VLC could not decode the format "dts "')
+      ).toMatchObject({
+        category: 'T7',
+        code: 'vlc_dialog',
+      });
+    }
+  );
+});
+
+describe('matrix D — S4s: Exo I/O failures are the stream, not the device (V1 D11 drift)', () => {
+  row(
+    'D11',
+    'IO_FILE_NOT_FOUND is the missing file (T2, new start), IO_UNSPECIFIED a broken-off stream (T1)',
+    () => {
+      const exo = (reason: string) => classify({ kind: 'engine', engine: 'expo-video', reason });
+      expect(exo('ERROR_CODE_IO_FILE_NOT_FOUND: Source error')).toMatchObject({ category: 'T2' });
+      expect(exo('ERROR_CODE_IO_UNSPECIFIED: Source error')).toMatchObject({
+        category: 'T1',
+        code: 'stream_interrupted',
+      });
+    }
+  );
+});

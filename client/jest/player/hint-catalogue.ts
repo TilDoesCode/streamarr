@@ -126,6 +126,12 @@ const HINTS: Record<HintKey, Omit<Row, 'id' | 'key' | 'action'>> = {
     shows: 'too_many_streams names the device and the app waits',
     clears: 'the other playback stops, or the viewer goes back',
   },
+  waitingForStreamRelease: {
+    params: { device: 'Apple TV', releaseName: 'Sintel 2160p' },
+    state: 'Stream limit: waiting for the other device to stop, the server named its release',
+    shows: 'too_many_streams names the device and the release (B04)',
+    clears: 'the other playback stops, or the viewer goes back',
+  },
   buffering: {
     state: 'Stall without a known cause',
     shows: 'a stall lasts 4 s and neither the connection nor the server is measured slow',

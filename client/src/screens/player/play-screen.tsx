@@ -235,9 +235,12 @@ export function PlayScreen() {
     else if (action === 'lowerQuality') setPreferences((value) => ({ ...value, maxHeight: 720 }));
     else if (action === 'useVlc') setPreferences((value) => ({ ...value, engine: 'vlc' }));
     else if (action === 'signIn') {
-      // Signed out mid-play: the position is saved (queued reports); the account screen signs in again.
+      // Signed out or a password change due mid-play: the position is saved (queued reports); that screen is next.
       leaving.current = true;
-      closeAfterFrame(() => router.replace('/profiles'));
+      const next = account.mustChangePassword
+        ? { pathname: '/sign-in/change-password' as const, params: { account: account.id } }
+        : '/profiles';
+      closeAfterFrame(() => router.replace(next));
     } else close();
   };
 
@@ -255,7 +258,8 @@ export function PlayScreen() {
   const status = controller?.status;
 
   const failure = controller?.failure;
-  const code = capsError ?? failure?.code ?? (workId ? 'unknown' : 'not_found');
+  // Never the generic code: a card without a controller failure is the player's own (E16).
+  const code = capsError ?? failure?.code ?? (workId ? 'player_internal_error' : 'not_found');
   const actions = cardButtons(failure?.actions, { vlc: vlcAvailable() });
   const reason = failureReason(untypedT, failure?.params, (key) =>
     i18n.exists(`errors.reasons.${key}`)
