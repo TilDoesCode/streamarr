@@ -964,6 +964,21 @@ const TASKS = {
       'error answers skip unknown sessions; nits fixed (doc comment, limiter log level in Dev World, fault 400 message, usenet_hole restores); contract, e2e and the full server suite green',
     ],
   },
+  'B18': {
+    title: 'Server: live repair state during play (progress GET), plus B17 verify follow-ups',
+    track: 'Backend',
+    deps: ['B17'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (F10 code review 7, P2-4, docs/client/runs/driver/F10-code-review-7.md). `ViewerPlaybackService` sets `Playback.Repair` only in ResolveAsync/RepairAsync (repair-while-streaming starts and the repair wait); `Snapshot`/GET returns that value unchanged for the rest of the playback. So a player that polls the playback during a stall sees a stale `downloadingRecovery` with an old ETA forever, and a repair that fails or is cancelled during play is never reported. Fix: while the playback is ready and its `Repair` is not terminal, the GET (and the progress/heartbeat answer if it carries playback state) refreshes `Repair` from `resolver.RepairStatus(ResolvedReleaseId)` (cheap, no lock held across I/O; throttle per playback if the status read is not O(1)); once terminal it stays at the terminal state (ready/failed/cancelled/evicted) for the client to read, then clears on a release change. Tests (unit + e2e on your own Dev World 39310 with a `usenet_stall`/repair fault during play: the GET shows the state moving and finally `ready`, and a failed repair shows `failed`). No contract change expected (the field exists); if the docs describe it as a start-time snapshot, fix the docs (docs/api.md, docs/viewers.md).',
+      '- Then the non-blocking findings of the B17 verifier (docs/client/journal/B17.md "Verification (round 1)") that a viewer can feel; record the rest in docs/client/BACKLOG.md.',
+      '- Own Dev World 39310 only; never restart or republish 39300. Contract check, faults_smoke + e2e and the full server suite once at the end (nice -n 10).',
+    ].join('\n'),
+    acceptance: [
+      'during play the playback GET reports the live repair state (moving states, final ready/failed) instead of the start-time snapshot (unit + e2e)',
+      'B17 verifier follow-ups that a viewer can feel are fixed or recorded; contract, e2e and the full server suite green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {
