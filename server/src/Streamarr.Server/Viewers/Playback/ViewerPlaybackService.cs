@@ -204,9 +204,16 @@ public sealed class ViewerPlaybackService(
         {
             if (playback.Stopped || playback.Revision != revision || playback.ResolvedReleaseId != releaseId || !ReferenceEquals(playback.Repair, known))
                 return;
-            playback.Repair = live;
+            SetRepair(playback, live, releaseId);
             playback.UpdatedAt = time.GetUtcNow();
         }
+    }
+
+    /// <summary>The repair shown for the playback, tied to the release it belongs to; call under the playback's gate.</summary>
+    private static void SetRepair(Playback playback, RepairStatusInfo? repair, string? releaseId)
+    {
+        playback.Repair = repair;
+        playback.RepairReleaseId = repair is null ? null : releaseId;
     }
 
     public async Task<PlaybackResponse> SwitchAsync(ViewerCaller caller, ViewerEntity viewer, string playbackId, PlaybackSwitchRequest request, CancellationToken ct)
@@ -238,7 +245,7 @@ public sealed class ViewerPlaybackService(
                 playback.Attempts.Clear();
                 playback.FallbackFrom = null;
                 playback.Version = null;
-                playback.Repair = null;
+                SetRepair(playback, null, null);
                 playback.StreamToken = null;
                 playback.ResolvedReleaseId = null;
                 playback.Media = null;
@@ -537,7 +544,7 @@ public sealed class ViewerPlaybackService(
         var version = await catalog.VersionAsync(playback.Viewer, playback.Work, response.ReleaseId, ct);
         Update(playback, revision, p =>
         {
-            p.Repair = response.Repair ?? (p.ResolvedReleaseId is null || p.ResolvedReleaseId == response.ReleaseId ? p.Repair : null);
+            SetRepair(p, response.Repair ?? (p.RepairReleaseId == response.ReleaseId ? p.Repair : null), response.ReleaseId);
             p.StreamToken = token;
             p.ResolvedReleaseId = response.ReleaseId;
             p.Playability = response.Playability;
@@ -577,7 +584,7 @@ public sealed class ViewerPlaybackService(
             Update(playback, revision, p =>
             {
                 p.State = States.Repairing;
-                p.Repair = status;
+                SetRepair(p, status, releaseId);
             });
             if (status.State == "ready")
                 return await ResolveQueuedAsync(playback, revision, new PlaybackResolveCall(releaseId, playback.Work.WorkId, playback.ViewerId, playback.Username, false), observer, ct);
@@ -1120,6 +1127,7 @@ public sealed class ViewerPlaybackService(
         public PlaybackReleaseDto? FallbackFrom { get; set; }
         public VersionDto? Version { get; set; }
         public RepairStatusInfo? Repair { get; set; }
+        public string? RepairReleaseId { get; set; }
         public DateTimeOffset RepairReadAt { get; set; }
         public string? StreamToken { get; set; }
         public string? ResolvedReleaseId { get; set; }

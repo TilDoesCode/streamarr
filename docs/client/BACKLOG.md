@@ -282,6 +282,8 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   once under full-suite load (Assert.True), 3/3 alone.
 
 ## Tests and tooling (more)
+- ProviderSpeedTesterTests.SpeedTest_AutomaticallyDiscoversAndTransfersARecentArticle failed again under full-suite
+  load in the B18 follow-up (Assert.True; 3/3 alone), second sighting after B14.
 - B17 full run: ArtworkPaletteServiceTests.AFullQueue_OverflowsWithoutLosingOrDuplicatingImages failed once under
   full-suite load, 6/6 alone (artwork queue timing).
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);

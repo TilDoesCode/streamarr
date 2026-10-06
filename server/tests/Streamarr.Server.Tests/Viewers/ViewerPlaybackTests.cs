@@ -437,6 +437,51 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.Equal("job-new", (await GetAsync(viewer, Id(ready))).GetProperty("repair").GetProperty("jobId").GetString());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ARetryThatFallsBackToAnotherRelease_DropsTheFailedRepairOfTheFirst_OrShowsTheOthersOwn(bool otherRepairs)
+    {
+        var (viewer, _) = await ViewerAsync(otherRepairs ? "retryrepairown" : "retryrepair");
+        var x = Release(Mp4());
+        var y = Release(Mkv(), title: "Catalog.Movie.2021.2160p.WEB-DL.DDP5.1.H.265-GRP");
+        var repair = new RepairStatusInfo { JobId = "job-x", Disposition = "repairable", State = "reconstructing", ProgressPercent = 70 };
+        factory.Resolver.Repairs[x] = repair with { State = "failed", FailureReason = "no parity" };
+        var own = new RepairStatusInfo { JobId = "job-y", Disposition = "repairable", State = "downloadingRecovery", Phase = "recovery", ProgressPercent = 30, RetryAfterSeconds = 5 };
+        if (otherRepairs)
+            factory.Resolver.Repairs[y] = own;
+        var calls = 0;
+        factory.Resolver.Script = (_, observer, _) =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                observer.HopStarted(x, 0);
+                observer.HopFinished(x, "dead");
+                return Task.FromResult(new ResolveResponse { ReleaseId = x, Status = "dead", Playability = "repairing", Repair = repair });
+            }
+            observer.HopStarted(x, 0);
+            observer.HopFinished(x, "dead");
+            observer.HopStarted(y, 1);
+            observer.HopFinished(y, "ready");
+            return Task.FromResult(FakePlaybackResolver.Ready(y) with { FallbackFromReleaseId = x, Repair = otherRepairs ? own : null, Playability = otherRepairs ? "repairing" : "remoteReady" });
+        };
+
+        var failed = await WaitAsync(viewer, Id(await StartAsync(viewer, Play(x, AppleTv))));
+        Assert.Equal("repair_failed", Error(failed).GetProperty("code").GetString());
+        Assert.Equal("failed", failed.GetProperty("repair").GetProperty("state").GetString());
+
+        Assert.Equal(HttpStatusCode.Accepted, (await viewer.PostAsJsonAsync($"{Base}/{Id(failed)}/switch", new { })).StatusCode);
+        await WaitAsync(viewer, Id(failed), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready" or "failed");
+        factory.Clock.Advance(ViewerPlaybackService.RepairRefreshInterval);
+        var ready = await GetAsync(viewer, Id(failed));
+        Assert.Equal("ready", State(ready));
+        Assert.Equal(y, ready.GetProperty("version").GetProperty("releaseId").GetString());
+        if (otherRepairs)
+            Assert.Equal("job-y", ready.GetProperty("repair").GetProperty("jobId").GetString());
+        else
+            Assert.Equal(JsonValueKind.Null, ValueKind(ready, "repair"));
+    }
+
     [Fact]
     public async Task RepairFailure_Fails_WithRepairFailed()
     {

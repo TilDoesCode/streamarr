@@ -193,9 +193,10 @@ public sealed class FaultActions
     private string ArmUsenet(Fault fault)
     {
         var record = fault.Scope.Kind == "playbackId" ? _registry.Playbacks.ById(fault.Scope.Value) : null;
-        var releases = _store.Releases.Where(r => record?.ReleaseId is { } id
+        var only = fault.Str("releaseId");
+        var releases = _store.Releases.Where(r => (record?.ReleaseId is { } id
             ? r.ReleaseId == id
-            : r.Plan.WorkId == (record?.WorkId ?? fault.Scope.Value)).ToList();
+            : r.Plan.WorkId == (record?.WorkId ?? fault.Scope.Value)) && (only is null || r.ReleaseId == only)).ToList();
         var from = fault.Num("fromPercent") ?? 0;
         var to = fault.Num("toPercent") ?? 100;
         var keys = new List<string>();

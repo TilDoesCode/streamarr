@@ -440,6 +440,8 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
                 return "usenet_hole needs params.fromPercent and params.toPercent";
             case "usenet_hole" or "usenet_stall" when Has("file") && Str("file") is not ("media" or "recovery"):
                 return "params.file must be media or recovery";
+            case "usenet_hole" or "usenet_stall" when Has("releaseId") && Str("releaseId") is not { Length: > 0 }:
+                return "params.releaseId must be a release id of the scoped title";
             case "captive_portal" when scope.Kind is not ("global" or "viewer"):
                 return "captive_portal needs scope global or viewer";
             case "refresh_fail" when scope.Kind is not ("global" or "viewer"):
