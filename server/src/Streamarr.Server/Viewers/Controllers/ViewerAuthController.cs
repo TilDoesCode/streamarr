@@ -129,14 +129,17 @@ public sealed class ViewerAuthController(
         var presented = cookieMode ? Request.Cookies[ViewerAuth.RefreshCookieName] : request!.RefreshToken;
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var presentedHash = ViewerAuth.HasShape(presented, ViewerAuth.RefreshTokenPrefix) ? ViewerAuth.Hash(presented!) : null;
-        if (refreshLimiter.Acquire(ip, presentedHash) is { } wait)
+        if (refreshLimiter.Check(ip, presentedHash) is { } limit
+            && !(limit.ByAddress && presentedHash is not null && await sessions.IsLiveRefreshTokenAsync(presentedHash, ct)))
         {
-            Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            refreshLimiter.NoteLimited(limit, ip);
+            Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(limit.Wait.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
             return StatusCode(StatusCodes.Status429TooManyRequests, ErrorResponse.Of("rate_limited", "Too many token refreshes; retry after the time in Retry-After."));
         }
         var (tokens, failure, reason) = await sessions.RefreshAsync(presented, ip, ct);
         if (tokens is null)
         {
+            refreshLimiter.NoteFailure(ip);
             DeleteCookies();
             return Unauthorized(RefreshError(failure, reason));
         }

@@ -25,9 +25,15 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
     {
         if (body.ValueKind != JsonValueKind.Object)
             return (null, "body must be a JSON object");
-        var name = Prop(body, "fault") is { ValueKind: JsonValueKind.String } f ? f.GetString() : null;
-        if (name is null || !FaultCatalog.Targets.TryGetValue(name, out var targets))
-            return (null, $"unknown fault '{name}'");
+        var nameProp = Prop(body, "fault");
+        if (nameProp is not { ValueKind: JsonValueKind.String } || nameProp.Value.GetString() is not { Length: > 0 } name)
+        {
+            return (null, nameProp is null
+                ? "fault is required: the fault name as a string (see the Dev World README)"
+                : $"fault must be a non-empty string naming a fault, got {nameProp.Value.ValueKind.ToString().ToLowerInvariant()} {Shorten(nameProp.Value.GetRawText())}");
+        }
+        if (!FaultCatalog.Targets.TryGetValue(name, out var targets))
+            return (null, $"fault: unknown fault '{Shorten(name)}'");
 
         var scopeError = ParseScope(Prop(body, "scope"), out var scope);
         if (scopeError is not null)
@@ -306,6 +312,8 @@ public sealed class FaultRegistry(TimeProvider time, PlaybackMap playbacks, ILog
             }
         }
     }
+
+    private static string Shorten(string text) => text.Length <= 40 ? text : text[..40] + "…";
 
     private static JsonElement? Prop(JsonElement obj, string name)
         => obj.TryGetProperty(name, out var v) && v.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? v : null;

@@ -270,17 +270,9 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Server tests (B14 full run): ProviderSpeedTesterTests.SpeedTest_AutomaticallyDiscoversAndTransfersARecentArticle failed
   once under full-suite load (Assert.True), 3/3 alone.
 
-- B14-B16 verify (non-blocking): a flooder behind the same IP as real viewers (home network, carrier NAT, an
-  untrusted proxy) keeps their refreshes at 429 while the flood lasts — count only failed refreshes per IP or let a
-  valid live token pass the IP limit; a parked (throttled) run gives up its slot, so with all slots taken its resume
-  answers `503 remux_capacity` mid-playback (before B16 the paused run kept the slot; undocumented); one player that
-  jumps far ahead and straight back within 3 s now waits 3.4-4 s for the first segment (was 0.3-0.5 s); a transcode
-  resume overlaps by one video frame and ~37 ms of audio; every error answer on the transcode routes scans all
-  playbacks' issue gates (skip unknown sessions); leftover doc comment ProcessRunner.cs:157; Dev World logs at Warning
-  so the limiter's Information lines are invisible there; `fault:7` answers an unclear 400 message; faults_smoke's
-  usenet_hole leaves releases dead, so run e2e on a fresh instance.
-
 ## Tests and tooling (more)
+- B17 full run: ArtworkPaletteServiceTests.AFullQueue_OverflowsWithoutLosingOrDuplicatingImages failed once under
+  full-suite load, 6/6 alone (artwork queue timing).
 - T1 verify: a failing controller test can leave an open handle so jest hangs after the failure (needs --forceExit);
   one failure also cascades into later tests of controller.test.ts.
 - T1 verify: `audioTracks?.length ?? 2` (unknown track count) is repeated three times in controller.ts; the
@@ -290,6 +282,16 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
 
 ## Fixed
+
+- B17 (2026-10-06): B14-B16 verify follow-ups. A throttle-parked run keeps its slot while its player is active, so
+  its resume never answers `503 remux_capacity`/`transcode_capacity` (new starts are refused instead); a live
+  session's refresh token passes the per-IP refresh budget, which now counts only failed refreshes; players are told
+  apart by a `?p=N` playlist tag (else address + User-Agent), so one player's own far seek and back answers at once
+  (~0.4 s) while two players still do not ping-pong; a transcode resume continues the previous segment exactly (no
+  repeated frame, no audio overlap); error answers on unknown transcode sessions skip the playback scan; nits
+  (ProcessRunner doc comment, Dev World limiter log level, `fault` 400 messages, `usenet_hole` restores its releases).
+  Fix round 1: a lapsed reservation never revives on later access (its resume competes like a new start); request
+  restarts of a session are paced (burst of 2, then 1/s).
 
 - B8 (2026-10-04): replay inside the completing playback keeps a resume point (report back below the minimum resume
   percentage = new viewing; later reports of the completing playback still ignored); one remux audio group codec per

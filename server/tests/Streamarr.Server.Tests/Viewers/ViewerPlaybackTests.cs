@@ -1012,6 +1012,30 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task DeliveryIssues_FindThePlaybackBySession_UnknownSessionsTouchNone_AndTheIndexFollowsSwitchAndStop()
+    {
+        var (viewer, _) = await ViewerAsync("issuesindex");
+        var before = factory.Playbacks.IndexedHlsSessions;
+        var ready = await ReadyAsync(viewer, Play(Release(Mkv()), AppleTv));
+        var hls = factory.Media.Starts.Last().Id;
+        var issues = factory.Services.GetRequiredService<HlsDeliveryIssues>();
+        Assert.Equal(before + 1, factory.Playbacks.IndexedHlsSessions);
+
+        for (var i = 0; i < 1_000; i++)
+            issues.Report($"/api/v1/transcode/unknown-{i}/0.m4s", 404, "unknown_transcode");
+        Assert.Equal(before + 1, factory.Playbacks.IndexedHlsSessions);
+        Assert.Equal(0, (await GetAsync(viewer, Id(ready))).GetProperty("deliveryIssues").GetArrayLength());
+        issues.Report($"/api/v1/transcode/{hls}/0.m4s", 503, "segment_unavailable");
+        Assert.Equal(1, (await GetAsync(viewer, Id(ready))).GetProperty("deliveryIssues").GetArrayLength());
+
+        await viewer.PostAsJsonAsync($"{Base}/{Id(ready)}/switch", new { preferences = new { maxHeight = 720 } });
+        await WaitAsync(viewer, Id(ready), b => b.GetProperty("revision").GetInt32() == 1 && State(b) is "ready");
+        Assert.Equal(before + 1, factory.Playbacks.IndexedHlsSessions);
+        Assert.Equal(HttpStatusCode.NoContent, (await viewer.PostAsync($"{Base}/{Id(ready)}/stop", null)).StatusCode);
+        Assert.Equal(before, factory.Playbacks.IndexedHlsSessions);
+    }
+
+    [Fact]
     public async Task Switch_AudioFallback_ConvertsTheSelectedTrackToAacStereo_UntilTurnedOff()
     {
         var (viewer, _) = await ViewerAsync("audiofallback");

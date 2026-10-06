@@ -10,7 +10,10 @@ behind the retained window restarts the run at the target instead of waiting; a 
 playbackId is still a live server playback (playbackAlive); /switch {audioFallback} converts the selected audio to AAC
 stereo (verified with ffprobe on the delivered segment); a cross-origin faulted 503 exposes Retry-After; a /switch on a
 playback with an active segment/playlist fault leaves `starting`; a held start replaced by a switch leaves no second session; fault answers on audio/subtitle renditions and video
-segments are named in the next progress answer (deliveryIssues).
+segments are named in the next progress answer (deliveryIssues); two players (own `?p=` tags) far apart do not ping-pong
+restarts, while one player's own far seek and straight back is answered at once; a parked run keeps its slot (a new start
+is refused, the parked playback resumes) until it lapses, after which its resume competes like a new start; one player's
+far/near flips restart at most about once per second; a resumed transcode continues the previous segment exactly (ffprobe).
 Exits non-zero when a check fails.
 """
 import json
@@ -57,6 +60,7 @@ def check_seek_back_evicted():
     assert status == 200, status
     try:
         fs.arm("transcode_slow", {"next": "anna"}, params={"readrate": 3})
+        known = handles(admin)
         _, p = fs.start_playback(anna, *fs.TRANSCODE)
         assert p["state"] == "ready" and p["method"] == "transcode", p
         base = p["url"].rsplit("/", 1)[0]
@@ -66,8 +70,7 @@ def check_seek_back_evicted():
         for i in range(last + 1):
             r = fs.raw("GET", f"{base}/{i}.m4s", timeout=120)
             assert r.status == 200, f"segment {i}: {r}"
-        sessions = fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1]
-        session = max(sessions, key=lambda s: s.get("job", {}).get("front", 0) if s.get("job") else 0)
+        session = own_session(admin, known)
         running = session["job"]["running"] or session["job"]["paused"]
         restarts = session["restarts"]
         time.sleep(16)
@@ -254,12 +257,27 @@ def newest_session(admin):
     return max(fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1], key=lambda s: s["createdAt"])
 
 
+def handles(admin):
+    return {s["handle"] for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1]}
+
+
+def own_session(admin, known):
+    """The newest session that did not exist before this check started, so other sessions on the instance never interfere."""
+    return max((s for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1] if s["handle"] not in known), key=lambda s: s["createdAt"])
+
+
+def player_tag(base):
+    """The `?p=N` a master playlist hands one player (B17: one player's own seeks never wait for each other)."""
+    return next(line for line in fs.raw("GET", base + "/master.m3u8").body.decode().splitlines() if line.startswith("main.m3u8"))[len("main.m3u8"):]
+
+
 def check_competing_requests():
-    """Two readers far apart on one transcode session: the newer position keeps the run, no restart storm (B16)."""
+    """Two players far apart on one transcode session: the newer position keeps the run, no restart storm (B16)."""
     import threading
     anna, admin = fs.ctx.anna["accessToken"], admin_token()
     _, p = fs.start_playback(anna, *fs.TRANSCODE)
     base = p["url"].rsplit("/", 1)[0]
+    tag_a, tag_b = player_tag(base), player_tag(base)
     count = len([line for line in fs.raw("GET", base + "/main.m3u8").body.decode().splitlines() if line.endswith(".m4s")])
     far = max(20, count - 12)
     assert fs.raw("GET", base + "/0.m4s", timeout=90).status == 200
@@ -267,15 +285,15 @@ def check_competing_requests():
     stop_b, stop_a = threading.Event(), threading.Event()
     a, b, b_stopped = [], [], []
 
-    def reader(start, stop, out, limit):
+    def reader(start, stop, out, limit, tag):
         i = start
         while not stop.is_set() and i < limit:
-            r = fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
+            r = fs.raw("GET", f"{base}/{i}.m4s{tag}", timeout=60)
             out.append((time.time(), r.status, r.code()))
             i += 1
 
-    tb = threading.Thread(target=reader, args=(far, stop_b, b, count))
-    ta = threading.Thread(target=reader, args=(1, stop_a, a, far - 1))
+    tb = threading.Thread(target=reader, args=(far, stop_b, b, count, tag_b))
+    ta = threading.Thread(target=reader, args=(1, stop_a, a, far - 1, tag_a))
     tb.start()
     time.sleep(1.0)
     ta.start()
@@ -329,11 +347,168 @@ def check_throttle_no_block():
         fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": before["throttleBufferSeconds"]}, admin)
 
 
+def check_own_seek_back():
+    """One player seeking far ahead and straight back gets its segment at once; it is never competing with itself (B17)."""
+    anna = fs.ctx.anna["accessToken"]
+    _, p = fs.start_playback(anna, *fs.TRANSCODE)
+    base = p["url"].rsplit("/", 1)[0]
+    tag = player_tag(base)
+    count = len([line for line in fs.raw("GET", base + "/main.m3u8" + tag).body.decode().splitlines() if ".m4s" in line])
+    fs.raw("GET", f"{base}/0.m4s{tag}", timeout=90)
+    fs.raw("GET", f"{base}/{count - 20}.m4s{tag}", timeout=60)
+    started = time.time()
+    back = fs.raw("GET", f"{base}/3.m4s{tag}", timeout=60)
+    took = time.time() - started
+    fs.stop(anna, p["playbackId"])
+    return back.status == 200 and took < 2, f"far {count - 20} then straight back to 3: {back.status} in {took:.2f}s (B16: 3.4-4 s)"
+
+
+def check_parked_resume_capacity():
+    """A parked run keeps its slot: with every slot taken a new start is refused, the parked playback resumes (B17)."""
+    anna, admin = fs.ctx.anna["accessToken"], admin_token()
+    _, before = fs.api("GET", "/api/v1/transcoding/config", token=admin)
+    fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": 30, "maxConcurrentTranscodes": 1}, admin)
+    try:
+        _, p = fs.start_playback(anna, *fs.TRANSCODE)
+        base = p["url"].rsplit("/", 1)[0]
+        for i in range(2):
+            fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
+        deadline, job = time.time() + 90, {}
+        while time.time() < deadline and not (job.get("paused") and not job.get("running")):
+            job = newest_session(admin).get("job") or {}
+            time.sleep(0.5)
+        front = job.get("front", 0)
+        other = fs.login("anna", "capacity-check-2")["accessToken"]
+        _, q = fs.start_playback(other, *fs.TRANSCODE, wait_ready=False)
+        q = fs.wait_state(other, q["playbackId"], ("ready", "failed"), 60)
+        fs.stop(other, q["playbackId"])
+        statuses = [fs.raw("GET", f"{base}/{i}.m4s", timeout=60).status for i in range(2, front + 2)]
+        fs.stop(anna, p["playbackId"])
+        code = (q.get("error") or {}).get("code")
+        ok = bool(job.get("paused")) and q["state"] == "failed" and all(s == 200 for s in statuses)
+        return ok, f"parked at {front}; another start with the one slot taken: {q['state']} {code}; parked playback 2..{front + 1}: {sorted(set(statuses))}"
+    finally:
+        fs.api("PUT", "/api/v1/transcoding/config", {k: before[k] for k in ("throttleBufferSeconds", "maxConcurrentTranscodes")}, admin)
+
+
+def wait_parked(admin, known):
+    deadline, job = time.time() + 90, {}
+    while time.time() < deadline and not (job.get("paused") and not job.get("running")):
+        job = own_session(admin, known).get("job") or {}
+        time.sleep(0.5)
+    return job
+
+
+def check_lapsed_reservation():
+    """A parked run idle past jobIdleTimeoutSeconds loses its slot for good: reading stored segments does not revive it (B17 fix 1)."""
+    anna, admin = fs.ctx.anna["accessToken"], admin_token()
+    _, before = fs.api("GET", "/api/v1/transcoding/config", token=admin)
+    keys = ("throttleBufferSeconds", "maxConcurrentTranscodes", "jobIdleTimeoutSeconds")
+    fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": 30, "maxConcurrentTranscodes": 1, "jobIdleTimeoutSeconds": 10}, admin)
+    q = None
+    other = fs.login("anna", "lapsed-check-2")["accessToken"]
+    try:
+        known = handles(admin)
+        _, p = fs.start_playback(anna, *fs.TRANSCODE)
+        base = p["url"].rsplit("/", 1)[0]
+        for i in range(2):
+            fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
+        job = wait_parked(admin, known)
+        front = job.get("front", 0)
+        time.sleep(11)
+        _, q = fs.start_playback(other, *fs.TRANSCODE, wait_ready=False)
+        q = fs.wait_state(other, q["playbackId"], ("ready", "failed"), 60)
+        stored = [fs.raw("GET", f"{base}/{i}.m4s", timeout=60).status for i in range(2, front)]
+        refused = fs.raw("GET", f"{base}/{front}.m4s", timeout=60)
+        running = sum(1 for s in fs.api("GET", "/api/v1/transcoding/sessions", token=admin)[1] if (s.get("job") or {}).get("running"))
+        fs.stop(other, q["playbackId"])
+        resumed = fs.raw("GET", f"{base}/{front}.m4s", timeout=60)
+        fs.stop(anna, p["playbackId"])
+        ok = (bool(job.get("paused")) and q["state"] == "ready" and all(x == 200 for x in stored) and refused.status == 503
+              and refused.code() == "transcode_capacity" and refused.header("Retry-After") == "1" and running == 1 and resumed.status == 200)
+        return ok, (f"parked at {front}, idle 11 s; another start {q['state']}; stored 2..{front - 1}: {sorted(set(stored))}; front -> "
+                    f"{refused.status} {refused.code()} Retry-After {refused.header('Retry-After')}; running encodes {running}; "
+                    f"after the other stopped: {resumed.status}")
+    finally:
+        if q is not None:
+            fs.stop(other, q["playbackId"])
+        fs.api("PUT", "/api/v1/transcoding/config", {k: before[k] for k in keys}, admin)
+
+
+def check_own_flip_pacing():
+    """One player flipping far/near ten times in 2 s restarts its run at most about once per second (B17 fix 1)."""
+    import threading
+    anna, admin = fs.ctx.anna["accessToken"], admin_token()
+    known = handles(admin)
+    _, p = fs.start_playback(anna, *fs.TRANSCODE)
+    base = p["url"].rsplit("/", 1)[0]
+    tag = player_tag(base)
+    count = len([line for line in fs.raw("GET", base + "/main.m3u8").body.decode().splitlines() if line.endswith(".m4s")])
+    assert fs.raw("GET", f"{base}/0.m4s{tag}", timeout=90).status == 200
+    restarts0 = own_session(admin, known)["restarts"]
+    threads = []
+    started = time.time()
+    for i in range(10):
+        index = count - 12 if i % 2 == 0 else 30
+        t = threading.Thread(target=lambda n=index: fs.raw("GET", f"{base}/{n}.m4s{tag}", timeout=60), daemon=True)
+        t.start()
+        threads.append(t)
+        time.sleep(0.2)
+    burst = own_session(admin, known)["restarts"] - restarts0
+    took = time.time() - started
+    for t in threads:
+        t.join(60)
+    session = own_session(admin, known)
+    fs.stop(anna, p["playbackId"])
+    ok = 2 <= burst <= 4
+    return ok, f"10 flips in {took:.1f}s -> {burst} restarts (B17 before pacing: 9 in 1.9 s); total {session['restarts'] - restarts0}, run at {session['job']['startSegment']}"
+
+
+def check_resume_continuity():
+    """A transcode resume at the parked front continues the previous segment exactly: no repeated frame, no audio overlap (B17)."""
+    anna, admin = fs.ctx.anna["accessToken"], admin_token()
+    _, before = fs.api("GET", "/api/v1/transcoding/config", token=admin)
+    fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": 30}, admin)
+    try:
+        _, p = fs.start_playback(anna, *fs.TRANSCODE)
+        base = p["url"].rsplit("/", 1)[0]
+        init = fs.raw("GET", base + "/init.mp4", timeout=60).body
+        for i in range(2):
+            fs.raw("GET", f"{base}/{i}.m4s", timeout=60)
+        deadline, job = time.time() + 90, {}
+        while time.time() < deadline and not (job.get("paused") and not job.get("running")):
+            job = newest_session(admin).get("job") or {}
+            time.sleep(0.5)
+        front = job["front"]
+        segs = {i: fs.raw("GET", f"{base}/{i}.m4s", timeout=60).body for i in (front - 1, front)}
+        resumed = newest_session(admin)["job"]["startSegment"] == front
+        fs.stop(anna, p["playbackId"])
+        gaps = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, body in segs.items():
+                with open(os.path.join(tmp, f"{i}.mp4"), "wb") as f:
+                    f.write(init + body)
+            for sel in ("v:0", "a:0"):
+                def pk(i):
+                    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", sel, "-show_entries", "packet=pts_time,duration_time",
+                                          "-of", "json", os.path.join(tmp, f"{i}.mp4")], capture_output=True, text=True).stdout
+                    return sorted((float(x["pts_time"]), float(x.get("duration_time") or 0)) for x in json.loads(out)["packets"])
+                last, first = pk(front - 1)[-1], pk(front)[0]
+                gaps[sel] = first[0] - (last[0] + last[1])
+        ok = resumed and all(abs(g) < 0.0005 for g in gaps.values())
+        return ok, f"resumed at {front}: " + ", ".join(f"{k} next start - previous end {v * 1000:+.3f} ms" for k, v in gaps.items())
+    finally:
+        fs.api("PUT", "/api/v1/transcoding/config", {"throttleBufferSeconds": before["throttleBufferSeconds"]}, admin)
+
+
 CHECKS = [("segment_timeout", check_segment_timeout), ("seek_back_evicted", check_seek_back_evicted),
           ("playback_alive", check_playback_alive), ("audio_fallback", check_audio_fallback),
           ("cors_retry_after", check_cors_retry_after), ("switch_under_fault", check_switch_under_fault),
           ("superseded_start", check_superseded_start), ("delivery_issues", check_delivery_issues),
-          ("competing_requests", check_competing_requests), ("throttle_no_block", check_throttle_no_block)]
+          ("competing_requests", check_competing_requests), ("throttle_no_block", check_throttle_no_block),
+          ("own_seek_back", check_own_seek_back), ("parked_resume_capacity", check_parked_resume_capacity),
+          ("resume_continuity", check_resume_continuity), ("lapsed_reservation", check_lapsed_reservation),
+          ("own_flip_pacing", check_own_flip_pacing)]
 
 
 def main():

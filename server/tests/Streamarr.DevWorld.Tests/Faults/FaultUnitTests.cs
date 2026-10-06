@@ -112,7 +112,10 @@ public class FaultUnitTests
     [InlineData("""{"fault":"seg_status","scope":{"global":true},"ttlSeconds":1.5}""", "ttlSeconds must be a whole number 1..7200")]
     [InlineData("""{"fault":"seg_status","scope":{"global":true},"ttlSeconds":"60"}""", "ttlSeconds must be a whole number 1..7200")]
     [InlineData("""{"fault":"seg_status","scope":{"global":true},"after":{"segment":2.5}}""", "after.segment must be a whole number")]
-    [InlineData("""{"fault":7,"scope":{"global":true}}""", "unknown fault ''")]
+    [InlineData("""{"fault":7,"scope":{"global":true}}""", "fault must be a non-empty string naming a fault, got number 7")]
+    [InlineData("""{"fault":"","scope":{"global":true}}""", "fault must be a non-empty string naming a fault, got string \"\"")]
+    [InlineData("""{"scope":{"global":true}}""", "fault is required: the fault name as a string (see the Dev World README)")]
+    [InlineData("""{"fault":"seg_nope","scope":{"global":true}}""", "fault: unknown fault 'seg_nope'")]
     [InlineData("""{"fault":"seg_status","scope":{"global":true},"target":1}""", "target must be a string")]
     public void Arm_RefusesWrongJsonTypes_WithAMessage(string json, string error)
         => Assert.Equal(error, Refused(json));

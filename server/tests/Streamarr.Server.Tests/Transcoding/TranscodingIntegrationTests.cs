@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -216,6 +217,124 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
         Assert.True(started < TimeSpan.FromSeconds(2), $"spawn + second session start took {started.TotalSeconds:0.00} s");
         await raw.GetByteArrayAsync($"{BasePath(second)}/0.m4s");
         Assert.True((await AdminSessionAsync(created)).GetProperty("job").GetProperty("paused").GetBoolean());
+    }
+
+    [Fact]
+    public async Task AParkedRun_KeepsItsSlot_SoItsResumeNeverFindsThePoolFull()
+    {
+        await ConfigureAsync(new { throttleBufferSeconds = 30, encoderPreset = "medium", threads = 1, maxConcurrentTranscodes = 1 });
+        var created = await CreateStreamSessionAsync(_machine, new { maxHeight = 360 });
+        using var raw = RawClient();
+        var basePath = BasePath(created);
+        await raw.GetByteArrayAsync($"{basePath}/init.mp4");
+        await raw.GetByteArrayAsync($"{basePath}/0.m4s");
+        var parked = await WaitForJobAsync(created, job => job.GetProperty("paused").GetBoolean(), TimeSpan.FromSeconds(60));
+        var front = parked.GetProperty("front").GetInt32();
+
+        // B16 freed the slot here: this start took it and the parked playback's resume answered 503 transcode_capacity.
+        var token = await fixture.ResolveStreamTokenAsync(_machine);
+        using var second = await _machine.PostAsJsonAsync("/api/v1/transcoding/sessions", new { streamToken = token, maxHeight = 240 });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, second.StatusCode);
+        Assert.Contains("transcode_capacity", await second.Content.ReadAsStringAsync());
+
+        for (var i = 1; i <= front + 1; i++)
+        {
+            using var segment = await raw.GetAsync($"{basePath}/{i}.m4s");
+            Assert.True(segment.StatusCode == HttpStatusCode.OK, $"segment {i}: {(int)segment.StatusCode} {await segment.Content.ReadAsStringAsync()}");
+        }
+        var session = await AdminSessionAsync(created);
+        Assert.Equal(0, session.GetProperty("restarts").GetInt32());
+        Assert.True(session.GetProperty("job").GetProperty("startSegment").GetInt32() == front, session.GetRawText());
+    }
+
+    [Fact]
+    public async Task ALapsedReservation_NeverComesBackByLaterAccess_TheResumeThenCompetesLikeANewStart()
+    {
+        await ConfigureAsync(new { throttleBufferSeconds = 30, encoderPreset = "medium", threads = 1, maxConcurrentTranscodes = 1, jobIdleTimeoutSeconds = 10 });
+        var created = await CreateStreamSessionAsync(_machine, new { maxHeight = 360 });
+        using var raw = RawClient();
+        var basePath = BasePath(created);
+        await raw.GetByteArrayAsync($"{basePath}/init.mp4");
+        await raw.GetByteArrayAsync($"{basePath}/0.m4s");
+        var front = (await WaitForJobAsync(created, job => job.GetProperty("paused").GetBoolean(), TimeSpan.FromSeconds(60))).GetProperty("front").GetInt32();
+        await Task.Delay(TimeSpan.FromSeconds(11));
+
+        var other = await CreateStreamSessionAsync(_machine, new { maxHeight = 240 });
+        for (var i = 1; i < front; i++)
+            Assert.Equal(HttpStatusCode.OK, (await raw.GetAsync($"{basePath}/{i}.m4s")).StatusCode);
+        // B17 round 1: these reads revived the reservation and the resume ran next to the other encode (two runs, limit 1).
+        using (var refused = await raw.GetAsync($"{basePath}/{front}.m4s"))
+        {
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+            Assert.Contains("transcode_capacity", await refused.Content.ReadAsStringAsync());
+            Assert.Equal("1", refused.Headers.RetryAfter?.ToString());
+        }
+        Assert.Single(await AdminSessionsAsync(), s => s.TryGetProperty("job", out var job) && job.ValueKind == JsonValueKind.Object && job.GetProperty("running").GetBoolean());
+
+        await raw.DeleteAsync(BasePath(other));
+        using (var resumed = await raw.GetAsync($"{basePath}/{front}.m4s"))
+            Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
+        Assert.Equal(front, (await AdminSessionAsync(created)).GetProperty("job").GetProperty("startSegment").GetInt32());
+    }
+
+    [Fact]
+    public async Task AResumedRun_ContinuesThePreviousSegment_WithoutARepeatedFrameOrAudioOverlap()
+    {
+        await ConfigureAsync(new { throttleBufferSeconds = 30, encoderPreset = "medium", threads = 1 });
+        var created = await CreateStreamSessionAsync(_machine, new { maxHeight = 360 });
+        using var raw = RawClient();
+        var basePath = BasePath(created);
+        var init = Fmp4.ParseInit(await raw.GetByteArrayAsync($"{basePath}/init.mp4"));
+        await raw.GetByteArrayAsync($"{basePath}/0.m4s");
+        var front = (await WaitForJobAsync(created, job => job.GetProperty("paused").GetBoolean(), TimeSpan.FromSeconds(60))).GetProperty("front").GetInt32();
+
+        var before = Fmp4.ParseSegment(await raw.GetByteArrayAsync($"{basePath}/{front - 1}.m4s"), init).Timings(init);
+        var after = Fmp4.ParseSegment(await raw.GetByteArrayAsync($"{basePath}/{front}.m4s"), init).Timings(init);
+        Assert.Equal(front, (await AdminSessionAsync(created)).GetProperty("job").GetProperty("startSegment").GetInt32());
+        foreach (var handler in new[] { "vide", "soun" })
+        {
+            var end = before.Single(t => t.Handler == handler) is var b ? b.StartSeconds + b.DurationSeconds : 0;
+            var next = after.Single(t => t.Handler == handler).StartSeconds;
+            output.WriteLine($"{handler}: segment {front - 1} ends {end:0.000000}, segment {front} starts {next:0.000000}");
+            Assert.True(Math.Abs(next - end) < 0.0005, $"{handler}: segment {front - 1} ends at {end:0.000000}, the resumed segment starts at {next:0.000000}");
+        }
+    }
+
+    [Fact]
+    public async Task OnePlayerSeekingFarAndStraightBack_GetsItsSegmentAtOnce_WhileAnotherPlayerStillWaits()
+    {
+        await ConfigureAsync(new { throttleEnabled = false, encoderPreset = "medium", threads = 1 });
+        var created = await CreateStreamSessionAsync(_machine, new { maxHeight = 360 });
+        using var raw = RawClient();
+        var basePath = BasePath(created);
+        var master = await raw.GetStringAsync($"{basePath}/master.m3u8");
+        var media = master.Split('\n').Single(l => l.StartsWith("main.m3u8", StringComparison.Ordinal));
+        Assert.Equal("main.m3u8?p=1", media);
+        var playlist = await raw.GetStringAsync($"{basePath}/{media}");
+        Assert.Contains("#EXT-X-MAP:URI=\"init.mp4?p=1\"", playlist);
+        Assert.Contains("\n3.m4s?p=1\n", playlist);
+        Assert.Equal("main.m3u8?p=2", (await raw.GetStringAsync($"{basePath}/master.m3u8")).Split('\n').Single(l => l.StartsWith("main.m3u8", StringComparison.Ordinal)));
+
+        await raw.GetByteArrayAsync($"{basePath}/init.mp4?p=1");
+        await raw.GetByteArrayAsync($"{basePath}/0.m4s?p=1");
+        var far = created.GetProperty("segmentCount").GetInt32() - 3;
+        await raw.GetByteArrayAsync($"{basePath}/{far}.m4s?p=1");
+
+        // The same player straight back: no 3 s wait (B16 waited 3.4-4 s here).
+        var clock = Stopwatch.StartNew();
+        using (var back = await raw.GetAsync($"{basePath}/2.m4s?p=1"))
+            Assert.Equal(HttpStatusCode.OK, back.StatusCode);
+        var ownSeek = clock.Elapsed;
+        output.WriteLine($"own seek back: {ownSeek.TotalMilliseconds:0} ms");
+        Assert.True(ownSeek < TimeSpan.FromSeconds(2), $"own seek back took {ownSeek.TotalSeconds:0.00} s");
+        Assert.Equal(2, (await AdminSessionAsync(created)).GetProperty("restarts").GetInt32());
+
+        // Another player (tag 2) asking back into the range the run just left (not written yet) still waits for the 3 s window.
+        await raw.GetByteArrayAsync($"{basePath}/{far - 10}.m4s?p=1");
+        clock.Restart();
+        using (var other = await raw.GetAsync($"{basePath}/7.m4s?p=2"))
+            Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+        Assert.True(clock.Elapsed >= TimeSpan.FromSeconds(2.5), $"the other player waited only {clock.Elapsed.TotalSeconds:0.00} s");
     }
 
     /// <summary>Child processes of this test host that are stopped (ps state T).</summary>

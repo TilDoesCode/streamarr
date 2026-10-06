@@ -475,7 +475,17 @@ def check_usenet_hole():
     hole = raw("GET", url, headers={"Range": f"bytes={int(total * 0.9)}-{int(total * 0.9) + 65535}"}, timeout=8)
     stop(ctx.anna["accessToken"], p["playbackId"])
     mid = "stalls (server waits for repair)" if hole.status == 0 or hole.error else ("still served (read ahead before the hole)" if hole.status == 206 else f"server answers {hole.status} {hole.code() or ''}")
-    return code == "release_dead", f"{action}; armed before start -> playback {final['state']} {code}; armed mid-play at 90 % of a {total // 1048576} MiB file: {mid}"
+    # Clearing the fault restores the articles and the releases' health, so later checks (and e2e) find them alive.
+    clear()
+    restored = []
+    for work_release in (DIRECT2, BIG_REMUX):
+        _, again = start_playback(ctx.anna["accessToken"], *work_release, wait_ready=False)
+        state = wait_state(ctx.anna["accessToken"], again["playbackId"], ("ready", "failed"), 60)
+        stop(ctx.anna["accessToken"], again["playbackId"])
+        restored.append(state["state"])
+    return code == "release_dead" and restored == ["ready", "ready"], (
+        f"{action}; armed before start -> playback {final['state']} {code}; armed mid-play at 90 % of a {total // 1048576} MiB file: {mid}; "
+        f"after clear: {', '.join(restored)}")
 
 
 def check_usenet_stall():

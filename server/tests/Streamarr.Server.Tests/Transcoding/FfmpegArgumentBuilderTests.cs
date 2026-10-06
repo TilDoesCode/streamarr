@@ -15,8 +15,8 @@ public sealed class FfmpegArgumentBuilderTests
         AssertSequence(args, "-profile:v", "high", "-level:v", "4.1");
         AssertSequence(args, "-force_key_frames:v", "expr:gte(t,n_forced*4)");
         AssertSequence(args, "-vf", "scale=w=1280:h=720,format=yuv420p");
-        AssertSequence(args, "-c:a", "aac", "-ac", "2", "-b:a", "192k");
-        AssertSequence(args, "-copyts", "-start_at_zero", "-avoid_negative_ts", "make_non_negative");
+        AssertSequence(args, "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-filter:a", "atrim=start=0.065");
+        AssertSequence(args, "-copyts", "-start_at_zero", "-avoid_negative_ts", "disabled");
         AssertSequence(args, "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init-1.mp4", "-start_number", "0");
         AssertSequence(args, "-hls_flags", "temp_file", "-hls_segment_options", "movflags=+frag_discont");
         AssertSequence(args, "-map", "0:0", "-map", "0:1");
@@ -35,6 +35,8 @@ public sealed class FfmpegArgumentBuilderTests
         AssertSequence(args, "-start_number", "10");
         Assert.True(args.ToList().IndexOf("-ss") < args.ToList().IndexOf("-i"), "-ss must be an input option for fast seeking");
         AssertSequence(args, "-force_key_frames:v", "expr:gte(t,n_forced*4)");
+        Assert.DoesNotContain("trim=", string.Join(' ', args));
+        Assert.DoesNotContain("-filter:a", args);
     }
 
     [Fact]
@@ -44,6 +46,21 @@ public sealed class FfmpegArgumentBuilderTests
         var args = FfmpegArgumentBuilder.Build(Spec(Plan(), capabilities: capabilities, startSegment: 10));
 
         AssertSequence(args, "-force_key_frames:v", "expr:gte(t,40+n_forced*4)");
+    }
+
+    [Fact]
+    public void ARunContinuingAnExistingSegment_SeeksEarlyAndStartsVideoAndAudioExactlyAtItsEnd()
+    {
+        var spec = Spec(Plan(), startSegment: 10) with { SeekMarginSeconds = 4, VideoContinueSeconds = 40.025, AudioContinueSeconds = [39.957333] };
+        var args = FfmpegArgumentBuilder.Build(spec);
+
+        AssertSequence(args, "-ss", "36");
+        Assert.StartsWith("trim=start=40.025,", args[args.ToList().IndexOf("-vf") + 1]);
+        AssertSequence(args, "-filter:a", "atrim=start=39.957333", "-bsf:a", "noise=drop=lt(pts*tb\\,39.952333)");
+        Assert.DoesNotContain("-bsf:a", FfmpegArgumentBuilder.Build(spec with { Capabilities = Capabilities() with { MajorVersion = 5 } }));
+
+        var copied = Spec(Plan(Media(audioCodec: "aac", channels: 2)), startSegment: 10) with { SeekMarginSeconds = 4, AudioContinueSeconds = [40.011] };
+        AssertSequence(FfmpegArgumentBuilder.Build(copied), "-c:a", "copy", "-bsf:a", "noise=drop=lt(pts*tb\\,40.006)");
     }
 
     [Fact]
@@ -226,6 +243,8 @@ public sealed class FfmpegArgumentBuilderTests
             "-map", "[vout]", "-map", "0:1");
         Assert.DoesNotContain("-vf", args);
         Assert.DoesNotContain("-hwaccel", args);
+        var resume = FfmpegArgumentBuilder.Build(Spec(plan, settings, capabilities, startSegment: 2) with { VideoContinueSeconds = 8.02 }).ToList();
+        Assert.StartsWith($"[0:0]trim=start=8.02,{FfmpegArgumentBuilder.SoftwareToneMapChain}[base];", resume[resume.IndexOf("-filter_complex") + 1]);
     }
 
     [Fact]

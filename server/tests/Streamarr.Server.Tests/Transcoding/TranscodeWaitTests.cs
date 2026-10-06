@@ -259,6 +259,74 @@ public sealed class TranscodeWaitTests(StalledTranscodeFixture fixture)
     }
 
     [Fact]
+    public async Task OnePlayersOwnSeekBack_RestartsAtOnce_AndItsAbandonedFarRequestNeverMovesTheRunAgain()
+    {
+        using var machine = fixture.CreateClient();
+        var (basePath, created) = await CreateAsync(machine);
+        using var raw = fixture.CreateClient(authenticated: false);
+        using var admin = await fixture.CreateAdminClientAsync();
+        try
+        {
+            var far = created.GetProperty("segmentCount").GetInt32() - 2;
+            var abandoned = raw.GetAsync($"{basePath}/{far}.m4s");
+            await Task.Delay(1000);
+            var back = raw.GetAsync($"{basePath}/1.m4s");
+            await Task.Delay(500);
+            var session = await SessionAsync(admin, created);
+            Assert.Equal(2, session.GetProperty("restarts").GetInt32());
+            Assert.Equal(1, session.GetProperty("job").GetProperty("startSegment").GetInt32());
+
+            using var first = await abandoned;
+            using var second = await back;
+            Assert.Equal(HttpStatusCode.GatewayTimeout, first.StatusCode);
+            Assert.Equal(HttpStatusCode.GatewayTimeout, second.StatusCode);
+            session = await SessionAsync(admin, created);
+            Assert.Equal(2, session.GetProperty("restarts").GetInt32());
+            Assert.Equal(1, session.GetProperty("job").GetProperty("startSegment").GetInt32());
+        }
+        finally
+        {
+            await raw.DeleteAsync(basePath);
+        }
+    }
+
+    [Fact]
+    public async Task OnePlayerFlippingFarAndNear_RestartsAtMostAboutOncePerSecond_AndTheLatestPositionWins()
+    {
+        using var machine = fixture.CreateClient();
+        var (basePath, created) = await CreateAsync(machine);
+        using var raw = fixture.CreateClient(authenticated: false);
+        using var admin = await fixture.CreateAdminClientAsync();
+        try
+        {
+            var far = created.GetProperty("segmentCount").GetInt32() - 2;
+            var requests = new List<Task<HttpResponseMessage>>();
+            for (var i = 0; i < 10; i++)
+            {
+                requests.Add(raw.GetAsync($"{basePath}/{(i % 2 == 0 ? far : 1)}.m4s?p=1"));
+                await Task.Delay(200);
+            }
+            // B17 before pacing: 9 restarts within 1.9 s.
+            var burst = (await SessionAsync(admin, created)).GetProperty("restarts").GetInt32();
+            Assert.InRange(burst, 2, 4);
+            await Task.Delay(1500);
+            var session = await SessionAsync(admin, created);
+            Assert.Equal(1, session.GetProperty("job").GetProperty("startSegment").GetInt32());
+            Assert.InRange(session.GetProperty("restarts").GetInt32(), burst, 5);
+            foreach (var response in await Task.WhenAll(requests))
+                response.Dispose();
+        }
+        finally
+        {
+            await raw.DeleteAsync(basePath);
+        }
+    }
+
+    private static async Task<JsonElement> SessionAsync(HttpClient admin, JsonElement created)
+        => (await admin.GetFromJsonAsync<JsonElement>("/api/v1/transcoding/sessions")).EnumerateArray()
+            .Single(s => s.GetProperty("handle").GetString() == created.GetProperty("handle").GetString());
+
+    [Fact]
     public void ASegmentThatVanishesWhileOpening_Answers503SegmentEvicted_WithRetryAfter()
     {
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();

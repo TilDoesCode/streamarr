@@ -865,9 +865,15 @@ and TV players need no headers. `Cache-Control: private, no-store`.
 `503 transcode_capacity` / `remux_capacity` / `init_unavailable` / `segment_unavailable`,
 `504 segment_timeout`. One request waits at most `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` (default 25 s,
 below the players' fragment timeouts) in total, across ffmpeg restarts, then answers `504 segment_timeout`. A
-segment deleted between the wait and the read answers `503 segment_evicted`. Of two requests competing for
-far-apart positions of one session the newer position wins; the other waits (no restart back) while the newer one was
-used in the last 3 s, so it gets its segment or `504 segment_timeout` instead of a restart storm (see transcoding.md).
+segment deleted between the wait and the read answers `503 segment_evicted`. Playlist URIs carry a per-player tag
+(`?p=N`, one per master playlist fetch) so the server can tell players apart: one player's own seeks never wait for
+each other; of two players competing for far-apart positions of one session the newer position wins and the other
+waits (no restart back) while the newer one was used in the last 3 s, so it gets its segment or
+`504 segment_timeout` instead of a restart storm (see transcoding.md). A throttle-parked session keeps its slot while its
+player keeps asking (the reservation lasts `jobIdleTimeoutSeconds` and lapses for good after that), so a playing
+session's resume never answers `503 remux_capacity`/`transcode_capacity`; new starts are refused instead. After a
+longer pause the resume competes like a new start and may get that `503` with `Retry-After`. Request-driven restarts
+of one session are paced (a burst of two, then one per second).
 Every `503` and `504` carries
 `Retry-After: 1` (retry the same URL). Every fetch of a playlist or segment counts
 as activity of the session (and of the viewer playback that owns it, § 13).
@@ -951,11 +957,13 @@ refusal, so an anonymous flood cannot fill the log feed. Account deletion writes
 refresh, so a refresh racing the deletion answers `refresh_session_revoked` (`admin`), never `unknown`; a previous-token
 replay of a disabled account answers `refresh_session_revoked` (`account_disabled`).
 
-**Refresh rate limit.** `POST …/refresh` counts one-minute windows per client IP
-(`Streamarr:ViewerRefreshPerIpPerMinute`, default 60) and per presented refresh token
-(`Streamarr:ViewerRefreshPerTokenPerMinute`, default 10). Over either limit it answers `429 rate_limited` with
-`Retry-After` (seconds until the window ends) before looking at the token. An app refreshes about once per access-token
-lifetime (default 60 minutes) plus a retry or two, so a household behind one address stays far below it. Limiter lines
+**Refresh rate limit.** `POST …/refresh` counts one-minute windows of *failed* refreshes per client IP
+(`Streamarr:ViewerRefreshPerIpPerMinute`, default 60) and of every refresh per presented refresh token
+(`Streamarr:ViewerRefreshPerTokenPerMinute`, default 10). Over the token limit it answers `429 rate_limited` with
+`Retry-After` (seconds until the window ends). Once an address has used up its failures, only a token that is the
+current or previous refresh token of a live (not revoked, not expired) session still gets through (one read-only
+lookup); everything else answers `429` before the refresh logic runs. Successful refreshes never use the address
+budget, so a flooder behind the same address (household NAT, carrier NAT, a proxy) cannot lock out real viewers. Limiter lines
 are logged at most 5 per minute (the rest counted), and the request log writes these 429s at Debug.
 
 **E-mail code cooldown.** A new code for the same purpose is sent at most every 30 seconds and at most

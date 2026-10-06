@@ -37,6 +37,7 @@ public static class DevWorldHost
         {
             ["Serilog:MinimumLevel:Default"] = options.LogLevel,
             ["Serilog:MinimumLevel:Override:Streamarr.Server.Viewers.Auth.ViewerSessionService"] = "Information",
+            ["Serilog:MinimumLevel:Override:Streamarr.Server.Viewers.Auth.ViewerRefreshLimiter"] = "Information",
             ["Streamarr:ApiKey"] = WorldSeeder.ApiKey,
             ["Streamarr:Admin:Username"] = WorldSeeder.AdminUsername,
             ["Streamarr:Admin:Password"] = WorldSeeder.AdminPassword,

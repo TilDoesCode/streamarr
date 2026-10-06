@@ -1,16 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog.Events;
 using Streamarr.Server.Logging;
 using Streamarr.Server.Options;
+using Streamarr.Server.Persistence;
 using Streamarr.Server.Viewers.Auth;
 
 namespace Streamarr.Server.Tests.Viewers;
 
-/// <summary>POST /viewer/auth/refresh is limited per client IP and per presented token; real app cadences never hit it.</summary>
+/// <summary>POST /viewer/auth/refresh is limited by failures per client IP and per presented token; real app cadences never hit it.</summary>
 public sealed class ViewerRefreshLimiterTests
 {
     private static readonly DateTimeOffset Start = new(2026, 10, 6, 12, 0, 30, TimeSpan.Zero);
@@ -27,6 +29,19 @@ public sealed class ViewerRefreshLimiterTests
         return (new ViewerRefreshLimiter(options, clock, log), clock, log);
     }
 
+    /// <summary>What the controller does: a live token passes an address that used up its failures; a refused refresh counts.</summary>
+    private static TimeSpan? Refresh(ViewerRefreshLimiter limiter, string ip, string? token, bool live)
+    {
+        if (limiter.Check(ip, token) is { } limit && !(limit.ByAddress && live))
+        {
+            limiter.NoteLimited(limit, ip);
+            return limit.Wait;
+        }
+        if (!live)
+            limiter.NoteFailure(ip);
+        return null;
+    }
+
     [Fact]
     public void A_Household_Of_Twenty_Apps_Refreshing_Every_Few_Minutes_Is_Never_Limited()
     {
@@ -39,8 +54,8 @@ public sealed class ViewerRefreshLimiterTests
                 if ((minute + device) % 5 != 0 && minute != 0)
                     continue;
                 // Each refresh is sent twice (a retry after a lost answer replays the previous token), then rotates.
-                Assert.Null(limiter.Acquire("203.0.113.7", tokens[device]));
-                Assert.Null(limiter.Acquire("203.0.113.7", tokens[device]));
+                Assert.Null(Refresh(limiter, "203.0.113.7", tokens[device], live: true));
+                Assert.Null(Refresh(limiter, "203.0.113.7", tokens[device], live: true));
                 tokens[device] = $"device-{device}-{minute}";
             }
             clock.Advance(TimeSpan.FromMinutes(1));
@@ -48,29 +63,54 @@ public sealed class ViewerRefreshLimiterTests
     }
 
     [Fact]
+    public void Successful_Refreshes_Never_Use_The_Address_Budget()
+    {
+        var (limiter, _, _) = Create(perIp: 5);
+        for (var i = 0; i < 50; i++)
+            Assert.Null(Refresh(limiter, "203.0.113.8", $"device-{i}", live: true));
+        for (var i = 0; i < 5; i++)
+            Assert.Null(Refresh(limiter, "203.0.113.8", $"random-{i}", live: false));
+        Assert.NotNull(Refresh(limiter, "203.0.113.8", "random-5", live: false));
+    }
+
+    [Fact]
     public void A_Flood_From_One_Address_Gets_Retry_After_Until_The_Window_Ends()
     {
         var (limiter, clock, _) = Create();
         for (var i = 0; i < 60; i++)
-            Assert.Null(limiter.Acquire("198.51.100.1", $"random-{i}"));
+            Assert.Null(Refresh(limiter, "198.51.100.1", $"random-{i}", live: false));
         clock.Advance(TimeSpan.FromSeconds(20));
-        var wait = limiter.Acquire("198.51.100.1", "random-61");
-        Assert.NotNull(wait);
-        Assert.Equal(TimeSpan.FromSeconds(40), wait);
-        Assert.Null(limiter.Acquire("198.51.100.2", "other-client"));
+        Assert.Equal(TimeSpan.FromSeconds(40), Refresh(limiter, "198.51.100.1", "random-61", live: false));
+        Assert.Equal(TimeSpan.FromSeconds(40), Refresh(limiter, "198.51.100.1", null, live: false));
+        Assert.Null(Refresh(limiter, "198.51.100.2", "other-client", live: false));
 
         clock.Advance(TimeSpan.FromSeconds(40));
-        Assert.Null(limiter.Acquire("198.51.100.1", "random-62"));
+        Assert.Null(Refresh(limiter, "198.51.100.1", "random-62", live: false));
     }
 
     [Fact]
-    public void One_Token_Replayed_From_Many_Addresses_Is_Limited_Per_Token()
+    public void A_Live_Token_Behind_A_Flooding_Address_Still_Refreshes_While_The_Flood_Stays_Limited()
+    {
+        var (limiter, _, _) = Create();
+        for (var i = 0; i < 60; i++)
+            Refresh(limiter, "198.51.100.3", $"random-{i}", live: false);
+        var limit = limiter.Check("198.51.100.3", "anna");
+        Assert.True(limit is { ByAddress: true });
+        Assert.Null(Refresh(limiter, "198.51.100.3", "anna-2", live: true));
+        Assert.NotNull(Refresh(limiter, "198.51.100.3", "random-60", live: false));
+        Assert.NotNull(Refresh(limiter, "198.51.100.3", null, live: false));
+    }
+
+    [Fact]
+    public void One_Token_Replayed_From_Many_Addresses_Is_Limited_Per_Token_Even_When_Live()
     {
         var (limiter, _, _) = Create();
         for (var i = 0; i < 10; i++)
-            Assert.Null(limiter.Acquire($"192.0.2.{i}", "stolen"));
-        Assert.NotNull(limiter.Acquire("192.0.2.200", "stolen"));
-        Assert.Null(limiter.Acquire("192.0.2.200", "own-token"));
+            Assert.Null(Refresh(limiter, $"192.0.2.{i}", "stolen", live: true));
+        var limit = limiter.Check("192.0.2.200", "stolen");
+        Assert.True(limit is { ByAddress: false });
+        Assert.NotNull(Refresh(limiter, "192.0.2.200", "stolen", live: true));
+        Assert.Null(Refresh(limiter, "192.0.2.200", "own-token", live: true));
     }
 
     [Fact]
@@ -78,13 +118,13 @@ public sealed class ViewerRefreshLimiterTests
     {
         var (limiter, clock, log) = Create(perIp: 1);
         for (var i = 0; i < 1_000; i++)
-            limiter.Acquire($"10.0.{i / 250}.{i % 250}", null);
+            Refresh(limiter, $"10.0.{i / 250}.{i % 250}", null, live: false);
         for (var i = 0; i < 1_000; i++)
-            limiter.Acquire($"10.0.{i / 250}.{i % 250}", null);
+            Refresh(limiter, $"10.0.{i / 250}.{i % 250}", null, live: false);
         Assert.Equal(5, log.Lines.Count);
         clock.Advance(TimeSpan.FromMinutes(1));
-        limiter.Acquire("10.0.0.0", null);
-        limiter.Acquire("10.0.0.0", null);
+        Refresh(limiter, "10.0.0.0", null, live: false);
+        Refresh(limiter, "10.0.0.0", null, live: false);
         Assert.Equal(7, log.Lines.Count);
         Assert.Contains("995 further refusals", log.Lines[5]);
     }
@@ -94,10 +134,10 @@ public sealed class ViewerRefreshLimiterTests
     {
         var (limiter, clock, _) = Create(perIp: 10_000);
         for (var i = 0; i < ViewerRefreshLimiter.MaxKeys + 500; i++)
-            limiter.Acquire("198.51.100.9", $"random-{i}");
+            Refresh(limiter, "198.51.100.9", $"random-{i}", live: false);
         Assert.True(limiter.TrackedKeys <= ViewerRefreshLimiter.MaxKeys);
         clock.Advance(TimeSpan.FromMinutes(1));
-        limiter.Acquire("198.51.100.9", "after-the-window");
+        Refresh(limiter, "198.51.100.9", "after-the-window", live: false);
         Assert.True(limiter.TrackedKeys <= 2);
     }
 
@@ -186,6 +226,9 @@ public sealed class ViewerRefreshLimitApiTests(ViewerRefreshLimitFactory factory
         }
 
         NextWindow();
+        var store = factory.Services.GetRequiredService<CoreLogStore>();
+        int Lines(string text) => store.Read(new CoreLogQuery(LogEventLevel.Information, null), 500).Entries.Count(e => e.Message.Contains(text, StringComparison.Ordinal));
+        var (refusedBefore, limitedBefore) = (Lines("Viewer refresh refused: Unknown"), Lines("Viewer refresh rate limited"));
         var statuses = new List<HttpStatusCode>();
         HttpResponseMessage? limited = null;
         for (var i = 0; i < 70; i++)
@@ -201,16 +244,70 @@ public sealed class ViewerRefreshLimitApiTests(ViewerRefreshLimitFactory factory
         Assert.Equal(TimeSpan.FromSeconds(60), limited!.Headers.RetryAfter?.Delta);
         Assert.Equal("rate_limited", (await limited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetProperty("code").GetString());
 
-        // The flood leaves at most five refusal lines, five limiter lines and no per-request warning in the log feed.
-        var store = factory.Services.GetRequiredService<CoreLogStore>();
+        // The flood adds at most five refusal lines, five limiter lines and no per-request warning (other tests of the fixture flood too).
+        Assert.InRange(Lines("Viewer refresh refused: Unknown") - refusedBefore, 1, 5);
+        Assert.InRange(Lines("Viewer refresh rate limited") - limitedBefore, 1, 5);
         var feed = store.Read(new CoreLogQuery(LogEventLevel.Information, null), 500).Entries;
-        Assert.InRange(feed.Count(e => e.Message.Contains("Viewer refresh refused: Unknown", StringComparison.Ordinal)), 1, 5);
-        Assert.InRange(feed.Count(e => e.Message.Contains("Viewer refresh rate limited", StringComparison.Ordinal)), 1, 5);
         Assert.DoesNotContain(feed, e => e.Message.Contains("/api/v1/viewer/auth/refresh completed 429", StringComparison.Ordinal));
 
         NextWindow();
         using var after = await RefreshAsync(anon, refresh);
         Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_Flooder_Behind_The_Same_Address_Never_Locks_Out_A_Live_Session()
+    {
+        NextWindow();
+        await ViewerApi.CreateAsync(_admin, new { username = "neighbour", password = Password });
+        await ViewerApi.CreateAsync(_admin, new { username = "leaver", password = Password });
+        using var anon = factory.CreateClient();
+        var refresh = (await ViewerApi.SignInAsync(anon, "neighbour", Password)).GetProperty("refreshToken").GetString()!;
+        var revoked = (await ViewerApi.SignInAsync(anon, "leaver", Password)).GetProperty("refreshToken").GetString()!;
+        using (var logout = await anon.PostAsJsonAsync("/api/v1/viewer/auth/logout", new { refreshToken = revoked }))
+            Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+
+        for (var i = 0; i < 60; i++)
+            (await RefreshAsync(anon, ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix))).Dispose();
+        using (var flood = await RefreshAsync(anon, ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix)))
+            Assert.Equal(HttpStatusCode.TooManyRequests, flood.StatusCode);
+
+        for (var i = 0; i < 3; i++)
+        {
+            using var live = await RefreshAsync(anon, refresh);
+            Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+            refresh = (await live.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("refreshToken").GetString()!;
+            using var flood = await RefreshAsync(anon, ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix));
+            Assert.Equal(HttpStatusCode.TooManyRequests, flood.StatusCode);
+        }
+        using (var ended = await RefreshAsync(anon, revoked))
+            Assert.Equal(HttpStatusCode.TooManyRequests, ended.StatusCode);
+        using (var malformed = await anon.PostAsJsonAsync("/api/v1/viewer/auth/refresh", new { refreshToken = "nope" }))
+            Assert.Equal(HttpStatusCode.TooManyRequests, malformed.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_Expired_But_Unrevoked_Token_Does_Not_Pass_The_Exhausted_Address_Gate()
+    {
+        NextWindow();
+        await ViewerApi.CreateAsync(_admin, new { username = "lapsed", password = Password });
+        using var anon = factory.CreateClient();
+        var session = await ViewerApi.SignInAsync(anon, "lapsed", Password);
+        var refresh = session.GetProperty("refreshToken").GetString()!;
+        var sessionId = session.GetProperty("sessionId").GetString()!;
+        var past = factory.Clock.GetUtcNow().AddSeconds(-1);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync())
+            await db.ViewerSessions.Where(s => s.Id == sessionId).ExecuteUpdateAsync(s => s.SetProperty(x => x.RefreshExpiresAt, past));
+
+        for (var i = 0; i < 60; i++)
+            (await RefreshAsync(anon, ViewerAuth.NewToken(ViewerAuth.RefreshTokenPrefix))).Dispose();
+        using var expired = await RefreshAsync(anon, refresh);
+        Assert.Equal(HttpStatusCode.TooManyRequests, expired.StatusCode);
+        Assert.True(expired.Headers.RetryAfter is not null);
+
+        NextWindow();
+        using var after = await RefreshAsync(anon, refresh);
+        Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
     }
 
     [Fact]

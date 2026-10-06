@@ -207,6 +207,7 @@ public sealed class FaultActions
                 keys.Add(file.MessageId(part));
         }
         fault.State["keys"] = keys;
+        fault.State["releases"] = releases.Select(r => r.ReleaseId).ToList();
         if (fault.Name == "usenet_hole")
         {
             foreach (var key in keys)
@@ -238,6 +239,11 @@ public sealed class FaultActions
             case "usenet_hole" when fault.State.TryGetValue("keys", out var keys):
                 foreach (var key in (List<string>)keys)
                     _nntp.BodyScripts.TryRemove(key, out _);
+                if (fault.State.TryGetValue("releases", out var broken) && _services.GetService<ResettableHealthCache>() is { } health)
+                {
+                    foreach (var release in (List<string>)broken)
+                        health.Reset(release);
+                }
                 break;
             case "usenet_stall" when fault.State.TryGetValue("keys", out var keys):
                 ((TaskCompletionSource)fault.State["gate"]).TrySetResult();

@@ -86,7 +86,8 @@ public static class HlsPlaylist
     public const string SubtitleGroup = "subs";
     public const string AudioGroup = "audio";
 
-    public static string Master(TranscodePlan plan)
+    /// <param name="query">Appended to every playlist URI (the player tag), or null.</param>
+    public static string Master(TranscodePlan plan, string? query = null)
     {
         var video = plan.Video;
         var remux = plan.Mode == DeliveryMode.Remux;
@@ -105,7 +106,7 @@ public static class HlsPlaylist
             if (subtitle.Language is { } language)
                 builder.Append(CultureInfo.InvariantCulture, $"LANGUAGE=\"{language}\",");
             builder.Append(CultureInfo.InvariantCulture,
-                $"DEFAULT=NO,AUTOSELECT=YES,FORCED={(subtitle.Stream.IsForced ? "YES" : "NO")},URI=\"{SubtitlePlaylistPath(subtitle.Stream.Index)}\"\n");
+                $"DEFAULT=NO,AUTOSELECT=YES,FORCED={(subtitle.Stream.IsForced ? "YES" : "NO")},URI=\"{SubtitlePlaylistPath(subtitle.Stream.Index)}{query}\"\n");
         }
         foreach (var rendition in plan.AudioRenditions)
         {
@@ -113,7 +114,7 @@ public static class HlsPlaylist
             if (rendition.Language is { } language)
                 builder.Append(CultureInfo.InvariantCulture, $"LANGUAGE=\"{language}\",");
             builder.Append(CultureInfo.InvariantCulture,
-                $"DEFAULT={(rendition.IsDefault ? "YES" : "NO")},AUTOSELECT=YES,CHANNELS=\"{rendition.Target.Channels}\",URI=\"{AudioPlaylistPath(rendition.Id)}\"\n");
+                $"DEFAULT={(rendition.IsDefault ? "YES" : "NO")},AUTOSELECT=YES,CHANNELS=\"{rendition.Target.Channels}\",URI=\"{AudioPlaylistPath(rendition.Id)}{query}\"\n");
         }
         builder
             .Append(CultureInfo.InvariantCulture, $"#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},AVERAGE-BANDWIDTH={average},")
@@ -126,7 +127,7 @@ public static class HlsPlaylist
             builder.Append(CultureInfo.InvariantCulture, $",SUBTITLES=\"{SubtitleGroup}\"");
         if (remux)
             builder.Append(",CLOSED-CAPTIONS=NONE");
-        return builder.Append('\n').Append(MediaPlaylistName).Append('\n').ToString();
+        return builder.Append('\n').Append(MediaPlaylistName).Append(query).Append('\n').ToString();
     }
 
     public static string SubtitlePlaylistPath(int streamIndex)
@@ -134,11 +135,11 @@ public static class HlsPlaylist
 
     public static string AudioPlaylistPath(string renditionId) => $"audio/{renditionId}/{MediaPlaylistName}";
 
-    public static string Media(SegmentTimeline timeline) => Playlist(timeline, $"#EXT-X-MAP:URI=\"{InitSegmentName}\"\n", "m4s");
+    public static string Media(SegmentTimeline timeline, string? query = null) => Playlist(timeline, $"#EXT-X-MAP:URI=\"{InitSegmentName}{query}\"\n", "m4s", query);
 
-    public static string Subtitles(SegmentTimeline timeline) => Playlist(timeline, string.Empty, "vtt");
+    public static string Subtitles(SegmentTimeline timeline, string? query = null) => Playlist(timeline, string.Empty, "vtt", query);
 
-    private static string Playlist(SegmentTimeline timeline, string map, string extension)
+    private static string Playlist(SegmentTimeline timeline, string map, string extension, string? query)
     {
         // RFC 8216: every EXTINF rounded to the nearest integer must not exceed the target duration.
         var target = Math.Max(1, (int)Math.Round(timeline.Durations.Max(), MidpointRounding.AwayFromZero));
@@ -153,7 +154,7 @@ public static class HlsPlaylist
         for (var i = 0; i < timeline.Count; i++)
         {
             builder.Append(CultureInfo.InvariantCulture, $"#EXTINF:{timeline.Durations[i]:0.000000},\n")
-                .Append(CultureInfo.InvariantCulture, $"{i}.{extension}\n");
+                .Append(CultureInfo.InvariantCulture, $"{i}.{extension}{query}\n");
         }
         return builder.Append("#EXT-X-ENDLIST\n").ToString();
     }

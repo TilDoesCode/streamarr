@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Streamarr.Core.Media;
 using Streamarr.Server.Viewers.Playback;
 using Streamarr.Tests.Shared;
 
@@ -40,6 +41,12 @@ public static class DevWorldFaults
         services.AddSingleton<FaultIdentity>();
         services.AddSingleton(sp => new FaultActions(
             sp.GetRequiredService<FaultRegistry>(), sp, nntp, store, sp.GetRequiredService<FaultPaths>(), sp.GetRequiredService<ILoggerFactory>()));
+
+        var health = services.Last(d => d.ServiceType == typeof(IReleaseHealthCache));
+        services.Remove(health);
+        services.AddSingleton(sp => new ResettableHealthCache((IReleaseHealthCache)(health.ImplementationFactory?.Invoke(sp)
+            ?? health.ImplementationInstance ?? ActivatorUtilities.CreateInstance(sp, health.ImplementationType!))));
+        services.AddSingleton<IReleaseHealthCache>(sp => sp.GetRequiredService<ResettableHealthCache>());
 
         services.RemoveAll<IPlaybackMedia>();
         services.AddSingleton<ServerPlaybackMedia>();

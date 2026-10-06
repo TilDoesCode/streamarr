@@ -204,6 +204,15 @@ public sealed class ViewerSessionService(
         }
     }
 
+    /// <summary>True when the hash is the current or previous refresh token of a session that is neither revoked nor expired (read-only, outside the refresh lock).</summary>
+    public async Task<bool> IsLiveRefreshTokenAsync(string hash, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.ViewerSessions.AsNoTracking().AnyAsync(
+            s => (s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash) && s.RevokedAt == null && s.RefreshExpiresAt > now, ct);
+    }
+
     /// <summary>Runs <paramref name="action"/> under the lock refreshes take, so no refresh can rotate a session it is about to end.</summary>
     public async Task UnderSessionLockAsync(Func<Task> action, CancellationToken ct)
     {

@@ -52,6 +52,7 @@ public sealed class ViewerPlaybackService(
     private static readonly string[] PreparingStates = [States.Queued, States.Resolving, States.Fallback, States.Repairing, States.Planning, States.Starting];
 
     private readonly ConcurrentDictionary<string, Playback> _playbacks = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Playback> _byHls = new(StringComparer.Ordinal);
     private readonly object _admission = new();
     private readonly PlaybackTimings _timings = timings ?? PlaybackTimings.Default;
     private TimeSpan HeartbeatWindow => TimeSpan.FromSeconds(options.Value.ViewerPlaybackHeartbeatSeconds);
@@ -221,7 +222,7 @@ public sealed class ViewerPlaybackService(
             run = playback.Cancellation.Token;
             if (playback.CurrentHls is { } current)
                 playback.PreviousHls.Add(new PreviousRendition(current, null));
-            playback.CurrentHls = null;
+            SetCurrentHls(playback, null);
             playback.Issues.Clear();
             playback.Ready = null;
             playback.Failure = null;
@@ -270,20 +271,30 @@ public sealed class ViewerPlaybackService(
     /// <summary>Remembers a failed answer on the playback's current HLS session (bounded; equal issues collapse to the latest).</summary>
     public void Report(string sessionId, HlsDeliveryIssue issue)
     {
-        foreach (var playback in _playbacks.Values)
+        if (!_byHls.TryGetValue(sessionId, out var playback))
+            return;
+        lock (playback.Gate)
         {
-            lock (playback.Gate)
-            {
-                if (playback.Stopped || playback.CurrentHls != sessionId)
-                    continue;
-                playback.Issues.RemoveAll(i => issue.At - i.Issue.At > DeliveryIssueRetention || Same(i.Issue, issue));
-                playback.Issues.Add((issue, ++playback.IssueSequence));
-                if (playback.Issues.Count > MaxDeliveryIssues)
-                    playback.Issues.RemoveAt(0);
+            if (playback.Stopped || playback.CurrentHls != sessionId)
                 return;
-            }
+            playback.Issues.RemoveAll(i => issue.At - i.Issue.At > DeliveryIssueRetention || Same(i.Issue, issue));
+            playback.Issues.Add((issue, ++playback.IssueSequence));
+            if (playback.Issues.Count > MaxDeliveryIssues)
+                playback.Issues.RemoveAt(0);
         }
     }
+
+    /// <summary>Sets the playback's current HLS session and keeps the session → playback index for <see cref="Report"/>; call under the playback's gate.</summary>
+    private void SetCurrentHls(Playback playback, string? sessionId)
+    {
+        if (playback.CurrentHls is { } previous)
+            _byHls.TryRemove(new KeyValuePair<string, Playback>(previous, playback));
+        playback.CurrentHls = sessionId;
+        if (sessionId is not null)
+            _byHls[sessionId] = playback;
+    }
+
+    internal int IndexedHlsSessions => _byHls.Count;
 
     private static bool Same(HlsDeliveryIssue a, HlsDeliveryIssue b)
         => a.Kind == b.Kind && a.RenditionId == b.RenditionId && a.SubtitleStreamIndex == b.SubtitleStreamIndex && a.Code == b.Code && a.Status == b.Status;
@@ -377,6 +388,8 @@ public sealed class ViewerPlaybackService(
         {
             playback.Stopped = true;
             playback.Cancellation.Cancel();
+            if (playback.CurrentHls is { } current)
+                _byHls.TryRemove(new KeyValuePair<string, Playback>(current, playback));
             Signal(playback);
         }
     }
@@ -390,7 +403,7 @@ public sealed class ViewerPlaybackService(
             if (playback.CurrentHls is { } current)
                 renditions.Add(current);
             playback.PreviousHls.Clear();
-            playback.CurrentHls = null;
+            SetCurrentHls(playback, null);
         }
         foreach (var id in renditions)
             await media.CloseHlsAsync(id, $"viewer playback ended ({reason})");
@@ -686,7 +699,7 @@ public sealed class ViewerPlaybackService(
             p.Decision = ready.Decision;
             p.State = States.Ready;
             p.ReadyAt = now;
-            p.CurrentHls = rendition;
+            SetCurrentHls(p, rendition);
             for (var i = 0; i < p.PreviousHls.Count; i++)
                 p.PreviousHls[i] = p.PreviousHls[i] with { CloseAt = p.PreviousHls[i].CloseAt ?? now + _timings.SwitchGrace };
             logger.LogInformation("Viewer playback {PlaybackId} ready: {Method} on {Engine}", p.Id, ready.Method.ToApi(), ready.Engine);

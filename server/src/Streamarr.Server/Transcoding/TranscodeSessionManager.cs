@@ -24,7 +24,7 @@ public sealed class TranscodeSessionManager(
 {
     private const double SeekGapSeconds = 24;
 
-    /// <summary>A request back into the replaced run's range waits until the current position was not requested for this long.</summary>
+    /// <summary>Another requester's request back into the replaced run's range waits until the current position was not requested for this long.</summary>
     internal static readonly TimeSpan ContendedWindow = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ContendedPoll = TimeSpan.FromMilliseconds(200);
     private const long MinimumFreeBytes = 2L * 1024 * 1024 * 1024;
@@ -193,11 +193,13 @@ public sealed class TranscodeSessionManager(
         return session;
     }
 
-    public async Task<string> GetSegmentAsync(TranscodeSession session, int index, CancellationToken ct)
+    /// <param name="requester">Who asks (a player's playlist tag or its address); one requester's own seeks never wait for each other.</param>
+    public async Task<string> GetSegmentAsync(TranscodeSession session, int index, CancellationToken ct, string requester = "")
     {
         if (index < 0 || index >= session.Timeline.Count)
             throw new TranscodeException("unknown_segment", "The segment is outside this rendition.", 404);
         session.NoteRequested(index);
+        var ticket = session.NoteRequester(requester, index);
         var path = session.SegmentPath(index);
         var deadline = WaitDeadline();
 
@@ -207,7 +209,7 @@ public sealed class TranscodeSessionManager(
             {
                 NoteFirstSegment(session);
                 if (session.Job is { } current && index >= current.StartSegment)
-                    session.RunRequestedAt = DateTimeOffset.UtcNow;
+                    session.UseRun(requester);
                 await ResumeParkedAsync(session);
                 return path;
             }
@@ -220,7 +222,7 @@ public sealed class TranscodeSessionManager(
                     throw new TranscodeException("session_closed", "The transcode session was closed.", 410);
                 if (File.Exists(path))
                     return path;
-                job = await EnsureJobForSegmentLockedAsync(session, index);
+                job = await EnsureJobForSegmentLockedAsync(session, index, requester, ticket);
             }
             finally
             {
@@ -233,7 +235,7 @@ public sealed class TranscodeSessionManager(
                 await Task.Delay(ContendedPoll, ct);
                 continue;
             }
-            if (await WaitForAsync(session, job, () => File.Exists(path), deadline, ct))
+            if (await WaitForAsync(session, job, () => File.Exists(path), deadline, ct, requester))
                 return path;
         }
         if (DateTimeOffset.UtcNow >= deadline)
@@ -374,9 +376,8 @@ public sealed class TranscodeSessionManager(
 
     private static int Gap(TranscodeSession session) => Math.Max(2, (int)Math.Ceiling(SeekGapSeconds / session.Timeline.SegmentLength));
 
-    /// <summary>The run serving <paramref name="index"/>, or null when the request has to wait: it would move the run back to the
-    /// range a restart just left while the new position is still requested (two players or a stale retry — no restart ping-pong).</summary>
-    private async Task<TranscodeJob?> EnsureJobForSegmentLockedAsync(TranscodeSession session, int index)
+    /// <summary>The run serving <paramref name="index"/>, or null to wait (superseded by its own player, contended by another, or restart paced).</summary>
+    private async Task<TranscodeJob?> EnsureJobForSegmentLockedAsync(TranscodeSession session, int index, string requester, long ticket)
     {
         var job = session.Job;
         var gap = Gap(session);
@@ -387,21 +388,25 @@ public sealed class TranscodeSessionManager(
             var evicted = index < front && !File.Exists(session.SegmentPath(index));
             if (!evicted && index <= front + gap)
             {
-                session.RunRequestedAt = DateTimeOffset.UtcNow;
+                session.UseRun(requester);
                 return job;
             }
         }
 
         if (job is not null && !(job.Parked && index == job.Front()))
         {
+            if (session.Superseded(requester, ticket, index, gap))
+                return null;
             if (session.ReplacedRun is { } replaced && index >= replaced.Start - gap && index <= replaced.End + gap
-                && DateTimeOffset.UtcNow - session.RunRequestedAt < ContendedWindow)
+                && session.RunRequester != requester && DateTimeOffset.UtcNow - session.RunRequestedAt < ContendedWindow)
             {
                 return null;
             }
+            if (!session.TryTakeRestart(DateTimeOffset.UtcNow))
+                return null;
             session.ReplacedRun = (job.StartSegment, job.Front());
         }
-        session.RunRequestedAt = DateTimeOffset.UtcNow;
+        session.UseRun(requester);
 
         if (job is { Failed: true } failed && failed.StartSegment == index && (DateTimeOffset.UtcNow - failed.StartedAt) < TimeSpan.FromSeconds(30))
         {
@@ -413,6 +418,9 @@ public sealed class TranscodeSessionManager(
 
     private async Task<TranscodeJob> StartJobLockedAsync(TranscodeSession session, int startSegment)
     {
+        var reserved = session.Job is { Parked: true } && session.Reserved(DateTimeOffset.UtcNow);
+        session.ReleaseReservation();
+        var continuation = PreviousSegmentEnds(session, startSegment);
         if (session.Job is { } previous)
         {
             CoverTranscodedSubtitles(session);
@@ -421,7 +429,8 @@ public sealed class TranscodeSessionManager(
             if (!(previous.Parked && previous.Front() == startSegment))
                 session.NoteRestart();
         }
-        await EnsureCapacityAsync(session);
+        if (!reserved)
+            await EnsureCapacityAsync(session);
 
         session.JobSequence++;
         var remux = session.Mode == DeliveryMode.Remux;
@@ -439,6 +448,9 @@ public sealed class TranscodeSessionManager(
             SeekSeconds = remux && startSegment > 0 ? RemuxSeek(session, startSegment) : null,
             AudioStartSeconds = sourceAudio?.StartTime is { } audioStart ? Math.Max(0, audioStart - session.Media.StartTime) : 0,
             SourceAudioSampleRate = sourceAudio?.SampleRate,
+            SeekMarginSeconds = continuation is null ? 0 : Math.Max(2, session.Timeline.SegmentLength),
+            VideoContinueSeconds = continuation?.Video,
+            AudioContinueSeconds = continuation?.Audio,
         };
         var job = remux
             ? TranscodeJob.Start(options.Value.FfmpegPath, FfmpegArgumentBuilder.Build(spec), session.Directory, spec.JobTag, startSegment,
@@ -447,6 +459,40 @@ public sealed class TranscodeSessionManager(
         session.Job = job;
         logger.LogDebug("Transcode {Handle} run {Run} started at segment {Segment}", session.Handle, spec.JobTag, startSegment);
         return job;
+    }
+
+    /// <summary>Video trim point (half a frame past the last frame) and audio ends of the transcoded segment before <paramref name="segment"/>, or null.</summary>
+    private (double Video, IReadOnlyList<double> Audio)? PreviousSegmentEnds(TranscodeSession session, int segment)
+    {
+        if (session.Mode != DeliveryMode.Transcode || segment <= 0)
+            return null;
+        try
+        {
+            var path = session.SegmentPath(segment - 1);
+            var initPath = session.Job is { } job ? Path.Combine(session.Directory, job.InitFileName) : null;
+            var initBytes = session.InitSegment ?? (initPath is not null && File.Exists(initPath) ? File.ReadAllBytes(initPath) : null);
+            if (initBytes is null || !File.Exists(path))
+                return null;
+            var init = Fmp4.ParseInit(initBytes);
+            var parsed = Fmp4.ParseSegment(File.ReadAllBytes(path), init);
+            var fragments = parsed.Fragments;
+            var expected = session.Plan.DemuxedAudio ? session.Plan.AudioRenditions.Count : session.Plan.Audio is null ? 0 : 1;
+            var tracks = init.Tracks.Where(t => t.Handler == "soun" && t.Timescale > 0).OrderBy(t => t.TrackId).ToList();
+            if (tracks.Count != expected
+                || parsed.Timings(init).FirstOrDefault(t => t.Handler == "vide") is not { Samples: > 0 } video)
+                return null;
+            var start = session.Timeline.StartOf(segment);
+            var cut = video.StartSeconds + video.DurationSeconds - video.DurationSeconds / video.Samples / 2;
+            var ends = tracks.Select(t => fragments.Where(f => f.TrackId == t.TrackId)
+                .Select(f => (double)(f.BaseDecodeTime + f.Duration) / t.Timescale).DefaultIfEmpty(double.NaN).Max()).ToList();
+            // A plausible end lies within a frame or two of the boundary; anything else (or a wrapped negative time) keeps the plain restart.
+            return Math.Abs(cut - start) < 1 && ends.All(e => Math.Abs(e - start) < 1) ? (cut, ends) : null;
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+        {
+            logger.LogDebug(e, "Transcode {Handle} could not read segment {Segment} to continue after it", session.Handle, segment - 1);
+            return null;
+        }
     }
 
     private RemuxSegmenter CreateSegmenter(TranscodeSession session, FfmpegJobSpec spec, TranscodeJob job)
@@ -478,13 +524,14 @@ public sealed class TranscodeSessionManager(
 
     /// <summary>A WebVTT segment; like a video segment it starts or restarts the copy when no live run will demux its cues, then waits for them.</summary>
     /// <remarks>A transcode run is never restarted backwards for subtitles (an encoder restart costs seconds); such a segment gets the cues known so far.</remarks>
-    public async Task<string> GetSubtitleSegmentAsync(TranscodeSession session, int streamIndex, int index, CancellationToken ct)
+    public async Task<string> GetSubtitleSegmentAsync(TranscodeSession session, int streamIndex, int index, CancellationToken ct, string requester = "")
     {
         var track = session.Subtitles.FirstOrDefault(t => t.StreamIndex == streamIndex)
                     ?? throw new TranscodeException("unknown_subtitle_stream", "This session has no such subtitle rendition.", 404);
         if (index < 0 || index >= session.Timeline.Count)
             throw new TranscodeException("unknown_segment", "The segment is outside this rendition.", 404);
         session.Touch();
+        var ticket = session.NoteRequester(requester, index);
 
         bool Covered()
         {
@@ -505,7 +552,7 @@ public sealed class TranscodeSessionManager(
                     break;
                 if (session.Mode == DeliveryMode.Transcode && session.Job is { HasExited: false } running && index < running.StartSegment)
                     break;
-                job = await EnsureJobForSegmentLockedAsync(session, index);
+                job = await EnsureJobForSegmentLockedAsync(session, index, requester, ticket);
             }
             finally
             {
@@ -520,7 +567,7 @@ public sealed class TranscodeSessionManager(
             }
             try
             {
-                if (await WaitForAsync(session, job, Covered, deadline, ct))
+                if (await WaitForAsync(session, job, Covered, deadline, ct, requester))
                     break;
             }
             catch (TranscodeException e) when (e.Code == "end_of_stream")
@@ -547,7 +594,8 @@ public sealed class TranscodeSessionManager(
     private static TranscodeException SegmentTimeout()
         => new("segment_timeout", "The transcoder did not produce the segment in time.", 504);
 
-    private async Task<bool> WaitForAsync(TranscodeSession session, TranscodeJob job, Func<bool> ready, DateTimeOffset deadline, CancellationToken ct)
+    private async Task<bool> WaitForAsync(
+        TranscodeSession session, TranscodeJob job, Func<bool> ready, DateTimeOffset deadline, CancellationToken ct, string? requester = null)
     {
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -556,7 +604,7 @@ public sealed class TranscodeSessionManager(
             if (!ReferenceEquals(session.Job, job) || session.Closed)
                 return false;
             // A request waiting on the current run keeps its position in use (see EnsureJobForSegmentLockedAsync).
-            session.RunRequestedAt = DateTimeOffset.UtcNow;
+            session.UseRun(requester);
             if (job.HasExited)
             {
                 await Task.Delay(50, ct);
@@ -585,6 +633,7 @@ public sealed class TranscodeSessionManager(
             if (!ReferenceEquals(session.Job, job) || job.HasExited || session.Closed)
                 return;
             CoverTranscodedSubtitles(session);
+            session.Reserve(TimeSpan.FromSeconds(settingsService.Current.JobIdleTimeoutSeconds));
             await job.ParkAsync();
             logger.LogDebug("Transcode {Handle} run {Run} parked {Ahead:0}s ahead of the player at segment {Front}",
                 session.Handle, job.Tag, SecondsAhead(session, job), job.Front());
@@ -648,18 +697,23 @@ public sealed class TranscodeSessionManager(
         }
     }
 
-    /// <summary>Remux and transcode runs have separate pools: a stream copy costs a fraction of an encode.</summary>
+    /// <summary>A run in progress, or a parked run whose reservation has not lapsed (see <see cref="TranscodeSession.Reserve"/>).</summary>
+    private static bool HoldsSlot(TranscodeSession session, DateTimeOffset now)
+        => session.Job is { HasExited: false } || (session.Job is { Parked: true } && session.Reserved(now));
+
+    /// <summary>Separate remux and transcode pools; a reserved parked run counts, so others are refused before its resume is.</summary>
     private async Task EnsureCapacityAsync(TranscodeSession requester)
     {
         var remux = requester.Mode == DeliveryMode.Remux;
         var limit = remux ? settingsService.Current.MaxConcurrentRemuxes : settingsService.Current.MaxConcurrentTranscodes;
-        bool SamePool(TranscodeSession s) => !ReferenceEquals(s, requester) && s.Job is { HasExited: false } && (s.Mode == DeliveryMode.Remux) == remux;
+        bool SamePool(TranscodeSession s) => !ReferenceEquals(s, requester) && (s.Mode == DeliveryMode.Remux) == remux && HoldsSlot(s, DateTimeOffset.UtcNow);
         var running = _sessions.Values.Where(SamePool).ToList();
         if (running.Count < limit)
             return;
 
         var now = DateTimeOffset.UtcNow;
         var victims = running
+            .Where(s => s.Job is { HasExited: false })
             .OrderBy(s => s.LastAccessAt)
             .Where(s => now - s.LastAccessAt > TimeSpan.FromSeconds(15));
         foreach (var victim in victims)

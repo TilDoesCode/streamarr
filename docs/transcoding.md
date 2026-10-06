@@ -194,21 +194,39 @@ no longer waits for detection: capability detection starts immediately at startu
   The Dev World e2e (`colour_check`) ffprobes init + first segment of every remux/transcode and fails when
   `VIDEO-RANGE` and the tags disagree.
 - **Throttling.** When a run is more than *throttle buffer* seconds ahead of the player it is
-  *parked*: ffmpeg is ended (the segments it wrote stay, `job.paused: true`, no process, no
-  remux/transcode slot). Once the player is within half the buffer of the parked front, a new run
-  starts at that front segment, like a seek restart at a segment boundary (not counted in
-  `restarts`). Any platform. The server no longer stops ffmpeg with `SIGSTOP`: on macOS a stopped
+  *parked*: ffmpeg is ended (the segments it wrote stay, `job.paused: true`, no process). The parked
+  session keeps its remux/transcode slot while its player keeps asking: the reservation lasts *job idle
+  timeout* and every request before it lapses extends it. Meanwhile a new start or another session's
+  restart that would exceed the pool is refused (`503 remux_capacity` / `transcode_capacity`), never the
+  playing session's resume (B17). Once lapsed (player paused or gone longer than *job idle timeout*) the
+  reservation never comes back, not even when the player reads its stored segments again: its resume
+  then competes like a new start and, with the pool full, answers `503 *_capacity` with `Retry-After: 1`.
+  Once the player is within half the
+  buffer of the parked front, a new run starts at that front segment (not counted in `restarts`). A
+  transcode run that starts where an existing segment ends continues it exactly: it seeks
+  max(2 s, segment length) early, trims the video to the frame after that segment's last one (its
+  measured end minus half a frame, since the encoder rounds timestamps to its frame time base) and starts
+  each audio track at that segment's measured audio end, dropping the encoder's priming packet. Runs keep
+  the source clock unshifted (`-avoid_negative_ts disabled`; the run from 0 trims the AAC/AC-3 priming so
+  no audio timestamp is negative), so no frame repeats and no audio overlaps across the resume (B16 had
+  one repeated frame and 37–51 ms of audio). Any platform. The server no longer stops ffmpeg with `SIGSTOP`: on macOS a stopped
   child makes .NET's SIGCHLD handler spin (`waitid` reports stopped children there) while it holds
   the process-start lock, so every other ffmpeg/ffprobe spawn of the server waited (B16).
 - **Cleanup.** ffmpeg is stopped after *job idle timeout* without segment requests, the
   whole session after *session idle timeout*; segments older than *segment retention*
   behind the playhead are deleted. A seek back to a deleted segment that the running ffmpeg already passed restarts
   ffmpeg at that segment (the run would never write it again). Sessions never survive a restart.
-- **Competing requests.** One session has one run. When two requests want far-apart positions (two players on
-  one session, or a stale hls.js retry next to a seek), the newer position wins at once; a request that would move
-  the run back into the range the last restart left *waits* (polling, within its own wait budget) as long as the
-  current position is still in use — requested, served or waited on within the last 3 s. It restarts back only once
-  the newer position has been idle for 3 s. So the two never take turns restarting ffmpeg; the waiting one ends with
+- **Competing requests.** One session has one run. Requests are told apart per player: the master playlist hands
+  each fetch its own tag (`main.m3u8?p=1`, `?p=2`, …), the media and subtitle playlists pass it into every
+  segment/init URI, and a request without a tag counts as its address + User-Agent. One player's own requests never
+  wait for each other: its latest request moves the run at once (a far seek and straight back answers in ~0.4 s, B16
+  needed 3.4–4 s). Request-driven restarts of a session are paced: a burst of two (seek and straight back), then one
+  per second, so rapid far/near flips (or a client-chosen tag) cannot churn ffmpeg; a paced request waits and polls
+  within its budget, and its player's latest position wins. An older request of the same player that it has since left by more than the seek gap never
+  moves the run again. When two *different* players want far-apart positions, the newer position wins at once; a
+  request that would move the run back into the range the last restart left *waits* (polling, within its own wait
+  budget) as long as the current position is still in use by the other player — requested, served or waited on
+  within the last 3 s. It restarts back only once the newer position has been idle for 3 s. So the two never take turns restarting ffmpeg; the waiting one ends with
   its segment or `504 segment_timeout` at its budget. Before B16 they restarted the run on every attempt and the
   loser ran out of attempts (`503 segment_unavailable` after ~4 s, 7 restarts).
 - **Waiting.** A segment, init or WebVTT request waits for ffmpeg at most *SegmentWaitTimeoutSeconds* (25 s) in

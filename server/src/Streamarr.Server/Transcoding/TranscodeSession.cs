@@ -100,7 +100,86 @@ public sealed class TranscodeSession
 
     private long _runRequestedTicks;
 
-    internal void Touch() => Interlocked.Exchange(ref _lastAccessTicks, DateTimeOffset.UtcNow.UtcTicks);
+    /// <summary>The requester (player) that last needed the current run's position.</summary>
+    internal string? RunRequester { get; private set; }
+
+    private const int MaxRequesters = 32;
+    private readonly Dictionary<string, (long Ticket, int Index)> _latest = new(StringComparer.Ordinal);
+    private long _tickets;
+    private int _players;
+
+    /// <summary>Tag of one player's playlists (one per master playlist fetch), so its requests are told apart from another player's.</summary>
+    internal int NextPlayerTag() => Interlocked.Increment(ref _players);
+
+    /// <summary>Records a request of <paramref name="requester"/> for <paramref name="segment"/> and returns its ticket (newer requests get higher ones).</summary>
+    internal long NoteRequester(string requester, int segment)
+    {
+        lock (_latest)
+        {
+            if (_latest.Count >= MaxRequesters && !_latest.ContainsKey(requester))
+                _latest.Clear();
+            var ticket = ++_tickets;
+            _latest[requester] = (ticket, segment);
+            return ticket;
+        }
+    }
+
+    /// <summary>True when the same requester has since asked for a position more than <paramref name="gap"/> segments away (it seeked on).</summary>
+    internal bool Superseded(string requester, long ticket, int segment, int gap)
+    {
+        lock (_latest)
+            return _latest.TryGetValue(requester, out var latest) && latest.Ticket > ticket && Math.Abs(latest.Index - segment) > gap;
+    }
+
+    /// <summary>A request needs the current run's position now.</summary>
+    internal void UseRun(string? requester)
+    {
+        RunRequestedAt = DateTimeOffset.UtcNow;
+        if (requester is not null)
+            RunRequester = requester;
+    }
+
+    internal void Touch()
+    {
+        var now = DateTimeOffset.UtcNow.UtcTicks;
+        Interlocked.Exchange(ref _lastAccessTicks, now);
+        var until = Volatile.Read(ref _reservedUntilTicks);
+        if (until > now)
+            Interlocked.CompareExchange(ref _reservedUntilTicks, now + Volatile.Read(ref _reservationTicks), until);
+    }
+
+    private long _reservedUntilTicks;
+    private long _reservationTicks;
+
+    /// <summary>A parked run keeps its pool slot while the player keeps asking within <paramref name="length"/>; once lapsed it never returns.</summary>
+    internal void Reserve(TimeSpan length)
+    {
+        Volatile.Write(ref _reservationTicks, length.Ticks);
+        Volatile.Write(ref _reservedUntilTicks, DateTimeOffset.UtcNow.UtcTicks + length.Ticks);
+    }
+
+    internal void ReleaseReservation() => Volatile.Write(ref _reservedUntilTicks, 0);
+
+    internal bool Reserved(DateTimeOffset now) => Volatile.Read(ref _reservedUntilTicks) > now.UtcTicks;
+
+    private const double RestartBurst = 2;
+    private double _restartTokens = RestartBurst;
+    private DateTimeOffset _restartTokensAt = DateTimeOffset.MinValue;
+
+    /// <summary>Paces request-driven restarts: a burst of two (a seek and straight back), then one per second.</summary>
+    internal bool TryTakeRestart(DateTimeOffset now)
+    {
+        lock (_latest)
+        {
+            if (_restartTokensAt != DateTimeOffset.MinValue)
+                _restartTokens = Math.Min(RestartBurst, _restartTokens + (now - _restartTokensAt).TotalSeconds);
+            _restartTokensAt = now;
+            if (_restartTokens < 1)
+                return false;
+            _restartTokens--;
+            return true;
+        }
+    }
 
     internal void NoteRequested(int segment)
     {

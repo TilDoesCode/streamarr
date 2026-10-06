@@ -43,7 +43,7 @@ public sealed class StreamarrOptions
     /// <summary>Per-client fixed-window limit for viewer sign-in, code and password-reset requests.</summary>
     public int ViewerAuthAttemptsPerMinute { get; set; } = 20;
 
-    /// <summary>Per-client-IP fixed-window limit for viewer token refreshes.</summary>
+    /// <summary>Per-client-IP fixed-window limit of failed viewer token refreshes; a live session's token always passes.</summary>
     public int ViewerRefreshPerIpPerMinute { get; set; } = 60;
 
     /// <summary>Fixed-window limit for refreshes presenting the same refresh token.</summary>

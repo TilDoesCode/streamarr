@@ -21,6 +21,15 @@ public sealed record FfmpegJobSpec
     public double AudioStartSeconds { get; init; }
     public int? SourceAudioSampleRate { get; init; }
 
+    /// <summary>A transcode run that continues an existing previous segment seeks this much earlier (demuxers may land after the target).</summary>
+    public double SeekMarginSeconds { get; init; }
+
+    /// <summary>Between the previous segment's last frame and the next one: the run's first frame is the one after that segment (no repeat, no gap).</summary>
+    public double? VideoContinueSeconds { get; init; }
+
+    /// <summary>Per output audio stream, where the previous segment's audio ended; the run's audio starts exactly there (no overlap, no gap).</summary>
+    public IReadOnlyList<double>? AudioContinueSeconds { get; init; }
+
     public string InitFileName => $"init-{JobTag}.mp4";
     public string PlaylistFileName => $"job-{JobTag}.m3u8";
     public double StartSeconds => StartSegment * SegmentLength;
@@ -66,7 +75,7 @@ public static class FfmpegArgumentBuilder
         }
         args.AddRange(["-analyzeduration", "5000000", "-probesize", "10000000"]);
         if (spec.StartSegment > 0)
-            args.AddRange(["-ss", Seconds(spec.StartSeconds)]);
+            args.AddRange(["-ss", Micros(Math.Max(0, spec.StartSeconds - spec.SeekMarginSeconds))]);
         if (spec.MaxInputSeconds is { } limit)
             args.AddRange(["-t", Seconds(limit)]);
         if (plan.HardwareDecode)
@@ -76,7 +85,7 @@ public static class FfmpegArgumentBuilder
             args.AddRange(["-threads", spec.Settings.Threads.ToString(CultureInfo.InvariantCulture)]);
 
         if (plan.BurnIn is not null)
-            args.AddRange(["-filter_complex", BuildBurnInGraph(plan), "-map", "[vout]"]);
+            args.AddRange(["-filter_complex", BuildBurnInGraph(plan, StartTrim(spec)), "-map", "[vout]"]);
         else
             args.AddRange(["-map", $"0:{plan.SourceVideo.Index}"]);
         AddAudioMaps(args, plan);
@@ -86,8 +95,9 @@ public static class FfmpegArgumentBuilder
         AddAudio(args, spec);
 
         args.AddRange([
+            // Every run keeps the source clock unshifted, so segments of different runs meet frame- and sample-exactly.
             "-copyts", "-start_at_zero",
-            "-avoid_negative_ts", "make_non_negative",
+            "-avoid_negative_ts", "disabled",
             "-max_muxing_queue_size", "2048",
             "-max_delay", "5000000",
             "-f", "hls",
@@ -278,13 +288,16 @@ public static class FfmpegArgumentBuilder
         }
 
         args.AddRange(["-force_key_frames:v", KeyframeExpression(spec)]);
-        var filters = plan.BurnIn is null ? BuildVideoFilters(plan) : string.Empty;
-        if (filters.Length > 0)
-            args.AddRange(["-vf", filters]);
+        if (plan.BurnIn is null)
+        {
+            var filters = string.Join(',', new[] { StartTrim(spec), BuildVideoFilters(plan) }.Where(f => !string.IsNullOrEmpty(f)));
+            if (filters.Length > 0)
+                args.AddRange(["-vf", filters]);
+        }
     }
 
     /// <summary>Software graph for a burn-in: deinterlace and tone-map the source, overlay the image subtitle at source size, then scale and hand off to the encoder.</summary>
-    public static string BuildBurnInGraph(TranscodePlan plan)
+    public static string BuildBurnInGraph(TranscodePlan plan, string? head = null)
     {
         var subtitle = plan.BurnIn ?? throw new InvalidOperationException("The plan burns in no subtitle.");
         var before = new List<string>();
@@ -298,6 +311,8 @@ public static class FfmpegArgumentBuilder
         after.Add(plan.HardwareEncode ? HardwareProfiles.UploadFilter(plan.Acceleration) : "format=yuv420p");
         if (plan.ToneMap != ToneMapMode.NotNeeded)
             after.Add(SdrTagChain);
+        if (!string.IsNullOrEmpty(head))
+            before.Insert(0, head);
         var pre = before.Count == 0 ? "null" : string.Join(',', before);
         return $"[0:{plan.SourceVideo.Index}]{pre}[base];[base][0:{subtitle.Index}]overlay=eof_action=pass:repeatlast=0[burned];[burned]{string.Join(',', after)}[vout]";
     }
@@ -361,8 +376,7 @@ public static class FfmpegArgumentBuilder
             {
                 var target = spec.Plan.AudioRenditions[i].Target;
                 AddAudioCodec(args, target, $":{i}");
-                if (target.Copy && spec.StartSegment > 0 && spec.Capabilities.MajorVersion is null or >= 6)
-                    args.AddRange([$"-bsf:a:{i}", $"noise=drop=lt(pts*tb\\,{Seconds(spec.StartSeconds)})"]);
+                AddAudioStart(args, spec, target, i, $":{i}");
             }
             return;
         }
@@ -375,9 +389,7 @@ public static class FfmpegArgumentBuilder
         if (audio.Copy)
         {
             args.AddRange(["-c:a", "copy"]);
-            // An input seek does not trim copied audio (Matroska even seeks back to a subtitle cue), so drop what precedes the restart point.
-            if (spec.StartSegment > 0 && spec.Capabilities.MajorVersion is null or >= 6)
-                args.AddRange(["-bsf:a", $"noise=drop=lt(pts*tb\\,{Seconds(spec.StartSeconds)})"]);
+            AddAudioStart(args, spec, audio, 0, string.Empty);
             return;
         }
         args.AddRange([
@@ -387,6 +399,35 @@ public static class FfmpegArgumentBuilder
         ]);
         if (audio.SampleRate is { } rate)
             args.AddRange(["-ar", rate.ToString(CultureInfo.InvariantCulture)]);
+        AddAudioStart(args, spec, audio with { Codec = "aac" }, 0, string.Empty);
+    }
+
+    /// <summary>Below any audio frame duration and above timestamp rounding: the packet starting at the continuation point is kept, the one before it dropped.</summary>
+    private const double DropTolerance = 0.005;
+
+    /// <summary>Where a transcode run's audio starts: after the previous segment's audio, at the restart point, or (run from 0) past the encoder priming so no timestamp is negative.</summary>
+    private static void AddAudioStart(List<string> args, FfmpegJobSpec spec, AudioTarget audio, int stream, string specifier)
+    {
+        var dropBefore = spec.Capabilities.MajorVersion is null or >= 6;
+        var from = spec.AudioContinueSeconds is { } ends && stream < ends.Count ? ends[stream] : (double?)null;
+        if (audio.Copy)
+        {
+            // An input seek does not trim copied audio (Matroska even seeks back to a subtitle cue), so drop what precedes the restart point.
+            if (spec.StartSegment > 0 && dropBefore)
+                args.AddRange([$"-bsf:a{specifier}", $"noise=drop=lt(pts*tb\\,{Micros(from is { } end ? end - DropTolerance : spec.StartSeconds)})"]);
+            return;
+        }
+        if (from is { } exact)
+        {
+            // The encoder's first (priming) packet would overlap the previous segment; the next one starts exactly at its end.
+            args.AddRange([$"-filter:a{specifier}", $"atrim=start={Micros(exact)}"]);
+            if (dropBefore)
+                args.AddRange([$"-bsf:a{specifier}", $"noise=drop=lt(pts*tb\\,{Micros(exact - DropTolerance)})"]);
+        }
+        else if (spec.StartSegment == 0)
+        {
+            args.AddRange([$"-filter:a{specifier}", $"atrim=start={Micros(EncoderPrimingSeconds(audio))}"]);
+        }
     }
 
     /// <summary>Keyframes on the absolute segment grid; ffmpeg ≥ 6 measures <c>t</c> from the first frame, older builds from the source clock.</summary>
@@ -397,6 +438,8 @@ public static class FfmpegArgumentBuilder
             ? $"expr:gte(t,n_forced*{length})"
             : $"expr:gte(t,{Seconds(spec.StartSeconds)}+n_forced*{length})";
     }
+
+    private static string? StartTrim(FfmpegJobSpec spec) => spec.VideoContinueSeconds is { } from ? $"trim=start={Micros(from)}" : null;
 
     public static string BuildVideoFilters(TranscodePlan plan)
     {

@@ -25,7 +25,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
         if (!sessions.TryGet(token, out var session))
             return Unknown();
         session.Touch();
-        return Content(HlsPlaylist.Master(session.Plan), PlaylistType);
+        return Content(HlsPlaylist.Master(session.Plan, PlayerQuery(session.NextPlayerTag())), PlaylistType);
     }
 
     [HttpGet("main.m3u8")]
@@ -37,7 +37,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
         if (!sessions.TryGet(token, out var session))
             return Unknown();
         session.Touch();
-        return Content(HlsPlaylist.Media(session.Timeline), PlaylistType);
+        return Content(HlsPlaylist.Media(session.Timeline, PlayerQuery()), PlaylistType);
     }
 
     [HttpGet("init.mp4")]
@@ -70,7 +70,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
         if (session.Plan.AudioRenditions.All(r => r.Id != rendition))
             return UnknownRendition();
         session.Touch();
-        return Content(HlsPlaylist.Media(session.Timeline), PlaylistType);
+        return Content(HlsPlaylist.Media(session.Timeline, PlayerQuery()), PlaylistType);
     }
 
     [HttpGet("audio/{rendition}/init.mp4")]
@@ -123,7 +123,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
             return UnknownRendition();
         try
         {
-            var path = await sessions.GetSegmentAsync(session, segment, ct);
+            var path = await sessions.GetSegmentAsync(session, segment, ct, Requester());
             FileStream stream;
             try
             {
@@ -204,7 +204,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
         if (session.Subtitles.All(s => s.StreamIndex != stream))
             return NotFound(ErrorResponse.Of("unknown_subtitle_stream", "This session has no such subtitle rendition."));
         session.Touch();
-        return Content(HlsPlaylist.Subtitles(session.Timeline), PlaylistType);
+        return Content(HlsPlaylist.Subtitles(session.Timeline, PlayerQuery()), PlaylistType);
     }
 
     /// <summary>WebVTT segment aligned with the video segment of the same index; cue times are on the media timeline.</summary>
@@ -222,7 +222,7 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
             return Unknown();
         try
         {
-            return Content(await sessions.GetSubtitleSegmentAsync(session, stream, segment, ct), WebVttSubtitles.ContentType);
+            return Content(await sessions.GetSubtitleSegmentAsync(session, stream, segment, ct, Requester()), WebVttSubtitles.ContentType);
         }
         catch (TranscodeException e)
         {
@@ -241,6 +241,28 @@ public sealed class TranscodeStreamController(TranscodeSessionManager sessions, 
             return Unknown();
         await sessions.CloseAsync(session, "stopped by the player");
         return NoContent();
+    }
+
+    /// <summary>The player tag a master playlist hands out (<c>?p=</c>), carried by the media playlists into every segment URI.</summary>
+    private const string PlayerParameter = "p";
+
+    private static string PlayerQuery(int tag) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"?{PlayerParameter}={tag}");
+
+    /// <summary>The query a media playlist passes on to its segments: the tag it was fetched with, if any.</summary>
+    private string? PlayerQuery() => PlayerTag() is { } tag ? PlayerQuery(tag) : null;
+
+    private int? PlayerTag()
+        => Request.Query[PlayerParameter].ToString() is { Length: > 0 and <= 9 } raw && int.TryParse(raw, System.Globalization.NumberStyles.None, null, out var tag) && tag > 0
+            ? tag
+            : null;
+
+    /// <summary>One player: its playlist tag, or its address and user agent when it fetched no tagged playlist.</summary>
+    private string Requester()
+    {
+        if (PlayerTag() is { } tag)
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"p:{tag}");
+        var agent = Request.Headers.UserAgent.ToString();
+        return $"a:{HttpContext.Connection.RemoteIpAddress}|{(agent.Length > 200 ? agent[..200] : agent)}";
     }
 
     private IActionResult Failure(TranscodeException e)
