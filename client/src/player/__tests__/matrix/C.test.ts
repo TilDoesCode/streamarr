@@ -1709,7 +1709,7 @@ describe('matrix C — code review S4c-S4f (S4g)', () => {
 
   row(
     'C14',
-    'a stall while hls.js retries a 504 is the server waiting its own budget: lower quality, not the server-error reload (review M20)',
+    'a stall while hls.js retries a 504 is the server waiting its own budget: a reload there first, then lower quality; never the server-error reload (review M20, S9c D19)',
     async () => {
       const c = await playing(
         {},
@@ -1727,6 +1727,14 @@ describe('matrix C — code review S4c-S4f (S4g)', () => {
       harness.engine.emit({ type: 'loadRetry', status: 504 });
       harness.engine.emit({ type: 'buffering', buffering: true });
       await jest.advanceTimersByTimeAsync(15_000);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(c.status.hint?.key).not.toBe('serverError');
+      harness.engine.started();
+      // Stuck again, and the server's 504 arrives: the next step at once, no 15 s wait (S9c D19).
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.emit({ type: 'loadRetry', status: 504 });
       await settle();
       expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({
         preferences: expect.objectContaining({ maxHeight: 720 }),

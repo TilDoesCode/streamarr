@@ -23,7 +23,8 @@ export type NoticeKind =
   | 'subtitleFailed'
   | 'subtitleNotDeliverable'
   | 'audioRestarted'
-  | 'otherTab';
+  | 'otherTab'
+  | 'otherAudioTrack';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {

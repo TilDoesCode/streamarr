@@ -8,6 +8,7 @@ export class StartSeek {
   private attempts = 0;
   private eventsSinceApply = 0;
   private done: boolean;
+  private gaveUp = false;
 
   constructor(
     readonly target: number,
@@ -24,6 +25,11 @@ export class StartSeek {
 
   get applied(): boolean {
     return this.attempts > 0;
+  }
+
+  /** The seek was retried and still did not land: the item sits elsewhere (often 0:00). */
+  get failed(): boolean {
+    return this.gaveUp;
   }
 
   /** The media is ready to seek: applies the start the first time. */
@@ -45,6 +51,7 @@ export class StartSeek {
     if (this.eventsSinceApply < SETTLE_EVENTS) return;
     if (this.attempts >= this.maxAttempts) {
       this.done = true;
+      this.gaveUp = true;
       return;
     }
     this.attempts += 1;

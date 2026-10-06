@@ -52,6 +52,8 @@ const PARSER = /ParserException|PARSING_|-12642|-11850|unexpected format|content
 const ENCRYPTED = /keySystem|KEY_SYSTEM|DrmSession|DRM|-42\d{3}|encrypted|keyLoad/i;
 const RECLAIMED = /reclaim|-11819\b/i;
 const CLEARTEXT = /CLEARTEXT/i;
+/** libVLC's input dialog "VLC is unable to open the MRL 'http…'": the source itself did not open (S9c). */
+const VLC_CANNOT_OPEN = /unable to open the MRL '?https?:/i;
 const INTERCEPTED_MANIFEST = /PARSING_MANIFEST_\w*.*(?:does not start with the #EXTM3U|<html)/i;
 
 /** AVFoundation's codes for an HTTP refusal: -12938 / NSURL -1100 = 404, -12660 / NSURL -1102 = 403. */
@@ -90,6 +92,10 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
     return { category: 'T7', code: 'media_damaged', detail: reason };
   const hls = hlsReason(reason, status);
   if (hls) return hls;
+  // libVLC cannot open the http(s) source at all (an HTTP 404/403 on a direct URL): the server lost it (T2), not a
+  // certificate, login or component question (S9c VLC 404); a named status still decides.
+  if (VLC_CANNOT_OPEN.test(reason) && !TLS.test(reason))
+    return mediaStatus(Number(/\b(40[134]|410|5\d\d)\b/.exec(reason)?.[1] ?? 404), reason);
   // libVLC asked a question nobody answers: a certificate one is TLS, the rest "VLC cannot play this" (D27).
   if (reason.startsWith('vlc_dialog'))
     return TLS.test(reason)

@@ -50,3 +50,18 @@ export function subtitleAfterAudio(
     forced.find((track) => !languageKey(track.language));
   return match?.index ?? null;
 }
+
+type ServerSubtitle = Track & { selected?: boolean; deliveredAs?: string | null };
+
+/** The server subtitle after switching to an audio track in `language`; `burnedIn` needs the server's `/switch`. */
+export function subtitleForAudio(
+  playback: { mediaInfo?: { subtitleTracks?: ServerSubtitle[] | null } | null } | null,
+  current: number | null,
+  language: string | null | undefined,
+  preferences: { subtitleMode?: string | null }
+): { index: number | null; changes: boolean; burnedIn: boolean } {
+  const list = playback?.mediaInfo?.subtitleTracks ?? [];
+  const index = subtitleAfterAudio(list, current, language, preferences.subtitleMode);
+  const burnedIn = list.some((item) => item.selected && item.deliveredAs === 'burnedIn');
+  return { index, changes: index !== current, burnedIn };
+}

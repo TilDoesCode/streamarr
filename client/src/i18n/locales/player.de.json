@@ -110,6 +110,7 @@
     "noSubtitleLanguage": "Diese Version hat keine Untertitel auf {language}.",
     "noAudioLanguage": "Diese Version hat keinen Ton auf {language}.",
     "audioFallback": "Ton in Stereo umgewandelt, damit es weitergeht.",
+    "otherAudioTrack": "Diese Tonspur bleibt stumm. Zu {language} gewechselt, damit es weitergeht.",
     "subtitleFailed": "Untertitel „{label}“ konnten nicht geladen werden und sind aus. {retry, select, later {Sie werden in einer Minute erneut versucht.} other {Sie bleiben für dieses Video aus; du kannst sie wieder einschalten.}}",
     "subtitlesOn": "Untertitel wieder einschalten",
     "subtitleNotDeliverable": "Untertitel „{label}“ können auf diesem Gerät nicht angezeigt werden. Wähle andere Untertitel.",

@@ -201,6 +201,25 @@ describe('start cover (S9b: the new item\'s frame 0 must not show under "Resumin
     engine.release();
   });
 
+  it('S9c seg_corrupt: a start seek that never lands (the clock stays at 0:00) keeps the cover: no frozen 0:00 frame', async () => {
+    const engine = engineWith(48);
+    mockPlayer.resolveReplace();
+    await flush();
+    mockPlayer.ready();
+    // AVPlayer cannot read the segment at 0:48: the item sits at 0:00 through both seek tries.
+    for (let tick = 0; tick < 12; tick++)
+      mockPlayer.fire('timeUpdate', { currentTime: 0, bufferedPosition: 0 });
+    expect(mockPlayer.calls.filter((call) => call.startsWith('seek'))).toEqual([
+      'seek 48',
+      'seek 48',
+    ]);
+    expect(covered(engine)).toBe(true);
+    // A seek of the viewer (or a reload) takes over: the cover goes with it.
+    engine.seek(60);
+    expect(covered(engine)).toBe(false);
+    engine.release();
+  });
+
   it('never covers a start from the beginning', () => {
     const engine = engineWith(0);
     expect(covered(engine)).toBe(false);

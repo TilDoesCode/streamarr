@@ -35,6 +35,8 @@ const language = (code: string | null | undefined) =>
 export type ViewerLanguages = {
   audio?: string;
   subtitle?: string;
+  /** A forced subtitle shown now: not a preference (it follows the audio), but named when the new version lacks it. */
+  forced?: string;
   preferences: Partial<PlaybackPreferences>;
 };
 
@@ -48,9 +50,11 @@ export function viewerLanguages(
   const audio = language(info?.audioTracks?.find((track) => track.index === audioIndex)?.language);
   const subtitle = info?.subtitleTracks?.find((track) => track.index === subtitleIndex);
   const full = subtitle && !subtitle.forced ? language(subtitle.language) : undefined;
+  const forced = subtitle?.forced ? language(subtitle.language) : undefined;
   return {
     audio,
     subtitle: full,
+    ...(forced ? { forced } : {}),
     preferences: {
       ...(audio ? { audioLanguage: audio } : {}),
       ...(full ? { subtitleLanguage: full, subtitleMode: 'always' } : {}),
@@ -73,5 +77,9 @@ export function missingLanguages(
   return {
     ...(wanted.audio && !has(info.audioTracks, wanted.audio) ? { noAudio: wanted.audio } : {}),
     ...(wanted.subtitle && !has(full, wanted.subtitle) ? { noSubtitle: wanted.subtitle } : {}),
+    // A forced subtitle (signs, foreign lines) the new version has in no form (S9c: dropped without a word).
+    ...(wanted.forced && !has(info.subtitleTracks, wanted.forced)
+      ? { noSubtitle: wanted.forced }
+      : {}),
   };
 }

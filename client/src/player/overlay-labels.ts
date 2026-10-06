@@ -254,6 +254,8 @@ export function noticeText(
       ].join(' ');
     case 'audioFallback':
       return pt('notice.audioFallback');
+    case 'otherAudioTrack':
+      return pt('notice.otherAudioTrack', { language: languageOf(params?.language ?? '') });
     case 'audioRestarted':
       return pt('notice.audioRestarted');
     case 'otherTab':
