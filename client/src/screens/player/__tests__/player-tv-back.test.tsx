@@ -58,3 +58,32 @@ describe('player Back on Apple TV (I4 review M9, M10, item 9)', () => {
     expect(lonely.replace).toHaveBeenCalledWith('/');
   });
 });
+
+describe('leaving a player that was opened by a deep link (S9b2 end card)', () => {
+  const router = (canGoBack: boolean) => ({
+    canGoBack: () => canGoBack,
+    back: jest.fn(),
+    replace: jest.fn(),
+  });
+  const detail = { pathname: '/movie/[id]', params: { id: '45745' } } as never;
+
+  it('with no screen below, Close and "Back to details" open the title\'s detail instead of doing nothing', () => {
+    const lone = router(true);
+    leavePlayer(lone, { detail, opener: undefined });
+    expect(lone.back).not.toHaveBeenCalled();
+    expect(lone.replace).toHaveBeenCalledWith(detail);
+  });
+
+  it('a screen below (the detail or a list) is where Close goes back to', () => {
+    const below = router(true);
+    leavePlayer(below, { detail, opener: { name: 'movie/[id]', params: { id: '45745' } } });
+    expect(below.back).toHaveBeenCalled();
+    expect(below.replace).not.toHaveBeenCalled();
+  });
+
+  it('nothing to go back to and no detail: home', () => {
+    const nothing = router(false);
+    leavePlayer(nothing, { detail: undefined, opener: undefined });
+    expect(nothing.replace).toHaveBeenCalledWith('/');
+  });
+});

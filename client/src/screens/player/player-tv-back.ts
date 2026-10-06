@@ -1,14 +1,22 @@
+import type { Href } from 'expo-router';
 import { useEffect } from 'react';
 
 import { useBackHandler, useMenuClaim } from '@/components/focus';
+import type { RouteLeaf } from '@/navigation/routes';
 import { expireReturnFocus, requestReturnFocus } from '@/navigation/screen-focus';
 
-type PlayerRouter = { canGoBack(): boolean; back(): void; replace(href: '/'): void };
+type PlayerRouter = { canGoBack(): boolean; back(): void; replace(href: Href): void };
 
 /** Leaves the player; on Apple TV the screen underneath takes its focus back (JS pops skip UIKit's restore). */
-export function leavePlayer(router: PlayerRouter): void {
+export function leavePlayer(
+  router: PlayerRouter,
+  { detail, opener }: { detail?: Href; opener?: RouteLeaf } = { opener: { name: '' } }
+): void {
   requestReturnFocus();
-  if (router.canGoBack()) router.back();
+  // Opened by a deep link, nothing below to go back to: the title's detail (S9b2 end card).
+  if (opener && router.canGoBack()) router.back();
+  else if (detail) router.replace(detail);
+  else if (router.canGoBack()) router.back();
   else router.replace('/');
 }
 

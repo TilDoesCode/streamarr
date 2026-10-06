@@ -106,6 +106,8 @@
       "media_damaged": "The video data is damaged at {time}."
     },
     "otherVersion": "Switched to another version to keep playing.",
+    "noSubtitleLanguage": "This version has no {language} subtitles.",
+    "noAudioLanguage": "This version has no {language} audio.",
     "audioFallback": "Sound converted to stereo to keep playing.",
     "subtitleFailed": "Subtitles “{label}” couldn’t be loaded and are off. {retry, select, later {They’ll be tried again in a minute.} other {Choose other subtitles.}}",
     "subtitleNotDeliverable": "Subtitles “{label}” can’t be shown on this device. Choose other subtitles.",

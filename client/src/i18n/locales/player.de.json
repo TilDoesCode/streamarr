@@ -106,6 +106,8 @@
       "media_damaged": "Die Videodaten sind bei {time} beschädigt."
     },
     "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht.",
+    "noSubtitleLanguage": "Diese Version hat keine Untertitel auf {language}.",
+    "noAudioLanguage": "Diese Version hat keinen Ton auf {language}.",
     "audioFallback": "Ton in Stereo umgewandelt, damit es weitergeht.",
     "subtitleFailed": "Untertitel „{label}“ konnten nicht geladen werden und sind aus. {retry, select, later {Sie werden in einer Minute erneut versucht.} other {Wähle andere Untertitel.}}",
     "subtitleNotDeliverable": "Untertitel „{label}“ können auf diesem Gerät nicht angezeigt werden. Wähle andere Untertitel.",

@@ -22,6 +22,8 @@ export type Attempt = {
   at: number;
   /** Playback revision the step ran on (a reload is allowed once per revision). */
   revision: number;
+  /** The playback the step replaced or reloaded (a new start per lost playback, S9b2 B25). */
+  playbackId?: string;
 };
 
 export type LadderContext = {
@@ -34,6 +36,7 @@ export type LadderContext = {
   canLowerQuality: boolean;
   params?: Readonly<Record<string, string>>;
   revision: number;
+  playbackId?: string;
   /** The server already converts the audio to AAC stereo for this playback (B13 `audioFallback`). */
   audioFallback: boolean;
   /** The same failure keeps coming back (incidents within 15 min): skip the reload, another way to play. */
@@ -95,6 +98,8 @@ export class Incident {
   }
 }
 
+/** New starts for lost playbacks in one incident: a server that loses every one ends on the card. */
+const MAX_LOST_STARTS = 3;
 const seconds = (value: number) => value * 1000;
 /** Mid-play the same source is reloaded; a failed start is started again. */
 const retry = (context: LadderContext): LadderStep => (context.attached ? 'R' : 'N');
@@ -133,10 +138,18 @@ export function nextStep(
       if (tries === T1_BACKOFF_S.length) return { step: 'N', delayMs: 0, hint: 'reconnecting' };
       return { step: 'G', delayMs: 0 };
     }
-    case 'T2':
-      return incident.count(['N'], 'T2') < 1
+    case 'T2': {
+      // One new start per playback the server lost; a second loss of the NEW playback starts again (S9b2 B25).
+      const lost = incident.attempts.filter(
+        (attempt) =>
+          attempt.step === 'N' &&
+          attempt.category === 'T2' &&
+          attempt.playbackId === context.playbackId
+      );
+      return lost.length < 1 && incident.count(['N'], 'T2') < MAX_LOST_STARTS
         ? { step: 'N', delayMs: 0, hint: 'restarting' }
         : { step: 'G', delayMs: 0 };
+    }
     case 'T3':
       return { step: 'G', delayMs: 0 };
     case 'T4': {

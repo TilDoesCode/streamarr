@@ -1,4 +1,5 @@
-import { predictedMethod, type PredictedMethod } from '@/browse/version-format';
+import { languageName, predictedMethod, type PredictedMethod } from '@/browse/version-format';
+import i18n from '@/i18n';
 import type { Version } from '@/browse/queries';
 import { categoryOf } from '@/api/error-categories';
 import type { ErrorLike } from '@/api/error-text';
@@ -219,6 +220,9 @@ export function stepDownReasonKey(
 type NoticeLike = { kind: string; params?: Readonly<Record<string, string>> };
 
 /** The notice line: what changed so playback goes on, in the viewer's words (never a raw code). */
+/** A language code in the viewer's language ("de" → "German" / "Deutsch"). */
+const languageOf = (code: string) => languageName(code, i18n.language);
+
 export function noticeText(
   notice: NoticeLike,
   pt: (key: PlayerKey, options?: Record<string, unknown>) => string,
@@ -234,7 +238,15 @@ export function noticeText(
         .flatMap((key) => (key ? [pt(key, { time: params?.at ?? '' })] : []))
         .join(' ');
     case 'otherVersion':
-      return pt('notice.otherVersion');
+      return [
+        pt('notice.otherVersion'),
+        ...(params?.noAudio
+          ? [pt('notice.noAudioLanguage', { language: languageOf(params.noAudio) })]
+          : []),
+        ...(params?.noSubtitle
+          ? [pt('notice.noSubtitleLanguage', { language: languageOf(params.noSubtitle) })]
+          : []),
+      ].join(' ');
     case 'audioFallback':
       return pt('notice.audioFallback');
     case 'audioRestarted':

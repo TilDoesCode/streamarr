@@ -5,7 +5,7 @@ import type { EngineEvent } from '@/player/engines';
 import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 import { classify } from '@/player/recovery/classify';
 import { VlcEngine } from '@/player/engines/vlc-engine';
-import { stepDownReasonKey } from '@/player/overlay-labels';
+import { noticeText, stepDownReasonKey } from '@/player/overlay-labels';
 import { Incident, nextStep } from '@/player/recovery/ladder';
 import { AUDIO_SWITCH_TIMEOUT_MS } from '@/player/controller';
 import i18n from '@/i18n';
@@ -19,7 +19,15 @@ import {
 import { row } from '@/../jest/player/matrix';
 import type { ControllerOptions, PlaybackController } from '@/player/controller';
 import type { Playback } from '@/player/playback-api';
-import { fakeNetwork, playFor, playing, playOn, settle, TICKS } from '@/../jest/player/play';
+import {
+  fakeNetwork,
+  playFor,
+  playing,
+  playOn,
+  settle,
+  starts,
+  TICKS,
+} from '@/../jest/player/play';
 import { expoPlaying } from '@/../jest/player/native';
 import { vlcPlaying } from '@/../jest/player/native-vlc';
 import type { EngineHealth } from '@/player/health/types';
@@ -2109,6 +2117,92 @@ describe('matrix D — live re-audit S9a2: hls.js cancelling its own requests (S
       internals.onTime(42.4);
       expect(internals.props.get().cover).toBe(false);
       engine.release();
+    }
+  );
+});
+
+describe("matrix D — live native audit S9b turn 2: another version keeps the viewer's languages (S4l)", () => {
+  const german = {
+    method: 'remux',
+    version: { releaseId: 'r1' },
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [{ index: 1, language: 'de', deliveredAs: 'original', selected: true }],
+      subtitleTracks: [
+        { index: 3, language: 'de', forced: false, deliveredAs: 'webvtt', selected: true },
+      ],
+    },
+  } as never;
+  const other = (subtitles: { index: number; language: string; selected: boolean }[]) =>
+    reply.ok(
+      harness.server.playback({
+        playbackId: 'v2',
+        version: { releaseId: 'r2' },
+        mediaInfo: {
+          durationTicks: 600 * TICKS,
+          audioTracks: [{ index: 1, language: 'de', deliveredAs: 'original', selected: true }],
+          subtitleTracks: subtitles.map((track) => ({ ...track, deliveredAs: 'webvtt' })),
+        },
+      } as never)
+    );
+
+  async function toOtherVersion(answer: ReturnType<typeof other>) {
+    jest.useFakeTimers();
+    const c = await playing({}, german, 44);
+    harness.engine.emit({
+      type: 'tracks',
+      tracks: {
+        audio: [{ id: 'a0', label: 'de', language: 'de', selected: true }],
+        subtitles: [{ id: 's0', label: 'de', language: 'de', selected: true }],
+      },
+    });
+    harness.server.answer(
+      'versions',
+      reply.ok({ versions: [{ releaseId: 'r2', rank: 1, predictedMethod: 'remux' }] })
+    );
+    harness.server.answer('start', answer);
+    harness.engine.fail('keySystemError:keySystemNoKeys');
+    await settle();
+    harness.engine.started();
+    harness.engine.fail('keySystemError:keySystemNoKeys');
+    await settle();
+    return c;
+  }
+
+  row(
+    'D36',
+    "step V asks the other version for the viewer's audio and subtitle language (S9b2 D36)",
+    async () => {
+      const c = await toOtherVersion(other([{ index: 7, language: 'de', selected: true }]));
+      expect(starts().at(-1)?.releaseId).toBe('r2');
+      expect(starts().at(-1)?.body.preferences).toMatchObject({
+        audioLanguage: 'de',
+        subtitleLanguage: 'de',
+        subtitleMode: 'always',
+      });
+      expect(c.notice).toEqual(expect.objectContaining({ kind: 'otherVersion', params: {} }));
+      await c.stop();
+    }
+  );
+
+  row(
+    'D36',
+    'an other version without the viewer\'s subtitle language says so: "This version has no German subtitles." (S9b2 D36)',
+    async () => {
+      await i18n.changeLanguage('en');
+      const c = await toOtherVersion(other([{ index: 7, language: 'en', selected: false }]));
+      expect(c.notice).toMatchObject({ kind: 'otherVersion', params: { noSubtitle: 'de' } });
+      const pt = (key: string, options?: Record<string, unknown>) =>
+        i18n.t(key as never, { ...options, ns: 'player' } as never) as unknown as string;
+      expect(
+        noticeText(
+          c.notice!,
+          pt as never,
+          () => '',
+          () => ''
+        )
+      ).toBe('Switched to another version to keep playing. This version has no German subtitles.');
+      await c.stop();
     }
   );
 });

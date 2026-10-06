@@ -269,6 +269,7 @@ export class RecoveryRunner {
       position: recovery.position,
       at: Date.now(),
       revision: this.host.situation().revision,
+      playbackId: this.host.situation().playbackId,
     };
     const incident = this.incident;
     incident?.record(attempt);

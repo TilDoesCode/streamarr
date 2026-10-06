@@ -26,6 +26,9 @@ export function stallFailure(
   return { category: 'T5', code: afterSeek ? 'seek_stalled' : 'playback_stalled' };
 }
 
+/** A media request answered 404/410: the server no longer knows the playback (T2). */
+export const lostPlayback = (status: number | undefined) => status === 404 || status === 410;
+
 /** Start states the client bounds with a card; a queue or a release search waits as long as the server lets it (review R1). */
 const HARD_STATES = new Set(['planning', 'fallback', 'starting']);
 

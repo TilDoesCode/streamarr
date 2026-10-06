@@ -495,21 +495,24 @@ describe('matrix B — code review S1-S4 (S4b)', () => {
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, {}, 100);
-      harness.engine.fail(exo(404));
-      await settle();
-      harness.engine.started();
-      await playOn(130);
-      harness.engine.fail(exo(404));
-      await settle();
-      harness.engine.started();
+      // Four lost playbacks two minutes apart: four separate incidents, each with its new start.
+      for (let loss = 0; loss < 4; loss++) {
+        harness.engine.fail(exo(404));
+        await settle();
+        harness.engine.started();
+        await playOn(130);
+      }
       expect(c.phase).toBe('playing');
-      expect(starts()).toHaveLength(3);
-      await playOn(30);
-      harness.engine.fail(exo(404));
-      await settle();
-      // Within 2 minutes it is the same incident, and session loss gets one new start per incident.
+      expect(starts()).toHaveLength(5);
+      // Losses within two minutes are one incident: at most three new starts, then the card.
+      for (let loss = 0; loss < 5 && c.phase !== 'failed'; loss++) {
+        harness.engine.fail(exo(404));
+        await settle();
+        harness.engine.started();
+        await playOn(20);
+      }
       expect(c.phase).toBe('failed');
-      expect(starts()).toHaveLength(3);
+      expect(starts()).toHaveLength(8);
     }
   );
 
@@ -1501,6 +1504,50 @@ describe('matrix B — code review native: switch back (S4j)', () => {
       expect(c.notice).toMatchObject({ kind: 'switchFailed' });
       expect(c.preferences.maxHeight).toBeUndefined();
       await c.stop();
+    }
+  );
+});
+
+describe('matrix B — live native audit S9b turn 2: the server loses the playback twice (S4l)', () => {
+  row(
+    'B25',
+    'a second server loss 95 s after the first, on the NEW playback, starts anew again; a /switch that answers playback_not_found is a loss, never the card (S9b2 B25)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'transcode' } as never, 30);
+      harness.server.answer(
+        'start',
+        reply.ok(harness.server.playback({ playbackId: 'p2', method: 'transcode' } as never))
+      );
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 410');
+      await settle();
+      expect(starts()).toHaveLength(2);
+      harness.engine.started();
+      harness.engine.time(36);
+      await playOn(95);
+      // The new playback is lost too; this engine reports nothing but a stall (old AVPlayer builds).
+      harness.server.answer('switch', reply.error(404, 'playback_not_found'));
+      harness.server.answer('start', reply.ok(harness.server.playback({ playbackId: 'p3' })));
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(20_000);
+      await settle();
+      expect(c.failure).toBeNull();
+      expect(starts()).toHaveLength(3);
+      await c.stop();
+    }
+  );
+
+  row(
+    'B25',
+    'the same playback lost twice is the card: one new start per lost playback',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 30);
+      harness.server.answer('start', reply.error(404, 'playback_not_found'));
+      harness.engine.fail('Source error: InvalidResponseCodeException: Response code: 410');
+      await settle();
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(c.failure).toMatchObject({ category: 'T2' });
     }
   );
 });

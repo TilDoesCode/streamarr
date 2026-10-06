@@ -96,12 +96,16 @@ export function PlayScreen() {
   const leaving = useRef(false);
   const close = () => {
     leaving.current = true;
-    leavePlayer(router);
+    leavePlayer(router, {
+      detail: detailHref(workId),
+      opener: openerLeaf(navigation.getState()),
+    });
   };
   const backToDetails = () => {
     const href = detailHref(workId);
-    if (!href || isDetailOf(openerLeaf(navigation.getState()), workId)) close();
-    else router.replace(href);
+    if (!href || isDetailOf(openerLeaf(navigation.getState()), workId)) return close();
+    leaving.current = true;
+    router.replace(href);
   };
 
   useSyncExternalStore(

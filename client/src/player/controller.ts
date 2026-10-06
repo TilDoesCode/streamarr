@@ -1,6 +1,6 @@
 import type { DeviceProfile } from '@modules/media-caps';
 import NetInfo from '@react-native-community/netinfo';
-import { AppState, type NativeEventSubscription } from 'react-native';
+import { AppState, Platform, type NativeEventSubscription } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import { toAppError, type AppError, type ErrorParams } from '@/api/errors';
@@ -34,6 +34,8 @@ import { ProgressQueue, type ProgressAnswer } from '@/player/progress-queue';
 import { followServerTracks } from '@/player/server-tracks';
 import { SubtitleRetry } from '@/player/subtitle-retry';
 import { SystemPlayback } from '@/player/system-playback';
+import { missingLanguages, viewerLanguages } from '@/player/version-languages';
+import { lostPlayback } from '@/player/recovery/stall';
 import { LOCAL_SUBTITLES, localTrackId } from '@/player/local-tracks';
 import { apiFailure } from '@/player/recovery/api-failure';
 import { classify, type Classified, type ErrorCategory } from '@/player/recovery/classify';
@@ -260,6 +262,8 @@ export class PlaybackController {
   /** The current source showed a picture (first frame or a moving clock). */
   private pictured = false;
   private loadingSince = 0;
+  /** The viewer turned the subtitles off (a forced one the engine shows by itself stays off). */
+  private subtitlesOff = false;
   /** The buffer end of the current source and when it last grew (a slow conversion still delivers, S9b C08). */
   private loadProgress = { buffered: 0, at: 0 };
   private lastTimeAt = 0;
@@ -292,6 +296,7 @@ export class PlaybackController {
         online: !this.offline,
         canLowerQuality: this.lowerHeight() !== null,
         revision: this.playback?.revision ?? 0,
+        playbackId: this.playback?.playbackId ?? undefined,
         audioFallback: !!this.playback?.audioFallback,
       }),
       resumePosition: () => this.resumePosition,
@@ -423,7 +428,8 @@ export class PlaybackController {
     position: number,
     tracks: StepTracks | null,
     releaseId: string | null | undefined,
-    base: Playback | null = this.playback
+    base: Playback | null = this.playback,
+    languages: Partial<PlaybackPreferences> = {}
   ): StartRequest {
     const single = base
       ? (base.mediaInfo?.audioTracks?.length ?? 2) <= 1
@@ -439,7 +445,7 @@ export class PlaybackController {
         : {}),
       startPositionTicks: position ? Math.round(position * TICKS_PER_SECOND) : undefined,
       device: this.options.profile,
-      preferences: this.requestPreferences(single),
+      preferences: { ...this.requestPreferences(single), ...languages },
     };
   }
 
@@ -691,11 +697,21 @@ export class PlaybackController {
     // The server's pick must not be re-applied over the failed track right after a load.
     this.serverTracksOff?.();
     this.engine?.setSubtitleTrack(null);
+    // AVPlayer waits for the subtitle segment: without it the stall gets a fresh budget (S9b2 C22).
+    if (this.stallSince) this.stallSince = Date.now();
     this.showNotice('subtitleFailed', {
       index: `${failed.index}`,
       code,
       retry: failed.retryLater ? 'later' : '',
     });
+  }
+
+  /** AVPlayer stalls the whole HLS playback on a broken subtitle rendition: subtitles off is the first try. */
+  private subtitleStalls(): boolean {
+    const engine = this.engine;
+    if (engine?.kind !== 'expo-video' || Platform.OS !== 'ios') return false;
+    const { state, tracks } = engine.getSnapshot();
+    return state === 'buffering' && tracks.subtitles.some((track) => track.selected);
   }
 
   /** A selected subtitle the server cannot deliver to this device is said at once, with VLC when it could (C24). */
@@ -724,14 +740,20 @@ export class PlaybackController {
     if (!releaseId || this.closed) return false;
     this.triedReleases.add(releaseId);
     this.runner.choose(releaseId);
-    // Track indexes belong to a release: the new one picks by the viewer's language preferences.
-    await this.newStart({ ...context, tracks: null }, releaseId);
-    if (this.playback?.version?.releaseId === releaseId) this.showNotice('otherVersion');
+    // Track indexes belong to a release: the new one picks by the viewer's languages (S9b2 D36).
+    const wanted = viewerLanguages(this.playback, this.currentAudio(), this.currentSubtitle());
+    await this.newStart({ ...context, tracks: null }, releaseId, wanted.preferences);
+    if (this.playback?.version?.releaseId === releaseId)
+      this.showNotice('otherVersion', missingLanguages(wanted, this.playback));
     return true;
   }
 
   /** A new playback at the position with the same release, tracks and preferences (ladder step N, V). */
-  private async newStart(context: StepContext, releaseId?: string): Promise<void> {
+  private async newStart(
+    context: StepContext,
+    releaseId?: string,
+    languages?: Partial<PlaybackPreferences>
+  ): Promise<void> {
     const { position, tracks, signal } = context;
     if (!this.engine) {
       this.states = [];
@@ -747,7 +769,9 @@ export class PlaybackController {
       this.startRequest(
         position,
         tracks,
-        releaseId ?? previous?.version?.releaseId ?? this.options.releaseId
+        releaseId ?? previous?.version?.releaseId ?? this.options.releaseId,
+        previous,
+        languages
       ),
       signal
     );
@@ -842,6 +866,16 @@ export class PlaybackController {
         else if (event.type === 'subtitleError') this.onSubtitleError(event.code);
         else if (event.type === 'loadRetry') {
           this.loadRetry = { status: event.status ?? 0, audio: !!event.audio, at: Date.now() };
+          // A video request the server answers 404/410 means it lost the playback; AVPlayer only stalls on it (S9b2 C10).
+          if (!event.audio && lostPlayback(event.status) && !this.runner.current)
+            this.mediaFailure(
+              classify({
+                kind: 'engine',
+                engine: this.engine?.kind ?? 'web',
+                reason: 'networkError:fragLoadError',
+                status: event.status,
+              })
+            );
           this.changed();
         } else if (event.type === 'audioError') {
           if (this.pendingAudio?.engineId) this.settleAudio(false, event.code);
@@ -1217,6 +1251,8 @@ export class PlaybackController {
           : { category: 'T5', code: 'segment_timeout' }
       );
     } else if (rule === 'finish') this.finish();
+    else if (rule === 'stallLadder' && this.subtitleStalls())
+      this.onSubtitleError('subtitle_timeout');
     else if (rule === 'stallLadder') {
       this.stallSince = 0;
       this.mediaFailure(
@@ -1545,6 +1581,9 @@ export class PlaybackController {
     const local = list.filter((track) => LOCAL_SUBTITLES.has(track.deliveredAs ?? ''));
     const engineTracks = this.engine?.getSnapshot().tracks.subtitles ?? [];
     const at = engineTracks.findIndex((track) => track.selected);
+    // AVPlayer shows a forced rendition by itself and reports none selected: it stays the viewer's (S9b2).
+    const forced = list.find((track) => track.selected && track.forced);
+    if (at < 0 && forced && !this.subtitlesOff) return forced.index;
     if (engineTracks.length >= local.length && local.length) return local[at]?.index ?? null;
     return list.find((track) => track.selected)?.index ?? null;
   }
@@ -1742,6 +1781,7 @@ export class PlaybackController {
     this.settle();
     this.subtitleRetry.clear();
     this.keptSubtitle = null;
+    this.subtitlesOff = !track;
     this.serverTracksOff?.();
     const burnedIn = this.playback?.mediaInfo?.subtitleTracks?.some(
       (item) => item.selected && item.deliveredAs === 'burnedIn'
