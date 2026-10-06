@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { CODE_CATEGORY, ERROR_CATEGORIES } from '@/api/error-categories';
 import { CLIENT_ERROR_CODES, isKnownErrorCode, VIEWER_ERROR_CODES } from '@/api/error-codes';
 import { describeError } from '@/api/error-text';
 import {
@@ -119,11 +120,24 @@ describe('localized error text', () => {
     }
   });
 
-  it('unknown codes fall back to the generic text', async () => {
+  it('unknown codes get their category text, never the generic one (F10 S1, matrix B12)', async () => {
     await i18n.changeLanguage('en');
-    expect(describeError(i18n.t, { code: 'brand_new_server_code' })).toEqual(
-      describeError(i18n.t, { code: 'unknown' })
-    );
+    const generic = describeError(i18n.t, { code: 'unknown' });
+    const category = (key: string) => ({
+      title: i18n.t(`errors.categories.${key}.title` as 'errors.categories.T1.title'),
+      message: i18n.t(`errors.categories.${key}.message` as 'errors.categories.T1.message'),
+    });
+    expect(describeError(i18n.t, { code: 'brand_new_code', status: 503 })).toEqual(category('T4'));
+    expect(describeError(i18n.t, { code: 'brand_new_code' })).toEqual(category('T11'));
+    for (const lng of ['en', 'de']) {
+      await i18n.changeLanguage(lng);
+      for (const key of ERROR_CATEGORIES) {
+        expect(category(key).title).not.toMatch(/errors\./);
+        expect(category(key)).not.toEqual(describeError(i18n.t, { code: 'unknown' }));
+      }
+    }
+    await i18n.changeLanguage('en');
+    expect(generic.title).toBe('Something went wrong');
   });
 
   it('uses the age gate reason and the device of a concurrent stream', async () => {
@@ -250,5 +264,37 @@ describe('documented viewer error codes', () => {
   it('every documented code is known and translated', () => {
     const missing = documentedCodes().filter((code) => !isKnownErrorCode(code));
     expect(missing).toEqual([]);
+  });
+});
+
+describe('documented media delivery codes (F10 S1 drift test)', () => {
+  // docs/api.md §5 (stream) and §11 (transcoding): "`NNN code` / `code` / …" chains and the 422 planning list.
+  function mediaCodes(): string[] {
+    const api = readFileSync(join(DOCS, 'api.md'), 'utf8');
+    const section = (from: string, to: string) => api.slice(api.indexOf(from), api.indexOf(to));
+    const text = `${section('## 5.', '## 6.')}\n${section('## 11.', '## 12.')}`;
+    const chains = [...text.matchAll(/`\d{3} [a-z_]+`(?:\s*\/\s*`[a-z_]+`)*/g)].flatMap((chain) =>
+      [...chain[0].matchAll(/`(?:\d{3} )?([a-z_]+)`/g)].map((match) => match[1]!)
+    );
+    const planning = /`422` planning errors \(([^)]*)\)/.exec(text)?.[1] ?? '';
+    return [...new Set([...chains, ...[...planning.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]!)])];
+  }
+
+  it('finds the documented codes', () => {
+    expect(mediaCodes()).toEqual(
+      expect.arrayContaining([
+        'unknown_stream',
+        'unknown_transcode',
+        'end_of_stream',
+        'no_video_stream',
+      ])
+    );
+  });
+
+  it('every documented media code is known, translated and has a category', () => {
+    const codes = mediaCodes();
+    expect(codes.filter((code) => !isKnownErrorCode(code))).toEqual([]);
+    for (const code of codes)
+      expect(CODE_CATEGORY[code as keyof typeof CODE_CATEGORY]).toBeDefined();
   });
 });

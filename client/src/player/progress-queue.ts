@@ -1,20 +1,34 @@
 import { createMMKV } from 'react-native-mmkv';
 
 import { unwrap, type ApiClient } from '@/api/client';
-import { isAppError } from '@/api/errors';
+import { isAppError, type AppError } from '@/api/errors';
 import type { components } from '@/api/schema';
+import { TICKS_PER_SECOND } from '@/player/playback-api';
+import { deliveryIssuesOf, type DeliveryIssue } from '@/player/recovery/delivery';
 
 export type ProgressReport = components['schemas']['WatchProgressRequest'];
+/** What the server says about the reported playback (B13): false = it no longer exists. */
+export type ProgressAnswer = {
+  report: ProgressReport;
+  playbackAlive: boolean | null;
+  /** B15 (optional): what the server saw fail while delivering (recovery/delivery.ts). */
+  deliveryIssues?: DeliveryIssue[];
+  /** When this request was sent: only a request sent after a media break proves the server answers (S4n). */
+  sentAt?: number;
+};
 type Entry = { accountId: string; report: ProgressReport; at: number };
 
 const storage = createMMKV({ id: 'streamarr.progress-queue' });
 const KEY = 'pending';
 const MAX_ENTRIES = 50;
 const RETRY_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
+/** Reports of a signed-out account wait this long for its next sign-in (B23). */
+const MAX_AGE_MS = 24 * 3_600_000;
 
 function load(): Entry[] {
   try {
-    return JSON.parse(storage.getString(KEY) ?? '[]') as Entry[];
+    const entries = JSON.parse(storage.getString(KEY) ?? '[]') as Entry[];
+    return entries.filter((entry) => Date.now() - entry.at < MAX_AGE_MS);
   } catch {
     return [];
   }
@@ -24,13 +38,32 @@ function save(entries: Entry[]): void {
   storage.set(KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
 }
 
-/** Server rejections (4xx) are final; transport failures, 429 and 5xx are retried later. */
-function retriable(error: unknown): boolean {
-  return !isAppError(error) || error.isTransient;
+/** Transport failures, 429 and 5xx are retried later; 401/403 wait for the next sign-in; other 4xx are final. */
+function outcome(error: unknown): 'retry' | 'keep' | 'drop' {
+  if (!isAppError(error) || error.isTransient) return 'retry';
+  return error.status === 401 || error.status === 403 ? 'keep' : 'drop';
 }
 
-async function send(client: ApiClient, report: ProgressReport): Promise<void> {
-  await unwrap(client.POST('/api/v1/viewer/watch/progress', { body: report }));
+async function send(client: ApiClient, report: ProgressReport): Promise<ProgressAnswer> {
+  const sentAt = Date.now();
+  const call = client.POST('/api/v1/viewer/watch/progress', { body: report });
+  const answer = await unwrap(call);
+  const deliveryIssues = deliveryIssuesOf(answer, serverTimeOf((await call).response));
+  return {
+    report,
+    playbackAlive: answer?.playbackAlive ?? null,
+    ...(deliveryIssues.length ? { deliveryIssues } : {}),
+    sentAt,
+  };
+}
+
+/** The server's clock from the answer's `Date` header (issue ages are measured on it, never on this device's). */
+export function serverTimeOf(
+  response: { headers?: { get(name: string): string | null } } | undefined
+) {
+  const date = response?.headers?.get('Date');
+  const at = date ? Date.parse(date) : NaN;
+  return Number.isFinite(at) ? at : undefined;
 }
 
 /** Progress reports with an offline queue: failed sends are kept (per account, persisted) and retried with backoff. */
@@ -38,6 +71,11 @@ export class ProgressQueue {
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private flushing: Promise<void> | null = null;
+
+  /** Every answer the server gave, also for queued reports sent later. */
+  onAnswer: ((answer: ProgressAnswer) => void) | null = null;
+  /** A report refused until the account signs in again (401/403): the player stops and says so. */
+  onRefused: ((error: AppError) => void) | null = null;
 
   constructor(
     private readonly accountId: string,
@@ -55,13 +93,16 @@ export class ProgressQueue {
       return;
     }
     try {
-      await send(this.client, report);
+      const answer = await send(this.client, report);
+      this.onAnswer?.(answer);
     } catch (error) {
-      if (retriable(error)) this.enqueue(report);
+      const next = outcome(error);
+      if (next !== 'drop') this.enqueue(report, next === 'retry');
+      if (next === 'keep' && isAppError(error)) this.onRefused?.(error);
     }
   }
 
-  private enqueue(report: ProgressReport): void {
+  private enqueue(report: ProgressReport, retry = true): void {
     const entries = load();
     const last = entries.at(-1);
     // A newer heartbeat of the same playback replaces the queued one; start/stop events stay.
@@ -74,7 +115,7 @@ export class ProgressQueue {
       entries.pop();
     entries.push({ accountId: this.accountId, report, at: Date.now() });
     save(entries);
-    this.schedule();
+    if (retry) this.schedule();
   }
 
   private schedule(): void {
@@ -101,9 +142,12 @@ export class ProgressQueue {
         return;
       }
       try {
-        await send(this.client, next.report);
+        const answer = await send(this.client, next.report);
+        this.onAnswer?.(answer);
       } catch (error) {
-        if (retriable(error)) {
+        const next = outcome(error);
+        if (next === 'keep') return;
+        if (next === 'retry') {
           this.attempt += 1;
           this.schedule();
           return;
@@ -122,4 +166,21 @@ export class ProgressQueue {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }
+}
+
+/** The report of `playback` at `position` seconds; null without a work. */
+export function reportOf(
+  event: ProgressReport['event'],
+  playback: { workId?: string | null; playbackId?: string | null } | null,
+  position: number,
+  duration: number
+): ProgressReport | null {
+  if (!playback?.workId) return null;
+  return {
+    event,
+    workId: playback.workId,
+    playbackId: playback.playbackId,
+    positionTicks: Math.round(position * TICKS_PER_SECOND),
+    durationTicks: duration ? Math.round(duration * TICKS_PER_SECOND) : null,
+  };
 }

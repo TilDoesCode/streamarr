@@ -24,6 +24,7 @@ import { followOtherTabs, tabSessionStorage } from './browser-tabs';
 import { signInFlow } from './sign-in-flow';
 import type { Account } from './types';
 import { tokenVault } from './vault';
+import { playerHolds, usePlayerHold } from '@/accounts/player-hold';
 
 export type AccountsApi = AccountsActions & {
   /** The profile was picked in this app launch (web: this tab), so "Who's watching?" is not asked again. */
@@ -100,6 +101,8 @@ export function AccountsProvider({
       api.store.onSessionEnded((account, endedReason) => {
         signInFlow.forgetPassword(account.id);
         api.queryClient.removeQueries({ queryKey: ['account', account.id] });
+        // An open player explains it on its own card.
+        if (playerHolds(account.id)) return;
         toast.show({
           tone: 'error',
           message: t('accounts.sessionEnded', {
@@ -134,8 +137,13 @@ export function useSessionGate(): { account: Account | null; reason: GateReason 
   const { accounts, activeId } = useAccounts();
   const { profileChosen } = useAccountsApi();
   const active = accounts.find((account) => account.id === activeId) ?? null;
+  // A session that ends while its player is open stays until the viewer leaves the player's card (S9b A05).
+  const held = usePlayerHold(active?.id);
   const signedIn = accounts.filter((account) => account.signedIn);
   if (!accounts.length) return { account: null, reason: 'no_accounts' };
+  // The same for a password change the server asks for mid-play: the card leads there (S4s A07).
+  if (active && (!active.signedIn || active.mustChangePassword) && held)
+    return { account: active, reason: 'ready' };
   if (!active || !active.signedIn) return { account: null, reason: 'pick_profile' };
   if (active.mustChangePassword) return { account: active, reason: 'change_password' };
   if (signedIn.length > 1 && !profileChosen) return { account: active, reason: 'pick_profile' };

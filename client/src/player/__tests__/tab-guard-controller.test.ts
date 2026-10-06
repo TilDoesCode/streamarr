@@ -1,0 +1,144 @@
+import { harness, newController, reply } from '@/../jest/player/harness';
+import { playing, settle } from '@/../jest/player/play';
+import i18n from '@/i18n';
+import { noticeText } from '@/player/overlay-labels';
+import { hintText } from '@/player/recovery/hints';
+
+jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
+
+beforeEach(() => harness.reset());
+
+describe('one playing tab per browser: the player side (F12)', () => {
+  it('the controller pauses and says why, in de and en; a paused player stays as it is', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, {}, 30);
+    c.yieldToOtherTab();
+    expect(c.paused).toBe(true);
+    expect(harness.engine.pause).toHaveBeenCalled();
+    expect(c.notice).toMatchObject({ kind: 'otherTab' });
+    for (const [lang, text] of [
+      ['de', /^Wiedergabe in einem anderen Tab gestartet/],
+      ['en', /^Playback started in another tab/],
+    ] as const) {
+      await i18n.changeLanguage(lang);
+      const pt = (key: string, options?: Record<string, unknown>) =>
+        i18n.t(key as never, { ...options, ns: 'player' } as never) as unknown as string;
+      expect(
+        noticeText(
+          c.notice!,
+          pt as never,
+          () => '',
+          () => ''
+        )
+      ).toMatch(text);
+    }
+    c.dismissNotice();
+    c.yieldToOtherTab();
+    expect(c.notice).toBeNull();
+    await c.stop();
+    jest.useRealTimers();
+  });
+
+  it('the newest start wins: a tab still starting when another tab starts comes up paused with the notice, it never pauses the newer tab (verify P1)', async () => {
+    jest.useFakeTimers();
+    let release: (value: ReturnType<typeof reply.ok>) => void = () => undefined;
+    harness.server.answer('start', () => new Promise((resolve) => (release = resolve)));
+    const c = newController();
+    const started = c.start();
+    await settle();
+    expect(c.phase).toBe('starting');
+    c.yieldToOtherTab();
+    release(reply.ok(harness.server.playback()));
+    await started;
+    harness.engine.started();
+    await settle();
+    expect(c.phase).toBe('playing');
+    expect(c.paused).toBe(true);
+    expect(harness.engine.commands.at(-1)).toBe('pause');
+    expect(c.notice).toMatchObject({ kind: 'otherTab' });
+    await c.stop();
+    jest.useRealTimers();
+  });
+
+  it('a stopped or failed player ignores another tab', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, {}, 30);
+    await c.stop();
+    c.yieldToOtherTab();
+    expect(c.notice).toBeNull();
+    jest.useRealTimers();
+  });
+
+  it('R6 the viewer\'s Resume in THIS tab after another tab started is the newest start: it plays, no "other tab" notice', async () => {
+    jest.useFakeTimers();
+    harness.server.answer(
+      'start',
+      reply.ok(
+        harness.server.playback({
+          resumePositionTicks: 1_000 * 10_000_000,
+          mediaInfo: { durationTicks: 3_600 * 10_000_000, audioTracks: [], subtitleTracks: [] },
+        } as never)
+      )
+    );
+    const c = newController({ startSeconds: undefined });
+    const started = c.start();
+    await settle();
+    expect(c.phase).toBe('resume');
+    // Another tab starts while this one shows "Continue watching?".
+    c.yieldToOtherTab();
+    c.chooseStart(true);
+    await started;
+    harness.engine.started();
+    await settle();
+    expect(c.phase).toBe('playing');
+    expect(c.paused).toBe(false);
+    expect(harness.engine.commands.at(-1)).not.toBe('pause');
+    expect(c.notice?.kind).not.toBe('otherTab');
+    await c.stop();
+    jest.useRealTimers();
+  });
+
+  it('R6 Play pressed while the yielded start is still preparing also wins', async () => {
+    jest.useFakeTimers();
+    let release: (value: ReturnType<typeof reply.ok>) => void = () => undefined;
+    harness.server.answer('start', () => new Promise((resolve) => (release = resolve)));
+    const c = newController();
+    const started = c.start();
+    await settle();
+    c.yieldToOtherTab();
+    c.setPaused(false);
+    release(reply.ok(harness.server.playback()));
+    await started;
+    harness.engine.started();
+    await settle();
+    expect(c.paused).toBe(false);
+    expect(c.notice?.kind).not.toBe('otherTab');
+    await c.stop();
+    jest.useRealTimers();
+  });
+
+  it('the paused tab keeps saying why after the toast is gone ("Paused: another tab started playing"), until Play (S9c turn 2 F12, review 8 P3-4)', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, {}, 30);
+    c.yieldToOtherTab();
+    c.dismissNotice();
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'otherTab' } });
+    expect(c.status.actions).toEqual(['resume']);
+    for (const [lang, text] of [
+      ['de', 'Pausiert: ein anderer Tab hat die Wiedergabe gestartet.'],
+      ['en', 'Paused: another tab started playing.'],
+    ] as const) {
+      await i18n.changeLanguage(lang);
+      const pt = (key: string, options?: Record<string, unknown>) =>
+        i18n.t(key as never, { ...options, ns: 'player' } as never) as unknown as string;
+      expect(hintText(pt as never, c.status.hint!.key, c.status.hint!.params)).toBe(text);
+    }
+    await i18n.changeLanguage('en');
+    c.setPaused(false);
+    expect(c.status.hint).toBeNull();
+    expect(c.systemPaused).toBe(false);
+    await c.stop();
+    jest.useRealTimers();
+  });
+});

@@ -5,23 +5,23 @@
     "switching": "Switching…",
     "steps": {
       "resolving": "Check version",
-      "fallback": "Fallback",
+      "fallback": "Next version",
       "repairing": "Repair",
-      "planning": "Choose method",
-      "starting": "Start stream"
+      "planning": "Choose how to play",
+      "starting": "Start playback"
     },
     "explain": {
-      "queued": "Waiting for the server.",
+      "queued": "Waiting until the server has room for this video.",
       "resolving": "Checking that every part of this version is available.",
       "fallback": "{name} is missing data, so the next version is tried.",
       "repairing": "Rebuilding missing parts from recovery data.",
       "planning": "Picking the best way to play on this device.",
-      "starting": "Opening the stream."
+      "starting": "Opening the video."
     },
     "attempt": {
       "resolving": "checking",
       "ready": "ready",
-      "degraded": "degraded",
+      "degraded": "repairable",
       "dead": "missing data"
     },
     "repair": "{percent, number, percent} repaired · about {eta} left",
@@ -35,7 +35,7 @@
   "methods": {
     "direct": "Direct play",
     "remux": "Direct stream",
-    "transcode": "Transcode"
+    "transcode": "Converted"
   },
   "controls": {
     "back10": "Back 10 seconds",
@@ -88,16 +88,35 @@
     "buffer": "Buffer",
     "bufferAhead": "{seconds} s ahead",
     "dropped": "{count} dropped frames",
-    "better": "{version} plays without transcoding on this device.",
+    "better": "{version} plays on this device without conversion.",
     "switch": "Switch version"
   },
   "notice": {
-    "stepDown": "Switched to a different stream to keep playing.",
+    "stepDown": "Switched to another way to play to keep it going.",
     "stepDownVlc": "Switched to VLC to keep playing.",
     "stepDownDirect": "Switched to direct play to keep playing.",
     "stepDownRemux": "Switched to direct stream to keep playing.",
-    "stepDownTranscode": "Switched to transcoding to keep playing.",
-    "switchFailed": "Couldn’t switch. {reason} Playback continues as before."
+    "stepDownTranscode": "Switched to conversion on the server to keep playing.",
+    "switchFailed": "Couldn’t switch. {reason} Playback continues as before.",
+    "because": {
+      "T7": "This device couldn’t decode the video.",
+      "T5": "The video loaded too slowly.",
+      "T6": "The server had a problem.",
+      "picture_timeout": "The picture stayed black.",
+      "stalled": "The picture got stuck.",
+      "media_damaged": "The video data is damaged at {time}."
+    },
+    "otherVersion": "Switched to another version to keep playing.",
+    "noSubtitleLanguage": "This version has no {language} subtitles.",
+    "noAudioLanguage": "This version has no {language} audio.",
+    "audioFallback": "Sound converted to stereo to keep playing.",
+    "otherAudioTrack": "This audio track stays silent. Switched to {language} to keep playing.",
+    "subtitleFailed": "Subtitles “{label}” couldn’t be loaded and are off. {retry, select, later {They’ll be tried again in a minute.} other {They stay off for this video; you can turn them on again.}}",
+    "subtitlesOn": "Turn subtitles on again",
+    "subtitleNotDeliverable": "Subtitles “{label}” can’t be shown on this device. Choose other subtitles.",
+    "subtitleNotDeliverableVlc": "Subtitles “{label}” can’t be shown here. Play with VLC to see them.",
+    "audioRestarted": "Audio track switched; playback restarted at the same spot for it.",
+    "otherTab": "Playback started in another tab, so it paused here. Press Play to continue here."
   },
   "upNext": {
     "title": "Up next",
@@ -111,5 +130,79 @@
     "replay": "Replay",
     "backToDetails": "Back to details",
     "nextEpisode": "Next: {title}"
+  },
+  "hints": {
+    "starting": "Starting playback…",
+    "startSlow": "Starting takes longer than usual. {cause}",
+    "slowNet": "Slow connection: {measured, number} of {needed, number} Mbit/s. Buffering…",
+    "serverSlow": "The server converts slower than the video plays. Buffering…",
+    "reconnecting": "Connection lost. Retrying in {seconds} s…",
+    "offline": "No network connection. Playback continues once this device is back online.",
+    "restarting": "The server ended this playback. Restarting at {time}…",
+    "recovering": "The picture is stuck. Reloading at {time}…",
+    "noPicture": "No picture. Trying another way to play…",
+    "noAudio": "No sound. Reloading the audio…",
+    "deviceSlow": "This device can’t keep up ({percent, number}% of frames dropped). A lower quality helps.",
+    "endedEarly": "The file ends at {time}, {missing} before the end. Another version may have the rest.",
+    "pausedBySystem": "Paused: {cause}.",
+    "airplay": "Playing on {device}.",
+    "decoder": "This device can’t play {format}. Trying another way to play at {time}…",
+    "mutedAutoplay": "Started without sound (browser rule).",
+    "autoplayBlocked": "The browser didn’t let the video start. Press Play.",
+    "serverBusy": "The server is busy. Retrying in {seconds} s…",
+    "waitingForStream": "Starts as soon as playback on {device} stops.",
+    "waitingForStreamRelease": "Starts as soon as “{releaseName}” stops playing on {device}.",
+    "fallbacks": { "device": "another device" },
+    "buffering": "Loading takes longer than usual. Buffering…",
+    "serverError": "The server had a problem. Retrying in {seconds} s…",
+    "reloading": "Playback stopped. Resuming at {time}…",
+    "lowering": "Switching to a lower quality to keep playing at {time}…",
+    "steppingDown": "Trying another way to play at {time}…",
+    "switchingVersion": "Trying another version at {time}…",
+    "convertingAudio": "No sound. Converting the audio to keep playing at {time}…",
+    "serverRetrying": "The server had a problem with this part of the video. Retrying…",
+    "serverRepairing": "The server is repairing missing data of this video. Buffering…",
+    "streamBreaks": "The stream keeps breaking off. Reloading at {time}…",
+    "causes": {
+      "call": "incoming call",
+      "otherAudio": "another app is playing sound",
+      "headphones": "headphones disconnected",
+      "audioOutput": "sound output changed",
+      "background": "app left",
+      "locked": "screen locked",
+      "pipClosed": "picture-in-picture closed",
+      "airplayLost": "AirPlay disconnected",
+      "converting": "The server is converting the video.",
+      "slowConnection": "The connection is slow.",
+      "loadingFile": "The player is still opening the file.",
+      "preparing": "The server is still preparing the video.",
+      "outside": "outside the app",
+      "otherTab": "another tab started playing"
+    },
+    "actions": {
+      "lowerQuality": "Lower quality",
+      "cancel": "Cancel",
+      "tryNow": "Try now",
+      "back": "Back",
+      "otherVersion": "Other version",
+      "otherAudio": "Other audio track",
+      "otherSubtitles": "Other subtitles",
+      "resume": "Resume",
+      "unmute": "Unmute",
+      "play": "Play",
+      "signIn": "Sign in again"
+    }
+  },
+  "tried": {
+    "title": "What was tried",
+    "W": "Waited",
+    "R": "Reloaded at {time}",
+    "N": "Restarted at {time}",
+    "Q": "Lower quality",
+    "S": "Another way to play",
+    "V": "Another version",
+    "G": "Stopped trying",
+    "A": "Converted the audio",
+    "more": "Show {count} more"
   }
 }

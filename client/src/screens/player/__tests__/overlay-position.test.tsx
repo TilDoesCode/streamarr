@@ -128,3 +128,55 @@ describe('hidden player controls leave the screen on touch shells (Q1-46, verify
     expect(display()).not.toBe('none');
   });
 });
+
+describe('a pause from outside the controls shows them (F8 V2: leaving the system full screen paused)', () => {
+  it('shows the hidden overlay once the controller is paused', async () => {
+    const controller = fakeController();
+    const backRef = createRef<(() => boolean) | null>();
+    const ui = () => (
+      <PlayerOverlay
+        controller={controller}
+        clock={{ position: 46, duration: 600, buffered: 60 }}
+        title="Sherlock"
+        suspended={false}
+        onPanel={jest.fn()}
+        onClose={jest.fn()}
+        backRef={backRef}
+      />
+    );
+    const view = await renderWithProviders(ui());
+    await act(async () => void backRef.current?.());
+    expect(
+      screen.getByTestId('player-overlay-hidden', { includeHiddenElements: true })
+    ).toBeTruthy();
+    (controller as { paused: boolean }).paused = true;
+    await view.rerender(ui());
+    expect(screen.getByTestId('player-overlay')).toBeTruthy();
+  });
+});
+
+describe('TV: ▼ from the scrubber reaches the button row (S6x Left, Google TV)', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('▼ hands the D-pad to the buttons at once: a quick ▶ right after it never scrubs', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+    const backRef = createRef<(() => boolean) | null>();
+    const controller = await overlay(backRef);
+    // Hidden: ▼ shows the controls on the scrubber.
+    await act(async () => void backRef.current?.());
+    await act(async () => mockKeys.listener?.({ key: 'down', repeat: 0 }));
+    expect(screen.getByTestId('player-position')).toHaveTextContent('0:52');
+    // ▼ to the buttons and ▶ before the next render, as a remote (or adb) sends them.
+    await act(async () => {
+      mockKeys.listener?.({ key: 'down', repeat: 0 });
+      mockKeys.listener?.({ key: 'right', repeat: 0 });
+    });
+    await act(async () => jest.runOnlyPendingTimers());
+    expect(controller.seekTo).not.toHaveBeenCalled();
+    expect(screen.getByTestId('player-position')).toHaveTextContent('0:52');
+  });
+});

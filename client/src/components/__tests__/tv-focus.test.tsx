@@ -1,5 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { Platform, Pressable } from 'react-native';
+import { FlatList, Platform, Pressable } from 'react-native';
 import type { TestInstance } from 'test-renderer';
 
 import {
@@ -226,7 +226,81 @@ describe('Shelf on TV', () => {
     await renderWithProviders(shelf);
     const restored = ancestorWith(screen.getByTestId('item-5'), 'contentOffset');
     expect(restored?.props.contentOffset).toEqual({ x: 5 * 115.5, y: 0 });
-    expect(restored?.props.initialScrollIndex).toBe(5);
+    // The cards before the remembered one render too (initialScrollIndex would leave them blank).
+    expect(restored?.props.initialScrollIndex).toBeUndefined();
+    expect(screen.getByTestId('item-0')).toBeOnTheScreen();
+  });
+
+  it('renders a remembered item beyond the first batch, so focus can return to it', async () => {
+    const long = <Shelf {...shelf.props} memoryKey="tv.long" />;
+    // Two visits: the first batch (12) reaches item 10, a restore at 10 reaches item 15.
+    for (const index of [10, 15]) {
+      const view = await renderWithProviders(long);
+      await fireEvent(screen.getByTestId(`item-${index}`).parent as TestInstance, 'focus', {});
+      await act(async () => view.unmount());
+    }
+    await renderWithProviders(long);
+    expect(screen.getByTestId('item-15')).toBeOnTheScreen();
+  });
+
+  it('keeps the first batch small for a far remembered card and scrolls to it after layout (F10 P3-7)', async () => {
+    const many = Array.from({ length: 100 }, (_, index) => `item-${index}`);
+    const long = <Shelf {...shelf.props} memoryKey="tv.far" data={many} />;
+    const stride = 115.5;
+    // What the native row reports: its size, the content size, then a scroll to `x`.
+    const scrollTo = async (x: number) => {
+      const list = ancestorWith(screen.getByTestId('item-0'), 'getItemLayout') as TestInstance;
+      const size = { width: 800, height: 200 };
+      await fireEvent(list, 'layout', { nativeEvent: { layout: { x: 0, y: 0, ...size } } });
+      await fireEvent(list, 'contentSizeChange', 48 * 2 + 100 * stride, 200);
+      await fireEvent(list, 'scroll', {
+        nativeEvent: {
+          contentOffset: { x, y: 0 },
+          contentSize: { width: 48 * 2 + 100 * stride, height: 200 },
+          layoutMeasurement: size,
+        },
+      });
+    };
+    const first = await renderWithProviders(long);
+    await scrollTo(80 * stride);
+    await fireEvent(screen.getByTestId('item-80').parent as TestInstance, 'focus', {});
+    await act(async () => first.unmount());
+
+    const scrolled = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    await renderWithProviders(long);
+    // Before: the first batch was 80 + 12 cards, and VirtualizedList never unmounts it.
+    expect(screen.getAllByTestId(/^item-/).length).toBeLessThanOrEqual(12);
+    await scrollTo(0);
+    expect(scrolled).toHaveBeenCalledWith({ offset: 80 * stride, animated: false });
+    await scrollTo(80 * stride);
+    expect(screen.getByTestId('item-80')).toBeOnTheScreen();
+    expect(screen.queryByTestId('item-20')).toBeNull();
+  });
+
+  it('renders the first card on a remount with a remembered item, before the row has focus (F10 S4y-9)', async () => {
+    const row = (data: string[]) => (
+      <Shelf
+        title="Continue"
+        memoryKey="tv.short"
+        data={data}
+        keyExtractor={(item) => item}
+        itemWidth={100}
+        artworkHeight={56}
+        renderItem={({ item }) => (
+          <Pressable testID={item}>
+            <Text>{item}</Text>
+          </Pressable>
+        )}
+      />
+    );
+    const first = await renderWithProviders(row(['cw-0', 'cw-1', 'cw-2']));
+    await fireEvent(screen.getByTestId('cw-1').parent as TestInstance, 'focus', {});
+    await act(async () => first.unmount());
+
+    // A short row cannot scroll to the remembered offset, so no scroll event ever widens the window.
+    await renderWithProviders(row(['cw-0', 'cw-1', 'cw-2']));
+    expect(screen.getByTestId('cw-0')).toBeOnTheScreen();
+    expect(screen.getByTestId('cw-1')).toBeOnTheScreen();
   });
 
   it('does not restore off TV', async () => {

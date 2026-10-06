@@ -97,6 +97,16 @@ export function useScreenFocusHost() {
   );
 }
 
+/** TV: the screen's main target, where focus returns when the element it remembered is gone (F12). */
+export function usePreferredFocus(target: View | null): void {
+  const memory = use(FocusMemoryContext);
+  useEffect(() => {
+    if (!memory?.prefer || !target) return;
+    memory.prefer(target);
+    return () => memory.prefer?.(null);
+  }, [memory, target]);
+}
+
 /** TV: focuses the shell rail's active tab; no-op outside the TV shell. */
 export function useFocusRail(): () => void {
   const host = use(ScreenFocusHostContext);
@@ -108,6 +118,7 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
   const host = use(ScreenFocusHostContext);
   const ref = useRef<View>(null);
   const last = useRef<View | null>(null);
+  const preferred = useRef<View | null>(null);
   // Counts focus reports from this screen's Focusables; a restore stops once it moves.
   const reports = useRef(0);
   const navigation = useNavigation();
@@ -123,6 +134,9 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
       },
       reset: () => {
         last.current = null;
+      },
+      prefer: (view) => {
+        preferred.current = view;
       },
     }),
     []
@@ -146,7 +160,7 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
       let attempts = 0;
       const attempt = () => {
         if (reports.current !== seen) return;
-        (last.current ?? guide).requestTVFocus?.();
+        (last.current ?? preferred.current ?? guide).requestTVFocus?.();
         if (++attempts < RESTORE_ATTEMPTS) timer = setTimeout(attempt, RESTORE_INTERVAL_MS);
       };
       // A popped screen is re-attached during the transition; focus lands once it is in the window.
@@ -158,7 +172,8 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
       unregister = host?.show(restore);
       if (appleTV() && takeReturnFocus()) {
         hidden = false;
-        tvFocus(last.current ?? guide);
+        // The element that opened the player may have left the screen (a finished title left Continue, F12).
+        tvFocus(last.current ?? preferred.current ?? guide);
         return;
       }
       const requested = host?.takeFocusRequest() ?? false;

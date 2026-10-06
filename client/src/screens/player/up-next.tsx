@@ -59,10 +59,12 @@ type Props = {
   next: NextEpisode;
   onPlay: () => void;
   onCancel: () => void;
+  /** The countdown stops while playback is paused (E07). */
+  paused?: boolean;
 };
 
 /** Up-next card with a countdown; plays the next episode when it runs out. */
-export function UpNextCard({ next, onPlay, onCancel }: Props) {
+export function UpNextCard({ next, onPlay, onCancel, paused = false }: Props) {
   const pt = usePlayerT();
   const design = useDesign();
   const { large, s } = useShell();
@@ -71,9 +73,10 @@ export function UpNextCard({ next, onPlay, onCancel }: Props) {
   const play = useEffectEvent(onPlay);
 
   useEffect(() => {
+    if (paused) return;
     const timer = setInterval(() => setLeft((value) => value - 1), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [paused]);
   useEffect(() => {
     if (left <= 0) play();
   }, [left]);

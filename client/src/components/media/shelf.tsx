@@ -20,6 +20,8 @@ import { colors, fonts, gutters, useDesign } from '@/theme';
 
 // TV: last focused index per shelf `memoryKey`; survives the shelf unmounting (tab switch, refetch).
 const shelfMemory = new Map<string, number>();
+// TV: a remembered card further in is scrolled to after layout; the first batch (never unmounted) stays small.
+const RESTORE_BATCH = 24;
 
 export type ShelfProps<T> = {
   title: string;
@@ -71,6 +73,8 @@ export function Shelf<T>({
     return index ? { index, offset: { x: index * stride, y: 0 } } : undefined;
   });
   const restoreIndex = restore?.index;
+  const far = restoreIndex !== undefined && restoreIndex > RESTORE_BATCH;
+  const farScrolled = useRef(false);
   const [restoreTarget, setRestoreTarget] = useState<View | null>(null);
   const [restoring, setRestoring] = useState(restore !== undefined);
   const pager = Platform.OS === 'web' && shell.large;
@@ -209,9 +213,15 @@ export function Shelf<T>({
             offset: gutter + index * stride,
             index,
           })}
-          initialScrollIndex={restoreIndex}
-          contentOffset={restore?.offset}
-          initialNumToRender={design.isTV ? 12 : 6}
+          // No initialScrollIndex: it skips the cards before the restored one until a scroll event (F10 S4y-9).
+          contentOffset={far ? undefined : restore?.offset}
+          // A real scroll (0 to the card) sends the scroll event that moves the window there (F10 P3-7).
+          onContentSizeChange={(width) => {
+            if (!restore || !far || farScrolled.current || width <= 0) return;
+            farScrolled.current = true;
+            listRef.current?.scrollToOffset({ offset: restore.offset.x, animated: false });
+          }}
+          initialNumToRender={design.isTV ? (far ? 0 : (restoreIndex ?? 0)) + 12 : 6}
           windowSize={design.isTV ? 9 : 5}
           removeClippedSubviews={false}
           snapToAlignment={design.isTV ? 'item' : undefined}

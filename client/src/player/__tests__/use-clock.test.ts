@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import { clockMoved, usePlayerClock } from '../use-clock';
+import { clockMoved, useClock, usePlayerClock } from '../use-clock';
 
 const shown = { position: 10, duration: 600, buffered: 30 };
 
@@ -87,5 +87,34 @@ describe('usePlayerClock wiring (review S1: coarse clock while hidden)', () => {
     await act(async () => result.current.onVisibleChange(false));
     await act(async () => engine.tick(102));
     expect(result.current.clock.position).toBe(102);
+  });
+});
+
+describe('a burst of native state events does not re-render the clock (S6v "Maximum update depth")', () => {
+  it('state events with an unchanged clock keep the same clock object; a real change still shows', async () => {
+    const listeners = new Set<(event: { type: string }) => void>();
+    const snapshot = { position: 100, duration: 600, buffered: 120 };
+    const engine = {
+      getSnapshot: () => snapshot,
+      subscribe: (listener: (event: { type: string }) => void) => {
+        listeners.add(listener);
+        return () => void listeners.delete(listener);
+      },
+    };
+    let renders = 0;
+    const { result } = await renderHook(() => {
+      renders += 1;
+      return useClock(engine as never);
+    });
+    const first = renders;
+    for (let i = 0; i < 50; i++)
+      await act(async () => listeners.forEach((listener) => listener({ type: 'state' })));
+    // React may run the component once to see the bail-out; never once per event.
+    expect(renders).toBeLessThanOrEqual(first + 1);
+    const before = renders;
+    snapshot.position = 140;
+    await act(async () => listeners.forEach((listener) => listener({ type: 'state' })));
+    expect(result.current.position).toBe(140);
+    expect(renders).toBe(before + 1);
   });
 });

@@ -1,7 +1,21 @@
 import type { ComponentType } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
+import type { EngineHealth } from '../health/types';
+
 /** Engine implementations behind the one player interface. */
+/** Why the OS paused or took over playback, as a native engine reports it (T10). */
+export type SystemCause =
+  | 'call'
+  | 'otherAudio'
+  | 'headphones'
+  | 'audioOutput'
+  | 'locked'
+  | 'background'
+  | 'pipClosed'
+  | 'airplayLost'
+  | 'otherTab';
+
 export type EngineKind = 'expo-video' | 'vlc' | 'web';
 
 export type EngineState =
@@ -47,13 +61,27 @@ export type EngineEvent =
   | { type: 'buffering'; buffering: boolean }
   | { type: 'tracks'; tracks: EngineTracks }
   | { type: 'firstFrame' }
-  | { type: 'error'; reason: string }
+  /** `status`: HTTP status of the failed media request when the engine knows it (0 = no answer). */
+  | { type: 'error'; reason: string; status?: number }
   | { type: 'ended' }
   | { type: 'pip'; active: boolean }
-  /** The viewer paused or resumed outside the app's controls (system full-screen player, lock screen). */
-  | { type: 'userPlayback'; paused: boolean }
+  /** Paused or resumed outside the app's controls; `cause` when the OS did it (call, headphones, lock …). */
+  | { type: 'userPlayback'; paused: boolean; cause?: SystemCause }
+  /** AirPlay / external playback took over the picture (`device`: the receiver's name when known). */
+  | { type: 'external'; active: boolean; device?: string }
   /** An audio rendition failed to load; `code` is the server's error code when known. */
   | { type: 'audioError'; code: string }
+  /** A media request failed and the engine retries it on its own (hls.js non-fatal load errors, R7). */
+  /** `brokeOff`: the transfer started and broke off (AVPlayer NSURL -1005), unlike a request that never answered. */
+  | { type: 'loadRetry'; status?: number; audio?: boolean; brokeOff?: boolean }
+  /** The subtitles failed to load or parse; the playback itself goes on (C22, C23). */
+  | { type: 'subtitleError'; code: string }
+  /** The engine reopens its own source (VLC without direct rendering): a fresh load, not a stall. */
+  | { type: 'reload' }
+  /** AVPlayer gave up waiting in a stall and stopped itself (loading → readyToPlay, not playing): still the stall (D19). */
+  | { type: 'stalledPause' }
+  /** The browser refused to start with sound (`muted`) or at all (`blocked`). */
+  | { type: 'autoplay'; result: 'muted' | 'blocked' }
   | { type: 'stats'; stats: EngineStats };
 
 export type EngineSource = {
@@ -63,6 +91,8 @@ export type EngineSource = {
   /** Seconds. */
   startPosition?: number;
   title?: string;
+  /** Keep the old picture until the new source shows one (a server switch under the switching card, E18). */
+  keepLastFrame?: boolean;
 };
 
 export type EngineSnapshot = {
@@ -92,10 +122,14 @@ export interface PlayerEngine {
   /** Picture-in-picture (iPhone/iPad and Android phones, expo-video): entered by `startPictureInPicture` or on leaving the app. */
   readonly supportsPictureInPicture?: boolean;
   startPictureInPicture?(): void;
+  /** Leaves picture-in-picture (a terminal failure shows its card in the app's window, A17). */
+  stopPictureInPicture?(): void;
   /** AirPlay route picker (AVPlayer on iPhone/iPad). */
   readonly supportsAirPlay?: boolean;
   subscribe(listener: (event: EngineEvent) => void): () => void;
   getSnapshot(): EngineSnapshot;
+  /** Health probe for the watchdog (state-matrix § 2 a); engines without one get clock rules only. */
+  readHealth?(): Promise<EngineHealth>;
   /** Stops decoding before the Surface unmounts (libVLC must not be released while it decodes). */
   shutdown?(): Promise<void>;
   release(): void;

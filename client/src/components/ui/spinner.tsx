@@ -1,9 +1,8 @@
-import { use } from 'react';
 import { useTranslation } from 'react-i18next';
 import Animated, { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 
-import { LoaderMotionContext } from '@/components/ui/loader-motion';
+import { useLoaderMotion } from '@/components/ui/loader-motion';
 import { colors, useDesign } from '@/theme';
 
 const SIZES = { sm: 16, md: 24, lg: 40 } as const;
@@ -19,6 +18,7 @@ export type SpinnerProps = {
   accessibilityLabel?: string;
   /** false renders a static arc (e.g. while UI automation needs an idle screen). */
   animated?: boolean;
+  testID?: string;
 };
 
 /** Indeterminate progress. Rotation stays under reduced motion (it carries the meaning), just slower. */
@@ -27,9 +27,10 @@ export function Spinner({
   color = colors.foreground.DEFAULT,
   accessibilityLabel,
   animated = true,
+  testID,
 }: SpinnerProps) {
   const { t } = useTranslation();
-  const motionAllowed = use(LoaderMotionContext);
+  const motionAllowed = useLoaderMotion();
   const { px } = useDesign();
   const reduced = useReducedMotion();
   const dimension = px(SIZES[size]);
@@ -38,6 +39,7 @@ export function Spinner({
   const circumference = 2 * Math.PI * r;
   return (
     <Animated.View
+      testID={testID}
       accessible
       role="progressbar"
       accessibilityLabel={accessibilityLabel ?? t('a11y.loading')}

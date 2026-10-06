@@ -1,8 +1,7 @@
-import { use } from 'react';
 import type { DimensionValue, StyleProp, ViewStyle } from 'react-native';
 import Animated, { useReducedMotion } from 'react-native-reanimated';
 
-import { LoaderMotionContext } from '@/components/ui/loader-motion';
+import { useLoaderMotion } from '@/components/ui/loader-motion';
 import { aspect, colors, motion, useDesign } from '@/theme';
 
 const PULSE = {
@@ -18,6 +17,7 @@ export type SkeletonProps = {
   radius?: number;
   style?: StyleProp<ViewStyle>;
   animated?: boolean;
+  testID?: string;
 };
 
 /** Placeholder block for content with a known layout. Pulses; static under reduced motion. */
@@ -28,12 +28,14 @@ export function Skeleton({
   radius,
   style,
   animated = true,
+  testID,
 }: SkeletonProps) {
   const design = useDesign();
-  const motionAllowed = use(LoaderMotionContext);
+  const motionAllowed = useLoaderMotion();
   const reduced = useReducedMotion();
   return (
     <Animated.View
+      testID={testID}
       aria-hidden
       style={[
         {

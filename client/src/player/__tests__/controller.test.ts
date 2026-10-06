@@ -652,7 +652,8 @@ describe('PlaybackController', () => {
           ms: expect.any(Number),
         }),
       ]);
-      expect(c.notice).toBeNull();
+      // D32: the in-session switch did not confirm, so the restart of the stream is said.
+      expect(c.notice).toMatchObject({ kind: 'audioRestarted' });
       await c.stop();
     });
 
@@ -691,7 +692,8 @@ describe('PlaybackController', () => {
         expect.objectContaining({ via: 'session', error: 'media_error' }),
         expect.objectContaining({ via: 'server', to: 2, fallback: 'media_error' }),
       ]);
-      expect(c.notice).toBeNull();
+      // D32: the in-session switch did not confirm, so the restart of the stream is said.
+      expect(c.notice).toMatchObject({ kind: 'audioRestarted' });
       expect(rememberedAudioLanguage(c.options.accountId)).toBe('en');
       await c.stop();
     });

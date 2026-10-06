@@ -654,7 +654,7 @@
       },
       "playback_not_found": {
         "title": "Playback ended",
-        "message": "This playback has ended or expired. Start it again."
+        "message": "This playback has ended or expired. Start it again to continue where you left off."
       },
       "too_many_playbacks": {
         "title": "Too many playbacks",
@@ -662,7 +662,7 @@
       },
       "release_dead": {
         "title": "Version unavailable",
-        "message": "This version (and every fallback) is missing data. Choose another version."
+        "message": "This version and the versions tried in its place are missing data. Choose another version."
       },
       "repair_failed": {
         "title": "Repair failed",
@@ -690,7 +690,7 @@
       },
       "no_more_methods": {
         "title": "No more options",
-        "message": "Every playback method was tried. Try another version."
+        "message": "Every way to play was tried. Try another version."
       },
       "unknown_audio_stream": {
         "title": "Audio track not found",
@@ -713,8 +713,8 @@
         "message": "The server couldn’t read this version. Try another version."
       },
       "stream_expired": {
-        "title": "Stream expired",
-        "message": "The stream expired. Start playback again."
+        "title": "Access expired",
+        "message": "The access to this video expired. Start playback again to continue where you left off."
       },
       "no_playable_file": {
         "title": "No video file",
@@ -759,6 +759,210 @@
       "token_storage_unavailable": {
         "title": "Can’t read this device’s sign-in",
         "message": "The secure storage on this device didn’t answer. Try again in a moment; you stay signed in."
+      },
+      "device_caps_unavailable": {
+        "title": "Player couldn’t start",
+        "message": "This device’s player couldn’t be initialised. Try again, or restart the app."
+      },
+      "unknown_stream": {
+        "title": "Stream ended",
+        "message": "The server closed this stream. Start playback again to continue."
+      },
+      "stream_capacity": {
+        "title": "Server is busy",
+        "message": "The server is streaming too much right now. Try again in a moment."
+      },
+      "unknown_transcode": {
+        "title": "Stream ended on the server",
+        "message": "The server no longer has this stream, for example after a restart. Start playback again to continue."
+      },
+      "unknown_segment": {
+        "title": "Part of the video is missing",
+        "message": "The server has no video for this position. Try another version."
+      },
+      "end_of_stream": {
+        "title": "Video ends early",
+        "message": "The video ended before its announced length. Try another version."
+      },
+      "session_closed": {
+        "title": "Stream ended on the server",
+        "message": "The server closed this stream while it was loading. Start playback again to continue."
+      },
+      "segment_evicted": {
+        "title": "Part of the video was removed",
+        "message": "The server removed this part to free space. Try again in a moment."
+      },
+      "init_unavailable": {
+        "title": "Video not ready yet",
+        "message": "The server couldn’t prepare the start of the video in time. Try again or choose a lower quality."
+      },
+      "segment_unavailable": {
+        "title": "Video not ready yet",
+        "message": "The server couldn’t prepare this part of the video in time. Try again or choose a lower quality."
+      },
+      "too_many_sessions": {
+        "title": "Server is busy",
+        "message": "The server is preparing too many videos right now. Try again in a moment."
+      },
+      "ffmpeg_unavailable": {
+        "title": "Conversion not available",
+        "message": "The server can’t convert videos right now (its converter is missing). Try another version."
+      },
+      "transcoding_disabled": {
+        "title": "Conversion turned off",
+        "message": "Video conversion is turned off on this server. Try another version or play with VLC."
+      },
+      "invalid_transcode_request": {
+        "title": "Request not accepted",
+        "message": "The server didn’t accept the conversion request from this app. Update the app or report the code."
+      },
+      "remux_not_possible": {
+        "title": "Direct stream not possible",
+        "message": "This video can’t be repackaged for this device. Try another version."
+      },
+      "no_video_stream": {
+        "title": "No picture in this file",
+        "message": "This version contains no video. Choose another version."
+      },
+      "unknown_duration": {
+        "title": "Length unknown",
+        "message": "The server can’t tell how long this video is, so it can’t convert it. Choose another version."
+      },
+      "viewer_not_found": {
+        "title": "Account not found",
+        "message": "This account no longer exists on the server. Sign in again."
+      },
+      "decode_error": {
+        "title": "This device can’t decode the video",
+        "message": "The player on this device couldn’t decode this video. Try another version or play with VLC."
+      },
+      "encrypted_media": {
+        "title": "Video is encrypted",
+        "message": "This version is copy-protected and can’t be played. Choose another version."
+      },
+      "player_load_failed": {
+        "title": "Player couldn’t load",
+        "message": "Part of the player couldn’t be loaded. Reload the page or restart the app."
+      },
+      "video_stalled": {
+        "title": "The picture got stuck",
+        "message": "The picture stopped although playback kept running. Try another version or a lower quality."
+      },
+      "engine_error": {
+        "title": "The player stopped",
+        "message": "The player on this device couldn’t continue with this video. Try another version or play with VLC."
+      },
+      "unexpected_format": {
+        "title": "Unexpected answer from the server",
+        "message": "The server sent something that isn’t video, for example from a proxy or a sign-in page. Check the network and try again."
+      },
+      "decoder_reclaimed": {
+        "title": "Another app took over the video",
+        "message": "Another app or the system took over video playback on this device. Try again."
+      },
+      "media_damaged": {
+        "title": "The video is damaged here",
+        "message": "The video data is broken at this spot. Playing it again and another way did not get past it. Try another version."
+      },
+      "cleartext_not_permitted": {
+        "title": "Unencrypted connection blocked",
+        "message": "This device refuses to play over an unencrypted http:// connection. Use the server’s https:// address."
+      },
+      "vlc_error": {
+        "title": "VLC could not play this file",
+        "message": "VLC stopped with an error. Another way to play is tried; otherwise choose another version."
+      },
+      "vlc_dialog": {
+        "title": "VLC asked a question",
+        "message": "VLC stopped to ask for a certificate, a login or a missing component. The app tries another way to play; if that fails, choose another version."
+      },
+      "playback_stalled": {
+        "title": "Playback keeps stopping",
+        "message": "The video loads slower than it plays. Try a lower quality or another version."
+      },
+      "seek_stalled": {
+        "title": "Seeking got stuck",
+        "message": "The video didn’t continue after the jump. Try again or choose a lower quality."
+      },
+      "picture_black": {
+        "title": "No picture",
+        "message": "Playback ran, but this device showed no picture. Try another version or play with VLC."
+      },
+      "picture_frozen": {
+        "title": "The picture froze",
+        "message": "The picture stopped although playback kept running. Try another version or a lower quality."
+      },
+      "audio_silent": {
+        "title": "No sound",
+        "message": "Playback ran, but no sound came through. Try another audio track or another version."
+      },
+      "playback_slideshow": {
+        "title": "This device can’t keep up",
+        "message": "Too many frames were dropped to watch smoothly. Try a lower quality."
+      },
+      "player_internal_error": {
+        "title": "The player hit an internal error",
+        "message": "Something in the app went wrong while playing. Retry continues where you were; if it happens again, report the code below."
+      },
+      "stream_missing": {
+        "title": "Video file missing on the server",
+        "message": "The server can’t find this video’s file, even after starting again. Choose another version."
+      },
+      "stream_forbidden": {
+        "title": "No access to this video file",
+        "message": "The server refuses this video’s file, even after starting again. Try again later, choose another version, or ask the server admin."
+      },
+      "step_timeout": {
+        "title": "The server took too long",
+        "message": "The server didn’t get the video ready in time. Try again or choose another version."
+      },
+      "stream_interrupted": {
+        "title": "The stream was cut off",
+        "message": "The connection to the server broke before the end of the video. Retry continues where it stopped."
+      },
+      "audio_decode_error": {
+        "title": "This device can’t play the sound",
+        "message": "The player couldn’t decode the audio of this video. Try another audio track or another version."
+      },
+      "subtitle_unavailable": {
+        "title": "Subtitles couldn’t be loaded",
+        "message": "The server couldn’t deliver these subtitles. Choose other subtitles or try again later."
+      },
+      "subtitle_timeout": {
+        "title": "Subtitles took too long",
+        "message": "The subtitles didn’t arrive in time. They’ll be tried again in a moment."
+      },
+      "subtitle_unreadable": {
+        "title": "Subtitles are damaged",
+        "message": "This subtitle file can’t be read. Choose other subtitles."
+      },
+      "empty_media": {
+        "title": "This version has nothing to play",
+        "message": "The file of this version is empty or shorter than a second. Choose another version."
+      },
+      "delivery_interrupted": {
+        "title": "The stream keeps breaking off",
+        "message": "The server answers, but the video stream keeps breaking off. Try again or choose another version."
+      },
+      "audio_rendition_failed": {
+        "title": "The sound couldn’t be loaded",
+        "message": "The server couldn’t deliver the sound of this version, not even converted. Try again or choose another version."
+      },
+      "picture_timeout": {
+        "title": "The picture didn’t appear",
+        "message": "The player loaded the video but showed no picture. Try another version or play with VLC."
+      },
+      "start_timeout": {
+        "title": "The server took too long to start",
+        "message": "The server couldn’t get this video ready in time. Try again or choose a lower quality."
+      },
+      "network_intercepted": {
+        "title": "The network intercepts the connection",
+        "message": "Something between this device and the server answered instead of the server — often a Wi-Fi sign-in page. Sign in to the network, then try again."
+      },
+      "start_stuck": {
+        "title": "The server got stuck preparing the video",
+        "message": "Preparing this video took far longer than usual. Try again or choose another version."
       }
     },
     "sessionRevoked": {
@@ -793,7 +997,62 @@
       "back": "Go back"
     },
     "ageRestricted": "{reason, select, above_age_limit {This title is above the age limit set for this profile.} unrated_blocked {This profile can only watch titles with a known age rating.} rating_unavailable {The age rating of this title couldn’t be checked, so it’s blocked for this profile.} other {This title isn’t available for this profile.}}",
-    "tooManyStreamsOn": "This profile is already watching on {device}. Stop playback there to watch here."
+    "tooManyStreamsOn": "This profile is already watching on {device}. Stop playback there to watch here.",
+    "tooManyStreamsPlaying": "This profile is already watching “{releaseName}” on {device}. Stop playback there to watch here.",
+    "categories": {
+      "T1": {
+        "title": "Connection problem",
+        "message": "The connection to the server was interrupted. Check the network and try again."
+      },
+      "T2": {
+        "title": "Playback ended on the server",
+        "message": "The server no longer knows this playback. Start it again to continue where you left off."
+      },
+      "T3": {
+        "title": "Signed out",
+        "message": "This device was signed out. Sign in again to continue."
+      },
+      "T4": {
+        "title": "Server is busy",
+        "message": "The server is handling too much right now. Try again in a moment."
+      },
+      "T5": {
+        "title": "Too slow to play",
+        "message": "The video can’t be delivered fast enough. Try a lower quality."
+      },
+      "T6": {
+        "title": "The server had a problem",
+        "message": "Something failed on the server while preparing this video. Try again or choose another version."
+      },
+      "T7": {
+        "title": "This device can’t play this video",
+        "message": "The format isn’t supported here. Try another version or play with VLC."
+      },
+      "T8": {
+        "title": "This version can’t be played",
+        "message": "The file is damaged, incomplete or unavailable. Choose another version."
+      },
+      "T9": {
+        "title": "Not available",
+        "message": "This isn’t allowed for this profile or on this server."
+      },
+      "T10": {
+        "title": "Paused by the device",
+        "message": "The device interrupted playback. Press Play to continue."
+      },
+      "T11": {
+        "title": "The app hit an unexpected problem",
+        "message": "Try again. If it keeps happening, report the code below."
+      }
+    },
+    "reasons": {
+      "transcoding_disabled": "Converting videos is turned off on this server.",
+      "ffmpeg_unavailable": "The server’s video converter isn’t installed.",
+      "no_local_listener": "The server has no local converter running.",
+      "too_many_sessions": "The server converts as many videos as it can at once.",
+      "insufficient_disk": "The server's disk is full."
+    },
+    "reasonLabel": "Reason: {reason}"
   },
   "gallery": {
     "title": "Component gallery",

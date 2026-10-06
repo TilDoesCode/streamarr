@@ -68,12 +68,20 @@ describe('ErrorState', () => {
     expect(onAction).toHaveBeenCalledWith('back');
   });
 
-  it('falls back to a generic message for unknown codes, keeping the code visible', async () => {
+  it('shows the category text for unknown codes (by HTTP status), keeping the code visible', async () => {
     await act(async () => {
       await i18n.changeLanguage('de');
     });
-    await renderWithProviders(<ErrorState code="release_exploded" onAction={jest.fn()} />);
-    expect(screen.getByText('Etwas ist schiefgelaufen')).toBeOnTheScreen();
+    const view = await renderWithProviders(
+      <ErrorState code="release_exploded" onAction={jest.fn()} />
+    );
+    expect(screen.getByText('Unerwartetes Problem in der App')).toBeOnTheScreen();
+    expect(screen.queryByText('Etwas ist schiefgelaufen')).toBeNull();
+    await view.unmount();
+    await renderWithProviders(
+      <ErrorState code="release_exploded" status={503} onAction={jest.fn()} />
+    );
+    expect(screen.getByText('Server ist ausgelastet')).toBeOnTheScreen();
     expect(screen.getByText('Fehlercode release_exploded')).toBeOnTheScreen();
     expect(screen.getByText('Erneut versuchen')).toBeOnTheScreen();
     await act(async () => {

@@ -1,14 +1,23 @@
 diff --git a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
-index ffe5324..c0dfff8 100644
+index ffe5324..32080e4 100644
 --- a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
 +++ b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
-@@ -174,6 +174,10 @@ class LibVlcPlayerModule : Module() {
+@@ -2,6 +2,7 @@ package expo.modules.libvlcplayer
+ 
+ import android.app.Activity
+ import android.os.Build
++import expo.modules.kotlin.functions.Queues
+ import expo.modules.kotlin.exception.Exceptions
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+@@ -174,6 +175,11 @@ class LibVlcPlayerModule : Module() {
            view.stop()
          }
  
++        // Main queue: teardown releases the player there, so stats never read a released one.
 +        AsyncFunction("getStats") { view: LibVlcPlayerView ->
 +          view.getStats()
-+        }
++        }.runOnQueue(Queues.MAIN)
 +
          AsyncFunction("seek") { view: LibVlcPlayerView, value: Double, type: String? ->
            view.seek(value, type)
@@ -27,10 +36,23 @@ index 1a32e30..6ba9595 100644
  
    fun cancelPauseDelay() = player.cancelPauseDelay()
 diff --git a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
-index da483e9..f1e03e6 100644
+index da483e9..0800380 100644
 --- a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
 +++ b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/player/MediaPlayer.kt
-@@ -234,12 +234,34 @@ class MediaPlayer(
+@@ -56,6 +56,8 @@ class MediaPlayer(
+   var vlcDialog: VLCDialog? = null
+ 
+   var userStop: Boolean = false
++  // Bumped when the player is destroyed: delayed retries and queued events of the old player end there.
++  private var generation = 0
+   var firstPlay: Boolean = true
+   var shouldInit: Boolean = true
+ 
+@@ -231,15 +233,41 @@ class MediaPlayer(
+   }
+ 
+   fun destroyPlayer() {
++    generation += 1
      cancelPauseDelay()
      sourceFd?.close()
      sourceFd = null
@@ -64,11 +86,22 @@ index da483e9..f1e03e6 100644
 +      "displayedPictures" to stats.displayedPictures,
 +      "lostPictures" to stats.lostPictures,
 +      "decodedVideo" to stats.decodedVideo,
++      "decodedAudio" to stats.decodedAudio,
++      "playedAbuffers" to stats.playedAbuffers,
++      "lostAbuffers" to stats.lostAbuffers,
 +    )
    }
  
    fun setupPlayer() {
-@@ -307,7 +329,7 @@ class MediaPlayer(
+@@ -266,6 +294,7 @@ class MediaPlayer(
+               view.volume
+             }
+ 
++          if (player !== mediaPlayer) return@retryUntil true
+           player.setVolume(newVolume)
+ 
+           return@retryUntil false
+@@ -307,7 +336,7 @@ class MediaPlayer(
        if (index == -1) {
          player.unselectTrackType(type)
        } else {
@@ -77,7 +110,7 @@ index da483e9..f1e03e6 100644
        }
      }
    }
-@@ -401,20 +423,20 @@ class MediaPlayer(
+@@ -401,20 +430,20 @@ class MediaPlayer(
        player
          .getTracks(
            IMedia.Track.Type.Audio,
@@ -101,7 +134,7 @@ index da483e9..f1e03e6 100644
        }
  
      val audio = listOf(disableTrack) + (audios ?: emptyList())
-@@ -441,10 +463,19 @@ class MediaPlayer(
+@@ -441,10 +470,19 @@ class MediaPlayer(
    private fun getMetadata(): Metadata {
      val media = mediaPlayer?.media ?: return Metadata()
  
@@ -125,7 +158,36 @@ index da483e9..f1e03e6 100644
  
      return Metadata(
        title = title,
-@@ -623,7 +654,9 @@ private fun MediaPlayer.setPlayerListener() {
+@@ -518,8 +556,10 @@ class MediaPlayer(
+     maxRetries: Int = MediaPlayerConstants.MAX_RETRY_COUNT,
+     retry: Int = 0,
+     delay: Double = MediaPlayerConstants.RETRY_DELAY_MS,
++    owner: Int = generation,
+     block: (isLastAttempt: Boolean) -> Boolean,
+   ) {
++    if (owner != generation || mediaPlayer == null) return
+     val isLastAttempt = retry > maxRetries
+ 
+     if (block(isLastAttempt) || isLastAttempt) return
+@@ -529,7 +569,7 @@ class MediaPlayer(
+     val postDelay = wait.toLong()
+ 
+     view.postDelayed({
+-      retryUntil(maxRetries, retry + 1, nextDelay, block)
++      retryUntil(maxRetries, retry + 1, nextDelay, owner, block)
+     }, postDelay)
+   }
+ }
+@@ -538,6 +578,8 @@ private fun MediaPlayer.setPlayerListener() {
+   mediaPlayer?.let { player ->
+     player.setEventListener(
+       EventListener { event ->
++        // An event queued before the release must not touch the released libVLC player.
++        if (player !== mediaPlayer) return@EventListener
+         val type = event.type
+ 
+         when (type) {
+@@ -623,7 +665,9 @@ private fun MediaPlayer.setPlayerListener() {
              view.onPositionChanged(mapOf("value" to player.getPosition()))
            }
  
@@ -147,3 +209,44 @@ index e78a0d7..6b4086e 100644
 +  @Field val selected: Boolean = false,
  ) : Record,
    Serializable
+diff --git a/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift b/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift
+index 472f61b..367fdbc 100644
+--- a/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift
++++ b/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift
+@@ -138,6 +138,11 @@ public class LibVlcPlayerModule: Module {
+         view.stop()
+       }
+ 
++      // Main queue: the view tears the player down there, so stats never race the release.
++      AsyncFunction("getStats") { (view: LibVlcPlayerView) -> [String: UInt64] in
++        view.getStats()
++      }.runOnQueue(.main)
++
+       AsyncFunction("seek") { (view: LibVlcPlayerView, value: Double, type: String?) in
+         view.seek(value, type)
+       }
+diff --git a/node_modules/expo-libvlc-player/ios/LibVlcPlayerView.swift b/node_modules/expo-libvlc-player/ios/LibVlcPlayerView.swift
+index f812d50..4fc90db 100644
+--- a/node_modules/expo-libvlc-player/ios/LibVlcPlayerView.swift
++++ b/node_modules/expo-libvlc-player/ios/LibVlcPlayerView.swift
+@@ -201,6 +201,20 @@ class LibVlcPlayerView: ExpoView {
+     mediaPlayer?.stop()
+   }
+ 
++  // VLCKit 4 media statistics for the player's health probe.
++  func getStats() -> [String: UInt64] {
++    guard let media = mediaPlayer?.media else { return [:] }
++    let stats = media.statistics
++    return [
++      "displayedPictures": stats.displayedPictures,
++      "lostPictures": stats.lostPictures,
++      "decodedVideo": stats.decodedVideo,
++      "decodedAudio": stats.decodedAudio,
++      "playedAbuffers": stats.playedAudioBuffers,
++      "lostAbuffers": stats.lostAudioBuffers,
++    ]
++  }
++
+   func seek(_ value: Double, _ type: String? = "time") {
+     if let player = mediaPlayer {
+       if type == "position" {

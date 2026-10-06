@@ -129,6 +129,34 @@ describe('sign-in link while a profile is active (Q1-09)', () => {
     expect(await screen.findByTestId('home-screen')).toBeOnTheScreen();
   });
 
+  it('the server step reached while a profile is signed in offers the way back too (F11)', async () => {
+    await signInAnna();
+    const user = userEvent.setup();
+    const router = renderRouter(routes, { initialUrl: '/server' });
+    await router;
+    await user.press(await screen.findByTestId('server-back-to-app'));
+    await waitFor(() => expect(router.getPathname()).toBe('/'));
+    expect(await screen.findByTestId('home-screen')).toBeOnTheScreen();
+  });
+
+  it('the server step has no way back while the profile picker is due (signed out, verify A4)', async () => {
+    await signInAnna();
+    await act(async () => {
+      await store.signOut(store.getSnapshot().activeId!, 'refresh_session_expired');
+    });
+    const router = renderRouter(routes, { initialUrl: '/server' });
+    await router;
+    expect(await screen.findByTestId('server-connect')).toBeOnTheScreen();
+    expect(screen.queryByTestId('server-back-to-app')).toBeNull();
+  });
+
+  it('the server step has no way back without a signed-in profile (F11)', async () => {
+    const router = renderRouter(routes, { initialUrl: '/server' });
+    await router;
+    expect(await screen.findByTestId('server-connect')).toBeOnTheScreen();
+    expect(screen.queryByTestId('server-back-to-app')).toBeNull();
+  });
+
   it('has no way back without a signed-in profile', async () => {
     const router = renderRouter(routes, { initialUrl: SIGN_IN });
     await router;

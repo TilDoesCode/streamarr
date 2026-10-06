@@ -9,6 +9,7 @@ import { createAuthApi } from '@/accounts/auth-api';
 import { passwordProblem } from '@/accounts/password-rules';
 import { signInFlow } from '@/accounts/sign-in-flow';
 import { unwrap } from '@/api/client';
+import { useBackHandler, useMenuClaim } from '@/components/focus';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { useToast } from '@/components/ui/toast';
@@ -208,6 +209,14 @@ export function ChangePasswordScreen() {
   const [errors, setErrors, clearError] = useFieldErrors();
   const minLength = info.data?.options.passwordMinLength ?? DEFAULT_MIN_LENGTH;
   const currentPassword = known ?? current;
+  // After a replace (player card A07, session gate) nothing is below: Back opens the profiles, never exits.
+  const lonely = !router.canGoBack();
+  useMenuClaim(lonely ? 'always' : null);
+  useBackHandler(() => {
+    if (router.canGoBack()) return false;
+    router.replace('/profiles');
+    return true;
+  });
 
   const change = useMutation({
     mutationFn: async () => {

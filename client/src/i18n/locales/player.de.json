@@ -5,23 +5,23 @@
     "switching": "Wird umgeschaltet…",
     "steps": {
       "resolving": "Version prüfen",
-      "fallback": "Ausweichen",
+      "fallback": "Nächste Version",
       "repairing": "Reparatur",
-      "planning": "Methode wählen",
-      "starting": "Stream starten"
+      "planning": "Wiedergabeart wählen",
+      "starting": "Wiedergabe starten"
     },
     "explain": {
-      "queued": "Warte auf den Server.",
-      "resolving": "Prüft, ob alle Teile dieser Version verfügbar sind.",
+      "queued": "Wartet, bis der Server Platz für dieses Video hat.",
+      "resolving": "Es wird geprüft, ob alle Teile dieser Version verfügbar sind.",
       "fallback": "{name} ist unvollständig, deshalb wird die nächste Version versucht.",
       "repairing": "Fehlende Teile werden aus Wiederherstellungsdaten neu erzeugt.",
-      "planning": "Wählt die beste Wiedergabe für dieses Gerät.",
-      "starting": "Stream wird geöffnet."
+      "planning": "Die beste Wiedergabeart für dieses Gerät wird gewählt.",
+      "starting": "Das Video wird geöffnet."
     },
     "attempt": {
       "resolving": "wird geprüft",
       "ready": "bereit",
-      "degraded": "eingeschränkt",
+      "degraded": "reparierbar",
       "dead": "unvollständig"
     },
     "repair": "{percent, number, percent} repariert · noch etwa {eta}",
@@ -35,7 +35,7 @@
   "methods": {
     "direct": "Direkte Wiedergabe",
     "remux": "Direkt-Stream",
-    "transcode": "Transkodierung"
+    "transcode": "Umgewandelt"
   },
   "controls": {
     "back10": "10 Sekunden zurück",
@@ -87,17 +87,36 @@
     "why": "Warum",
     "buffer": "Puffer",
     "bufferAhead": "{seconds} s voraus",
-    "dropped": "{count} verlorene Frames",
-    "better": "{version} läuft auf diesem Gerät ohne Transkodierung.",
+    "dropped": "{count} ausgelassene Bilder",
+    "better": "{version} läuft auf diesem Gerät ohne Umwandlung.",
     "switch": "Version wechseln"
   },
   "notice": {
-    "stepDown": "Wechsel zu einem anderen Stream, damit es weiterläuft.",
-    "stepDownVlc": "Wechsel zu VLC, damit es weiterläuft.",
-    "stepDownDirect": "Wechsel zu direkter Wiedergabe, damit es weiterläuft.",
-    "stepDownRemux": "Wechsel zu Direkt-Stream, damit es weiterläuft.",
-    "stepDownTranscode": "Wechsel zu Transkodierung, damit es weiterläuft.",
-    "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter."
+    "stepDown": "Wiedergabeart gewechselt, damit es weitergeht.",
+    "stepDownVlc": "Zu VLC gewechselt, damit es weitergeht.",
+    "stepDownDirect": "Zur direkten Wiedergabe gewechselt, damit es weitergeht.",
+    "stepDownRemux": "Zum Direkt-Stream gewechselt, damit es weitergeht.",
+    "stepDownTranscode": "Zur Umwandlung auf dem Server gewechselt, damit es weitergeht.",
+    "switchFailed": "Umschalten nicht möglich. {reason} Die Wiedergabe läuft wie bisher weiter.",
+    "because": {
+      "T7": "Dieses Gerät konnte das Video nicht dekodieren.",
+      "T5": "Das Video kam zu langsam an.",
+      "T6": "Der Server hatte ein Problem.",
+      "picture_timeout": "Das Bild blieb schwarz.",
+      "stalled": "Das Bild blieb hängen.",
+      "media_damaged": "Die Videodaten sind bei {time} beschädigt."
+    },
+    "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht.",
+    "noSubtitleLanguage": "Diese Version hat keine Untertitel auf {language}.",
+    "noAudioLanguage": "Diese Version hat keinen Ton auf {language}.",
+    "audioFallback": "Ton in Stereo umgewandelt, damit es weitergeht.",
+    "otherAudioTrack": "Diese Tonspur bleibt stumm. Zu {language} gewechselt, damit es weitergeht.",
+    "subtitleFailed": "Untertitel „{label}“ konnten nicht geladen werden und sind aus. {retry, select, later {Sie werden in einer Minute erneut versucht.} other {Sie bleiben für dieses Video aus; du kannst sie wieder einschalten.}}",
+    "subtitlesOn": "Untertitel wieder einschalten",
+    "subtitleNotDeliverable": "Untertitel „{label}“ können auf diesem Gerät nicht angezeigt werden. Wähle andere Untertitel.",
+    "subtitleNotDeliverableVlc": "Untertitel „{label}“ können hier nicht angezeigt werden. Spiele mit VLC ab, um sie zu sehen.",
+    "audioRestarted": "Tonspur gewechselt; die Wiedergabe wurde dafür an derselben Stelle neu gestartet.",
+    "otherTab": "Wiedergabe in einem anderen Tab gestartet, deshalb hier pausiert. Drücke Abspielen, um hier weiterzuschauen."
   },
   "upNext": {
     "title": "Als Nächstes",
@@ -111,5 +130,79 @@
     "replay": "Nochmal abspielen",
     "backToDetails": "Zurück zu den Details",
     "nextEpisode": "Weiter: {title}"
+  },
+  "hints": {
+    "starting": "Wiedergabe startet …",
+    "startSlow": "Der Start dauert länger als üblich. {cause}",
+    "slowNet": "Langsame Verbindung: {measured, number} von {needed, number} Mbit/s. Wird gepuffert …",
+    "serverSlow": "Der Server wandelt langsamer um, als das Video läuft. Wird gepuffert …",
+    "reconnecting": "Verbindung unterbrochen. Neuer Versuch in {seconds} s …",
+    "offline": "Keine Netzwerkverbindung. Es geht weiter, sobald das Gerät wieder online ist.",
+    "restarting": "Der Server hat die Wiedergabe beendet. Neustart bei {time} …",
+    "recovering": "Das Bild hängt. Wird bei {time} neu geladen …",
+    "noPicture": "Kein Bild. Eine andere Wiedergabeart wird versucht …",
+    "noAudio": "Kein Ton. Die Tonspur wird neu geladen …",
+    "deviceSlow": "Das Gerät kommt nicht hinterher ({percent, number} % Bilder ausgelassen). Eine niedrigere Qualität hilft.",
+    "endedEarly": "Die Datei endet bei {time}, {missing} vor dem Ende. Eine andere Version hat vielleicht den Rest.",
+    "pausedBySystem": "Pausiert: {cause}.",
+    "airplay": "Läuft auf {device}.",
+    "decoder": "Dieses Gerät kann {format} nicht abspielen. Eine andere Wiedergabeart wird versucht, es geht weiter bei {time} …",
+    "mutedAutoplay": "Ohne Ton gestartet (Vorgabe des Browsers).",
+    "autoplayBlocked": "Der Browser hat den Start verhindert. Drücke Abspielen.",
+    "serverBusy": "Der Server ist ausgelastet. Neuer Versuch in {seconds} s …",
+    "waitingForStream": "Startet, sobald die Wiedergabe auf {device} endet.",
+    "waitingForStreamRelease": "Startet, sobald „{releaseName}“ auf {device} endet.",
+    "fallbacks": { "device": "einem anderen Gerät" },
+    "buffering": "Das Laden dauert länger als üblich. Wird gepuffert …",
+    "serverError": "Der Server hatte ein Problem. Neuer Versuch in {seconds} s …",
+    "reloading": "Die Wiedergabe ist stehen geblieben. Es geht weiter bei {time} …",
+    "lowering": "Wechsel zu einer niedrigeren Qualität, es geht weiter bei {time} …",
+    "steppingDown": "Eine andere Wiedergabeart wird versucht, es geht weiter bei {time} …",
+    "switchingVersion": "Eine andere Version wird versucht, es geht weiter bei {time} …",
+    "convertingAudio": "Kein Ton. Der Ton wird umgewandelt, es geht weiter bei {time} …",
+    "serverRetrying": "Der Server hatte ein Problem mit diesem Teil des Videos. Neuer Versuch …",
+    "serverRepairing": "Der Server repariert fehlende Daten dieses Videos. Wird gepuffert …",
+    "streamBreaks": "Der Stream bricht immer wieder ab. Wird bei {time} neu geladen …",
+    "causes": {
+      "call": "Anruf",
+      "otherAudio": "eine andere App spielt Ton",
+      "headphones": "Kopfhörer getrennt",
+      "audioOutput": "Tonausgabe gewechselt",
+      "background": "App verlassen",
+      "locked": "Bildschirm gesperrt",
+      "pipClosed": "Bild-in-Bild geschlossen",
+      "airplayLost": "AirPlay getrennt",
+      "converting": "Der Server wandelt das Video um.",
+      "slowConnection": "Die Verbindung ist langsam.",
+      "loadingFile": "Der Player öffnet die Datei noch.",
+      "preparing": "Der Server bereitet das Video noch vor.",
+      "outside": "außerhalb der App",
+      "otherTab": "ein anderer Tab hat die Wiedergabe gestartet"
+    },
+    "actions": {
+      "lowerQuality": "Niedrigere Qualität",
+      "cancel": "Abbrechen",
+      "tryNow": "Jetzt versuchen",
+      "back": "Zurück",
+      "otherVersion": "Andere Version",
+      "otherAudio": "Andere Tonspur",
+      "otherSubtitles": "Andere Untertitel",
+      "resume": "Weiter",
+      "unmute": "Ton an",
+      "play": "Abspielen",
+      "signIn": "Erneut anmelden"
+    }
+  },
+  "tried": {
+    "title": "Was versucht wurde",
+    "W": "Gewartet",
+    "R": "Neu geladen bei {time}",
+    "N": "Neu gestartet bei {time}",
+    "Q": "Niedrigere Qualität",
+    "S": "Andere Wiedergabeart",
+    "V": "Andere Version",
+    "G": "Nicht weiter versucht",
+    "A": "Ton umgewandelt",
+    "more": "{count} weitere anzeigen"
   }
 }

@@ -1,5 +1,8 @@
-import { predictedMethod, type PredictedMethod } from '@/browse/version-format';
+import { languageName, predictedMethod, type PredictedMethod } from '@/browse/version-format';
+import i18n from '@/i18n';
 import type { Version } from '@/browse/queries';
+import { categoryOf } from '@/api/error-categories';
+import type { ErrorLike } from '@/api/error-text';
 import { audioCodecLabel, hdrLabel, videoCodecLabel } from '@/lib/media-labels';
 
 import type { AudioRendition } from './audio-renditions';
@@ -186,4 +189,87 @@ const STEP_DOWN_KEYS: Record<string, PlayerKey> = {
 export function stepDownKey(params?: Readonly<Record<string, string>>): PlayerKey {
   if (params?.engine === 'vlc') return 'notice.stepDownVlc';
   return STEP_DOWN_KEYS[params?.to ?? ''] ?? 'notice.stepDown';
+}
+
+/** The error behind a `switchFailed` notice; the HTTP status picks the category text of an unknown code. */
+export function noticeError(params?: Readonly<Record<string, string>>): ErrorLike {
+  const status = params?.status;
+  return {
+    code: params?.code ?? 'unknown',
+    status: status === undefined ? undefined : Number(status),
+  };
+}
+
+/** How long a notice stays: TV viewers sit further away and read slower (E11). */
+export const noticeMs = (tv: boolean): number => (tv ? 8_000 : 6_000);
+
+/** Failures seen as a stuck picture, not reported by a decoder. */
+const STALLED = new Set(['picture_frozen', 'video_stalled', 'playback_stalled', 'seek_stalled']);
+
+/** Why a step-down happened, appended to its notice (E14); undefined when the reason says nothing useful. */
+export function stepDownReasonKey(
+  params?: Readonly<Record<string, string>>
+): PlayerKey | undefined {
+  const reason = params?.reason;
+  if (!reason) return undefined;
+  if (reason === 'picture_timeout') return 'notice.because.picture_timeout';
+  // A reclaimed decoder is this device's, not the server's (D17).
+  if (reason === 'decoder_reclaimed') return 'notice.because.T7';
+  // A stall or a frozen picture without a decoder error says what was seen, never "this device can't decode" (S6t).
+  if (STALLED.has(reason)) return 'notice.because.stalled';
+  if (reason === 'media_damaged') return 'notice.because.media_damaged';
+  const category = categoryOf(reason);
+  return category === 'T5' || category === 'T6' || category === 'T7'
+    ? `notice.because.${category}`
+    : undefined;
+}
+
+type NoticeLike = { kind: string; params?: Readonly<Record<string, string>> };
+
+/** The notice line: what changed so playback goes on, in the viewer's words (never a raw code). */
+/** A language code in the viewer's language ("de" → "German" / "Deutsch"). */
+const languageOf = (code: string) => languageName(code, i18n.language);
+
+export function noticeText(
+  notice: NoticeLike,
+  pt: (key: PlayerKey, options?: Record<string, unknown>) => string,
+  reasonOf: (error: ErrorLike) => string,
+  subtitleName: (index: number) => string
+): string {
+  const { params } = notice;
+  const label = () => subtitleName(Number(params?.index));
+  switch (notice.kind) {
+    case 'stepDown':
+      // What happened first, then what the app did about it.
+      return [stepDownReasonKey(params), stepDownKey(params)]
+        .flatMap((key) => (key ? [pt(key, { time: params?.at ?? '' })] : []))
+        .join(' ');
+    case 'otherVersion':
+      return [
+        pt('notice.otherVersion'),
+        ...(params?.noAudio
+          ? [pt('notice.noAudioLanguage', { language: languageOf(params.noAudio) })]
+          : []),
+        ...(params?.noSubtitle
+          ? [pt('notice.noSubtitleLanguage', { language: languageOf(params.noSubtitle) })]
+          : []),
+      ].join(' ');
+    case 'audioFallback':
+      return pt('notice.audioFallback');
+    case 'otherAudioTrack':
+      return pt('notice.otherAudioTrack', { language: languageOf(params?.language ?? '') });
+    case 'audioRestarted':
+      return pt('notice.audioRestarted');
+    case 'otherTab':
+      return pt('notice.otherTab');
+    case 'subtitleFailed':
+      return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
+    case 'subtitleNotDeliverable':
+      return pt(
+        params?.vlc ? 'notice.subtitleNotDeliverableVlc' : 'notice.subtitleNotDeliverable',
+        { label: label() }
+      );
+    default:
+      return pt('notice.switchFailed', { reason: reasonOf(noticeError(params)) });
+  }
 }

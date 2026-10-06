@@ -50,6 +50,7 @@ import {
   toggleFullscreen,
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
+import { webSurfaceTap } from '@/player/surface-tap';
 import { useFadedOut } from '@/player/use-faded-out';
 import { useTVEvents } from '@/components/focus/use-tv-events';
 import type { Clock } from '@/player/use-clock';
@@ -62,7 +63,7 @@ import {
 } from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
-import { effectiveMuted, TEST_MUTED } from '@/player/test-muted';
+import { TEST_MUTED } from '@/player/test-muted';
 import { colors, fonts, useDesign, useFocusGap } from '@/theme';
 
 import { PANELS, type PanelKind } from './player-panels';
@@ -132,10 +133,17 @@ export function PlayerOverlay({
   const windowInset = useWindowControlsInset();
   const window = useWindowDimensions();
   const [visible, setVisible] = useState(true);
+  const [pausedSeen, setPausedSeen] = useState(controller.paused);
+  // A pause from outside the controls (system full screen, lock screen, the OS) shows them, so Play is in reach.
+  if (controller.paused !== pausedSeen) {
+    setPausedSeen(controller.paused);
+    if (controller.paused) setVisible(true);
+  }
   const hiddenByBack = useRef(false);
   const [zone, setZone] = useState<Zone>('buttons');
   const [scrub, setScrub] = useState<number | null>(null);
-  const [muted, setMuted] = useState(TEST_MUTED);
+  // The controller owns the mute state: the browser's muted autoplay and the hint's Unmute change it too.
+  const muted = controller.muted ?? TEST_MUTED;
   const [fit, setFit] = useState<'contain' | 'cover'>('contain');
   const [fullscreen, setFullscreen] = useState(isFullscreen);
   const chromeInset = fullscreenChromeInset(fullscreen);
@@ -155,10 +163,11 @@ export function PlayerOverlay({
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerType = useRef<string | null>(null);
   const playRef = useRef<View>(null);
   const seekRef = useRef<View>(null);
   const paused = controller.paused;
-  const duration = clock.duration || controller.duration;
+  const duration = controller.duration || clock.duration;
   // Live engine position: the clock steps coarsely while the overlay is hidden, so its first visible frame may lag.
   const position = scrub ?? controller.position;
   const tv = design.isTV;
@@ -265,11 +274,7 @@ export function PlayerOverlay({
     if (!visible) setZone('progress');
   };
 
-  const toggleMute = () => {
-    const next = !muted;
-    controller.engine?.setMuted?.(next);
-    setMuted(effectiveMuted(next));
-  };
+  const toggleMute = () => controller.setMuted(!muted);
 
   // Keyboards (web, iPad) have no focus row to hand the arrows to.
   const keyboard = Platform.OS === 'web' || (Platform.OS === 'ios' && !tv);
@@ -277,6 +282,14 @@ export function PlayerOverlay({
   useEffect(() => {
     if (captureDpad) handOver.current = false;
   }, [captureDpad]);
+
+  // To the button row: native focus at once and the D-pad handed back, so a quick ▶ never scrubs (S6x).
+  const toButtons = () => {
+    handOver.current = tv;
+    if (tv && !rowFocused.current) tvFocus(playRef.current);
+    show('buttons');
+    return 'release' as const;
+  };
 
   useRemoteKeys(captureDpad, (action, _key, repeat) => {
     switch (action) {
@@ -301,14 +314,10 @@ export function PlayerOverlay({
         scrubBy(action === 'rewind' ? -1 : 1, repeat);
         return;
       case 'up':
-        handOver.current = tv;
-        if (tv && !rowFocused.current) tvFocus(playRef.current);
-        show('buttons');
-        return 'release';
+        return toButtons();
       case 'down':
-        if (visible && zone === 'progress') show('buttons');
-        else show('progress');
-        return;
+        if (!visible || zone !== 'progress') return void show('progress');
+        return toButtons();
       case 'stop':
         onClose();
         return;
@@ -335,9 +344,9 @@ export function PlayerOverlay({
     .runOnJS(true)
     .maxDuration(250)
     .onEnd((event) => {
-      // Web: a click follows a mouse move that already showed the overlay, so it toggles playback.
+      // Web: a click follows a mouse move that already showed the overlay; a touch on hidden controls shows them.
       if (Platform.OS === 'web') {
-        controller.togglePlay();
+        if (webSurfaceTap(visible, pointerType.current) === 'toggle') controller.togglePlay();
         show();
         return;
       }
@@ -425,7 +434,22 @@ export function PlayerOverlay({
   return (
     <View
       style={StyleSheet.absoluteFill}
-      onPointerMove={Platform.OS === 'web' ? () => show() : undefined}>
+      onPointerDown={
+        Platform.OS === 'web'
+          ? (event) => {
+              pointerType.current =
+                (event.nativeEvent as { pointerType?: string }).pointerType ?? null;
+            }
+          : undefined
+      }
+      onPointerMove={
+        Platform.OS === 'web'
+          ? (event) => {
+              // Mobile Safari sends pointer moves for touches too; only a mouse hover shows the controls.
+              if ((event.nativeEvent as { pointerType?: string }).pointerType === 'mouse') show();
+            }
+          : undefined
+      }>
       {Surface ? <Surface style={StyleSheet.absoluteFill} fit={fit} /> : null}
       {controller.pictureInPicture || ended ? null : (
         <>
