@@ -102,7 +102,8 @@
       "T7": "This device couldn’t decode the video.",
       "T5": "The video loaded too slowly.",
       "T6": "The server had a problem.",
-      "picture_timeout": "The picture stayed black."
+      "picture_timeout": "The picture stayed black.",
+      "media_damaged": "The video data is damaged at {time}."
     },
     "otherVersion": "Switched to another version to keep playing.",
     "audioFallback": "Sound converted to stereo to keep playing.",
@@ -157,6 +158,8 @@
       "call": "incoming call",
       "otherAudio": "another app is playing sound",
       "headphones": "headphones disconnected",
+      "audioOutput": "sound output changed",
+      "background": "app left",
       "locked": "screen locked",
       "pipClosed": "picture-in-picture closed",
       "airplayLost": "AirPlay disconnected",

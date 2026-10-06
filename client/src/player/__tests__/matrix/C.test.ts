@@ -911,6 +911,44 @@ describe('matrix C — subtitles and content edge cases (S8)', () => {
       await c.stop();
     }
   );
+  row(
+    'C22',
+    'Exo/AVPlayer: a subtitle request that fails (404, retried by the player) gives one notice and the subtitles go off (S9b)',
+    async () => {
+      const c = await withSubtitles();
+      const expo = await expoPlaying();
+      for (let segment = 11; segment < 15; segment++)
+        expo.player.loadError({
+          uri: `http://server/api/v1/transcode/tok/subtitles/5/${segment}.vtt`,
+          trackType: 'text',
+          status: 404,
+        });
+      expect(expo.of('subtitleError')).toEqual([
+        { type: 'subtitleError', code: 'unknown_subtitle_stream' },
+      ]);
+      // AVPlayer's error log names no track type: the URL says it is a subtitle.
+      expo.player.loadError({
+        uri: 'http://server/api/v1/transcode/tok/subtitles/6/3.vtt',
+        status: 503,
+      });
+      expect(expo.of('subtitleError').at(-1)).toEqual({
+        type: 'subtitleError',
+        code: 'subtitle_unavailable',
+      });
+      // Audio and video requests the player retries are retries, not subtitles.
+      expo.player.loadError({
+        uri: 'http://server/api/v1/transcode/tok/audio/1/9.m4s',
+        status: 503,
+      });
+      expect(expo.of('loadRetry').at(-1)).toEqual({ type: 'loadRetry', status: 503, audio: true });
+      expo.replay();
+      expect(c.currentSubtitle()).toBeNull();
+      expect(c.notice).toMatchObject({ kind: 'subtitleFailed' });
+      expect(c.phase).toBe('playing');
+      expo.engine.release();
+      await c.stop();
+    }
+  );
 
   row('C22', 'subtitles that fail again after the retry stay off for good', async () => {
     const c = await withSubtitles();

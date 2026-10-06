@@ -32,6 +32,7 @@ import {
   type PlaybackSwitch,
 } from '@/player/playback-api';
 import { subtitleAfterAudio } from '@/player/forced-subtitle';
+import { clock } from '@/player/format';
 import { HealthMonitor, HEALTH_TICK_MS } from '@/player/health/monitor';
 import type { SystemCause } from '@/player/engines/types';
 import type { EngineHealth } from '@/player/health/types';
@@ -872,6 +873,13 @@ export class PlaybackController {
         } else if (event.type === 'pip') {
           this.pictureInPicture = event.active;
           this.changed();
+        } else if (event.type === 'reload') {
+          // The engine reopens its own source: a fresh load with its start budget, not a stall (VLC, D23).
+          this.pictured = false;
+          this.loadingSince = Date.now();
+          this.clearStall();
+          this.monitor.newSource();
+          this.changed();
         } else if (event.type === 'external') {
           this.external = event.active ? { device: event.device } : null;
           this.changed();
@@ -1342,6 +1350,7 @@ export class PlaybackController {
         to: this.playback?.method ?? '',
         engine: this.playback?.engine === 'vlc' && playback.engine !== 'vlc' ? 'vlc' : '',
         reason: reason ?? '',
+        at: clock(context.position),
       });
     }
     return ok;

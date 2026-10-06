@@ -860,6 +860,10 @@
         "title": "Eine andere App hat das Video übernommen",
         "message": "Eine andere App oder das System hat die Videowiedergabe dieses Geräts übernommen. Versuche es erneut."
       },
+      "media_damaged": {
+        "title": "Das Video ist hier beschädigt",
+        "message": "Die Videodaten sind an dieser Stelle kaputt. Neu laden und eine andere Wiedergabeart kamen nicht darüber hinweg. Versuche eine andere Version."
+      },
       "cleartext_not_permitted": {
         "title": "Unverschlüsselte Verbindung blockiert",
         "message": "Dieses Gerät spielt nicht über eine unverschlüsselte http://-Verbindung. Verwende die https://-Adresse des Servers."

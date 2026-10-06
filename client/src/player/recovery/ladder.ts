@@ -113,7 +113,8 @@ export function nextStep(
   const { category, code } = failure;
   const after = (wait: number | undefined, fallback: number) => seconds(wait ?? fallback);
   // A device failure that keeps coming back is not fixed by reloading again (R5); server and network faults never step down.
-  const deviceFailure = category === 'T7' || code === 'playback_slideshow';
+  const deviceFailure =
+    (category === 'T7' && code !== 'media_damaged') || code === 'playback_slideshow';
   if (context.recurring && context.attached && deviceFailure && incident.attempts.length === 0)
     return stepDown(incident, category === 'T5' ? 'deviceSlow' : 'noPicture');
   switch (category) {

@@ -1,5 +1,5 @@
-import { createRef, memo, type ComponentType, type RefObject } from 'react';
-import { Platform } from 'react-native';
+import { createRef, memo, useSyncExternalStore, type ComponentType, type RefObject } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import {
   createVideoPlayer,
   VideoView,
@@ -8,16 +8,22 @@ import {
   type VideoPlayer,
 } from 'expo-video';
 
+import { colors } from '@/theme';
+
 import type { EngineHealth } from '../health/types';
 import { effectiveMuted } from '../test-muted';
-import { EngineBase } from './base';
+import { EngineBase, PropsStore } from './base';
 import { StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps, SystemCause } from './types';
 import {
-  errorReason,
+  failureReason,
+  loadErrorPart,
+  ownFailure,
+  subtitleCode,
   systemCause,
   toHealth,
   type NativeError,
+  type NativeLoadError,
   type NativeProbe,
 } from './native-probe';
 
@@ -37,31 +43,41 @@ type SurfaceHooks = {
   onFirstFrame: () => void;
   onPip: (active: boolean) => void;
   view: RefObject<VideoView | null>;
+  /** Black over the picture until a start position is reached (the new item's frame 0 must not show, R5). */
+  cover: PropsStore<{ covered: boolean }>;
 };
 
 function createExpoVideoSurface(
   player: VideoPlayer,
-  { onFirstFrame, onPip, view }: SurfaceHooks
+  { onFirstFrame, onPip, view, cover }: SurfaceHooks
 ): ComponentType<SurfaceProps> {
   function ExpoVideoSurface({ style, fit }: SurfaceProps) {
+    const { covered } = useSyncExternalStore(cover.subscribe, cover.get);
     return (
-      <VideoView
-        ref={view}
-        player={player}
-        style={style}
-        nativeControls={false}
-        allowsVideoFrameAnalysis={false}
-        contentFit={fit ?? 'contain'}
-        allowsPictureInPicture={PIP}
-        startsPictureInPictureAutomatically={PIP}
-        onPictureInPictureStart={() => onPip(true)}
-        onPictureInPictureStop={() => onPip(false)}
-        onFirstFrameRender={onFirstFrame}
-      />
+      <>
+        <VideoView
+          ref={view}
+          player={player}
+          style={style}
+          nativeControls={false}
+          allowsVideoFrameAnalysis={false}
+          contentFit={fit ?? 'contain'}
+          allowsPictureInPicture={PIP}
+          startsPictureInPictureAutomatically={PIP}
+          onPictureInPictureStart={() => onPip(true)}
+          onPictureInPictureStop={() => onPip(false)}
+          onFirstFrameRender={onFirstFrame}
+        />
+        {covered ? (
+          <View testID="engine-start-cover" style={[StyleSheet.absoluteFill, styles.cover]} />
+        ) : null}
+      </>
     );
   }
   return memo(ExpoVideoSurface);
 }
+
+const styles = StyleSheet.create({ cover: { backgroundColor: colors.video } });
 
 /** Time events while playing; the clock shows whole seconds. */
 const TIME_UPDATE_SECONDS = 0.5;
@@ -82,6 +98,11 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   /** Paused by the OS (call, other audio, headphones, lock); a resume the OS allows plays again. */
   private systemPause: SystemCause | null = null;
   private pipClosedAt = 0;
+  /** When the player stopped while the app wanted it to play (the cause may follow, e.g. PiP ✕ on iOS). */
+  private strayPauseAt = 0;
+  private readonly cover = new PropsStore({ covered: false });
+  /** Subtitle renditions that already failed for this source (one notice, not one per retried segment). */
+  private failedText = new Set<string>();
   private externalDevice: string | undefined;
 
   constructor() {
@@ -94,10 +115,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     this.subscriptions.push(
       player.addListener('statusChange', ({ status, error }) => {
         if (status === 'error') {
-          const native = error as NativeError | undefined;
+          const native = ownFailure(error as NativeError | undefined);
           this.emit({
             type: 'error',
-            reason: errorReason(native),
+            reason: failureReason(native, this.ready),
             status: native?.httpStatus ?? undefined,
           });
           this.setState('error');
@@ -115,12 +136,16 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         // Android keeps posting time updates while paused; each one wakes the JS thread.
         player.timeUpdateEventInterval = isPlaying ? TIME_UPDATE_SECONDS : 0;
         if (this.getSnapshot().state === 'ended' && !isPlaying) return;
+        if (!isPlaying && this.wantPlay) this.strayPauseAt = Date.now();
         if (!isPlaying && Date.now() - this.pipClosedAt < PIP_CLOSE_MS)
           this.onSystem(true, 'pipClosed');
         if (player.status === 'readyToPlay') this.setState(isPlaying ? 'playing' : 'paused');
       }),
       (player as unknown as NativeProbe).addListener('systemPlayback', ({ paused, cause }) =>
         this.onSystem(paused, cause)
+      ),
+      (player as unknown as NativeProbe).addListener('loadError', (event) =>
+        this.onLoadError(event)
       ),
       player.addListener('isExternalPlaybackActiveChange', ({ isExternalPlaybackActive }) =>
         this.onExternal(isExternalPlaybackActive)
@@ -129,6 +154,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         // Before the start seek the clock still reads 0; the snapshot keeps the start position.
         if (this.start.pending && !this.start.applied) return;
         this.start.time(currentTime);
+        if (!this.start.pending) this.uncover();
         this.emit({
           type: 'time',
           position: currentTime,
@@ -157,9 +183,31 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     onPip: (active) => {
       if (!active) this.pipClosedAt = Date.now();
       this.emit({ type: 'pip', active });
+      // iOS pauses on the window's ✕ first and reports the end of picture-in-picture after the animation.
+      const stopped = !this.player.playing && this.player.status === 'readyToPlay';
+      if (!active && stopped && Date.now() - this.strayPauseAt < PIP_CLOSE_MS)
+        this.onSystem(true, 'pipClosed');
     },
     view: this.view,
+    cover: this.cover,
   });
+
+  private uncover(): void {
+    if (this.cover.get().covered) this.cover.set({ covered: false });
+  }
+
+  /** A media request failed and the player retries or drops it: subtitles fail on their own, the rest is a retry (C22, R7). */
+  private onLoadError(error: NativeLoadError): void {
+    const part = loadErrorPart(error);
+    if (part === 'text') {
+      const key = (error.uri ?? '').replace(/\/[^/]*$/, '');
+      if (this.failedText.has(key)) return;
+      this.failedText.add(key);
+      this.emit({ type: 'subtitleError', code: subtitleCode(error.status) });
+      return;
+    }
+    this.emit({ type: 'loadRetry', status: error.status ?? 0, audio: part === 'audio' });
+  }
 
   startPictureInPicture(): void {
     if (PIP) void this.view.current?.startPictureInPicture().catch(() => undefined);
@@ -174,11 +222,17 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     if (paused) {
       if (!this.wantPlay) return;
       this.wantPlay = false;
-      this.systemPause = systemCause(cause);
+      this.strayPauseAt = 0;
+      this.systemPause = systemCause(cause, Platform.isTV);
       this.emit({ type: 'userPlayback', paused: true, cause: this.systemPause ?? undefined });
     } else if (cause === 'resume' && this.systemPause) {
       // The OS ended the interruption and allows the playback to continue (end of a call).
       this.play();
+      this.emit({ type: 'userPlayback', paused: false });
+    } else if (cause === 'remote' && !this.wantPlay) {
+      // Play from the system controls or a media key: the player already plays, the app adopts it.
+      this.wantPlay = true;
+      this.systemPause = null;
       this.emit({ type: 'userPlayback', paused: false });
     }
   }
@@ -252,8 +306,12 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     this.wantPlay = true;
     const player = this.player;
     this.start.cancel();
+    this.failedText = new Set();
+    this.cover.set({ covered: (source.startPosition ?? 0) > 0 });
     this.start = new StartSeek(source.startPosition ?? 0, (position) => {
       player.currentTime = position;
+      // Paused at the start no time event follows: the seeked frame is the one to show.
+      if (!this.wantPlay) this.uncover();
     });
     void player
       .replaceAsync({ uri: source.uri, contentType: source.kind === 'hls' ? 'hls' : 'progressive' })
@@ -281,6 +339,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   play(): void {
     this.wantPlay = true;
     this.systemPause = null;
+    this.strayPauseAt = 0;
     if (this.start.pending && !this.start.applied) return;
     if (this.getSnapshot().state === 'ended') this.player.currentTime = 0;
     this.player.play();
@@ -291,12 +350,17 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   pause(): void {
+    // The app's own pause wins: an OS "may resume" after it must not start the picture again.
     this.wantPlay = false;
+    if (this.start.applied) this.uncover();
+    this.systemPause = null;
+    this.strayPauseAt = 0;
     this.player.pause();
   }
 
   seek(position: number): void {
     this.start.cancel();
+    this.uncover();
     this.player.currentTime = Math.max(0, position);
     // The next time event is up to 0.5 s away (none while paused): the clock jumps to the target now.
     const { duration, buffered } = this.getSnapshot();
@@ -314,6 +378,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   release(): void {
+    this.systemPause = null;
     super.release();
     for (const subscription of this.subscriptions) subscription.remove();
     this.player.release();

@@ -209,6 +209,7 @@ export function stepDownReasonKey(
   const reason = params?.reason;
   if (!reason) return undefined;
   if (reason === 'picture_timeout') return 'notice.because.picture_timeout';
+  if (reason === 'media_damaged') return 'notice.because.media_damaged';
   const category = categoryOf(reason);
   return category === 'T5' || category === 'T6' || category === 'T7'
     ? `notice.because.${category}`
@@ -230,7 +231,7 @@ export function noticeText(
     case 'stepDown':
       // What happened first, then what the app did about it.
       return [stepDownReasonKey(params), stepDownKey(params)]
-        .flatMap((key) => (key ? [pt(key)] : []))
+        .flatMap((key) => (key ? [pt(key, { time: params?.at ?? '' })] : []))
         .join(' ');
     case 'otherVersion':
       return pt('notice.otherVersion');

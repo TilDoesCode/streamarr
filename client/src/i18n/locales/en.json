@@ -860,6 +860,10 @@
         "title": "Another app took over the video",
         "message": "Another app or the system took over video playback on this device. Try again."
       },
+      "media_damaged": {
+        "title": "The video is damaged here",
+        "message": "The video data is broken at this spot. Playing it again and another way did not get past it. Try another version."
+      },
       "cleartext_not_permitted": {
         "title": "Unencrypted connection blocked",
         "message": "This device refuses to play over an unencrypted http:// connection. Use the server’s https:// address."

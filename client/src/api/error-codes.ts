@@ -21,6 +21,7 @@ export const CLIENT_ERROR_CODES = [
   'engine_error',
   'unexpected_format',
   'decoder_reclaimed',
+  'media_damaged',
   'cleartext_not_permitted',
   'vlc_error',
   'vlc_dialog',

@@ -1,3 +1,5 @@
+import { act, render } from '@testing-library/react-native';
+
 import { ExpoVideoEngine } from '../engines/expo-video-engine';
 
 type Listener = (event: Record<string, unknown>) => void;
@@ -142,4 +144,51 @@ it('an expo-video build without the S6 patch reports no health, so no watchdog r
   const engine = engineWith(0);
   await expect(engine.readHealth()).resolves.toEqual({});
   engine.release();
+});
+
+describe('start cover (S9b: the new item\'s frame 0 must not show under "Resuming at …")', () => {
+  const covered = (engine: ExpoVideoEngine) =>
+    (engine as unknown as { cover: { get(): { covered: boolean } } }).cover.get().covered;
+
+  it('stays black from the load until the clock reached the start position', async () => {
+    const engine = engineWith(41);
+    expect(covered(engine)).toBe(true);
+    const { queryByTestId } = await render(<engine.Surface />);
+    expect(queryByTestId('engine-start-cover')).not.toBeNull();
+    mockPlayer.resolveReplace();
+    await flush();
+    mockPlayer.ready();
+    expect(mockPlayer.calls).toEqual(['seek 41', 'play']);
+    mockPlayer.fire('timeUpdate', { currentTime: 0.2, bufferedPosition: 0 });
+    expect(covered(engine)).toBe(true);
+    await act(async () =>
+      mockPlayer.fire('timeUpdate', { currentTime: 41.1, bufferedPosition: 50 })
+    );
+    expect(covered(engine)).toBe(false);
+    expect(queryByTestId('engine-start-cover')).toBeNull();
+    engine.release();
+  });
+
+  it('never covers a start from the beginning', () => {
+    const engine = engineWith(0);
+    expect(covered(engine)).toBe(false);
+    engine.release();
+  });
+
+  it('a paused start shows the seeked frame at once (no time event follows)', async () => {
+    const engine = engineWith(41);
+    engine.pause();
+    mockPlayer.resolveReplace();
+    await flush();
+    mockPlayer.ready();
+    expect(covered(engine)).toBe(false);
+    engine.release();
+  });
+
+  it('a viewer seek ends the cover', () => {
+    const engine = engineWith(41);
+    engine.seek(80);
+    expect(covered(engine)).toBe(false);
+    engine.release();
+  });
 });

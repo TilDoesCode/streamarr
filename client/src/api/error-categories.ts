@@ -38,6 +38,7 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   engine_error: 'T7',
   unexpected_format: 'T6',
   decoder_reclaimed: 'T6',
+  media_damaged: 'T7',
   cleartext_not_permitted: 'T11',
   vlc_error: 'T7',
   vlc_dialog: 'T7',

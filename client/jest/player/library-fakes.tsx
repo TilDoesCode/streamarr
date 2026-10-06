@@ -325,8 +325,14 @@ export class FakeExpoPlayer {
     underlyingCode?: number;
     errorLog?: string;
     httpStatus?: number;
+    uri?: string;
   }): void {
     this.setStatus('error', error);
+  }
+
+  /** The S6s patch's failed media request (`trackType`: audio · video · text · other). */
+  loadError(event: { uri?: string; trackType?: string; status?: number }): void {
+    this.fire('loadError', event);
   }
 
   readHealthAsync?: (withFrames?: boolean) => Promise<FakeExpoPlayer['health']> = async () =>

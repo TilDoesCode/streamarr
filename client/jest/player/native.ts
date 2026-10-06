@@ -4,10 +4,7 @@ import type { EngineEvent } from '@/player/engines/types';
 import { harness } from './harness';
 import { FakeExpoPlayer } from './library-fakes';
 
-/**
- * The real native engines on their library fakes (S6/S7). Test files mock the libraries:
- * `jest.mock('expo-video', () => jest.requireActual('@/../jest/player/library-fakes').expoVideoModule())`.
- */
+/** The real native engines on their library fakes (S6/S7); test files mock expo-video with `expoVideoModule()`. */
 export type Recorded = {
   events: EngineEvent[];
   of<T extends EngineEvent['type']>(type: T): Extract<EngineEvent, { type: T }>[];

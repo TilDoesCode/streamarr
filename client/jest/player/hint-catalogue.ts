@@ -407,6 +407,16 @@ const NOTICES: Row[] = [
   },
   {
     id: 'N10',
+    key: 'notice.because.media_damaged',
+    params: { time: '0:41' },
+    state:
+      'Reason before a step-down: the video data is damaged at that spot (a segment that does not parse)',
+    action: '—',
+    shows: 'with N01–N05, after one reload at the spot',
+    clears: 'with the notice',
+  },
+  {
+    id: 'N10',
     key: 'notice.otherVersion',
     state: 'Step V switched the version',
     action: '—',

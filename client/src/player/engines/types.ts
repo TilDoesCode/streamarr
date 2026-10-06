@@ -6,7 +6,14 @@ import type { EngineHealth } from '../health/types';
 /** Engine implementations behind the one player interface. */
 /** Why the OS paused or took over playback, as a native engine reports it (T10). */
 export type SystemCause =
-  'call' | 'otherAudio' | 'headphones' | 'locked' | 'pipClosed' | 'airplayLost';
+  | 'call'
+  | 'otherAudio'
+  | 'headphones'
+  | 'audioOutput'
+  | 'locked'
+  | 'background'
+  | 'pipClosed'
+  | 'airplayLost';
 
 export type EngineKind = 'expo-video' | 'vlc' | 'web';
 
@@ -67,6 +74,8 @@ export type EngineEvent =
   | { type: 'loadRetry'; status?: number; audio?: boolean }
   /** The subtitles failed to load or parse; the playback itself goes on (C22, C23). */
   | { type: 'subtitleError'; code: string }
+  /** The engine reopens its own source (VLC without direct rendering): a fresh load, not a stall. */
+  | { type: 'reload' }
   /** The browser refused to start with sound (`muted`) or at all (`blocked`). */
   | { type: 'autoplay'; result: 'muted' | 'blocked' }
   | { type: 'stats'; stats: EngineStats };

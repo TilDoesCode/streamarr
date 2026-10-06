@@ -102,7 +102,8 @@
       "T7": "Dieses Gerät konnte das Video nicht dekodieren.",
       "T5": "Das Video kam zu langsam an.",
       "T6": "Der Server hatte ein Problem.",
-      "picture_timeout": "Das Bild blieb schwarz."
+      "picture_timeout": "Das Bild blieb schwarz.",
+      "media_damaged": "Die Videodaten sind bei {time} beschädigt."
     },
     "otherVersion": "Zu einer anderen Version gewechselt, damit es weitergeht.",
     "audioFallback": "Ton in Stereo umgewandelt, damit es weitergeht.",
@@ -157,6 +158,8 @@
       "call": "Anruf",
       "otherAudio": "eine andere App spielt Ton",
       "headphones": "Kopfhörer getrennt",
+      "audioOutput": "Tonausgabe gewechselt",
+      "background": "App verlassen",
       "locked": "Bildschirm gesperrt",
       "pipClosed": "Bild-in-Bild geschlossen",
       "airplayLost": "AirPlay getrennt",

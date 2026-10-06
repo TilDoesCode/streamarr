@@ -100,7 +100,7 @@ describe('VlcEngine direct rendering retry (D23)', () => {
   });
 
   it('reloads once without MediaCodec direct rendering when decoded video never shows', async () => {
-    const { engine, internals, tick } = setup(
+    const { engine, internals, tick, events } = setup(
       { displayedPictures: 0, decodedVideo: 120 },
       { directRendering: true }
     );
@@ -114,6 +114,8 @@ describe('VlcEngine direct rendering retry (D23)', () => {
     expect(internals.props.get().nonce).toBe(nonce + 1);
     expect(internals.props.get().options).toContain(':no-mediacodec-dr');
     expect(engine.getSnapshot().state).toBe('loading');
+    // Announced first, so the controller treats it as a fresh load and not as a stall (review 12).
+    expect(events.filter((event) => event.type === 'reload')).toHaveLength(1);
     tick(6);
     await engine.readHealth();
     expect(internals.props.get().nonce).toBe(nonce + 1);

@@ -1,14 +1,23 @@
 diff --git a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
-index ffe5324..c0dfff8 100644
+index ffe5324..32080e4 100644
 --- a/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
 +++ b/node_modules/expo-libvlc-player/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
-@@ -174,6 +174,10 @@ class LibVlcPlayerModule : Module() {
+@@ -2,6 +2,7 @@ package expo.modules.libvlcplayer
+ 
+ import android.app.Activity
+ import android.os.Build
++import expo.modules.kotlin.functions.Queues
+ import expo.modules.kotlin.exception.Exceptions
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+@@ -174,6 +175,11 @@ class LibVlcPlayerModule : Module() {
            view.stop()
          }
  
++        // Main queue: teardown releases the player there, so stats never read a released one.
 +        AsyncFunction("getStats") { view: LibVlcPlayerView ->
 +          view.getStats()
-+        }
++        }.runOnQueue(Queues.MAIN)
 +
          AsyncFunction("seek") { view: LibVlcPlayerView, value: Double, type: String? ->
            view.seek(value, type)
@@ -151,16 +160,17 @@ index e78a0d7..6b4086e 100644
  ) : Record,
    Serializable
 diff --git a/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift b/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift
-index 472f61b..eaea31c 100644
+index 472f61b..367fdbc 100644
 --- a/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift
 +++ b/node_modules/expo-libvlc-player/ios/LibVlcPlayerModule.swift
-@@ -138,6 +138,10 @@ public class LibVlcPlayerModule: Module {
+@@ -138,6 +138,11 @@ public class LibVlcPlayerModule: Module {
          view.stop()
        }
  
++      // Main queue: the view tears the player down there, so stats never race the release.
 +      AsyncFunction("getStats") { (view: LibVlcPlayerView) -> [String: UInt64] in
 +        view.getStats()
-+      }
++      }.runOnQueue(.main)
 +
        AsyncFunction("seek") { (view: LibVlcPlayerView, value: Double, type: String?) in
          view.seek(value, type)

@@ -84,6 +84,9 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
     return { category: 'T11', code: 'player_load_failed', detail: reason };
   if (reason.startsWith('audioRendition:'))
     return { category: 'T7', code: 'audio_rendition_failed', detail: reason };
+  // A segment whose container data does not parse: the content is damaged there, the device is fine (D41).
+  if (reason.startsWith('damagedSegment:'))
+    return { category: 'T7', code: 'media_damaged', detail: reason };
   const hls = hlsReason(reason, status);
   if (hls) return hls;
   if (reason === 'vlc_video_stalled')

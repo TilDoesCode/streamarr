@@ -12,6 +12,8 @@ import { harness, newController, reply } from '@/../jest/player/harness';
 import { row } from '@/../jest/player/matrix';
 import { expoVideoView } from '@/../jest/player/library-fakes';
 import { expoPlaying } from '@/../jest/player/native';
+import { systemCause } from '@/player/engines/native-probe';
+import { hintText } from '@/player/recovery/hints';
 import {
   fakeNetwork,
   playFor,
@@ -160,6 +162,61 @@ describe('matrix A — App, auth, device and OS', () => {
       remote.player.system(true, 'remote');
       expect(remote.of('userPlayback')).toEqual([{ type: 'userPlayback', paused: true }]);
       for (const engine of [expo.engine, own.engine, remote.engine]) engine.release();
+      await c.stop();
+    }
+  );
+  row(
+    'A13',
+    'an app pause during a call (card, sign-out) is not undone by the OS "may resume" after it (review 1)',
+    async () => {
+      const expo = await expoPlaying();
+      expo.player.system(true, 'call');
+      expo.engine.pause();
+      const before = expo.player.calls.length;
+      expo.player.system(false, 'resume');
+      expect(expo.player.calls.slice(before)).not.toContain('play');
+      expect(expo.of('userPlayback').filter((event) => !event.paused)).toEqual([]);
+      // The viewer resumed during the call: the OS resume afterwards plays nothing more (review 14).
+      const viewer = await expoPlaying();
+      viewer.player.system(true, 'call');
+      viewer.engine.play();
+      const plays = viewer.player.calls.filter((call) => call === 'play').length;
+      viewer.player.system(false, 'resume');
+      expect(viewer.player.calls.filter((call) => call === 'play')).toHaveLength(plays);
+      // A resume without any system pause (the viewer paused) does nothing (review 13).
+      const paused = await expoPlaying();
+      paused.engine.pause();
+      const count = paused.player.calls.length;
+      paused.player.system(false, 'resume');
+      expect(paused.player.calls.slice(count)).toEqual([]);
+      for (const engine of [expo.engine, viewer.engine, paused.engine]) engine.release();
+    }
+  );
+  row(
+    'A13',
+    'a play from the system controls after a remote pause is adopted, never paused again (review 8, 22)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(42);
+      const remote = await expoPlaying();
+      remote.player.system(true, 'remote');
+      remote.player.system(false, 'remote');
+      expect(remote.of('userPlayback')).toEqual([
+        { type: 'userPlayback', paused: true },
+        { type: 'userPlayback', paused: false },
+      ]);
+      remote.replay();
+      harness.engine.state('playing');
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(c.paused).toBe(false);
+      expect(c.systemPaused).toBe(false);
+      expect(c.status.hint).toBeNull();
+      expect(harness.engine.commands.at(-1)).not.toBe('pause');
+      // The next system pause in the same session still names its cause.
+      remote.player.system(true, 'otherAudio');
+      expect(remote.of('userPlayback').at(-1)).toMatchObject({ paused: true, cause: 'otherAudio' });
+      remote.engine.release();
       await c.stop();
     }
   );
@@ -823,6 +880,56 @@ describe('matrix A — signed out, background, PiP, OS, network (S4f)', () => {
         Number(harness.server.sent('progress').at(-1)?.body?.positionTicks)
       ).toBeGreaterThanOrEqual(110 * TICKS);
       await c.stop();
+    }
+  );
+  row(
+    'A12',
+    'a background pause without a lock says "app left", a TV output change "sound output changed" (review 5, 6)',
+    async () => {
+      const { c, expo } = await systemPause('background');
+      expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'background' } });
+      const pt = (lang: 'de' | 'en', cause: string) =>
+        hintText(
+          (key, options) =>
+            i18n.getFixedT(lang)(key, { ...options, ns: 'player' } as never) as unknown as string,
+          'pausedBySystem',
+          { cause }
+        );
+      expect(pt('en', 'background')).toBe('Paused: app left.');
+      expect(pt('de', 'audioOutput')).toBe('Pausiert: Tonausgabe gewechselt.');
+      expect(systemCause('headphones', true)).toBe('audioOutput');
+      expect(systemCause('headphones', false)).toBe('headphones');
+      expo.engine.release();
+      await c.stop();
+    }
+  );
+  row(
+    'A16',
+    'iOS order: the ✕ pauses first, the end of picture-in-picture follows — still "picture-in-picture closed" (review 7)',
+    async () => {
+      const expo = await expoPlaying();
+      await render(createElement(expo.engine.Surface));
+      expo.player.setPlaying(false);
+      expect(expo.of('userPlayback')).toEqual([]);
+      (expoVideoView.props?.onPictureInPictureStop as () => void)();
+      expect(expo.of('userPlayback')).toEqual([
+        { type: 'userPlayback', paused: true, cause: 'pipClosed' },
+      ]);
+      // Back to the app from the window while playing: no pause is invented.
+      const back = await expoPlaying();
+      await render(createElement(back.engine.Surface));
+      (expoVideoView.props?.onPictureInPictureStop as () => void)();
+      expect(back.of('userPlayback')).toEqual([]);
+      expo.engine.release();
+      back.engine.release();
+    }
+  );
+  row(
+    'A12',
+    'Google TV: an activity pause from an intent says "app left", never "screen locked" (S9b)',
+    async () => {
+      expect(systemCause('locked', true)).toBe('background');
+      expect(systemCause('locked', false)).toBe('locked');
     }
   );
 });

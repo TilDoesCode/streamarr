@@ -4,6 +4,9 @@ import { createElement } from 'react';
 import type { EngineEvent } from '@/player/engines';
 import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
 import { classify } from '@/player/recovery/classify';
+import { VlcEngine } from '@/player/engines/vlc-engine';
+import { stepDownReasonKey } from '@/player/overlay-labels';
+import { Incident, nextStep } from '@/player/recovery/ladder';
 import { AUDIO_SWITCH_TIMEOUT_MS } from '@/player/controller';
 import i18n from '@/i18n';
 import { harness, newController, reply } from '@/../jest/player/harness';
@@ -1903,6 +1906,208 @@ describe('matrix D — live re-audit S9a2: hls.js cancelling its own requests (S
       aborted(hls, 'audio');
       aborted(hls, 'main');
       expect(events.map((event) => event.type)).toEqual([]);
+      engine.release();
+    }
+  );
+  row(
+    'D18',
+    'an AVPlayer decoder failure keeps no HTTP status from an older, recovered error-log entry (review 4)',
+    async () => {
+      const expo = await expoPlaying();
+      expo.player.failWith({
+        message: 'Cannot Decode',
+        domain: 'AVFoundationErrorDomain',
+        code: -11821,
+        underlyingDomain: 'NSOSStatusErrorDomain',
+        underlyingCode: -12909,
+        errorLog: 'CoreMediaErrorDomain 404 HTTP 404: File Not Found',
+        httpStatus: 404,
+      });
+      const [decode] = expo.of('error');
+      expect(decode?.status).toBeUndefined();
+      expect(decode?.reason).not.toContain('404');
+      expect(classified(decode!)).toMatchObject({ category: 'T7', code: 'decode_error' });
+      // A transport failure keeps the status of its own request.
+      const http = await expoPlaying();
+      http.player.failWith({
+        message: 'File Not Found',
+        domain: 'CoreMediaErrorDomain',
+        code: -12938,
+        errorLog: 'CoreMediaErrorDomain -12938 HTTP 404: File Not Found',
+        httpStatus: 404,
+      });
+      expect(http.of('error')[0]).toMatchObject({ status: 404 });
+      expect(classified(http.of('error')[0]!)).toMatchObject({ category: 'T2' });
+      // AVFoundation's 403 without an error log is the capability refused (review 17).
+      expect(
+        classified({ reason: 'NSURLErrorDomain -1102 (CoreMediaErrorDomain -12660): Forbidden' })
+      ).toMatchObject({ category: 'T2', code: 'unknown_stream' });
+      expo.engine.release();
+      http.engine.release();
+    }
+  );
+  row(
+    'D28',
+    'after a stop the handler is gone: the next real Stopped ends the source, and no stats are read during the stop',
+    async () => {
+      jest.useFakeTimers();
+      FakeVlcView.reset();
+      FakeVlcView.stats = { displayedPictures: 5, decodedVideo: 5 };
+      const vlc = vlcPlaying();
+      await render(createElement(vlc.engine.Surface));
+      const done = vlc.engine.shutdown();
+      FakeVlcView.ref.getStats.mockClear();
+      await expect(vlc.engine.readHealth()).resolves.toEqual({});
+      expect(FakeVlcView.ref.getStats).not.toHaveBeenCalled();
+      FakeVlcView.call('onStopped');
+      await done;
+      expect(vlc.of('ended')).toEqual([]);
+      FakeVlcView.call('onStopped');
+      expect(vlc.of('ended')).toHaveLength(1);
+      vlc.engine.release();
+    }
+  );
+  row(
+    'D23',
+    "VLC's own reload without direct rendering is a fresh load for the controller, not a stall (review 12)",
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { engine: 'vlc' } as never, 0);
+      harness.engine.time(20);
+      harness.engine.state('loading');
+      harness.engine.emit({ type: 'reload' });
+      await jest.advanceTimersByTimeAsync(16_000);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.status.hint?.key).toBe('startSlow');
+      harness.engine.emit({ type: 'firstFrame' });
+      harness.engine.state('playing');
+      await settle();
+      expect(c.status.hint).toBeNull();
+      await c.stop();
+    }
+  );
+  row(
+    'D36',
+    'Exo: a dead audio rendition while the picture plays is the audio path (reload, conversion), never "Connection lost" (S9b)',
+    async () => {
+      jest.useFakeTimers();
+      const expo = await expoPlaying();
+      expo.player.failWith({
+        message: 'Source error',
+        errorCodeName: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED',
+        uri: 'http://server/api/v1/transcode/tok/audio/1/12.m4s',
+      });
+      const [event] = expo.of('error');
+      expect(event?.reason).toMatch(/^audioRendition:/);
+      expect(classified(event!)).toMatchObject({ category: 'T7', code: 'audio_rendition_failed' });
+      expo.engine.release();
+      // The same failure on the video segment stays a lost connection.
+      const video = await expoPlaying();
+      video.player.failWith({
+        message: 'Source error',
+        errorCodeName: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED',
+        uri: 'http://server/api/v1/transcode/tok/12.m4s',
+      });
+      expect(classified(video.of('error')[0]!)).toMatchObject({ category: 'T1' });
+      video.engine.release();
+      const c = await playing(
+        {},
+        { mediaInfo: { ...hdInfo, audioTracks: [{ index: 1 }] } } as never,
+        0
+      );
+      harness.engine.time(35);
+      harness.engine.emit(event!);
+      await settle();
+      expect(c.status.hint?.key).not.toBe('reconnecting');
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      harness.engine.emit(event!);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+      await c.stop();
+    }
+  );
+  row(
+    'D41',
+    'Exo: a segment that does not parse is damaged content: reload once (even when it recurs), then another way with the honest reason (S9b)',
+    async () => {
+      jest.useFakeTimers();
+      const expo = await expoPlaying();
+      expo.player.failWith({
+        message: 'Source error',
+        errorCodeName: 'ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED',
+        uri: 'http://server/api/v1/transcode/tok/7.m4s',
+      });
+      const [event] = expo.of('error');
+      expect(classified(event!)).toMatchObject({ category: 'T7', code: 'media_damaged' });
+      // Without a segment (a direct-play file the device cannot open) it stays the device's decoder.
+      expect(
+        classified({ reason: 'ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED: Source error' })
+      ).toMatchObject({ code: 'decode_error' });
+      expo.engine.release();
+      const c = await playing({}, { method: 'remux', mediaInfo: hdInfo } as never, 0);
+      harness.engine.time(41);
+      // A damaged spot is no device failure: even recurring it reloads first.
+      expect(
+        nextStep(
+          new Incident(Date.now()),
+          { category: 'T7', code: 'media_damaged' },
+          {
+            attached: true,
+            online: true,
+            canLowerQuality: false,
+            revision: 0,
+            audioFallback: false,
+            recurring: true,
+          }
+        ).step
+      ).toBe('R');
+      harness.engine.emit(event!);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      harness.engine.emit(event!);
+      await settle();
+      harness.engine.started();
+      harness.engine.emit(event!);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      expect(c.notice).toMatchObject({ kind: 'stepDown', params: { reason: 'media_damaged' } });
+      const pt = (key: string, options?: Record<string, unknown>) =>
+        i18n.getFixedT('en')(key, { ...options, ns: 'player' } as never) as unknown as string;
+      const key = stepDownReasonKey(c.notice?.params);
+      expect(key && pt(key, { time: c.notice?.params?.at })).toMatch(
+        /^The video data is damaged at \d+:\d\d\.$/
+      );
+      await c.stop();
+    }
+  );
+  row(
+    'D24',
+    'VLC started at a position: black until the clock passes it, the dropped start seek is sent again after 3 s (S9b)',
+    async () => {
+      jest.useFakeTimers();
+      FakeVlcView.reset();
+      const engine = new VlcEngine();
+      const internals = engine as unknown as {
+        view: { current: unknown };
+        props: { get(): { cover: boolean } };
+        onTime(seconds: number): void;
+      };
+      engine.load({ uri: 'http://server/a.mkv', kind: 'progressive', startPosition: 42 });
+      await render(createElement(engine.Surface));
+      internals.view.current = FakeVlcView.ref;
+      expect(internals.props.get().cover).toBe(true);
+      FakeVlcView.call('onPlaying');
+      internals.onTime(0.2);
+      expect(FakeVlcView.ref.seek).not.toHaveBeenCalled();
+      jest.setSystemTime(Date.now() + 3_100);
+      internals.onTime(0.3);
+      expect(FakeVlcView.ref.seek).toHaveBeenCalledWith(42_000, 'time');
+      expect(internals.props.get().cover).toBe(true);
+      internals.onTime(42.4);
+      expect(internals.props.get().cover).toBe(false);
       engine.release();
     }
   );

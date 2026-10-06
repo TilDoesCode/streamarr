@@ -30,45 +30,51 @@ index cdce796..225ab46 100644
          }
        }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/PictureInPictureManager.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/PictureInPictureManager.kt
-index 8b8eba9..d8f96a8 100644
+index 8b8eba9..246c041 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/PictureInPictureManager.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/PictureInPictureManager.kt
 @@ -188,6 +188,7 @@ class PictureInPictureManager(appContext: AppContext) : PictureInPictureFragment
      appContext.get()?.mainQueue?.launch {
        strongVideoViews.forEach {
          if (shouldPauseOnBackground(it)) {
-+          if (it.videoPlayer?.player?.playWhenReady == true) it.videoPlayer?.pendingPauseCause = "locked"
++          it.videoPlayer?.takeIf { player -> player.player.playWhenReady }?.let { player -> player.pendingPauseCause = player.backgroundPauseCause() }
            it.videoPlayer?.player?.pause()
            it.wasAutoPaused = true
          }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/VideoManager.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/VideoManager.kt
-index 5f9ad2a..2cc6aa1 100644
+index 5f9ad2a..3705f1f 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/VideoManager.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/managers/VideoManager.kt
 @@ -186,6 +186,7 @@ object VideoManager {
    private fun handleVideoPause(videoView: VideoView) {
      videoView.videoPlayer?.player?.let { player ->
        if (player.isPlaying) {
-+        videoView.videoPlayer?.pendingPauseCause = "locked"
++        videoView.videoPlayer?.let { it.pendingPauseCause = it.backgroundPauseCause() }
          player.pause()
          videoView.wasAutoPaused = true
        }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/PlayerEvent.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/PlayerEvent.kt
-index 5fcf3e5..3477356 100644
+index 5fcf3e5..20e3e9f 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/PlayerEvent.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/PlayerEvent.kt
-@@ -19,6 +19,7 @@ import expo.modules.video.records.SourceChangedEventPayload
+@@ -19,6 +19,8 @@ import expo.modules.video.records.SourceChangedEventPayload
  import expo.modules.video.records.StatusChangedEventPayload
  import expo.modules.video.records.SubtitleTrack
  import expo.modules.video.records.SubtitleTrackChangedEventPayload
++import expo.modules.video.records.LoadErrorEventPayload
 +import expo.modules.video.records.SystemPlaybackEventPayload
  import expo.modules.video.records.AudioTrackChangedEventPayload
  import expo.modules.video.records.TimeUpdate
  import expo.modules.video.records.VideoEventPayload
-@@ -139,6 +140,11 @@ sealed class PlayerEvent {
+@@ -139,6 +141,16 @@ sealed class PlayerEvent {
      override val emitToJS = false
    }
  
++  data class LoadError(val uri: String?, val trackType: String, val status: Int?) : PlayerEvent() {
++    override val name = "loadError"
++    override val jsEventPayload = LoadErrorEventPayload(uri, trackType, status)
++  }
++
 +  data class SystemPlayback(val paused: Boolean, val cause: String) : PlayerEvent() {
 +    override val name = "systemPlayback"
 +    override val jsEventPayload = SystemPlaybackEventPayload(paused, cause)
@@ -78,10 +84,24 @@ index 5fcf3e5..3477356 100644
      override val name = "playToEnd"
    }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-index 8bae522..a7228be 100644
+index 8bae522..939f9ea 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-@@ -16,6 +16,7 @@ import androidx.media3.common.Timeline
+@@ -1,6 +1,13 @@
+ package expo.modules.video.player
+ 
+ import android.content.Context
++import java.io.IOException
++import androidx.media3.exoplayer.source.MediaLoadData
++import androidx.media3.exoplayer.source.LoadEventInfo
++import androidx.media3.datasource.HttpDataSource
++import android.os.SystemClock
++import android.os.PowerManager
++import android.app.KeyguardManager
+ import android.media.MediaMetadataRetriever
+ import androidx.media3.common.C
+ import android.webkit.URLUtil
+@@ -16,6 +23,7 @@ import androidx.media3.common.Timeline
  import androidx.media3.common.TrackSelectionParameters
  import androidx.media3.common.Tracks
  import androidx.media3.common.util.UnstableApi
@@ -89,7 +109,7 @@ index 8bae522..a7228be 100644
  import androidx.media3.exoplayer.DecoderReuseEvaluation
  import androidx.media3.exoplayer.DefaultRenderersFactory
  import androidx.media3.exoplayer.ExoPlayer
-@@ -78,6 +79,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -78,6 +86,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      .apply {
        setLooper(context.mainLooper)
        setLoadControl(loadControl)
@@ -97,19 +117,29 @@ index 8bae522..a7228be 100644
        playerBuilderOptions?.seekBackwardIncrement?.let {
          setSeekBackIncrementMs((it).toLong(DurationUnit.MILLISECONDS).coerceIn(1, 999_000))
        }
-@@ -232,11 +234,54 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -232,11 +241,63 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
  
    var keepScreenOnWhilePlaying by VideoPlayerKeepAwake(this, appContext)
  
 +  // Streamarr health probe: counters are updated by the renderers, read once a second.
 +  @Volatile private var videoCounters: DecoderCounters? = null
 +  @Volatile private var audioCounters: DecoderCounters? = null
-+  @Volatile private var audioUnderruns = 0
 +  @Volatile private var bandwidthEstimate = 0L
 +  @Volatile private var firstFrameRendered = false
 +
++  // The last failed media request: a fatal error without its own data spec names this one.
++  @Volatile private var lastLoadErrorUri: String? = null
++  @Volatile private var lastLoadErrorAt = 0L
++
 +  /** Why the next pause that expo-video itself requests happens (audio focus, background). */
 +  var pendingPauseCause: String? = null
++
++  /** A background pause is a lock only when the keyguard is up or the screen went off; a TV has neither. */
++  fun backgroundPauseCause(): String {
++    val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
++    val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
++    return if (keyguard?.isKeyguardLocked == true || power?.isInteractive == false) "locked" else "background"
++  }
 +
 +  fun readHealth(): Map<String, Any?> {
 +    val video = videoCounters?.also { it.ensureUpdated() }
@@ -123,7 +153,6 @@ index 8bae522..a7228be 100644
 +      "framesDropped" to video?.droppedBufferCount,
 +      "framesDecoded" to video?.let { it.renderedOutputBufferCount + it.skippedOutputBufferCount + it.droppedBufferCount },
 +      "audioProgress" to (audio?.renderedOutputBufferCount ?: if (known && !hasAudio) 0 else null),
-+      "audioUnderruns" to audioUnderruns,
 +      "readyForDisplay" to firstFrameRendered,
 +      "hasVideoTrack" to if (known) hasVideo else null,
 +      "hasAudioTrack" to if (known) hasAudio else null,
@@ -152,7 +181,26 @@ index 8bae522..a7228be 100644
      override fun onTracksChanged(tracks: Tracks) {
        val oldSubtitleTracks = ArrayList(subtitles.availableSubtitleTracks)
        val oldAudioTracks = ArrayList(audioTracks.availableAudioTracks)
-@@ -346,6 +391,34 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -342,10 +403,49 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+   }
+ 
+   private val analyticsListener = object : AnalyticsListener {
++    override fun onLoadError(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData, error: IOException, wasCanceled: Boolean) {
++      if (wasCanceled) return
++      val uri = loadEventInfo.uri.toString()
++      lastLoadErrorUri = uri
++      lastLoadErrorAt = SystemClock.elapsedRealtime()
++      val trackType = when (mediaLoadData.trackType) {
++        C.TRACK_TYPE_AUDIO -> "audio"
++        C.TRACK_TYPE_VIDEO -> "video"
++        C.TRACK_TYPE_TEXT -> "text"
++        else -> "other"
++      }
++      val status = (error as? HttpDataSource.InvalidResponseCodeException)?.responseCode
++      appContext?.mainQueue?.launch { sendEvent(PlayerEvent.LoadError(uri, trackType, status)) }
++    }
++
+     override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: DecoderReuseEvaluation?) {
        currentVideoTrack = availableVideoTracks.firstOrNull { it.format?.id == format.id }
        super.onVideoInputFormatChanged(eventTime, format, decoderReuseEvaluation)
      }
@@ -173,10 +221,6 @@ index 8bae522..a7228be 100644
 +      audioCounters = null
 +    }
 +
-+    override fun onAudioUnderrun(eventTime: AnalyticsListener.EventTime, bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) {
-+      audioUnderruns += 1
-+    }
-+
 +    override fun onBandwidthEstimate(eventTime: AnalyticsListener.EventTime, totalLoadTimeMs: Int, totalBytesLoaded: Long, bitrateEstimate: Long) {
 +      bandwidthEstimate = bitrateEstimate
 +    }
@@ -187,7 +231,7 @@ index 8bae522..a7228be 100644
    }
  
    init {
-@@ -413,6 +486,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -413,6 +513,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    fun prepare() {
      availableVideoTracks = listOf()
      currentVideoTrack = null
@@ -195,8 +239,19 @@ index 8bae522..a7228be 100644
  
      val newSource = uncommittedSource
      val mediaSource = newSource?.toMediaSource(context)
+@@ -459,7 +560,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+     this.status = status
+ 
+     val playbackError = error?.let {
+-      PlaybackError(it)
++      PlaybackError(it).also { record ->
++        if (record.uri == null && SystemClock.elapsedRealtime() - lastLoadErrorAt < 3_000) record.uri = lastLoadErrorUri
++      }
+     }
+ 
+     if (playbackError == null && player.playbackState == Player.STATE_ENDED) {
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/PlaybackError.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/records/PlaybackError.kt
-index 005844f..aeea5d5 100644
+index 005844f..9d8454d 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/PlaybackError.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/records/PlaybackError.kt
 @@ -1,6 +1,8 @@
@@ -208,26 +263,24 @@ index 005844f..aeea5d5 100644
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import java.io.Serializable
-@@ -8,14 +10,35 @@ import expo.modules.kotlin.types.OptimizedRecord
+@@ -8,14 +10,43 @@ import expo.modules.kotlin.types.OptimizedRecord
  
  @OptimizedRecord
  class PlaybackError(
 -  @Field var message: String? = null
 +  @Field var message: String? = null,
 +  @Field var errorCodeName: String? = null,
-+  @Field var errorCode: Int? = null,
 +  @Field var httpStatus: Int? = null,
 +  @Field var mimeType: String? = null,
-+  @Field var renderer: String? = null
++  @Field var uri: String? = null
  ) : Record, Serializable {
 -  constructor(exception: PlaybackException) : this(errorMessageFromException(exception))
 +  constructor(exception: PlaybackException) : this(
 +    errorMessageFromException(exception),
 +    exception.errorCodeName,
-+    exception.errorCode,
 +    httpStatusOf(exception),
 +    (exception as? ExoPlaybackException)?.rendererFormat?.sampleMimeType,
-+    (exception as? ExoPlaybackException)?.rendererName
++    uriOf(exception)
 +  )
  
    companion object {
@@ -235,6 +288,16 @@ index 005844f..aeea5d5 100644
        val reason = "${exception.localizedMessage} ${exception.cause?.localizedMessage ?: ""}"
        return "A playback exception has occurred: $reason"
      }
++
++    // The request that failed, when the data source names it (audio rendition, segment, subtitle).
++    private fun uriOf(exception: PlaybackException): String? {
++      var cause: Throwable? = exception.cause
++      while (cause != null) {
++        if (cause is HttpDataSource.HttpDataSourceException) return cause.dataSpec.uri.toString()
++        cause = cause.cause
++      }
++      return null
++    }
 +
 +    private fun httpStatusOf(exception: PlaybackException): Int? {
 +      var cause: Throwable? = exception.cause
@@ -247,13 +310,20 @@ index 005844f..aeea5d5 100644
    }
  }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/VideoEventPayloads.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/records/VideoEventPayloads.kt
-index 2cbc397..d4f3ff3 100644
+index 2cbc397..f743e6c 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/VideoEventPayloads.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/records/VideoEventPayloads.kt
-@@ -77,3 +77,9 @@ class VideoSourceLoadedEventPayload(
+@@ -77,3 +77,16 @@ class VideoSourceLoadedEventPayload(
    @Field val availableSubtitleTracks: List<SubtitleTrack>,
    @Field val availableAudioTracks: List<AudioTrack>
  ) : VideoEventPayload
++
++// Streamarr: a media request that failed (the player retries or drops it).
++class LoadErrorEventPayload(
++  @Field val uri: String?,
++  @Field val trackType: String,
++  @Field val status: Int?
++) : VideoEventPayload
 +
 +// Streamarr: a pause or resume the app did not ask for, with its cause.
 +class SystemPlaybackEventPayload(
@@ -261,10 +331,10 @@ index 2cbc397..d4f3ff3 100644
 +  @Field val cause: String
 +) : VideoEventPayload
 diff --git a/node_modules/expo-video/ios/Records/PlaybackError.swift b/node_modules/expo-video/ios/Records/PlaybackError.swift
-index e4ec06f..f4f2b39 100644
+index e4ec06f..41364ad 100644
 --- a/node_modules/expo-video/ios/Records/PlaybackError.swift
 +++ b/node_modules/expo-video/ios/Records/PlaybackError.swift
-@@ -7,4 +7,10 @@ internal struct PlaybackError: Record {
+@@ -7,4 +7,12 @@ internal struct PlaybackError: Record {
    @Field
    // swiftlint:disable:next redundant_optional_initialization - Initialization with nil is necessary
    var message: String? = nil
@@ -274,6 +344,8 @@ index e4ec06f..f4f2b39 100644
 +  @Field var underlyingCode: Int? = nil
 +  @Field var httpStatus: Int? = nil
 +  @Field var errorLog: String? = nil
++  // swiftlint:disable:next redundant_optional_initialization
++  @Field var uri: String? = nil
  }
 diff --git a/node_modules/expo-video/ios/VideoManager.swift b/node_modules/expo-video/ios/VideoManager.swift
 index c2ebd04..a3e31d8 100644
@@ -319,7 +391,7 @@ index 2bf2f75..3883dba 100644
          player.ref.play()
        }
 diff --git a/node_modules/expo-video/ios/VideoPlayer.swift b/node_modules/expo-video/ios/VideoPlayer.swift
-index ab8807e..d6a1840 100644
+index ab8807e..aaffd3d 100644
 --- a/node_modules/expo-video/ios/VideoPlayer.swift
 +++ b/node_modules/expo-video/ios/VideoPlayer.swift
 @@ -12,6 +12,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
@@ -347,25 +419,31 @@ index ab8807e..d6a1840 100644
      let payload = StatusChangedEventPayload(status: newStatus, oldStatus: oldStatus, error: errorRecord)
      safeEmit(event: "statusChange", payload: payload)
      status = newStatus
-@@ -484,6 +486,30 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -484,6 +486,39 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      safeEmit(event: "isExternalPlaybackActiveChange", payload: payload)
    }
  
-+  /// Streamarr: the NSError domain/code, its underlying error and the last error-log entry (HTTP status, comment).
++  /// Streamarr: the NSError domain/code, its underlying error and, for a transport failure only, the error-log HTTP status.
 +  private func playbackError(message: String?) -> PlaybackError {
 +    var record = PlaybackError(message: message)
 +    let item = ref.currentItem
 +    let failure = (item as? VideoPlayerItem)?.urlAsset.transportError ?? item?.error ?? ref.error
++    var transport = false
 +    if let nsError = failure.map({ $0 as NSError }) {
 +      record.domain = nsError.domain
 +      record.code = nsError.code
-+      if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
-+        record.underlyingDomain = underlying.domain
-+        record.underlyingCode = underlying.code
++      let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
++      record.underlyingDomain = underlying?.domain
++      record.underlyingCode = underlying?.code
++      transport = [nsError, underlying].contains { error in
++        guard let error else { return false }
++        return error.domain == NSURLErrorDomain || Self.httpFailureCodes.contains(error.code)
 +      }
 +    }
-+    if let event = item?.errorLog()?.events.last {
++    // The error log keeps recovered errors too (a subtitle 404): its status only explains a transport failure.
++    if transport, let event = item?.errorLog()?.events.last {
 +      record.errorLog = "\(event.errorDomain) \(event.errorStatusCode) \(event.errorComment ?? "")"
++      record.uri = event.uri
 +      if (400...599).contains(event.errorStatusCode) {
 +        record.httpStatus = event.errorStatusCode
 +      } else if let comment = event.errorComment, let range = comment.range(of: "HTTP [0-9]{3}", options: .regularExpression) {
@@ -375,18 +453,22 @@ index ab8807e..d6a1840 100644
 +    return record
 +  }
 +
++  /// CoreMedia's HTTP refusals (404, 403, other HTTP status).
++  private static let httpFailureCodes: Set<Int> = [-12938, -12660, -12645]
++
    func safeEmit(event: String, payload: Record? = nil) {
      if self.appContext != nil {
        self.emit(event: event, payload: payload?.toDictionary(appContext: appContext))
 diff --git a/node_modules/expo-video/ios/VideoPlayerHealth.swift b/node_modules/expo-video/ios/VideoPlayerHealth.swift
 new file mode 100644
-index 0000000..856d1ac
+index 0000000..8a8cb85
 --- /dev/null
 +++ b/node_modules/expo-video/ios/VideoPlayerHealth.swift
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,180 @@
 +// Streamarr: health probe and system-pause causes for the player watchdog (patches/expo-video).
 +
 +import AVFoundation
++import UIKit
 +import ExpoModulesCore
 +#if os(iOS)
 +import CallKit
@@ -400,6 +482,7 @@ index 0000000..856d1ac
 +  private var framesPresented = 0
 +  #if os(iOS)
 +  private let callObserver = CXCallObserver()
++  private var protectedDataLostAt = Date.distantPast
 +  #endif
 +
 +  init(owner: VideoPlayer) {
@@ -411,6 +494,14 @@ index 0000000..856d1ac
 +    observers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
 +      self?.onRouteChange(note)
 +    })
++    observers.append(center.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: nil, queue: .main) { [weak self] note in
++      self?.onErrorLogEntry(note)
++    })
++    #if os(iOS)
++    observers.append(center.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification, object: nil, queue: .main) { [weak self] _ in
++      self?.protectedDataLostAt = Date()
++    })
++    #endif
 +  }
 +
 +  deinit {
@@ -466,19 +557,21 @@ index 0000000..856d1ac
 +    return health
 +  }
 +
-+  func detachOutput() {
-+    if let output = videoOutput, let item = videoOutputItem {
-+      item.remove(output)
-+    }
-+    videoOutput = nil
-+    videoOutputItem = nil
-+  }
-+
 +  /// expo-video pauses a player that is not in picture-in-picture when the app leaves the foreground.
 +  func willPauseForBackground() {
 +    if owner?.ref.rate != 0 {
-+      emit(paused: true, cause: "locked")
++      emit(paused: true, cause: screenLocked() ? "locked" : "background")
 +    }
++  }
++
++  /// A lock is only visible when the device has a passcode (protected data goes away); otherwise it reads as background.
++  private func screenLocked() -> Bool {
++    #if os(iOS)
++    return !UIApplication.shared.isProtectedDataAvailable
++      || Date().timeIntervalSince(protectedDataLostAt) < 2
++    #else
++    return false
++    #endif
 +  }
 +
 +  private func onInterruption(_ note: Notification) {
@@ -491,7 +584,7 @@ index 0000000..856d1ac
 +      if #available(iOS 14.5, tvOS 14.5, *),
 +        let rawReason = info[AVAudioSessionInterruptionReasonKey] as? UInt,
 +        AVAudioSession.InterruptionReason(rawValue: rawReason) == .appWasSuspended {
-+        cause = "locked"
++        cause = screenLocked() ? "locked" : "background"
 +      }
 +      emitIfStopped(cause: cause)
 +    } else if let rawOptions = info[AVAudioSessionInterruptionOptionKey] as? UInt,
@@ -519,6 +612,16 @@ index 0000000..856d1ac
 +    }
 +  }
 +
++  /// A failed request of the current item (subtitle or audio rendition, segment): reported so the app can say which part failed.
++  private func onErrorLogEntry(_ note: Notification) {
++    guard let owner, let item = note.object as? AVPlayerItem, item === owner.ref.currentItem,
++      let event = item.errorLog()?.events.last else {
++      return
++    }
++    let status = (400...599).contains(event.errorStatusCode) ? event.errorStatusCode : nil
++    owner.safeEmit(event: "loadError", payload: LoadErrorPayload(uri: event.uri, trackType: "other", status: status))
++  }
++
 +  private func emit(paused: Bool, cause: String) {
 +    owner?.safeEmit(event: "systemPlayback", payload: SystemPlaybackPayload(paused: paused, cause: cause))
 +  }
@@ -530,6 +633,12 @@ index 0000000..856d1ac
 +    return false
 +    #endif
 +  }
++}
++
++internal struct LoadErrorPayload: Record {
++  @Field var uri: String? = nil
++  @Field var trackType: String = "other"
++  @Field var status: Int? = nil
 +}
 +
 +internal struct SystemPlaybackPayload: Record {
