@@ -307,7 +307,12 @@ describe('the server says which part failed: progress deliveryIssues (B15, S4m)'
       reply.ok({
         playbackAlive: true,
         deliveryIssues: [
-          { kind: 'subtitleRendition', code: 'unknown_subtitle_stream', at: Date.now() },
+          {
+            kind: 'subtitleRendition',
+            subtitleStreamIndex: 3,
+            code: 'unknown_subtitle_stream',
+            at: Date.now(),
+          },
         ],
       })
     );
@@ -412,17 +417,18 @@ describe('verify F11/F12/S4l/S4m: delivery and issue rules (S4n)', () => {
     expect(
       deliveryFailure({ category: 'T7', code: 'decode_error' }, { ...base, online: true }).code
     ).toBe('decode_error');
-    for (const code of ['playback_stalled', 'segment_unavailable', 'player_load_failed'])
+    for (const code of ['playback_stalled', 'segment_unavailable'])
       expect(
         deliveryFailure(
-          {
-            category:
-              code === 'playback_stalled' ? 'T5' : code === 'segment_unavailable' ? 'T6' : 'T11',
-            code,
-          },
+          { category: code === 'playback_stalled' ? 'T5' : 'T6', code },
           { ...base, online: true }
         ).code
       ).toBe('audio_rendition_failed');
+    // A load failure of the app's own engine is no stall: a server issue never renames it (S4q R4).
+    expect(
+      deliveryFailure({ category: 'T11', code: 'player_load_failed' }, { ...base, online: true })
+        .code
+    ).toBe('player_load_failed');
     expect(
       deliveryFailure({ category: 'T1', code: 'stream_interrupted' }, { ...base, online: true })
         .code
@@ -640,7 +646,7 @@ describe('verify F11/F12/S4l/S4m: delivery and issue rules (S4n)', () => {
         deliveryIssues: [
           {
             kind: 'subtitleRendition',
-            renditionId: '7',
+            subtitleStreamIndex: 7,
             code: 'unknown_subtitle_stream',
             at: Date.now(),
           },
@@ -656,7 +662,7 @@ describe('verify F11/F12/S4l/S4m: delivery and issue rules (S4n)', () => {
         deliveryIssues: [
           {
             kind: 'subtitleRendition',
-            renditionId: '3',
+            subtitleStreamIndex: 3,
             code: 'unknown_subtitle_stream',
             at: Date.now(),
           },
@@ -1311,5 +1317,114 @@ describe('S6w: native follow-ups of the sixth review (R2, R10)', () => {
     expo.player.toEnd();
     expect(expo.events.map((event) => event.type)).toEqual(['loadRetry', 'state', 'ended']);
     expo.engine.release();
+  });
+});
+
+describe('S4q: the B15 contract and what a server issue may refine', () => {
+  /** The three issues B15 reported live on 39310 (journal B15 Evidence), as the progress answer carries them. */
+  const B15 = {
+    deliveryIssues: [
+      {
+        kind: 'audioRendition',
+        renditionId: '1',
+        subtitleStreamIndex: null,
+        code: 'rendition_split_failed',
+        status: 500,
+        at: '2026-10-06T15:40:01.123+00:00',
+      },
+      {
+        kind: 'subtitleRendition',
+        renditionId: null,
+        subtitleStreamIndex: 3,
+        code: 'unknown_subtitle_stream',
+        status: 404,
+        at: '2026-10-06T15:40:02Z',
+      },
+      {
+        kind: 'segment',
+        renditionId: null,
+        subtitleStreamIndex: null,
+        code: 'segment_unavailable',
+        status: 503,
+        at: '2026-10-06T15:40:03Z',
+      },
+    ],
+  };
+
+  it('R5 reads the B15 fields: renditionId for audio, subtitleStreamIndex for subtitles, the status', () => {
+    expect(deliveryIssuesOf(B15)).toEqual([
+      expect.objectContaining({ kind: 'audioRendition', renditionId: '1', status: 500 }),
+      expect.objectContaining({ kind: 'subtitleRendition', subtitleStreamIndex: 3, status: 404 }),
+      expect.objectContaining({ kind: 'segment', code: 'segment_unavailable', status: 503 }),
+    ]);
+    expect(deliveryIssuesOf({ deliveryIssues: null })).toEqual([]);
+    // A kind B15 may send as null in its schema, or a subtitle issue without a numeric index: not an issue.
+    const malformed = [
+      { kind: null, code: 'x', status: 500, at: '2026-10-06T15:40:01Z' },
+      {
+        kind: 'subtitleRendition',
+        subtitleStreamIndex: '3',
+        code: 'x',
+        status: 404,
+        at: '2026-10-06T15:40:01Z',
+      },
+    ];
+    expect(deliveryIssuesOf({ deliveryIssues: malformed })).toEqual([]);
+  });
+
+  it('R5 a subtitle issue concerns the shown subtitle by its stream index; another index leaves it alone', () => {
+    const issues = stampIssues([], deliveryIssuesOf(B15), Date.now());
+    const shown3 = issuesFor(issues, { current: true, audioRendition: '1', subtitleIndex: 3 });
+    expect(shown3.map((issue) => issue.kind)).toEqual([
+      'audioRendition',
+      'subtitleRendition',
+      'segment',
+    ]);
+    const shown4 = issuesFor(issues, { current: true, audioRendition: '2', subtitleIndex: 4 });
+    expect(shown4.map((issue) => issue.kind)).toEqual(['segment']);
+  });
+
+  it('R4 an issue refines only the stall and delivery-break codes; any other code, now or future, stays itself', () => {
+    const issue = recentIssue(
+      stampIssues([], deliveryIssuesOf({ deliveryIssues: [B15.deliveryIssues[0]] }), Date.now()),
+      Date.now()
+    );
+    const context = { online: true, serverOkAt: 0, brokeAt: Date.now(), now: Date.now(), issue };
+    for (const code of [
+      'playback_stalled',
+      'seek_stalled',
+      'segment_timeout',
+      'segment_unavailable',
+      'server_error',
+      'delivery_interrupted',
+      'stream_interrupted',
+      'network_unreachable',
+    ]) {
+      const category = classify({ kind: 'api', code }).category;
+      expect([code, deliveryFailure({ category, code }, context).code]).toEqual([
+        code,
+        'audio_rendition_failed',
+      ]);
+    }
+    for (const failure of [
+      { category: 'T6' as const, code: 'a_future_server_code' },
+      { category: 'T5' as const, code: 'playback_slideshow' },
+      { category: 'T6' as const, code: 'decoder_reclaimed' },
+      { category: 'T6' as const, code: 'unexpected_format' },
+      { category: 'T11' as const, code: 'player_load_failed' },
+      { category: 'T1' as const, code: 'a_future_network_code' },
+    ])
+      expect(deliveryFailure(failure, context)).toEqual(failure);
+  });
+
+  it('R4 an unknown online T1 code is no delivery break either (only the break codes are)', () => {
+    const now = Date.now();
+    const context = { online: true, serverOkAt: now, brokeAt: now - 1_000, now, issue: null };
+    expect(deliveryFailure({ category: 'T1', code: 'stream_interrupted' }, context).code).toBe(
+      'delivery_interrupted'
+    );
+    expect(deliveryFailure({ category: 'T1', code: 'a_future_network_code' }, context).code).toBe(
+      'a_future_network_code'
+    );
   });
 });

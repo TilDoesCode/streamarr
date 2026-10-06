@@ -67,4 +67,52 @@ describe('one playing tab per browser: the player side (F12)', () => {
     expect(c.notice).toBeNull();
     jest.useRealTimers();
   });
+
+  it('R6 the viewer\'s Resume in THIS tab after another tab started is the newest start: it plays, no "other tab" notice', async () => {
+    jest.useFakeTimers();
+    harness.server.answer(
+      'start',
+      reply.ok(
+        harness.server.playback({
+          resumePositionTicks: 1_000 * 10_000_000,
+          mediaInfo: { durationTicks: 3_600 * 10_000_000, audioTracks: [], subtitleTracks: [] },
+        } as never)
+      )
+    );
+    const c = newController({ startSeconds: undefined });
+    const started = c.start();
+    await settle();
+    expect(c.phase).toBe('resume');
+    // Another tab starts while this one shows "Continue watching?".
+    c.yieldToOtherTab();
+    c.chooseStart(true);
+    await started;
+    harness.engine.started();
+    await settle();
+    expect(c.phase).toBe('playing');
+    expect(c.paused).toBe(false);
+    expect(harness.engine.commands.at(-1)).not.toBe('pause');
+    expect(c.notice?.kind).not.toBe('otherTab');
+    await c.stop();
+    jest.useRealTimers();
+  });
+
+  it('R6 Play pressed while the yielded start is still preparing also wins', async () => {
+    jest.useFakeTimers();
+    let release: (value: ReturnType<typeof reply.ok>) => void = () => undefined;
+    harness.server.answer('start', () => new Promise((resolve) => (release = resolve)));
+    const c = newController();
+    const started = c.start();
+    await settle();
+    c.yieldToOtherTab();
+    c.setPaused(false);
+    release(reply.ok(harness.server.playback()));
+    await started;
+    harness.engine.started();
+    await settle();
+    expect(c.paused).toBe(false);
+    expect(c.notice?.kind).not.toBe('otherTab');
+    await c.stop();
+    jest.useRealTimers();
+  });
 });
