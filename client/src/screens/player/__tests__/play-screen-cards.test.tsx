@@ -7,8 +7,7 @@ import { row } from '@/../jest/player/matrix';
 import type { PlayerStatus } from '@/player/recovery/status';
 import { PlayScreen } from '@/screens/player/play-screen';
 
-// State-matrix rows A15, B07/B10, E01, E02, E07, E09, E10, E11, E16 as the viewer sees them: the real PlayScreen
-// around a controller the test drives (verify V1, mutants V04, V08, V18-V24).
+// Rows A15, B07/B10, E01, E02, E07, E09–E11, E16 as the viewer sees them: the real PlayScreen, a driven controller (V1).
 
 /** The controller the screen creates: only what the screen reads, driven by the test. */
 class MockPlayer {
@@ -73,11 +72,14 @@ jest.mock('@/player/device-profile', () => ({ loadDeviceCaps: () => mockCaps() }
 jest.mock('@/player/use-clock', () => ({
   usePlayerClock: () => ({ clock: mockClock, onVisibleChange: () => undefined }),
 }));
+const mockAccount = {
+  id: 'a1',
+  serverUrl: 'http://dev.test',
+  signedIn: true,
+  mustChangePassword: false,
+};
 jest.mock('@/accounts/accounts-provider', () => ({
-  useActiveAccount: () => ({
-    account: { id: 'a1', serverUrl: 'http://dev.test', signedIn: true },
-    client: {},
-  }),
+  useActiveAccount: () => ({ account: mockAccount, client: {} }),
 }));
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ playbackId: 'new', workId: 'tmdb-movie-1', title: 'Sintel' }),
@@ -142,6 +144,8 @@ beforeEach(async () => {
   mockClock.position = 0;
   mockClock.duration = 0;
   mockNext.current = null;
+  mockAccount.mustChangePassword = false;
+  mockRouter.replace.mockClear();
   await i18n.changeLanguage('en');
 });
 afterEach(() => {
@@ -245,6 +249,36 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
       expect(MockPlayer.all).toHaveLength(1);
     }
   );
+
+  const pressSignIn = async () => {
+    await act(async () => fireEvent.press(screen.getByText('Sign in again')));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  };
+
+  row(
+    'A07',
+    'a password change due mid-play: the card\'s Sign in opens "Change password" for this account (review 7 M08)',
+    async () => {
+      mockAccount.mustChangePassword = true;
+      const c = await open();
+      await change(
+        c,
+        failed({ code: 'password_change_required', category: 'T3', actions: ['signIn'] })
+      );
+      await pressSignIn();
+      expect(mockRouter.replace).toHaveBeenLastCalledWith({
+        pathname: '/sign-in/change-password',
+        params: { account: 'a1' },
+      });
+    }
+  );
+
+  row('A07', "a sign-out mid-play: the card's Sign in opens the profiles", async () => {
+    const c = await open();
+    await change(c, failed({ code: 'session_ended', category: 'T3', actions: ['signIn'] }));
+    await pressSignIn();
+    expect(mockRouter.replace).toHaveBeenLastCalledWith('/profiles');
+  });
 
   row('E09', 'nothing tried (a start refused at once): no "What was tried"', async () => {
     const c = await open();

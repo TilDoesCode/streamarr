@@ -2,6 +2,7 @@ import { harness, newController, reply } from '@/../jest/player/harness';
 import { playing, settle } from '@/../jest/player/play';
 import i18n from '@/i18n';
 import { noticeText } from '@/player/overlay-labels';
+import { hintText } from '@/player/recovery/hints';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
 
@@ -112,6 +113,31 @@ describe('one playing tab per browser: the player side (F12)', () => {
     await settle();
     expect(c.paused).toBe(false);
     expect(c.notice?.kind).not.toBe('otherTab');
+    await c.stop();
+    jest.useRealTimers();
+  });
+
+  it('the paused tab keeps saying why after the toast is gone ("Paused: playing in another tab"), until Play (S9c turn 2 F12)', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, {}, 30);
+    c.yieldToOtherTab();
+    c.dismissNotice();
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(c.status.hint).toEqual({ key: 'pausedBySystem', params: { cause: 'otherTab' } });
+    expect(c.status.actions).toEqual(['resume']);
+    for (const [lang, text] of [
+      ['de', 'Pausiert: Wiedergabe in einem anderen Tab.'],
+      ['en', 'Paused: playing in another tab.'],
+    ] as const) {
+      await i18n.changeLanguage(lang);
+      const pt = (key: string, options?: Record<string, unknown>) =>
+        i18n.t(key as never, { ...options, ns: 'player' } as never) as unknown as string;
+      expect(hintText(pt as never, c.status.hint!.key, c.status.hint!.params)).toBe(text);
+    }
+    await i18n.changeLanguage('en');
+    c.setPaused(false);
+    expect(c.status.hint).toBeNull();
+    expect(c.systemPaused).toBe(false);
     await c.stop();
     jest.useRealTimers();
   });

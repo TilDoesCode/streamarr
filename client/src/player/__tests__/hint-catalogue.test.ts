@@ -34,7 +34,7 @@ describe('player hint catalogue (S4h)', () => {
       (key) =>
         !NOT_STATES.test(key) &&
         !listed.has(key) &&
-        !/^(hints\.(causes|actions)|tried)\./.test(key) &&
+        !/^(hints\.(causes|actions|fallbacks)|tried)\./.test(key) &&
         key !== 'tried.title'
     );
     expect(missing).toEqual([]);

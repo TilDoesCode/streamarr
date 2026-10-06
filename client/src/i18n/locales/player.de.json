@@ -152,6 +152,7 @@
     "serverBusy": "Der Server ist ausgelastet. Neuer Versuch in {seconds} s …",
     "waitingForStream": "Startet, sobald die Wiedergabe auf {device} endet.",
     "waitingForStreamRelease": "Startet, sobald „{releaseName}“ auf {device} endet.",
+    "fallbacks": { "device": "einem anderen Gerät" },
     "buffering": "Das Laden dauert länger als üblich. Wird gepuffert …",
     "serverError": "Der Server hatte ein Problem. Neuer Versuch in {seconds} s …",
     "reloading": "Die Wiedergabe ist stehen geblieben. Es geht weiter bei {time} …",
@@ -175,7 +176,8 @@
       "slowConnection": "Die Verbindung ist langsam.",
       "loadingFile": "Der Player öffnet die Datei noch.",
       "preparing": "Der Server bereitet das Video noch vor.",
-      "outside": "außerhalb der App"
+      "outside": "außerhalb der App",
+      "otherTab": "Wiedergabe in einem anderen Tab"
     },
     "actions": {
       "lowerQuality": "Niedrigere Qualität",

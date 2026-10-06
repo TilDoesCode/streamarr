@@ -70,6 +70,7 @@ import {
   END_MARGIN_SECONDS,
   INCIDENT_RESET_MS,
   LOAD_RETRY_RECENT_MS,
+  AUDIO_RELOAD_MS,
   RESUME_REVALIDATE_MS,
   SEEK_DEBOUNCE_MS,
   SETTLE_MS,
@@ -92,7 +93,7 @@ import {
   shortFile,
   transportEnd,
 } from '@/player/recovery/early-end';
-import { isRepairing, repairAborted } from '@/player/recovery/repair';
+import { RepairHold, REPAIR_POLL_MS, repairAborted } from '@/player/recovery/repair';
 import {
   damagedAgain,
   lostPlayback,
@@ -183,6 +184,8 @@ export class PlaybackController {
   private dirty = false;
   /** The last sign pointing at the sound (audio request, broken-off AVPlayer transfer) and a damaged place (S9c). */
   private audioSignAt = 0;
+  /** When the last reload step attached its source; 0 once a picture came (S9c D36). */
+  private reloadAt = 0;
   private damagedAt: { position: number; at: number } | null = null;
   /** Method and release of the source attached last. */
   private attachedSource = '';
@@ -190,6 +193,10 @@ export class PlaybackController {
   private troubleAt = 0;
   /** Stall starts and long rebuffers for the repeated-stall rule (C03, C08). */
   private readonly stalls = new StallHistory();
+  private readonly repairHold = new RepairHold();
+  /** The current stall waits for a moving server repair (C04). */
+  private repairHolding = false;
+  private repairPolledAt = 0;
   /** While offline the network is read again on a timer (S6v). */
   private readonly networkWatch: NetworkWatch;
   /** Asks the server whether the playback still exists (lost requests, stalls), one request at a time. */
@@ -250,9 +257,19 @@ export class PlaybackController {
     engine: () => this.engine,
     terminal: () => this.closed || this.phase === 'failed' || this.phase === 'stopped',
     paused: () => this.paused,
-    follow: (paused) => void (this.paused = paused),
+    follow: (paused) => {
+      this.paused = paused;
+      // A pause with a cause (background, call) during a stall ends the stall: no budget runs while paused.
+      if (paused) this.clearStall();
+      // Play from the system controls after the end: the element plays again, so "Finished" goes (E07).
+      if (!paused) this.ended = false;
+    },
     adoptable: () =>
-      this.pictured && !this.ended && !this.runner.current && this.phase === 'playing',
+      this.pictured &&
+      !this.ended &&
+      !this.stallSince &&
+      !this.runner.current &&
+      this.phase === 'playing',
     report: () => this.report('progress'),
     changed: () => this.changed(),
   });
@@ -312,6 +329,10 @@ export class PlaybackController {
   private lastClock: number | null = null;
   private liveSeekTried = false;
   private stallAfterSeek = false;
+  /** Subtitles turned off quietly in this stall to see whether they block AVPlayer (S4n, S9c D19). */
+  private stallSubtitle: { index: number } | null = null;
+  /** The engine paused itself in this stall and was asked to play again (D19). */
+  private stallNudged = false;
   private stallPosition = 0;
   private readonly monitor: HealthMonitor;
   private settleUntil = 0;
@@ -441,7 +462,8 @@ export class PlaybackController {
   get duration(): number {
     const engine = this.engine?.getSnapshot().duration ?? 0;
     const ticks = this.playback?.mediaInfo?.durationTicks ?? 0;
-    return titleLength(engine, ticks / TICKS_PER_SECOND);
+    // libVLC estimates the length of an MPEG-PS from its bytes: on VLC the server's length always wins (S9c).
+    return titleLength(engine, ticks / TICKS_PER_SECOND, this.engine?.kind === 'vlc');
   }
 
   async start(): Promise<void> {
@@ -702,6 +724,7 @@ export class PlaybackController {
     if (step === 'R') {
       if (!this.playback || !this.engine) return false;
       await this.attach(this.playback, recovery.position, recovery.tracks);
+      this.reloadAt = Date.now();
       return true;
     }
     if (step === 'N') {
@@ -771,9 +794,11 @@ export class PlaybackController {
   }
 
   /** Subtitles failed to load or parse (C22, C23): off with a notice, one retry later; never a reason to stop. */
-  private onSubtitleError(code: string): void {
+  private onSubtitleError(code: string, shown?: number): void {
     if (this.closed || this.phase !== 'playing') return;
-    const failed = this.subtitleRetry.fail();
+    // A timeout while the video itself is starved is the same stall, never the subtitles' fault (S9c D19).
+    if (code === 'subtitle_timeout' && this.stallSince && shown === undefined) return;
+    const failed = this.subtitleRetry.fail(shown);
     if (!failed) return;
     // The server's pick must not be re-applied over the failed track right after a load.
     this.serverTracksOff?.();
@@ -785,6 +810,24 @@ export class PlaybackController {
       code,
       retry: failed.retryLater ? 'later' : '',
     });
+  }
+
+  /** AVPlayer may wait for a subtitle segment: off quietly as the first try, the stall gets a fresh budget (S4n). */
+  private subtitlesOffInStall(): void {
+    const index = this.currentSubtitle();
+    if (index === null) return;
+    this.stallSubtitle = { index };
+    this.serverTracksOff?.();
+    this.engine?.setSubtitleTrack(null);
+    this.stallSince = Date.now();
+  }
+
+  /** The stall went on without them: it is the video's, the viewer's subtitles come back with the ladder (S9c D19). */
+  private subtitlesBackInStall(): void {
+    const off = this.stallSubtitle;
+    this.stallSubtitle = null;
+    const id = off && this.localTrackId('subtitle', off.index);
+    if (id != null) this.engine?.setSubtitleTrack(id);
   }
 
   /** What the player sees now, for the AVPlayer subtitle and lost-request rules (recovery/lost-request). */
@@ -1023,6 +1066,7 @@ export class PlaybackController {
     }
     this.attachedSource = source;
     this.playback = playback;
+    this.repairHold.seen(playback.repair);
     this.noteUndeliverable(playback);
     // Every release that played counts as tried for the "other version" step.
     if (playback.version?.releaseId) this.triedReleases.add(playback.version.releaseId);
@@ -1032,6 +1076,7 @@ export class PlaybackController {
     this.phase = 'playing';
     if (this.yieldPending) {
       this.yieldPending = false;
+      this.system.pausedFor('otherTab');
       this.showNotice('otherTab');
     }
     this.ended = false;
@@ -1041,6 +1086,7 @@ export class PlaybackController {
     this.loadingSince = Date.now();
     this.troubleAt = Date.now();
     this.stalls.clear();
+    this.stallSubtitle = null;
     this.loadProgress = { buffered: position, at: 0 };
     this.loadPosition = position;
     this.lastClock = null;
@@ -1175,6 +1221,7 @@ export class PlaybackController {
   private onPicture(): void {
     if (this.pictured) return;
     this.pictured = true;
+    this.reloadAt = 0;
     this.troubleAt = Date.now();
     this.loadingSince = 0;
     this.runner.recovered();
@@ -1189,6 +1236,8 @@ export class PlaybackController {
       this.clearStall();
       this.system.onPlaying();
     } else if (state === 'paused') {
+      // AVPlayer pauses itself after ~7 s of starvation: that is the stall going on, not a pause outside the app (D19).
+      if (this.stallSince && !this.paused) return void this.selfPausedInStall();
       this.clearStall();
       // Paused by the viewer, a source that is ready to play counts as loaded (no picture event while paused).
       if (this.paused && !this.pictured && this.phase === 'playing') this.onPicture();
@@ -1197,24 +1246,37 @@ export class PlaybackController {
     this.changed();
   }
 
-  private startStall(): void {
+  /** The engine gave up waiting while the viewer still wants to play: ask it to play once more, the stall ladder decides. */
+  private selfPausedInStall(): void {
+    if (!this.stallNudged) this.engine?.play();
+    this.stallNudged = true;
+    this.changed();
+  }
+
+  private startStall(afterSeek = false): void {
     if (!this.pictured || this.stallSince) return;
     this.lostWatch.stallStarted();
     this.stallSince = Date.now();
+    this.stallNudged = false;
     this.troubleAt = this.stallSince;
     this.stallPosition = this.engine?.getSnapshot().position ?? 0;
-    this.stallAfterSeek = this.stallSince - this.seekAt < 2 * SPINNER_MS;
+    this.stallAfterSeek = afterSeek || this.stallSince - this.seekAt < 2 * SPINNER_MS;
     if (!this.stallAfterSeek) this.stalls.started(this.stallSince);
+    this.repairHold.stallStarted();
     if (this.playback?.method === 'direct') void this.refreshRepair();
     this.tickStatus();
     this.changed();
   }
 
-  /** The server's repair of this release, for the stall budget: its ETA while it runs, or that it gave up (C04). */
-  private repairTick(): { repairEtaMs?: number | null; repairAborted?: boolean } {
+  /** The server's repair of this release, for the stall budget: its ETA while it moves, or that it gave up (C04). */
+  private repairTick(now: number): { repairEtaMs?: number | null; repairAborted?: boolean } {
     const repair = this.playback?.repair;
+    this.repairHolding = false;
+    if (!this.stallSince) return {};
     if (repairAborted(repair?.state)) return { repairAborted: true };
-    if (!isRepairing(repair?.state)) return {};
+    if (!this.repairHold.holds(repair)) return {};
+    this.repairHolding = true;
+    if (now - this.repairPolledAt >= REPAIR_POLL_MS) void this.refreshRepair();
     return { repairEtaMs: repair?.etaSeconds == null ? null : repair.etaSeconds * 1000 };
   }
 
@@ -1222,10 +1284,13 @@ export class PlaybackController {
   private async refreshRepair(): Promise<void> {
     const playback = this.playback;
     if (!playback?.playbackId) return;
+    this.repairPolledAt = Date.now();
     try {
       const fresh = await getPlayback(this.options.client, playback.playbackId, this.abort.signal);
-      if (this.playback === playback && fresh.playbackId === playback.playbackId)
+      if (this.playback === playback && fresh.playbackId === playback.playbackId) {
         this.playback = { ...playback, repair: fresh.repair ?? null };
+        this.repairHold.seen(fresh.repair);
+      }
       this.changed();
     } catch {
       // Unknown repair state: the stall says what it can.
@@ -1234,7 +1299,13 @@ export class PlaybackController {
 
   private clearStall(): void {
     if (!this.stallSince) return;
-    this.stalls.ended(Date.now(), this.stallSince);
+    if (!this.stallAfterSeek) this.stalls.ended(Date.now(), this.stallSince);
+    // The picture came back once the subtitles were off: they blocked the player (C22, said and counted now).
+    const off = this.stallSubtitle;
+    if (off && !this.paused) {
+      this.stallSubtitle = null;
+      this.onSubtitleError('subtitle_timeout', off.index);
+    } else this.subtitlesBackInStall();
     this.stallSince = 0;
     this.troubleAt = Date.now();
     this.tickStatus();
@@ -1268,6 +1339,17 @@ export class PlaybackController {
       pictureInPicture: this.pictureInPicture,
       settling: Date.now() < this.settleUntil || this.seekTarget !== null,
     });
+  }
+
+  /** A reload still black after AUDIO_RELOAD_MS while its sound requests failed again: the audio path, now (S9c D36). */
+  private reloadSilent(now: number): boolean {
+    return (
+      !!this.reloadAt &&
+      !this.pictured &&
+      !!this.loadingSince &&
+      now - this.reloadAt >= AUDIO_RELOAD_MS &&
+      this.audioSignAt > this.reloadAt
+    );
   }
 
   private startBudget(): number {
@@ -1322,7 +1404,7 @@ export class PlaybackController {
       progressAt: this.loadProgress.at,
       nearEnd: this.nearEnd(),
       offline: this.offline,
-      ...this.repairTick(),
+      ...this.repairTick(now),
       repeated: this.stalls.repeated(
         now,
         this.stallAfterSeek ? 0 : this.stallSince,
@@ -1330,11 +1412,12 @@ export class PlaybackController {
         throughputOk(this.monitor.last.bandwidthBps, this.playback?.mediaInfo?.bitrateKbps)
       ),
     });
-    if (seekStall) {
-      this.startStall();
-      this.stallAfterSeek = true;
-    }
-    if (rule === 'pictureTimeout' || rule === 'conversionTimeout') {
+    if (seekStall) this.startStall(true);
+    if (this.reloadSilent(now)) {
+      this.reloadAt = 0;
+      this.loadingSince = 0;
+      this.mediaFailure({ category: 'T7', code: 'audio_rendition_failed' });
+    } else if (rule === 'pictureTimeout' || rule === 'conversionTimeout') {
       this.loadingSince = 0;
       this.mediaFailure(
         rule === 'pictureTimeout'
@@ -1347,13 +1430,15 @@ export class PlaybackController {
       subtitleStalls(this.signals(), {
         retrying: !!this.loadRetry && now - this.loadRetry.at < LOAD_RETRY_RECENT_MS,
         issue: !!recentIssue(this.relevantIssues(), now),
-      })
+      }) &&
+      !this.stallSubtitle
     )
-      this.onSubtitleError('subtitle_timeout');
+      this.subtitlesOffInStall();
     else if (rule === 'repairAborted') {
       this.stallSince = 0;
       this.mediaFailure({ category: 'T8', code: 'repair_failed' });
     } else if (rule === 'stallLadder') {
+      this.subtitlesBackInStall();
       this.stalls.clear();
       this.stallSince = 0;
       this.mediaFailure(
@@ -1398,7 +1483,7 @@ export class PlaybackController {
           progressAt: this.loadProgress.at,
           pictured: this.pictured,
         }) === 'slow',
-      repairing: isRepairing(this.playback?.repair?.state),
+      repairing: this.repairHolding,
       serverRetry:
         this.loadRetry && Date.now() - this.loadRetry.at < LOAD_RETRY_RECENT_MS
           ? this.loadRetry
@@ -1458,6 +1543,8 @@ export class PlaybackController {
     }
     if (this.phase !== 'playing') return;
     this.setPaused(true);
+    // The toast goes; the reason stays on the paused picture until Play (S9c F12).
+    this.system.pausedFor('otherTab');
     this.showNotice('otherTab');
   }
 
@@ -1588,8 +1675,8 @@ export class PlaybackController {
     previous: Playback,
     position: number,
     preferences: PlaybackPreferences,
-    signal: AbortSignal = this.abort.signal,
-    tracks?: StepTracks
+    signal: AbortSignal,
+    tracks: StepTracks
   ): Promise<void> {
     this.preferences = preferences;
     const code = this.lastError || 'playback_failed';
@@ -1597,19 +1684,9 @@ export class PlaybackController {
       // The server does not switch a failed playback, so start a new one with the previous choices.
       if (previous.playbackId)
         await stopPlayback(this.options.client, previous.playbackId).catch(() => undefined);
-      const selected = <T extends { selected?: boolean; index: number }>(list?: T[] | null) =>
-        list?.find((track) => track.selected)?.index ?? null;
       const switched = await startPlayback(
         this.options.client,
-        this.startRequest(
-          position,
-          tracks ?? {
-            audio: selected(previous.mediaInfo?.audioTracks),
-            subtitle: selected(previous.mediaInfo?.subtitleTracks),
-          },
-          previous.version?.releaseId,
-          previous
-        ),
+        this.startRequest(position, tracks, previous.version?.releaseId, previous),
         signal
       );
       const ready = await this.wait(switched, true, signal);
@@ -1955,12 +2032,12 @@ export class PlaybackController {
 
   setPaused(paused: boolean): void {
     if (!paused) {
-      // Play after the end (system controls, a remote): playing again, not "Finished" (S6x).
-      this.ended = false;
       // The viewer's own Play here is the newest start: a pending yield to another tab is over (S4q R6).
       this.yieldPending = false;
       this.system.clear();
       if (this.autoplay === 'blocked') this.autoplay = null;
+      // Play after the end (a remote's ▶, the card's Play) starts the title again, never a frozen last frame (E07).
+      if (this.ended) return this.replay();
     }
     if (this.paused === paused) return;
     this.paused = paused;

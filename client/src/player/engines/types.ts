@@ -13,7 +13,8 @@ export type SystemCause =
   | 'locked'
   | 'background'
   | 'pipClosed'
-  | 'airplayLost';
+  | 'airplayLost'
+  | 'otherTab';
 
 export type EngineKind = 'expo-video' | 'vlc' | 'web';
 

@@ -35,7 +35,7 @@ export const STEP_BUDGET_MS = 60_000;
 export const STEP_MAX_MS = 5 * 60_000;
 /** Offline longer than this gives up (the card retries on its own once online). */
 export const OFFLINE_BUDGET_MS = 120_000;
-/** Every incident ends on a card after this many steps; a wait with its own budget (offline, server, another device) ends on that. */
+/** Every incident ends on a card after this many steps; a wait with its own budget (signed out, server busy, another device, the system) ends on that. */
 export const MAX_ATTEMPTS = 12;
 /** Step-downs per incident: direct → remux → transcode → VLC at most. */
 export const MAX_STEP_DOWNS = 3;
@@ -63,3 +63,5 @@ export const SUBTITLE_RETRIES = 1;
 export const RESUME_REVALIDATE_MS = 60_000;
 /** A retry inside the engine this recent explains a stall: the server failed, not the bandwidth (R7). */
 export const LOAD_RETRY_RECENT_MS = 20_000;
+/** A reload that shows no picture while its sound requests fail again is judged this soon, not at the start budget (S9c D36). */
+export const AUDIO_RELOAD_MS = 10_000;

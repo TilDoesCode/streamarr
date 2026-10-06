@@ -2185,7 +2185,7 @@ describe('matrix C — live native audit S9b turn 2: a broken subtitle rendition
 
   row(
     'C22',
-    'AVPlayer stalls with a subtitle rendition on and no error at all: the first step turns the subtitles off (with the notice), before any lower quality or other way (S9b2 C22)',
+    'AVPlayer stalls with a subtitle rendition on and no error at all: the first step turns the subtitles off quietly, before any lower quality or other way; the picture coming back says they blocked (S9b2 C22, S9c D19)',
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, subtitled, 45);
@@ -2194,14 +2194,36 @@ describe('matrix C — live native audit S9b turn 2: a broken subtitle rendition
       harness.engine.state('buffering');
       await jest.advanceTimersByTimeAsync(16_000);
       expect(harness.engine.commands).toContain('subtitle:null');
-      expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { index: '2' } });
+      expect(c.notice).toBeNull();
       expect(harness.server.sent('switch')).toHaveLength(0);
       expect(harness.engine.load).toHaveBeenCalledTimes(1);
-      // Still stalled with the subtitles off: now the usual ladder.
+      // The picture runs again with them off: they blocked the player, now it is said.
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.state('playing');
+      expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { index: '2' } });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C22',
+    "still stalled with the subtitles off: the video's stall, the subtitles come back with the usual ladder and nothing blames them (S9c D19)",
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, subtitled, 45);
+      harness.engine.emit({ type: 'tracks', tracks: tracks('s0') });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
       await jest.advanceTimersByTimeAsync(16_000);
+      expect(harness.engine.commands.at(-1)).toBe('subtitle:null');
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
       expect(
         harness.server.sent('switch').length + harness.engine.load.mock.calls.length
       ).toBeGreaterThan(1);
+      expect(harness.engine.commands).toContain('subtitle:s0');
+      expect(c.notice?.kind).not.toBe('subtitleFailed');
+      expect(c.currentSubtitle()).toBe(2);
       await c.stop();
     }
   );
@@ -2368,13 +2390,128 @@ describe('matrix C — S4s: repeated short stalls and a stall during a server re
     }
   );
 
-  const repairing = (state: string, etaSeconds?: number) =>
-    reply.ok(
-      harness.server.playback({
-        playbackId: 'p1',
-        repair: { state, progressPercent: 40, ...(etaSeconds ? { etaSeconds } : {}) },
-      } as never)
+  /** A seek to `target` whose clock comes back after `seconds` (`buffering`: the engine says so, else the tick finds it). */
+  async function seekStall(
+    c: { seekTo(target: number): void },
+    at: { now: number },
+    seek: { target: number; seconds: number; buffering: boolean }
+  ) {
+    c.seekTo(seek.target);
+    await jest.advanceTimersByTimeAsync(400);
+    if (seek.buffering) harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(seek.seconds * 1000);
+    if (seek.buffering) harness.engine.emit({ type: 'buffering', buffering: false });
+    at.now = seek.target;
+    for (let second = 0; second < 20; second += 1) {
+      at.now += 1;
+      harness.engine.time(at.now);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+  }
+
+  row(
+    'C08',
+    'a transcode that rebuffers 6 s after each of two seeks, then blips for 1.5 s: seeks are no pattern, no /switch (review 7 P1)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { method: 'transcode', mediaInfo: { ...media, video: { height: 2160 } } } as never,
+        100
+      );
+      const at = { now: 100 };
+      await seekStall(c, at, { target: 200, seconds: 6, buffering: true });
+      await seekStall(c, at, { target: 300, seconds: 6, buffering: true });
+      await stallThenPlay(at, 1.5, 5);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'two seeks whose clock never comes (the tick finds the seek stall) and one short stall on a remux: no /switch (review 7 P5)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { method: 'remux', mediaInfo: { ...media, video: { height: 2160 } } } as never,
+        100
+      );
+      const at = { now: 100 };
+      await seekStall(c, at, { target: 200, seconds: 6, buffering: false });
+      await seekStall(c, at, { target: 300, seconds: 6, buffering: false });
+      await stallThenPlay(at, 3, 5);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'three short stalls with a measured connection well above the bitrate are no pattern (not the network)',
+    async () => {
+      jest.useFakeTimers();
+      harness.features.probe = true;
+      const c = await playing(
+        {},
+        { method: 'remux', mediaInfo: { ...media, video: { height: 2160 } } } as never,
+        100
+      );
+      harness.engine.setHealth({ bandwidthBps: 40_000_000 });
+      const at = { now: 100 };
+      for (let stall = 0; stall < 3; stall += 1) await stallThenPlay(at, 3, 20);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C03',
+    'a new source starts a new count: two stalls, a reload, one stall is no pattern',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        { method: 'remux', mediaInfo: { ...media, video: { height: 2160 } } } as never,
+        100
+      );
+      const at = { now: 100 };
+      await stallThenPlay(at, 3, 20);
+      await stallThenPlay(at, 3, 20);
+      harness.engine.fail('networkError:fragLoadError');
+      await settle();
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started();
+      harness.engine.time(at.now);
+      await stallThenPlay(at, 3, 5);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      await c.stop();
+    }
+  );
+
+  /** The server's repair as polls see it: each answer one step further (a refreshing server, B18). */
+  const repairs = (steps: [state: string, percent: number][], etaSeconds?: number) =>
+    steps.map(([state, progressPercent]) =>
+      reply.ok(
+        harness.server.playback({
+          playbackId: 'p1',
+          repair: { jobId: 'j1', state, progressPercent, ...(etaSeconds ? { etaSeconds } : {}) },
+        } as never)
+      )
     );
+  const moving = (state: string, count: number, etaSeconds?: number) =>
+    repairs(
+      Array.from({ length: count }, (_, step) => [state, 10 + step] as [string, number]),
+      etaSeconds
+    );
+  const laddered = () =>
+    harness.engine.load.mock.calls.length + harness.server.sent('switch').length > 1;
 
   row(
     'C04',
@@ -2382,10 +2519,7 @@ describe('matrix C — S4s: repeated short stalls and a stall during a server re
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
-      harness.server.answer(
-        'poll',
-        ...Array.from({ length: 5 }, () => repairing('downloadingRecovery'))
-      );
+      harness.server.answer('poll', ...moving('downloadingRecovery', 30));
       harness.engine.emit({ type: 'buffering', buffering: true });
       await settle();
       await jest.advanceTimersByTimeAsync(20_000);
@@ -2395,9 +2529,7 @@ describe('matrix C — S4s: repeated short stalls and a stall during a server re
       // At most 90 s (no ETA): then the normal stall ladder.
       await jest.advanceTimersByTimeAsync(71_000);
       await settle();
-      expect(
-        harness.engine.load.mock.calls.length + harness.server.sent('switch').length
-      ).toBeGreaterThan(1);
+      expect(laddered()).toBe(true);
       await c.stop();
     }
   );
@@ -2405,10 +2537,7 @@ describe('matrix C — S4s: repeated short stalls and a stall during a server re
   row('C04', 'the server ETA bounds the wait (30 s here)', async () => {
     jest.useFakeTimers();
     const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
-    harness.server.answer(
-      'poll',
-      ...Array.from({ length: 5 }, () => repairing('reconstructing', 30))
-    );
+    harness.server.answer('poll', ...moving('reconstructing', 12, 30));
     harness.engine.emit({ type: 'buffering', buffering: true });
     await settle();
     await jest.advanceTimersByTimeAsync(25_000);
@@ -2416,11 +2545,114 @@ describe('matrix C — S4s: repeated short stalls and a stall during a server re
     expect(harness.server.sent('switch')).toHaveLength(0);
     await jest.advanceTimersByTimeAsync(7_000);
     await settle();
-    expect(
-      harness.engine.load.mock.calls.length + harness.server.sent('switch').length
-    ).toBeGreaterThan(1);
+    expect(laddered()).toBe(true);
     await c.stop();
   });
+
+  row('C04', 'a short ETA never waits less than the 15 s of any stall (5 s here)', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
+    harness.server.answer('poll', ...moving('reconstructing', 12, 5));
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await settle();
+    await jest.advanceTimersByTimeAsync(12_000);
+    expect(c.status.hint).toEqual({ key: 'serverRepairing' });
+    expect(laddered()).toBe(false);
+    await jest.advanceTimersByTimeAsync(4_000);
+    await settle();
+    expect(laddered()).toBe(true);
+    await c.stop();
+  });
+
+  row(
+    'C04',
+    'downloading → verifying → ready: the stall waits while the repair moves, the ready repair ends the wait (review 7 P2-4)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
+      harness.server.answer(
+        'poll',
+        ...repairs([
+          ['downloadingRecovery', 20],
+          ['downloadingRecovery', 40],
+          ['downloadingRecovery', 60],
+          ['verifying', 80],
+          ['verifying', 95],
+          ['ready', 100],
+        ])
+      );
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(c.status.hint).toEqual({ key: 'serverRepairing' });
+      expect(laddered()).toBe(false);
+      await jest.advanceTimersByTimeAsync(8_000);
+      await settle();
+      expect(laddered()).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C04',
+    'a repair state that never changes (the start snapshot) is stale: no repair hint, the normal 15 s ladder (review 7 P2-4 a)',
+    async () => {
+      jest.useFakeTimers();
+      const stale = {
+        jobId: 'j1',
+        state: 'downloadingRecovery',
+        progressPercent: 40,
+        etaSeconds: 80,
+      };
+      const c = await playing(
+        {},
+        { method: 'direct', mediaInfo: media, repair: stale } as never,
+        300
+      );
+      harness.server.answer(
+        'poll',
+        ...Array.from({ length: 10 }, () =>
+          reply.ok(harness.server.playback({ playbackId: 'p1', repair: stale } as never))
+        )
+      );
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(c.status.hint?.key).not.toBe('serverRepairing');
+      await jest.advanceTimersByTimeAsync(6_000);
+      await settle();
+      expect(laddered()).toBe(true);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C04',
+    'one hold per repair: the next stall of the same repair follows the normal rules (review 7 P2-4 b)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
+      harness.server.answer('poll', ...moving('downloadingRecovery', 30));
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(c.status.hint).toEqual({ key: 'serverRepairing' });
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      for (let second = 1; second <= 30; second += 1) {
+        harness.engine.time(300 + second);
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+      expect(laddered()).toBe(false);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await settle();
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(c.status.hint?.key).not.toBe('serverRepairing');
+      await jest.advanceTimersByTimeAsync(6_000);
+      await settle();
+      expect(laddered()).toBe(true);
+      await c.stop();
+    }
+  );
 
   row(
     'C04',
@@ -2428,10 +2660,18 @@ describe('matrix C — S4s: repeated short stalls and a stall during a server re
     async () => {
       jest.useFakeTimers();
       const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 300);
-      harness.server.answer('poll', ...Array.from({ length: 5 }, () => repairing('failed')));
+      harness.server.answer(
+        'poll',
+        ...repairs([
+          ['downloadingRecovery', 30],
+          ['failed', 30],
+          ['failed', 30],
+          ['failed', 30],
+        ])
+      );
       harness.engine.emit({ type: 'buffering', buffering: true });
       await settle();
-      await jest.advanceTimersByTimeAsync(1_500);
+      await jest.advanceTimersByTimeAsync(6_500);
       await settle();
       expect(harness.engine.load).toHaveBeenCalledTimes(2);
       expect(harness.engine.source?.startPosition).toBe(300);
@@ -2505,6 +2745,93 @@ describe('matrix C — S4s: a new method plays past the cut of a truncated file 
       expect(after.at(-1)?.body).toMatchObject({
         preferences: expect.objectContaining({ maxHeight: 720 }),
       });
+      await c.stop();
+    }
+  );
+
+  row(
+    'C32',
+    'the new method\'s own early end elsewhere is its own short file, not "ends at different places" against the old method\'s end (review 7 M24)',
+    async () => {
+      jest.useFakeTimers();
+      const media = {
+        durationTicks: 180 * TICKS,
+        audioTracks: [],
+        subtitleTracks: [],
+        video: { height: 1080 },
+      };
+      const c = await playing({}, { method: 'direct', mediaInfo: media } as never, 80);
+      harness.engine.time(88, 180);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            method: 'transcode',
+            revision: 1,
+            mediaInfo: media,
+          } as never)
+        )
+      );
+      await c.stepDown();
+      await settle();
+      harness.engine.started(180);
+      for (let second = 89; second <= 150; second += 1) harness.engine.time(second, 180);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.failure).toMatchObject({ code: 'end_of_stream', category: 'T8' });
+      expect(c.status.hint?.key).not.toBe('reconnecting');
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — S4v: the server length wins over an engine guess (S9c turn 2 VLC truncate)', () => {
+  row(
+    'C12',
+    "VLC guesses 1:49:42 from the bytes of a cut MPEG-PS: the title is the server's 3:00 on every engine; a close engine length stays",
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        {},
+        {
+          method: 'direct',
+          engine: 'vlc',
+          mediaInfo: { durationTicks: 179.96 * TICKS, audioTracks: [], subtitleTracks: [] },
+        } as never,
+        10
+      );
+      expect(harness.engine.kind).toBe('vlc');
+      harness.engine.time(12, 6582);
+      expect(c.duration).toBeCloseTo(179.96, 2);
+      harness.engine.time(13, 181);
+      expect(c.duration).toBe(181);
+      harness.engine.time(14, 120);
+      expect(c.duration).toBeCloseTo(179.96, 2);
+      // Longer than announced on VLC is its guess too (on Exo/AVPlayer it is real media, C33).
+      harness.engine.time(15, 200);
+      expect(c.duration).toBeCloseTo(179.96, 2);
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    "any engine: a length beyond twice the server's is a guess, the server's wins",
+    async () => {
+      const c = await playing(
+        {},
+        { mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] } } as never,
+        10
+      );
+      expect(harness.engine.kind).not.toBe('vlc');
+      harness.engine.time(12, 6582);
+      expect(c.duration).toBe(180);
+      harness.engine.time(13, 200);
+      expect(c.duration).toBe(200);
       await c.stop();
     }
   );

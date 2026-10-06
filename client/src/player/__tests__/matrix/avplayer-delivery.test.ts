@@ -725,22 +725,18 @@ describe('AVPlayer turns the subtitles off for a stall only when nothing else ex
     await c.stop();
   });
 
-  it('an unexplained stall drops them, back after a healthy minute; a second stall of the track keeps them off for this video (S4p R1)', async () => {
+  it('an unexplained stall drops them quietly; the picture back says they blocked, back after a healthy minute; a second stall of the track keeps them off for this video (S4p R1)', async () => {
     jest.useFakeTimers();
     const os = jest.replaceProperty(Platform, 'OS', 'ios');
     const c = await stalledWithSubtitles();
     await jest.advanceTimersByTimeAsync(16_000);
     expect(subtitleCommands().at(-1)).toBe('subtitle:null');
-    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
-    // Still stuck a minute later (the ladder reloads, no picture yet): the subtitles stay off meanwhile.
-    harness.engine.emit({ type: 'tracks', tracks: shown(false) });
-    await jest.advanceTimersByTimeAsync(61_000);
-    expect(subtitleCommands().at(-1)).toBe('subtitle:null');
-    harness.engine.started();
-    // Playback runs again: after the retry interval of healthy play the viewer's subtitles are back.
+    expect(c.notice).toBeNull();
+    // Playback runs again with them off: they blocked AVPlayer; after a healthy minute the viewer's subtitles are back.
     harness.engine.emit({ type: 'tracks', tracks: shown(false) });
     harness.engine.state('playing');
     harness.engine.emit({ type: 'buffering', buffering: false });
+    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
     for (let second = 0; second < 62; second++) {
       harness.engine.time(46 + second);
       await jest.advanceTimersByTimeAsync(1_000);
@@ -752,10 +748,10 @@ describe('AVPlayer turns the subtitles off for a stall only when nothing else ex
     harness.engine.state('buffering');
     await jest.advanceTimersByTimeAsync(16_000);
     expect(subtitleCommands().at(-1)).toBe('subtitle:null');
-    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: '' } });
     harness.engine.emit({ type: 'tracks', tracks: shown(false) });
     harness.engine.state('playing');
     harness.engine.emit({ type: 'buffering', buffering: false });
+    expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: '' } });
     for (let second = 0; second < 180; second++) {
       harness.engine.time(130 + second);
       await jest.advanceTimersByTimeAsync(1_000);
@@ -1540,6 +1536,49 @@ describe('S4r: the live audit S9c turn 1 timelines', () => {
     // The reload stays black (AVPlayer waits for the sound): the start budget runs out.
     await jest.advanceTimersByTimeAsync(31_000);
     await settle();
+    expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+    expect(c.failure).toBeNull();
+    os.restore();
+    await c.stop();
+  });
+
+  it('D36 iPhone (S4v): the reload stays black while its sound requests break off again: the converted audio within ~15 s of the reload, a hint all the time', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const avplayer = {
+      method: 'remux',
+      audioRenditions: [
+        {
+          id: '1',
+          streamIndex: 1,
+          language: 'de',
+          label: 'Deutsch',
+          channels: 2,
+          codec: 'aac',
+          default: true,
+        },
+      ],
+      mediaInfo: {
+        durationTicks: 600 * TICKS,
+        audioTracks: [
+          { index: 1, language: 'de', selected: true, deliveredAs: 'remux', renditionId: '1' },
+        ],
+        subtitleTracks: [],
+      },
+    } as never;
+    const c = await playing({}, avplayer, 20);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    let reloadAt = 0;
+    let second = 0;
+    for (; second < 40 && !harness.server.sent('switch').length; second++) {
+      if (second % 2 === 0) await fromAVPlayer(RECORDED.audioAbort);
+      await jest.advanceTimersByTimeAsync(1_000);
+      if (!reloadAt && harness.engine.load.mock.calls.length === 2) reloadAt = second;
+      if (reloadAt) expect(c.status.hint).not.toBeNull();
+    }
+    expect(reloadAt).toBeGreaterThan(0);
+    // The old rule waited for the 30 s start budget on the black reload.
+    expect(second - reloadAt).toBeLessThanOrEqual(15);
     expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
     expect(c.failure).toBeNull();
     os.restore();

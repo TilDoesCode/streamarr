@@ -187,7 +187,8 @@ export function PlayScreen() {
   });
   const [controlsShown, setControlsShown] = useState(true);
   const playing = phase === 'playing' || phase === 'switching';
-  const remaining = (clockState.duration || 0) - clockState.position;
+  const duration = controller?.duration || clockState.duration || 0;
+  const remaining = duration - clockState.position;
   const endState = endOverlay({
     playing,
     ended: !!controller?.ended,
@@ -195,7 +196,7 @@ export function PlayScreen() {
     upNextDismissed: upNextDismissedFor === workId,
     blocked: panel !== null || picker,
     remaining,
-    duration: clockState.duration,
+    duration,
     upNextSeconds: UP_NEXT_SECONDS,
   });
   const pip = !!controller?.pictureInPicture;

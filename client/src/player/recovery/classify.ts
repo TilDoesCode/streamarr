@@ -37,6 +37,15 @@ function mediaStatus(status: number, detail: string): Classified {
   return { category, code, detail };
 }
 
+/** A failed direct-play file (VLC, web progressive): no segments, so a 404 is the stream, a 5xx the server, a 401 its capability. */
+function streamStatus(status: number, detail: string): Classified {
+  // A refused capability: a new start asks the API, whose own 401 goes through the session refresh (T3) if needed.
+  if (status === 401) return { category: 'T2', code: 'unauthorized', detail };
+  if (status === 404) return { category: 'T2', code: 'unknown_stream', detail };
+  if (status >= 500) return { category: 'T6', code: 'server_error', detail };
+  return mediaStatus(status, detail);
+}
+
 const TLS =
   /ssl|tls|certificate|certpath|trust anchor|handshake|x509|pkix|secure connection|NSURLErrorDomain -12\d\d\b/i;
 const TIMEOUT = /timed? ?out|NSURLErrorDomain (?:error )?-1001\b|\(-1001\)/i;
@@ -82,10 +91,13 @@ function hlsReason(reason: string, status?: number): Classified | undefined {
   return undefined;
 }
 
-/** A browser media error of the network: MEDIA_ERR_NETWORK, an unreachable HEAD probe or a network message (D09). */
+/** A browser media error of the network: an unanswered HEAD, MEDIA_ERR_NETWORK or a network message (D09). */
 function webNetwork(reason: string, status: number | undefined): boolean {
-  if (/^media_error_[34]\b/.test(reason)) return false;
-  return status === 0 || /^media_error_2\b/.test(reason) || WEB_NETWORK.test(reason);
+  // The bytes arrived and did not decode: the decode path (its reload meets a dead network as code 2/4 again).
+  if (/^media_error_3\b/.test(reason)) return false;
+  // Chrome reports any failure before metadata as code 4: network only when the HEAD went unanswered or the message says so.
+  if (status === 0 || WEB_NETWORK.test(reason)) return true;
+  return /^media_error_2\b/.test(reason);
 }
 
 function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Classified {
@@ -101,10 +113,10 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
   if (hls) return hls;
   // libVLC names no HTTP status; the engine asks the server (S6x): a telling one decides before any dialog wording.
   if (source.engine === 'vlc' && status !== undefined && telling(status))
-    return mediaStatus(status, reason);
+    return streamStatus(status, reason);
   // libVLC cannot open the http(s) source and nobody knows why: the server lost it (T2, S9c VLC 404).
   if (VLC_CANNOT_OPEN.test(reason) && !TLS.test(reason))
-    return mediaStatus(Number(/\b(40[134]|410|5\d\d)\b/.exec(reason)?.[1] ?? 404), reason);
+    return streamStatus(Number(/\b(40[134]|410|5\d\d)\b/.exec(reason)?.[1] ?? 404), reason);
   // libVLC asked a question nobody answers: a certificate one is TLS, the rest "VLC cannot play this" (D27).
   if (reason.startsWith('vlc_dialog'))
     return TLS.test(reason)
@@ -117,6 +129,9 @@ function engineFailure(source: Extract<FailureSource, { kind: 'engine' }>): Clas
     status ??
     (responseCode ? Number(responseCode.slice(1).find(Boolean)) : undefined) ??
     avFoundationStatus(reason);
+  // The web engine's status comes from its HEAD on the direct-play file (D09).
+  if (source.engine === 'web' && status !== undefined && telling(status))
+    return streamStatus(status, reason);
   if (httpStatus !== undefined && telling(httpStatus)) return mediaStatus(httpStatus, reason);
   if (TLS.test(reason)) return { category: 'T1', code: 'tls_error', detail: reason };
   // Exo names a missing file or an unspecified I/O failure: the stream is gone (T2) or broke off (T1), not the device (D11).

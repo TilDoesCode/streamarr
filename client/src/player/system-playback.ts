@@ -42,7 +42,8 @@ export class SystemPlayback {
   /** The engine plays: a system pause ends on its own (end of a call); an app pause or a card holds it. */
   onPlaying(): void {
     if (this.host.terminal()) return void this.host.engine()?.pause();
-    if (this.paused) {
+    // Another tab's pause is the app's own: only the viewer's Play here ends it.
+    if (this.paused && this.cause !== 'otherTab') {
       this.clear();
       this.host.follow(false);
     } else if (this.host.paused()) this.host.engine()?.pause();
@@ -63,6 +64,13 @@ export class SystemPlayback {
       this.host.report();
       this.host.changed();
     }, SYSTEM_PAUSE_MS);
+  }
+
+  /** Paused for a reason the player knows (another tab): it stays said until the viewer plays (F12). */
+  pausedFor(cause: SystemCause): void {
+    this.cancel();
+    this.paused = true;
+    this.cause = cause;
   }
 
   /** The viewer resumed: no system pause is left to explain. */

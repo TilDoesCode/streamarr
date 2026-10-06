@@ -91,8 +91,14 @@ export function tickRules(input: TickInput): { seekStall: boolean; rule: TickRul
   return { seekStall, rule: input.offline ? 'offline' : null };
 }
 
-/** A playlist without ENDLIST reads as live (Safari) or as cut short (hls.js): the server's length is the title's (S9a D10, S9a2 C12). */
-export function titleLength(engine: number, server: number): number {
+/** Beyond this many times the server's length an engine length is a guess (VLC from the bytes of a cut file), not longer media. */
+const GUESSED_LENGTH = 2;
+
+/** The server's length is the title's when the engine reads it as live, cut short, or guesses it (S9a D10, C12, S9c VLC). */
+export function titleLength(engine: number, server: number, guessed = false): number {
+  const close = Math.abs(engine - server) <= END_MARGIN_SECONDS;
+  if (server > 0 && guessed && !close) return server;
+  if (server > 0 && engine > server * GUESSED_LENGTH) return server;
   if (server > 0 && !(engine > server - END_MARGIN_SECONDS)) return server;
   return Number.isFinite(engine) && engine > 0 ? engine : server;
 }

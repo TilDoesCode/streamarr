@@ -85,6 +85,7 @@ during a step the viewer's own actions wait (none shown).
 | `pipClosed` | Bild-in-Bild geschlossen | picture-in-picture closed |
 | `airplayLost` | AirPlay getrennt | AirPlay disconnected |
 | `outside` | außerhalb der App | outside the app |
+| `otherTab` | Wiedergabe in einem anderen Tab | playing in another tab |
 | `converting` | Der Server wandelt das Video um. | The server is converting the video. |
 | `slowConnection` | Die Verbindung ist langsam. | The connection is slow. |
 | `loadingFile` | Der Player öffnet die Datei noch. | The player is still opening the file. |

@@ -1021,4 +1021,61 @@ describe('matrix E — S4s: a seek or play after the end leaves the end card (S6
       await c.stop();
     }
   );
+
+  const overlayAt = (c: { ended: boolean }) =>
+    endOverlay({
+      playing: true,
+      ended: c.ended,
+      hasNext: false,
+      upNextDismissed: false,
+      blocked: false,
+      remaining: 0,
+      duration: 600,
+      upNextSeconds: 30,
+    });
+
+  row(
+    'E07',
+    'a remote ▶ or the card Play right after the end (never paused) starts the title again: never a frozen last frame without a card (review 7 P2-2 A)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 0);
+      harness.engine.time(600, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(c.ended).toBe(true);
+      expect(c.paused).toBe(false);
+      const plays = harness.engine.play.mock.calls.length;
+      const heard = jest.fn();
+      c.subscribe(heard);
+      c.setPaused(false);
+      expect(harness.engine.play.mock.calls.length).toBe(plays + 1);
+      expect(harness.engine.seek).toHaveBeenLastCalledWith(0);
+      expect(heard).toHaveBeenCalled();
+      expect(c.ended).toBe(false);
+      expect(overlayAt(c)).toBeNull();
+      await c.stop();
+    }
+  );
+
+  row(
+    'E07',
+    'Play from the system controls (media session) after the end: "Finished" goes and the listeners hear it (review 7 P2-2 B)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({ nativeEngine: 'web' }, {}, 0);
+      harness.engine.time(600, 600);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(overlayAt(c)).toBe('endCard');
+      const heard = jest.fn();
+      c.subscribe(heard);
+      harness.engine.emit({ type: 'userPlayback', paused: false });
+      harness.engine.time(1, 600);
+      expect(c.ended).toBe(false);
+      expect(heard).toHaveBeenCalled();
+      expect(overlayAt(c)).toBeNull();
+      await c.stop();
+    }
+  );
 });

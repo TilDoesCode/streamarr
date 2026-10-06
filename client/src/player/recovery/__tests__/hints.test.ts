@@ -24,6 +24,7 @@ describe('status hints (state-matrix § 2 b.4)', () => {
     expect(Object.keys(playerDe.hints.actions).sort()).toEqual(
       Object.keys(playerEn.hints.actions).sort()
     );
+    expect(Object.keys(playerDe.hints.fallbacks)).toEqual(Object.keys(playerEn.hints.fallbacks));
   });
 
   it.each(['en', 'de'])('renders every hint and action with its params in %s', async (lng) => {

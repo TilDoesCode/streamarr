@@ -283,6 +283,14 @@ export function PlayerOverlay({
     if (captureDpad) handOver.current = false;
   }, [captureDpad]);
 
+  // To the button row: native focus at once and the D-pad handed back, so a quick ▶ never scrubs (S6x).
+  const toButtons = () => {
+    handOver.current = tv;
+    if (tv && !rowFocused.current) tvFocus(playRef.current);
+    show('buttons');
+    return 'release' as const;
+  };
+
   useRemoteKeys(captureDpad, (action, _key, repeat) => {
     switch (action) {
       case 'toggle':
@@ -306,17 +314,10 @@ export function PlayerOverlay({
         scrubBy(action === 'rewind' ? -1 : 1, repeat);
         return;
       case 'up':
-        handOver.current = tv;
-        if (tv && !rowFocused.current) tvFocus(playRef.current);
-        show('buttons');
-        return 'release';
+        return toButtons();
       case 'down':
         if (!visible || zone !== 'progress') return void show('progress');
-        // To the button row like ▲: native focus at once and the D-pad handed back, so a quick ▶ never scrubs (S6x).
-        handOver.current = tv;
-        if (tv && !rowFocused.current) tvFocus(playRef.current);
-        show('buttons');
-        return 'release';
+        return toButtons();
       case 'stop':
         onClose();
         return;

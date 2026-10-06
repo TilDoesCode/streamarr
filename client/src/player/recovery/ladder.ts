@@ -200,6 +200,10 @@ export function nextStep(
         return incident.count(['R'], 'T6') < 1
           ? { step: 'R', delayMs: 0, hint: 'reloading' }
           : stepDown(incident, 'steppingDown');
+      if (code === 'decoder_reclaimed')
+        return incident.count(['N'], 'T6') < 1
+          ? { step: 'N', delayMs: 0, hint: 'reloading' }
+          : { step: 'G', delayMs: 0 };
       // A delivery break (S6t): one reload, then converted audio only with audio evidence (S9c D19), else a new start.
       if (code === 'delivery_interrupted' && context.attached) {
         if (incident.count(['R'], 'T6') < 1) return { step: 'R', delayMs: 0, hint: 'streamBreaks' };
@@ -248,6 +252,15 @@ export function nextStep(
       // Damaged data at one place: one reload there, then another way to play with that reason (S9c seg_corrupt).
       if (code === 'media_damaged' && context.attached && incident.count(['R']) >= 1)
         return stepDown(incident, 'steppingDown');
+      // A reload already failed on its sound (any category): converting the audio is next, not another reload (S9c D36).
+      if (
+        code === 'audio_rendition_failed' &&
+        audio &&
+        incident.count(['R']) >= 1 &&
+        !context.audioFallback &&
+        incident.count(['A']) < 1
+      )
+        return { step: 'A', delayMs: 0, hint: 'convertingAudio' };
       if (context.attached && incident.count(['R'], 'T7', context.revision) < 1)
         return { step: 'R', delayMs: 0, hint: audio ? 'noAudio' : 'reloading' };
       // Silence after a reload: the server converts the audio before another method is tried (C20, D36).
@@ -270,7 +283,10 @@ export function nextStep(
         return {
           step: 'N',
           delayMs: seconds(STREAM_POLL_S),
-          hint: context.params?.releaseName ? 'waitingForStreamRelease' : 'waitingForStream',
+          hint:
+            context.params?.releaseName && context.params.device
+              ? 'waitingForStreamRelease'
+              : 'waitingForStream',
         };
       return { step: 'G', delayMs: 0 };
     case 'T10':

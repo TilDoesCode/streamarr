@@ -57,7 +57,7 @@ export type Recovery = {
   timer: ReturnType<typeof setTimeout> | null;
 };
 
-/** Categories that wait with their own budget and hint (offline, server countdowns, another device, the system). */
+/** Categories that wait with their own budget and hint (signed out, server busy countdowns, another device, the system). */
 const OWN_WAIT = new Set(['T3', 'T4', 'T9', 'T10']);
 
 /** What the runner needs from the player: the situation, the step actions and the way out. */

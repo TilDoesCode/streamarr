@@ -702,6 +702,7 @@ export function buildCatalogue(): string {
     'pipClosed',
     'airplayLost',
     'outside',
+    'otherTab',
     'converting',
     'slowConnection',
     'loadingFile',

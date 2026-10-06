@@ -27,10 +27,10 @@ export class SubtitleRetry {
   constructor(private readonly host: SubtitleRetryHost) {}
 
   /** The shown subtitles failed; null when none were shown. `retryLater` says whether they come back on their own. */
-  fail(): { index: number; retryLater: boolean } | null {
+  fail(shown = this.host.current()): { index: number; retryLater: boolean } | null {
     const entry = this.entry;
     // While they are off, more failures of the same subtitles find nothing shown and change nothing.
-    const index = entry?.retrying ? entry.index : this.host.current();
+    const index = entry?.retrying ? entry.index : shown;
     if (index === null) return null;
     const release = this.host.release();
     const key = `${release}|${index}`;

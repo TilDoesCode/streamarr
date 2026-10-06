@@ -152,6 +152,7 @@
     "serverBusy": "The server is busy. Retrying in {seconds} s…",
     "waitingForStream": "Starts as soon as playback on {device} stops.",
     "waitingForStreamRelease": "Starts as soon as “{releaseName}” stops playing on {device}.",
+    "fallbacks": { "device": "another device" },
     "buffering": "Loading takes longer than usual. Buffering…",
     "serverError": "The server had a problem. Retrying in {seconds} s…",
     "reloading": "Playback stopped. Resuming at {time}…",
@@ -175,7 +176,8 @@
       "slowConnection": "The connection is slow.",
       "loadingFile": "The player is still opening the file.",
       "preparing": "The server is still preparing the video.",
-      "outside": "outside the app"
+      "outside": "outside the app",
+      "otherTab": "playing in another tab"
     },
     "actions": {
       "lowerQuality": "Lower quality",

@@ -1612,6 +1612,57 @@ describe('matrix B — S4s: a restore brings back the tracks the viewer picked i
       await c.stop();
     }
   );
+
+  row(
+    'B19',
+    'the new source of a quality switch fails before its first picture: the switch back asks for the tracks picked in the player (review 7 M10)',
+    async () => {
+      jest.useFakeTimers();
+      const mediaInfo = {
+        durationTicks: 600 * TICKS,
+        audioTracks: [
+          { index: 1, language: 'de', selected: true, deliveredAs: 'original' },
+          { index: 2, language: 'en', selected: false, deliveredAs: 'original' },
+        ],
+        subtitleTracks: [{ index: 4, language: 'de', selected: false, deliveredAs: 'webvtt' }],
+      };
+      const c = await playing({}, { method: 'remux', mediaInfo } as never, 41);
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [
+            { id: 'a0', label: 'de', language: 'de', selected: true },
+            { id: 'a1', label: 'en', language: 'en', selected: false },
+          ],
+          subtitles: [{ id: 's0', label: 'de', language: 'de', selected: false }],
+        },
+      });
+      await playOn(16);
+      const info = c.playback!.mediaInfo!;
+      await c.selectAudio(info.audioTracks![1]!);
+      await c.selectSubtitle(info.subtitleTracks![0]!);
+      await playOn(10);
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            method: 'transcode',
+            revision: 1,
+            mediaInfo,
+          } as never)
+        )
+      );
+      await c.setQuality(720);
+      await settle();
+      expect(harness.server.sent('switch')).toHaveLength(1);
+      harness.engine.fail('ERROR_CODE_DECODER_INIT_FAILED: video/avc');
+      await settle();
+      expect(starts()).toHaveLength(2);
+      expect(starts().at(-1)?.body).toMatchObject({ audioStreamIndex: 2, subtitleStreamIndex: 4 });
+      await c.stop();
+    }
+  );
 });
 
 describe('matrix B — S4s: the stream limit names the title and owns its two minutes (S4t B04)', () => {
@@ -1646,6 +1697,45 @@ describe('matrix B — S4s: the stream limit names the title and owns its two mi
         '„Sintel 2160p“ auf Living room TV'
       );
       await c.stop();
+    }
+  );
+
+  row(
+    'B04',
+    'every param combination reads whole sentences: the release only with a device, "another device" when the server names none (review 7 P3-1)',
+    async () => {
+      const cases: [Record<string, string>, string, string][] = [
+        [
+          { device: 'Living room TV', releaseName: 'Sintel 2160p' },
+          'Starts as soon as “Sintel 2160p” stops playing on Living room TV.',
+          'Startet, sobald „Sintel 2160p“ auf Living room TV endet.',
+        ],
+        [
+          { device: 'Living room TV' },
+          'Starts as soon as playback on Living room TV stops.',
+          'Startet, sobald die Wiedergabe auf Living room TV endet.',
+        ],
+        [
+          { releaseName: 'Sintel 2160p' },
+          'Starts as soon as playback on another device stops.',
+          'Startet, sobald die Wiedergabe auf einem anderen Gerät endet.',
+        ],
+        [
+          {},
+          'Starts as soon as playback on another device stops.',
+          'Startet, sobald die Wiedergabe auf einem anderen Gerät endet.',
+        ],
+      ];
+      for (const [params, en, de] of cases) {
+        harness.reset();
+        harness.server.answer('start', busy(params));
+        const c = newController();
+        await c.start();
+        const hint = c.status.hint!;
+        await c.stop();
+        expect(hintText(pt('en'), hint.key, hint.params)).toBe(en);
+        expect(hintText(pt('de'), hint.key, hint.params)).toBe(de);
+      }
     }
   );
 

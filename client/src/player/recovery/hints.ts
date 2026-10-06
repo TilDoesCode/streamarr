@@ -96,16 +96,21 @@ export type HintCause =
   | 'slowConnection'
   | 'loadingFile'
   | 'preparing'
-  | 'outside';
+  | 'outside'
+  | 'otherTab';
 
 export type HintParams = Record<string, string | number>;
 
 export const hintKey = (key: HintKey): PlayerKey => `hints.${key}`;
 export const hintActionKey = (action: HintAction): PlayerKey => `hints.actions.${action}`;
 
-/** The hint line in the viewer's language; a `cause` param is translated first. */
+/** The hint line in the viewer's language; a `cause` param is translated first, a device the server did not name reads "another device". */
 export function hintText(pt: PlayerT, key: HintKey, params: HintParams = {}): string {
-  const { cause, ...rest } = params;
+  const { cause, device, ...rest } = params;
   const causeText = typeof cause === 'string' ? pt(`hints.causes.${cause as HintCause}`) : '';
-  return pt(hintKey(key), { ...rest, cause: causeText });
+  return pt(hintKey(key), {
+    ...rest,
+    cause: causeText,
+    device: device || pt('hints.fallbacks.device'),
+  });
 }

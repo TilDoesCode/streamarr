@@ -1,5 +1,6 @@
 import { render } from '@testing-library/react-native';
 import { createElement } from 'react';
+import { Platform } from 'react-native';
 
 import type { EngineEvent } from '@/player/engines';
 import { loadHls, WebEngine } from '@/player/engines/web-engine.web';
@@ -7,7 +8,9 @@ import { classify } from '@/player/recovery/classify';
 import { VlcEngine } from '@/player/engines/vlc-engine';
 import { noticeText, stepDownReasonKey } from '@/player/overlay-labels';
 import { Incident, nextStep } from '@/player/recovery/ladder';
+import { SYSTEM_PAUSE_MS } from '@/player/recovery/budgets';
 import { AUDIO_SWITCH_TIMEOUT_MS } from '@/player/controller';
+import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
 import { harness, newController, reply } from '@/../jest/player/harness';
 import {
@@ -2365,9 +2368,85 @@ describe('matrix D — S4s: a browser network error keeps its MediaError code (V
       category: 'T7',
       code: 'decode_error',
     });
-    expect(web('media_error_4: MEDIA_ERR_SRC_NOT_SUPPORTED', 0).category).toBe('T7');
+    expect(web('media_error_4: MEDIA_ERR_SRC_NOT_SUPPORTED')).toMatchObject({ category: 'T7' });
     expect(web('media_error_4', 404)).toMatchObject({ category: 'T2' });
   });
+});
+
+describe('matrix D — S4u: Chrome reports a dead server before metadata as code 4 (review 7 P2-3)', () => {
+  const web = (reason: string, status?: number) =>
+    classify({
+      kind: 'engine',
+      engine: 'web',
+      reason,
+      ...(status === undefined ? {} : { status }),
+    });
+
+  row(
+    'D09',
+    'code 4 with the HEAD unanswered or a network message is the network; with an answered HEAD it stays the format (T7, 404 → T2)',
+    () => {
+      const formatError = 'media_error_4: MEDIA_ELEMENT_ERROR: Format error';
+      expect(web(formatError, 0)).toMatchObject({ category: 'T1', code: 'network_unreachable' });
+      expect(
+        web('media_error_4: PIPELINE_ERROR_READ: FFmpegDemuxer: data source error')
+      ).toMatchObject({ category: 'T1' });
+      expect(web('media_error_4: NS_ERROR_NET_INTERRUPT')).toMatchObject({ category: 'T1' });
+      expect(web('media_error_4: NS_ERROR_CONNECTION_REFUSED')).toMatchObject({ category: 'T1' });
+      expect(web(formatError)).toMatchObject({ category: 'T7' });
+      expect(web(formatError, 404)).toMatchObject({ category: 'T2' });
+      // MEDIA_ERR_NETWORK decides over a pipeline word the decoder rule would take (Chrome's PIPELINE_ERROR_NETWORK).
+      expect(web('media_error_2: PIPELINE_ERROR_NETWORK')).toMatchObject({
+        category: 'T1',
+      });
+      // MEDIA_ERR_NETWORK without a message (Safari native HLS, no HEAD) is the network on its own.
+      expect(web('media_error_2: MEDIA_ELEMENT_ERROR: Empty src attribute')).toMatchObject({
+        category: 'T1',
+      });
+      // MEDIA_ERR_DECODE: the bytes arrived; its reload meets a dead network as code 2 or 4 again.
+      expect(web('media_error_3: NS_ERROR_NET_INTERRUPT')).toMatchObject({ category: 'T7' });
+    }
+  );
+
+  row(
+    'D09',
+    'web direct play while the server is down: code 2, reconnect, reload fails as code 4 with no HEAD answer → still reconnecting, then the network card, never a step-down (review 7 P6)',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({ nativeEngine: 'web' }, { method: 'direct' } as never, 100);
+      harness.engine.emit({
+        type: 'error',
+        reason: 'media_error_2: PIPELINE_ERROR_READ: FFmpegDemuxer: data source error',
+        status: 0,
+      });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(c.status.hint?.key).toBe('reconnecting');
+      for (let reload = 0; reload < 2; reload += 1) {
+        const loads = harness.engine.load.mock.calls.length;
+        await jest.advanceTimersByTimeAsync(20_000);
+        expect(harness.engine.load.mock.calls.length).toBeGreaterThan(loads);
+        harness.engine.emit({
+          type: 'error',
+          reason: 'media_error_4: MEDIA_ELEMENT_ERROR: Format error',
+          status: 0,
+        });
+        await jest.advanceTimersByTimeAsync(0);
+        expect(c.status.hint?.key).toBe('reconnecting');
+      }
+      // The stuck budget ends on the "connection lost" card (T1, Retry), not on the device.
+      await jest.advanceTimersByTimeAsync(20_000);
+      harness.engine.emit({
+        type: 'error',
+        reason: 'media_error_4: MEDIA_ELEMENT_ERROR: Format error',
+        status: 0,
+      });
+      await settle();
+      expect(c.failure).toMatchObject({ category: 'T1', code: 'network_unreachable' });
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      expect(harness.server.sent('versions')).toHaveLength(0);
+      await c.stop();
+    }
+  );
 });
 
 describe('matrix D — S4s: a reclaimed decoder is the device, not the server (V1 D17, A21)', () => {
@@ -2402,6 +2481,40 @@ describe('matrix D — S4s: a reclaimed decoder is the device, not the server (V
       await c.stop();
     }
   );
+
+  row(
+    'D17',
+    'reclaim while no source is attached (a start, a new start): one new start with "Reloading", then its own card, never "the server had a problem" (review 7 P3-2)',
+    () => {
+      const failure = classify({
+        kind: 'engine',
+        engine: 'expo-video',
+        reason: 'ERROR_CODE_DECODING_RESOURCES_RECLAIMED: MediaCodec released',
+      });
+      const context = {
+        attached: false,
+        online: true,
+        canLowerQuality: true,
+        revision: 1,
+        audioFallback: false,
+      };
+      const incident = new Incident(0);
+      const first = nextStep(incident, failure, context);
+      expect(first).toEqual({ step: 'N', delayMs: 0, hint: 'reloading' });
+      incident.attempts.push({
+        step: 'N',
+        category: 'T6',
+        code: 'decoder_reclaimed',
+        position: 0,
+        at: 0,
+        revision: 1,
+      } as never);
+      expect(nextStep(incident, failure, context)).toEqual({ step: 'G', delayMs: 0 });
+      expect(describeError(i18n.t, { code: 'decoder_reclaimed' })).not.toEqual(
+        describeError(i18n.t, { code: 'server_error' })
+      );
+    }
+  );
 });
 
 describe("matrix D — S4s: a VLC failure with the server's HTTP status (S6x payloads)", () => {
@@ -2419,7 +2532,7 @@ describe("matrix D — S4s: a VLC failure with the server's HTTP status (S6x pay
     'D27',
     'the recorded S6x payload (dialog + error, status 404) is the missing file (T2, new start); 5xx the server; no status keeps the S4r rule',
     () => {
-      expect(vlc(dialog, 404)).toMatchObject({ category: 'T2', code: 'unknown_transcode' });
+      expect(vlc(dialog, 404)).toMatchObject({ category: 'T2', code: 'unknown_stream' });
       expect(vlc('Player encountered an error', 404)).toMatchObject({ category: 'T2' });
       expect(vlc(dialog, 410)).toMatchObject({ category: 'T2', code: 'session_closed' });
       expect(vlc(dialog, 416)).toMatchObject({ category: 'T8', code: 'end_of_stream' });
@@ -2452,6 +2565,165 @@ describe('matrix D — S4s: Exo I/O failures are the stream, not the device (V1 
         category: 'T1',
         code: 'stream_interrupted',
       });
+    }
+  );
+});
+
+describe('matrix D — S4v: AVPlayer gives up waiting in a stall (live audit S9c turn 2 D19, iPhone and Apple TV)', () => {
+  const subtitled = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [{ index: 5, language: 'de', deliveredAs: 'webvtt', selected: true }],
+    },
+  } as never;
+  async function starved() {
+    const c = await playing({}, subtitled, 47);
+    harness.engine.emit({
+      type: 'tracks',
+      tracks: { audio: [], subtitles: [{ id: 's0', label: 'de', language: 'de', selected: true }] },
+    });
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    harness.engine.state('buffering');
+    return c;
+  }
+
+  row(
+    'D19',
+    'the engine pauses itself ~7 s into the stall: no "paused outside the app", the stall ladder reloads at its budget at the same position, the subtitles never blamed',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const c = await starved();
+      await jest.advanceTimersByTimeAsync(7_000);
+      harness.engine.play.mockClear();
+      harness.engine.state('paused');
+      // Asked once to play again: AVPlayer stays paused (rate 0) when the data comes otherwise.
+      expect(harness.engine.play).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(SYSTEM_PAUSE_MS + 2_000);
+      expect(c.systemPaused).toBe(false);
+      expect(c.paused).toBe(false);
+      expect(c.status.hint?.key).not.toBe('pausedBySystem');
+      // The quiet subtitle try (S4n), then the ladder for the video: a reload at 0:47, subtitles back on.
+      await jest.advanceTimersByTimeAsync(25_000);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(47);
+      expect(c.notice?.kind).not.toBe('subtitleFailed');
+      expect(c.currentSubtitle()).toBe(5);
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'a real pause from the system during a stall (lock, background) still reads as that cause and stops the stall budget',
+    async () => {
+      jest.useFakeTimers();
+      const c = await starved();
+      await jest.advanceTimersByTimeAsync(3_000);
+      harness.engine.state('paused');
+      harness.engine.emit({ type: 'userPlayback', paused: true, cause: 'background' });
+      expect(c.systemPaused).toBe(true);
+      expect(c.status.hint).toMatchObject({
+        key: 'pausedBySystem',
+        params: { cause: 'background' },
+      });
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(harness.server.sent('switch')).toHaveLength(0);
+      // Back and still starved: a fresh stall with its own budget, not the minute spent paused.
+      c.setPaused(false);
+      harness.engine.state('buffering');
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(5_000);
+      await settle();
+      // No budget step yet (neither the quiet subtitle try nor a reload).
+      expect(harness.engine.commands).not.toContain('subtitle:null');
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.status.hint?.key).not.toBe('pausedBySystem');
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'AVPlayer says paused first and starved right after: the stall that began within the adoption moment is never adopted as a pause',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, subtitled, 47);
+      harness.engine.state('paused');
+      await jest.advanceTimersByTimeAsync(300);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(SYSTEM_PAUSE_MS);
+      expect(c.systemPaused).toBe(false);
+      expect(c.paused).toBe(false);
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
+    'a subtitle timeout the engine reports while the video is starved belongs to the stall: no notice, no failure counted',
+    async () => {
+      jest.useFakeTimers();
+      const c = await starved();
+      await jest.advanceTimersByTimeAsync(5_000);
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_timeout' });
+      expect(c.notice).toBeNull();
+      expect(c.currentSubtitle()).toBe(5);
+      // While the video plays, a subtitle timeout is the subtitles' (C22).
+      harness.engine.emit({ type: 'buffering', buffering: false });
+      harness.engine.state('playing');
+      harness.engine.emit({ type: 'subtitleError', code: 'subtitle_timeout' });
+      expect(c.notice).toMatchObject({ kind: 'subtitleFailed', params: { retry: 'later' } });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix D — S4v: a direct-play file names its own HTTP failure (S9c turn 2 VLC 503 / 401)', () => {
+  const failed = (engine: 'vlc' | 'web', reason: string, status?: number) =>
+    classify({ kind: 'engine', engine, reason, ...(status === undefined ? {} : { status }) });
+  const mrl = "VLC is unable to open the MRL 'http://127.0.0.1:39300/api/v1/stream/tok'.";
+
+  row(
+    'D27',
+    'VLC and web direct: 503/5xx is the server (T6 server_error), 401 the capability (T2 unauthorized), 404 the stream (T2 unknown_stream), never "unknown_transcode"',
+    async () => {
+      for (const engine of ['vlc', 'web'] as const) {
+        expect(failed(engine, 'Player encountered an error', 503)).toMatchObject({
+          category: 'T6',
+          code: 'server_error',
+        });
+        expect(failed(engine, 'Player encountered an error', 500)).toMatchObject({
+          code: 'server_error',
+        });
+        expect(failed(engine, 'Player encountered an error', 401)).toMatchObject({
+          category: 'T2',
+          code: 'unauthorized',
+        });
+        expect(failed(engine, 'Player encountered an error', 404)).toMatchObject({
+          category: 'T2',
+          code: 'unknown_stream',
+        });
+      }
+      expect(failed('web', 'media_error_4', 416)).toMatchObject({ code: 'end_of_stream' });
+      expect(failed('vlc', mrl)).toMatchObject({ category: 'T2', code: 'unknown_stream' });
+      expect(failed('vlc', `${mrl} HTTP 503`)).toMatchObject({ code: 'server_error' });
+      // HLS segments keep their own names.
+      expect(failed('web', 'networkError:fragLoadError', 503)).toMatchObject({
+        code: 'segment_unavailable',
+      });
+      // The controller: a 503 on VLC reloads with the server hint, not a new start.
+      jest.useFakeTimers();
+      const c = await playing({}, { method: 'direct', engine: 'vlc' } as never, 10);
+      harness.engine.emit({ type: 'error', reason: 'Player encountered an error', status: 503 });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(c.status.hint?.key).toBe('serverError');
+      await c.stop();
     }
   );
 });
