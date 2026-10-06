@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
+import { isKnownErrorCode } from '@/api/error-codes';
 import { describeError } from '@/api/error-text';
 import { Glass } from '@/components/glass';
 import { Spinner } from '@/components/ui/spinner';
@@ -156,7 +157,10 @@ export function RecoveryLog({ tried }: { tried: readonly Attempt[] }) {
           tone="muted"
           testID={`play-error-tried-${attempt.step}`}>
           {`${pt(`tried.${attempt.step}`, { time: clock(attempt.position) })} · ${
-            describeError(t, { code: attempt.code }).title
+            // A code the app does not know (a server's internal_error) reads by the attempt's category, like the card (S9c E10).
+            isKnownErrorCode(attempt.code)
+              ? describeError(t, { code: attempt.code }).title
+              : t(`errors.categories.${attempt.category}.title`)
           }`}
         </Text>
       ))}

@@ -2836,3 +2836,88 @@ describe('matrix C — S4v: the server length wins over an engine guess (S9c tur
     }
   );
 });
+
+describe('matrix C — S4w: an endless playlist on the web engine (S9c turn 3 C12, Chrome)', () => {
+  const endless = {
+    method: 'remux',
+    mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] },
+  } as never;
+  /** hls.js on a playlist without ENDLIST that stopped growing: the media element knows 1:00, plays to 0:59 and waits. */
+  async function stopsAt59() {
+    for (let position = 41; position <= 59; position++) {
+      harness.engine.emit({ type: 'time', position, duration: 60, buffered: 60 });
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    harness.engine.state('buffering');
+  }
+
+  row(
+    'C12',
+    'hls.js waits at the end of a 1:00 playlist of a 3:00 title: "ends early", a reload at 0:59, then another version — never "no picture", never a lower quality',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer('poll', reply.ok(harness.server.playback(endless)));
+      const c = await playing({ nativeEngine: 'web' }, endless, 40);
+      expect(harness.engine.kind).toBe('web');
+      await stopsAt59();
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(59);
+      harness.engine.started(60);
+      harness.engine.time(59, 60);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(JSON.stringify(harness.server.sent('switch'))).not.toContain('maxHeight');
+      const tried = c.failure?.tried ?? [];
+      expect(tried.map((attempt) => attempt.code)).not.toContain('picture_timeout');
+      expect(c.failure?.code).not.toBe('picture_timeout');
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'a plain stall in the middle of a VOD playlist (engine length = server length) keeps the stall ladder',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing(
+        { nativeEngine: 'web' },
+        {
+          method: 'remux',
+          mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] },
+        } as never,
+        40
+      );
+      harness.engine.time(59, 180);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(c.status.hint?.key).not.toBe('endedEarly');
+      expect(harness.server.sent('versions')).toHaveLength(0);
+      await c.stop();
+      // An engine length a few seconds short of the server's (rounding) and a stall near it: still a stall.
+      harness.reset();
+      const d = await playing(
+        { nativeEngine: 'web' },
+        {
+          method: 'remux',
+          mediaInfo: { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] },
+        } as never,
+        150
+      );
+      harness.engine.time(165, 175);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(d.status.hint?.key).not.toBe('endedEarly');
+      expect(d.failure?.code).not.toBe('end_of_stream');
+      expect(harness.server.sent('versions')).toHaveLength(0);
+      await d.stop();
+    }
+  );
+});

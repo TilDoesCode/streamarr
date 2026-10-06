@@ -1,3 +1,7 @@
+import { createElement } from 'react';
+
+import { renderWithProviders } from '@/../jest/render';
+import { RecoveryLog } from '@/screens/player/player-status';
 import { cardActions } from '@/player/recovery/ladder';
 import { STEP_BUDGET_MS, STREAM_POLLS } from '@/player/recovery/budgets';
 import { hintText } from '@/player/recovery/hints';
@@ -1760,6 +1764,42 @@ describe('matrix B — S4s: the stream limit names the title and owns its two mi
       await jest.advanceTimersByTimeAsync(15_000);
       expect(harness.server.sent('start')).toHaveLength(4 + STREAM_POLLS);
       expect(c.failure).toMatchObject({ code: 'too_many_streams', params });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix B — S4w: "What was tried" after a server 500 at the start (S9c turn 3 E10, Apple TV, iPad)', () => {
+  row(
+    'B12',
+    'a start at 0:10 that the server answers with 500 internal_error: each line names the server and 0:10, never "a problem in the app" or 0:00',
+    async () => {
+      jest.useFakeTimers();
+      harness.server.answer(
+        'start',
+        ...Array.from({ length: 6 }, () => reply.error(500, 'internal_error'))
+      );
+      const c = newController({ startSeconds: 10 });
+      await c.start();
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(c.phase).toBe('failed');
+      const tried = c.failure!.tried ?? [];
+      expect(tried.length).toBeGreaterThan(0);
+      for (const attempt of tried) expect(attempt).toMatchObject({ position: 10, category: 'T6' });
+      for (const [lang, line, wrong] of [
+        ['en', /^Restarted at 0:10 · The server had a problem$/, /in the app|0:00/],
+        ['de', /^Neu gestartet bei 0:10 · Problem auf dem Server$/, /in der App|0:00/],
+      ] as const) {
+        await i18n.changeLanguage(lang);
+        const screen = await renderWithProviders(createElement(RecoveryLog, { tried }));
+        const lines = screen.getAllByTestId('play-error-tried-N');
+        for (const shown of lines) {
+          expect(shown).toHaveTextContent(line);
+          expect(shown).not.toHaveTextContent(wrong);
+        }
+        await screen.unmount();
+      }
+      await i18n.changeLanguage('en');
       await c.stop();
     }
   );

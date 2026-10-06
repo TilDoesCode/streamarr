@@ -331,6 +331,8 @@ export class PlaybackController {
   private stallAfterSeek = false;
   /** Subtitles turned off quietly in this stall to see whether they block AVPlayer (S4n, S9c D19). */
   private stallSubtitle: { index: number } | null = null;
+  /** This stall's budget already started over for the subtitles (S9c D20). */
+  private stallRenewed = false;
   /** The engine paused itself in this stall and was asked to play again (D19). */
   private stallNudged = false;
   private stallPosition = 0;
@@ -490,6 +492,8 @@ export class PlaybackController {
     signal: AbortSignal = this.abort.signal
   ): Promise<void> {
     const startSeconds = resumeAt ?? this.options.startSeconds ?? 0;
+    // Nothing played yet: a failed start is retried at the asked position, and "What was tried" says so (S9c E10).
+    if (!this.pictured) this.lastGoodPosition = startSeconds;
     const created = await startPlayback(
       this.options.client,
       this.startRequest(startSeconds, null, releaseId ?? this.options.releaseId, null),
@@ -803,8 +807,8 @@ export class PlaybackController {
     // The server's pick must not be re-applied over the failed track right after a load.
     this.serverTracksOff?.();
     this.engine?.setSubtitleTrack(null);
-    // AVPlayer waits for the subtitle segment: without it the stall gets a fresh budget (S9b2 C22).
-    if (this.stallSince) this.stallSince = Date.now();
+    // AVPlayer waits for the subtitle segment: without it the stall gets a fresh budget, once (S9b2 C22, S9c D20).
+    this.freshStallBudget();
     this.showNotice('subtitleFailed', {
       index: `${failed.index}`,
       code,
@@ -819,6 +823,13 @@ export class PlaybackController {
     this.stallSubtitle = { index };
     this.serverTracksOff?.();
     this.engine?.setSubtitleTrack(null);
+    this.freshStallBudget();
+  }
+
+  /** The subtitles were taken out of a stall: its budget starts over once, never per subtitle failure (S9c D20). */
+  private freshStallBudget(): void {
+    if (!this.stallSince || this.stallRenewed) return;
+    this.stallRenewed = true;
     this.stallSince = Date.now();
   }
 
@@ -1144,8 +1155,7 @@ export class PlaybackController {
   private onEnded(): void {
     const { position, duration } = this.engine?.getSnapshot() ?? { position: 0, duration: 0 };
     if (this.ended || this.phase !== 'playing') return;
-    if (this.earlyEndAt && Date.now() - this.earlyEndAt.at > INCIDENT_RESET_MS)
-      this.earlyEndAt = null;
+    const firstEnd = this.recentEarlyEnd();
     const end = engineEnd({
       position,
       duration: this.duration,
@@ -1155,12 +1165,29 @@ export class PlaybackController {
         !this.pictured && !!this.loadingSince && Date.now() - this.loadingSince >= EMPTY_END_MS,
       pictured: this.pictured,
       startFloor: this.startFloor,
-      firstEnd: this.earlyEndAt?.position,
+      firstEnd,
     });
     if (end?.kind === 'empty')
       this.runner.handle({ category: 'T8', code: 'empty_media' }, { position: 0 });
     else if (end?.kind === 'end') this.finish();
     else if (end) void this.earlyEnd(end.endAt, end.firstEnd);
+  }
+
+  /** Where the last early end of this incident was (forgotten after INCIDENT_RESET_MS). */
+  private recentEarlyEnd(): number | undefined {
+    if (this.earlyEndAt && Date.now() - this.earlyEndAt.at > INCIDENT_RESET_MS)
+      this.earlyEndAt = null;
+    return this.earlyEndAt?.position;
+  }
+
+  /** A stall at the end of the engine's finite length, short of the server's: the playlist stops there (S9c C12, hls.js). */
+  private playlistEnd(): number | null {
+    const snapshot = this.engine?.getSnapshot();
+    const server = (this.playback?.mediaInfo?.durationTicks ?? 0) / TICKS_PER_SECOND;
+    const known = snapshot?.duration ?? 0;
+    if (!snapshot || !server || !Number.isFinite(known) || known <= 0) return null;
+    if (known >= server - END_MARGIN_SECONDS) return null;
+    return snapshot.position >= known - END_MARGIN_SECONDS ? snapshot.position : null;
   }
 
   /** An end before the duration: offline or cut elsewhere is transport, a gone playback restarts, else the file is short. */
@@ -1258,6 +1285,7 @@ export class PlaybackController {
     this.lostWatch.stallStarted();
     this.stallSince = Date.now();
     this.stallNudged = false;
+    this.stallRenewed = false;
     this.troubleAt = this.stallSince;
     this.stallPosition = this.engine?.getSnapshot().position ?? 0;
     this.stallAfterSeek = afterSeek || this.stallSince - this.seekAt < 2 * SPINNER_MS;
@@ -1437,6 +1465,13 @@ export class PlaybackController {
     else if (rule === 'repairAborted') {
       this.stallSince = 0;
       this.mediaFailure({ category: 'T8', code: 'repair_failed' });
+    } else if (rule === 'stallLadder' && this.playlistEnd() !== null) {
+      // Like Exo's early end: the server does not send the rest of this video (reload, then another version).
+      const endAt = this.playlistEnd()!;
+      this.subtitlesBackInStall();
+      this.stalls.clear();
+      this.stallSince = 0;
+      void this.earlyEnd(endAt, this.recentEarlyEnd());
     } else if (rule === 'stallLadder') {
       this.subtitlesBackInStall();
       this.stalls.clear();

@@ -2619,6 +2619,29 @@ describe('matrix D — S4v: AVPlayer gives up waiting in a stall (live audit S9c
 
   row(
     'D19',
+    'Apple TV (tvOS AVPlayer, S9c turn 3): the same self-pause is the same stall, no platform guard',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const tv = jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+      const c = await starved();
+      await jest.advanceTimersByTimeAsync(7_000);
+      harness.engine.state('paused');
+      await jest.advanceTimersByTimeAsync(SYSTEM_PAUSE_MS + 2_000);
+      expect(c.systemPaused).toBe(false);
+      expect(c.status.hint?.key).not.toBe('pausedBySystem');
+      await jest.advanceTimersByTimeAsync(25_000);
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      expect(harness.engine.source?.startPosition).toBe(47);
+      tv.mockRestore();
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D19',
     'a real pause from the system during a stall (lock, background) still reads as that cause and stops the stall budget',
     async () => {
       jest.useFakeTimers();
@@ -2723,6 +2746,70 @@ describe('matrix D — S4v: a direct-play file names its own HTTP failure (S9c t
       harness.engine.emit({ type: 'error', reason: 'Player encountered an error', status: 503 });
       await jest.advanceTimersByTimeAsync(0);
       expect(c.status.hint?.key).toBe('serverError');
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix D — S4w: one corrupt segment freezes AVPlayer, the subtitles keep failing (S9c turn 3 D20, iPhone)', () => {
+  const forced = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 600 * TICKS,
+      audioTracks: [],
+      subtitleTracks: [
+        { index: 5, language: 'de', deliveredAs: 'webvtt', selected: true, forced: true },
+      ],
+    },
+  } as never;
+  const shown = {
+    audio: [],
+    subtitles: [{ id: 's0', label: 'de', language: 'de', selected: true }],
+  };
+  /** Frozen at 0:10 with the forced subtitle that AVPlayer keeps selected; `subtitleErrors` every 10 s from the engine. */
+  async function frozen(subtitleErrors: boolean) {
+    jest.useFakeTimers();
+    const c = await playing({}, forced, 10);
+    harness.engine.emit({ type: 'tracks', tracks: shown });
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    harness.engine.state('buffering');
+    const stalledAt = Date.now();
+    for (let second = 1; second <= 90; second++) {
+      // AVPlayer shows the forced subtitle whatever the app asks.
+      harness.engine.emit({ type: 'tracks', tracks: shown });
+      if (subtitleErrors && second % 10 === 0) {
+        harness.engine.emit({ type: 'subtitleError', code: 'subtitle_unavailable' });
+        harness.engine.emit({ type: 'subtitleError', code: 'subtitle_timeout' });
+      }
+      harness.engine.time(10);
+      await jest.advanceTimersByTimeAsync(1_000);
+      if (harness.engine.load.mock.calls.length > 1 || harness.server.sent('switch').length)
+        return { c, after: Date.now() - stalledAt };
+    }
+    return { c, after: Infinity };
+  }
+
+  row(
+    'D20',
+    'the recorded cycle (buffering, "subtitles failed", buffering … every 15 s with the forced subtitle still on): an incident within the stall budget, reloading at 0:10',
+    async () => {
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, after } = await frozen(false);
+      expect(after).toBeLessThanOrEqual(31_000);
+      expect(harness.engine.source?.startPosition).toBe(10);
+      os.restore();
+      await c.stop();
+    }
+  );
+
+  row(
+    'D20',
+    'subtitle failures the engine keeps reporting during the stall give it one fresh budget at most, never one per failure',
+    async () => {
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const { c, after } = await frozen(true);
+      expect(after).toBeLessThanOrEqual(31_000);
+      os.restore();
       await c.stop();
     }
   );
