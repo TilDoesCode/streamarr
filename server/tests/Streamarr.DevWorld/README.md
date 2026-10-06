@@ -155,7 +155,7 @@ product. Everything lives in `Faults/` and `tools/ffmpeg-fault.sh`. The product 
 | `GET /devworld/faults/{id}` | `{ fault, lastHits: [{ at, method, path (tokens redacted), status }] }` (last 20) |
 | `DELETE /devworld/faults/{id}` | `204` (undoes state faults: password flag, Usenet scripts, slow-down files) |
 | `DELETE /devworld/faults[?scope=playbackId:…]` | `204`, clears all (or one scope: `playbackId:…`, `workId:…`, `viewer:…`, `next:…`, `global`) |
-| `GET /devworld/playbacks` | playbacks the fault layer learned: `[{ playbackId, workId, viewer, method, engine, state, releaseId, hlsToken, streamToken, revision, lastSeen, readyAt }]` |
+| `GET /devworld/playbacks` | playbacks the fault layer learned: `[{ playbackId, workId, viewer, method, engine, state, releaseId, error, errorReleaseId, hlsToken, streamToken, revision, lastSeen, readyAt }]`; `releaseId` is the version that plays (none for a failed start), `error`/`errorReleaseId` the failure code and the release it names (for `release_not_found` the requested one) |
 
 ```jsonc
 {

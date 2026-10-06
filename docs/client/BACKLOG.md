@@ -45,6 +45,17 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Player
 
+- **B19 (client, found by the server task): the play screen keeps the previous title's version.**
+  `client/src/screens/player/play-screen.tsx:76` initialises `releaseId` once with `useState(params.releaseId || undefined)`;
+  when a deep link (or any navigation that updates the params of the mounted play screen) opens another title, the old
+  releaseId goes out with the new `workId` (start effect deps `[workId, releaseId, …]`). The server answers
+  `release_not_found` (now `params.reason: "otherTitle"`), the player's other-version step plays the recommended version
+  ~1 s later, but a viewer who asked for a specific version (deep link, "resume the last played version") loses it and
+  sees "trying another version". Seen live 3x on 39300 (F10 V2 turn 4: Sintel `1361e11a…` -> Lighthouse E09/E10/E11).
+  Fix: derive the requested release from the params per `workId` (reset the state when `params.workId`/`params.releaseId`
+  change, or key the screen by them); test: a deep link to another title while the player is open sends that title's
+  releaseId or none.
+
 - F5: the native engines' in-session error path (rendition 404/500 -> `/switch`, 8 s timeout) is unit-tested only;
   ExoPlayer/AVPlayer report no per-rendition HTTP error. Force it live once on a fast host (JS hook that alters the
   rendition URL is not possible natively; needs a server-side test switch).
@@ -166,6 +177,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
 
 ## Server (backend track)
 
+- B19 verify (non-blocking): `release_not_found` `reason: otherTitle` vs `unknown` tells a viewer whether an id they
+  already hold belongs to some title, also an age-blocked one (not exploitable: SHA-256 ids, title unnamed, nothing
+  plays; answer `unknown` when the owning work is gated for that viewer); Dev World PlaybackMap never clears
+  `error`/`errorReleaseId` after a later error-free answer; the "same release minutes later" test is a regression guard
+  only; the B17 own-seek test has ~0.6 s margin above its 3 s limit.
 - B17 verify leftovers (not felt by a viewer, recorded by B18): requests over the per-IP refresh budget each cost one
   indexed read-only DB query; a disabled account's live session passes the address gate and then gets 401 (per-token
   limit still applies); restart pacing is per session (two players seeking at once share the burst of 2);
@@ -305,6 +321,11 @@ Consolidated from the journals (M1.5 … B1). Triaged in F1 (2026-09-30): every 
   (ProcessRunner doc comment, Dev World limiter log level, `fault` 400 messages, `usenet_hole` restores its releases).
   Fix round 1: a lapsed reservation never revives on later access (its resume competes like a new start); request
   restarts of a session are paced (burst of 2, then 1/s).
+
+- B19 (2026-10-07): "release ids that played minutes ago answer release_not_found" was a client mix-up (the play
+  screen sent the previous title's releaseId, see Player); ids stay resolvable (14 min live probe, catalog refresh).
+  `release_not_found` now says why (`params.reason`: `otherTitle` | `unknown`); Dev World `/devworld/playbacks` lists a
+  failed start's `error` and `errorReleaseId`.
 
 - B18 (2026-10-06): during play the playback GET follows the release's live repair job (moving states, then a sticky
   ready/failed/cancelled/evicted) instead of the resolve-time snapshot (F10 code review 7, P2-4); a fallback to another

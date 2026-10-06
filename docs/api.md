@@ -1475,7 +1475,7 @@ directly.
 |---|---|
 | `release_dead` | The version (and every automatic fallback) is missing data and no repair helped; `params.releaseId`, `attempts`, `suggestedReleaseId` when another version exists. |
 | `repair_failed` | The PAR2 repair failed (`params.state`, `params.reason`). |
-| `no_versions` · `release_not_found` | No version exists / the `releaseId` is not a version of this work. |
+| `no_versions` · `release_not_found` | No version exists / the `releaseId` is not a version of this work. `release_not_found` carries `params.releaseId` and `params.reason`: `otherTitle` when the id is a version of another title (a client sent the version of the previous title), `unknown` when the server knows no such version. A version keeps its id as long as it is listed; the same id plays again later (after a catalog refresh or a restart). |
 | `transcoding_not_allowed` | Only a full transcode could play it and the profile may not transcode. |
 | `transcoding_unavailable` | Only a remux or transcode could play it and the server cannot run ffmpeg (`params.reason`: `transcoding_disabled`, `ffmpeg_unavailable`). |
 | `no_playable_method` · `no_more_methods` | No method of the device fits / every method was stepped down. |

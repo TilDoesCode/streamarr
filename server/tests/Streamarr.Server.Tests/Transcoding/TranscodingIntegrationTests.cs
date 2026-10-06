@@ -331,7 +331,8 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
             Assert.Equal(HttpStatusCode.OK, back.StatusCode);
         var ownSeek = clock.Elapsed;
         output.WriteLine($"own seek back: {ownSeek.TotalMilliseconds:0} ms");
-        Assert.True(ownSeek < TimeSpan.FromSeconds(2), $"own seek back took {ownSeek.TotalSeconds:0.00} s");
+        // Without the competing wait it is one restart; the wait alone would add ContendedWindow (3 s) before it.
+        Assert.True(ownSeek < TranscodeSessionManager.ContendedWindow, $"own seek back took {ownSeek.TotalSeconds:0.00} s");
         Assert.Equal(2, (await AdminSessionAsync(created)).GetProperty("restarts").GetInt32());
 
         // Another player (tag 2) asking back into the range the run just left (not written yet) still waits for the 3 s window.

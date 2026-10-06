@@ -16,6 +16,8 @@ is refused, the parked playback resumes) until it lapses, after which its resume
 far/near flips restart at most about once per second; a resumed transcode continues the previous segment exactly (ffprobe);
 during play the playback GET follows a real PAR2 repair to ready (Lighthouse Logs S01E26), or to failed when the recovery
 volumes go missing (S01E25); each repairs once per instance (the server keeps the articles it read).
+A version that played starts again with its id after 90 s of play and a catalog refresh; the previous title's id answers
+release_not_found with reason otherTitle and shows up in /devworld/playbacks with error and errorReleaseId.
 Exits non-zero when a check fails.
 """
 import json
@@ -528,6 +530,38 @@ def check_live_repair():
     return ok, f"progressive start, GET during play: {' -> '.join(map(str, ready))}; recovery volumes lost: {' -> '.join(map(str, failed))} ({reason})"
 
 
+def check_release_id_stable():
+    """A version that played starts again with its id after playing a while and a catalog refresh; a version of the previous title answers otherTitle (B19)."""
+    anna = fs.ctx.anna["accessToken"]
+    episode = next(t for t in fs.manifest["titles"] if t["title"] == "The Lighthouse Logs")["seasons"][0]["episodes"][9]
+    work = episode["workId"]
+    start = lambda body: fs.wait_state(anna, fs.api("POST", "/api/v1/viewer/playback", {"device": fs.CHROME, "preferences": {}, **body}, anna)[1]["playbackId"], ("ready", "failed"), 60)
+    first = start({"workId": work})
+    release = (first.get("version") or {}).get("releaseId")
+    for second in range(0, 90, 10):
+        progress(anna, first["playbackId"], second * 10_000_000, work)
+        time.sleep(10)
+    fs.stop(anna, first["playbackId"])
+    refreshed, _ = fs.api("GET", f"/api/v1/viewer/catalog/works/{work}/versions?refresh=true", token=anna)
+    again = start({"workId": work, "releaseId": release})
+    fs.stop(anna, again["playbackId"])
+    sintel_work, sintel = fs.release("Sintel", "mkv-dualaudio-ass-1080p")
+    fs.stop(anna, start({"workId": sintel_work, "releaseId": sintel})["playbackId"])
+    stale = start({"workId": work, "releaseId": sintel})
+    error = stale.get("error") or {}
+    listed = next((p for p in fs.api("GET", "/devworld/playbacks")[1] if p["playbackId"] == stale["playbackId"]), {})
+    recovered = start({"workId": work})
+    fs.stop(anna, recovered["playbackId"])
+    ok = (first["state"] == "ready" and again["state"] == "ready" and (again.get("version") or {}).get("releaseId") == release
+          and refreshed == 200 and error.get("code") == "release_not_found" and (error.get("params") or {}).get("reason") == "otherTitle"
+          and listed.get("error") == "release_not_found" and listed.get("errorReleaseId") == sintel
+          and recovered["state"] == "ready" and (recovered.get("version") or {}).get("releaseId") == release)
+    return ok, (f"S1E10 {release[:12] if release else None} played 90 s, catalog refresh {refreshed}, same id again -> {again['state']}; "
+                f"Sintel's id for S1E10 -> {error.get('code')} reason {(error.get('params') or {}).get('reason')}, "
+                f"/devworld/playbacks error {listed.get('error')} errorReleaseId {'Sintel' if listed.get('errorReleaseId') == sintel else listed.get('errorReleaseId')}; "
+                f"without id -> {recovered['state']} {((recovered.get('version') or {}).get('releaseId') or '')[:12]}")
+
+
 def check_resume_continuity():
     """A transcode resume at the parked front continues the previous segment exactly: no repeated frame, no audio overlap (B17)."""
     anna, admin = fs.ctx.anna["accessToken"], admin_token()
@@ -574,7 +608,8 @@ CHECKS = [("segment_timeout", check_segment_timeout), ("seek_back_evicted", chec
           ("competing_requests", check_competing_requests), ("throttle_no_block", check_throttle_no_block),
           ("own_seek_back", check_own_seek_back), ("parked_resume_capacity", check_parked_resume_capacity),
           ("resume_continuity", check_resume_continuity), ("lapsed_reservation", check_lapsed_reservation),
-          ("own_flip_pacing", check_own_flip_pacing), ("live_repair", check_live_repair)]
+          ("own_flip_pacing", check_own_flip_pacing), ("live_repair", check_live_repair),
+          ("release_id_stable", check_release_id_stable)]
 
 
 def main():

@@ -605,7 +605,38 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         var failed = await WaitAsync(viewer, Id(await StartAsync(viewer, Play(foreign, AppleTv))));
 
         Assert.Equal("release_not_found", Error(failed).GetProperty("code").GetString());
+        Assert.Equal("otherTitle", Error(failed).GetProperty("params").GetProperty("reason").GetString());
+        Assert.Equal(foreign, Error(failed).GetProperty("params").GetProperty("releaseId").GetString());
+        Assert.Equal("This version belongs to another title.", Error(failed).GetProperty("message").GetString());
         Assert.DoesNotContain(factory.Resolver.Calls, c => c.ReleaseId == foreign);
+    }
+
+    [Fact]
+    public async Task UnknownRelease_Fails_WithReleaseNotFound_ReasonUnknown()
+    {
+        var (viewer, _) = await ViewerAsync("unknownrelease");
+
+        var failed = await WaitAsync(viewer, Id(await StartAsync(viewer, Play("rel-never-registered", AppleTv))));
+
+        Assert.Equal("release_not_found", Error(failed).GetProperty("code").GetString());
+        Assert.Equal("unknown", Error(failed).GetProperty("params").GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task TheSameRelease_StartsAgainMinutesLater_AndAfterTheTitleIsSearchedAgain()
+    {
+        var (viewer, _) = await ViewerAsync("samerelease");
+        var release = Release(Mp4());
+        var first = await ReadyAsync(viewer, Play(release, AppleTv));
+        Assert.Equal(release, first.GetProperty("version").GetProperty("releaseId").GetString());
+        Assert.Equal(HttpStatusCode.NoContent, (await viewer.PostAsync($"{Base}/{Id(first)}/stop", null)).StatusCode);
+
+        factory.Clock.Advance(TimeSpan.FromMinutes(11));
+        using (var refreshed = await viewer.GetAsync($"/api/v1/viewer/catalog/works/{Movie}/versions?refresh=true"))
+            Assert.Equal(HttpStatusCode.OK, refreshed.StatusCode);
+        var again = await ReadyAsync(viewer, Play(release, AppleTv));
+
+        Assert.Equal(release, again.GetProperty("version").GetProperty("releaseId").GetString());
     }
 
     [Fact]

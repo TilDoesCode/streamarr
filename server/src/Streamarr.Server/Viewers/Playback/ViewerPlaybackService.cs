@@ -515,8 +515,13 @@ public sealed class ViewerPlaybackService(
             }
             if (releases.Get(releaseId, playback.Work.WorkId) is null)
             {
-                throw new PlaybackFailure("release_not_found", "This version is not known for the title (any more).",
-                    TrackSelector.Params(("releaseId", releaseId)), [SuggestedActions.OtherVersion]);
+                // A release of another title is a client mix-up (e.g. a version kept from the previous title), not a vanished one.
+                var otherTitle = releases.Get(releaseId) is not null;
+                if (otherTitle)
+                    logger.LogInformation("Viewer playback {PlaybackId} of {WorkId} asked for release {ReleaseId} of another title", playback.Id, playback.Work.WorkId, releaseId);
+                throw new PlaybackFailure("release_not_found",
+                    otherTitle ? "This version belongs to another title." : "This version is not known for the title (any more).",
+                    TrackSelector.Params(("releaseId", releaseId), ("reason", otherTitle ? "otherTitle" : "unknown")), [SuggestedActions.OtherVersion]);
             }
         }
 

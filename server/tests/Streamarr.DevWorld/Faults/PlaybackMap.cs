@@ -14,7 +14,11 @@ public sealed class PlaybackRecord
     public string? Engine { get; set; }
     public string? State { get; set; }
     public int Revision { get; set; }
+    /// <summary>The version that plays (from the answer's <c>version</c>); a failed start has none.</summary>
     public string? ReleaseId { get; set; }
+    /// <summary>A failed start's error code and the release it names (e.g. the requested one of <c>release_not_found</c>).</summary>
+    public string? Error { get; set; }
+    public string? ErrorReleaseId { get; set; }
     public string? HlsToken { get; set; }
     public string? StreamToken { get; set; }
     public HashSet<string> Tokens { get; } = [];
@@ -30,6 +34,8 @@ public sealed class PlaybackRecord
         engine = Engine,
         state = State,
         releaseId = ReleaseId,
+        error = Error,
+        errorReleaseId = ErrorReleaseId,
         hlsToken = HlsToken,
         streamToken = StreamToken,
         revision = Revision,
@@ -67,6 +73,11 @@ public sealed partial class PlaybackMap(TimeProvider time)
             record.Engine = Str(obj, "engine") ?? record.Engine;
             record.Revision = obj["revision"] is JsonValue rev && rev.TryGetValue<int>(out var r) ? r : record.Revision;
             record.ReleaseId = obj["version"]?["releaseId"]?.GetValue<string>() ?? record.ReleaseId;
+            if (obj["error"] is JsonObject error)
+            {
+                record.Error = Str(error, "code");
+                record.ErrorReleaseId = error["params"] is JsonObject parameters ? Str(parameters, "releaseId") : null;
+            }
             record.LastSeen = time.GetUtcNow();
             if (Str(obj, "url") is { } url)
             {
