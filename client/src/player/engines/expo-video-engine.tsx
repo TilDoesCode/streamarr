@@ -160,7 +160,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         // Before the start seek the clock still reads 0; the snapshot keeps the start position.
         if (this.start.pending && !this.start.applied) return;
         this.start.time(currentTime);
-        if (!this.start.pending) this.uncover();
+        // A start that never reached its target keeps the cover: never the new item's 0:00 frame (S9c seg_corrupt).
+        if (!this.start.pending && !this.start.failed) this.uncover();
         this.emit({
           type: 'time',
           position: currentTime,
@@ -215,7 +216,14 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
       this.emit({ type: 'subtitleError', code: subtitleCode(error.status) });
       return;
     }
-    this.emit({ type: 'loadRetry', status: error.status ?? 0, audio: part === 'audio' });
+    // A transfer that broke off mid-answer (-1005) is the S6t aborted audio rendition's signature; a timeout is not.
+    const brokeOff = error.domain === 'NSURLErrorDomain' && error.code === -1005;
+    this.emit({
+      type: 'loadRetry',
+      status: error.status ?? 0,
+      audio: part === 'audio',
+      ...(brokeOff ? { brokeOff } : {}),
+    });
   }
 
   startPictureInPicture(): void {

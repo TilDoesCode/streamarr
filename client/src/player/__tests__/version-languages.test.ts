@@ -57,3 +57,21 @@ describe('the viewer’s languages across another version (S4n, verify P3/P4/P8,
     expect(missingLanguages(wanted, playback([], [{ index: 1, language: to }]))).toEqual({});
   });
 });
+
+describe('another version and a forced subtitle (S9c seg_corrupt: dropped without a word)', () => {
+  const playback = (subtitleTracks: object[]) =>
+    ({ mediaInfo: { audioTracks: [], subtitleTracks } }) as never;
+
+  it('a shown forced subtitle the new version has in no form is named; one it has (forced or full) is not', () => {
+    const wanted = viewerLanguages(playback([{ index: 5, language: 'de', forced: true }]), null, 5);
+    expect(wanted.preferences).toEqual({});
+    expect(
+      missingLanguages(wanted, playback([{ index: 2, language: 'en', forced: false }]))
+    ).toEqual({
+      noSubtitle: 'de',
+    });
+    expect(
+      missingLanguages(wanted, playback([{ index: 7, language: 'ger', forced: true }]))
+    ).toEqual({});
+  });
+});

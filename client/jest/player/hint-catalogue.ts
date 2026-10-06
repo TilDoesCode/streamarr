@@ -491,6 +491,15 @@ const NOTICES: Row[] = [
     clears: '6 s (TV 8 s)',
   },
   {
+    id: 'N23',
+    key: 'notice.otherAudioTrack',
+    params: { language: 'English' },
+    state: 'Step A again: the converted sound stays silent, another audio track plays',
+    action: '—',
+    shows: 'the second step A of an audio incident (another track of this version exists)',
+    clears: '6 s (TV 8 s)',
+  },
+  {
     id: 'N13',
     key: 'notice.switchFailed',
     state: 'A viewer switch was refused, the old source plays on',

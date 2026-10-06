@@ -4,7 +4,25 @@ import { LOAD_RETRY_RECENT_MS, STATE_BUDGET_MS } from './budgets';
 import { classify, type Classified } from './classify';
 
 /** A media request the engine retries on its own: its HTTP status, whether only the audio fails, and when. */
-export type LoadRetry = { status: number; audio: boolean; at: number };
+export type LoadRetry = { status: number; audio: boolean; at: number; brokeOff?: boolean };
+
+/** How far from a damaged place a later stall or black reload still is that same damage (S9c seg_corrupt). */
+const DAMAGE_NEAR_S = 10;
+/** A damaged place is remembered this long (one incident). */
+const DAMAGE_REMEMBERED_MS = 120_000;
+
+/** A stall or a reload without a picture at a place already found damaged: the damage again, not a slow source. */
+export function damagedAgain(
+  failure: Classified,
+  damagedAt: { position: number; at: number } | null,
+  position: number,
+  now: number
+): Classified {
+  if (!damagedAt || now - damagedAt.at > DAMAGE_REMEMBERED_MS) return failure;
+  if (Math.abs(position - damagedAt.position) > DAMAGE_NEAR_S) return failure;
+  const stalled = ['playback_stalled', 'seek_stalled', 'picture_timeout'].includes(failure.code);
+  return stalled ? { category: 'T7', code: 'media_damaged', detail: failure.code } : failure;
+}
 
 /** A media request answered 404/410: the server no longer knows the playback (T2). */
 export const lostPlayback = (status: number | undefined) => status === 404 || status === 410;

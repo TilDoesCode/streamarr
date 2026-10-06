@@ -43,3 +43,10 @@ export function startRequestOf(input: {
     preferences: { ...requestPreferencesOf(input.preferences, single), ...input.languages },
   };
 }
+
+/** Another audio track of this version than the one that stays silent; another language first (S9c D36). */
+export function otherAudioTrack(playback: Playback, current: number | null) {
+  const tracks = (playback.mediaInfo?.audioTracks ?? []).filter((track) => track.index !== current);
+  const playing = playback.mediaInfo?.audioTracks?.find((track) => track.index === current);
+  return tracks.find((track) => track.language !== playing?.language) ?? tracks[0] ?? null;
+}

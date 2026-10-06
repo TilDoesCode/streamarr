@@ -141,3 +141,20 @@ export function signalsOf(
     clockRuns: Date.now() - lastTimeAt < CLOCK_RUNS_MS,
   };
 }
+
+/** A sign pointing at the sound stays this long (one incident). */
+const AUDIO_SIGN_MS = 120_000;
+
+/** The sound is the likely cause: an audio request or broken-off transfer, a B15 audioRendition issue, silence (S9c). */
+export function audioEvidenceOf(
+  signAt: number,
+  issue: { kind: string } | null,
+  verdict: string | undefined,
+  now = Date.now()
+): boolean {
+  return (
+    (!!signAt && now - signAt < AUDIO_SIGN_MS) ||
+    issue?.kind === 'audioRendition' ||
+    verdict === 'audio-silent'
+  );
+}

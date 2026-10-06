@@ -1,6 +1,9 @@
+import type { ApiClient } from '@/api/client';
+import { toAppError } from '@/api/errors';
 import { clock } from '@/player/format';
+import { getPlayback, TICKS_PER_SECOND, type Playback } from '@/player/playback-api';
 
-import type { Classified } from './classify';
+import { classify, type Classified } from './classify';
 import type { FailureExtra } from './runner';
 
 /** Two early ends further apart than this are a connection that keeps breaking, not a short file (D26). */
@@ -61,4 +64,41 @@ export function engineEnd(input: {
   // expo-video reports playToEnd while a new source loads; a source that played and stops short ended early.
   if (!input.pictured || startFloor) return null;
   return { kind: 'early', endAt: position };
+}
+
+/** The title's length as the server knows it now; a 404/410 means the playback is gone (an early end that restarts). */
+export async function serverLength(
+  client: ApiClient,
+  playback: Playback | null,
+  signal: AbortSignal
+): Promise<{ length: number } | { lost: Classified }> {
+  let confirmed = playback;
+  if (playback?.playbackId) {
+    try {
+      confirmed = await getPlayback(client, playback.playbackId, signal);
+    } catch (error) {
+      const appError = toAppError(error);
+      if (appError.status === 404 || appError.status === 410)
+        return { lost: classify({ kind: 'api', code: appError.code, status: appError.status }) };
+    }
+  }
+  return { length: (confirmed?.mediaInfo?.durationTicks ?? 0) / TICKS_PER_SECOND };
+}
+
+/** Asks the server about a playback: gone (404/410) restarts, signed out meanwhile is the Sign in card (A03, A09). */
+export async function lostOnServer(
+  client: ApiClient,
+  playbackId: string,
+  signal: AbortSignal
+): Promise<{ failure: Classified; extra: FailureExtra } | null> {
+  try {
+    await getPlayback(client, playbackId, signal);
+    return null;
+  } catch (error) {
+    const appError = toAppError(error);
+    const failure = classify({ kind: 'api', code: appError.code, status: appError.status });
+    const gone = appError.status === 404 || appError.status === 410;
+    if (!gone && failure.category !== 'T3') return null;
+    return { failure, extra: { params: appError.params, status: appError.status } };
+  }
 }

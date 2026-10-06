@@ -41,6 +41,10 @@ export type LadderContext = {
   audioFallback: boolean;
   /** AVPlayer plays separate audio renditions: an unexplained break may be one it cannot fetch (S6t). */
   audioRenditions?: boolean;
+  /** Something points at the sound (audio request failed, a broken-off transfer on AVPlayer, B15 audioRendition, silence). */
+  audioEvidence?: boolean;
+  /** Another audio track of this version can be tried after the conversion (S9c D36). */
+  otherAudio?: boolean;
   /** The same failure keeps coming back (incidents within 15 min): skip the reload, another way to play. */
   recurring?: boolean;
 };
@@ -111,6 +115,16 @@ const stepDown = (incident: Incident, hint?: HintKey): Decision =>
     ? { step: 'S', delayMs: 0, hint }
     : { step: 'G', delayMs: 0 };
 
+/** Step A (converted audio) only where the sound is the likely cause: AVPlayer audio renditions and audio evidence. */
+function audioStep(incident: Incident, context: LadderContext): boolean {
+  return (
+    !!context.audioRenditions &&
+    !!context.audioEvidence &&
+    !context.audioFallback &&
+    incident.count(['A']) < 1
+  );
+}
+
 /** The next step for a classified failure within its incident (state-matrix § 2 b.3). */
 export function nextStep(
   incident: Incident,
@@ -171,19 +185,23 @@ export function nextStep(
         if (incident.count(['N'], 'T5') < 1) return { step: 'N', delayMs: 0, hint: 'reloading' };
         return incident.count(['V']) < 1 ? { step: 'V', delayMs: 0 } : { step: 'G', delayMs: 0 };
       }
-      // A seek that never continues: reload at the target once before lowering the quality (C09).
-      if (code === 'seek_stalled' && context.attached && incident.count(['R'], 'T5') < 1)
+      // A seek that never continues, or a segment the server gave up waiting for (504): reload there once (C09, S9c D19).
+      const reloadFirst =
+        code === 'seek_stalled' ||
+        (code === 'segment_timeout' && failure.detail === 'networkError:fragLoadError');
+      if (reloadFirst && context.attached && incident.count(['R'], 'T5') < 1)
         return { step: 'R', delayMs: 0, hint: 'reloading' };
       if (context.canLowerQuality && incident.count(['Q']) < MAX_QUALITY_STEPS)
         return { step: 'Q', delayMs: 0, hint: 'buffering' };
       return context.attached ? stepDown(incident, 'buffering') : { step: 'G', delayMs: 0 };
     }
     case 'T6': {
-      // The stream keeps breaking off while the app's requests answer (S6t): one reload, then the converted audio.
+      // The stream keeps breaking off while the app's requests answer (S6t): one reload, then the converted audio only
+      // with audio evidence (S9c D19: a video segment that never answers is no audio problem), else a fresh start at once.
       if (code === 'delivery_interrupted' && context.attached) {
         if (incident.count(['R'], 'T6') < 1) return { step: 'R', delayMs: 0, hint: 'streamBreaks' };
-        if (context.audioRenditions && !context.audioFallback && incident.count(['A']) < 1)
-          return { step: 'A', delayMs: 0, hint: 'convertingAudio' };
+        if (audioStep(incident, context)) return { step: 'A', delayMs: 0, hint: 'convertingAudio' };
+        if (incident.count(['N'], 'T6') < 1) return { step: 'N', delayMs: 0, hint: 'streamBreaks' };
       }
       const reloads = incident.count(['R'], 'T6');
       if (context.attached && reloads < T6_BACKOFF_S.length)
@@ -216,9 +234,17 @@ export function nextStep(
         incident.count(['A']) < 1
       )
         return { step: 'A', delayMs: 0, hint: 'noAudio' };
-      // The server's audio failed even converted: the card, no further reloads or step-downs.
+      // The server's audio failed even converted: another audio track if there is one, then the card (S9c D36).
       if (code === 'audio_rendition_failed' && incident.count(['A']) >= 1)
-        return { step: 'G', delayMs: 0 };
+        return context.otherAudio && incident.count(['A']) < 2
+          ? { step: 'A', delayMs: 0, hint: 'noAudio' }
+          : { step: 'G', delayMs: 0 };
+      // The reload of a delivery break with audio evidence shows no picture: the converted audio next (S9c D36 iPhone).
+      if (code === 'picture_timeout' && context.attached && audioStep(incident, context))
+        return { step: 'A', delayMs: 0, hint: 'convertingAudio' };
+      // Damaged data at one place: one reload there, then another way to play with that reason (S9c seg_corrupt).
+      if (code === 'media_damaged' && context.attached && incident.count(['R']) >= 1)
+        return stepDown(incident, 'steppingDown');
       if (context.attached && incident.count(['R'], 'T7', context.revision) < 1)
         return { step: 'R', delayMs: 0, hint: audio ? 'noAudio' : 'reloading' };
       // Silence after a reload: the server converts the audio before another method is tried (C20, D36).

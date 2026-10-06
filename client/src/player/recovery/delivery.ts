@@ -1,3 +1,4 @@
+import { LOAD_RETRY_RECENT_MS } from './budgets';
 import { classify, type Classified } from './classify';
 
 /** An own request that answered within this, after the break began: the delivery broke, not the connection (S6t). */
@@ -174,6 +175,17 @@ export class DeliveryState {
     this.issues = stampIssues(this.issuesOf === playing ? this.issues : [], issues, Date.now());
     this.issuesOf = playing;
     return true;
+  }
+
+  /** A retry after `previous`: a status-less one starts a break unless a status-less run is still going (S6t). */
+  retriedAfter(
+    previous: { status: number; at: number } | null,
+    at: number,
+    status: number | undefined,
+    audio: boolean
+  ): void {
+    const running = !!previous && at - previous.at < LOAD_RETRY_RECENT_MS && previous.status === 0;
+    this.retried(at, status, audio, running);
   }
 
   /** A status-less retry that is not part of a running break starts one. */

@@ -71,7 +71,8 @@ export type EngineEvent =
   /** An audio rendition failed to load; `code` is the server's error code when known. */
   | { type: 'audioError'; code: string }
   /** A media request failed and the engine retries it on its own (hls.js non-fatal load errors, R7). */
-  | { type: 'loadRetry'; status?: number; audio?: boolean }
+  /** `brokeOff`: the transfer started and broke off (AVPlayer NSURL -1005), unlike a request that never answered. */
+  | { type: 'loadRetry'; status?: number; audio?: boolean; brokeOff?: boolean }
   /** The subtitles failed to load or parse; the playback itself goes on (C22, C23). */
   | { type: 'subtitleError'; code: string }
   /** The engine reopens its own source (VLC without direct rendering): a fresh load, not a stall. */

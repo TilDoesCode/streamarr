@@ -183,7 +183,7 @@ describe('a stream that keeps breaking off while the server answers (S4m)', () =
     const c = await playing({}, avplayer, 40);
     harness.engine.emit({ type: 'buffering', buffering: true });
     expect(await fromAVPlayer(RECORDED.audioAbort)).toEqual([
-      { type: 'loadRetry', status: 0, audio: false },
+      { type: 'loadRetry', status: 0, audio: false, brokeOff: true },
     ]);
     await breaking(16);
     expect(harness.server.sent('progress').length).toBeGreaterThan(0);
@@ -1426,5 +1426,226 @@ describe('S4q: the B15 contract and what a server issue may refine', () => {
     expect(deliveryFailure({ category: 'T1', code: 'a_future_network_code' }, context).code).toBe(
       'a_future_network_code'
     );
+  });
+});
+
+describe('S4r: the live audit S9c turn 1 timelines', () => {
+  const twoAudio = {
+    method: 'remux',
+    mediaInfo: {
+      durationTicks: 180 * TICKS,
+      audioTracks: [
+        { index: 1, language: 'de', selected: true, deliveredAs: 'original' },
+        { index: 2, language: 'en', selected: false, deliveredAs: 'original' },
+      ],
+      subtitleTracks: [],
+    },
+  } as never;
+
+  it('D36 Exo: the dead audio rendition answers 500: the audio path, never "the server had a problem"', () => {
+    const reason = failureReason(
+      {
+        errorCodeName: 'ERROR_CODE_IO_BAD_HTTP_STATUS',
+        message: 'Source error: InvalidResponseCodeException: Response code: 500',
+        httpStatus: 500,
+        uri: 'http://server/api/v1/transcode/tok/audio/1/12.m4s',
+      },
+      true,
+      true
+    );
+    expect(classify({ kind: 'engine', engine: 'expo-video', reason, status: 500 })).toMatchObject({
+      category: 'T7',
+      code: 'audio_rendition_failed',
+    });
+    // A 404 there still means the playback is gone.
+    const gone = failureReason(
+      {
+        message: 'Response code: 404',
+        httpStatus: 404,
+        uri: 'http://server/api/v1/transcode/tok/audio/1/12.m4s',
+      },
+      true,
+      true
+    );
+    expect(
+      classify({ kind: 'engine', engine: 'expo-video', reason: gone, status: 404 }).category
+    ).toBe('T2');
+  });
+
+  it('D36 Exo ladder: "No sound" reload, the converted audio, another audio track, only then the card', async () => {
+    jest.useFakeTimers();
+    const c = await playing({}, twoAudio, 20);
+    const dead = 'audioRendition:ERROR_CODE_IO_BAD_HTTP_STATUS: Response code: 500';
+    harness.engine.fail(dead);
+    await settle();
+    expect(c.status.hint?.key).toBe('noAudio');
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    harness.engine.started();
+    harness.server.answer(
+      'switch',
+      reply.ok(
+        harness.server.playback({
+          ...(twoAudio as object),
+          playbackId: 'p1',
+          revision: 1,
+          audioFallback: true,
+        } as never)
+      )
+    );
+    harness.engine.fail(dead);
+    await settle();
+    expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+    harness.engine.started();
+    harness.engine.fail(dead);
+    await settle();
+    expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioStreamIndex: 2 });
+    expect(c.notice).toMatchObject({ kind: 'otherAudioTrack', params: { language: 'en' } });
+    for (const hint of [c.status.hint?.key]) expect(hint).not.toBe('serverError');
+    expect(c.failure).toBeNull();
+    await c.stop();
+  });
+
+  it('D36 iPhone: broken-off audio transfers (-1005), the reload shows no picture: the converted audio, never the card', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const avplayer = {
+      method: 'remux',
+      audioRenditions: [
+        {
+          id: '1',
+          streamIndex: 1,
+          language: 'de',
+          label: 'Deutsch',
+          channels: 2,
+          codec: 'aac',
+          default: true,
+        },
+      ],
+      mediaInfo: {
+        durationTicks: 600 * TICKS,
+        audioTracks: [
+          { index: 1, language: 'de', selected: true, deliveredAs: 'remux', renditionId: '1' },
+        ],
+        subtitleTracks: [],
+      },
+    } as never;
+    const c = await playing({}, avplayer, 11);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    for (let second = 0; second < 16; second++) {
+      if (second % 2 === 0) await fromAVPlayer(RECORDED.audioAbort);
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    expect(c.status.hint).toMatchObject({ key: 'streamBreaks' });
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    // The reload stays black (AVPlayer waits for the sound): the start budget runs out.
+    await jest.advanceTimersByTimeAsync(31_000);
+    await settle();
+    expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ audioFallback: true });
+    expect(c.failure).toBeNull();
+    os.restore();
+    await c.stop();
+  });
+
+  it('D19 iPhone: a video segment that never answers (timeouts, -1001) is no audio problem: no step A; a fresh start at once', async () => {
+    jest.useFakeTimers();
+    const os = jest.replaceProperty(Platform, 'OS', 'ios');
+    const avplayer = {
+      method: 'remux',
+      audioRenditions: [
+        {
+          id: '1',
+          streamIndex: 1,
+          language: 'de',
+          label: 'Deutsch',
+          channels: 2,
+          codec: 'aac',
+          default: true,
+        },
+      ],
+      mediaInfo: {
+        durationTicks: 600 * TICKS,
+        audioTracks: [
+          { index: 1, language: 'de', selected: true, deliveredAs: 'remux', renditionId: '1' },
+        ],
+        subtitleTracks: [],
+      },
+    } as never;
+    // Assumed payload (S9c recorded the steps, not the raw entry): AVPlayer's own request timeout.
+    const timeout = {
+      domain: 'NSURLErrorDomain',
+      code: -1001,
+      comment: 'The request timed out.',
+      status: null,
+      uri: null,
+    };
+    const c = await playing({}, avplayer, 48);
+    const stuck = async () => {
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      for (let second = 0; second < 16; second++) {
+        if (second % 2 === 0) await fromAVPlayer(timeout);
+        await jest.advanceTimersByTimeAsync(1_000);
+      }
+    };
+    await stuck();
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    harness.engine.started();
+    await stuck();
+    expect(harness.server.sent('switch').some((request) => request.body?.audioFallback)).toBe(
+      false
+    );
+    expect(starts()).toHaveLength(2);
+    expect(starts().at(-1)?.position).toBe(48);
+    os.restore();
+    await c.stop();
+  });
+
+  it('seg_corrupt iPhone: an end at 0:48, the reload stalls there: damaged data, another way to play with that reason; never a lower quality', async () => {
+    jest.useFakeTimers();
+    const remux = {
+      method: 'remux',
+      mediaInfo: {
+        durationTicks: 180 * TICKS,
+        audioTracks: [],
+        subtitleTracks: [],
+        video: { height: 1080 },
+      },
+    } as never;
+    const c = await playing({}, remux, 40);
+    harness.engine.time(48, 180);
+    harness.engine.emit({ type: 'ended' });
+    await settle();
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    expect(harness.engine.source?.startPosition).toBe(48);
+    harness.engine.started(180);
+    harness.engine.time(48, 180);
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    await jest.advanceTimersByTimeAsync(16_000);
+    await settle();
+    const switches = harness.server.sent('switch');
+    expect(
+      switches.some((request) => (request.body?.preferences as { maxHeight?: number })?.maxHeight)
+    ).toBe(false);
+    expect(switches.at(-1)?.body).toMatchObject({ stepDown: true });
+    expect(c.notice).toMatchObject({ kind: 'stepDown', params: { reason: 'media_damaged' } });
+    await c.stop();
+  });
+
+  it('VLC: a direct play the server answers 404 ("unable to open the MRL") is the server losing it (T2), not a certificate or component', () => {
+    // libVLC's standard input dialog (the S9c run showed the vlc_dialog hint; the native builder records the raw text).
+    const dialog = `vlc_dialog error: Your input can't be opened VLC is unable to open the MRL 'https://dev.test:39300/api/v1/stream/tok'. Check the log for details.`;
+    expect(classify({ kind: 'engine', engine: 'vlc', reason: dialog })).toMatchObject({
+      category: 'T2',
+    });
+    // Control: a codec question stays "VLC cannot play this"; a plain EncounteredError stays vlc_error (D22).
+    expect(
+      classify({
+        kind: 'engine',
+        engine: 'vlc',
+        reason: 'vlc_dialog error: Codec not supported VLC could not decode the format "dts "',
+      }).code
+    ).toBe('vlc_dialog');
+    expect(
+      classify({ kind: 'engine', engine: 'vlc', reason: "Your input can't be opened" }).code
+    ).toBe('vlc_error');
   });
 });

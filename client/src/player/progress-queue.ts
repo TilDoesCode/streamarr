@@ -3,6 +3,7 @@ import { createMMKV } from 'react-native-mmkv';
 import { unwrap, type ApiClient } from '@/api/client';
 import { isAppError, type AppError } from '@/api/errors';
 import type { components } from '@/api/schema';
+import { TICKS_PER_SECOND } from '@/player/playback-api';
 import { deliveryIssuesOf, type DeliveryIssue } from '@/player/recovery/delivery';
 
 export type ProgressReport = components['schemas']['WatchProgressRequest'];
@@ -165,4 +166,21 @@ export class ProgressQueue {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }
+}
+
+/** The report of `playback` at `position` seconds; null without a work. */
+export function reportOf(
+  event: ProgressReport['event'],
+  playback: { workId?: string | null; playbackId?: string | null } | null,
+  position: number,
+  duration: number
+): ProgressReport | null {
+  if (!playback?.workId) return null;
+  return {
+    event,
+    workId: playback.workId,
+    playbackId: playback.playbackId,
+    positionTicks: Math.round(position * TICKS_PER_SECOND),
+    durationTicks: duration ? Math.round(duration * TICKS_PER_SECOND) : null,
+  };
 }
