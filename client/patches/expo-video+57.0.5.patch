@@ -117,7 +117,7 @@ index 8bae522..939f9ea 100644
        playerBuilderOptions?.seekBackwardIncrement?.let {
          setSeekBackIncrementMs((it).toLong(DurationUnit.MILLISECONDS).coerceIn(1, 999_000))
        }
-@@ -232,11 +241,63 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -232,11 +241,65 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
  
    var keepScreenOnWhilePlaying by VideoPlayerKeepAwake(this, appContext)
  
@@ -126,6 +126,7 @@ index 8bae522..939f9ea 100644
 +  @Volatile private var audioCounters: DecoderCounters? = null
 +  @Volatile private var bandwidthEstimate = 0L
 +  @Volatile private var firstFrameRendered = false
++  @Volatile private var videoDecoderName: String? = null
 +
 +  // The last failed media request: a fatal error without its own data spec names this one.
 +  @Volatile private var lastLoadErrorUri: String? = null
@@ -157,7 +158,8 @@ index 8bae522..939f9ea 100644
 +      "hasVideoTrack" to if (known) hasVideo else null,
 +      "hasAudioTrack" to if (known) hasAudio else null,
 +      "bandwidthBps" to if (bandwidthEstimate > 0) bandwidthEstimate else null,
-+      "nativePosition" to player.currentPosition / 1000.0
++      "nativePosition" to player.currentPosition / 1000.0,
++      "decoderName" to videoDecoderName
 +    )
 +  }
 +
@@ -181,7 +183,7 @@ index 8bae522..939f9ea 100644
      override fun onTracksChanged(tracks: Tracks) {
        val oldSubtitleTracks = ArrayList(subtitles.availableSubtitleTracks)
        val oldAudioTracks = ArrayList(audioTracks.availableAudioTracks)
-@@ -342,10 +403,49 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -342,10 +405,54 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    }
  
    private val analyticsListener = object : AnalyticsListener {
@@ -211,6 +213,11 @@ index 8bae522..939f9ea 100644
 +
 +    override fun onVideoDisabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
 +      videoCounters = null
++      videoDecoderName = null
++    }
++
++    override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
++      videoDecoderName = decoderName
 +    }
 +
 +    override fun onAudioEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
@@ -231,7 +238,7 @@ index 8bae522..939f9ea 100644
    }
  
    init {
-@@ -413,6 +513,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -413,6 +520,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    fun prepare() {
      availableVideoTracks = listOf()
      currentVideoTrack = null
@@ -239,7 +246,7 @@ index 8bae522..939f9ea 100644
  
      val newSource = uncommittedSource
      val mediaSource = newSource?.toMediaSource(context)
-@@ -459,7 +560,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -459,7 +567,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      this.status = status
  
      val playbackError = error?.let {

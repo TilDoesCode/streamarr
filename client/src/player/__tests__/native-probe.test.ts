@@ -7,6 +7,7 @@ import {
   ownFailure,
   systemCause,
   toHealth,
+  toStats,
 } from '../engines/native-probe';
 import { VlcEngine } from '../engines/vlc-engine';
 
@@ -108,5 +109,31 @@ describe('native probe (S6r review gaps)', () => {
     };
     expect(failureReason(parser, true, true)).toMatch(/^damagedSegment:/);
     expect(failureReason(parser, true, false)).not.toMatch(/^damagedSegment:/);
+  });
+});
+
+describe('Info panel numbers from the native probe (S6v)', () => {
+  it('Exo: dropped and presented frames, bandwidth and the decoder name', () => {
+    expect(
+      toStats({
+        framesPresented: 541,
+        framesDropped: 3,
+        bandwidthBps: 1_800_000,
+        decoderName: 'c2.goldfish.h264.decoder',
+      })
+    ).toEqual({
+      droppedFrames: 3,
+      totalFrames: 541,
+      bandwidth: 1_800_000,
+      decoder: 'c2.goldfish.h264.decoder',
+    });
+  });
+
+  it("AVPlayer: the sampled frame count is no total, so no dropped/total; an old build's map stays empty", () => {
+    expect(toStats({ framesPresented: 12, bandwidthBps: 4e8, readyForDisplay: true })).toEqual({
+      bandwidth: 4e8,
+    });
+    expect(toStats({ framesDropped: null, decoderName: null })).toEqual({});
+    expect(toStats(null)).toEqual({});
   });
 });

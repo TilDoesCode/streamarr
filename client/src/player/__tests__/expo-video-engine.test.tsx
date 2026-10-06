@@ -146,6 +146,24 @@ it('an expo-video build without the S6 patch reports no health, so no watchdog r
   engine.release();
 });
 
+it('the probe tick fills the stats the Info panel reads (S6v: dropped frames, decoder on Exo)', async () => {
+  const engine = engineWith(0);
+  Object.assign(mockPlayer, {
+    readHealthAsync: async () => ({
+      framesPresented: 266,
+      framesDropped: 4,
+      decoderName: 'c2.android.hevc.decoder',
+    }),
+  });
+  await engine.readHealth();
+  expect(engine.getSnapshot().stats).toEqual({
+    droppedFrames: 4,
+    totalFrames: 266,
+    decoder: 'c2.android.hevc.decoder',
+  });
+  engine.release();
+});
+
 describe('start cover (S9b: the new item\'s frame 0 must not show under "Resuming at …")', () => {
   const covered = (engine: ExpoVideoEngine) =>
     (engine as unknown as { cover: { get(): { covered: boolean } } }).cover.get().covered;

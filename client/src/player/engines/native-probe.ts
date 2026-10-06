@@ -1,5 +1,5 @@
 import type { EngineHealth } from '../health/types';
-import type { SystemCause } from './types';
+import type { EngineStats, SystemCause } from './types';
 
 /** What patches/expo-video adds to a failed item: ExoPlayer's code name, AVFoundation's NSError and error log. */
 export type NativeError = {
@@ -164,4 +164,18 @@ export function toHealth(raw: RawHealth | null | undefined): EngineHealth {
     if (typeof value === 'boolean') health[key] = value;
   }
   return health;
+}
+
+/** The Info panel's numbers: real decoder counters only (Exo); AVPlayer's sampled frame count is no total. */
+export function toStats(raw: RawHealth | null | undefined): EngineStats {
+  const stats: EngineStats = {};
+  if (!raw) return stats;
+  const { framesDropped, framesPresented, bandwidthBps, decoderName } = raw;
+  if (typeof framesDropped === 'number' && Number.isFinite(framesDropped)) {
+    stats.droppedFrames = framesDropped;
+    if (typeof framesPresented === 'number') stats.totalFrames = framesPresented;
+  }
+  if (typeof bandwidthBps === 'number' && bandwidthBps > 0) stats.bandwidth = bandwidthBps;
+  if (typeof decoderName === 'string' && decoderName) stats.decoder = decoderName;
+  return stats;
 }

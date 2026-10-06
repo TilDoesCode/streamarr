@@ -23,6 +23,7 @@ import {
   subtitleCode,
   systemCause,
   toHealth,
+  toStats,
   type NativeError,
   type NativeLoadError,
   type NativeProbe,
@@ -254,6 +255,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     if (this.released || typeof probe.readHealthAsync !== 'function') return {};
     const raw = await probe.readHealthAsync(FRAME_COUNTER);
     if (typeof raw?.externalDevice === 'string') this.externalDevice = raw.externalDevice;
+    const stats = toStats(raw);
+    if (!this.released && Object.keys(stats).length) this.emit({ type: 'stats', stats });
     return toHealth(raw);
   }
 
