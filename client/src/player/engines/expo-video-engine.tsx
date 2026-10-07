@@ -1,4 +1,11 @@
-import { createRef, memo, useSyncExternalStore, type ComponentType, type RefObject } from 'react';
+import {
+  createRef,
+  memo,
+  useEffect,
+  useSyncExternalStore,
+  type ComponentType,
+  type RefObject,
+} from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import {
   createVideoPlayer,
@@ -44,6 +51,8 @@ const AIRPLAY = Platform.OS === 'ios' && !Platform.isTV;
 type SurfaceHooks = {
   onFirstFrame: () => void;
   onPip: (active: boolean) => void;
+  /** The VideoView shows this player (mounted) or no longer does. */
+  onAttach: (attached: boolean) => void;
   view: RefObject<VideoView | null>;
   /** Black over the picture until a start position is reached (the new item's frame 0 must not show, R5). */
   cover: PropsStore<{ covered: boolean }>;
@@ -51,10 +60,14 @@ type SurfaceHooks = {
 
 function createExpoVideoSurface(
   player: VideoPlayer,
-  { onFirstFrame, onPip, view, cover }: SurfaceHooks
+  { onFirstFrame, onPip, onAttach, view, cover }: SurfaceHooks
 ): ComponentType<SurfaceProps> {
   function ExpoVideoSurface({ style, fit }: SurfaceProps) {
     const { covered } = useSyncExternalStore(cover.subscribe, cover.get);
+    useEffect(() => {
+      onAttach(true);
+      return () => onAttach(false);
+    }, []);
     return (
       <>
         <VideoView
@@ -110,6 +123,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   /** Subtitle renditions that already failed for this source (one notice, not one per retried segment). */
   private failedText = new Set<string>();
   private externalDevice: string | undefined;
+  /** Subtitle lift (Q2-02): what the overlay wants, what the native player has, and whether a VideoView shows it. */
+  private subtitleLift = 0;
+  private sentLift = 0;
+  private views = 0;
 
   constructor() {
     super();
@@ -203,6 +220,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
       const stopped = !this.player.playing && this.player.status === 'readyToPlay';
       if (!active && stopped && Date.now() - this.strayPauseAt < PIP_CLOSE_MS)
         this.onSystem(true, 'pipClosed');
+    },
+    onAttach: (attached) => {
+      this.views += attached ? 1 : -1;
+      this.sendLift();
     },
     view: this.view,
     cover: this.cover,
@@ -404,6 +425,20 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   setSubtitleTrack(id: string | null): void {
     this.player.subtitleTrack =
       id === null ? null : (this.player.availableSubtitleTracks[Number(id.slice(1))] ?? null);
+  }
+
+  /** The patched player moves the cues (Exo: SubtitleView padding, AVPlayer: text style rules) and keeps the lift. */
+  setSubtitleLift(fraction: number): void {
+    this.subtitleLift = Math.round(Math.min(1, Math.max(0, fraction)) * 1000) / 1000;
+    this.sendLift();
+  }
+
+  private sendLift(): void {
+    const probe = this.player as unknown as NativeProbe;
+    if (this.released || this.views <= 0 || typeof probe.setSubtitleLift !== 'function') return;
+    if (this.subtitleLift === this.sentLift) return;
+    this.sentLift = this.subtitleLift;
+    probe.setSubtitleLift(this.subtitleLift);
   }
 
   /** A terminal card: stop decoding and loading (the source is unloaded); the card's Retry loads it again (S6u). */

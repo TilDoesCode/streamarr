@@ -359,6 +359,10 @@ export class FakeExpoPlayer {
   readHealthAsync?: (withFrames?: boolean) => Promise<FakeExpoPlayer['health']> = async () =>
     this.health;
 
+  /** Every lift the patched `setSubtitleLift` received (F13n). */
+  readonly subtitleLifts: number[] = [];
+  setSubtitleLift?: (lift: number) => void = (lift) => void this.subtitleLifts.push(lift);
+
   /** The S6 patch's system pause/resume (`call`, `otherAudio`, `headphones`, `locked`, `airplayLost`, `remote`, `resume`). */
   system(paused: boolean, cause: string): void {
     this.fire('systemPlayback', { paused, cause });

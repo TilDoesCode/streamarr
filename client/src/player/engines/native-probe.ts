@@ -82,10 +82,12 @@ export function failureReason(
 
 type RawHealth = Record<string, number | boolean | string | null | undefined>;
 
-/** The patched player: `readHealthAsync` and the `systemPlayback` event. */
+/** The patched player: `readHealthAsync`, `setSubtitleLift` and the `systemPlayback` event. */
 export type NativeProbe = {
   /** `withFrames`: count new frames with an AVPlayerItemVideoOutput (Apple; ignored on Android). */
   readHealthAsync?: (withFrames?: boolean) => Promise<RawHealth | null>;
+  /** The bottom share of the view the subtitle cues stay above (F13n); 0 = their own place. */
+  setSubtitleLift?: (lift: number) => void;
   addListener(
     name: 'systemPlayback',
     listener: (event: { paused: boolean; cause: string }) => void
