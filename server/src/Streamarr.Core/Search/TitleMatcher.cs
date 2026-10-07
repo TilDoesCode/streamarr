@@ -64,7 +64,7 @@ public static class TitleMatcher
         var words = new List<string[]>();
         var folded = new StringBuilder();
         var transliterated = new StringBuilder();
-        foreach (var raw in text.Normalize(NormalizationForm.FormC))
+        foreach (var raw in WellFormed(text).Normalize(NormalizationForm.FormC))
         {
             var c = char.ToLowerInvariant(raw);
             if (!char.IsLetterOrDigit(c))
@@ -78,6 +78,7 @@ public static class TitleMatcher
                 case 'ö': folded.Append('o'); transliterated.Append("oe"); break;
                 case 'ü': folded.Append('u'); transliterated.Append("ue"); break;
                 case 'ß': folded.Append("ss"); transliterated.Append("ss"); break;
+                case 'İ' or 'ı': folded.Append('i'); transliterated.Append('i'); break;
                 default:
                     var plain = Fold(c);
                     folded.Append(plain);
@@ -95,6 +96,23 @@ public static class TitleMatcher
             folded.Clear();
             transliterated.Clear();
         }
+    }
+
+    /// <summary>The text with every unpaired surrogate replaced by U+FFFD, so normalisation cannot throw.</summary>
+    internal static string WellFormed(string text)
+    {
+        char[]? fixedText = null;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                i++;
+                continue;
+            }
+            if (char.IsSurrogate(text[i]))
+                (fixedText ??= text.ToCharArray())[i] = '\uFFFD';
+        }
+        return fixedText is null ? text : new string(fixedText);
     }
 
     private static string Fold(char c)

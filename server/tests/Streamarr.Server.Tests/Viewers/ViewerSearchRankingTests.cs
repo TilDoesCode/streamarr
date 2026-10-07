@@ -44,6 +44,14 @@ public sealed class ViewerSearchRankingTests
     }
 
     [Fact]
+    public void Broken_Text_In_A_Remote_Title_Or_The_Query_Never_Fails_The_Search()
+    {
+        var remote = new[] { Title(1, "Moon\uD800light"), Title(2, "Light\uDC00house") };
+
+        Assert.Equal([2, 1], Ranked("light\uD800", remote));
+    }
+
+    [Fact]
     public void A_Multi_Word_Query_Needs_Every_Word()
         => Assert.Equal([2, 1], Ranked("lighthouse lo", Title(1, "The Lighthouse"), Title(2, "The Lighthouse Logs")));
 }

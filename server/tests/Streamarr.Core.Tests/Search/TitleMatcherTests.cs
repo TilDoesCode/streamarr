@@ -53,4 +53,36 @@ public sealed class TitleMatcherTests
         Assert.Equal(TitleMatch.WordPrefix, TitleMatcher.Match("chron", "Die Leuchtturm-Chroniken", "The Lighthouse Logs"));
         Assert.Equal(TitleMatch.Exact, TitleMatcher.Match("die waechter", "Die Wächter"));
     }
+
+    [Theory]
+    [InlineData("istanbul", "İstanbul", TitleMatch.Exact)]
+    [InlineData("İSTANBUL", "istanbul", TitleMatch.Exact)]
+    [InlineData("ıstan", "Istanbul", TitleMatch.Prefix)]
+    [InlineData("ist", "Kedi: İstanbul Sokakları", TitleMatch.WordPrefix)]
+    public void Turkish_Dotted_And_Dotless_I_Fold_To_i(string query, string title, TitleMatch expected)
+        => Assert.Equal(expected, TitleMatcher.Match(query, title));
+
+    [Fact]
+    public void Unpaired_Surrogates_In_Query_Or_Title_Never_Throw()
+    {
+        // Built in code: xUnit replaces unpaired surrogates in [InlineData] strings during discovery.
+        var cases = new (string Query, string Title, TitleMatch Expected)[]
+        {
+            ("ab\uD800", "abc", TitleMatch.Prefix),
+            ("\uDC00lig", "The Lighthouse Logs", TitleMatch.WordPrefix),
+            ("lig", "The \uDC00Lighthouse Logs\uD800", TitleMatch.WordPrefix),
+            ("\uD800", "The Lighthouse Logs", TitleMatch.None),
+            ("😀 lig", "The 😀 Lighthouse", TitleMatch.WordPrefix),
+        };
+        Assert.Equal(4, cases.Count(c => (c.Query + c.Title).Any(char.IsSurrogate) && !(c.Query + c.Title).Contains("😀", StringComparison.Ordinal)));
+        foreach (var (query, title, expected) in cases)
+            Assert.Equal(expected, TitleMatcher.Match(query, title));
+    }
+
+    [Fact]
+    public void WellFormed_Replaces_Only_Unpaired_Surrogates()
+    {
+        Assert.Equal("a\uFFFDb\uFFFD", TitleMatcher.WellFormed("a\uDC00b\uD800"));
+        Assert.Equal("😀x", TitleMatcher.WellFormed("😀x"));
+    }
 }

@@ -126,6 +126,10 @@ Grouped by device. None of these can be closed from code or an emulator.
 - T1: assets/brand/render.sh needs python3 + Pillow (denoise.py); not checked by any script.
 - TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
+- B20 hardening full run (machine busy with the Q2 devices): ArtworkPaletteServiceTests.OverflowedImages_AreNeverOvertakenByLaterOnes
+  (TaskCanceledException after 17 s) and StreamHistoryRecorderTests.BeginAppendFinalize_RoundTrips_AndResolvesByTokenOrAttemptId
+  ("Timed out waiting for the stream history background consumer") failed once; 3/3 alone. Background-consumer waits
+  with fixed budgets; same family as the earlier palette flake.
 - ProviderSpeedTesterTests.SpeedTest_AutomaticallyDiscoversAndTransfersARecentArticle failed again under full-suite
   load in the B18 follow-up (Assert.True; 3/3 alone), second sighting after B14.
 - B17 full run: ArtworkPaletteServiceTests.AFullQueue_OverflowsWithoutLosingOrDuplicatingImages failed once under
