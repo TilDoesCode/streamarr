@@ -78,6 +78,11 @@ Grouped by device. None of these can be closed from code or an emulator.
 - Google TV (F8 S4b): a Back pressed within ~0.5 s after a side panel closed is dropped natively (RN Modal dismissal).
   F8 V2 item 5 passed with Back + Back 200 ms later, so re-run it once on the AVD to close it or reproduce it.
 
+- F13 (Q2-02): subtitles are not lifted above the control bar on native players while the overlay shows (Google TV,
+  Apple TV, phones). expo-video has no subtitle position API in JS; libVLC reads its subtitle margin only at media
+  open (changing it would reload). Needs a native inset in the expo-video patch (AVPlayerLayer/PlayerView subtitle
+  view padding) and a libVLC renderer option; web is fixed (cues lifted while the controls show).
+
 ## Browse, navigation and UX
 
 - Android phone (F8 S4b): on a genre switch that has to fetch, the grid was seen blank (no skeleton) until data or the

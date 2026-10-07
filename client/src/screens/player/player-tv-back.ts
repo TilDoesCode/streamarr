@@ -2,6 +2,8 @@ import type { Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { useBackHandler, useMenuClaim } from '@/components/focus';
+import { useWebBackKeys } from '@/navigation/back-control';
+import { isFullscreen, toggleFullscreen } from '@/player/fullscreen';
 import type { RouteLeaf } from '@/navigation/routes';
 import { expireReturnFocus, requestReturnFocus } from '@/navigation/screen-focus';
 
@@ -23,6 +25,8 @@ export function leavePlayer(
 /** The player's Back/Menu chain; on Apple TV Menu goes straight to it, so no native pop (and its focus restore) starts. */
 export function usePlayerBack(onBack: () => boolean): void {
   useBackHandler(onBack);
+  // Web: Escape leaves the browser's full screen first, then acts like Back (an open sheet closes itself, Q2-05).
+  useWebBackKeys(true, () => (isFullscreen() ? toggleFullscreen() : void onBack()));
   useMenuClaim('always');
   useEffect(() => () => expireReturnFocus(), []);
 }

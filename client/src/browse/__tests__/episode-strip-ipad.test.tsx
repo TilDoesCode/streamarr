@@ -44,11 +44,11 @@ const strip = () => (
 );
 
 describe('episode strip on iPad (Q1-49/50/51)', () => {
-  it('starts at the rail edge on touch and web, full bleed on TV', () => {
-    expect(stripClip(false, 62, 101)).toEqual({ left: 62, paddingLeft: 39 });
-    expect(stripClip(true, 52, 84)).toEqual({ left: 0, paddingLeft: 84 });
-    // Phones have no rail.
-    expect(stripClip(false, 0, 20)).toEqual({ left: 0, paddingLeft: 20 });
+  it('starts at the rail edge wherever a rail floats (iPad, web, Google TV), full bleed without one', () => {
+    expect(stripClip(62, 101)).toEqual({ left: 62, paddingLeft: 39 });
+    expect(stripClip(52, 84)).toEqual({ left: 52, paddingLeft: 32 });
+    // Phones and Apple TV (top tab bar) have no rail.
+    expect(stripClip(0, 20)).toEqual({ left: 0, paddingLeft: 20 });
   });
 
   it('moves the number of a card without a still out of the middle and the badge corner', () => {

@@ -12,6 +12,7 @@ import { audioErrorCode } from './hls-audio-error';
 import { importHls } from './hls-import';
 import { StartSeek } from './start-seek';
 import { probeStatus } from './status-probe';
+import { liftCues } from './web-cues';
 import { FRAG_RETRY_DELAY_MS, fragLoadPolicy, statusLoader, type LoadStatus } from './hls-retry';
 import { LUMA_WINDOW_S } from '../health/watchdog';
 import { createLumaSampler } from './web-luma';
@@ -123,6 +124,8 @@ function createWebSurface(
 export class WebEngine extends EngineBase implements PlayerEngine {
   readonly kind = 'web' as const;
   private video: VideoWithTracks | null = null;
+  /** The bottom share of the picture the control bar covers now (Q2-02). */
+  private subtitleLift = 0;
   private hls: HlsPlayer | null = null;
   private pending: EngineSource | null = null;
   private started = false;
@@ -225,8 +228,11 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     const lists = [element.textTracks, (element as VideoWithTracks).audioTracks].filter(
       (list) => !!list
     );
+    // hls.js adds cues as segments load: the ones on screen follow the lift (cheap, a few at a time).
+    const onCues = () => this.subtitleLift && liftCues(element.textTracks, this.subtitleLift, true);
     const onTracks = () => {
       this.emitTracks();
+      onCues();
       // hls.js re-reads text track modes on the next tick and may switch the app's subtitle off.
       if (this.hls) setTimeout(() => this.hls && this.keepSubtitle(this.hls), 0);
     };
@@ -234,7 +240,9 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       list.addEventListener('addtrack', onTracks);
       list.addEventListener('change', onTracks);
     }
+    element.addEventListener('timeupdate', onCues);
     this.detach = () => {
+      element.removeEventListener('timeupdate', onCues);
       offs.forEach((off) => off());
       for (const list of lists) {
         list.removeEventListener('addtrack', onTracks);
@@ -672,6 +680,11 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       for (let i = 0; list && i < list.length; i++) list[i]!.enabled = i === index;
       this.emitTracks();
     }
+  }
+
+  setSubtitleLift(fraction: number): void {
+    this.subtitleLift = fraction;
+    liftCues(this.video?.textTracks, fraction);
   }
 
   setSubtitleTrack(id: string | null): void {

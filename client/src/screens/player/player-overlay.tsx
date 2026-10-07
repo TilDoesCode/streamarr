@@ -55,18 +55,14 @@ import { useFadedOut } from '@/player/use-faded-out';
 import { useTVEvents } from '@/components/focus/use-tv-events';
 import type { Clock } from '@/player/use-clock';
 import { useWindowControlsInset } from '@/shell/window-controls';
-import {
-  audioLayout,
-  barChipsLabelled,
-  LARGE_TITLE_MAX_WIDTH,
-  qualityLabel,
-} from '@/player/overlay-labels';
+import { audioLayout, barChipsLabelled, qualityLabel } from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { TEST_MUTED } from '@/player/test-muted';
 import { colors, fonts, useDesign, useFocusGap } from '@/theme';
 
-import { PANELS, type PanelKind } from './player-panels';
+import { largeTitleMaxWidth } from './header-geometry';
+import { PANELS, panelWidthOf, type PanelKind } from './player-panels';
 
 const HIDE_MS = 5000;
 const COMMIT_MS = 700;
@@ -149,6 +145,13 @@ export function PlayerOverlay({
   const chromeInset = fullscreenChromeInset(fullscreen);
   const windowControls = windowInset + chromeInset;
   const [flash, setFlash] = useState<string | null>(null);
+  // Where the control bar starts: subtitle cues move above it while the controls show (Q2-02).
+  const [barTop, setBarTop] = useState<number | null>(null);
+  const engine = controller.engine;
+  const lift = visible && barTop !== null && window.height > 0 ? 1 - barTop / window.height : 0;
+  useEffect(() => {
+    engine?.setSubtitleLift?.(Math.max(0, lift));
+  }, [engine, lift]);
   const scrubRef = useRef<number | null>(null);
   const handOver = useRef(false);
   const rowFocused = useRef(false);
@@ -531,7 +534,7 @@ export function PlayerOverlay({
                   testID="player-title"
                   numberOfLines={1}
                   style={{
-                    maxWidth: LARGE_TITLE_MAX_WIDTH,
+                    maxWidth: largeTitleMaxWidth(window.width, s, panelWidthOf(openPanel)),
                     fontFamily: fonts.displayBold,
                     fontSize: s(56),
                     lineHeight: s(68),
@@ -631,6 +634,7 @@ export function PlayerOverlay({
             {large ? (
               <Glass
                 testID="player-bar"
+                onLayout={(event) => setBarTop(event.nativeEvent.layout.y)}
                 intensity="regular"
                 radius={s(40)}
                 style={{
@@ -775,7 +779,9 @@ export function PlayerOverlay({
               </Glass>
             ) : (
               <View
+                testID="player-bar"
                 pointerEvents="box-none"
+                onLayout={(event) => setBarTop(event.nativeEvent.layout.y)}
                 style={{
                   position: 'absolute',
                   left: design.layout.gutter,
