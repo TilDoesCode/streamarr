@@ -21,6 +21,16 @@ export function transportEnd(
   return null;
 }
 
+/** A stall or a black reload at the place a short playlist ended: the same end again, never damaged data (V2 C12). */
+export function endsAgain(
+  failure: Classified,
+  playlistEnd: number | undefined,
+  position: number
+): boolean {
+  if (playlistEnd === undefined || Math.abs(position - playlistEnd) > SAME_END_S) return false;
+  return ['playback_stalled', 'seek_stalled', 'picture_timeout'].includes(failure.code);
+}
+
 /** The file is shorter than the server's length: the failure and its "ends at …" line; null when it is the real end. */
 export function shortFile(
   endAt: number,

@@ -5,6 +5,7 @@ import { row } from '@/../jest/player/matrix';
 import { expoPlaying } from '@/../jest/player/native';
 import { playFor, playing, playOn, settle, starts, TICKS } from '@/../jest/player/play';
 import type { EngineHealth } from '@/player/health/types';
+import { Incident, nextStep } from '@/player/recovery/ladder';
 import { classify } from '@/player/recovery/classify';
 
 jest.mock('@/player/engines', () => jest.requireActual('@/../jest/player/harness').enginesModule());
@@ -3563,6 +3564,131 @@ describe('matrix C — S4z2: a seek inside a stall and the confirm spinner, pinn
       await jest.advanceTimersByTimeAsync(4_500);
       expect(c.status.hint?.key).toBe('buffering');
       await c.stop();
+    }
+  );
+});
+
+describe("matrix C — S4z3: the reload at a short playlist's end waits there again (V2 turn 5 C12, Chrome)", () => {
+  const endless = {
+    method: 'remux',
+    mediaInfo: { durationTicks: 888 * TICKS, audioTracks: [], subtitleTracks: [] },
+  } as never;
+  /** hls.js on Sintel from 0:40: the playlist knows 1:00 of 14:48, plays to 0:59, waits, the stall ladder reloads at 0:59. */
+  async function reloadedAt59() {
+    jest.useFakeTimers();
+    harness.server.answer('poll', reply.ok(harness.server.playback(endless)));
+    const c = await playing({ nativeEngine: 'web' }, endless, 40);
+    for (let position = 41; position <= 59; position++) {
+      harness.engine.emit({ type: 'time', position, duration: 60, buffered: 60 });
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    harness.engine.emit({ type: 'buffering', buffering: true });
+    harness.engine.state('buffering');
+    await jest.advanceTimersByTimeAsync(16_000);
+    await settle();
+    expect(harness.engine.load).toHaveBeenCalledTimes(2);
+    expect(harness.engine.source?.startPosition).toBe(59);
+    return c;
+  }
+  const steppedDown = () => JSON.stringify(harness.server.sent('switch')).includes('stepDown');
+
+  row(
+    'C12',
+    'the reload lands in "loading" at 0:59 and never shows a picture: another version within the start budget — never a step-down, never "no picture"',
+    async () => {
+      const c = await reloadedAt59();
+      harness.engine.emit({ type: 'time', position: 59, duration: 60, buffered: 60 });
+      await jest.advanceTimersByTimeAsync(31_000);
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(steppedDown()).toBe(false);
+      expect(c.failure?.code).not.toBe('picture_timeout');
+      expect((c.failure?.tried ?? []).map((attempt) => attempt.code)).not.toContain(
+        'media_damaged'
+      );
+      await c.stop();
+    }
+  );
+
+  row(
+    'C12',
+    'the reload shows its first frame at 0:59 and the clock stands (the watchdog arms a stall): another version, never "damaged data"',
+    async () => {
+      const c = await reloadedAt59();
+      harness.engine.emit({ type: 'time', position: 59, duration: 60, buffered: 60 });
+      harness.engine.emit({ type: 'firstFrame' });
+      await jest.advanceTimersByTimeAsync(20_000);
+      await settle();
+      expect(harness.server.sent('versions')).toHaveLength(1);
+      expect(steppedDown()).toBe(false);
+      expect(c.status.hint?.key).not.toBe('steppingDown');
+      await c.stop();
+    }
+  );
+
+  row(
+    'C32',
+    'a direct file that stops at the same place after its reload is still damaged data there (S9c seg_corrupt, unchanged)',
+    async () => {
+      jest.useFakeTimers();
+      const media = { durationTicks: 180 * TICKS, audioTracks: [], subtitleTracks: [] };
+      const c = await playing(
+        {},
+        { method: 'direct', engine: 'vlc', mediaInfo: media } as never,
+        80
+      );
+      harness.engine.time(88, 180);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.started(180);
+      harness.engine.time(88, 180);
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      await jest.advanceTimersByTimeAsync(16_000);
+      await settle();
+      expect(harness.server.sent('switch').at(-1)?.body).toMatchObject({ stepDown: true });
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix C — S4z3: the last way to play fails: another version before the card', () => {
+  row(
+    'C12',
+    'no picture after the step-downs (picture_timeout on the last method) with versions left: another version, then the card',
+    () => {
+      const incident = new Incident(0);
+      const context = {
+        attached: false,
+        online: true,
+        canLowerQuality: false,
+        revision: 2,
+        audioFallback: false,
+      };
+      for (const step of ['R', 'S'] as const)
+        incident.record({
+          step,
+          category: 'T7',
+          code: 'picture_timeout',
+          position: 59,
+          at: 0,
+          revision: 1,
+        } as never);
+      expect(nextStep(incident, { category: 'T7', code: 'picture_timeout' }, context)).toEqual({
+        step: 'V',
+        delayMs: 0,
+      });
+      incident.record({
+        step: 'V',
+        category: 'T7',
+        code: 'picture_timeout',
+        position: 59,
+        at: 0,
+        revision: 2,
+      } as never);
+      expect(nextStep(incident, { category: 'T7', code: 'picture_timeout' }, context).step).toBe(
+        'G'
+      );
     }
   );
 });

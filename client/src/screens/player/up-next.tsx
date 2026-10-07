@@ -160,6 +160,13 @@ export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps)
   const buttonGap = useFocusGap(large ? s(16) : design.space.md);
   const preferred = useRef<View>(null);
   const hasNext = !!next;
+  // A close takes seconds (the player stops, the details load): the pressed button says so at once, once (V2).
+  const [pending, setPending] = useState<'replay' | 'next' | 'back' | null>(null);
+  const act = (which: 'replay' | 'next' | 'back', run: () => void) => () => {
+    if (pending) return;
+    setPending(which);
+    run();
+  };
   // The overlay behind may still hold native focus (e.g. up-next dismissed with Back).
   useEffect(() => {
     if (Platform.isTV) tvFocus(preferred.current);
@@ -218,7 +225,8 @@ export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps)
             tone={next ? 'glass' : 'solid'}
             label={pt('endCard.replay')}
             hasTVPreferredFocus={!next}
-            onPress={onReplay}
+            busy={pending === 'replay'}
+            onPress={act('replay', onReplay)}
           />
           {next ? (
             <GlassButton
@@ -228,14 +236,16 @@ export function EndCard({ title, next, onReplay, onBack, onNext }: EndCardProps)
               tone="solid"
               label={pt('endCard.nextEpisode', { title: next.title })}
               hasTVPreferredFocus
-              onPress={onNext}
+              busy={pending === 'next'}
+              onPress={act('next', onNext)}
             />
           ) : null}
           <GlassButton
             testID="player-end-back"
             icon={ArrowLeft}
             label={pt('endCard.backToDetails')}
-            onPress={onBack}
+            busy={pending === 'back'}
+            onPress={act('back', onBack)}
           />
         </FocusGuide>
       </Glass>

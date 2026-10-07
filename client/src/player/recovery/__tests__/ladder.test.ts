@@ -47,13 +47,13 @@ describe('ladder budgets and card actions (review M13, P2)', () => {
     ]);
   });
 
-  it('steps down at most three times per incident, one per revision of picture failures', () => {
+  it('steps down at most three times per incident, one per revision of picture failures; then another version, then the card (S4z3)', () => {
     const incident = new Incident(0);
-    const steps = [0, 1, 2, 3].map((revision) => {
+    const steps = [0, 1, 2, 3, 4].map((revision) => {
       run(incident, 'T7', 'decode_error', revision);
       return run(incident, 'T7', 'decode_error', revision);
     });
-    expect(steps).toEqual(['S', 'S', 'S', 'G']);
+    expect(steps).toEqual(['S', 'S', 'S', 'V', 'G']);
     expect(MAX_STEP_DOWNS).toBe(3);
   });
 

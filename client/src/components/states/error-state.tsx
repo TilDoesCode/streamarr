@@ -33,6 +33,8 @@ export type ErrorStateProps = {
   autoFocus?: boolean;
   /** Inside a card that already has padding. */
   compact?: boolean;
+  /** A short window: no icon, tighter gaps. */
+  dense?: boolean;
   testID?: string;
 };
 
@@ -44,6 +46,7 @@ export function ErrorState({
   onAction,
   autoFocus = false,
   compact = false,
+  dense = false,
   testID,
 }: ErrorStateProps) {
   const { t } = useTranslation();
@@ -52,6 +55,7 @@ export function ErrorState({
     <EmptyState
       testID={testID}
       compact={compact}
+      dense={dense}
       icon={ICONS[code] ?? CircleAlert}
       iconColor={colors.danger.DEFAULT}
       title={text.title}

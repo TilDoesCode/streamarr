@@ -114,6 +114,9 @@ const stepDown = (incident: Incident, hint?: HintKey): Decision =>
   incident.count(['S']) < MAX_STEP_DOWNS
     ? { step: 'S', delayMs: 0, hint }
     : { step: 'G', delayMs: 0 };
+/** No other way to play this version: another version before the card (a no-op V ends on the card, V2 C12). */
+const otherVersion = (incident: Incident): Decision =>
+  incident.count(['V']) < 1 ? { step: 'V', delayMs: 0 } : { step: 'G', delayMs: 0 };
 
 /** Step A (converted audio) only where the sound is the likely cause: AVPlayer audio renditions and audio evidence. */
 function audioStep(incident: Incident, context: LadderContext): boolean {
@@ -267,11 +270,10 @@ export function nextStep(
       if (audio && !context.audioFallback && incident.count(['A']) < 1)
         return { step: 'A', delayMs: 0, hint: 'noAudio' };
       if (code === 'audio_rendition_failed') return { step: 'G', delayMs: 0 };
-      if (context.attached) return stepDown(incident, 'noPicture');
-      // No method of this version plays here: another version may.
-      return code === 'no_more_methods' && incident.count(['V']) < 1
-        ? { step: 'V', delayMs: 0 }
-        : { step: 'G', delayMs: 0 };
+      if (context.attached && incident.count(['S']) < MAX_STEP_DOWNS)
+        return stepDown(incident, 'noPicture');
+      // No method of this version plays here (the last one, or none left): another version may.
+      return otherVersion(incident);
     }
     case 'T8':
       if (context.attached && incident.count(['R'], 'T8') < 1)

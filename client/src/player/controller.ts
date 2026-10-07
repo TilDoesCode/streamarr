@@ -88,6 +88,7 @@ import {
 } from '@/player/recovery/runner';
 import { AutoRetry } from '@/player/recovery/auto-retry';
 import {
+  endsAgain,
   engineEnd,
   lostOnServer,
   serverLength,
@@ -302,7 +303,8 @@ export class PlaybackController {
   muted = effectiveMuted(false);
   private blockedAt: number | null = null;
   /** Where and when the source ended early: another end there is the repeat (C32), elsewhere a cut stream. */
-  private earlyEndAt: { position: number; at: number } | null = null;
+  /** `playlist`: the engine's playlist itself stopped short (hls.js without ENDLIST), not the file's data (V2 C12). */
+  private earlyEndAt: { position: number; at: number; playlist?: boolean } | null = null;
   /** The engine is retrying a failed media request on its own (status of the last one). */
   private loadRetry: LoadRetry | null = null;
   /** Own answers, the start of a media break and the server's delivery issues (S6t, B15). */
@@ -373,6 +375,9 @@ export class PlaybackController {
   private wantedRelease: string | undefined;
   /** The last start failed only because its version was another title's: it starts again without one. */
   private releaseMixUp = false;
+  /** The stall continues a wait the viewer already saw; when the last spinner wait ended (V2 spinner gaps). */
+  private stallCarried = false;
+  private waitEndedAt = 0;
   /** The engine paused itself in this stall and was asked to play again (D19). */
   private stallNudged = false;
   private stallPosition = 0;
@@ -914,6 +919,7 @@ export class PlaybackController {
   private freshStallBudget(): void {
     if (!this.stallSince || this.stallRenewed) return;
     this.stallRenewed = true;
+    this.stallCarried = true;
     this.stallSince = Date.now();
   }
 
@@ -1296,7 +1302,7 @@ export class PlaybackController {
   }
 
   /** An end before the duration: offline or cut elsewhere is transport, a gone playback restarts, else the file is short. */
-  private async earlyEnd(endAt: number, firstEnd?: number): Promise<void> {
+  private async earlyEnd(endAt: number, firstEnd?: number, playlist = false): Promise<void> {
     const transport = transportEnd(this.offline, endAt, firstEnd);
     if (transport) return this.runner.handle(transport, { position: endAt });
     const confirmed = await serverLength(this.options.client, this.playback, this.abort.signal);
@@ -1306,9 +1312,9 @@ export class PlaybackController {
     const length = confirmed.length || this.duration;
     const short = shortFile(endAt, length);
     if (!short) return this.finish();
-    this.earlyEndAt = { position: endAt, at: Date.now() };
-    // A stall there after the reload is damaged data, not a short file (S9c seg_corrupt).
-    this.damagedAt = { position: endAt, at: Date.now() };
+    this.earlyEndAt = { position: endAt, at: Date.now(), playlist };
+    // A stall there after the reload is damaged data in a file (S9c seg_corrupt); a short playlist just ends there again.
+    if (!playlist) this.damagedAt = { position: endAt, at: Date.now() };
     this.runner.handle(short.failure, short.extra);
   }
 
@@ -1353,6 +1359,8 @@ export class PlaybackController {
   private onPicture(fromClock = false): void {
     if (this.pictured) return;
     this.pictured = true;
+    // A step's source: its spinner ran until this frame, a stall right now continues it (not a normal start's).
+    if (this.confirmFrames) this.waitEndedAt = Date.now();
     // Only a start read from the clock (libVLC's "first frame", a time event) can be black; a frame counter confirms it.
     const inferred = fromClock || this.engine?.kind === 'vlc';
     if (this.confirmFrames && inferred && this.engine?.readHealth)
@@ -1450,6 +1458,8 @@ export class PlaybackController {
     this.stallSerial += 1;
     this.stallNudged = false;
     this.stallRenewed = false;
+    // A wait the viewer just saw (loading, a step, a stall) goes on: the spinner stays, no 1 s gap (V2 turns 4, 5).
+    this.stallCarried = this.stallSince - this.waitEndedAt < SPINNER_MS;
     this.stallResumed = false;
     this.troubleAt = this.stallSince;
     this.stallPosition = this.engine?.getSnapshot().position ?? 0;
@@ -1500,6 +1510,9 @@ export class PlaybackController {
       this.stallSubtitle = null;
       if (off.index !== null) this.onSubtitleError('subtitle_timeout', off.index);
     } else this.leaveStall();
+    // A stall the viewer saw: a new one right after continues it.
+    if (Date.now() - this.stallSince >= SPINNER_MS || this.stallCarried)
+      this.waitEndedAt = Date.now();
     this.stallSince = 0;
     this.troubleAt = Date.now();
     this.tickStatus();
@@ -1646,7 +1659,7 @@ export class PlaybackController {
       this.leaveStall();
       this.stalls.clear();
       // Like Exo's early end: the server does not send the rest of this video (reload, then another version).
-      if (endAt !== null) void this.earlyEnd(endAt, this.recentEarlyEnd());
+      if (endAt !== null) void this.earlyEnd(endAt, this.recentEarlyEnd(), true);
       else
         this.mediaFailure(
           stallFailure(this.loadRetry, now, this.stallAfterSeek, this.engine?.kind ?? 'web')
@@ -1666,6 +1679,7 @@ export class PlaybackController {
       loadingSince: this.pictured ? 0 : this.loadingSince,
       confirmingPicture: !!this.confirmingSince,
       stallSince: this.stallSince,
+      stallCarried: this.stallCarried,
       seekAt: this.seekAt,
       seeking: this.seekTarget !== null,
       paused: this.paused,
@@ -1957,6 +1971,13 @@ export class PlaybackController {
   /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
   private mediaFailure(failure: Classified, extra?: FailureExtra): void {
     const at = extra?.position ?? (this.stallPosition || this.resumePosition);
+    // The reload at a short playlist's end waits there again: the same end, another version next (V2 C12).
+    const playlistEnd = this.earlyEndAt?.playlist ? this.recentEarlyEnd() : undefined;
+    if (endsAgain(failure, playlistEnd, at)) {
+      this.stallSince = 0;
+      this.loadingSince = 0;
+      return void this.earlyEnd(at, playlistEnd, true);
+    }
     failure = damagedAgain(failure, this.damagedAt, at, Date.now());
     if (failure.code === 'media_damaged') this.damagedAt = { position: at, at: Date.now() };
     // A break while online and the server answers is the stream's delivery (S6t); a server-reported issue decides (B15).

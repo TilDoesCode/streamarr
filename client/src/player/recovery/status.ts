@@ -25,6 +25,8 @@ export type StatusInput = {
   recovery: Recovery | null;
   /** Since when the current source loads without a picture (0 = it showed one). */
   loadingSince: number;
+  /** The stall continues a wait the viewer already saw (a renewed budget, a step's source that starves at once): no 1 s gap. */
+  stallCarried?: boolean;
   /** A recovery step's new source reported its start, its frames do not run yet (V2 VLC step-down black frame). */
   confirmingPicture?: boolean;
   stallSince: number;
@@ -124,7 +126,8 @@ export function statusOf(input: StatusInput): PlayerStatus {
   }
   if (input.stallSince && !input.paused) {
     const since = now - input.stallSince;
-    const spinner = since >= SPINNER_MS || now - input.seekAt < 2 * SPINNER_MS;
+    const spinner =
+      !!input.stallCarried || since >= SPINNER_MS || now - input.seekAt < 2 * SPINNER_MS;
     return show(since >= HINT_MS ? stallHint(input) : null, spinner);
   }
   // A seek that has not arrived after half a second shows the spinner (D29).

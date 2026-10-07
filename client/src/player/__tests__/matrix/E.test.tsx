@@ -17,7 +17,7 @@ import {
   SYSTEM_PAUSE_MS,
 } from '@/player/controller';
 import { PlayerStatusView, statusLayout } from '@/screens/player/player-status';
-import { UpNextCard } from '@/screens/player/up-next';
+import { EndCard, UpNextCard } from '@/screens/player/up-next';
 import { useCloseOnFailure } from '@/screens/player/use-close-on-failure';
 import { harness, newController, reply } from '@/../jest/player/harness';
 import { row } from '@/../jest/player/matrix';
@@ -1169,4 +1169,88 @@ describe('matrix E — S4y: a title that ends in picture-in-picture (V2 turn 3, 
     expect(c.status.hint).toMatchObject({ key: 'pausedBySystem', params: { cause: 'pipClosed' } });
     await c.stop();
   });
+});
+
+describe('matrix E — S4z3: the end card answers the first tap at once (V2 turn 5, iPhone)', () => {
+  it.each([
+    ['player-end-back', 'onBack'],
+    ['player-end-replay', 'onReplay'],
+  ] as const)(
+    'E07 %s: the pressed button shows it is busy at once and a second tap does nothing until the action completes',
+    async (testID, handler) => {
+      const actions = { onBack: jest.fn(), onReplay: jest.fn(), onNext: jest.fn() };
+      await renderWithProviders(<EndCard title="Sintel" next={null} {...actions} />);
+      const button = () => screen.getByTestId(testID);
+      expect(button()).not.toBeBusy();
+      await act(async () => fireEvent.press(button()));
+      expect(actions[handler]).toHaveBeenCalledTimes(1);
+      expect(button()).toBeBusy();
+      await act(async () => fireEvent.press(button()));
+      await act(async () => fireEvent.press(screen.getByTestId('player-end-back')));
+      expect(actions.onBack.mock.calls.length + actions.onReplay.mock.calls.length).toBe(1);
+    }
+  );
+});
+
+describe('matrix E — S4z3: the spinner stays across the steps of one stall (V2 turns 4 and 5)', () => {
+  row(
+    'E04',
+    'sampled every 100 ms: the quiet subtitle try and a quality reload whose new source starves at once never drop the spinner',
+    async () => {
+      jest.useFakeTimers();
+      const os = jest.replaceProperty(Platform, 'OS', 'ios');
+      const c = await playing(
+        {},
+        {
+          method: 'remux',
+          mediaInfo: {
+            durationTicks: 600 * TICKS,
+            audioTracks: [],
+            subtitleTracks: [{ index: 5, language: 'de', deliveredAs: 'webvtt', selected: true }],
+            video: { height: 2160 },
+          },
+        } as never,
+        47
+      );
+      harness.engine.emit({
+        type: 'tracks',
+        tracks: {
+          audio: [],
+          subtitles: [{ id: 's0', label: 'de', language: 'de', selected: true }],
+        },
+      });
+      harness.server.answer(
+        'switch',
+        reply.ok(
+          harness.server.playback({
+            playbackId: c.playback!.playbackId!,
+            revision: 1,
+            method: 'transcode',
+          } as never)
+        )
+      );
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      const gaps: number[] = [];
+      const sample = async (ms: number, from: number) => {
+        for (let t = 0; t < ms; t += 100) {
+          await jest.advanceTimersByTimeAsync(100);
+          if (!c.status.spinner) gaps.push(from + t);
+        }
+      };
+      await jest.advanceTimersByTimeAsync(1_100);
+      // The quiet subtitle try at 15 s, then the stall ladder's lower quality at 30 s.
+      await sample(30_000, 1_100);
+      expect(harness.engine.commands).toContain('subtitle:null');
+      expect(harness.server.sent('switch')).toHaveLength(1);
+      // The new source shows its first frame and starves at once (AVPlayer waiting for the next segment).
+      harness.engine.emit({ type: 'firstFrame' });
+      harness.engine.emit({ type: 'buffering', buffering: true });
+      harness.engine.state('buffering');
+      await sample(3_000, 31_100);
+      expect(gaps).toEqual([]);
+      os.restore();
+      await c.stop();
+    }
+  );
 });

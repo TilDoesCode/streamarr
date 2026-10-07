@@ -2,6 +2,7 @@ import { Pause, Play, type LucideIcon } from '@/components/icons';
 import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
+import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -20,6 +21,8 @@ export type GlassButtonProps = Omit<FocusableProps, 'children'> & {
   iconOnly?: boolean;
   /** Round control size (phone player cluster); defaults to the shell's button height. */
   size?: number;
+  /** Its action runs (a close that takes seconds): a spinner in place of the icon at once. */
+  busy?: boolean;
 };
 
 /** Pill control (Aurora): glass or solid white, spring focus/hover/press via FocusLift. */
@@ -32,6 +35,7 @@ export function GlassButton({
   accessibilityLabel,
   iconOnly = false,
   size,
+  busy = false,
   ...props
 }: GlassButtonProps) {
   const design = useDesign();
@@ -50,7 +54,9 @@ export function GlassButton({
         alignItems: 'center',
         gap: large ? s(12) : design.space.sm,
       }}>
-      {Icon ? (
+      {busy ? (
+        <Spinner size="sm" />
+      ) : Icon ? (
         <Icon
           size={size ? Math.round(size * 0.42) : large ? s(26) : design.layout.iconSize.lg}
           color={fg}
@@ -79,6 +85,7 @@ export function GlassButton({
     <Focusable
       role="button"
       accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={busy ? { busy: true } : undefined}
       disabled={disabled}
       {...props}>
       <FocusLift

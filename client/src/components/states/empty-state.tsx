@@ -17,6 +17,8 @@ export type EmptyStateProps = {
   iconColor?: string;
   /** Inside a card that already has padding. */
   compact?: boolean;
+  /** A short window (a phone in landscape): no icon disc, tighter gaps. */
+  dense?: boolean;
   testID?: string;
 };
 
@@ -29,6 +31,7 @@ export function EmptyState({
   detail,
   iconColor = colors.foreground.muted,
   compact = false,
+  dense = false,
   testID,
 }: EmptyStateProps) {
   const design = useDesign();
@@ -41,12 +44,14 @@ export function EmptyState({
       style={{
         alignItems: 'center',
         alignSelf: 'stretch',
-        gap: design.space.md,
+        gap: dense ? design.space.sm : design.space.md,
         paddingVertical: compact ? 0 : design.space['3xl'],
         ...(compact ? null : gutterPadding(design)),
       }}>
       <View
+        testID={testID ? `${testID}-icon` : undefined}
         style={{
+          display: dense ? 'none' : 'flex',
           width: disc,
           height: disc,
           borderRadius: disc / 2,

@@ -334,12 +334,14 @@ export function PlayScreen() {
                 </Text>
                 {title ? <PlayerCardTitle>{title}</PlayerCardTitle> : null}
               </View>
-              {controller?.states.length ? (
+              {/* A short window keeps the cause and the actions: the start steps are in "What was tried". */}
+              {controller?.states.length && !short ? (
                 <StartStepper playback={controller.playback} states={controller.states} failed />
               ) : null}
               <ErrorState
                 testID="play-error"
                 compact
+                dense={short}
                 code={code}
                 params={failure?.params}
                 status={failure?.status}
@@ -364,7 +366,7 @@ export function PlayScreen() {
           </ScrollView>
         ) : phase === 'resume' && controller ? (
           <View testID="play-resume" style={[styles.fill, styles.centre, { gap: design.space.lg }]}>
-            <PlayerCard>
+            <PlayerCard compact={short}>
               <Text variant="overline" tone="muted">
                 {title}
               </Text>
@@ -391,7 +393,7 @@ export function PlayScreen() {
           <View
             testID="play-starting"
             style={[styles.fill, styles.centre, { gap: design.space.xl }]}>
-            <PlayerCard testID="play-starting-card">
+            <PlayerCard testID="play-starting-card" compact={short}>
               <View style={{ gap: design.space.xs, alignItems: 'center' }}>
                 <Text variant="overline" tone="muted">
                   {pt('stepper.title')}
@@ -425,7 +427,7 @@ export function PlayScreen() {
         ) : null}
         {phase === 'switching' ? (
           <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
-            <PlayerCard testID="play-switching" width={640}>
+            <PlayerCard testID="play-switching" width={640} compact={short}>
               <Text variant="callout">{pt('stepper.switching')}</Text>
               <StartStepper
                 playback={controller?.playback ?? null}

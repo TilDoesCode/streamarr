@@ -557,6 +557,38 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
     expect(MockPlayer.all.at(-1)!.options.releaseId).toBe('r-other');
   });
 
+  it.each([
+    ['iPhone landscape', 844, 390, true],
+    ['iPhone portrait', 390, 844, false],
+    ['iPad landscape', 1180, 820, false],
+  ])(
+    'E09 %s: a start that failed with its stepper and 4 steps — the short window drops the stepper and the icon, keeps the cause, the actions and 2 lines (V2 turn 5)',
+    async (_name, width, height, short) => {
+      mockWindow = { width, height, scale: 2, fontScale: 1 };
+      const c = await open();
+      const at = { at: 0, revision: 0, category: 'T2', code: 'unknown_stream' };
+      await change(c, {
+        states: ['queued', 'resolving', 'preparing'],
+        ...failed({
+          code: 'stream_missing',
+          category: 'T2',
+          actions: ['otherVersion'],
+          tried: [
+            { ...at, step: 'R', position: 10 },
+            { ...at, step: 'S', position: 10 },
+            { ...at, step: 'N', position: 10 },
+            { ...at, step: 'S', position: 10 },
+          ],
+        }),
+      });
+      expect(screen.getByText('Video file missing on the server')).toBeOnTheScreen();
+      expect(screen.getByText('Choose another version')).toBeOnTheScreen();
+      expect(!!screen.queryByTestId('play-stepper')).toBe(!short);
+      expect(!!screen.queryByTestId('play-error-icon')).toBe(!short);
+      expect(screen.queryAllByTestId(/^play-error-tried-[RNSV]$/)).toHaveLength(short ? 2 : 4);
+    }
+  );
+
   row('B07', 'the failure card says why the server cannot convert (reason line)', async () => {
     const c = await open();
     await change(
