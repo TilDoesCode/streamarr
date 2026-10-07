@@ -371,10 +371,10 @@ index 2cbc397..f743e6c 100644
 +) : VideoEventPayload
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/SubtitleLift.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/SubtitleLift.kt
 new file mode 100644
-index 0000000..30790fe
+index 0000000..d26bd07
 --- /dev/null
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/SubtitleLift.kt
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,57 @@
 +// Streamarr: keeps subtitle cues above the app's control bar while it shows (F13n, Q2-02).
 +
 +package expo.modules.video.utils
@@ -391,7 +391,7 @@ index 0000000..30790fe
 +object SubtitleLift {
 +  private val lifts = WeakHashMap<PlayerView, Lift>()
 +
-+  /** `lift`: the bottom share of the player view the cues must stay above; 0 restores media3's own padding. */
++  /** `lift`: the bottom share of the player view the cues must stay above; 0 puts them back in their own place. */
 +  fun apply(playerView: PlayerView, lift: Double) {
 +    val subtitles = playerView.subtitleView ?: return
 +    val state = lifts.getOrPut(playerView) {
@@ -401,18 +401,20 @@ index 0000000..30790fe
 +    place(playerView, subtitles, lift)
 +  }
 +
-+  /** The SubtitleView fills the picture (inside the content frame): the bar's share of the view becomes its share of the picture. */
++  // WebVTT cues carry line -1 (bottom edge, no bottomPaddingFraction): the SubtitleView's padding moves every cue.
 +  private fun place(playerView: PlayerView, subtitles: SubtitleView, lift: Double) {
 +    val height = subtitles.height
-+    if (lift <= 0.0 || height <= 0) {
-+      subtitles.setBottomPaddingFraction(SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION)
-+      return
++    var padding = 0
++    if (lift > 0.0 && height > 0) {
++      val viewAt = IntArray(2).also { playerView.getLocationInWindow(it) }
++      val subtitlesAt = IntArray(2).also { subtitles.getLocationInWindow(it) }
++      val barTop = playerView.height * (1.0 - lift) - (subtitlesAt[1] - viewAt[1])
++      val covered = (height - barTop).coerceIn(0.0, height * MAX_SHARE)
++      if (covered > 0.0) padding = (covered + height * GAP).toInt()
 +    }
-+    val viewAt = IntArray(2).also { playerView.getLocationInWindow(it) }
-+    val subtitlesAt = IntArray(2).also { subtitles.getLocationInWindow(it) }
-+    val barTop = playerView.height * (1.0 - lift) - (subtitlesAt[1] - viewAt[1])
-+    val share = ((height - barTop) / height).coerceIn(0.0, MAX_SHARE)
-+    subtitles.setBottomPaddingFraction(SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION + share.toFloat())
++    if (subtitles.paddingBottom != padding) {
++      subtitles.setPadding(subtitles.paddingLeft, subtitles.paddingTop, subtitles.paddingRight, padding)
++    }
 +  }
 +
 +  /** The picture changes size (aspect ratio known, content fit, rotation): the cues keep their place above the bar. */
@@ -428,6 +430,7 @@ index 0000000..30790fe
 +  }
 +
 +  private const val MAX_SHARE = 0.8
++  private const val GAP = 0.015
 +}
 diff --git a/node_modules/expo-video/ios/Records/PlaybackError.swift b/node_modules/expo-video/ios/Records/PlaybackError.swift
 index e4ec06f..41364ad 100644
@@ -501,10 +504,10 @@ index 2bf2f75..d7fe186 100644
          player.ref.play()
        }
 diff --git a/node_modules/expo-video/ios/VideoPlayer.swift b/node_modules/expo-video/ios/VideoPlayer.swift
-index ab8807e..12872aa 100644
+index ab8807e..ba51e6b 100644
 --- a/node_modules/expo-video/ios/VideoPlayer.swift
 +++ b/node_modules/expo-video/ios/VideoPlayer.swift
-@@ -12,6 +12,11 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -12,6 +12,12 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
    private var dangerousPropertiesStore = DangerousPropertiesStore()
    lazy var audioTracks: VideoPlayerAudioTracks = VideoPlayerAudioTracks(owner: self)
    lazy var seeker: VideoPlayerSeeker = VideoPlayerSeeker(player: self)
@@ -513,10 +516,11 @@ index ab8807e..12872aa 100644
 +  var subtitleLift: Double = 0 {
 +    didSet { applySubtitleLift() }
 +  }
++  var subtitleRedrawPending = false
    private var tracksLoadingTask: Task<(), Never>?
    private let didRelease = Mutex(false)
  
-@@ -175,6 +180,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -175,6 +181,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      observer = VideoPlayerObserver(owner: self, videoSourceLoader: videoSourceLoader)
      observer?.registerDelegate(delegate: self)
      VideoManager.shared.register(videoPlayer: self)
@@ -524,7 +528,7 @@ index ab8807e..12872aa 100644
  
      // Disable automatic subtitle selection
      let selectionCriteria = AVPlayerMediaSelectionCriteria(preferredLanguages: [], preferredMediaCharacteristics: [.legible])
-@@ -370,7 +376,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -370,7 +377,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
    // MARK: - VideoPlayerObserverDelegate
  
    func onStatusChanged(player: AVPlayer, oldStatus: PlayerStatus?, newStatus: PlayerStatus, error: Exception?) {
@@ -533,7 +537,17 @@ index ab8807e..12872aa 100644
      let payload = StatusChangedEventPayload(status: newStatus, oldStatus: oldStatus, error: errorRecord)
      safeEmit(event: "statusChange", payload: payload)
      status = newStatus
-@@ -420,6 +426,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -380,6 +387,9 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+     let payload = IsPlayingEventPayload(isPlaying: newIsPlaying, oldIsPlaying: oldIsPlaying)
+     safeEmit(event: "playingChange", payload: payload)
+     isPlaying = newIsPlaying
++    if newIsPlaying {
++      redrawPendingCues()
++    }
+ 
+     VideoManager.shared.setAppropriateAudioSessionOrWarn()
+   }
+@@ -420,6 +430,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      )
      safeEmit(event: "sourceChange", payload: payload)
      newVideoPlayerItem?.preferredForwardBufferDuration = bufferOptions.preferredForwardBufferDuration
@@ -541,7 +555,7 @@ index ab8807e..12872aa 100644
    }
  
    func onTimeUpdate(player: AVPlayer, timeUpdate: TimeUpdate) {
-@@ -484,6 +491,39 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -484,6 +495,39 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      safeEmit(event: "isExternalPlaybackActiveChange", payload: payload)
    }
  
@@ -807,18 +821,18 @@ index 0000000..5db0b15
 +}
 diff --git a/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
 new file mode 100644
-index 0000000..b5d0b7c
+index 0000000..33b517a
 --- /dev/null
 +++ b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,77 @@
 +// Streamarr: keeps subtitle cues above the app's control bar while it shows (F13n, Q2-02).
 +
 +import AVKit
 +import CoreMedia
 +
 +extension VideoPlayer {
-+  /// Percent of the picture between the bar's top and the cue's line position (AVFoundation places the line, not the box).
-+  private static let cueGapPercent = 8.0
++  /// AVFoundation puts the cue's top at the line position: room for two lines of a cue plus a small gap above the bar.
++  private static let cueGapPercent = 13.0
 +
 +  /// AVPlayer renders the legible output itself: the item's WebVTT text style rules move every cue; nil = their own place.
 +  func applySubtitleLift() {
@@ -829,38 +843,67 @@ index 0000000..b5d0b7c
 +    guard let item = ref.currentItem else {
 +      return
 +    }
++    let key = kCMTextMarkupAttribute_OrthogonalLinePositionPercentageRelativeToWritingDirection as String
 +    let share = pictureShare(of: subtitleLift)
-+    guard share > 0 else {
-+      if item.textStyleRules != nil {
-+        item.textStyleRules = nil
-+      }
++    let line: Double? = share > 0 ? max(0, (1 - share) * 100 - Self.cueGapPercent) : nil
++    let current = item.textStyleRules?.first?.textMarkupAttributes[key] as? Double
++    guard line != current else {
 +      return
 +    }
-+    let line = max(0, (1 - share) * 100 - Self.cueGapPercent)
-+    let key = kCMTextMarkupAttribute_OrthogonalLinePositionPercentageRelativeToWritingDirection as String
-+    item.textStyleRules = AVTextStyleRule(textMarkupAttributes: [key: line]).map { [$0] }
++    item.textStyleRules = line.flatMap { AVTextStyleRule(textMarkupAttributes: [key: $0]) }.map { [$0] }
++    subtitleRedrawPending = true
++    if ref.timeControlStatus == .playing {
++      redrawPendingCues()
++    }
 +  }
 +
-+  /// The bar covers the bottom `lift` of the view; the cues are placed in the picture (videoBounds), which a letterbox makes smaller.
++  /// A paused player draws no cue after a reselect, so the redraw waits until it plays.
++  func redrawPendingCues() {
++    guard subtitleRedrawPending, let item = ref.currentItem else {
++      return
++    }
++    subtitleRedrawPending = false
++    redrawCues(of: item)
++  }
++
++  /// A cue on screen keeps its old place until it is drawn again: selecting the same subtitle option again redraws it.
++  private func redrawCues(of item: AVPlayerItem) {
++    guard
++      let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible),
++      let option = item.currentMediaSelection.selectedMediaOption(in: group)
++    else {
++      return
++    }
++    item.select(nil, in: group)
++    item.select(option, in: group)
++  }
++
++  /// The bar covers the bottom `lift` of the view; the cues are placed in the picture, which a letterbox makes smaller.
 +  private func pictureShare(of lift: Double) -> Double {
 +    guard lift > 0 else {
 +      return 0
 +    }
 +    let views = VideoManager.shared.videoViews(of: self)
-+    guard let view = views.first(where: { $0.window != nil }) ?? views.first else {
++    guard let view = views.first(where: { $0.window != nil }) ?? views.first,
++      let size = ref.currentItem?.presentationSize, size.width > 0, size.height > 0
++    else {
 +      return lift
 +    }
-+    let height = Double(view.bounds.height)
-+    let picture = view.playerViewController.videoBounds
-+    guard height > 0, picture.height > 0 else {
++    let bounds = view.bounds
++    let fit = view.playerViewController.videoGravity == .resizeAspectFill
++      ? max(bounds.width / size.width, bounds.height / size.height)
++      : min(bounds.width / size.width, bounds.height / size.height)
++    let pictureHeight = Double(size.height * fit)
++    let pictureBottom = Double(bounds.midY) + pictureHeight / 2
++    guard bounds.height > 0, pictureHeight > 0 else {
 +      return lift
 +    }
-+    let barTop = height * (1 - lift)
-+    return min(0.8, max(0, (Double(picture.maxY) - barTop) / Double(picture.height)))
++    let barTop = Double(bounds.height) * (1 - lift)
++    return min(0.8, max(0, (pictureBottom - barTop) / pictureHeight))
 +  }
 +}
 diff --git a/node_modules/expo-video/ios/VideoView.swift b/node_modules/expo-video/ios/VideoView.swift
-index 3f285fb..e623703 100644
+index 3f285fb..d2f825b 100644
 --- a/node_modules/expo-video/ios/VideoView.swift
 +++ b/node_modules/expo-video/ios/VideoView.swift
 @@ -9,6 +9,7 @@ public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
@@ -871,29 +914,11 @@ index 3f285fb..e623703 100644
      }
    }
  
-@@ -39,6 +40,7 @@ public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
-   let onFirstFrameRender = EventDispatcher()
- 
-   var firstFrameObserver: NSKeyValueObservation?
-+  private var videoBoundsObserver: NSKeyValueObservation?
- 
+@@ -43,6 +44,7 @@ public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
    public override var bounds: CGRect {
      didSet {
-@@ -60,12 +62,17 @@ public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
-     #endif
- 
-     addFirstFrameObserver()
-+    // Streamarr: the subtitle lift is a share of the picture, which moves with the view's size and content fit.
-+    videoBoundsObserver = playerViewController.observe(\.videoBounds) { [weak self] _, _ in
-+      self?.player?.applySubtitleLift()
-+    }
-     addSubview(playerViewController.view)
+       playerViewController.view.frame = self.bounds
++      player?.applySubtitleLift()
+     }
    }
  
-   deinit {
-     VideoManager.shared.unregister(videoView: self)
-     removeFirstFrameObserver()
-+    videoBoundsObserver?.invalidate()
-   }
- 
-   func enterFullscreen() {
