@@ -150,19 +150,19 @@ export function EpisodeStrip({
     setSelectedCard(markedNumber === undefined ? null : (cards.current.get(markedNumber) ?? null));
   }, [markedNumber, episodes]);
 
+  const clip = stripClip(design.inset, gutterStart);
   // Season switch / first load: the marked card starts at the gutter (TV geometry then hits it first).
   const loaded = !!episodes?.length;
   // A size change (rotation, window resize) brings the marked card back too (Q1-50).
   useEffect(() => {
     if (!loaded || index < 0) return;
     listRef.current?.scrollToOffset({
-      offset: design.isTV ? stripOffset(index, gutterStart, stride) : index * stride,
+      offset: design.isTV ? stripOffset(index, clip.paddingLeft, stride) : index * stride,
       animated: false,
     });
     // Only the scroll key and the card size move the strip; taps and focus scroll by themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollKey, loaded, index >= 0, stride]);
-  const clip = stripClip(design.isTV, design.inset, gutterStart);
 
   if (!episodes)
     return (
@@ -244,6 +244,7 @@ export function EpisodeStrip({
       style={{ height }}>
       <FlatList
         ref={listRef}
+        testID="episode-strip-list"
         horizontal
         data={episodes}
         keyExtractor={(episode) => String(episode.episodeNumber)}
@@ -264,7 +265,7 @@ export function EpisodeStrip({
         windowSize={design.isTV ? 9 : 5}
         removeClippedSubviews={false}
         snapToAlignment={design.isTV ? 'item' : undefined}
-        snapToItemPadding={design.isTV ? stripSnapPadding(gutterStart, stride) : undefined}
+        snapToItemPadding={design.isTV ? stripSnapPadding(clip.paddingLeft, stride) : undefined}
         ListFooterComponent={
           onContinue && continueLabel ? (
             <ContinueCard label={continueLabel} onPress={onContinue} />
@@ -277,9 +278,9 @@ export function EpisodeStrip({
 
 const EMPTY: View[] = [];
 
-/** Touch and web: the strip starts at the rail's edge (cards never scroll under it, Q1-49); TV stays full bleed. */
-export function stripClip(isTV: boolean, railInset: number, gutterStart: number) {
-  const left = isTV ? 0 : Math.min(railInset, gutterStart);
+/** The strip starts at the rail's edge, cards never scroll under it (Q1-49, Google TV Q2-04); no rail: full bleed. */
+export function stripClip(railInset: number, gutterStart: number) {
+  const left = Math.min(railInset, gutterStart);
   return { left, paddingLeft: gutterStart - left };
 }
 

@@ -95,3 +95,62 @@ describe('leaving a player that was opened by a deep link (S9b2 end card)', () =
     expect(nothing.replace).toHaveBeenCalledWith('/');
   });
 });
+
+const mockFullscreen = { on: false, toggle: jest.fn() };
+jest.mock('@/player/fullscreen', () => ({
+  ...jest.requireActual('@/player/fullscreen'),
+  isFullscreen: () => mockFullscreen.on,
+  toggleFullscreen: () => mockFullscreen.toggle(),
+}));
+
+describe('Escape in the web player (Q2-05)', () => {
+  let doc: EventTarget & { querySelector: jest.Mock };
+  beforeEach(() => {
+    doc = Object.assign(new EventTarget(), { querySelector: jest.fn(() => null) });
+    (global as { document?: unknown }).document = doc;
+    mockFullscreen.on = false;
+    mockFullscreen.toggle.mockClear();
+  });
+  afterEach(() => {
+    delete (global as { document?: unknown }).document;
+  });
+  const escape = (init: Record<string, unknown> = {}) => {
+    const event = Object.assign(new Event('keydown', { cancelable: true }), {
+      key: 'Escape',
+      ...init,
+    });
+    doc.dispatchEvent(event);
+    return event;
+  };
+  function Player({ onBack }: { onBack: () => boolean }) {
+    usePlayerBack(onBack);
+    return null;
+  }
+
+  it('leaves the browser full screen first, then acts like Back; never under an open sheet (it closes itself; text fields: isWebBackKey)', async () => {
+    Platform.OS = 'web';
+    const onBack = jest.fn(() => true);
+    const view = await render(<Player onBack={onBack} />);
+    mockFullscreen.on = true;
+    expect(escape().defaultPrevented).toBe(true);
+    expect(mockFullscreen.toggle).toHaveBeenCalledTimes(1);
+    expect(onBack).not.toHaveBeenCalled();
+    mockFullscreen.on = false;
+    escape();
+    expect(onBack).toHaveBeenCalledTimes(1);
+    // An open sheet (RN Web Modal, aria-modal) closes itself on Escape.
+    doc.querySelector.mockReturnValue({});
+    escape();
+    expect(onBack).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('native apps keep the hardware Back only (no key listener)', async () => {
+    Platform.OS = 'ios';
+    const onBack = jest.fn(() => true);
+    const view = await render(<Player onBack={onBack} />);
+    escape();
+    expect(onBack).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});

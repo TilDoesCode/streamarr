@@ -461,12 +461,16 @@ export function VersionChips({
                 <Text
                   variant="spec"
                   numberOfLines={1}
-                  style={{
-                    fontSize: specSize,
-                    lineHeight: specSize * 1.3,
-                    letterSpacing: s(0.6),
-                    color: chip.muted ? colors.foreground.muted : colors.foreground.DEFAULT,
-                  }}>
+                  style={[
+                    {
+                      fontSize: specSize,
+                      lineHeight: specSize * 1.3,
+                      letterSpacing: s(0.6),
+                      color: chip.muted ? colors.foreground.muted : colors.foreground.DEFAULT,
+                    },
+                    // The source keeps the release's casing ("BluRay"), as in the versions sheet (Q2-06).
+                    chip.key === 'source' && { textTransform: 'none' },
+                  ]}>
                   {chip.label}
                 </Text>
               </View>

@@ -41,6 +41,10 @@ export const PANELS: readonly PanelKind[] = [
 export const PANEL_WIDTH = 520;
 export const INFO_PANEL_WIDTH = 700;
 
+/** The open glass panel's width (shell px); null when none is open. */
+export const panelWidthOf = (panel: PanelKind | null) =>
+  panel === null ? null : panel === 'info' ? INFO_PANEL_WIDTH : PANEL_WIDTH;
+
 const QUALITIES = [null, 2160, 1080, 720, 480] as const;
 const ENGINES = ['auto', 'native', 'vlc'] as const;
 

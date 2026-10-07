@@ -10,6 +10,9 @@ const windowIsPortrait = () => {
   return height > width;
 };
 
+/** Loaded lazily: expo-screen-orientation has no tvOS native module. */
+export const screenOrientation = () => import('expo-screen-orientation');
+
 /** How long a portrait turn may take before rotation is freed anyway. */
 const TURN_TIMEOUT_MS = 1500;
 const TURN_POLL_MS = 100;
@@ -24,21 +27,45 @@ async function untilPortrait(isPortrait: () => boolean): Promise<void> {
   }
 }
 
-/** Phone player: landscape while open; on close a portrait app is turned back before rotation is freed. */
+/** The phone player's orientation: `restore` turns a portrait app back before the screen goes, `release` frees rotation after. */
+export type PlayerOrientation = { restore(): Promise<void>; release(): void };
+
+/** The player that holds the lock now: a player replacing another (up-next) keeps landscape (Q2-07). */
+let owner: object | null = null;
+
+/** Phone player: landscape while open; every close turns a portrait app back first, then leaves, then frees rotation (Q2-07). */
 export function lockPlayerLandscape(
   orientation: Promise<Orientation>,
   wasPortrait: boolean,
   isPortrait: () => boolean = windowIsPortrait
-) {
-  void orientation.then((o) => o.lockAsync(o.OrientationLock.LANDSCAPE)).catch(() => undefined);
-  return () =>
-    void orientation
+): PlayerOrientation {
+  const token = {};
+  owner = token;
+  const locked = orientation
+    .then((o) => o.lockAsync(o.OrientationLock.LANDSCAPE))
+    .catch(() => undefined);
+  let turned: Promise<void> | null = null;
+  let freed = false;
+  const restore = () =>
+    (turned ??= orientation
       .then(async (o) => {
-        if (wasPortrait) {
-          await o.lockAsync(o.OrientationLock.PORTRAIT_UP);
-          await untilPortrait(isPortrait);
-        }
-        await o.unlockAsync();
+        await locked;
+        if (!wasPortrait || owner !== token) return;
+        await o.lockAsync(o.OrientationLock.PORTRAIT_UP);
+        await untilPortrait(isPortrait);
+      })
+      .catch(() => undefined));
+  const release = () => {
+    if (freed) return;
+    freed = true;
+    void restore()
+      .then(() => orientation)
+      .then((o) => {
+        if (owner !== token) return;
+        owner = null;
+        return o.unlockAsync();
       })
       .catch(() => undefined);
+  };
+  return { restore, release };
 }

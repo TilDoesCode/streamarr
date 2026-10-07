@@ -13,13 +13,17 @@ export function useCloseAfterFrame(
     },
     []
   );
+  /** `ready`: what must finish before the navigation (the phone turned back to portrait, Q2-07). */
   const closeAfterFrame = useCallback(
-    (leave: () => void) => {
+    (leave: () => void, ready?: () => Promise<unknown> | undefined) => {
       if (pending.current) return;
       pending.current = true;
       setClosing(true);
+      const before = ready?.();
       nextFrame(() => {
-        if (mounted.current) leave();
+        void Promise.resolve(before).then(() => {
+          if (mounted.current) leave();
+        });
       });
     },
     [nextFrame]

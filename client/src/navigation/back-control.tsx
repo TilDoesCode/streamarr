@@ -106,7 +106,7 @@ export function isWebBackKey(event: BackKeyEvent, modalOpen: boolean): boolean {
   return !(target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? ''));
 }
 
-function useWebBackKeys(enabled: boolean, onBack: () => void) {
+export function useWebBackKeys(enabled: boolean, onBack: () => void) {
   const back = useEffectEvent(onBack);
   useEffect(() => {
     if (!enabled || Platform.OS !== 'web') return;

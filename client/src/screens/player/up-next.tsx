@@ -70,13 +70,22 @@ export function UpNextCard({ next, onPlay, onCancel, paused = false }: Props) {
   const { large, s } = useShell();
   const buttonGap = useFocusGap(large ? s(14) : design.space.sm);
   const [left, setLeft] = useState(COUNTDOWN_SECONDS);
-  const play = useEffectEvent(onPlay);
+  // The next episode loads for a moment: the button says so at once, and nothing starts it twice (Q2-10).
+  const [pressed, setPressed] = useState(false);
+  const started = useRef(false);
+  const due = left <= 0;
+  const start = () => {
+    if (started.current) return;
+    started.current = true;
+    onPlay();
+  };
+  const play = useEffectEvent(start);
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || pressed || due) return;
     const timer = setInterval(() => setLeft((value) => value - 1), 1000);
     return () => clearInterval(timer);
-  }, [paused]);
+  }, [paused, pressed, due]);
   useEffect(() => {
     if (left <= 0) play();
   }, [left]);
@@ -116,7 +125,11 @@ export function UpNextCard({ next, onPlay, onCancel, paused = false }: Props) {
           tone="solid"
           label={pt('upNext.playNow')}
           hasTVPreferredFocus
-          onPress={onPlay}
+          busy={pressed || due}
+          onPress={() => {
+            setPressed(true);
+            start();
+          }}
         />
         <GlassButton
           testID="player-up-next-cancel"
