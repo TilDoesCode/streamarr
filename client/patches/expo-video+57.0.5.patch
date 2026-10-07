@@ -504,10 +504,10 @@ index 2bf2f75..d7fe186 100644
          player.ref.play()
        }
 diff --git a/node_modules/expo-video/ios/VideoPlayer.swift b/node_modules/expo-video/ios/VideoPlayer.swift
-index ab8807e..ba51e6b 100644
+index ab8807e..12872aa 100644
 --- a/node_modules/expo-video/ios/VideoPlayer.swift
 +++ b/node_modules/expo-video/ios/VideoPlayer.swift
-@@ -12,6 +12,12 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -12,6 +12,11 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
    private var dangerousPropertiesStore = DangerousPropertiesStore()
    lazy var audioTracks: VideoPlayerAudioTracks = VideoPlayerAudioTracks(owner: self)
    lazy var seeker: VideoPlayerSeeker = VideoPlayerSeeker(player: self)
@@ -516,11 +516,10 @@ index ab8807e..ba51e6b 100644
 +  var subtitleLift: Double = 0 {
 +    didSet { applySubtitleLift() }
 +  }
-+  var subtitleRedrawPending = false
    private var tracksLoadingTask: Task<(), Never>?
    private let didRelease = Mutex(false)
  
-@@ -175,6 +181,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -175,6 +180,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      observer = VideoPlayerObserver(owner: self, videoSourceLoader: videoSourceLoader)
      observer?.registerDelegate(delegate: self)
      VideoManager.shared.register(videoPlayer: self)
@@ -528,7 +527,7 @@ index ab8807e..ba51e6b 100644
  
      // Disable automatic subtitle selection
      let selectionCriteria = AVPlayerMediaSelectionCriteria(preferredLanguages: [], preferredMediaCharacteristics: [.legible])
-@@ -370,7 +377,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -370,7 +376,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
    // MARK: - VideoPlayerObserverDelegate
  
    func onStatusChanged(player: AVPlayer, oldStatus: PlayerStatus?, newStatus: PlayerStatus, error: Exception?) {
@@ -537,17 +536,7 @@ index ab8807e..ba51e6b 100644
      let payload = StatusChangedEventPayload(status: newStatus, oldStatus: oldStatus, error: errorRecord)
      safeEmit(event: "statusChange", payload: payload)
      status = newStatus
-@@ -380,6 +387,9 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
-     let payload = IsPlayingEventPayload(isPlaying: newIsPlaying, oldIsPlaying: oldIsPlaying)
-     safeEmit(event: "playingChange", payload: payload)
-     isPlaying = newIsPlaying
-+    if newIsPlaying {
-+      redrawPendingCues()
-+    }
- 
-     VideoManager.shared.setAppropriateAudioSessionOrWarn()
-   }
-@@ -420,6 +430,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -420,6 +426,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      )
      safeEmit(event: "sourceChange", payload: payload)
      newVideoPlayerItem?.preferredForwardBufferDuration = bufferOptions.preferredForwardBufferDuration
@@ -555,7 +544,7 @@ index ab8807e..ba51e6b 100644
    }
  
    func onTimeUpdate(player: AVPlayer, timeUpdate: TimeUpdate) {
-@@ -484,6 +495,39 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -484,6 +491,39 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      safeEmit(event: "isExternalPlaybackActiveChange", payload: payload)
    }
  
@@ -821,10 +810,10 @@ index 0000000..5db0b15
 +}
 diff --git a/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
 new file mode 100644
-index 0000000..33b517a
+index 0000000..9c29fd4
 --- /dev/null
 +++ b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,52 @@
 +// Streamarr: keeps subtitle cues above the app's control bar while it shows (F13n, Q2-02).
 +
 +import AVKit
@@ -834,7 +823,7 @@ index 0000000..33b517a
 +  /// AVFoundation puts the cue's top at the line position: room for two lines of a cue plus a small gap above the bar.
 +  private static let cueGapPercent = 13.0
 +
-+  /// AVPlayer renders the legible output itself: the item's WebVTT text style rules move every cue; nil = their own place.
++  /// The item's text style rules place cues drawn from now on (a cue on screen keeps its place until it ends); nil = default.
 +  func applySubtitleLift() {
 +    guard Thread.isMainThread else {
 +      DispatchQueue.main.async { [weak self] in self?.applySubtitleLift() }
@@ -851,31 +840,6 @@ index 0000000..33b517a
 +      return
 +    }
 +    item.textStyleRules = line.flatMap { AVTextStyleRule(textMarkupAttributes: [key: $0]) }.map { [$0] }
-+    subtitleRedrawPending = true
-+    if ref.timeControlStatus == .playing {
-+      redrawPendingCues()
-+    }
-+  }
-+
-+  /// A paused player draws no cue after a reselect, so the redraw waits until it plays.
-+  func redrawPendingCues() {
-+    guard subtitleRedrawPending, let item = ref.currentItem else {
-+      return
-+    }
-+    subtitleRedrawPending = false
-+    redrawCues(of: item)
-+  }
-+
-+  /// A cue on screen keeps its old place until it is drawn again: selecting the same subtitle option again redraws it.
-+  private func redrawCues(of item: AVPlayerItem) {
-+    guard
-+      let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible),
-+      let option = item.currentMediaSelection.selectedMediaOption(in: group)
-+    else {
-+      return
-+    }
-+    item.select(nil, in: group)
-+    item.select(option, in: group)
 +  }
 +
 +  /// The bar covers the bottom `lift` of the view; the cues are placed in the picture, which a letterbox makes smaller.

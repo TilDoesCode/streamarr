@@ -838,7 +838,7 @@ describe('matrix A — signed out, background, PiP, OS, network (S4f)', () => {
       await settle();
       expect(calls).toEqual(['lock landscape']);
       release();
-      await settle();
+      await jest.advanceTimersByTimeAsync(1000);
       expect(calls).toEqual(['lock landscape', 'lock portrait-up', 'unlock']);
       expect(harness.engine.load).toHaveBeenCalledTimes(1);
       expect(c.failure).toBeNull();

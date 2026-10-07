@@ -33,11 +33,13 @@ function fake(turnAfter = 0) {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 it('turns a portrait app back to portrait before freeing rotation', async () => {
+  jest.useFakeTimers();
   const { calls, o, isPortrait } = fake();
   const { release } = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
-  await settle();
+  await jest.advanceTimersByTimeAsync(0);
   release();
-  await settle();
+  await jest.advanceTimersByTimeAsync(1000);
+  jest.useRealTimers();
   expect(calls).toEqual(['lock landscape', 'lock portrait-up', 'turned', 'unlock (portrait)']);
 });
 
@@ -56,7 +58,7 @@ it('frees rotation only after the portrait turn was reported (iOS kept landscape
   const { release } = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
   await jest.advanceTimersByTimeAsync(0);
   release();
-  await jest.advanceTimersByTimeAsync(1000);
+  await jest.advanceTimersByTimeAsync(2000);
   expect(calls).toEqual(['lock landscape', 'lock portrait-up', 'turned', 'unlock (portrait)']);
   jest.useRealTimers();
 });
@@ -67,20 +69,24 @@ it('frees rotation after a timeout when the turn is never reported', async () =>
   const { release } = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
   await jest.advanceTimersByTimeAsync(0);
   release();
+  await jest.advanceTimersByTimeAsync(4000);
+  expect(calls).not.toContain('unlock (landscape)');
   await jest.advanceTimersByTimeAsync(2000);
   expect(calls.at(-1)).toBe('unlock (landscape)');
   jest.useRealTimers();
 });
 
 it('restore turns a portrait app back and resolves before anything leaves; release afterwards only frees rotation, once (Q2-07)', async () => {
+  jest.useFakeTimers();
   const { calls, o, isPortrait } = fake();
   const lock = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
-  await settle();
+  await jest.advanceTimersByTimeAsync(0);
   await lock.restore();
   calls.push('navigate');
   lock.release();
   lock.release();
-  await settle();
+  await jest.advanceTimersByTimeAsync(1000);
+  jest.useRealTimers();
   expect(calls).toEqual([
     'lock landscape',
     'lock portrait-up',
@@ -99,4 +105,26 @@ it('a player that replaced this one (up-next) keeps landscape: the old one neith
   old.release();
   await settle();
   expect(first.calls).toEqual(['lock landscape', 'lock landscape']);
+});
+
+it('frees rotation only once the window turned with the dismissal and settled (Q2-07: an earlier unlock sent Home to landscape)', async () => {
+  jest.useFakeTimers();
+  const { calls, o } = fake();
+  let portrait = false;
+  const isPortrait = () => portrait;
+  const lock = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
+  await jest.advanceTimersByTimeAsync(0);
+  const restored = lock.restore();
+  await jest.advanceTimersByTimeAsync(1500);
+  await restored;
+  calls.push('navigate');
+  lock.release();
+  await jest.advanceTimersByTimeAsync(800);
+  expect(calls.at(-1)).toBe('navigate');
+  portrait = true;
+  await jest.advanceTimersByTimeAsync(900);
+  expect(calls.at(-1)).toBe('navigate');
+  await jest.advanceTimersByTimeAsync(300);
+  expect(calls.at(-1)).toMatch(/^unlock/);
+  jest.useRealTimers();
 });

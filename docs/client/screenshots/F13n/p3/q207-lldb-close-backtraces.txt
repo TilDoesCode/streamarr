@@ -1,0 +1,40 @@
+<ExpoScreenOrientation.ScreenOrientationViewController: 0x10a6a8a00>
+thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 3.1
+#0 UIKitCore`-[UIViewController setNeedsUpdateOfSupportedInterfaceOrientations]
+#1 Streamarr.debug.dylib`specialized closure #1 in ScreenOrientationRegistry.enforceDesiredDeviceOrientation(withOrientationMask:) + 752
+#2 Streamarr.debug.dylib`reabstraction thunk helper from @escaping @callee_guaranteed () -> () to @escaping @callee_unowned @convention(block) () -> (
+#3 React`__RCTExecuteOnMainQueue_block_invoke + 40
+<ExpoScreenOrientation.ScreenOrientationViewController: 0x10a6a8a00>
+thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 3.1
+#0 UIKitCore`-[UIViewController setNeedsUpdateOfSupportedInterfaceOrientations]
+#1 Streamarr.debug.dylib`specialized closure #1 in ScreenOrientationRegistry.enforceDesiredDeviceOrientation(withOrientationMask:) + 752
+#2 Streamarr.debug.dylib`reabstraction thunk helper from @escaping @callee_guaranteed () -> () to @escaping @callee_unowned @convention(block) () -> (
+#3 React`__RCTExecuteOnMainQueue_block_invoke + 40
+<ExpoScreenOrientation.ScreenOrientationViewController: 0x10a6a8a00>
+thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 3.1
+#0 UIKitCore`-[UIViewController setNeedsUpdateOfSupportedInterfaceOrientations]
+#1 UIKitCore`-[UIViewController _invalidatePreferences:excluding:] + 164
+#2 UIKitCore`-[UIViewController _setPresentedStatusBarViewController:shouldJoinAnimationsInProgress:] + 224
+#3 UIKitCore`__111-[UIViewController _dismissViewControllerWithAnimationController:interactionController:handoffData:completion:]_block_invoke_3 + 104
+#4 UIKitCore`__73-[UIViewController _dismissViewControllerWithTransition:from:completion:]_block_invoke + 640
+#5 UIKitCore`-[UIViewController _dismissViewControllerWithTransition:from:completion:] + 1252
+#6 UIKitCore`-[UIViewController dismissViewControllerWithTransition:completion:] + 2304
+#7 UIKit`-[UIViewControllerAccessibility dismissViewControllerWithTransition:completion:] + 668
+#8 UIKitCore`-[UIViewController dismissViewControllerWithTransition:completion:] + 996
+#9 UIKit`-[UIViewControllerAccessibility dismissViewControllerWithTransition:completion:] + 668
+#10 UIKitCore`-[UIViewController _performCoordinatedPresentOrDismiss:animated:] + 496
+#11 UIKitCore`-[UIViewController dismissViewControllerAnimated:completion:] + 216
+<ExpoScreenOrientation.ScreenOrientationViewController: 0x10a6a8a00>
+thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 3.1
+#0 UIKitCore`-[UIViewController setNeedsUpdateOfSupportedInterfaceOrientations]
+#1 UIKitCore`-[UIViewController _cleanupPresentation:] + 64
+#2 UIKitCore`-[UIViewController _didFinishDismissTransition:] + 364
+#3 UIKitCore`-[UIPresentationController transitionDidFinish:] + 528
+#4 UIKitCore`-[_UICurrentContextPresentationController transitionDidFinish:] + 40
+#5 UIKitCore`__77-[UIPresentationController runTransitionForCurrentStateAnimated:handoffData:]_block_invoke.125 + 340
+#6 UIKitCore`-[_UIViewControllerTransitionContext completeTransition:] + 180
+#7 UIKitCore`-[UITransitionView notifyDidCompleteTransition:] + 176
+#8 UIKitCore`-[UITransitionView _didCompleteTransition:] + 848
+#9 UIKit`-[UITransitionViewAccessibility _didCompleteTransition:] + 76
+#10 UIKitCore`__UIVIEW_IS_EXECUTING_ANIMATION_COMPLETION_BLOCK__ + 28
+#11 UIKitCore`-[UIViewAnimationBlockDelegate _didEndBlockAnimation:finished:context:] + 596

@@ -15,13 +15,16 @@ export const screenOrientation = () => import('expo-screen-orientation');
 
 /** How long a portrait turn may take before rotation is freed anyway. */
 const TURN_TIMEOUT_MS = 1500;
+/** UIKit turns the window with the dismissal; unlocking before that turn settled sends it back to landscape (Q2-07). */
+const RELEASE_TIMEOUT_MS = 3000;
+const RELEASE_SETTLE_MS = 1000;
 const TURN_POLL_MS = 100;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** iOS unlock keeps the window as it is (and the module already reports portrait): wait for the window to turn. */
-async function untilPortrait(isPortrait: () => boolean): Promise<void> {
-  for (let waited = 0; waited < TURN_TIMEOUT_MS; waited += TURN_POLL_MS) {
+async function untilPortrait(isPortrait: () => boolean, timeout = TURN_TIMEOUT_MS): Promise<void> {
+  for (let waited = 0; waited < timeout; waited += TURN_POLL_MS) {
     if (isPortrait()) return;
     await wait(TURN_POLL_MS);
   }
@@ -59,6 +62,11 @@ export function lockPlayerLandscape(
     if (freed) return;
     freed = true;
     void restore()
+      .then(async () => {
+        if (!wasPortrait || owner !== token) return;
+        await untilPortrait(isPortrait, RELEASE_TIMEOUT_MS);
+        await wait(RELEASE_SETTLE_MS);
+      })
       .then(() => orientation)
       .then((o) => {
         if (owner !== token) return;
