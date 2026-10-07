@@ -76,6 +76,23 @@ public sealed class ViewerCatalogTests(ViewerCatalogFactory factory) : IClassFix
         Assert.Equal(searches, factory.Newznab.Searches);
     }
 
+    [Fact]
+    public async Task Search_RanksTheTitleStartingWithTheQuery_First_AndStillHidesRestrictedTitles()
+    {
+        using var viewer = await ViewerAsync("searchrank");
+        using var kid = await KidAsync();
+
+        var partial = await OkAsync(viewer, $"{Base}/search?q=up mov");
+        var words = await OkAsync(viewer, $"{Base}/search?q=mov");
+        var kidPartial = await OkAsync(kid, $"{Base}/search?q=up mov");
+        var kidWords = await OkAsync(kid, $"{Base}/search?q=mov");
+
+        Assert.Equal([CatalogTmdbFake.RatedR], Ids(partial.GetProperty("items")));
+        Assert.Equal([501, 502, 503, 504, 505], Ids(words.GetProperty("items")));
+        Assert.Empty(kidPartial.GetProperty("items").EnumerateArray());
+        Assert.Equal([504, 505], Ids(kidWords.GetProperty("items")));
+    }
+
     [Theory]
     [InlineData("", "missing_query")]
     [InlineData("?q=%20", "missing_query")]

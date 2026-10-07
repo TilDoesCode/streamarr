@@ -1254,3 +1254,52 @@ describe('matrix E — S4z3: the spinner stays across the steps of one stall (V2
     }
   );
 });
+
+describe('matrix E — F14: a notice of the incident never outlives its card (Q2-09)', () => {
+  row(
+    'E09',
+    'the ladder ends on the card while "Switched to another version" still shows: the notice goes with the card',
+    async () => {
+      jest.useFakeTimers();
+      const c = await playing({}, {}, 30);
+      (c as unknown as { showNotice(kind: string): void }).showNotice('otherVersion');
+      expect(c.notice).toMatchObject({ kind: 'otherVersion' });
+      c.endSession({ code: 'refresh_session_expired' });
+      await settle();
+      expect(c.phase).toBe('failed');
+      expect(c.notice).toBeNull();
+      await c.stop();
+    }
+  );
+});
+
+describe('matrix E — F14: the up-next card answers its tap at once and starts once (Q2-10)', () => {
+  const next = { workId: 'w2', title: 'Next', playTitle: 'Next' };
+
+  it('E07 "Play now": busy at once, a second tap or the countdown never starts it again', async () => {
+    jest.useFakeTimers();
+    const onPlay = jest.fn();
+    await renderWithProviders(
+      <UpNextCard next={next} paused={false} onPlay={onPlay} onCancel={jest.fn()} />
+    );
+    const button = () => screen.getByTestId('player-up-next-play');
+    expect(button()).not.toBeBusy();
+    await act(async () => fireEvent.press(button()));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(button()).toBeBusy();
+    await act(async () => fireEvent.press(button()));
+    await act(async () => jest.advanceTimersByTime(30_000));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('E07 the countdown at 0 starts the next episode once, with the busy state', async () => {
+    jest.useFakeTimers();
+    const onPlay = jest.fn();
+    await renderWithProviders(
+      <UpNextCard next={next} paused={false} onPlay={onPlay} onCancel={jest.fn()} />
+    );
+    await act(async () => jest.advanceTimersByTime(20_000));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('player-up-next-play')).toBeBusy();
+  });
+});

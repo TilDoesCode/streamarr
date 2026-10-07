@@ -993,6 +993,20 @@ const TASKS = {
       'a release id stays resolvable while its release exists (or a replaced release is mapped / explained by a specific code); test reproduces the original sequence; contract, e2e and the full server suite green',
     ],
   },
+  'B20': {
+    title: 'Server: viewer search matches the start of every word (search as you type)',
+    track: 'Backend',
+    deps: ['B19'],
+    maxFixes: 1,
+    guide: [
+      '- Part of round I (final walkthrough Q2, docs/client/journal/Q2.md finding Q2-03): the viewer search only matches the first word of a title or a whole word: "Sin" finds Sintel, but "Ligh" (The Lighthouse Logs) and "Leucht" (Die Leuchtturm-Chroniken) answer no results until the word is complete. The client searches as the viewer types, so every keystroke must already find the title. Rule: a query matches when every query token is a prefix of some word of the title (localized title, original title and alternative titles the endpoint already uses), case- and diacritic-insensitive (ä/ae, ß/ss as the existing normalisation does), hyphen/apostrophe-separated parts count as words ("Leuchtturm-Chroniken" -> "leuchtturm", "chroniken"); ranking: exact title > title starting with the query > word-prefix matches > the existing remote (TMDB) results; keep the age/library restrictions of the viewer search exactly as they are (tests). Find the viewer search path first (the endpoint the client calls from its Search screen) and record it in docs/client/journal/B20.md.',
+      '- Unit tests for the matcher and ranking (German and English titles, multi-word queries, umlauts, hyphens, a restricted title never appears for a child profile) and an e2e/robustness check on your own Dev World 39310 ("Ligh", "Leucht", "Chron", "lighthouse lo"). Own Dev World 39310 only; never restart or republish 39300. Contract check, e2e and the full server suite once at the end (nice -n 10).',
+    ].join('\n'),
+    acceptance: [
+      'every query token matching the start of any word of a title finds it (Ligh, Leucht, Chron, multi-word); ranking exact > prefix > word-prefix > remote; restrictions unchanged (tests)',
+      'contract, e2e and the full server suite green',
+    ],
+  },
 }
 
 const TRACK_PATHS = {

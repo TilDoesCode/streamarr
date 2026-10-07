@@ -131,6 +131,10 @@ Grouped by device. None of these can be closed from code or an emulator.
 - T1: assets/brand/render.sh needs python3 + Pillow (denoise.py); not checked by any script.
 - TV sign-in: adb text input into the TV sign-in field does not arrive (test tooling; real keyboards untested).
 - Headless Chrome for Testing 131 draws bands through glass in screenshots; use --disable-gpu for captures (F3).
+- B20 hardening full run (machine busy with the Q2 devices): ArtworkPaletteServiceTests.OverflowedImages_AreNeverOvertakenByLaterOnes
+  (TaskCanceledException after 17 s) and StreamHistoryRecorderTests.BeginAppendFinalize_RoundTrips_AndResolvesByTokenOrAttemptId
+  ("Timed out waiting for the stream history background consumer") failed once; 3/3 alone. Background-consumer waits
+  with fixed budgets; same family as the earlier palette flake.
 - ProviderSpeedTesterTests.SpeedTest_AutomaticallyDiscoversAndTransfersARecentArticle failed again under full-suite
   load in the B18 follow-up (Assert.True; 3/3 alone), second sighting after B14.
 - B17 full run: ArtworkPaletteServiceTests.AFullQueue_OverflowsWithoutLosingOrDuplicatingImages failed once under
@@ -238,6 +242,10 @@ Grouped by device. None of these can be closed from code or an emulator.
   (ProcessRunner doc comment, Dev World limiter log level, `fault` 400 messages, `usenet_hole` restores its releases).
   Fix round 1: a lapsed reservation never revives on later access (its resume competes like a new start); request
   restarts of a session are paced (burst of 2, then 1/s).
+
+- B20 (2026-10-07): viewer search as you type (Q2-03): every typed word may start a title word ("Ligh", "Leucht",
+  "Chron"); ranking exact > starts with > word starts > rest of TMDB; Core `TitleMatcher` also drives Dev World's canned
+  TMDB (the source of the symptom).
 
 - B19 (2026-10-07): "release ids that played minutes ago answer release_not_found" was a client mix-up (the play
   screen sent the previous title's releaseId, see Player); ids stay resolvable (14 min live probe, catalog refresh).

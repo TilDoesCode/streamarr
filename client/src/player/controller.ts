@@ -761,6 +761,8 @@ export class PlaybackController {
     this.failure =
       failure.code === 'unknown' ? { ...failure, code: 'player_internal_error' } : failure;
     this.phase = 'failed';
+    // A notice of the incident ("switched to another version") would contradict the card (Q2-09).
+    this.notice = null;
     // The card cannot show in picture-in-picture: back to the app's window, where it waits (A17).
     if (this.pictureInPicture) this.engine?.stopPictureInPicture?.();
     this.stopStatusTicker();
