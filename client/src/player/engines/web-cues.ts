@@ -5,8 +5,19 @@ type Track = { mode: string; cues?: ArrayLike<Cue> | null; activeCues?: ArrayLik
 
 const placed = new WeakMap<object, Placement>();
 
+/** Space between a lifted cue's box and the bar's top: this share of the picture, or 8 px on a small one (Q2-02). */
+const GAP_PERCENT = 1.5;
+const GAP_PX = 8;
+
+/** The VTTCue line (percent, the box's bottom with `lineAlign: 'end'`) that ends a gap above the bar's top. */
+export function liftedLine(fraction: number, boxHeight = 0): number {
+  const gap = Math.max(GAP_PERCENT, boxHeight > 0 ? (GAP_PX / boxHeight) * 100 : 0);
+  // Rounded down: the box never reaches into the bar (Math.round put descenders 4 px under it).
+  return Math.max(0, Math.floor((1 - fraction) * 100 - gap));
+}
+
 /** Puts one cue above the bottom `fraction` of the picture (VTTCue line in percent), or back where it was. */
-export function liftCue(cue: Cue, fraction: number): void {
+export function liftCue(cue: Cue, fraction: number, boxHeight = 0): void {
   if (!('line' in cue)) return;
   if (fraction <= 0) {
     const before = placed.get(cue);
@@ -23,7 +34,7 @@ export function liftCue(cue: Cue, fraction: number): void {
     });
   Object.assign(cue, {
     snapToLines: false,
-    line: Math.round((1 - fraction) * 100),
+    line: liftedLine(fraction, boxHeight),
     lineAlign: 'end',
   });
 }
@@ -32,12 +43,13 @@ export function liftCue(cue: Cue, fraction: number): void {
 export function liftCues(
   tracks: ArrayLike<Track> | null | undefined,
   fraction: number,
-  activeOnly = false
+  activeOnly = false,
+  boxHeight = 0
 ): void {
   for (let i = 0; tracks && i < tracks.length; i++) {
     const track = tracks[i]!;
     if (track.mode !== 'showing') continue;
     const cues = activeOnly ? track.activeCues : (track.cues ?? track.activeCues);
-    for (let j = 0; cues && j < cues.length; j++) liftCue(cues[j]!, fraction);
+    for (let j = 0; cues && j < cues.length; j++) liftCue(cues[j]!, fraction, boxHeight);
   }
 }

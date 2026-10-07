@@ -229,7 +229,9 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       (list) => !!list
     );
     // hls.js adds cues as segments load: the ones on screen follow the lift (cheap, a few at a time).
-    const onCues = () => this.subtitleLift && liftCues(element.textTracks, this.subtitleLift, true);
+    const onCues = () =>
+      this.subtitleLift &&
+      liftCues(element.textTracks, this.subtitleLift, true, element.clientHeight ?? 0);
     const onTracks = () => {
       this.emitTracks();
       onCues();
@@ -684,7 +686,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
 
   setSubtitleLift(fraction: number): void {
     this.subtitleLift = fraction;
-    liftCues(this.video?.textTracks, fraction);
+    liftCues(this.video?.textTracks, fraction, false, this.video?.clientHeight ?? 0);
   }
 
   setSubtitleTrack(id: string | null): void {
