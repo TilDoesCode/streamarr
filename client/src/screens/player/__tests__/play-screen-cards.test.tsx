@@ -1,5 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { Platform, StyleSheet } from 'react-native';
+import { Dimensions, Platform, StyleSheet } from 'react-native';
 
 import i18n from '@/i18n';
 import { renderWithProviders } from '@/../jest/render';
@@ -57,6 +57,7 @@ const mockProps: {
   panels?: { panel: unknown };
   picker?: { open: boolean };
   overlay?: { onPanel(kind: string): void };
+  endCard?: { onBack(): void };
 } = {};
 const mockCaps = jest.fn<Promise<{ profile: object }>, []>(async () => ({ profile: {} }));
 const mockClock = { position: 0, duration: 0 };
@@ -76,6 +77,25 @@ jest.mock('@/player/fullscreen', () => ({
   ...jest.requireActual('@/player/fullscreen'),
   isFullscreen: () => mockChrome.inset > 0,
   fullscreenChromeInset: (fullscreen: boolean) => (fullscreen ? mockChrome.inset : 0),
+}));
+
+const mockBack: { current: (() => boolean) | null } = { current: null };
+/** The phone's turn back to portrait: pending until the test resolves it (Q2-07). */
+const mockTurn = { calls: [] as string[], resolve: () => undefined as void };
+jest.mock('@/player/orientation', () => ({
+  screenOrientation: () => new Promise(() => undefined),
+  lockPlayerLandscape: () => ({
+    restore: () => {
+      mockTurn.calls.push('restore');
+      return new Promise<void>((resolve) => {
+        mockTurn.resolve = () => {
+          mockTurn.calls.push('portrait');
+          resolve();
+        };
+      });
+    },
+    release: () => void mockTurn.calls.push('release'),
+  }),
 }));
 
 jest.mock('@/player/controller', () => ({
@@ -133,11 +153,14 @@ jest.mock('@/screens/player/player-overlay', () => ({
 jest.mock('@/screens/player/up-next', () => ({
   ...jest.requireActual('@/screens/player/up-next'),
   useNextEpisode: () => mockNext.current,
-  EndCard: () => null,
+  EndCard: (props: { onBack(): void }) => {
+    mockProps.endCard = props;
+    return null;
+  },
 }));
 jest.mock('@/screens/player/player-tv-back', () => ({
   ...jest.requireActual('@/screens/player/player-tv-back'),
-  usePlayerBack: () => undefined,
+  usePlayerBack: (onBack: () => boolean) => void (mockBack.current = onBack),
   leavePlayer: () => mockRouter.back(),
 }));
 
@@ -166,6 +189,8 @@ beforeEach(async () => {
   mockWindow = undefined;
   mockChrome.inset = 0;
   mockParams = START_PARAMS;
+  mockTurn.calls = [];
+  mockBack.current = null;
   mockAccount.mustChangePassword = false;
   mockRouter.replace.mockClear();
   await i18n.changeLanguage('en');
@@ -588,6 +613,98 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
       expect(screen.queryAllByTestId(/^play-error-tried-[RNSV]$/)).toHaveLength(short ? 2 : 4);
     }
   );
+
+  describe('every close turns the phone back to portrait before the screen goes (Q2-07)', () => {
+    const navigated = () =>
+      mockRouter.back.mock.calls.length + mockRouter.replace.mock.calls.length;
+    const frame = () => act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    // A phone held portrait (the player locks landscape on it); the effect reads Dimensions too.
+    beforeEach(() => {
+      mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+      jest
+        .spyOn(Dimensions, 'get')
+        .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+    });
+
+    it.each([
+      [
+        '✕ in the overlay',
+        async () => {
+          await act(async () => (mockProps.overlay as unknown as { onClose(): void }).onClose());
+        },
+      ],
+      [
+        'Back (hardware, gesture, Menu)',
+        async () => {
+          await act(async () => void mockBack.current?.());
+        },
+      ],
+      [
+        "the failure card's Back",
+        async (c: MockPlayer) => {
+          await change(c, failed());
+          await act(async () => fireEvent.press(screen.getByText('Go back')));
+        },
+      ],
+      [
+        'the end card\'s "Back to details"',
+        async (c: MockPlayer) => {
+          mockClock.duration = 600;
+          mockClock.position = 600;
+          await change(c, { phase: 'playing', status: running, ended: true });
+          await act(async () => mockProps.endCard?.onBack());
+        },
+      ],
+    ] as const)(
+      '%s: turn first, navigate once the phone is portrait, free rotation last',
+      async (_name, closeBy) => {
+        mockRouter.back.mockClear();
+        const c = await open();
+        await change(c, { phase: 'playing', status: running });
+        await closeBy(c);
+        await frame();
+        expect(mockTurn.calls).toEqual(['restore']);
+        expect(navigated()).toBe(0);
+        await act(async () => mockTurn.resolve());
+        await frame();
+        expect(navigated()).toBe(1);
+        await screen.unmount();
+        expect(mockTurn.calls).toEqual(['restore', 'portrait', 'release']);
+      }
+    );
+
+    it('a second ✕ while the first close turns the phone does nothing more', async () => {
+      mockRouter.back.mockClear();
+      const c = await open();
+      await change(c, { phase: 'playing', status: running });
+      const overlay = mockProps.overlay as unknown as { onClose(): void };
+      await act(async () => overlay.onClose());
+      await act(async () => overlay.onClose());
+      await act(async () => mockTurn.resolve());
+      await frame();
+      expect(mockTurn.calls.filter((call) => call === 'restore')).toHaveLength(1);
+      expect(navigated()).toBe(1);
+    });
+
+    it('up-next starts the next episode in the player: no turn to portrait', async () => {
+      jest.useFakeTimers();
+      mockNext.current = { workId: 'tmdb-tv-1-s1e2', title: 'S1 E2', playTitle: 'Show S1 E2' };
+      mockClock.duration = 600;
+      mockClock.position = 590;
+      const c = await open();
+      await change(c, { phase: 'playing', status: running });
+      await act(async () => fireEvent.press(screen.getByTestId('player-up-next-play')));
+      expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+      expect(mockTurn.calls).not.toContain('restore');
+    });
+  });
+
+  it('E09 no notice is drawn over the failure card (Q2-09)', async () => {
+    const c = await open();
+    await change(c, { ...failed(), notice: { kind: 'otherVersion', id: 1 } });
+    expect(screen.getByTestId('play-error-card')).toBeOnTheScreen();
+    expect(screen.queryByTestId('player-notice-otherVersion')).toBeNull();
+  });
 
   row('B07', 'the failure card says why the server cannot convert (reason line)', async () => {
     const c = await open();

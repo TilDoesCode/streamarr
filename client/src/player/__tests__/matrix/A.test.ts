@@ -834,7 +834,7 @@ describe('matrix A — signed out, background, PiP, OS, network (S4f)', () => {
         unlockAsync: async () => void calls.push('unlock'),
       } as never);
       const c = await playing({}, {}, 50);
-      const release = lockPlayerLandscape(orientation, true, () => true);
+      const { release } = lockPlayerLandscape(orientation, true, () => true);
       await settle();
       expect(calls).toEqual(['lock landscape']);
       release();

@@ -65,6 +65,8 @@ import { largeTitleMaxWidth } from './header-geometry';
 import { PANELS, panelWidthOf, type PanelKind } from './player-panels';
 
 const HIDE_MS = 5000;
+/** The large header's title shrinks to this share of its size before it truncates. */
+const LARGE_TITLE_MIN_SCALE = 0.6;
 const COMMIT_MS = 700;
 // UIKit drops focus from views below alpha 0.01 or without interaction; the AVPlayer view would then eat the remote.
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
@@ -170,7 +172,8 @@ export function PlayerOverlay({
   const playRef = useRef<View>(null);
   const seekRef = useRef<View>(null);
   const paused = controller.paused;
-  const duration = controller.duration || clock.duration;
+  // An unknown or endless length (VLC without a probe reports ∞) is no length: no remaining time, no handle (Q2-08).
+  const duration = knownLength(controller.duration) || knownLength(clock.duration);
   // Live engine position: the clock steps coarsely while the overlay is hidden, so its first visible frame may lag.
   const position = scrub ?? controller.position;
   const tv = design.isTV;
@@ -533,6 +536,9 @@ export function PlayerOverlay({
                 <Text
                   testID="player-title"
                   numberOfLines={1}
+                  // A long title steps its size down before it is cut (iPad portrait, Q2-11); one line keeps the hint below it.
+                  adjustsFontSizeToFit
+                  minimumFontScale={LARGE_TITLE_MIN_SCALE}
                   style={{
                     maxWidth: largeTitleMaxWidth(window.width, s, panelWidthOf(openPanel)),
                     fontFamily: fonts.displayBold,
@@ -674,7 +680,7 @@ export function PlayerOverlay({
                     {formatClock(position)}
                   </Text>
                   <Text testID="player-remaining" style={timeText}>
-                    {`−${formatClock(remaining)}`}
+                    {duration ? `−${formatClock(remaining)}` : ''}
                   </Text>
                 </View>
                 <FocusGuide
@@ -809,7 +815,7 @@ export function PlayerOverlay({
                     {formatClock(position)}
                   </Text>
                   <Text testID="player-remaining" variant="caption" tone="muted">
-                    {`−${formatClock(remaining)}`}
+                    {duration ? `−${formatClock(remaining)}` : ''}
                   </Text>
                 </View>
                 {collapse && moreOpen ? (
@@ -987,6 +993,10 @@ type SeekBarProps = {
 };
 
 /** Progress with the buffered range; focusable on TV (◀/▶ scrub), draggable on touch and mouse. */
+/** A length the bar can show: finite and above zero, else 0 (unknown). */
+const knownLength = (seconds: number | undefined) =>
+  seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+
 function SeekBar({
   seekRef,
   position,
@@ -1047,8 +1057,10 @@ function SeekBar({
         />
       </View>
       <View
+        testID="player-seek-thumb"
         pointerEvents="none"
         style={{
+          display: duration ? 'flex' : 'none',
           position: 'absolute',
           left: `${fraction(position) * 100}%`,
           marginLeft: -thumb / 2,
@@ -1068,7 +1080,11 @@ function SeekBar({
         testID="player-seek"
         role="slider"
         accessibilityLabel={label}
-        accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(position) }}
+        accessibilityValue={
+          duration
+            ? { min: 0, max: Math.round(duration), now: Math.round(position) }
+            : { text: formatClock(position) }
+        }
         onFocus={onFocus}>
         <FocusLift kind="none" radius={thumb * 0.8}>
           {bar}
@@ -1081,7 +1097,11 @@ function SeekBar({
         testID="player-seek"
         role="slider"
         accessibilityLabel={label}
-        accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(position) }}>
+        accessibilityValue={
+          duration
+            ? { min: 0, max: Math.round(duration), now: Math.round(position) }
+            : { text: formatClock(position) }
+        }>
         {bar}
       </View>
     </GestureDetector>

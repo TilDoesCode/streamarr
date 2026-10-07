@@ -30,7 +30,11 @@ import { endOverlay } from '@/player/end-state';
 import { nativeCandidates, vlcAvailable } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { createPlayer } from '@/player/caps-fallback';
-import { lockPlayerLandscape } from '@/player/orientation';
+import {
+  lockPlayerLandscape,
+  screenOrientation,
+  type PlayerOrientation,
+} from '@/player/orientation';
 import { clock } from '@/player/format';
 import { noticeMs, noticeText, subtitleLabel } from '@/player/overlay-labels';
 import type { PlaybackPreferences } from '@/player/playback-api';
@@ -110,16 +114,20 @@ export function PlayScreen() {
   const leaving = useRef(false);
   // Loaders stop one render before the player's screen goes (F12-1); the navigation follows a frame later.
   const { closing, closeAfterFrame } = useCloseAfterFrame();
-  const close = () => {
+  const orientation = useRef<PlayerOrientation | null>(null);
+  /** Every way out of the player: the phone turns back to portrait first, then the screen goes (Q2-07). */
+  const leave = (navigate: () => void) => {
     leaving.current = true;
+    closeAfterFrame(navigate, () => orientation.current?.restore());
+  };
+  const close = () => {
     const opener = openerLeaf(navigation.getState());
-    closeAfterFrame(() => leavePlayer(router, { detail: detailHref(workId), opener }));
+    leave(() => leavePlayer(router, { detail: detailHref(workId), opener }));
   };
   const backToDetails = () => {
     const href = detailHref(workId);
     if (!href || isDetailOf(openerLeaf(navigation.getState()), workId)) return close();
-    leaving.current = true;
-    closeAfterFrame(() => router.replace(href));
+    leave(() => router.replace(href));
   };
 
   useSyncExternalStore(
@@ -171,8 +179,12 @@ export function PlayScreen() {
   useEffect(() => {
     if (design.formFactor !== 'phone') return;
     const { width, height } = Dimensions.get('window');
-    // Loaded lazily: expo-screen-orientation has no tvOS native module.
-    return lockPlayerLandscape(import('expo-screen-orientation'), height > width);
+    const lock = lockPlayerLandscape(screenOrientation(), height > width);
+    orientation.current = lock;
+    return () => {
+      if (orientation.current === lock) orientation.current = null;
+      lock.release();
+    };
   }, [design.formFactor]);
 
   useEffect(() => exitPlayerFullscreen, []);
@@ -247,11 +259,10 @@ export function PlayScreen() {
     else if (action === 'useVlc') setPreferences((value) => ({ ...value, engine: 'vlc' }));
     else if (action === 'signIn') {
       // Signed out or a password change due mid-play: the position is saved (queued reports); that screen is next.
-      leaving.current = true;
       const next = account.mustChangePassword
         ? { pathname: '/sign-in/change-password' as const, params: { account: account.id } }
         : '/profiles';
-      closeAfterFrame(() => router.replace(next));
+      leave(() => router.replace(next));
     } else close();
   };
 
@@ -441,7 +452,7 @@ export function PlayScreen() {
             </PlayerCard>
           </View>
         ) : null}
-        {notice && !pip ? (
+        {notice && !pip && !failed ? (
           <Glass
             testID={`player-notice-${notice.kind}`}
             pointerEvents={keptOff !== null ? 'box-none' : 'none'}

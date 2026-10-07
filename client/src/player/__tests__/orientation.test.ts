@@ -34,7 +34,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 it('turns a portrait app back to portrait before freeing rotation', async () => {
   const { calls, o, isPortrait } = fake();
-  const release = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
+  const { release } = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
   await settle();
   release();
   await settle();
@@ -43,7 +43,7 @@ it('turns a portrait app back to portrait before freeing rotation', async () => 
 
 it('only frees rotation when the app was landscape before the player', async () => {
   const { calls, o, isPortrait } = fake();
-  const release = lockPlayerLandscape(Promise.resolve(o), false, isPortrait);
+  const { release } = lockPlayerLandscape(Promise.resolve(o), false, isPortrait);
   await settle();
   release();
   await settle();
@@ -53,7 +53,7 @@ it('only frees rotation when the app was landscape before the player', async () 
 it('frees rotation only after the portrait turn was reported (iOS kept landscape otherwise)', async () => {
   jest.useFakeTimers();
   const { calls, o, isPortrait } = fake(3);
-  const release = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
+  const { release } = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
   await jest.advanceTimersByTimeAsync(0);
   release();
   await jest.advanceTimersByTimeAsync(1000);
@@ -64,10 +64,39 @@ it('frees rotation only after the portrait turn was reported (iOS kept landscape
 it('frees rotation after a timeout when the turn is never reported', async () => {
   jest.useFakeTimers();
   const { calls, o, isPortrait } = fake(1000);
-  const release = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
+  const { release } = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
   await jest.advanceTimersByTimeAsync(0);
   release();
   await jest.advanceTimersByTimeAsync(2000);
   expect(calls.at(-1)).toBe('unlock (landscape)');
   jest.useRealTimers();
+});
+
+it('restore turns a portrait app back and resolves before anything leaves; release afterwards only frees rotation, once (Q2-07)', async () => {
+  const { calls, o, isPortrait } = fake();
+  const lock = lockPlayerLandscape(Promise.resolve(o), true, isPortrait);
+  await settle();
+  await lock.restore();
+  calls.push('navigate');
+  lock.release();
+  lock.release();
+  await settle();
+  expect(calls).toEqual([
+    'lock landscape',
+    'lock portrait-up',
+    'turned',
+    'navigate',
+    'unlock (portrait)',
+  ]);
+});
+
+it('a player that replaced this one (up-next) keeps landscape: the old one neither turns back nor unlocks (Q2-07)', async () => {
+  const first = fake();
+  const old = lockPlayerLandscape(Promise.resolve(first.o), true, first.isPortrait);
+  await settle();
+  lockPlayerLandscape(Promise.resolve(first.o), true, first.isPortrait);
+  await settle();
+  old.release();
+  await settle();
+  expect(first.calls).toEqual(['lock landscape', 'lock landscape']);
 });

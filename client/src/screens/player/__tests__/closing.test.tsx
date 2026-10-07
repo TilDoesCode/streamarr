@@ -57,8 +57,12 @@ describe('closing the player stops its loaders before the screen goes (F12-1, R1
   it('the play screen closes through it and wraps its content in the loader switch', () => {
     const source = readFileSync(join(__dirname, '../play-screen.tsx'), 'utf8');
     expect(source).toMatch(/<LoaderMotionContext value=\{!closing\}>/);
-    expect(source).toMatch(/closeAfterFrame\(\(\) =>\s*leavePlayer\(router/);
-    expect(source).toMatch(/closeAfterFrame\(\(\) => router\.replace\(href\)\)/);
+    // Every way out goes through `leave`, which waits a frame and the portrait turn (F14 Q2-07).
+    expect(source).toMatch(
+      /closeAfterFrame\(navigate, \(\) => orientation\.current\?\.restore\(\)\)/
+    );
+    expect(source).toMatch(/leave\(\(\) =>\s*leavePlayer\(router/);
+    expect(source).toMatch(/leave\(\(\) => router\.replace\(href\)\)/);
     expect(source).not.toMatch(/^\s*leavePlayer\(router/m);
   });
 });

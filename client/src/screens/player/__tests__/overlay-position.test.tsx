@@ -250,3 +250,54 @@ describe('subtitle cues above the control bar while it shows (Q2-02)', () => {
     jest.useRealTimers();
   });
 });
+
+describe('an unknown length (VLC without a probe, Q2-08)', () => {
+  it.each([
+    ['endless', Infinity],
+    ['not reported', 0],
+    ['NaN', Number.NaN],
+  ])('%s: no remaining time, no handle, never ∞ or NaN', async (_name, length) => {
+    const controller = fakeController();
+    Object.assign(controller, { duration: 0 });
+    await renderWithProviders(
+      <PlayerOverlay
+        controller={controller}
+        clock={{ position: 98, duration: length, buffered: 0 }}
+        title="Tears of Steel"
+        suspended={false}
+        onPanel={jest.fn()}
+        onClose={jest.fn()}
+        backRef={createRef()}
+      />
+    );
+    expect(screen.getByTestId('player-position')).toHaveTextContent('0:52');
+    expect(screen.getByTestId('player-remaining').props.children).toBe('');
+    // display: none (RNTL leaves hidden elements out of its queries).
+    expect(screen.queryByTestId('player-seek-thumb')).toBeNull();
+    const value = screen.getByTestId('player-seek').props.accessibilityValue;
+    expect(value).toEqual({ text: '0:52' });
+    expect(JSON.stringify(screen.toJSON())).not.toMatch(/∞|NaN|Infinity/);
+  });
+
+  it('a known length keeps the remaining time and the handle', async () => {
+    await overlay();
+    expect(screen.getByTestId('player-remaining')).toHaveTextContent('−9:08');
+    expect(screen.getByTestId('player-seek-thumb')).toBeOnTheScreen();
+  });
+});
+
+describe('a long title in the large header (iPad portrait, Q2-11)', () => {
+  afterEach(() => {
+    mockWindow = undefined;
+  });
+
+  it('steps the size down to fit one line before it is cut; the line count (and the hint below it) stays', async () => {
+    mockWindow = { width: 820, height: 1180, scale: 2, fontScale: 1 };
+    await overlay(undefined, { title: 'Die Leuchtturm-Chroniken · S1, F21 · Die lange Nacht' });
+    const title = screen.getByTestId('player-title');
+    expect(title.props.numberOfLines).toBe(1);
+    expect(title.props.adjustsFontSizeToFit).toBe(true);
+    expect(title.props.minimumFontScale).toBeGreaterThanOrEqual(0.5);
+    expect(title.props.minimumFontScale).toBeLessThan(0.8);
+  });
+});
