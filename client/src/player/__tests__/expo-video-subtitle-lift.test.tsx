@@ -67,3 +67,28 @@ describe('expo-video subtitle lift (F13n, Q2-02)', () => {
     expect(() => engine.setSubtitleLift(0.2)).not.toThrow();
   });
 });
+
+describe('AVPlayer ceiling: a lifted cue stays below the centre controls (Q2-12)', () => {
+  it('sends the ceiling with the lift, resends when only the ceiling moves, drops it with the lift', async () => {
+    const { engine, player } = engineWithPlayer();
+    await render(<engine.Surface />);
+    engine.setSubtitleLift(0.32, 0.59);
+    engine.setSubtitleLift(0.32, 0.59);
+    engine.setSubtitleLift(0.32, 0.6);
+    engine.setSubtitleLift(0, 0.6);
+    expect(player.subtitleLifts).toEqual([0.32, 0.32, 0]);
+    expect(player.subtitleCeilings).toEqual([0.59, 0.6, 0]);
+  });
+
+  it('a build whose native call takes the lift alone still gets the lift', async () => {
+    const { engine, player } = engineWithPlayer();
+    const lifts: number[] = [];
+    player.setSubtitleLift = (...args: (number | undefined)[]) => {
+      if (args.length > 1) throw new Error('Received 2 arguments, but 1 was expected');
+      lifts.push(args[0]!);
+    };
+    await render(<engine.Surface />);
+    engine.setSubtitleLift(0.3, 0.55);
+    expect(lifts).toEqual([0.3]);
+  });
+});

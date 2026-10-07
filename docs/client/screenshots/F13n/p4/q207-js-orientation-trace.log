@@ -1,0 +1,77 @@
+[orient] 11397 lock 1 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 27375 restore portrait 1
+[orient] 28107 release 1 owner 1
+[orient] 28164 watching 1
+[orient] 71844 lock 2 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 411 restore portrait 2
+[orient] 1077 release 2 owner 2
+[orient] 1128 watching 2
+[orient] 17262 lock 3 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 52929 restore portrait 3
+[orient] 53562 release 3 owner 3
+[orient] 53611 watching 3
+[orient] 68238 lock 4 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 9150 restore portrait 4
+[orient] 9801 release 4 owner 4
+[orient] 9855 watching 4
+[orient] 23757 lock 5 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 64823 restore portrait 5
+[orient] 65490 release 5 owner 5
+[orient] 65544 watching 5
+[orient] 81826 lock 6 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 92444 restore portrait 6
+[orient] 93051 release 6 owner 6
+[orient] 93101 watching 6
+[orient] 12158 lock 7 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 22745 restore portrait 7
+[orient] 23350 release 7 owner 7
+[orient] 23401 watching 7
+[orient] 31904 lock 8 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 42508 restore portrait 8
+[orient] 43207 release 8 owner 8
+[orient] 43262 watching 8
+[orient] 59901 lock 9 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 72244 restore portrait 9
+[orient] 72837 release 9 owner 9
+[orient] 72890 watching 9
+[orient] 90466 lock 10 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 12009 restore portrait 10
+[orient] 13366 release 10 owner 10
+[orient] 14122 watching 10
+[orient] 36653 lock 11 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 48965 restore portrait 11
+[orient] 50860 release 11 owner 11
+[orient] 51411 watching 11
+[orient] 64422 lock 12 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 79276 restore portrait 12
+[orient] 81417 release 12 owner 12
+[orient] 82602 watching 12
+[orient] 95726 lock 13 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 9056 restore portrait 13
+[orient] 14697 release 13 owner 13
+[orient] 15162 watching 13
+[orient] 22976 lock 14 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 39957 restore portrait 14
+[orient] 47002 release 14 owner 14
+[orient] 47511 watching 14
+[orient] 72326 lock 15 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 83156 restore portrait 15
+[orient] 85051 release 15 owner 15
+[orient] 85190 watching 15
+[orient] 3345 lock 16 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 11866 restore portrait 16
+[orient] 13658 release 16 owner 16
+[orient] 13782 watching 16
+[orient] 25311 lock 17 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 30780 restore portrait 17
+[orient] 32497 release 17 owner 17
+[orient] 32614 watching 17
+[orient] 48218 lock 18 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 53676 restore portrait 18
+[orient] 63322 release 18 owner 18
+[orient] 63580 watching 18
+[orient] 78372 lock 19 wasPortrait true prevOwner null {"scale":3,"width":402,"height":874,"fontScale":1}
+[orient] 85405 restore portrait 19
+[orient] 87232 release 19 owner 19
+[orient] 87358 watching 19
+[orient] 10722 device turn 4 watch 19

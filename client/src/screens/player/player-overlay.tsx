@@ -149,11 +149,14 @@ export function PlayerOverlay({
   const [flash, setFlash] = useState<string | null>(null);
   // Where the control bar starts: subtitle cues move above it while the controls show (Q2-02).
   const [barTop, setBarTop] = useState<number | null>(null);
+  // A short landscape phone has little room between the centre buttons and the bar: lifted cues stay below them (Q2-12).
+  const [centreBottom, setCentreBottom] = useState<number | null>(null);
   const engine = controller.engine;
   const lift = visible && barTop !== null && window.height > 0 ? 1 - barTop / window.height : 0;
+  const ceiling = lift > 0 && centreBottom !== null ? Math.min(1, centreBottom / window.height) : 0;
   useEffect(() => {
-    engine?.setSubtitleLift?.(Math.max(0, lift));
-  }, [engine, lift]);
+    engine?.setSubtitleLift?.(Math.max(0, lift), Math.max(0, ceiling));
+  }, [engine, lift, ceiling]);
   const scrubRef = useRef<number | null>(null);
   const handOver = useRef(false);
   const rowFocused = useRef(false);
@@ -607,6 +610,11 @@ export function PlayerOverlay({
             {tv || large ? null : (
               <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.centre]}>
                 <GlassGroup
+                  testID="player-centre"
+                  onLayout={(event) => {
+                    const { y, height } = event.nativeEvent.layout;
+                    setCentreBottom(y + height);
+                  }}
                   spacing={design.space.xl}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xl }}>
                   <GlassButton

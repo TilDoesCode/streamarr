@@ -244,9 +244,40 @@ describe('subtitle cues above the control bar while it shows (Q2-02)', () => {
         nativeEvent: { layout: { x: 0, y: 645, width: 1200, height: 128 } },
       })
     );
-    expect(setSubtitleLift).toHaveBeenLastCalledWith(1 - 645 / 800);
+    expect(setSubtitleLift).toHaveBeenLastCalledWith(1 - 645 / 800, 0);
     await act(async () => jest.advanceTimersByTime(6_000));
-    expect(setSubtitleLift).toHaveBeenLastCalledWith(0);
+    expect(setSubtitleLift).toHaveBeenLastCalledWith(0, 0);
+    jest.useRealTimers();
+  });
+
+  it('iPhone landscape 874×402: a lifted cue stays below the centre buttons (Q2-12); hidden, both go back', async () => {
+    jest.useFakeTimers();
+    mockWindow = { width: 874, height: 402, scale: 3, fontScale: 1 };
+    const controller = fakeController();
+    const setSubtitleLift = jest.fn();
+    Object.assign(controller.engine!, { setSubtitleLift });
+    await renderWithProviders(
+      <PlayerOverlay
+        controller={controller}
+        clock={{ position: 46, duration: 600, buffered: 60 }}
+        title="Sherlock"
+        suspended={false}
+        onPanel={jest.fn()}
+        onClose={jest.fn()}
+        backRef={createRef()}
+      />
+    );
+    await act(async () => {
+      fireEvent(screen.getByTestId('player-centre'), 'layout', {
+        nativeEvent: { layout: { x: 300, y: 165, width: 274, height: 72 } },
+      });
+      fireEvent(screen.getByTestId('player-bar'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 274, width: 830, height: 110 } },
+      });
+    });
+    expect(setSubtitleLift).toHaveBeenLastCalledWith(1 - 274 / 402, 237 / 402);
+    await act(async () => jest.advanceTimersByTime(6_000));
+    expect(setSubtitleLift).toHaveBeenLastCalledWith(0, 0);
     jest.useRealTimers();
   });
 });

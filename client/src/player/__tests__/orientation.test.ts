@@ -128,3 +128,75 @@ it('frees rotation only once the window turned with the dismissal and settled (Q
   expect(calls.at(-1)).toMatch(/^unlock/);
   jest.useRealTimers();
 });
+
+/** The patched expo-screen-orientation's device turns: `turn(n)` is the held device turning to orientation n. */
+function deviceTurns() {
+  const listeners = new Set<(orientation: number) => void>();
+  const turns = (listener: (orientation: number) => void) => {
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  };
+  return {
+    turns,
+    listeners,
+    turn: (orientation: number) => listeners.forEach((l) => l(orientation)),
+  };
+}
+
+describe('a portrait phone stays portrait after the player until the device itself turns (Q2-07)', () => {
+  it('keeps the portrait lock after the close; a turn to portrait changes nothing, a turn to landscape frees rotation once', async () => {
+    jest.useFakeTimers();
+    const { calls, o, isPortrait } = fake();
+    const device = deviceTurns();
+    const { release } = lockPlayerLandscape(Promise.resolve(o), true, isPortrait, device.turns);
+    await jest.advanceTimersByTimeAsync(0);
+    release();
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(calls).toEqual(['lock landscape', 'lock portrait-up', 'turned']);
+    device.turn(Orientation.PORTRAIT_UP);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(calls.at(-1)).toBe('turned');
+    device.turn(Orientation.LANDSCAPE_LEFT);
+    device.turn(4);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(calls.filter((call) => call.startsWith('unlock'))).toHaveLength(1);
+    expect(device.listeners.size).toBe(0);
+    jest.useRealTimers();
+  });
+
+  it('the next player ends the wait: a later turn does not unlock under it', async () => {
+    jest.useFakeTimers();
+    const { calls, o, isPortrait } = fake();
+    const device = deviceTurns();
+    lockPlayerLandscape(Promise.resolve(o), true, isPortrait, device.turns).release();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(device.listeners.size).toBe(1);
+    lockPlayerLandscape(Promise.resolve(o), true, isPortrait, device.turns);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(device.listeners.size).toBe(0);
+    device.turn(Orientation.LANDSCAPE_LEFT);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(calls.filter((call) => call.startsWith('unlock'))).toEqual([]);
+    jest.useRealTimers();
+  });
+
+  it('a phone held in landscape frees rotation at once; a build without device turns falls back to the timed unlock', async () => {
+    jest.useFakeTimers();
+    const landscape = fake();
+    const device = deviceTurns();
+    lockPlayerLandscape(
+      Promise.resolve(landscape.o),
+      false,
+      landscape.isPortrait,
+      device.turns
+    ).release();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(landscape.calls).toEqual(['lock landscape', 'unlock (landscape)']);
+    expect(device.listeners.size).toBe(0);
+    const old = fake();
+    lockPlayerLandscape(Promise.resolve(old.o), true, old.isPortrait, () => null).release();
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(old.calls.at(-1)).toBe('unlock (portrait)');
+    jest.useRealTimers();
+  });
+});

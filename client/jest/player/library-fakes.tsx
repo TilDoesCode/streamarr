@@ -359,9 +359,13 @@ export class FakeExpoPlayer {
   readHealthAsync?: (withFrames?: boolean) => Promise<FakeExpoPlayer['health']> = async () =>
     this.health;
 
-  /** Every lift the patched `setSubtitleLift` received (F13n). */
+  /** Every lift (and ceiling, AVPlayer) the patched `setSubtitleLift` received (F13n, Q2-12). */
   readonly subtitleLifts: number[] = [];
-  setSubtitleLift?: (lift: number) => void = (lift) => void this.subtitleLifts.push(lift);
+  readonly subtitleCeilings: (number | undefined)[] = [];
+  setSubtitleLift?: (lift: number, ceiling?: number) => void = (lift, ceiling) => {
+    this.subtitleLifts.push(lift);
+    this.subtitleCeilings.push(ceiling);
+  };
 
   /** The S6 patch's system pause/resume (`call`, `otherAudio`, `headphones`, `locked`, `airplayLost`, `remote`, `resume`). */
   system(paused: boolean, cause: string): void {

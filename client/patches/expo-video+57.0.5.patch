@@ -483,10 +483,10 @@ index c2ebd04..f4e8810 100644
          player.ref.pause()
        }
 diff --git a/node_modules/expo-video/ios/VideoModule.swift b/node_modules/expo-video/ios/VideoModule.swift
-index 2bf2f75..d7fe186 100644
+index 2bf2f75..32cead4 100644
 --- a/node_modules/expo-video/ios/VideoModule.swift
 +++ b/node_modules/expo-video/ios/VideoModule.swift
-@@ -333,6 +333,16 @@ public final class VideoModule: Module {
+@@ -333,6 +333,17 @@ public final class VideoModule: Module {
          player.seeker.scrubbingModeOptions = options
        }
  
@@ -494,8 +494,9 @@ index 2bf2f75..d7fe186 100644
 +        return player.health.read(withFrames: withFrames ?? true)
 +      }.runOnQueue(.main)
 +
-+      Function("setSubtitleLift") { (player: VideoPlayer, lift: Double) in
++      Function("setSubtitleLift") { (player: VideoPlayer, lift: Double, ceiling: Double?) in
 +        DispatchQueue.main.async {
++          player.subtitleCeiling = ceiling ?? 0
 +          player.subtitleLift = lift
 +        }
 +      }
@@ -504,10 +505,10 @@ index 2bf2f75..d7fe186 100644
          player.ref.play()
        }
 diff --git a/node_modules/expo-video/ios/VideoPlayer.swift b/node_modules/expo-video/ios/VideoPlayer.swift
-index ab8807e..12872aa 100644
+index ab8807e..caaba46 100644
 --- a/node_modules/expo-video/ios/VideoPlayer.swift
 +++ b/node_modules/expo-video/ios/VideoPlayer.swift
-@@ -12,6 +12,11 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -12,6 +12,14 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
    private var dangerousPropertiesStore = DangerousPropertiesStore()
    lazy var audioTracks: VideoPlayerAudioTracks = VideoPlayerAudioTracks(owner: self)
    lazy var seeker: VideoPlayerSeeker = VideoPlayerSeeker(player: self)
@@ -516,10 +517,13 @@ index ab8807e..12872aa 100644
 +  var subtitleLift: Double = 0 {
 +    didSet { applySubtitleLift() }
 +  }
++  /// Streamarr: the share of the view from the top a lifted cue must stay below (the centre controls, Q2-12); 0 = none.
++  var subtitleCeiling: Double = 0
++
    private var tracksLoadingTask: Task<(), Never>?
    private let didRelease = Mutex(false)
  
-@@ -175,6 +180,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -175,6 +183,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      observer = VideoPlayerObserver(owner: self, videoSourceLoader: videoSourceLoader)
      observer?.registerDelegate(delegate: self)
      VideoManager.shared.register(videoPlayer: self)
@@ -527,7 +531,7 @@ index ab8807e..12872aa 100644
  
      // Disable automatic subtitle selection
      let selectionCriteria = AVPlayerMediaSelectionCriteria(preferredLanguages: [], preferredMediaCharacteristics: [.legible])
-@@ -370,7 +376,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -370,7 +379,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
    // MARK: - VideoPlayerObserverDelegate
  
    func onStatusChanged(player: AVPlayer, oldStatus: PlayerStatus?, newStatus: PlayerStatus, error: Exception?) {
@@ -536,7 +540,7 @@ index ab8807e..12872aa 100644
      let payload = StatusChangedEventPayload(status: newStatus, oldStatus: oldStatus, error: errorRecord)
      safeEmit(event: "statusChange", payload: payload)
      status = newStatus
-@@ -420,6 +426,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -420,6 +429,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      )
      safeEmit(event: "sourceChange", payload: payload)
      newVideoPlayerItem?.preferredForwardBufferDuration = bufferOptions.preferredForwardBufferDuration
@@ -544,7 +548,7 @@ index ab8807e..12872aa 100644
    }
  
    func onTimeUpdate(player: AVPlayer, timeUpdate: TimeUpdate) {
-@@ -484,6 +491,39 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
+@@ -484,6 +494,39 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
      safeEmit(event: "isExternalPlaybackActiveChange", payload: payload)
    }
  
@@ -810,10 +814,10 @@ index 0000000..5db0b15
 +}
 diff --git a/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
 new file mode 100644
-index 0000000..9c29fd4
+index 0000000..b2ec1ba
 --- /dev/null
 +++ b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,67 @@
 +// Streamarr: keeps subtitle cues above the app's control bar while it shows (F13n, Q2-02).
 +
 +import AVKit
@@ -833,8 +837,7 @@ index 0000000..9c29fd4
 +      return
 +    }
 +    let key = kCMTextMarkupAttribute_OrthogonalLinePositionPercentageRelativeToWritingDirection as String
-+    let share = pictureShare(of: subtitleLift)
-+    let line: Double? = share > 0 ? max(0, (1 - share) * 100 - Self.cueGapPercent) : nil
++    let line = subtitleLine()
 +    let current = item.textStyleRules?.first?.textMarkupAttributes[key] as? Double
 +    guard line != current else {
 +      return
@@ -842,28 +845,44 @@ index 0000000..9c29fd4
 +    item.textStyleRules = line.flatMap { AVTextStyleRule(textMarkupAttributes: [key: $0]) }.map { [$0] }
 +  }
 +
-+  /// The bar covers the bottom `lift` of the view; the cues are placed in the picture, which a letterbox makes smaller.
-+  private func pictureShare(of lift: Double) -> Double {
-+    guard lift > 0 else {
-+      return 0
++  /// The cue's top in percent of the picture: above the bar by the gap, but never above the ceiling (short windows, Q2-12).
++  private func subtitleLine() -> Double? {
++    guard subtitleLift > 0 else {
++      return nil
 +    }
++    guard let picture = pictureFrame() else {
++      return max(0, (1 - subtitleLift) * 100 - Self.cueGapPercent)
++    }
++    let barTop = Double(picture.view.height) * (1 - subtitleLift)
++    let share = min(0.8, max(0, (Double(picture.frame.maxY) - barTop) / Double(picture.frame.height)))
++    guard share > 0 else {
++      return nil
++    }
++    var line = max(0, (1 - share) * 100 - Self.cueGapPercent)
++    if subtitleCeiling > 0 {
++      let ceiling = (Double(picture.view.height) * subtitleCeiling - Double(picture.frame.minY)) / Double(picture.frame.height) * 100
++      line = max(line, min(ceiling, (1 - share) * 100))
++    }
++    return line
++  }
++
++  /// The picture inside the view showing this player (a letterbox makes it smaller than the view).
++  private func pictureFrame() -> (view: CGRect, frame: CGRect)? {
 +    let views = VideoManager.shared.videoViews(of: self)
 +    guard let view = views.first(where: { $0.window != nil }) ?? views.first,
 +      let size = ref.currentItem?.presentationSize, size.width > 0, size.height > 0
 +    else {
-+      return lift
++      return nil
 +    }
 +    let bounds = view.bounds
 +    let fit = view.playerViewController.videoGravity == .resizeAspectFill
 +      ? max(bounds.width / size.width, bounds.height / size.height)
 +      : min(bounds.width / size.width, bounds.height / size.height)
-+    let pictureHeight = Double(size.height * fit)
-+    let pictureBottom = Double(bounds.midY) + pictureHeight / 2
-+    guard bounds.height > 0, pictureHeight > 0 else {
-+      return lift
++    let height = size.height * fit
++    guard bounds.height > 0, height > 0 else {
++      return nil
 +    }
-+    let barTop = Double(bounds.height) * (1 - lift)
-+    return min(0.8, max(0, (pictureBottom - barTop) / pictureHeight))
++    return (bounds, CGRect(x: 0, y: bounds.midY - height / 2, width: size.width * fit, height: height))
 +  }
 +}
 diff --git a/node_modules/expo-video/ios/VideoView.swift b/node_modules/expo-video/ios/VideoView.swift

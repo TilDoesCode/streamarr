@@ -1,0 +1,92 @@
+diff --git a/node_modules/expo-screen-orientation/ios/ScreenOrientationModule.swift b/node_modules/expo-screen-orientation/ios/ScreenOrientationModule.swift
+index 59dd0ee..63f3872 100644
+--- a/node_modules/expo-screen-orientation/ios/ScreenOrientationModule.swift
++++ b/node_modules/expo-screen-orientation/ios/ScreenOrientationModule.swift
+@@ -2,13 +2,18 @@ import ExpoModulesCore
+ 
+ public class ScreenOrientationModule: Module, ScreenOrientationController {
+   static let didUpdateDimensionsEvent = "expoDidUpdateDimensions"
++  static let deviceOrientationEvent = "streamarrDeviceOrientationDidChange"
++  private var deviceOrientationObserver: NSObjectProtocol?
+   let screenOrientationRegistry = ScreenOrientationRegistry.shared
+   private var lastSetOrientationMask: UIInterfaceOrientationMask?
+ 
+   public func definition() -> ModuleDefinition {
+     Name("ExpoScreenOrientation")
+ 
+-    Events(ScreenOrientationModule.didUpdateDimensionsEvent)
++    Events(ScreenOrientationModule.didUpdateDimensionsEvent, ScreenOrientationModule.deviceOrientationEvent)
++
++    // Streamarr (Q2-07): the held device turned (the interface may stay locked); the player frees rotation on a real turn.
++    Constant("deviceOrientationEvents") { true }
+ 
+     AsyncFunction("lockAsync") { (orientationLock: ModuleOrientationLock) in
+       let orientationMask = orientationLock.toInterfaceOrientationMask()
+@@ -76,10 +81,22 @@ public class ScreenOrientationModule: Module, ScreenOrientationController {
+ 
+     OnCreate {
+       screenOrientationRegistry.registerController(self)
++      deviceOrientationObserver = NotificationCenter.default.addObserver(
++        forName: UIDevice.orientationDidChangeNotification,
++        object: nil,
++        queue: .main
++      ) { [weak self] _ in
++        self?.sendEvent(ScreenOrientationModule.deviceOrientationEvent, [
++          "orientation": ModuleOrientation.from(device: UIDevice.current.orientation).rawValue
++        ])
++      }
+     }
+ 
+     OnDestroy {
+       screenOrientationRegistry.unregisterController(self)
++      if let deviceOrientationObserver {
++        NotificationCenter.default.removeObserver(deviceOrientationObserver)
++      }
+     }
+ 
+     OnAppEntersForeground {
+diff --git a/node_modules/expo-screen-orientation/ios/ScreenOrientationRegistry.swift b/node_modules/expo-screen-orientation/ios/ScreenOrientationRegistry.swift
+index f0cbbac..dee1536 100644
+--- a/node_modules/expo-screen-orientation/ios/ScreenOrientationRegistry.swift
++++ b/node_modules/expo-screen-orientation/ios/ScreenOrientationRegistry.swift
+@@ -94,9 +94,11 @@ public class ScreenOrientationRegistry: NSObject, UIApplicationDelegate {
+         let windowScene = self.rootViewController?.view.window?.windowScene
+         windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: orientationMask))
+         self.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
++      } else {
++        // Streamarr (Q2-07): iOS 16+ rotates through the geometry request; a faked device orientation outlived the lock.
++        UIDevice.current.setValue(newOrientation.rawValue, forKey: "orientation")
++        UIViewController.attemptRotationToDeviceOrientation()
+       }
+-      UIDevice.current.setValue(newOrientation.rawValue, forKey: "orientation")
+-      UIViewController.attemptRotationToDeviceOrientation()
+ 
+       if self.currentScreenOrientation == .unknown {
+         // CurrentScreenOrientation might be unknown (especially just after launch), but at this point we already know it.
+diff --git a/node_modules/expo-screen-orientation/ios/enums/ModuleOrientation.swift b/node_modules/expo-screen-orientation/ios/enums/ModuleOrientation.swift
+index ef59aec..5d98cf2 100644
+--- a/node_modules/expo-screen-orientation/ios/enums/ModuleOrientation.swift
++++ b/node_modules/expo-screen-orientation/ios/enums/ModuleOrientation.swift
+@@ -25,6 +25,22 @@ enum ModuleOrientation: Int, Enumerable {
+     }
+   }
+ 
++  /// Streamarr: the device's landscape left is the interface's landscape right (home button / camera on the other side).
++  static func from(device deviceOrientation: UIDeviceOrientation) -> ModuleOrientation {
++    switch deviceOrientation {
++    case .portrait:
++      return .portraitUp
++    case .portraitUpsideDown:
++      return .portraitDown
++    case .landscapeLeft:
++      return .landscapeRight
++    case .landscapeRight:
++      return .landscapeLeft
++    default:
++      return .unknown
++    }
++  }
++
+   func toInterfaceOrientation() -> UIInterfaceOrientation {
+     switch self {
+     case .portraitUp:

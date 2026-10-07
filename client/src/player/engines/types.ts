@@ -118,8 +118,9 @@ export interface PlayerEngine {
   setAudioTrack(id: string): void;
   /** `null` turns subtitles off. */
   setSubtitleTrack(id: string | null): void;
-  /** Keeps subtitle cues above the bottom `fraction` of the picture (the visible control bar); 0 = their own place. */
-  setSubtitleLift?(fraction: number): void;
+  /** Keeps subtitle cues above the bottom `fraction` of the picture (the visible control bar) and below `ceiling` (the
+   * centre controls, a share from the top); 0 = their own place / no ceiling. */
+  setSubtitleLift?(fraction: number, ceiling?: number): void;
   setMuted?(muted: boolean): void;
   /** Picture-in-picture (iPhone/iPad and Android phones, expo-video): entered by `startPictureInPicture` or on leaving the app. */
   readonly supportsPictureInPicture?: boolean;

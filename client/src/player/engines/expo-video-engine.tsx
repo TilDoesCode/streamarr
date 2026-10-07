@@ -44,6 +44,8 @@ function sameTrack(a: AudioTrack | SubtitleTrack | null, b: AudioTrack | Subtitl
   return a.language === b.language && a.label === b.label;
 }
 
+const share = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;
+
 // Picture-in-picture and AirPlay on phones/tablets; TV has neither.
 const PIP = (Platform.OS === 'android' || Platform.OS === 'ios') && !Platform.isTV;
 const AIRPLAY = Platform.OS === 'ios' && !Platform.isTV;
@@ -126,6 +128,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   /** Subtitle lift (Q2-02): what the overlay wants, what the native player has, and whether a VideoView shows it. */
   private subtitleLift = 0;
   private sentLift = 0;
+  private subtitleCeiling = 0;
+  private sentCeiling = 0;
   private views = 0;
 
   constructor() {
@@ -428,17 +432,25 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   /** The patched player moves the cues (Exo: SubtitleView padding, AVPlayer: text style rules) and keeps the lift. */
-  setSubtitleLift(fraction: number): void {
-    this.subtitleLift = Math.round(Math.min(1, Math.max(0, fraction)) * 1000) / 1000;
+  setSubtitleLift(fraction: number, ceiling = 0): void {
+    this.subtitleLift = share(fraction);
+    this.subtitleCeiling = this.subtitleLift > 0 ? share(ceiling) : 0;
     this.sendLift();
   }
 
   private sendLift(): void {
     const probe = this.player as unknown as NativeProbe;
     if (this.released || this.views <= 0 || typeof probe.setSubtitleLift !== 'function') return;
-    if (this.subtitleLift === this.sentLift) return;
+    if (this.subtitleLift === this.sentLift && this.subtitleCeiling === this.sentCeiling) return;
     this.sentLift = this.subtitleLift;
-    probe.setSubtitleLift(this.subtitleLift);
+    this.sentCeiling = this.subtitleCeiling;
+    // Only AVPlayer anchors a cue's top and needs the ceiling; Exo's call takes the lift alone.
+    if (Platform.OS !== 'ios') return probe.setSubtitleLift(this.subtitleLift);
+    try {
+      probe.setSubtitleLift(this.subtitleLift, this.subtitleCeiling);
+    } catch {
+      probe.setSubtitleLift(this.subtitleLift);
+    }
   }
 
   /** A terminal card: stop decoding and loading (the source is unloaded); the card's Retry loads it again (S6u). */
