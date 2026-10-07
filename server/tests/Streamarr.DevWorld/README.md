@@ -114,6 +114,10 @@ Series pages) and the genre lists from the catalog: a title matches a genre id w
 `communityRating`, `newest` by `year`. Pages hold 4 titles (`CannedTmdbClient.DiscoverPageSize`),
 so the 9 movies span 3 pages.
 
+Search: the canned TMDB matches like TMDB's search as you type — every query word may be the start of a word of
+`title`, `titleDe` or `originalTitle` (product `TitleMatcher`: exact > starts with > word starts), so "Ligh",
+"Leucht" and "Chron" find The Lighthouse Logs.
+
 Viewer language: with `Accept-Language: de` the canned TMDB answers like TMDB with `language=de` — the fixture's
 `titleDe`, `overviewDe`, `taglineDe`, `genresDe` and episode `titleDe`/`overviewDe`, "Staffel N" and German genre-list
 names — and English where a fixture has no German text (Sprite Fright, Wing It!, Pioneer One have no German overview).

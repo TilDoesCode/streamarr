@@ -167,7 +167,7 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
 
 | What | How it works | Cost |
 |---|---|---|
-| Search | TMDB movie and series candidates for a query. | TMDB only (cached) |
+| Search | TMDB movie and series candidates for a query, as you type: exact title, then titles starting with the query, then every typed word starting a title word ("Ligh", "Leucht"). | TMDB only (cached) |
 | Home rows | TMDB **trending** and **popular** movies and series. | TMDB only, cached for `Tmdb:DiscoverCacheTtlHours` (default 6 h) |
 | Movies / Series pages | One page of TMDB discover for movies or series, filtered by genre and sorted by popular, top rated or newest, with paging; the genre list comes from TMDB. | TMDB only, each page cached like the home rows; genres for `Tmdb:CacheTtlHours` |
 | Movie / series details | Metadata (incl. title logo, certification), the viewer's watch state, and for series the season list with played counts and the **next episode** to play (`start`, `next` or `resume`). | TMDB only (cached) |

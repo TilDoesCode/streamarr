@@ -3,6 +3,7 @@ using System.Text;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Media;
 using Streamarr.Core.Providers;
+using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 
 namespace Streamarr.DevWorld;
@@ -245,28 +246,14 @@ public sealed class CannedTmdbClient(DevCatalog catalog, string artworkOrigin = 
     /// <summary>Exact title first, then prefix, then token matches; ties by community rating.</summary>
     private IEnumerable<TmdbMatch> Candidates(string query, MediaType? mediaType)
     {
-        var queryTokens = Text.Tokens(query);
-        if (queryTokens.Length == 0)
-            return [];
-        var q = string.Join(' ', queryTokens);
         var titles = catalog.Movies.Select(m => (Entry: (TitleEntry)m, Type: MediaType.Movie))
             .Concat(catalog.Series.Select(s => (Entry: (TitleEntry)s, Type: MediaType.Tv)))
             .Where(t => mediaType is null || t.Type == mediaType);
 
+        // Like TMDB's search as you type: every query word may be the start of a title word.
         return titles
-            .Select(t =>
-            {
-                var names = new[] { t.Entry.Title, t.Entry.TitleDe, t.Entry.OriginalTitle }
-                    .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .Select(n => string.Join(' ', Text.Tokens(n!)))
-                    .ToList();
-                var score = names.Any(n => n == q) ? 3
-                    : names.Any(n => n.StartsWith(q, StringComparison.Ordinal)) ? 2
-                    : names.Any(n => queryTokens.All(n.Split(' ').Contains)) ? 1
-                    : 0;
-                return (t.Entry, t.Type, Score: score);
-            })
-            .Where(t => t.Score > 0)
+            .Select(t => (t.Entry, t.Type, Score: TitleMatcher.Match(query, t.Entry.Title, t.Entry.TitleDe, t.Entry.OriginalTitle)))
+            .Where(t => t.Score > TitleMatch.None)
             .OrderByDescending(t => t.Score)
             .ThenByDescending(t => t.Entry.CommunityRating ?? 0)
             .Select(t => ToMatch(t.Entry, t.Type));

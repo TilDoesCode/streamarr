@@ -1067,6 +1067,10 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
   machine API keys and anonymous calls get `401 unauthorized`.
 - **Module gate:** while the module is off, every catalog endpoint answers `404 module_disabled`.
 - **Password change:** while an admin-assigned password must be changed, `403 password_change_required`.
+- **Search as you type:** `GET …/catalog/search?q=` ranks TMDB's candidates by their title (localized and original):
+  the exact title first, then titles starting with the query, then titles where every query word starts some title
+  word ("Ligh", "lighthouse lo", "Leucht", "Chron"; case-, accent- and umlaut-insensitive with ä = a = ae and ß = ss,
+  words split at spaces, hyphens and apostrophes), then the remaining TMDB results in TMDB's order.
 - **Age policy:** lists (search, discover, browse) silently leave out titles the viewer may not watch.
   Details, seasons and versions of such a title answer `403 age_restricted` with `params`
   (`reason`: `above_age_limit`, `unrated_blocked` or `rating_unavailable`; plus `rating`,

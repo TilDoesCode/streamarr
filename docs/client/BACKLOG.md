@@ -234,6 +234,10 @@ Grouped by device. None of these can be closed from code or an emulator.
   Fix round 1: a lapsed reservation never revives on later access (its resume competes like a new start); request
   restarts of a session are paced (burst of 2, then 1/s).
 
+- B20 (2026-10-07): viewer search as you type (Q2-03): every typed word may start a title word ("Ligh", "Leucht",
+  "Chron"); ranking exact > starts with > word starts > rest of TMDB; Core `TitleMatcher` also drives Dev World's canned
+  TMDB (the source of the symptom).
+
 - B19 (2026-10-07): "release ids that played minutes ago answer release_not_found" was a client mix-up (the play
   screen sent the previous title's releaseId, see Player); ids stay resolvable (14 min live probe, catalog refresh).
   `release_not_found` now says why (`params.reason`: `otherTitle` | `unknown`); Dev World `/devworld/playbacks` lists a

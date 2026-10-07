@@ -1,5 +1,6 @@
 using Streamarr.Core.Media;
 using Streamarr.Core.Parser;
+using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Controllers;
 using Streamarr.Server.Persistence.Entities;
@@ -57,9 +58,9 @@ public sealed class ViewerCatalogService(
     public async Task<CatalogSearchResponse> SearchAsync(ViewerEntity viewer, string query, MediaType? type, int limit, CancellationToken ct)
     {
         var candidates = await TmdbAsync(() => _tmdb.SearchCandidatesAsync(query, type, ct));
-        var matches = candidates
+        var matches = Ranked(query, candidates
             .Where(c => type is null || c.MediaType == type)
-            .DistinctBy(c => (c.MediaType, c.TmdbId))
+            .DistinctBy(c => (c.MediaType, c.TmdbId)))
             .Take(MaxSearchResults)
             .ToList();
         var (allowed, lookupsFailed) = await AllowedAsync(viewer, matches, ct);
@@ -67,6 +68,14 @@ public sealed class ViewerCatalogService(
             throw Unavailable();
         return new CatalogSearchResponse { Items = allowed.Take(limit).Select(Item).ToList() };
     }
+
+    /// <summary>Exact title, then titles starting with the query, then every query word starting a title word; the rest keep TMDB's order.</summary>
+    internal static IEnumerable<TmdbMatch> Ranked(string query, IEnumerable<TmdbMatch> candidates)
+        => candidates
+            .Select((candidate, index) => (Candidate: candidate, Index: index, Match: TitleMatcher.Match(query, candidate.Title, candidate.OriginalTitle)))
+            .OrderByDescending(c => c.Match)
+            .ThenBy(c => c.Index)
+            .Select(c => c.Candidate);
 
     public async Task<CatalogDiscoverResponse> DiscoverAsync(ViewerEntity viewer, CancellationToken ct)
     {

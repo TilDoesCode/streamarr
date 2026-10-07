@@ -18,6 +18,8 @@ during play the playback GET follows a real PAR2 repair to ready (Lighthouse Log
 volumes go missing (S01E25); each repairs once per instance (the server keeps the articles it read).
 A version that played starts again with its id after 90 s of play and a catalog refresh; the previous title's id answers
 release_not_found with reason otherTitle and shows up in /devworld/playbacks with error and errorReleaseId.
+The viewer search matches typed word starts (Ligh, Leucht, Chron, multi-word) with the title first; restricted titles stay
+hidden from the child profile.
 Exits non-zero when a check fails.
 """
 import json
@@ -26,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import faults_smoke as fs  # noqa: E402  (parses argv and loads the manifest on import)
@@ -562,6 +565,41 @@ def check_release_id_stable():
                 f"without id -> {recovered['state']} {((recovered.get('version') or {}).get('releaseId') or '')[:12]}")
 
 
+def search_titles(token, query, language):
+    r = fs.raw("GET", "/api/v1/viewer/catalog/search?" + urllib.parse.urlencode({"q": query, "limit": 20}), token=token,
+               headers={"Accept-Language": language})
+    return r.status, [item["title"] for item in (r.json() or {}).get("items", [])]
+
+
+def check_search_as_you_type():
+    """Every typed word may be the start of a title word (B20): Ligh, Leucht, Chron and multi-word queries find the title first."""
+    anna = fs.ctx.anna["accessToken"]
+    kind = fs.login("kind", "search-check")["accessToken"]
+    cases = [("Ligh", "en", "The Lighthouse Logs"), ("lighthouse lo", "en", "The Lighthouse Logs"),
+             ("Leucht", "de", "Die Leuchtturm-Chroniken"), ("Chron", "de", "Die Leuchtturm-Chroniken"),
+             ("leuchtturm chr", "de", "Die Leuchtturm-Chroniken"), ("Sin", "en", "Sintel"), ("sherl", "de", "Sherlock")]
+    ok, out = True, []
+    for query, language, title in cases:
+        status, titles = search_titles(anna, query, language)
+        good = status == 200 and titles[:1] == [title]
+        ok &= good
+        out.append(f"{query!r}/{language} -> {titles[:2] if good else (status, titles)}")
+    status, titles = search_titles(anna, "ight", "en")
+    ok &= status == 200 and "The Lighthouse Logs" not in titles
+    out.append(f"'ight' -> {titles}")
+    restricted = [t["title"] for t in fs.manifest["titles"] if not t["access"]["kindAllowed"]]
+    leaked = []
+    for title in restricted:
+        prefix = title.split()[-1][:4]
+        status, found = search_titles(anna, prefix, "en")
+        _, child = search_titles(kind, prefix, "en")
+        leaked += [t for t in child if t in restricted]
+        ok &= title in found
+    ok &= not leaked
+    out.append(f"restricted for kind ({len(restricted)}): shown to anna, hidden from kind (leaked {leaked})")
+    return ok, "; ".join(out)
+
+
 def check_resume_continuity():
     """A transcode resume at the parked front continues the previous segment exactly: no repeated frame, no audio overlap (B17)."""
     anna, admin = fs.ctx.anna["accessToken"], admin_token()
@@ -609,7 +647,7 @@ CHECKS = [("segment_timeout", check_segment_timeout), ("seek_back_evicted", chec
           ("own_seek_back", check_own_seek_back), ("parked_resume_capacity", check_parked_resume_capacity),
           ("resume_continuity", check_resume_continuity), ("lapsed_reservation", check_lapsed_reservation),
           ("own_flip_pacing", check_own_flip_pacing), ("live_repair", check_live_repair),
-          ("release_id_stable", check_release_id_stable)]
+          ("release_id_stable", check_release_id_stable), ("search_as_you_type", check_search_as_you_type)]
 
 
 def main():
