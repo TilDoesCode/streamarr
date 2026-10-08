@@ -266,8 +266,8 @@ jobs:
           trap 'rm -f "$STREAMARR_ANDROID_KEYSTORE"' EXIT
           printf '%s' "$STREAMARR_ANDROID_KEYSTORE_B64" | base64 --decode > "$STREAMARR_ANDROID_KEYSTORE"
           ./gradlew assembleRelease --no-daemon
-          mkdir -p ../../artifacts/android
-          apk="../../artifacts/android/streamarr-android-tv-${RELEASE_VERSION#v}.apk"
+          mkdir -p ../artifacts/android
+          apk="../artifacts/android/streamarr-android-tv-${RELEASE_VERSION#v}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/streamarr-certs.txt"
           cat "$RUNNER_TEMP/streamarr-certs.txt"
