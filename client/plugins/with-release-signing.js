@@ -1,6 +1,8 @@
 const { createRunOncePlugin, withAppBuildGradle } = require('expo/config-plugins');
 
-function releaseVersion(value = process.env.STREAMARR_ANDROID_VERSION ?? require('../package.json').version) {
+function releaseVersion(
+  value = process.env.STREAMARR_ANDROID_VERSION ?? require('../package.json').version
+) {
   const version = value.replace(/^v/, '');
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
     throw new Error('STREAMARR_ANDROID_VERSION must be MAJOR.MINOR.PATCH (optional v prefix)');
@@ -41,14 +43,23 @@ function configureRelease(contents, value) {
   if (!/versionCode \d+/.test(original) || !/versionName "[^"]+"/.test(original)) {
     throw new Error('with-release-signing: unsupported Android Gradle version fields');
   }
-  return original.replace(/versionCode \d+/, `versionCode ${code}`)
-    .replace(/versionName "[^"]+"/, `versionName "${version}"`) + SIGNING;
+  return (
+    original
+      .replace(/versionCode \d+/, `versionCode ${code}`)
+      .replace(/versionName "[^"]+"/, `versionName "${version}"`) + SIGNING
+  );
 }
 
-module.exports = createRunOncePlugin((config) => withAppBuildGradle(config, (cfg) => {
-  if (cfg.modResults.language !== 'groovy') throw new Error('with-release-signing requires Groovy');
-  cfg.modResults.contents = configureRelease(cfg.modResults.contents);
-  return cfg;
-}), 'streamarr-with-release-signing', '1.0.0');
+module.exports = createRunOncePlugin(
+  (config) =>
+    withAppBuildGradle(config, (cfg) => {
+      if (cfg.modResults.language !== 'groovy')
+        throw new Error('with-release-signing requires Groovy');
+      cfg.modResults.contents = configureRelease(cfg.modResults.contents);
+      return cfg;
+    }),
+  'streamarr-with-release-signing',
+  '1.0.0'
+);
 module.exports.configureRelease = configureRelease;
 module.exports.releaseVersion = releaseVersion;
