@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -25,6 +25,9 @@ import { BrandMark } from './brand-mark';
 import { SHELL } from './shell-metrics';
 import { useShell } from './use-shell';
 import { useWindowControlsInset } from './window-controls';
+
+const PILL = theme === 'streamybox';
+const CENTER = { alignItems: 'center', justifyContent: 'center' } as const;
 
 type KeyEvent = { key: string; preventDefault: () => void };
 type Click = Partial<Pick<MouseEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'button'>> & {
@@ -183,6 +186,7 @@ function RailItem({
   const { s } = useShell();
   const label = t(`tabs.${tab.id}`);
   const size = s(SHELL.rail.item);
+  const noRing = useSharedValue(0);
   // react-native-web renders a View with `href` as <a>: middle-click and "open in new tab" work natively.
   const anchor = Platform.OS === 'web' ? { href: tab.href } : {};
   return (
@@ -202,7 +206,7 @@ function RailItem({
         onPress();
       }}
       style={{ width: size, height: size }}>
-      <FocusLift kind="button" radius={size / 2}>
+      <FocusLift kind="button" radius={size / 2} ringTo={PILL ? noRing : undefined}>
         <RailIcon tab={tab} active={active} size={size} />
       </FocusLift>
       <RailLabel label={label} size={size} />
@@ -212,19 +216,30 @@ function RailItem({
 
 function RailIcon({ tab, active, size }: { tab: TabSpec; active: boolean; size: number }) {
   const { s } = useShell();
-  const { hover } = useFocusState();
-  // Streamybox: the active tab is a calm raised pill (launcher tab language), not a white disc.
-  const pill = theme === 'streamybox';
-  const activeFill = pill ? colors.surface.raised : colors.primary.DEFAULT;
-  const rest = active ? activeFill : colors.scrim.clear;
-  const lit = active ? (pill ? colors.surface.overlay : activeFill) : colors.secondary.DEFAULT;
+  const { focus, hover } = useFocusState();
+  // Streamybox: active = chip pill, focused = white pill with a dark glyph (launcher tabs and buttons).
+  const rest = active
+    ? PILL
+      ? colors.secondary.DEFAULT
+      : colors.primary.DEFAULT
+    : colors.scrim.clear;
+  const lit = PILL ? colors.primary.DEFAULT : active ? rest : colors.secondary.DEFAULT;
   const discStyle = useAnimatedStyle(
-    () => ({ backgroundColor: interpolateColor(hover.get(), [0, 1], [rest, lit]) }),
+    () => ({
+      backgroundColor: interpolateColor(
+        PILL ? Math.max(focus.get(), hover.get()) : hover.get(),
+        [0, 1],
+        [rest, lit]
+      ),
+    }),
     [rest, lit]
   );
+  const darkGlyph = useAnimatedStyle(() => ({
+    opacity: PILL ? Math.max(focus.get(), hover.get()) : 0,
+  }));
   const Icon = tab.icon;
   const tone = active
-    ? pill
+    ? PILL
       ? colors.foreground.DEFAULT
       : colors.primary.foreground
     : Platform.isTV
@@ -243,6 +258,11 @@ function RailIcon({ tab, active, size }: { tab: TabSpec; active: boolean; size: 
         discStyle,
       ]}>
       <Icon size={s(28)} color={tone} strokeWidth={2.25} />
+      {PILL ? (
+        <Animated.View style={[StyleSheet.absoluteFill, CENTER, darkGlyph]}>
+          <Icon size={s(28)} color={colors.primary.foreground} strokeWidth={2.25} />
+        </Animated.View>
+      ) : null}
     </Animated.View>
   );
 }

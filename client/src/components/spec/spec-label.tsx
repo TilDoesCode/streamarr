@@ -4,7 +4,7 @@ import { Text } from '@/components/ui/text';
 import { mixHex, withAlpha } from '@/lib/color';
 import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
-import { colors, useDesign } from '@/theme';
+import { colors, theme, useDesign } from '@/theme';
 
 import { specChips, type CatalogSpec, type SpecTone } from './spec-model';
 
@@ -15,7 +15,8 @@ const chipFill = (tone: string, weight: number) =>
 export const SPEC_TONES: Record<SpecTone, { fg: string; bg: string; border: string }> = {
   neutral: {
     fg: colors.foreground.DEFAULT,
-    bg: chipFill(colors.foreground.DEFAULT, 0.1),
+    bg:
+      theme === 'streamybox' ? colors.secondary.DEFAULT : chipFill(colors.foreground.DEFAULT, 0.1),
     border: colors.glass.border,
   },
   ok: {

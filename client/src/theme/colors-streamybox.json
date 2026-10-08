@@ -7,19 +7,19 @@
   },
   "foreground": {
     "DEFAULT": "#F2F4F8",
-    "muted": "rgba(196, 205, 219, 0.72)",
-    "mutedTv": "rgba(222, 228, 238, 0.86)",
-    "subtleTv": "rgba(170, 181, 199, 0.86)",
+    "muted": "rgba(141, 151, 168, 1)",
+    "mutedTv": "rgba(170, 180, 196, 1)",
+    "subtleTv": "rgba(141, 151, 168, 1)",
     "subtle": "rgba(141, 151, 168, 0.8)",
-    "disabled": "rgba(141, 151, 168, 0.42)"
+    "disabled": "rgba(91, 101, 119, 1)"
   },
   "primary": {
     "DEFAULT": "#F2F4F8",
     "foreground": "#07090E"
   },
   "secondary": {
-    "DEFAULT": "rgba(30, 37, 50, 0.84)",
-    "hover": "rgba(51, 60, 78, 0.92)",
+    "DEFAULT": "rgba(30, 37, 50, 1)",
+    "hover": "rgba(51, 60, 78, 1)",
     "foreground": "#F2F4F8"
   },
   "accent": {
@@ -30,18 +30,18 @@
   },
   "aurora": {
     "tint": "#8CC4FF",
-    "tint2": "#121826",
+    "tint2": "#0E131C",
     "wash": "#0E131C",
     "wash2": "#07090E"
   },
   "glass": {
-    "DEFAULT": "rgba(255, 255, 255, 0.07)",
-    "subtle": "rgba(255, 255, 255, 0.05)",
-    "strong": "rgba(255, 255, 255, 0.11)",
-    "highlight": "rgba(255, 255, 255, 0.12)",
+    "DEFAULT": "rgba(30, 37, 50, 0.9)",
+    "subtle": "rgba(14, 18, 26, 0.94)",
+    "strong": "rgba(51, 60, 78, 0.92)",
+    "highlight": "rgba(255, 255, 255, 0.08)",
     "border": "rgba(255, 255, 255, 0.08)",
-    "solid": "#11161F",
-    "tinted": "rgba(16, 20, 28, 0.84)"
+    "solid": "#0E121A",
+    "tinted": "rgba(14, 18, 26, 0.94)"
   },
   "info": {
     "DEFAULT": "#8CC4FF",
@@ -49,19 +49,19 @@
   },
   "muted": "rgba(255, 255, 255, 0.05)",
   "border": "rgba(255, 255, 255, 0.08)",
-  "input": "rgba(255, 255, 255, 0.07)",
+  "input": "rgba(30, 37, 50, 1)",
   "focus": {
     "DEFAULT": "#F2F4F8",
-    "glow": "rgba(156, 196, 255, 0.38)"
+    "glow": "rgba(156, 196, 255, 0.34)"
   },
   "scrim": {
-    "DEFAULT": "rgba(7, 9, 14, 0.72)",
-    "strong": "rgba(7, 9, 14, 0.96)",
+    "DEFAULT": "rgba(4, 6, 10, 0.66)",
+    "strong": "rgba(4, 6, 10, 0.94)",
     "clear": "rgba(7, 9, 14, 0)"
   },
   "brand": {
     "from": "#F2F4F8",
-    "mid": "#D6E6FA",
-    "to": "#8CC4FF"
+    "mid": "#F2F4F8",
+    "to": "#F2F4F8"
   }
 }

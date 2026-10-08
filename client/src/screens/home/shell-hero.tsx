@@ -26,7 +26,8 @@ import { CopyWash, HeroFade } from '@/shell/hero-fade';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { useWindowControlsInset } from '@/shell/window-controls';
-import { colors, fonts, motion, useFocusGap } from '@/theme';
+import { colors, fonts, motion, theme, useFocusGap } from '@/theme';
+import { withAlpha } from '@/lib/color';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 import { useFeatured, type Featured, type FeaturedStore } from './featured';
@@ -36,6 +37,9 @@ const LOGO_HEIGHT =
   Platform.OS === 'ios' && Platform.isTV ? SHELL.logo.tvosHeight : SHELL.logo.height;
 
 const TITLE_LINE = 1.05;
+
+// Streamybox: launcher hero language (plain eyebrow, chip-filled tags, a deeper blue-black wash).
+const SBX = theme === 'streamybox';
 
 /** A text title (no logo) gets two full lines in the logo box: smaller type rather than a cut first line (Q1-55). */
 export function heroTitleSize(boxHeight: number, size: number): number {
@@ -154,7 +158,7 @@ export function ShellHero({
             width: s(1200),
             height: s(SHELL.hero.height + 120),
           }}>
-          <CopyWash color={colors.scrim.DEFAULT} />
+          <CopyWash color={SBX ? withAlpha(colors.background, 0.92) : colors.scrim.DEFAULT} />
         </View>
         {featured ? (
           <HeroCopy
@@ -266,32 +270,41 @@ function HeroCopy({
         width: s(SHELL.hero.copyWidth),
         gap: s(14),
       }}>
-      <View
-        testID="home-tv-hero-eyebrow"
-        style={{
-          alignSelf: 'flex-start',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: s(10),
-          height: s(36),
-          paddingHorizontal: s(16),
-          borderRadius: s(18),
-          backgroundColor: colors.glass.DEFAULT,
-        }}>
-        <View
-          style={{
-            width: s(10),
-            height: s(10),
-            borderRadius: s(5),
-            backgroundColor: featured.tint ?? colors.accent.DEFAULT,
-          }}
-        />
+      {SBX ? (
         <Text
+          testID="home-tv-hero-eyebrow"
           numberOfLines={1}
-          style={[text(type.eyebrow, fonts.bodyMedium), { color: colors.foreground.DEFAULT }]}>
+          style={[text(type.eyebrow, fonts.bodyMedium), { color: colors.foreground.muted }]}>
           {featured.eyebrow}
         </Text>
-      </View>
+      ) : (
+        <View
+          testID="home-tv-hero-eyebrow"
+          style={{
+            alignSelf: 'flex-start',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: s(10),
+            height: s(36),
+            paddingHorizontal: s(16),
+            borderRadius: s(18),
+            backgroundColor: colors.glass.DEFAULT,
+          }}>
+          <View
+            style={{
+              width: s(10),
+              height: s(10),
+              borderRadius: s(5),
+              backgroundColor: featured.tint ?? colors.accent.DEFAULT,
+            }}
+          />
+          <Text
+            numberOfLines={1}
+            style={[text(type.eyebrow, fonts.bodyMedium), { color: colors.foreground.DEFAULT }]}>
+            {featured.eyebrow}
+          </Text>
+        </View>
+      )}
       <View
         testID={`home-tv-hero-${featured.key}`}
         accessibilityLabel={featured.title}
@@ -305,7 +318,7 @@ function HeroCopy({
             fontFamily: fonts.displayBold,
             fontSize: titleSize,
             lineHeight: titleSize * TITLE_LINE,
-            letterSpacing: -s(1.5),
+            letterSpacing: SBX ? -titleSize * 0.02 : -s(1.5),
           }}
         />
       </View>
@@ -324,13 +337,25 @@ function HeroCopy({
         ) : null}
         {detail?.certification ? (
           <View
-            style={{
-              borderWidth: s(1.5),
-              borderColor: colors.foreground.muted,
-              borderRadius: s(4),
-              paddingHorizontal: s(8),
-            }}>
-            <Text style={[text(17, fonts.bodySemiBold), { color: colors.foreground.muted }]}>
+            style={
+              SBX
+                ? {
+                    backgroundColor: colors.secondary.DEFAULT,
+                    borderRadius: s(16),
+                    paddingHorizontal: s(14),
+                  }
+                : {
+                    borderWidth: s(1.5),
+                    borderColor: colors.foreground.muted,
+                    borderRadius: s(4),
+                    paddingHorizontal: s(8),
+                  }
+            }>
+            <Text
+              style={[
+                text(17, fonts.bodySemiBold),
+                { color: SBX ? colors.foreground.DEFAULT : colors.foreground.muted },
+              ]}>
               {detail.certification}
             </Text>
           </View>

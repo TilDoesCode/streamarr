@@ -41,8 +41,14 @@ export const STREAMYBOX_TV_FOCUS = {
   cardScale: 1.04,
   buttonScale: 1.04,
   pressedScale: 0.96,
-  ringWidth: 2,
+  ringWidth: 1.75,
   ringOffset: 1,
+};
+
+/** Large-shell metrics (1920 mockup px = 2 × Streamybox dp): launcher type sizes, card radius 14 dp. */
+export const STREAMYBOX_SHELL = {
+  type: { eyebrow: 26, heroTitle: 88, rowTitle: 30, spec: 17 },
+  card: { radius: 28 },
 };
 
 export const STREAMYBOX_MOTION = { press: 100, focus: 170, enter: 240, exit: 150, panelRise: 20 };

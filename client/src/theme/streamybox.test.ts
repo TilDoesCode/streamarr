@@ -168,3 +168,24 @@ describe('Streamybox theme', () => {
     expect(damping).toBeGreaterThanOrEqual(2 * Math.sqrt(stiffness * mass));
   });
 });
+
+describe('shell metrics', () => {
+  const load = (host: string) => {
+    let shell: typeof import('@/shell/shell-metrics').SHELL | undefined;
+    jest.isolateModules(() => {
+      jest.doMock('@modules/host-system', () => ({ hostTheme: host }));
+      shell = require('@/shell/shell-metrics').SHELL;
+    });
+    return shell!;
+  };
+
+  it('keeps the default shell and changes only Streamybox type sizes and the card radius', () => {
+    const base = load('default');
+    expect(base.type).toMatchObject({ eyebrow: 18, heroTitle: 72, rowTitle: 32, spec: 15 });
+    expect(base.card.radius).toBe(20);
+    const diff = changed(base, load('streamybox'));
+    expect(diff.sort()).toEqual(
+      ['card.radius', 'type.eyebrow', 'type.heroTitle', 'type.rowTitle', 'type.spec'].sort()
+    );
+  });
+});

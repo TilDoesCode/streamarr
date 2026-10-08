@@ -1,7 +1,7 @@
 import { Platform, View } from 'react-native';
 
 import { useAmbientTitle } from '@/components/ambient/ambient-provider';
-import { colors, useDesign } from '@/theme';
+import { colors, theme, useDesign } from '@/theme';
 
 import { selectGlassMode } from './glass-mode';
 import { glassEdge, glassFill, glassHighlight, tvGlassBase, tvGlassVeil } from './glass-style';
@@ -30,13 +30,21 @@ export function Glass({
     liquidGlass: false,
     reduceTransparency: false,
   });
-  const base =
-    mode === 'tinted'
+  const sbx = theme === 'streamybox';
+  const base = sbx
+    ? intensity === 'strong'
+      ? colors.secondary.DEFAULT
+      : colors.glass.tinted
+    : mode === 'tinted'
       ? tvGlassBase(tint, intensity, highlight)
       : mode === 'solid'
         ? colors.glass.solid
         : colors.glass.tinted;
-  const fill = mode === 'tinted' ? tvGlassVeil(intensity) : glassFill(intensity, tint);
+  const fill = sbx
+    ? colors.scrim.clear
+    : mode === 'tinted'
+      ? tvGlassVeil(intensity)
+      : glassFill(intensity, tint);
   return (
     <View style={[glassEdge(r), { backgroundColor: base }, style]} {...props}>
       <View

@@ -21,7 +21,7 @@ export type FormFactor = 'phone' | 'tablet' | 'tv' | 'desktop-web';
 /** Streamybox host (modules/host-system): its token set replaces the default one before any screen reads it. */
 export const theme = hostTheme;
 const streamybox = theme === 'streamybox';
-const themed = <T extends object>(base: T, overrides: object): T =>
+export const themed = <T extends object>(base: T, overrides: object): T =>
   streamybox ? mergeTokens(base, overrides) : base;
 
 export const colors = themed(palette, STREAMYBOX_COLORS);
