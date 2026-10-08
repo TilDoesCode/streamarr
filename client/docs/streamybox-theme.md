@@ -32,11 +32,12 @@ Release builds ignore the property.
 
 | Token | Default | Streamybox |
 |---|---|---|
-| `colors` | `colors.json` | `colors.json` merged with `colors-streamybox.json` (background, surfaces, foreground tones, primary/secondary, accent blue `#8CC4FF`, aurora wash, glass, info, border/input/muted, focus ring + glow, scrims, quiet brand gradient). Semantic, avatar, QR and video colours stay. |
+| `colors` | `colors.json` | `colors.json` merged with `colors-streamybox.json` (TvDesign dark: background `#07090E`, surfaces, foreground `#F2F4F8` / muted `#8D97A8`, chip `#1E2532` / chipFocus `#333C4E` as `secondary`, accent `#8CC4FF`, `#0E131C` as backdrop top, Control Center glass `#0E121A`, 8 % hairlines, ring + `#9CC4FF` glow, scrim rgb(4,6,10) at 66 %, monochrome brand mark). Semantic, avatar, QR and video colours stay. |
 | `fonts` | Outfit / Figtree / JetBrains Mono | Inter (`Inter-DisplayBold` for display/title, `Inter-SemiBold`, `-Medium`, `-Regular`) |
 | `typeRamp.tv` | 44/28/19/16/14/13/11 … | 38/28/18/16/14/13/12, eyebrow 11 with 0.14 em tracking |
 | `radius` | sm 6, md 12, xl 28 | sm 8, md 14, xl 26 |
-| `focusTokens.tv` | card 1.1, button 1.06, ring 3 + 3 offset | 1.04 / 1.04, ring 2 + 1 offset (air unchanged, so row spacing stays) |
+| `focusTokens.tv` | card 1.1, button 1.06, ring 3 + 3 offset | 1.04 / 1.04, ring 1.75 + 1 offset (air unchanged, so row spacing stays) |
+| `SHELL` (large shell) | eyebrow 18, hero title 72, row title 32, spec 15, card radius 20 | 26 / 88 / 30 / 17 (launcher 13 / 44 / 15 sp at 2 px per dp), card radius 28 (14 dp) |
 | `motion`, `springs`, `easing` | spring 18/180 | 170 ms critically damped spring, decelerate (0.05, 0.7, 0.1, 1) |
 
 All overrides are in `src/theme/streamybox.ts` and `src/theme/colors-streamybox.json`.
@@ -44,12 +45,25 @@ All overrides are in `src/theme/streamybox.ts` and `src/theme/colors-streamybox.
 set replaces exactly the listed tokens, keeps each colour's format (hex stays hex), keeps layout and
 spacing, and uses a focus spring that can't overshoot.
 
-Two small styling hooks handle values that are not read from the tokens at runtime:
+Small styling hooks, each gated on `theme === 'streamybox'`, for values that aren't plain tokens:
 
-- `components/ui/text.tsx`: the NativeWind tone classes are compiled from the default `colors.json`, so
-  under a host theme the tone colour is also set inline.
-- `shell/shell-rail.tsx`: the active tab is a raised pill (Streamybox tab language) instead of the white
-  disc.
+- `components/ui/text.tsx`: NativeWind tone classes are compiled from the default `colors.json`, so the
+  tone colour is also set inline.
+- `components/ambient/ambient-backdrop.tsx`: the Streamybox system backdrop (`TvDesign.backdrop`:
+  `#0E131C` → `#07090E`, faint accent bloom, vignette) replaces the Aurora art wash; `shell/hero-fade.tsx`
+  dissolves the hero art earlier into it.
+- `components/glass/glass.tsx` (Android): glass becomes calm, near-opaque panels (`#0E121A` at 94 %,
+  chip fill for `strong`), no per-title tint.
+- `shell/shell-rail.tsx`: active tab = chip pill, focused tab = white pill with a dark glyph (no ring).
+- `screens/home/shell-hero.tsx`, `screens/detail/large-detail.tsx`: plain muted eyebrow instead of the
+  pill, −0.02 em hero title tracking, chip-filled certification.
+- `components/media/card-parts.tsx` (`CardHairline`), `components/focus/focusable.tsx`: 1 dp card
+  hairline; the focus glow is always the neutral `#9CC4FF` glow.
+- `components/spec/spec-label.tsx`, `components/ui/avatar.tsx`: chip-filled neutral spec chips, Inter
+  SemiBold initials.
+
+The default theme is pixel-identical to the base revision on Android TV (home, rail, search, results,
+settings, detail; the only difference is a device "last seen" timestamp).
 
 ## Fonts
 
