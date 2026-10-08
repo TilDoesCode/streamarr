@@ -25,3 +25,6 @@ expo-env.d.ts
 *.keystore
 *release.properties
 *.apk
+
+# External dependency scratch may be a symlink on macOS
+/node_modules

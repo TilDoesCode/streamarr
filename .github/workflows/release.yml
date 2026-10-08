@@ -237,6 +237,8 @@ jobs:
       - name: Setup Android SDK
         if: steps.signing.outputs.enabled == 'true'
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006 cmake;3.22.1'
 
       - name: Install client and generate TV project
         if: steps.signing.outputs.enabled == 'true'
@@ -360,7 +362,7 @@ jobs:
 
   github-release:
     name: Publish GitHub release
-    if: always() && github.event_name == 'push' && needs.packages.result == 'success' && needs.publish-image.result == 'success'
+    if: always() && !cancelled() && github.event_name == 'push' && needs.packages.result == 'success' && needs.publish-image.result == 'success'
     needs: [packages, publish-image, android-tv-apk]
     runs-on: ubuntu-latest
     permissions:
