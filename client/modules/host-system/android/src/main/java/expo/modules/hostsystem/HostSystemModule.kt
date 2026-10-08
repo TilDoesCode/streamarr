@@ -26,9 +26,11 @@ object HostSystem {
     return if (isStreamybox(context.packageManager)) "streamybox" else "default"
   }
 
+  // Fallback for images without the feature: Streamybox Settings shipped in the system image (not sideloaded).
   fun isStreamybox(pm: PackageManager): Boolean =
     pm.hasSystemFeature(FEATURE, 1) ||
-      runCatching { pm.getApplicationInfo(SETTINGS_PACKAGE, 0); true }.getOrDefault(false)
+      runCatching { pm.getApplicationInfo(SETTINGS_PACKAGE, 0).flags and ApplicationInfo.FLAG_SYSTEM != 0 }
+        .getOrDefault(false)
 
   // Debuggable builds only: `adb shell setprop debug.streamarr.theme streamybox|default`.
   private fun debugOverride(context: Context): String? {
