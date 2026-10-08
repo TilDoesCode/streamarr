@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- tokens load in isolation with a mocked host */
 import palette from './colors.json';
 import radiusTokens from './radius.json';
 import {

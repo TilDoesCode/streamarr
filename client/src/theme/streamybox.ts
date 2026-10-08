@@ -1,55 +1,13 @@
 import type palette from './colors.json';
+import streamyboxPalette from './colors-streamybox.json';
 
 /** Token overrides of the Streamybox theme (streamybox design/TvDesign.kt + Motion.kt, dark). */
 
 type Palette = typeof palette;
 type Overrides<T> = { [K in keyof T]?: T[K] extends string ? string : Overrides<T[K]> };
 
-export const STREAMYBOX_COLORS = {
-  background: '#07090E',
-  surface: { DEFAULT: '#10141C', raised: '#1A2030', overlay: '#1D2432' },
-  foreground: {
-    DEFAULT: '#F2F4F8',
-    muted: 'rgba(196, 205, 219, 0.72)',
-    mutedTv: 'rgba(222, 228, 238, 0.86)',
-    subtleTv: 'rgba(170, 181, 199, 0.86)',
-    subtle: 'rgba(141, 151, 168, 0.8)',
-    disabled: 'rgba(141, 151, 168, 0.42)',
-  },
-  primary: { DEFAULT: '#F2F4F8', foreground: '#07090E' },
-  secondary: {
-    DEFAULT: 'rgba(30, 37, 50, 0.84)',
-    hover: 'rgba(51, 60, 78, 0.92)',
-    foreground: '#F2F4F8',
-  },
-  accent: {
-    DEFAULT: '#8CC4FF',
-    muted: 'rgba(140, 196, 255, 0.16)',
-    hover: 'rgba(140, 196, 255, 0.26)',
-    foreground: '#07111F',
-  },
-  aurora: { tint: '#8CC4FF', tint2: '#121826', wash: '#0E131C', wash2: '#07090E' },
-  glass: {
-    DEFAULT: 'rgba(255, 255, 255, 0.07)',
-    subtle: 'rgba(255, 255, 255, 0.05)',
-    strong: 'rgba(255, 255, 255, 0.11)',
-    highlight: 'rgba(255, 255, 255, 0.12)',
-    border: 'rgba(255, 255, 255, 0.08)',
-    solid: '#11161F',
-    tinted: 'rgba(16, 20, 28, 0.84)',
-  },
-  info: { DEFAULT: '#8CC4FF', muted: 'rgba(140, 196, 255, 0.16)' },
-  muted: 'rgba(255, 255, 255, 0.05)',
-  border: 'rgba(255, 255, 255, 0.08)',
-  input: 'rgba(255, 255, 255, 0.07)',
-  focus: { DEFAULT: '#F2F4F8', glow: 'rgba(156, 196, 255, 0.38)' },
-  scrim: {
-    DEFAULT: 'rgba(7, 9, 14, 0.72)',
-    strong: 'rgba(7, 9, 14, 0.96)',
-    clear: 'rgba(7, 9, 14, 0)',
-  },
-  brand: { from: '#F2F4F8', mid: '#D6E6FA', to: '#8CC4FF' },
-} satisfies Overrides<Palette>;
+// Palette overrides live in JSON like colors.json (raw colours stay out of TS).
+export const STREAMYBOX_COLORS = streamyboxPalette satisfies Overrides<Palette>;
 
 /** Inter (bundled static instances of Streamybox's variable font: opsz 16 text, opsz 32 display). */
 export const STREAMYBOX_FONTS = {
