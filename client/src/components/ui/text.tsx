@@ -1,7 +1,7 @@
 import { Platform, Text as RNText, type TextProps as RNTextProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
-import { useDesign, type TypeVariant } from '@/theme';
+import { colors, theme, useDesign, type TypeVariant } from '@/theme';
 
 export type TextTone =
   | 'default'
@@ -30,6 +30,23 @@ const TONE_CLASS: Record<TextTone, string> = {
 const TV_TONE_CLASS: Partial<Record<TextTone, string>> = {
   muted: 'text-foreground-mutedTv',
   subtle: 'text-foreground-subtleTv',
+};
+
+// Tailwind classes are compiled from the default palette; a host theme sets the tone colour inline.
+const TONE_COLOR: Record<TextTone, string> = {
+  default: colors.foreground.DEFAULT,
+  muted: colors.foreground.muted,
+  subtle: colors.foreground.subtle,
+  disabled: colors.foreground.disabled,
+  accent: colors.accent.DEFAULT,
+  success: colors.success.DEFAULT,
+  warning: colors.warning.DEFAULT,
+  danger: colors.danger.DEFAULT,
+  inverse: colors.primary.foreground,
+};
+const TV_TONE_COLOR: Partial<Record<TextTone, string>> = {
+  muted: colors.foreground.mutedTv,
+  subtle: colors.foreground.subtleTv,
 };
 
 const HEADINGS: ReadonlySet<TypeVariant> = new Set(['display', 'title', 'heading']);
@@ -72,6 +89,9 @@ export function Text({
       )}
       style={[
         design.type[variant],
+        theme !== 'default' && {
+          color: (design.isTV && TV_TONE_COLOR[tone ?? 'default']) || TONE_COLOR[tone ?? 'default'],
+        },
         (variant === 'overline' || (variant === 'spec' && !specString)) && {
           textTransform: 'uppercase',
         },

@@ -19,7 +19,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
 import { withAlpha } from '@/lib/color';
 import { TABS, type TabSpec } from '@/navigation/tabs';
-import { colors, fonts, useDesign } from '@/theme';
+import { colors, fonts, theme, useDesign } from '@/theme';
 
 import { BrandMark } from './brand-mark';
 import { SHELL } from './shell-metrics';
@@ -213,15 +213,20 @@ function RailItem({
 function RailIcon({ tab, active, size }: { tab: TabSpec; active: boolean; size: number }) {
   const { s } = useShell();
   const { hover } = useFocusState();
-  const rest = active ? colors.primary.DEFAULT : colors.scrim.clear;
-  const lit = active ? colors.primary.DEFAULT : colors.secondary.DEFAULT;
+  // Streamybox: the active tab is a calm raised pill (launcher tab language), not a white disc.
+  const pill = theme === 'streamybox';
+  const activeFill = pill ? colors.surface.raised : colors.primary.DEFAULT;
+  const rest = active ? activeFill : colors.scrim.clear;
+  const lit = active ? (pill ? colors.surface.overlay : activeFill) : colors.secondary.DEFAULT;
   const discStyle = useAnimatedStyle(
     () => ({ backgroundColor: interpolateColor(hover.get(), [0, 1], [rest, lit]) }),
     [rest, lit]
   );
   const Icon = tab.icon;
   const tone = active
-    ? colors.primary.foreground
+    ? pill
+      ? colors.foreground.DEFAULT
+      : colors.primary.foreground
     : Platform.isTV
       ? colors.foreground.mutedTv
       : colors.foreground.muted;

@@ -23,6 +23,7 @@ export {
   radius,
   space,
   springs,
+  theme,
   typeRamp,
   type FormFactor,
   type Layout,
