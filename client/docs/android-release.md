@@ -62,3 +62,27 @@ EXPO_TV=1 ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64
 Keep output APKs in `$SB_WORK/streamarr-release/`, outside Git. The Streamybox
 coordinator can pin only an actually published, verified APK, then rebuild the
 image; local proof APKs are never production catalog fallbacks.
+
+## Local proof (2026-10-08)
+
+Node 24.14.0, JDK 17, clean TV prebuild and the documented arm64 release command
+passed. Final APK: `$SB_WORK/streamarr-release/streamarr-android-tv-0.16.0.apk`,
+105,758,968 bytes, versionName `0.16.0`, versionCode `16000`, SHA-256
+`ec9f61e7f1deba40e777e09b13ada4c52946dd5826c8ac9a9ea51638fe6b8f5c`.
+Apksigner matched the committed certificate pin, and aapt2 verified the package,
+arm64 ABI, leanback activity and application banner. The same-signature
+`install -r` replacement launched on assigned emulator-5560 without Metro;
+screenshots/readbacks are under `$SB_WORK/screens/streamarr-release/`.
+The former debug-signed installation's APK and CE/DE files were backed up in
+`$SB_WORK/streamarr-release/emulator-original/` before its necessary removal;
+this is not a backup of Android Keystore entries. The release app remains installed.
+
+An unsigned-credentials release dry run failed with the required clear signing
+message. An arm64 debug build without release credentials passed. Typecheck,
+Expo lint, explicit ESLint on the touched plugin/config, both plugin Jest suites
+(13 tests), actionlint and diff checks passed. A universal release build also
+passed after moving only this worktree's ignored `node_modules`/native build
+scratch onto DevSSD; the first universal attempt filled the internal disk and
+failed. The universal APK stays outside Git as a diagnostic artifact and is not
+the chosen release payload. Its ~340 MB size motivated the arm64 CI/image policy.
+No push, tag, release, secret configuration or physical-device access occurred.
