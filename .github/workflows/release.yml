@@ -182,6 +182,113 @@ jobs:
           path: artifacts/release/*
           if-no-files-found: error
 
+  android-tv-apk:
+    name: Signed Android TV APK (optional)
+    needs: [validate, container-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      built: ${{ steps.upload.outputs.artifact-id != '' }}
+    steps:
+      - name: Check optional Android signing configuration
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.STREAMARR_ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.STREAMARR_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.STREAMARR_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.STREAMARR_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_B64$KEYSTORE_PASSWORD$KEY_ALIAS$KEY_PASSWORD" ]]; then
+            echo '::notice::Android APK skipped: add the four Streamarr Android signing secrets.'
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+          else
+            for name in KEYSTORE_B64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+              if [[ -z "${!name}" ]]; then
+                echo "::error::Incomplete Android signing configuration: $name is missing."
+                exit 1
+              fi
+            done
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        if: steps.signing.outputs.enabled == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Setup JDK 17
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        if: steps.signing.outputs.enabled == 'true'
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+
+      - name: Install client and generate TV project
+        if: steps.signing.outputs.enabled == 'true'
+        working-directory: client
+        env:
+          EXPO_TV: '1'
+          STREAMARR_ANDROID_VERSION: ${{ env.RELEASE_VERSION }}
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test -- --runInBand plugins
+          npx expo prebuild --platform android --clean
+
+      - name: Build and verify signed release APK
+        if: steps.signing.outputs.enabled == 'true'
+        working-directory: client/android
+        env:
+          EXPO_TV: '1'
+          STREAMARR_ANDROID_KEYSTORE_B64: ${{ secrets.STREAMARR_ANDROID_KEYSTORE_B64 }}
+          STREAMARR_ANDROID_KEYSTORE: ${{ runner.temp }}/streamarr-release.p12
+          STREAMARR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.STREAMARR_ANDROID_KEYSTORE_PASSWORD }}
+          STREAMARR_ANDROID_KEY_ALIAS: ${{ secrets.STREAMARR_ANDROID_KEY_ALIAS }}
+          STREAMARR_ANDROID_KEY_PASSWORD: ${{ secrets.STREAMARR_ANDROID_KEY_PASSWORD }}
+        run: |
+          umask 077
+          trap 'rm -f "$STREAMARR_ANDROID_KEYSTORE"' EXIT
+          printf '%s' "$STREAMARR_ANDROID_KEYSTORE_B64" | base64 --decode > "$STREAMARR_ANDROID_KEYSTORE"
+          ./gradlew assembleRelease --no-daemon
+          mkdir -p ../../artifacts/android
+          apk="../../artifacts/android/streamarr-android-tv-${RELEASE_VERSION#v}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/streamarr-certs.txt"
+          cat "$RUNNER_TEMP/streamarr-certs.txt"
+          actual="$(sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' "$RUNNER_TEMP/streamarr-certs.txt")"
+          test "$actual" = "$(cat ../release/android-cert.sha256)"
+
+      - name: Attest Android TV APK
+        if: steps.signing.outputs.enabled == 'true' && github.event.repository.private == false
+        uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
+        with:
+          subject-path: client/artifacts/android/*.apk
+
+      - name: Upload Android TV APK
+        id: upload
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: streamarr-android-${{ env.RELEASE_VERSION }}
+          path: client/artifacts/android/*.apk
+          if-no-files-found: error
+
   publish-image:
     name: Publish multi-architecture image
     if: github.event_name == 'push'
@@ -253,8 +360,8 @@ jobs:
 
   github-release:
     name: Publish GitHub release
-    if: github.event_name == 'push'
-    needs: [packages, publish-image]
+    if: always() && github.event_name == 'push' && needs.packages.result == 'success' && needs.publish-image.result == 'success'
+    needs: [packages, publish-image, android-tv-apk]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -264,6 +371,24 @@ jobs:
         with:
           name: streamarr-${{ env.RELEASE_VERSION }}
           path: artifacts/release
+
+      - name: Download signed Android APK when available
+        if: needs.android-tv-apk.outputs.built == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: streamarr-android-${{ env.RELEASE_VERSION }}
+          path: artifacts/release
+
+      - name: Include Android APK in release checksums
+        if: needs.android-tv-apk.outputs.built == 'true'
+        working-directory: artifacts/release
+        run: |
+          sha256sum "streamarr-android-tv-${RELEASE_VERSION#v}.apk" >> SHA256SUMS
+          sha256sum --check SHA256SUMS
+
+      - name: Report omitted Android artifact
+        if: needs.android-tv-apk.outputs.built != 'true'
+        run: echo '::warning::Publishing server/plugin release without an Android APK. Review android-tv-apk before pinning Streamarr.'
 
       # Checked out with push credentials so the committed Jellyfin plugin
       # catalog (manifest.json on the default branch) can be updated below.
@@ -278,7 +403,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${RELEASE_VERSION#v}"
+          android_assets=()
+          if [[ -f "artifacts/release/streamarr-android-tv-$version.apk" ]]; then
+            android_assets+=("artifacts/release/streamarr-android-tv-$version.apk")
+          fi
           gh release create "$GITHUB_REF_NAME" \
+            "${android_assets[@]}" \
             "artifacts/release/streamarr-jellyfin-$version.zip" \
             "artifacts/release/streamarr-home-$version.tar.gz" \
             "artifacts/release/SHA256SUMS" \
