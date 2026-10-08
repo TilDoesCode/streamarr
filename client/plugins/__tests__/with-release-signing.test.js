@@ -1,3 +1,4 @@
+const { test, expect } = require('@jest/globals');
 const { configureRelease, releaseVersion } = require('../with-release-signing');
 
 const generated =

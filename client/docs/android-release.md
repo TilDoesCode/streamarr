@@ -34,7 +34,10 @@ create/push the next stable `vMAJOR.MINOR.PATCH` tag (for example `v0.16.0`). Th
 existing release workflow runs validation, builds the TV APK with Node 24/JDK 17,
 verifies its signer, attests it, adds its hash to `SHA256SUMS`, and publishes
 `streamarr-android-tv-<version>.apk` alongside the existing archives.
-Workflow dispatch builds artifacts without publishing. No Android secrets skips
+The current release APK targets arm64 Android TV devices, including ROCK 4D.
+A universal APK is about 340 MB and exceeds the factory image space budget; the
+arm64 APK is about 105 MB. Other architectures need a separately reviewed asset
+policy. Workflow dispatch builds artifacts without publishing. No Android secrets skips
 Android packaging; partial secrets or invalid signing fail the Android job.
 Server/plugin publication remains independent and warns if the APK was omitted.
 Review the Android job before expecting an APK on a release.
@@ -52,7 +55,7 @@ npm ci
 export STREAMARR_ANDROID_VERSION=0.16.0
 EXPO_TV=1 npx expo prebuild --platform android --clean
 cd android
-EXPO_TV=1 ./gradlew assembleRelease --no-daemon
+EXPO_TV=1 ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk
 ```
 

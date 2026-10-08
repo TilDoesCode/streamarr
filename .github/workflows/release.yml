@@ -267,7 +267,7 @@ jobs:
           umask 077
           trap 'rm -f "$STREAMARR_ANDROID_KEYSTORE"' EXIT
           printf '%s' "$STREAMARR_ANDROID_KEYSTORE_B64" | base64 --decode > "$STREAMARR_ANDROID_KEYSTORE"
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
           mkdir -p ../artifacts/android
           apk="../artifacts/android/streamarr-android-tv-${RELEASE_VERSION#v}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
