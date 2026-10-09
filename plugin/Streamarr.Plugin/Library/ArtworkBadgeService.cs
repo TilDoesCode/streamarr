@@ -63,7 +63,11 @@ public sealed class ArtworkBadgeService(
                 return sourceUrl;
 
             ct.ThrowIfCancellationRequested();
-            using var image = SKBitmap.Decode(payload);
+            using var data = SKData.CreateCopy(payload);
+            using var codec = SKCodec.Create(data);
+            if (codec is null)
+                return sourceUrl;
+            using var image = SKBitmap.Decode(codec);
             if (image is null)
                 return sourceUrl;
             DrawAdaptiveBadge(image);
