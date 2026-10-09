@@ -26,6 +26,12 @@ for file in Streamarr.Plugin.dll meta.json; do
   test -s "$tmp_dir/plugin/$file"
 done
 
+if unzip -Z -1 "$artifact_dir/streamarr-jellyfin-$version.zip" \
+  | grep -Eq '(^|/)(SixLabors\.ImageSharp|SkiaSharp|libSkiaSharp)[^/]*\.(dll|so|dylib)'; then
+  echo "The plugin archive must use Jellyfin's image assemblies and native libraries." >&2
+  exit 1
+fi
+
 # Guard against the exact incident this repo already shipped once: meta.json said
 # 0.9.2.0 but the compiled Streamarr.Plugin.dll's AssemblyVersion/FileVersion were
 # still 0.8.0.0, because those were hardcoded as separate literals in
