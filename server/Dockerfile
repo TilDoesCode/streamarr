@@ -26,7 +26,7 @@ COPY client/ ./
 RUN EXPO_BASE_URL=/watch npx expo export --platform web --output-dir dist
 
 # ---- 2. .NET publish ----------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:2ae6f287fa860c15f121474cf864b86765beb87507bbc3f48661a4f6f1ffc2b5 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:536b706b6113a3839c1712ebcf832dc33d275fd605d35a931db956792c10d26c AS build
 WORKDIR /src
 COPY server/ server/
 # Bring the freshly built SPA into the server's static web root (single-origin prod path).
@@ -35,11 +35,12 @@ RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
       -c Release -o /app --no-self-contained
 
 # ---- 3. runtime ---------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:d72743fde6e26a853eaa5dd58a6e30cfbedf17186fe2aed6ff283b82efee9249 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:c291421b6f209369e11899c9cc2425ccf08566f2d40b527388c45df036d86b7a AS runtime
 ARG TARGETARCH
 # ffmpeg supplies ffprobe for /resolve and the server-side transcoder; the VA-API drivers let
 # a passed-through /dev/dri (Intel iHD, AMD radeonsi) accelerate it. curl backs the healthcheck.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ffmpeg curl mesa-va-drivers \
     && if [ "$TARGETARCH" = "amd64" ]; then apt-get install -y --no-install-recommends intel-media-va-driver-non-free; fi \
     && rm -rf /var/lib/apt/lists/*
