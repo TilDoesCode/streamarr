@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.16.0.0",
+        "changelog": "Fix HEVC releases being fully re-encoded to H.264 instead of stream-copied for clients whose device profile has whitespace inside its comma-separated codec/container lists (observed with Streamyfin's MPV profile, e.g. \"h264, hevc\"): Jellyfin splits these lists without trimming and silently drops the unmatched entry from its HLS codec filter. The playback guard now normalizes whitespace in the posted DeviceProfile in place, on both PlaybackInfo and LiveStreams/Open, so well-matched HEVC direct-stream-copy is restored.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.16.0/streamarr-jellyfin-0.16.0.zip",
+        "checksum": "525da9e89d7da8306425af8c98143ab9",
+        "timestamp": "2026-10-09T18:02:06Z"
+      },
+      {
         "version": "0.15.1.0",
         "changelog": "Fix HEVC releases being fully re-encoded to H.264 instead of stream-copied for clients whose device profile has whitespace inside its comma-separated codec/container lists (observed with Streamyfin's MPV profile, e.g. \"h264, hevc\"): Jellyfin splits these lists without trimming and silently drops the unmatched entry from its HLS codec filter. The playback guard now normalizes whitespace in the posted DeviceProfile in place, on both PlaybackInfo and LiveStreams/Open, so well-matched HEVC direct-stream-copy is restored.",
         "targetAbi": "10.11.11.0",
