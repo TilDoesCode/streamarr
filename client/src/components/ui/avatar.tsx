@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { colors, fonts, useDesign } from '@/theme';
+import { colors, fonts, theme, useDesign } from '@/theme';
 
 const PALETTE = Object.values(colors.avatar);
 
@@ -61,7 +61,7 @@ export function Avatar({ name, color, size, dimmed = false, round = false }: Ava
         style={{
           fontSize: size * 0.4,
           lineHeight: size * 0.48,
-          fontFamily: fonts.displayBold,
+          fontFamily: theme === 'streamybox' ? fonts.bodySemiBold : fonts.displayBold,
           color: colors.foreground.DEFAULT,
         }}>
         {initials(name)}

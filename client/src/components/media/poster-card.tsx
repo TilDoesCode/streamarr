@@ -3,10 +3,11 @@ import { View } from 'react-native';
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
 import type { ArtworkSizes } from '@/lib/artwork';
-import { CardCaption, PlayedMark, useCardScale } from '@/components/media/card-parts';
+import { CardCaption, CardHairline, PlayedMark, useCardScale } from '@/components/media/card-parts';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import type { CatalogSpec } from '@/components/spec';
+import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { aspect, useDesign } from '@/theme';
 
@@ -45,7 +46,7 @@ export function PosterCard({
   const cardWidth = width ?? design.layout.posterWidth;
   const height = cardWidth / aspect.poster;
   const shell = useShell();
-  const radius = shell.large ? shell.s(20) : design.radius.md;
+  const radius = shell.large ? shell.s(SHELL.card.radius) : design.radius.md;
   const scale = useCardScale(cardWidth);
   const inset = design.space.sm;
   return (
@@ -75,6 +76,7 @@ export function PosterCard({
             </View>
           ) : null}
           {played ? <PlayedMark /> : null}
+          <CardHairline radius={radius} />
           {!played && progress != null && progress > 0 ? (
             <ProgressBar
               value={progress}

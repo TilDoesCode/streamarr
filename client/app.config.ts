@@ -13,6 +13,10 @@ const FONT_FILES = [
   'Figtree-SemiBold',
   'Figtree-Bold',
   'JetBrainsMono-Medium',
+  'Inter-DisplayBold',
+  'Inter-Regular',
+  'Inter-Medium',
+  'Inter-SemiBold',
 ].map((name) => `./assets/fonts/${name}.ttf`);
 const TV_BANNER = './assets/tv/android-banner.png';
 

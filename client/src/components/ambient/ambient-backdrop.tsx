@@ -6,9 +6,10 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 
-import { colors, motion } from '@/theme';
+import { colors, motion, theme } from '@/theme';
 
 import { AmbientImage } from './ambient-image';
 import { ambientScene, type AmbientInput, type AmbientScene } from './ambient-model';
@@ -17,13 +18,7 @@ import { useAmbientTitle } from './ambient-provider';
 const EASE = Easing.inOut(Easing.quad);
 
 /** Full-screen Aurora backdrop: blurred artwork of the focused/hovered title plus tint washes, crossfading. */
-export function AmbientBackdrop({
-  title,
-  testID,
-}: {
-  title?: AmbientInput | null;
-  testID?: string;
-}) {
+function AuroraBackdrop({ title, testID }: { title?: AmbientInput | null; testID?: string }) {
   const fromContext = useAmbientTitle();
   const { key, image, tint, tint2, neutral } = ambientScene(
     title !== undefined ? title : fromContext
@@ -101,3 +96,39 @@ function AmbientLayer({ scene, animateIn }: { scene: AmbientScene; animateIn: bo
     </Animated.View>
   );
 }
+
+/** Streamybox: the system backdrop (TvDesign.backdrop): blue-black gradient, faint accent bloom, vignette. */
+function StreamyboxBackdrop({ testID }: { title?: AmbientInput | null; testID?: string }) {
+  return (
+    <View
+      testID={testID}
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        style={StyleSheet.absoluteFill}
+        colors={[colors.aurora.wash, colors.background, colors.background]}
+      />
+      <Svg
+        style={StyleSheet.absoluteFill}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="none"
+        viewBox="0 0 100 100">
+        <Defs>
+          <RadialGradient id="sbx-bloom" cx="12" cy="0" r="65" gradientUnits="userSpaceOnUse">
+            <Stop offset="0" stopColor={colors.accent.DEFAULT} stopOpacity={0.09} />
+            <Stop offset="1" stopColor={colors.accent.DEFAULT} stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id="sbx-vignette" cx="50" cy="42" r="75" gradientUnits="userSpaceOnUse">
+            <Stop offset="0.5" stopColor={colors.video} stopOpacity={0} />
+            <Stop offset="1" stopColor={colors.video} stopOpacity={0.43} />
+          </RadialGradient>
+        </Defs>
+        <Ellipse cx="50" cy="50" rx="100" ry="100" fill="url(#sbx-bloom)" />
+        <Ellipse cx="50" cy="50" rx="100" ry="100" fill="url(#sbx-vignette)" />
+      </Svg>
+    </View>
+  );
+}
+
+export const AmbientBackdrop = theme === 'streamybox' ? StreamyboxBackdrop : AuroraBackdrop;

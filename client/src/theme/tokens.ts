@@ -1,11 +1,30 @@
 import type { TextStyle } from 'react-native';
 
+import { hostTheme } from '@modules/host-system';
+
 import palette from './colors.json';
 import radiusTokens from './radius.json';
+import {
+  mergeTokens,
+  STREAMYBOX_COLORS,
+  STREAMYBOX_EASING,
+  STREAMYBOX_FONTS,
+  STREAMYBOX_MOTION,
+  STREAMYBOX_RADIUS,
+  STREAMYBOX_SPRINGS,
+  STREAMYBOX_TV_FOCUS,
+  STREAMYBOX_TV_TYPE,
+} from './streamybox';
 
 export type FormFactor = 'phone' | 'tablet' | 'tv' | 'desktop-web';
 
-export const colors = palette;
+/** Streamybox host (modules/host-system): its token set replaces the default one before any screen reads it. */
+export const theme = hostTheme;
+const streamybox = theme === 'streamybox';
+export const themed = <T extends object>(base: T, overrides: object): T =>
+  streamybox ? mergeTokens(base, overrides) : base;
+
+export const colors = themed(palette, STREAMYBOX_COLORS);
 
 export const space = {
   none: 0,
@@ -23,7 +42,7 @@ export const space = {
 } as const;
 export type SpaceKey = keyof typeof space;
 
-export const radius = radiusTokens.radius;
+export const radius = themed(radiusTokens.radius, STREAMYBOX_RADIUS);
 export type RadiusKey = keyof typeof radius;
 
 export type TypeVariant =
@@ -39,15 +58,18 @@ export type TypeVariant =
   | 'spec';
 
 /** Font family names = PostScript names, so embedded (Android/iOS) and web-loaded faces match. */
-export const fonts = {
-  displayBold: 'Outfit-Bold',
-  display: 'Outfit-SemiBold',
-  body: 'Figtree-Regular',
-  bodyMedium: 'Figtree-Medium',
-  bodySemiBold: 'Figtree-SemiBold',
-  bodyBold: 'Figtree-Bold',
-  mono: 'JetBrainsMono-Medium',
-} as const;
+export const fonts = themed(
+  {
+    displayBold: 'Outfit-Bold',
+    display: 'Outfit-SemiBold',
+    body: 'Figtree-Regular',
+    bodyMedium: 'Figtree-Medium',
+    bodySemiBold: 'Figtree-SemiBold',
+    bodyBold: 'Figtree-Bold',
+    mono: 'JetBrainsMono-Medium',
+  } as const,
+  STREAMYBOX_FONTS
+);
 export type FontKey = keyof typeof fonts;
 
 type TypeStep = Pick<TextStyle, 'letterSpacing'> & {
@@ -109,18 +131,23 @@ const largeType = ramp({
 });
 
 // 10-foot ramp in Android TV dp (960 × 540 canvas); scaled by the TV scale factor.
-const tvType = ramp({
-  display: [44, 46, -1.1],
-  title: [28, 33, -0.5],
-  heading: [19, 25, -0.2],
-  subheading: [16, 21, 0],
-  body: [14, 20, 0],
-  callout: [13, 18, 0],
-  caption: [11, 15, 0],
-  overline: [10, 13, 1],
-  label: [14, 18, 0],
-  spec: [9.5, 12, 0.4],
-});
+const tvType = ramp(
+  themed(
+    {
+      display: [44, 46, -1.1],
+      title: [28, 33, -0.5],
+      heading: [19, 25, -0.2],
+      subheading: [16, 21, 0],
+      body: [14, 20, 0],
+      callout: [13, 18, 0],
+      caption: [11, 15, 0],
+      overline: [10, 13, 1],
+      label: [14, 18, 0],
+      spec: [9.5, 12, 0.4],
+    } as Record<TypeVariant, Step>,
+    STREAMYBOX_TV_TYPE
+  )
+);
 
 export const typeRamp: Record<FormFactor, Record<TypeVariant, TypeStep>> = {
   phone: handheldType,
@@ -214,15 +241,18 @@ export type FocusTokens = {
 };
 
 export const focusTokens: Record<FormFactor, FocusTokens> = {
-  tv: {
-    cardScale: 1.1,
-    buttonScale: 1.06,
-    pressedScale: 0.97,
-    ringWidth: 3,
-    ringOffset: 3,
-    air: 8,
-    buttonExtent: 160,
-  },
+  tv: themed(
+    {
+      cardScale: 1.1,
+      buttonScale: 1.06,
+      pressedScale: 0.97,
+      ringWidth: 3,
+      ringOffset: 3,
+      air: 8,
+      buttonExtent: 160,
+    },
+    STREAMYBOX_TV_FOCUS
+  ),
   'desktop-web': {
     cardScale: 1.04,
     buttonScale: 1.02,
@@ -252,38 +282,57 @@ export const focusTokens: Record<FormFactor, FocusTokens> = {
   },
 };
 
-export const motion = {
-  /** Press feedback. */
-  press: 120,
-  /** Focus ring fade (the lift itself uses `springs.focus`). */
-  focus: 160,
-  /** Small state changes (toggle, chip). */
-  state: 180,
-  /** Enter/exit of overlays (toast, dialog, glass panels). */
-  enter: 280,
-  exit: 180,
-  /** Glass panels rise this far while fading in. */
-  panelRise: 24,
-  /** Ambient backdrop + tint crossfade and its debounce. */
-  ambient: 700,
-  ambientDebounce: 150,
-  /** Skeleton shimmer period. */
-  pulse: 1400,
-  /** Toast visibility. */
-  toast: 4000,
-} as const;
+export const motion = themed(
+  {
+    /** Press feedback. */
+    press: 120,
+    /** Focus ring fade (the lift itself uses `springs.focus`). */
+    focus: 160,
+    /** Small state changes (toggle, chip). */
+    state: 180,
+    /** Enter/exit of overlays (toast, dialog, glass panels). */
+    enter: 280,
+    exit: 180,
+    /** Glass panels rise this far while fading in. */
+    panelRise: 24,
+    /** Ambient backdrop + tint crossfade and its debounce. */
+    ambient: 700,
+    ambientDebounce: 150,
+    /** Skeleton shimmer period. */
+    pulse: 1400,
+    /** Toast visibility. */
+    toast: 4000,
+  } as const,
+  STREAMYBOX_MOTION
+);
+
+type SpringConfig = {
+  damping: number;
+  stiffness: number;
+  mass: number;
+  overshootClamping?: boolean;
+};
 
 /** Reanimated spring configs. */
-export const springs = {
-  focus: { damping: 18, stiffness: 180, mass: 1 },
-  press: { damping: 22, stiffness: 320, mass: 1 },
-} as const;
+export const springs: {
+  focus: SpringConfig;
+  press: SpringConfig;
+} = themed(
+  {
+    focus: { damping: 18, stiffness: 180, mass: 1 },
+    press: { damping: 22, stiffness: 320, mass: 1 },
+  },
+  STREAMYBOX_SPRINGS
+);
 
 /** cubic-bezier control points; build Reanimated easings from these. */
-export const easing = {
-  out: [0.23, 1, 0.32, 1],
-  sheet: [0.32, 0.72, 0, 1],
-} as const;
+export const easing = themed(
+  {
+    out: [0.23, 1, 0.32, 1],
+    sheet: [0.32, 0.72, 0, 1],
+  } as const,
+  STREAMYBOX_EASING
+);
 
 export const aspect = {
   poster: 2 / 3,

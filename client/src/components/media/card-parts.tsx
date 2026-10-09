@@ -13,7 +13,7 @@ import { SpecLabels, type CatalogSpec } from '@/components/spec';
 import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
-import { clearScale, colors, focusClearance, fonts, useDesign } from '@/theme';
+import { clearScale, colors, focusClearance, fonts, theme, useDesign } from '@/theme';
 
 /** Accent disc with a check: the item is fully watched. */
 export function PlayedMark() {
@@ -36,6 +36,24 @@ export function PlayedMark() {
       }}>
       <Check size={size * 0.62} color={colors.accent.foreground} strokeWidth={3} />
     </View>
+  );
+}
+
+/** Streamybox: the 1 dp hairline on every card (TvDesign.cardStyle); nothing elsewhere. */
+export function CardHairline({ radius }: { radius: number }) {
+  if (theme !== 'streamybox') return null;
+  return (
+    <View
+      style={{
+        pointerEvents: 'none',
+        position: 'absolute',
+        inset: 0,
+        borderRadius: radius,
+        borderCurve: 'continuous',
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    />
   );
 }
 

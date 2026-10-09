@@ -23,7 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { withAlpha } from '@/lib/color';
-import { colors, easing, motion, springs, useDesign } from '@/theme';
+import { colors, easing, motion, springs, theme, useDesign } from '@/theme';
 
 import { FocusLayerContext, focusTopLayer } from './focus-layer';
 import { FocusMemoryContext } from './focus-memory';
@@ -265,9 +265,10 @@ export function FocusLift({
 
   const offset = design.focus.ringOffset;
   const width = design.focus.ringWidth;
-  const glow = tint
-    ? `0 0 ${design.px(kind === 'button' ? 18 : GLOW_BLUR)}px ${withAlpha(tint, 0.55)}`
-    : design.shadow.glow;
+  const glow =
+    tint && theme !== 'streamybox'
+      ? `0 0 ${design.px(kind === 'button' ? 18 : GLOW_BLUR)}px ${withAlpha(tint, 0.55)}`
+      : design.shadow.glow;
   return (
     <Animated.View
       style={[style, liftStyle]}

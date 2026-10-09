@@ -36,10 +36,13 @@ import { useShell } from '@/shell/use-shell';
 
 import { StageActionRow } from './stage-action-row';
 import { liftedTop, MOVIE_INFO_MAX_CUT, movieInfoPlan, nextInfoCut } from './stage-info-fit';
-import { colors, fonts, useDesign } from '@/theme';
+import { colors, fonts, theme, useDesign } from '@/theme';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 /** D2 Bühne (1920 × 1080 points): copy column, info column right, bottom margin. */
+// Streamybox: the kind label is a plain muted eyebrow (launcher hero), not a glass pill.
+const SBX = theme === 'streamybox';
+
 const STAGE = {
   copyWidth: 880,
   infoWidth: 460,
@@ -310,24 +313,29 @@ function StageLayout({
                   alignItems: 'center',
                   gap: s(10),
                   height: s(36),
-                  paddingHorizontal: s(16),
+                  paddingHorizontal: SBX ? 0 : s(16),
                   borderRadius: s(18),
-                  backgroundColor: colors.glass.DEFAULT,
+                  backgroundColor: SBX ? undefined : colors.glass.DEFAULT,
                 }}>
-                <View
-                  style={{
-                    width: s(10),
-                    height: s(10),
-                    borderRadius: s(5),
-                    backgroundColor: tint ?? colors.accent.DEFAULT,
-                  }}
-                />
+                {SBX ? null : (
+                  <View
+                    style={{
+                      width: s(10),
+                      height: s(10),
+                      borderRadius: s(5),
+                      backgroundColor: tint ?? colors.accent.DEFAULT,
+                    }}
+                  />
+                )}
                 {/* Keyed + one line: Android kept a stale width after an in-place update and hid the number on line 2. */}
                 <Text
                   key={kindLabel}
                   testID="stage-pill"
                   numberOfLines={1}
-                  style={[text(18, fonts.bodyMedium), { color: colors.foreground.DEFAULT }]}>
+                  style={[
+                    text(SBX ? 24 : 18, fonts.bodyMedium),
+                    { color: SBX ? colors.foreground.muted : colors.foreground.DEFAULT },
+                  ]}>
                   {kindLabel}
                 </Text>
               </View>
