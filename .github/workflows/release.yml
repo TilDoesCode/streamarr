@@ -248,6 +248,8 @@ jobs:
         env:
           EXPO_TV: '1'
           STREAMARR_ANDROID_VERSION: ${{ env.RELEASE_VERSION }}
+          # packaging the ~105 MB release APK runs out of the 2 GB development heap (OutOfMemoryError)
+          STREAMARR_GRADLE_JVMARGS: -Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
         run: |
           npm ci
           npm run typecheck

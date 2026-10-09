@@ -63,6 +63,7 @@ same names. Environment variables take precedence.
 cd client
 npm ci
 export STREAMARR_ANDROID_VERSION=0.16.0
+export STREAMARR_GRADLE_JVMARGS='-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8'  # 2 GB is too small to package the release APK
 EXPO_TV=1 npx expo prebuild --platform android --clean
 cd android
 EXPO_TV=1 ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
