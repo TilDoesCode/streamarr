@@ -43,7 +43,7 @@ PASS degraded Tears.of.Steel.2012.1080p.BluRay.DDP5.1.x264-FLAKY resolves as deg
 PASS season pack resolves tmdb-tv-33050-s01e02 to the episode file - 200 size=8209891
 PASS viewer auth options (module enabled) - {'serverName': 'Streamarr Dev World', 'passwordLogin': True, 'emailCodeLogin': True, 'passwordReset': True, 'twoFactor': True, 'passwordMinLength': 8}
 PASS viewer anna signs in - 200
-PASS viewer ben needs second factor - {'status': 'mfa_required', 'mfaToken': 'svm_16wggs7FGYnflfVy-Y6On0gVzR6DVhjlqPESnetXLOE', 'mfaExpiresAt': '2026-09-29T09:46:08.718367+00:00', 'session': None, 'viewer': None}
+PASS viewer ben needs second factor - {'status': 'mfa_required', 'mfaToken': '<redacted>', 'mfaExpiresAt': '2026-09-29T09:46:08.718367+00:00', 'session': None, 'viewer': None}
 PASS viewer ben signs in - 200
 PASS viewer kind signs in - 200
 PASS viewer gast signs in - 200

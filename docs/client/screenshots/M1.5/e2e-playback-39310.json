@@ -1511,7 +1511,7 @@
   {
    "check": "heartbeat: the shared event stream got source streamarr-viewer with the stream token",
    "ok": true,
-   "detail": "[{'id': 1, 'releaseId': '1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687', 'workId': 'tmdb-movie-45745', 'title': 'Sintel.2010.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD', 'event': 'progress', 'positionTicks': 900000000, 'durationTicks': 1800000000, 'sessionToken': 'eeb69998985671c250728ccbfed9607d3794597c3db9353d', 'source': 'streamarr-viewer', 'playbackSessionId': 'ce22baf8d54254d85d47c30edc74b9be', 'externalUserId': '63740cfdb4bc480c8b58ddcfbbd7156d', 'externalUserName': 'anna', 'deviceName': 'Anna TV', 'receivedAt': '2026-09-29T22:06:08.58477+00:00'}]"
+   "detail": "[{'id': 1, 'releaseId': '1361e11a11848fbc830521aefa34863214cc7ac654db7b719f16248a1649b687', 'workId': 'tmdb-movie-45745', 'title': 'Sintel.2010.German.DL.1080p.BluRay.DD5.1.x264-DEVWORLD', 'event': 'progress', 'positionTicks': 900000000, 'durationTicks': 1800000000, 'sessionToken': '<redacted>', 'source': 'streamarr-viewer', 'playbackSessionId': 'ce22baf8d54254d85d47c30edc74b9be', 'externalUserId': '63740cfdb4bc480c8b58ddcfbbd7156d', 'externalUserName': 'anna', 'deviceName': 'Anna TV', 'receivedAt': '2026-09-29T22:06:08.58477+00:00'}]"
   },
   {
    "check": "ownership: another viewer gets 404",
