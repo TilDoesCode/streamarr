@@ -42,6 +42,16 @@ Android packaging; partial secrets or invalid signing fail the Android job.
 Server/plugin publication remains independent and warns if the APK was omitted.
 Review the Android job before expecting an APK on a release.
 
+## Runner
+
+The APK job runs on `ubuntu-latest` unless the repository variable `STREAMARR_ANDROID_RUNNER`
+holds a JSON runner label list, e.g. `["self-hosted","macOS","ARM64","streamarr-android"]`. The job
+only runs for release tags and manual dispatches, never for pull requests. Because this repository is
+public, a self-hosted runner requires the fork pull request policy "Require approval for all external
+contributors" and a dedicated label, so no other workflow lands on it by accident. The job installs
+Node 24, JDK 17 and its Android SDK packages itself (macOS ARM64 or Linux x64); the keystore exists only
+in the job's temporary directory and is deleted on exit.
+
 ## Local reproduction
 
 Use Node 24, JDK 17 and an installed Android SDK. Load the protected companion

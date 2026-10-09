@@ -185,7 +185,9 @@ jobs:
   android-tv-apk:
     name: Signed Android TV APK (optional)
     needs: [validate, container-smoke]
-    runs-on: ubuntu-latest
+    # repository variable STREAMARR_ANDROID_RUNNER, e.g. ["self-hosted","macOS","ARM64","streamarr-android"]
+    runs-on: ${{ fromJSON(vars.STREAMARR_ANDROID_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 90
     permissions:
       contents: read
       id-token: write
