@@ -1,9 +1,7 @@
 using System.Net;
 using MediaBrowser.Common.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 using Streamarr.Plugin.Library;
 
 namespace Streamarr.Plugin.Tests;
@@ -72,6 +70,21 @@ public class ArtworkBadgeDownloadTests : IDisposable
         Assert.Equal(1, attempts); // 404 is authoritative, never retried
     }
 
+    [Fact]
+    public async Task Invalid_image_falls_back_without_creating_a_cache_file()
+    {
+        var service = Service(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent([1, 2, 3, 4])
+        });
+        const string source = "https://image.tmdb.org/t/p/w780/invalid.jpg";
+
+        var result = await service.GetPosterAsync(source, "invalid", true, CancellationToken.None);
+
+        Assert.Equal(source, result);
+        Assert.Empty(Directory.GetFiles(_cacheRoot, "*.jpg", SearchOption.AllDirectories));
+    }
+
     private ArtworkBadgeService Service(Func<HttpRequestMessage, HttpResponseMessage> callback)
     {
         var factory = new StubHttpClientFactory(new CallbackHandler(callback));
@@ -81,10 +94,10 @@ public class ArtworkBadgeDownloadTests : IDisposable
 
     private static byte[] SampleJpeg()
     {
-        using var image = new Image<Rgba32>(120, 180, new Rgba32(30, 40, 50));
-        using var buffer = new MemoryStream();
-        image.SaveAsJpeg(buffer, new JpegEncoder { Quality = 90 });
-        return buffer.ToArray();
+        using var image = new SKBitmap(120, 180);
+        image.Erase(new SKColor(30, 40, 50));
+        using var encoded = image.Encode(SKEncodedImageFormat.Jpeg, 90);
+        return encoded.ToArray();
     }
 
     public void Dispose()

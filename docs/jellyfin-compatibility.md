@@ -23,7 +23,12 @@ built and tested against. Change the pinned values together and re-run the load 
 The `Jellyfin.Controller` package version, the plugin `targetAbi`, and the Jellyfin
 docker image tag MUST stay in lockstep. `Jellyfin.Controller` is referenced with
 `<Private>false</Private>` + `ExcludeAssets=runtime`, so the host supplies the assemblies
-at runtime and the plugin ships only its own DLL.
+at runtime. Artwork badges use the host's SkiaSharp 3.116.1, also referenced with
+`Private=false` and `IncludeAssets=compile`. Neither SkiaSharp nor its native
+libraries are bundled in the plugin archive. The server independently uses
+SkiaSharp 4.153.1; it runs in a separate process. Run the artwork checks in the
+host smoke after dependency upgrades.
+
 
 ## Interfaces the plugin binds (10.11.x ABI)
 

@@ -41,7 +41,13 @@ export default {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      boxShadow: {
+        sm: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+      },
+      blur: { sm: "4px", DEFAULT: "8px" },
       borderRadius: {
+        DEFAULT: "0.25rem",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",

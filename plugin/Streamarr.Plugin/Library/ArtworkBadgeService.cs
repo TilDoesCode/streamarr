@@ -3,9 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MediaBrowser.Common.Configuration;
 using Microsoft.Extensions.Logging;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace Streamarr.Plugin.Library;
 
@@ -64,18 +62,24 @@ public sealed class ArtworkBadgeService(
             if (payload is null)
                 return sourceUrl;
 
-            using var bounded = new MemoryStream(payload, writable: false);
-            using var image = await Image.LoadAsync<Rgba32>(bounded, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            using var data = SKData.CreateCopy(payload);
+            using var codec = SKCodec.Create(data);
+            if (codec is null)
+                return sourceUrl;
+            using var image = SKBitmap.Decode(codec);
+            if (image is null)
+                return sourceUrl;
             DrawAdaptiveBadge(image);
             var temporaryPath = outputPath + ".tmp";
-            await image.SaveAsJpegAsync(
-                temporaryPath,
-                new JpegEncoder { Quality = 96 },
-                ct).ConfigureAwait(false);
+            using var encoded = image.Encode(SKEncodedImageFormat.Jpeg, 96);
+            if (encoded is null)
+                return sourceUrl;
+            await File.WriteAllBytesAsync(temporaryPath, encoded.ToArray(), ct).ConfigureAwait(false);
             File.Move(temporaryPath, outputPath, overwrite: true);
             return outputPath;
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or UnknownImageFormatException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException)
         {
             logger.LogDebug(ex, "Could not create branded artwork for {WorkId}", workId);
             return sourceUrl;
@@ -188,7 +192,7 @@ public sealed class ArtworkBadgeService(
         return null;
     }
 
-    internal static void DrawAdaptiveBadge(Image<Rgba32> image)
+    internal static void DrawAdaptiveBadge(SKBitmap image)
     {
         var shortest = Math.Min(image.Width, image.Height);
         var size = Math.Clamp((int)MathF.Round(shortest * 0.18F), 28, 180);
@@ -198,26 +202,21 @@ public sealed class ArtworkBadgeService(
         var left = Math.Min(inset, Math.Max(0, image.Width - size));
         var top = Math.Min(inset, Math.Max(0, image.Height - size));
 
-        image.ProcessPixelRows(accessor =>
+        for (var y = 0; y < size; y++)
         {
-            for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
             {
-                var row = accessor.GetRowSpan(top + y);
-                for (var x = 0; x < size; x++)
-                {
-                    // Supersampled coverage keeps the rounded corners and play glyph crisp when
-                    // Jellyfin resizes the poster down to search-result thumbnails.
-                    var badgeCoverage = Coverage(x, y, size, radius, triangle: false);
-                    if (badgeCoverage <= 0)
-                        continue;
-                    Blend(ref row[left + x], new Rgba32(109, 40, 217, 238), badgeCoverage);
-
-                    var triangleCoverage = Coverage(x, y, size, radius, triangle: true);
-                    if (triangleCoverage > 0)
-                        Blend(ref row[left + x], new Rgba32(255, 255, 255, 255), triangleCoverage);
-                }
+                var badgeCoverage = Coverage(x, y, size, radius, triangle: false);
+                if (badgeCoverage <= 0)
+                    continue;
+                var pixel = image.GetPixel(left + x, top + y);
+                pixel = Blend(pixel, new SKColor(109, 40, 217, 238), badgeCoverage);
+                var triangleCoverage = Coverage(x, y, size, radius, triangle: true);
+                if (triangleCoverage > 0)
+                    pixel = Blend(pixel, SKColors.White, triangleCoverage);
+                image.SetPixel(left + x, top + y, pixel);
             }
-        });
+        }
     }
 
     private static float Coverage(int x, int y, int size, int radius, bool triangle)
@@ -256,13 +255,13 @@ public sealed class ArtworkBadgeService(
            && y <= 0.73F
            && MathF.Abs(y - 0.5F) <= (0.72F - x) * 0.64F;
 
-    private static void Blend(ref Rgba32 destination, Rgba32 source, float coverage)
+    private static SKColor Blend(SKColor destination, SKColor source, float coverage)
     {
-        var alpha = source.A / 255F * Math.Clamp(coverage, 0, 1);
-        destination = new Rgba32(
-            (byte)MathF.Round(source.R * alpha + destination.R * (1 - alpha)),
-            (byte)MathF.Round(source.G * alpha + destination.G * (1 - alpha)),
-            (byte)MathF.Round(source.B * alpha + destination.B * (1 - alpha)),
+        var alpha = source.Alpha / 255F * Math.Clamp(coverage, 0, 1);
+        return new SKColor(
+            (byte)MathF.Round(source.Red * alpha + destination.Red * (1 - alpha)),
+            (byte)MathF.Round(source.Green * alpha + destination.Green * (1 - alpha)),
+            (byte)MathF.Round(source.Blue * alpha + destination.Blue * (1 - alpha)),
             255);
     }
 
