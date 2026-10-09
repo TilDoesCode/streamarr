@@ -21,3 +21,10 @@ web-build/
 
 expo-env.d.ts
 # @end expo-cli
+# Release credentials and artifacts
+*.keystore
+*release.properties
+*.apk
+
+# External dependency scratch may be a symlink on macOS
+/node_modules

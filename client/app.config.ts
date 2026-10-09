@@ -96,6 +96,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-libvlc-player',
     ['./plugins/with-android-tv', { androidTVBanner: TV_BANNER }],
     './plugins/with-gradle-limits',
+    './plugins/with-release-signing',
     './plugins/with-ios-scene',
   ],
   experiments: {
