@@ -19,3 +19,81 @@ regexes = [
     '''ApiKey\s*=\s*"diag-api-key-0123456789abcdef0123456789abcdef"''',
     '''AdminPassword\s*=\s*"diag-admin-password-0123456789"''',
 ]
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.2/devworld\-verify\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.2/devworld\-verify\-snapshot\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.3/e2e\-playback\-39310\.json$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.3/e2e\-playback\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.3/e2e\-playback\-snapshot\-39310\.json$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.3/e2e\-playback\-snapshot\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.3/verify\-devworld\-snapshot\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.3/verify1\-builder\-e2e\-snapshot\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["0997c2ac106a955424d1b8b6d82161b93a9a6f52"]
+paths = ['''^docs/client/screenshots/M1\.3/verify1\-builder\-e2e\-tree\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["7791627fd03de38488f354ec8b7661deddc551e8"]
+paths = ['''^docs/client/screenshots/M1\.5/e2e\-playback\-39310\.json$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["7791627fd03de38488f354ec8b7661deddc551e8"]
+paths = ['''^docs/client/screenshots/M1\.5/e2e\-playback\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["7791627fd03de38488f354ec8b7661deddc551e8"]
+paths = ['''^docs/client/screenshots/M1\.5/e2e\-playback\-snapshot\-39310\.txt$''']
+
+[[allowlists]]
+description = "Historical loopback dev-world tokens; current evidence is redacted"
+condition = "AND"
+commits = ["7791627fd03de38488f354ec8b7661deddc551e8"]
+paths = ['''^docs/client/screenshots/M1\.5/verify\-r1\-e2e\-playback\-tree\.txt$''']
