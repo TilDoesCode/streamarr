@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.16.0.0",
+    "version": "0.16.1.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Fix HEVC releases being fully re-encoded to H.264 instead of stream-copied for clients whose device profile has whitespace inside its comma-separated codec/container lists (observed with Streamyfin's MPV profile, e.g. \"h264, hevc\"): Jellyfin splits these lists without trimming and silently drops the unmatched entry from its HLS codec filter. The playback guard now normalizes whitespace in the posted DeviceProfile in place, on both PlaybackInfo and LiveStreams/Open, so well-matched HEVC direct-stream-copy is restored."
+    "changelog": "Fix incomplete season release searches by loading all Newznab result pages, including indexers returning only 100 results per page."
 }
