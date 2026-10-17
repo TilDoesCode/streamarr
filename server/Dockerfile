@@ -6,8 +6,9 @@
 #
 # Build context is the repo root:  docker build -f server/Dockerfile .
 
+# Web assets are architecture-independent; build them once on the native builder.
 # ---- 1. SPA -------------------------------------------------------------------------
-FROM node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169 AS web
+FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169 AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json* web/.npmrc ./
 RUN npm ci
@@ -16,7 +17,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- 1b. Viewer web app -------------------------------------------------------------
-FROM node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169 AS viewer-web
+FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169 AS viewer-web
 WORKDIR /client
 # patches/ must be present for the patch-package postinstall hook.
 COPY client/package.json client/package-lock.json client/.npmrc ./
@@ -26,13 +27,14 @@ COPY client/ ./
 RUN EXPO_BASE_URL=/watch npx expo export --platform web --output-dir dist
 
 # ---- 2. .NET publish ----------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:536b706b6113a3839c1712ebcf832dc33d275fd605d35a931db956792c10d26c AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:536b706b6113a3839c1712ebcf832dc33d275fd605d35a931db956792c10d26c AS build
+ARG TARGETARCH
 WORKDIR /src
 COPY server/ server/
 # Bring the freshly built SPA into the server's static web root (single-origin prod path).
 COPY --from=web /web/dist/ server/src/Streamarr.Server/wwwroot/
 RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
-      -c Release -o /app --no-self-contained
+      -c Release -a "$TARGETARCH" -p:UseAppHost=false -o /app --no-self-contained
 
 # ---- 3. runtime ---------------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:c291421b6f209369e11899c9cc2425ccf08566f2d40b527388c45df036d86b7a AS runtime
