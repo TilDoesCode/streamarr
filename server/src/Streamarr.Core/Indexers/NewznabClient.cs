@@ -155,6 +155,9 @@ public sealed class NewznabClient(
             if (categories.Count > 0)
                 sb.Append("&cat=").Append(string.Join(',', categories));
 
+            if (query.Offset > 0)
+                sb.Append("&offset=").Append(query.Offset.ToString(CultureInfo.InvariantCulture));
+
             if (query.Limit is { } limit)
                 sb.Append("&limit=").Append(limit.ToString(CultureInfo.InvariantCulture));
         }

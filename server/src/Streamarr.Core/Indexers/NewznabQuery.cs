@@ -37,6 +37,9 @@ public sealed record NewznabQuery
     /// <summary>Result cap (<c>limit=</c>); null lets the indexer choose its default.</summary>
     public int? Limit { get; init; }
 
+    /// <summary>Zero-based result offset for indexer pagination.</summary>
+    public int Offset { get; init; }
+
     /// <summary>
     /// Category override (<c>cat=</c>). When empty the indexer's configured
     /// categories are used instead.
@@ -65,6 +68,7 @@ public sealed record NewznabQuery
         sb.Append(Season?.ToString() ?? string.Empty).Append('|');
         sb.Append(Episode?.ToString() ?? string.Empty).Append('|');
         sb.Append(Limit?.ToString() ?? string.Empty).Append('|');
+        sb.Append(Offset).Append('|');
         sb.Append(string.Join(',', Categories.OrderBy(c => c)));
         return sb.ToString();
     }

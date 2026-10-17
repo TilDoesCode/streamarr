@@ -114,23 +114,41 @@ public sealed class IndexerSearchService(
             {
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCts.CancelAfter(options.PerIndexerTimeout);
-                await rateLimiter.WaitAsync(indexer.Id, timeoutCts.Token);
-                await _requestGate.WaitAsync(timeoutCts.Token);
+                var collected = new List<Release>();
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                int? totalCount = null;
+                var offset = query.Offset;
+                // Bound requests even if an indexer advertises a bogus total.
+                for (var page = 0; page < 100; page++)
+                {
+                    await rateLimiter.WaitAsync(indexer.Id, timeoutCts.Token);
+                    await _requestGate.WaitAsync(timeoutCts.Token);
+                    NewznabSearchResponse response;
+                    try
+                    {
+                        response = await client.SearchAsync(indexer, query with { Offset = offset }, timeoutCts.Token);
+                    }
+                    finally
+                    {
+                        _requestGate.Release();
+                    }
 
-                IReadOnlyList<Release> releases;
-                int? totalCount;
-                try
-                {
-                    var response = await client.SearchAsync(indexer, query, timeoutCts.Token);
-                    totalCount = response.Total;
-                    releases = response.Items
-                        .Select(item => ToRelease(indexer, item))
-                        .ToArray();
+                    totalCount ??= response.Total;
+                    var added = 0;
+                    foreach (var item in response.Items)
+                    {
+                        if (seen.Add(item.Guid))
+                        {
+                            collected.Add(ToRelease(indexer, item));
+                            added++;
+                        }
+                    }
+
+                    offset += response.Items.Count;
+                    if (added == 0 || response.Total is not { } total || offset >= total)
+                        break;
                 }
-                finally
-                {
-                    _requestGate.Release();
-                }
+                IReadOnlyList<Release> releases = collected;
 
                 return new IndexerResult(indexer, releases, new IndexerOutcome
                 {

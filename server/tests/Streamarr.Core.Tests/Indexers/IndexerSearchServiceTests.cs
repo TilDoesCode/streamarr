@@ -21,6 +21,36 @@ public class IndexerSearchServiceTests
         return new IndexerSearchService(new InMemoryIndexerConfigStore(indexers), client, limiter, cache, options, time);
     }
 
+    [Theory]
+    [InlineData(false, 262, 3)]
+    [InlineData(true, 100, 2)]
+    public async Task Pagination_LoadsAllPages_AndStopsWhenIndexerIgnoresOffset(
+        bool ignoresOffset, int expectedItems, int expectedRequests)
+    {
+        var offsets = new List<int>();
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            var offsetParameter = request.RequestUri!.Query.TrimStart('?').Split('&')
+                .FirstOrDefault(parameter => parameter.StartsWith("offset="));
+            var offset = offsetParameter is null ? 0 : int.Parse(offsetParameter[7..]);
+            offsets.Add(offset);
+            var start = ignoresOffset ? 0 : offset;
+            var items = string.Concat(Enumerable.Range(start, Math.Min(100, 262 - start))
+                .Select(i => $"<item><title>Example.S06E{i:000}.WEB-DL</title><guid>{i}</guid><enclosure url='https://alpha.example/{i}' length='{1000 + i}' type='application/x-nzb'/></item>"));
+            return StubHttpMessageHandler.Xml(
+                $"<rss xmlns:newznab='http://www.newznab.com/DTD/2010/feeds/attributes/'><channel><newznab:response offset='{start}' total='262'/>{items}</channel></rss>");
+        });
+        var client = new NewznabClient(new HttpClient(handler));
+        var result = await Service(client, [NewznabFixtures.Indexer("Alpha")])
+            .SearchAsync(new NewznabQuery { Kind = NewznabSearchKind.Tv, Season = 6 }, CancellationToken.None);
+
+        Assert.Equal(expectedItems, result.Releases.Count);
+        Assert.Equal(expectedItems, Assert.Single(result.Outcomes).ItemCount);
+        Assert.Equal(262, Assert.Single(result.Outcomes).TotalCount);
+        Assert.Equal(expectedRequests, offsets.Count);
+        Assert.Equal(Enumerable.Range(0, expectedRequests).Select(i => i * 100), offsets);
+    }
+
     [Fact]
     public async Task FanOut_MergesReleasesFromEveryEnabledIndexer()
     {
