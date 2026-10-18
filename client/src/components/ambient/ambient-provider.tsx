@@ -1,5 +1,7 @@
 import { createContext, use, useMemo, useState, type ReactNode } from 'react';
 
+import { theme } from '@/theme';
+
 import type { AmbientInput } from './ambient-model';
 
 type AmbientApi = {
@@ -30,6 +32,11 @@ export function AmbientProvider({ children }: { children: ReactNode }) {
 export function useAmbientTitle(): AmbientInput | null {
   return use(TitleContext);
 }
+
+const noTitle = (): AmbientInput | null => null;
+
+/** For glass tinted by the room: Streamybox glass ignores the title, so it never re-renders on focus there. */
+export const useGlassRoomTitle = theme === 'streamybox' ? noTitle : useAmbientTitle;
 
 /** Setter for cards: call on focus (TV), hover (web) or when a title becomes active (phone). */
 export function useSetAmbient(): AmbientApi['setTitle'] {

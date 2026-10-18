@@ -13,7 +13,7 @@ import Animated, {
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { FocusGuide, Focusable, FocusLift, useFocusState } from '@/components/focus';
-import { useAmbientTitle } from '@/components/ambient';
+import { useGlassRoomTitle } from '@/components/ambient';
 import { Glass } from '@/components/glass';
 import { Avatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
@@ -51,7 +51,7 @@ export function ShellRail({ activeName, onSelect, onFocusChange, activeRef }: Sh
   const router = useRouter();
   const { account } = useActiveAccount();
   // The rail sits over the art of the title painting the room; without one it keeps the constant glass.
-  const ambient = useAmbientTitle();
+  const ambient = useGlassRoomTitle();
   const artHighlight = ambient?.image ? ambient.highlight : null;
   const items = useRef<(View | null)[]>([]);
   // Entering the rail (TV) lands on the active tab, not on the last focused item.

@@ -233,8 +233,8 @@ describe('Shelf on TV', () => {
 
   it('renders a remembered item beyond the first batch, so focus can return to it', async () => {
     const long = <Shelf {...shelf.props} memoryKey="tv.long" />;
-    // Two visits: the first batch (12) reaches item 10, a restore at 10 reaches item 15.
-    for (const index of [10, 15]) {
+    // Two visits: the first batch (10) reaches item 9, a restore at 9 reaches item 15.
+    for (const index of [9, 15]) {
       const view = await renderWithProviders(long);
       await fireEvent(screen.getByTestId(`item-${index}`).parent as TestInstance, 'focus', {});
       await act(async () => view.unmount());

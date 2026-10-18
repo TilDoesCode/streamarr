@@ -221,8 +221,9 @@ export function Shelf<T>({
             farScrolled.current = true;
             listRef.current?.scrollToOffset({ offset: restore.offset.x, animated: false });
           }}
-          initialNumToRender={design.isTV ? (far ? 0 : (restoreIndex ?? 0)) + 12 : 6}
-          windowSize={design.isTV ? 9 : 5}
+          initialNumToRender={design.isTV ? (far ? 0 : (restoreIndex ?? 0)) + 10 : 6}
+          // TV: two screens ahead keeps D-pad focus fed; nine kept every Home row fully mounted (~120 cards).
+          windowSize={5}
           removeClippedSubviews={false}
           snapToAlignment={design.isTV ? 'item' : undefined}
           snapToItemPadding={design.isTV ? gutter : undefined}

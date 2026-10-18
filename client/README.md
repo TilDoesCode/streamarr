@@ -40,8 +40,9 @@ configuration lives in `app.config.ts` and `plugins/`:
 - `package.json` → `reanimated.staticFeatureFlags` sets `FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS: false`
   (read at native build time). With Reanimated 4.5's default, settled animated styles are only kept if a
   JS timer hands them back to React within 1–2 s; a late timer (seen on Google TV) drops them and the
-  next React commit restores stale styles (invisible Sheet, stale focus rings). Changing the flag needs
-  a native rebuild.
+  next React commit restores stale styles (invisible Sheet, stale focus rings). `ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true`
+  applies animated transform/opacity/colour straight to the views instead of committing the whole shadow tree
+  every frame (focus lifts on slow TV boxes). Changing a flag needs a native rebuild.
 - `@react-native-tvos/config-tv` retargets `ios/` to tvOS only when `EXPO_TV=1`.
 - `plugins/with-gradle-limits.js` caps Gradle at `-Xmx2g` and 4 workers.
 
